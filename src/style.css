@@ -1,0 +1,162 @@
+/* Deliberately ugly but not feedback-dead (docs/phases/m1-demo.md): flat
+   shapes on dark, one color per weapon, all UI plain DOM. */
+
+:root {
+  color-scheme: dark;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #101014;
+  color: #d8d8e0;
+}
+
+#app {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 16px;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: #22222a;
+  border: 1px solid #3a3a46;
+  border-radius: 4px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #2c2c36;
+}
+
+input[type='range'] {
+  accent-color: #8888a0;
+  width: 130px;
+}
+
+/* transport */
+.transport {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  padding: 12px 0;
+  border-bottom: 1px solid #2a2a34;
+}
+
+.play {
+  min-width: 90px;
+}
+
+.position {
+  min-width: 110px;
+  color: #9a9ab0;
+}
+
+.knob,
+.scrub,
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #9a9ab0;
+}
+
+.scrub {
+  padding: 16px 0;
+  border-bottom: 1px solid #2a2a34;
+}
+
+.scrub input {
+  flex: 1;
+  max-width: 420px;
+}
+
+/* voice cards */
+.voices {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  padding-top: 16px;
+}
+
+.voice {
+  border: 1px solid #2a2a34;
+  border-left: 4px solid var(--voice-color);
+  border-radius: 4px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+
+.voice.active {
+  opacity: 1;
+}
+
+.voice-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.voice-name {
+  font-weight: bold;
+  color: var(--voice-color);
+  flex: 1;
+}
+
+.voice-key {
+  color: #666674;
+  font-size: 12px;
+  border: 1px solid #3a3a46;
+  border-radius: 3px;
+  padding: 0 5px;
+}
+
+.light {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #33333e;
+}
+
+.light.lit {
+  animation: flash 0.25s ease-out;
+}
+
+@keyframes flash {
+  0% {
+    background: var(--voice-color);
+    box-shadow: 0 0 8px var(--voice-color);
+  }
+  100% {
+    background: #33333e;
+    box-shadow: none;
+  }
+}
+
+.tools {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.small {
+  font-size: 12px;
+  padding: 3px 10px;
+}
+
+.hidden {
+  display: none;
+}
