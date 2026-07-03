@@ -6,7 +6,7 @@ The first playable demo, built for the developer's own playtesting. Answers M1's
 
 ## Scope
 
-- **Platform:** desktop browser only. WASD and arrow keys. No touch, no mobile layout, no app wrappers. Renderer stays resolution-independent from day one. Mobile enters when outside testers get links.
+- **Platform:** desktop browser only. WASD and arrow keys. No touch, no mobile layout, no app wrappers. Renderer stays resolution-independent from day one. Mobile is deferred to a later phase.
 - **Input:** movement is the only player verb. Continuous, unquantized, silent. Everything that makes sound is automatic. If a player-activated ability is ever added later, its gameplay effect is instant and its sound is either a non-grid one-shot or an accent on the next subdivision.
 - **Weapons:** six kits, one per musical role, each fused to a distinct gameplay archetype. Kick (downbeat aura pulse around the player), snare/clap (backbeat directional shot), hi-hat (dense stream of weak fast hits), bass (slow piercing low wave), chord stab/pad (zone or orbiting field), lead synth (homing projectile whose chart is a melody). One chart per kit, no tiers.
 - **Musical skeleton:** one, hardcoded but structured as data. 4/4, ~105-115 BPM fixed for the whole run, minor pentatonic on one root. All pitched kits sampled or pitch-shifted to that note set. The scheduler treats beat length as a variable so tempo never bakes in.
@@ -31,10 +31,6 @@ Nothing advances past a gate without an explicit pass, and a failed gate loops w
 
 ## Verdict protocol
 
-After sub-phase C: ten-plus full runs spread over several days, never one sitting, deliberately varying builds, including at least two muted runs. Three questions answered in writing, decided in advance:
+After sub-phase C the developer plays the demo and declares pass or fail on M1's question by his own judgment. The outcome is recorded in `docs/STATUS.md`. A pass starts M2 grilling; a fail gets reworked within M1 at the level the failure points to.
 
-1. Did specific picks produce a nameable "that's mine" moment? (causality)
-2. Was there any build where the mix sounded bad? (Pillar 2; one bad build is a system bug, not a content bug)
-3. Did the developer ever replay when not required to? (the honest fun signal)
-
-Pass is yes, no, yes. Then the link goes to three to five outside testers with one question phrased so it can fail, such as "describe what the sounds had to do with your choices," before M2 begins. A fail on question 1 means rework at the coupling level, not more content. Fails on 2 or 3 are fixable within M1 scope.
+*(Amended July 3, 2026 with developer sign-off: the written run log, the three formal questions, and the outside-tester step were removed. The developer's ear is the whole protocol.)*

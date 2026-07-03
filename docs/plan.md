@@ -67,7 +67,7 @@ Every milestone ends playable and answers one named question.
 
 ## Playtest Method
 
-One question per session. The developer plays continuously. Three to five outside testers at each milestone exit, reached by sending a link. A recurring muted run enforces pillar 3.
+One question per session. The developer plays continuously and is the sole judge at each milestone exit. A recurring muted run enforces pillar 3.
 
 ## Parked Decisions (deliberately deferred to playtesting)
 
