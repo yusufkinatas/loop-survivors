@@ -4,14 +4,17 @@
 // (which voices are on) and grid (the clock's steps): no stage input exists.
 
 import { Clock } from './clock';
-import { CHARTS, type Chart, type ChartEvent } from './charts';
-import { SKELETON, STEPS_PER_BAR, semitonesToRate } from './scale';
+import { M1_TIER, TIER_COUNT, type Chart, type ChartEvent } from './charts';
+import { getChart } from './chartstore';
+import { SKELETON, STEPS_PER_BAR, STEPS_PER_PHRASE, semitonesToRate } from './scale';
 import type { Kit, Role } from './kits';
 
 export interface Voice {
   role: Role;
   kit: Kit;
   chart: Chart;
+  /** Ladder tier 1-4 the voice is playing. */
+  tier: number;
   enabled: boolean;
   gain: GainNode;
   /** Buffers actually triggered: the kit's own, or a sample set's applied
@@ -33,6 +36,8 @@ export interface ScheduledTrigger {
   role: Role;
   time: number;
   velocity: number;
+  /** Grid step within the phrase that fired this trigger; -1 for previews. */
+  step: number;
   variant?: string;
   note?: number;
 }
@@ -75,10 +80,13 @@ export class MusicEngine {
       const gain = ctx.createGain();
       gain.gain.value = 1;
       gain.connect(this.master);
+      // Default to the tier holding the M1 chart so the M1 game plays
+      // unchanged until sub-phase B wires tiers into the run.
       this.voices.set(role, {
         role,
         kit,
-        chart: CHARTS[role],
+        chart: getChart(role, M1_TIER[role]),
+        tier: M1_TIER[role],
         enabled: false,
         gain,
         activeSamples: kit.samples,
@@ -109,6 +117,15 @@ export class MusicEngine {
   setVoiceEnabled(role: Role, on: boolean): void {
     const voice = this.voices.get(role);
     if (voice) voice.enabled = on;
+  }
+
+  /** Put a voice on a ladder tier: swaps its chart for the tier's working
+   *  copy. Takes effect on the next step the new chart fires. */
+  setVoiceTier(role: Role, tier: number): void {
+    const voice = this.voices.get(role);
+    if (!voice) return;
+    voice.tier = Math.max(1, Math.min(TIER_COUNT, tier));
+    voice.chart = getChart(role, voice.tier);
   }
 
   setVoiceGain(role: Role, value: number): void {
@@ -163,16 +180,20 @@ export class MusicEngine {
   private onStep(step: number, time: number): void {
     if (step === 0) this.lastDueStep = 0;
     this.stepMarkers.push({ step, time });
+    // The phrase clock: bars 1-4, then roll over. Charts loop inside the
+    // phrase, so a 4-bar chart's bar 4 is always the phrase's bar 4 and
+    // once-per-phrase material lands where it was written.
+    const phraseStep = step % STEPS_PER_PHRASE;
     for (const voice of this.voices.values()) {
       if (!voice.enabled) continue;
-      const loopStep = step % (voice.chart.bars * STEPS_PER_BAR);
+      const loopStep = phraseStep % (voice.chart.bars * STEPS_PER_BAR);
       for (const ev of voice.chart.events) {
-        if (ev.step === loopStep) this.trigger(voice, ev, time);
+        if (ev.step === loopStep) this.trigger(voice, ev, time, phraseStep);
       }
     }
   }
 
-  private trigger(voice: Voice, ev: ChartEvent, time: number): void {
+  private trigger(voice: Voice, ev: ChartEvent, time: number, phraseStep = -1): void {
     const variant = ev.variant ?? voice.kit.defaultVariant;
     const buffer =
       voice.override ??
@@ -210,6 +231,7 @@ export class MusicEngine {
       role: voice.role,
       time,
       velocity: ev.velocity,
+      step: phraseStep,
       variant: ev.variant,
       note: ev.note,
     });

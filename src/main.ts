@@ -3,6 +3,7 @@
 
 import { buildKits } from './audio/kits';
 import { MusicEngine } from './audio/engine';
+import * as charts from './audio/chartstore';
 import { SKELETON } from './audio/scale';
 import { mountRehearsalRoom } from './rehearsal/room';
 import { bootGame } from './game/game';
@@ -18,8 +19,9 @@ async function boot(): Promise<void> {
   const engine = new MusicEngine(ctx, kits);
 
   // Developer console handle (docs/phases/m1-demo.md, developer tools):
-  // poke the engine from the browser console, e.g. loop.engine.outputLevel().
-  (window as unknown as { loop: object }).loop = { engine, kits };
+  // poke the engine from the browser console, e.g. loop.engine.outputLevel(),
+  // or dump playground edits: copy(loop.charts.exportEdits()).
+  (window as unknown as { loop: object }).loop = { engine, kits, charts };
 
   root.textContent = '';
   if (location.hash === '#rehearsal') {

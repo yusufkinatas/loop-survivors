@@ -7,11 +7,54 @@
 
 import { MusicEngine } from '../audio/engine';
 import { ROLES, type Role } from '../audio/kits';
-import { SKELETON, STEPS_PER_BAR } from '../audio/scale';
+import { SKELETON, STEPS_PER_BAR, STEPS_PER_PHRASE, BARS_PER_PHRASE } from '../audio/scale';
 import { SAMPLE_SETS, applySampleSet, coveredRoles } from '../audio/samplesets';
+import { mountPlayground, type Playground } from './playground';
 
-/** Voice order used by the progression scrub: lone instrument -> full mix. */
-const PROGRESSION: readonly Role[] = ['kick', 'hat', 'snare', 'bass', 'chord', 'lead'];
+/** The progression scrub walks a scripted run of picks (M2: a pick is a new
+ *  weapon or a tier-up). Two arcs, one per end-of-run archetype: wide-shallow
+ *  collects every voice at low tiers, narrow-deep maxes a few voices. The
+ *  right end of the slider is the full end-of-run mix. */
+interface ArcPick {
+  role: Role;
+  tier: number;
+}
+const ARCS: Record<string, { label: string; picks: ArcPick[] }> = {
+  wide: {
+    label: 'wide-shallow',
+    picks: [
+      { role: 'kick', tier: 1 },
+      { role: 'hat', tier: 1 },
+      { role: 'snare', tier: 1 },
+      { role: 'bass', tier: 1 },
+      { role: 'chord', tier: 1 },
+      { role: 'lead', tier: 1 },
+      { role: 'kick', tier: 2 },
+      { role: 'hat', tier: 2 },
+      { role: 'snare', tier: 2 },
+      { role: 'bass', tier: 2 },
+      { role: 'chord', tier: 2 },
+      { role: 'lead', tier: 2 },
+    ],
+  },
+  deep: {
+    label: 'narrow-deep',
+    picks: [
+      { role: 'kick', tier: 1 },
+      { role: 'bass', tier: 1 },
+      { role: 'kick', tier: 2 },
+      { role: 'bass', tier: 2 },
+      { role: 'lead', tier: 1 },
+      { role: 'bass', tier: 3 },
+      { role: 'kick', tier: 3 },
+      { role: 'lead', tier: 2 },
+      { role: 'bass', tier: 4 },
+      { role: 'kick', tier: 4 },
+      { role: 'lead', tier: 3 },
+      { role: 'lead', tier: 4 },
+    ],
+  },
+};
 
 interface VoiceUi {
   card: HTMLElement;
@@ -103,17 +146,53 @@ export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void
   }
   setButtons.get('synth')!.classList.add('current');
 
-  // ---- progression scrub ----
-  const scrubWrap = el('label', 'scrub', root, 'progression scrub: build grows voice by voice');
+  // ---- progression scrub: pick by pick through a whole run's arc ----
+  const scrubRow = el('div', 'scrub-row', root);
+  el('span', 'sets-label', scrubRow, 'run arc');
+  let currentArc = 'wide';
+  const arcButtons = new Map<string, HTMLButtonElement>();
+  for (const [id, arc] of Object.entries(ARCS)) {
+    const btn = el('button', 'set-btn', scrubRow, arc.label) as HTMLButtonElement;
+    btn.onclick = () => {
+      currentArc = id;
+      applyArc(Number(scrub.value));
+    };
+    arcButtons.set(id, btn);
+  }
+  const fullMixBtn = el('button', 'set-btn full-mix', scrubRow, '⇥ end-of-run mix') as HTMLButtonElement;
+  fullMixBtn.title = 'jump to the arc’s full end-of-run build';
+  fullMixBtn.onclick = () => {
+    scrub.value = scrub.max;
+    applyArc(Number(scrub.max));
+  };
+
+  const scrubWrap = el('label', 'scrub', root, 'progression scrub: the build grows pick by pick');
   const scrub = el('input', '', scrubWrap) as HTMLInputElement;
   scrub.type = 'range';
   scrub.min = '0';
-  scrub.max = String(PROGRESSION.length);
+  scrub.max = String(ARCS.wide.picks.length);
   scrub.value = '0';
-  scrub.oninput = () => {
-    const count = Number(scrub.value);
-    PROGRESSION.forEach((role, i) => setVoice(role, i < count));
-  };
+  const scrubReadout = el('span', 'scrub-readout', scrubWrap, 'no picks');
+  scrub.oninput = () => applyArc(Number(scrub.value));
+
+  function applyArc(count: number): void {
+    const arc = ARCS[currentArc];
+    for (const [id, b] of arcButtons) b.classList.toggle('current', id === currentArc);
+    const tiers = new Map<Role, number>();
+    for (const pick of arc.picks.slice(0, count)) {
+      tiers.set(pick.role, Math.max(pick.tier, tiers.get(pick.role) ?? 0));
+    }
+    for (const role of ROLES) {
+      const tier = tiers.get(role);
+      if (tier) engine.setVoiceTier(role, tier);
+      setVoice(role, tier !== undefined);
+    }
+    const last = count > 0 ? arc.picks[count - 1] : null;
+    scrubReadout.textContent = last
+      ? `pick ${count}/${arc.picks.length}: ${last.role} ${['I', 'II', 'III', 'IV'][last.tier - 1]}`
+      : 'no picks';
+    playground.refresh();
+  }
 
   // ---- voice cards ----
   const grid = el('div', 'voices', root);
@@ -130,7 +209,10 @@ export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void
     const toggleWrap = el('label', 'row', card, 'in the mix');
     const toggle = el('input', '', toggleWrap) as HTMLInputElement;
     toggle.type = 'checkbox';
-    toggle.onchange = () => setVoice(role, toggle.checked, false);
+    toggle.onchange = () => {
+      setVoice(role, toggle.checked, false);
+      playground.refresh();
+    };
 
     const volWrap = el('label', 'row', card, 'volume');
     const vol = el('input', '', volWrap) as HTMLInputElement;
@@ -173,6 +255,23 @@ export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void
     voiceUis.set(role, { card, light, toggle });
   }
 
+  // ---- chart playground: the whole arrangement, editable while it plays ----
+  el(
+    'div',
+    'pg-caption',
+    root,
+    'chart playground — every voice’s chart across one 4-bar phrase. Pick a tier (I–IV), ' +
+      'click a cell to place a hit (clicks again soften, then remove it); right-click a ' +
+      'pitched hit to change its sound. The loop keeps playing: sculpt by ear.',
+  );
+  const playground: Playground = mountPlayground(el('div', '', root), engine, {
+    editable: true,
+    onToggleVoice: (role) => {
+      setVoice(role, !engine.voices.get(role)!.enabled);
+      playground.refresh();
+    },
+  });
+
   function setVoice(role: Role, on: boolean, syncToggle = true): void {
     engine.setVoiceEnabled(role, on);
     const ui = voiceUis.get(role)!;
@@ -191,6 +290,7 @@ export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void
     if (idx >= 0 && idx < ROLES.length) {
       const role = ROLES[idx];
       setVoice(role, !engine.voices.get(role)!.enabled);
+      playground.refresh();
     }
   });
 
@@ -205,10 +305,10 @@ export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void
   function frame(): void {
     engine.update();
     if (engine.clock.running) {
-      const step = engine.currentStep();
-      const barNo = Math.floor(step / STEPS_PER_BAR) + 1;
-      const beatNo = Math.floor((step % STEPS_PER_BAR) / SKELETON.stepsPerBeat) + 1;
-      position.textContent = `bar ${barNo} · beat ${beatNo}`;
+      const phraseStep = engine.currentStep() % STEPS_PER_PHRASE;
+      const barNo = Math.floor(phraseStep / STEPS_PER_BAR) + 1;
+      const beatNo = Math.floor((phraseStep % STEPS_PER_BAR) / SKELETON.stepsPerBeat) + 1;
+      position.textContent = `bar ${barNo}/${BARS_PER_PHRASE} · beat ${beatNo}`;
     }
     requestAnimationFrame(frame);
   }

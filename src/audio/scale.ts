@@ -28,6 +28,12 @@ export const SKELETON: Skeleton = {
 
 export const STEPS_PER_BAR = SKELETON.beatsPerBar * SKELETON.stepsPerBeat;
 
+/** M2 phrase: the master clock counts bars 1-4 and rolls over. Charts may be
+ *  up to a phrase long; shorter charts repeat inside it. Once-per-phrase
+ *  material (bar-4 fills, cycle-top accents) hangs off this constant. */
+export const BARS_PER_PHRASE = 4;
+export const STEPS_PER_PHRASE = BARS_PER_PHRASE * STEPS_PER_BAR;
+
 /** True if a semitone offset lands in the note set (any octave). */
 export function inNoteSet(semitones: number): boolean {
   return SKELETON.noteSet.includes(((semitones % 12) + 12) % 12);

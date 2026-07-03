@@ -8,20 +8,20 @@ Last updated: July 3, 2026
 
 ## Current sub-phase
 
-**Spec locked, implementation not started.** Next up: sub-phase A, the ladders (phrase clock, chart playground, tier charts).
+**Sub-phase B, the run.** Game side, muted: pick economy with tier-ups, 8-minute stage with the darter and wave events, XP pacing, next-bar entries, the sandbox. Gate A passed; the ladders and both mix shapes cleared the developer's ear.
 
 ## Gate ledger (M2)
 
 | Gate | Status |
 |---|---|
-| Sub-phase A: every tier ladder audibly grows; both late-game mix shapes pass the ear | pending |
+| Sub-phase A: every tier ladder audibly grows; both late-game mix shapes pass the ear | **passed** |
 | Sub-phase B: muted 8-minute run plays as a competent survivors-like with real picks | pending |
 | Sub-phase C: M2's question answered by the fused build | pending |
 | Verdict: developer's judgment on M2's question | pending |
 
 ## Next action
 
-Implement sub-phase A per `docs/phases/m2-the-arc.md`: 4-bar phrase clock, chart playground (editable in the rehearsal room), upgraded progression scrub, six tier ladders (24 charts) drafted for the developer's ear.
+Implement sub-phase B per `docs/phases/m2-the-arc.md`: pick pool of weapons and tier-ups (three options per level-up, tier-4 weapons leave the pool), 8-minute stage tuned for ~12–14 level-ups, the darter enemy, wave events as spawn-script data, next-bar pick entries, real death tuning, and the sandbox mode. Gate B is the Pillar 3 muted run.
 
 ## History
 
@@ -37,3 +37,5 @@ Implement sub-phase A per `docs/phases/m2-the-arc.md`: 4-bar phrase clock, chart
 - July 3, 2026 — Verdict protocol simplified with developer sign-off: the written run log (file deleted), the three formal questions, and the outside-tester step removed from `docs/phases/m1-demo.md` and `docs/plan.md`. The developer's own judgment is the whole protocol, at M1 and at every future milestone exit.
 - July 3, 2026 — **M1 verdict: pass**, declared by the developer. M1 complete. Next: M2 grilling session.
 - July 3, 2026 — M2 grilling session held. Locked: 4-bar phrase clock; four tiers per weapon as single hand-authored chart ladders with per-weapon character (hat=density, lead=richness, bass=weight with a top-tier subwoofer peak); pick pool of weapons and tier-ups only, three options per level-up, terse VS-style pick cards with no music text; 8-minute run at ~12–14 level-ups; no weapon cap (wide-vs-deep carried by the pick budget); next-bar entry for all picks; one new darter enemy plus wave events; real death, tuned so attentive play usually completes the arc; chart playground (editable in rehearsal room, read-only in-game overlay) and enemy/weapon sandbox as first-class dev tools. Two decisions parked in `docs/plan.md` (multi-axis growth, future slot cap). Spec locked at `docs/phases/m2-the-arc.md`.
+- July 3, 2026 — M2 sub-phase A implemented: 4-bar phrase clock (charts loop inside the phrase, position readout shows bar 1–4), six tier ladders as 24 charts in `src/audio/charts.ts` (M1 charts recycled at their ladder positions; engine defaults to those tiers so the M1 game is unchanged), bass "fat" and "sub" weight variants, chart store with localStorage persistence and JSON export, editable chart playground in the rehearsal room (velocity cycling, variant cycling, bars control, playhead, cells light as they fire, read-only mount ready for the game overlay), progression scrub rebuilt to walk pick-by-pick arcs with wide-shallow and narrow-deep archetypes. Verified end-to-end in Chrome: playback, both arcs, tier switching, live cell edit + persistence + reset, M1 game boot. Awaiting gate A.
+- July 3, 2026 — **Gate A passed** by the developer over a Cloudflare tunnel playtest: every ladder audibly grows tier to tier, both end-of-run mix shapes (wide-shallow, narrow-deep) pass the ear. No chart edits requested; the AI drafts stand as shipped. Sub-phase B begins.

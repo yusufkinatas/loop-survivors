@@ -158,6 +158,72 @@ async function renderBass(rootHz: number): Promise<AudioBuffer> {
 // minor-pentatonic root stay inside the note set when the chart shifts the
 // whole sample to the other allowed chord roots (0, +5, +7), which a triad
 // would not.
+// The bass ladder's weight variants (M2 spec: "fatter variants, and a
+// designed top-tier peak"). "Fat" is the same line with more grit and a
+// slower filter close; "sub" is the once-per-phrase tier-4 drop, a long
+// pitch-falling sine that lands like a weight hitting the floor.
+async function renderBassFat(rootHz: number): Promise<AudioBuffer> {
+  const ctx = offline(0.8);
+  const osc = ctx.createOscillator();
+  osc.type = 'sawtooth';
+  osc.frequency.value = rootHz / 4;
+  const osc2 = ctx.createOscillator();
+  osc2.type = 'square';
+  osc2.frequency.value = rootHz / 4;
+  osc2.detune.value = 9;
+  const sub = ctx.createOscillator();
+  sub.type = 'sine';
+  sub.frequency.value = rootHz / 4;
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.setValueAtTime(1400, 0);
+  lp.frequency.exponentialRampToValueAtTime(110, 0.65);
+  lp.Q.value = 3;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.001, 0);
+  g.gain.exponentialRampToValueAtTime(0.85, 0.012);
+  g.gain.setValueAtTime(0.85, 0.45);
+  g.gain.exponentialRampToValueAtTime(0.001, 0.75);
+  const oscG = ctx.createGain();
+  oscG.gain.value = 0.6;
+  const osc2G = ctx.createGain();
+  osc2G.gain.value = 0.35;
+  const subG = ctx.createGain();
+  subG.gain.value = 0.65;
+  osc.connect(oscG).connect(lp);
+  osc2.connect(osc2G).connect(lp);
+  lp.connect(g).connect(ctx.destination);
+  sub.connect(subG).connect(g);
+  osc.start(0);
+  osc2.start(0);
+  sub.start(0);
+  return ctx.startRendering();
+}
+
+async function renderBassSub(rootHz: number): Promise<AudioBuffer> {
+  const ctx = offline(1.4);
+  const osc = ctx.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(rootHz / 2, 0);
+  osc.frequency.exponentialRampToValueAtTime(rootHz / 8, 0.35);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.001, 0);
+  g.gain.exponentialRampToValueAtTime(0.9, 0.01);
+  g.gain.setValueAtTime(0.9, 0.6);
+  g.gain.exponentialRampToValueAtTime(0.001, 1.3);
+  // a short click so the drop has an attack that survives small speakers
+  const click = ctx.createBufferSource();
+  click.buffer = noiseBuffer(ctx, 0.01);
+  const clickG = ctx.createGain();
+  clickG.gain.setValueAtTime(0.25, 0);
+  clickG.gain.exponentialRampToValueAtTime(0.001, 0.01);
+  osc.connect(g).connect(ctx.destination);
+  click.connect(clickG).connect(ctx.destination);
+  osc.start(0);
+  click.start(0);
+  return ctx.startRendering();
+}
+
 async function renderChord(rootHz: number, pad: boolean): Promise<AudioBuffer> {
   const dur = pad ? 1.6 : 0.5;
   const ctx = offline(dur + 0.1);
@@ -214,7 +280,7 @@ async function renderLead(rootHz: number): Promise<AudioBuffer> {
 
 /** Render every builtin kit. Called once at startup. */
 export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
-  const [kickHard, kickSoft, snare, clap, hatClosed, hatOpen, bass, stab, pad, lead] =
+  const [kickHard, kickSoft, snare, clap, hatClosed, hatOpen, bass, bassFat, bassSub, stab, pad, lead] =
     await Promise.all([
       renderKick(true),
       renderKick(false),
@@ -223,6 +289,8 @@ export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
       renderHat(false),
       renderHat(true),
       renderBass(rootHz),
+      renderBassFat(rootHz),
+      renderBassSub(rootHz),
       renderChord(rootHz, false),
       renderChord(rootHz, true),
       renderLead(rootHz),
@@ -260,7 +328,18 @@ export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
     ['closed', hatClosed],
     ['open', hatOpen],
   ]);
-  add('bass', 'Bass', '#a06bff', true, [['bass', bass]], true);
+  add(
+    'bass',
+    'Bass',
+    '#a06bff',
+    true,
+    [
+      ['bass', bass],
+      ['fat', bassFat], // tier 3+ weight
+      ['sub', bassSub], // tier 4 once-per-phrase drop
+    ],
+    true,
+  );
   add('chord', 'Chord', '#4dff88', true, [
     ['stab', stab],
     ['pad', pad],
