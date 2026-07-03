@@ -22,6 +22,8 @@ export interface Voice {
   /** Audition slot: a sample loaded in the rehearsal room replaces the kit's
    *  buffers for every trigger until reset. */
   override: AudioBuffer | null;
+  /** The most recent trigger's nodes, so choked kits can cut it. */
+  lastHit: { src: AudioBufferSourceNode; gain: GainNode } | null;
 }
 
 /** A trigger that has been scheduled, for visual sync (voice lights now,
@@ -76,6 +78,7 @@ export class MusicEngine {
         activeSamples: kit.samples,
         tune: 0,
         override: null,
+        lastHit: null,
       });
     }
 
@@ -179,6 +182,17 @@ export class MusicEngine {
     g.gain.value = Math.max(0.01, humanized);
     src.connect(g).connect(voice.gain);
     src.start(time);
+
+    if (voice.kit.choke) {
+      const prev = voice.lastHit;
+      if (prev) {
+        // Fade the ringing hit out right as the new one lands.
+        prev.gain.gain.setValueAtTime(prev.gain.gain.value, time);
+        prev.gain.gain.exponentialRampToValueAtTime(0.001, time + 0.04);
+        prev.src.stop(time + 0.05);
+      }
+      voice.lastHit = { src, gain: g };
+    }
 
     this.pending.push({ role: voice.role, time, velocity: ev.velocity });
     // If no consumer is draining (hidden tab pauses rAF), drop stale entries

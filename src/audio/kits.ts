@@ -15,6 +15,9 @@ export interface Kit {
   /** Weapon identity color, shared with the game's visuals later. */
   color: string;
   pitched: boolean;
+  /** Monophonic: a new trigger chokes the one still ringing. Keeps long
+   *  sample tails from stacking, whatever sample set is active. */
+  choke?: boolean;
   /** variant id -> rendered sample. Charts reference variants by id. */
   samples: Map<string, AudioBuffer>;
   defaultVariant: string;
@@ -232,12 +235,14 @@ export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
     color: string,
     pitched: boolean,
     entries: [string, AudioBuffer][],
+    choke = false,
   ) => {
     kits.set(role, {
       role,
       name,
       color,
       pitched,
+      choke,
       samples: new Map(entries),
       defaultVariant: entries[0][0],
     });
@@ -255,7 +260,7 @@ export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
     ['closed', hatClosed],
     ['open', hatOpen],
   ]);
-  add('bass', 'Bass', '#a06bff', true, [['bass', bass]]);
+  add('bass', 'Bass', '#a06bff', true, [['bass', bass]], true);
   add('chord', 'Chord', '#4dff88', true, [
     ['stab', stab],
     ['pad', pad],
