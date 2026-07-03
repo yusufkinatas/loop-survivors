@@ -59,7 +59,7 @@ Cut, deliberately: a shareable per-run track artifact. No recording, rendering, 
 Every milestone ends playable and answers one named question.
 
 - **M1, causality.** Greybox arena, a few weapon kits firing charts on the grid, enemies dying to it, deliberately ugly. Question: does it feel like my build and sound like music at the same time? This is the project's central bet. Fully specified in `docs/phases/m1-demo.md`.
-- **M2, the arc.** Picks and leveling across a short full run. Question: does music growing with the build create the "I'm making a track" feeling?
+- **M2, the arc.** Picks and leveling across a short full run. Question: does music growing with the build create the "I'm making a track" feeling? Fully specified in `docs/phases/m2-the-arc.md`.
 - **M3, the drop.** First genre recipe and the lock event. Question: is the genre moment the peak worth betting the game on?
 - **M4, vertical slice.** One stage, one boss (duel candidate auditions here), a few recipes, a first-time experience, and the visual style decision. Question: would a stranger play it twice? Content scope freezes at exit, priced with measured cost per sound and per genre.
 - **M5, production.** Content build-out, meta progression, store prep including AI-content disclosure.
@@ -77,6 +77,8 @@ One question per session. The developer plays continuously and is the sole judge
 - Boss and enemy sound roles, duel format, whether a boss can silence the player's music for a bar.
 - Audio effects: baked sound variants versus live engine effects, and items that act on sounds.
 - Tempo-changing items and other progression mechanisms for sound variety.
+- Multi-axis weapon growth: separate density/richness tiers or other alternative buff structures beyond the single linear ladder (parked at M2 grilling; revisit if ladders feel same-y).
+- A weapon slot cap, once the catalog outgrows six kits (parked at M2 grilling; no cap while the catalog is six).
 - Visual style (gate at M4).
 
 ## Ship Checklist Seeds

@@ -4,26 +4,24 @@ Last updated: July 3, 2026
 
 ## Current phase
 
-**M1, causality** — the first playable demo. Spec: `docs/phases/m1-demo.md` (locked July 3, 2026).
+**M2, the arc** — picks and leveling across a short full run. Spec: `docs/phases/m2-the-arc.md` (locked July 3, 2026). M1 completed with a pass on the same day.
 
 ## Current sub-phase
 
-**M1 complete — verdict: pass.** All three build sub-phases passed (branch `m1-claude`) and the developer declared the M1 verdict a pass on July 3, 2026. Next up is the M2 grilling session.
+**Spec locked, implementation not started.** Next up: sub-phase A, the ladders (phrase clock, chart playground, tier charts).
 
-Sub-phase A shipped: lookahead scheduler, six kits, one chart per kit, rehearsal room with four switchable sample sets ("Synth" builtin placeholders; "808" / "Machine" / "Electro" from CC0 Sonic Pi samples in `public/samples/sonicpi/`, license recorded there). Chord has no pack candidate yet and stays synth in every set. Bass is a choked (monophonic) kit after gate feedback.
-
-## Gate ledger (M1)
+## Gate ledger (M2)
 
 | Gate | Status |
 |---|---|
-| Sub-phase A: rehearsal room mix passes the developer's ear | **passed** (July 3, 2026) |
-| Sub-phase B: muted run plays as a competent survivors-like | **passed** (July 3, 2026, with tuning notes) |
-| Sub-phase C: M1 question answered by the fused build | **passed** (July 3, 2026) |
-| Verdict: developer's judgment on M1's question | **passed** (July 3, 2026) |
+| Sub-phase A: every tier ladder audibly grows; both late-game mix shapes pass the ear | pending |
+| Sub-phase B: muted 8-minute run plays as a competent survivors-like with real picks | pending |
+| Sub-phase C: M2's question answered by the fused build | pending |
+| Verdict: developer's judgment on M2's question | pending |
 
 ## Next action
 
-Hold the M2 grilling session (`/grill-me`) on "the arc": picks and leveling across a short full run, does music growing with the build create the "I'm making a track" feeling? Its decisions get written into a locked spec at `docs/phases/m2-<title>.md`.
+Implement sub-phase A per `docs/phases/m2-the-arc.md`: 4-bar phrase clock, chart playground (editable in the rehearsal room), upgraded progression scrub, six tier ladders (24 charts) drafted for the developer's ear.
 
 ## History
 
@@ -38,3 +36,4 @@ Hold the M2 grilling session (`/grill-me`) on "the arc": picks and leveling acro
 - July 3, 2026 — **Gate C passed** by the developer: the fused build answers M1's question. Verdict protocol begins; log created at `docs/phases/m1-verdict-log.md`.
 - July 3, 2026 — Verdict protocol simplified with developer sign-off: the written run log (file deleted), the three formal questions, and the outside-tester step removed from `docs/phases/m1-demo.md` and `docs/plan.md`. The developer's own judgment is the whole protocol, at M1 and at every future milestone exit.
 - July 3, 2026 — **M1 verdict: pass**, declared by the developer. M1 complete. Next: M2 grilling session.
+- July 3, 2026 — M2 grilling session held. Locked: 4-bar phrase clock; four tiers per weapon as single hand-authored chart ladders with per-weapon character (hat=density, lead=richness, bass=weight with a top-tier subwoofer peak); pick pool of weapons and tier-ups only, three options per level-up, terse VS-style pick cards with no music text; 8-minute run at ~12–14 level-ups; no weapon cap (wide-vs-deep carried by the pick budget); next-bar entry for all picks; one new darter enemy plus wave events; real death, tuned so attentive play usually completes the arc; chart playground (editable in rehearsal room, read-only in-game overlay) and enemy/weapon sandbox as first-class dev tools. Two decisions parked in `docs/plan.md` (multi-axis growth, future slot cap). Spec locked at `docs/phases/m2-the-arc.md`.
