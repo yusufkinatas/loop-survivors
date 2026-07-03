@@ -36,7 +36,7 @@ export const SAMPLE_SETS: SampleSetDef[] = [
     source: 'Sonic Pi (CC0)',
     files: {
       kick: { hard: 'bd_808.flac', soft: 'bd_fat.flac' },
-      snare: { snare: 'sn_dolf.flac', clap: 'perc_snap.flac' },
+      snare: { snare: 'sn_dolf.flac' },
       hat: { closed: 'hat_star.flac', open: 'elec_cymbal.flac' },
       bass: { bass: 'bass_hit_c.flac' },
     },
@@ -48,7 +48,7 @@ export const SAMPLE_SETS: SampleSetDef[] = [
     source: 'Sonic Pi (CC0)',
     files: {
       kick: { hard: 'drum_heavy_kick.flac', soft: 'drum_bass_soft.flac' },
-      snare: { snare: 'drum_snare_hard.flac', clap: 'perc_snap2.flac' },
+      snare: { snare: 'drum_snare_hard.flac' },
       hat: { closed: 'drum_cymbal_closed.flac', open: 'drum_cymbal_open.flac' },
       bass: { bass: 'bass_hard_c.flac' },
       lead: { lead: 'tbd_highkey_c4.flac' },
@@ -61,7 +61,7 @@ export const SAMPLE_SETS: SampleSetDef[] = [
     source: 'Sonic Pi (CC0)',
     files: {
       kick: { hard: 'elec_hollow_kick.flac', soft: 'elec_soft_kick.flac' },
-      snare: { snare: 'elec_hi_snare.flac', clap: 'elec_pop.flac' },
+      snare: { snare: 'elec_hi_snare.flac' },
       hat: { closed: 'elec_tick.flac', open: 'elec_cymbal.flac' },
       bass: { bass: 'bass_thick_c.flac' },
       lead: { lead: 'elec_beep.flac' },

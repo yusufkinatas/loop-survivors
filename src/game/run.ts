@@ -25,6 +25,7 @@ export interface Enemy {
 }
 
 interface Projectile {
+  role: Role;
   x: number;
   y: number;
   vx: number;
@@ -89,6 +90,7 @@ export class RunWorld {
   xp = 0;
   timeS = 0;
   kills = 0;
+  killsByRole: Partial<Record<Role, number>> = {};
   invincible = false;
 
   private input = new Input();
@@ -136,7 +138,7 @@ export class RunWorld {
     switch (t.role) {
       case 'kick': {
         const radius = conf.radius! * (0.85 + 0.3 * v);
-        this.damageArea(p.x, p.y, radius, conf.damage * v);
+        this.damageArea(p.x, p.y, radius, conf.damage * v, 'kick');
         this.spawnRing(p.x, p.y, radius, color, 0.3);
         break;
       }
@@ -301,7 +303,7 @@ export class RunWorld {
     }
   }
 
-  private damageEnemy(e: Enemy, amount: number): void {
+  private damageEnemy(e: Enemy, amount: number, source?: Role): void {
     if (e.dead) return;
     e.hp -= amount;
     e.flashT = 0.08;
@@ -309,6 +311,7 @@ export class RunWorld {
     if (e.hp <= 0) {
       e.dead = true;
       this.kills++;
+      if (source) this.killsByRole[source] = (this.killsByRole[source] ?? 0) + 1;
       this.spawnPop(e.x, e.y, e.radius);
       this.spawnGem(e.x, e.y, e.xp);
     }
@@ -374,11 +377,27 @@ export class RunWorld {
     color: number,
     velocity: number,
   ): void {
-    const gfx = new Graphics().circle(0, 0, conf.radius!).fill(0xffffff);
+    // Distinct silhouette per weapon (gate B: colored circles read the same).
+    const gfx = new Graphics();
+    switch (role) {
+      case 'snare': // hard-hitting bolt
+        gfx.roundRect(-10, -3, 20, 6, 3).fill(0xffffff);
+        break;
+      case 'bass': // wide rolling wave front
+        gfx.ellipse(0, 0, 16, conf.radius!).fill({ color: 0xffffff, alpha: 0.5 });
+        gfx.ellipse(0, 0, 16, conf.radius!).stroke({ width: 2, color: 0xffffff });
+        break;
+      case 'lead': // homing seeker arrow
+        gfx.poly([12, 0, -6, 6, -2, 0, -6, -6]).fill(0xffffff);
+        break;
+      default: // hat: tiny chip dot
+        gfx.circle(0, 0, conf.radius!).fill(0xffffff);
+    }
     gfx.tint = color;
-    if (role === 'bass') gfx.alpha = 0.55;
+    gfx.rotation = Math.atan2(dir.y, dir.x);
     this.stage.addChild(gfx);
     this.projectiles.push({
+      role,
       x: this.player.x,
       y: this.player.y,
       vx: dir.x * conf.speed!,
@@ -418,7 +437,8 @@ export class RunWorld {
           let diff = ang - cur;
           while (diff > Math.PI) diff -= Math.PI * 2;
           while (diff < -Math.PI) diff += Math.PI * 2;
-          const turn = Math.max(-6 * dt, Math.min(6 * dt, diff));
+          // tight turn so seekers snap to targets instead of orbiting them
+          const turn = Math.max(-10 * dt, Math.min(10 * dt, diff));
           const next = cur + turn;
           pr.vx = Math.cos(next) * pr.speed;
           pr.vy = Math.sin(next) * pr.speed;
@@ -427,12 +447,13 @@ export class RunWorld {
       pr.x += pr.vx * dt;
       pr.y += pr.vy * dt;
       pr.gfx.position.set(pr.x, pr.y);
+      if (pr.role !== 'hat') pr.gfx.rotation = Math.atan2(pr.vy, pr.vx);
 
       const near = this.hash.query(pr.x, pr.y, pr.radius + 24, this.queryBuf);
       for (const e of near) {
         if (e.dead || pr.hit.has(e) || !circlesOverlap(pr, e)) continue;
         pr.hit.add(e);
-        this.damageEnemy(e, pr.damage);
+        this.damageEnemy(e, pr.damage, pr.role);
         pr.pierce -= 1;
         if (pr.pierce <= 0) {
           pr.lifeS = 0;
@@ -479,7 +500,7 @@ export class RunWorld {
       z.tickT -= dt;
       if (z.tickT <= 0) {
         z.tickT = ZONE_TICK_S;
-        this.damageArea(z.x, z.y, z.radius, z.damage);
+        this.damageArea(z.x, z.y, z.radius, z.damage, 'chord');
       }
       z.gfx.alpha = Math.min(1, z.lifeS * 2);
       if (z.lifeS <= 0) {
@@ -489,20 +510,25 @@ export class RunWorld {
     }
   }
 
-  private damageArea(x: number, y: number, radius: number, damage: number): void {
+  private damageArea(x: number, y: number, radius: number, damage: number, source?: Role): void {
     const near = this.hash.query(x, y, radius + 24, this.queryBuf);
     const area = { x, y, radius };
     for (const e of near) {
-      if (!e.dead && circlesOverlap(area, e)) this.damageEnemy(e, damage);
+      if (!e.dead && circlesOverlap(area, e)) this.damageEnemy(e, damage, source);
     }
   }
 
   // ---- pickups and juice ----
 
   private spawnGem(x: number, y: number, xp: number): void {
-    const gfx = new Graphics().rect(-4, -4, 8, 8).fill(0xffffff);
+    // White with a dark core: reads as "pickup", and can't be confused with
+    // the hat's cyan shots (gate B feedback).
+    const gfx = new Graphics()
+      .rect(-4, -4, 8, 8)
+      .fill(0xffffff)
+      .rect(-1.5, -1.5, 3, 3)
+      .fill(0x101014);
     gfx.rotation = Math.PI / 4;
-    gfx.tint = 0x59ffd1;
     gfx.position.set(x, y);
     this.stage.addChild(gfx);
     this.gems.push({ x, y, xp, gfx });

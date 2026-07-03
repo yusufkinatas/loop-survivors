@@ -38,7 +38,8 @@ export const CHARTS: Record<Role, Chart> = {
     ],
   },
 
-  // Backbeat on 2 and 4, clap layered on the last backbeat of the loop.
+  // Backbeat on 2 and 4 (the "clap along" beats). Gate feedback: the clap
+  // variant sounded wrong, so the chart never switches away from the snare.
   snare: {
     role: 'snare',
     bars: 2,
@@ -46,7 +47,7 @@ export const CHARTS: Record<Role, Chart> = {
       { step: N(0, 4), velocity: 0.9, variant: 'snare' },
       { step: N(0, 12), velocity: 1.0, variant: 'snare' },
       { step: N(1, 4), velocity: 0.9, variant: 'snare' },
-      { step: N(1, 12), velocity: 1.0, variant: 'clap' },
+      { step: N(1, 12), velocity: 1.0, variant: 'snare' },
     ],
   },
 

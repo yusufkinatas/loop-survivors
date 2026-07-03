@@ -80,9 +80,12 @@ export async function bootGame(
     if (!world || state === 'end') return;
     state = 'end';
     engine.clock.stop();
+    const byWeapon = (Object.entries(world.killsByRole) as [Role, number][]).sort(
+      (a, b) => b[1] - a[1],
+    );
     hud.showEnd(
       victory,
-      { timeS: world.timeS, kills: world.kills, level: world.level },
+      { timeS: world.timeS, kills: world.kills, level: world.level, byWeapon },
       () => {
         hud.showHud(false);
         hud.showStart(startRun);
@@ -110,32 +113,73 @@ export async function bootGame(
       );
     }
     if (overlay.style.display !== 'none' && world) {
+      const attribution = (Object.entries(world.killsByRole) as [Role, number][])
+        .map(([r, k]) => `${r} ${k}`)
+        .join(' ');
       overlay.textContent =
         `fps ${Math.round(ticker.FPS)} · enemies ${world.enemyCount} · ` +
-        `shots ${world.projectileCount} · voices ${[...world.owned].join(' ')}` +
+        `shots ${world.projectileCount} · kills ${attribution || '—'}` +
         `${world.invincible ? ' · INVINCIBLE' : ''}${muted ? ' · MUTED' : ''}`;
     }
   });
 
-  // debug hotkeys (docs/phases/m1-demo.md, developer tools)
-  window.addEventListener('keydown', (e) => {
-    switch (e.code) {
-      case 'KeyM':
+  // debug controls: one set of actions behind both the hotkeys and the
+  // on-screen buttons (docs/phases/m1-demo.md, developer tools)
+  const debugActions = {
+    mute: {
+      label: 'mute',
+      hotkey: 'M',
+      isOn: () => muted,
+      onClick: () => {
         muted = !muted;
         engine.setMasterGain(muted ? 0 : 0.8);
-        break;
-      case 'KeyI':
+      },
+    },
+    invincible: {
+      label: 'invincible',
+      hotkey: 'I',
+      isOn: () => world?.invincible ?? false,
+      onClick: () => {
         if (world) world.invincible = !world.invincible;
-        break;
-      case 'KeyX':
+      },
+    },
+    xp: {
+      label: '+xp',
+      hotkey: 'X',
+      onClick: () => {
         if (world && state === 'run') world.grantXp(20);
-        break;
-      case 'KeyK':
+      },
+    },
+    kill: {
+      label: 'kill screen',
+      hotkey: 'K',
+      onClick: () => {
         if (world && state === 'run') world.killVisible();
-        break;
-      case 'KeyO':
+      },
+    },
+    overlay: {
+      label: 'overlay',
+      hotkey: 'O',
+      isOn: () => overlay.style.display !== 'none',
+      onClick: () => {
         overlay.style.display = overlay.style.display === 'none' ? '' : 'none';
-        break;
+      },
+    },
+  };
+  hud.mountDebug(Object.values(debugActions));
+
+  window.addEventListener('keydown', (e) => {
+    const byKey: Record<string, { onClick(): void }> = {
+      KeyM: debugActions.mute,
+      KeyI: debugActions.invincible,
+      KeyX: debugActions.xp,
+      KeyK: debugActions.kill,
+      KeyO: debugActions.overlay,
+    };
+    const action = byKey[e.code];
+    if (action) {
+      action.onClick();
+      hud.refreshDebug();
     }
   });
 

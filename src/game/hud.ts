@@ -13,6 +13,14 @@ const ARCHETYPES: Record<Role, string> = {
   lead: 'homing shots that play the melody',
 };
 
+export interface DebugAction {
+  label: string;
+  hotkey: string;
+  onClick(): void;
+  /** For toggles: read the current state so the button can show it. */
+  isOn?(): boolean;
+}
+
 export class Hud {
   private root: HTMLElement;
   private bar: HTMLElement;
@@ -23,6 +31,8 @@ export class Hud {
   private flash: HTMLElement;
   private screen: HTMLElement | null = null;
   private kits: Map<Role, Kit>;
+  private debugRow: HTMLElement | null = null;
+  private debugButtons: { btn: HTMLElement; action: DebugAction }[] = [];
 
   constructor(root: HTMLElement, kits: Map<Role, Kit>) {
     this.root = root;
@@ -60,6 +70,29 @@ export class Hud {
     this.flash.classList.add('on');
   }
 
+  /** On-screen debug buttons mirroring the hotkeys (gate B feedback: no
+   *  memorizing shortcuts). Always visible; toggles show their state. */
+  mountDebug(actions: DebugAction[]): void {
+    this.debugRow = el('div', 'debug-row', this.root);
+    for (const action of actions) {
+      const btn = el('button', 'small debug-btn', this.debugRow, `${action.label} (${action.hotkey})`);
+      btn.onclick = () => {
+        action.onClick();
+        this.refreshDebug();
+        (btn as HTMLButtonElement).blur(); // keep space/keys for the game
+      };
+      this.debugButtons.push({ btn, action });
+    }
+    this.refreshDebug();
+  }
+
+  /** Re-read toggle states (hotkeys change them without a click). */
+  refreshDebug(): void {
+    for (const { btn, action } of this.debugButtons) {
+      if (action.isOn) btn.classList.toggle('on', action.isOn());
+    }
+  }
+
   /** Start screen: choose the starting kit. */
   showStart(onPick: (role: Role) => void): void {
     const s = this.newScreen();
@@ -72,7 +105,10 @@ export class Hud {
         onPick(role);
       });
     }
-    el('p', 'hint', s, 'debug: M mute · I invincible · X +xp · K kill screen · O overlay — rehearsal room at #rehearsal');
+    const roomBtn = el('button', '', s, 'open the rehearsal room');
+    roomBtn.onclick = () => {
+      location.hash = '#rehearsal';
+    };
   }
 
   /** Level-up pick: choose one of up to three new kits. */
@@ -94,12 +130,24 @@ export class Hud {
     setTimeout(() => t.remove(), 1600);
   }
 
-  showEnd(victory: boolean, stats: { timeS: number; kills: number; level: number }, onRetry: () => void): void {
+  showEnd(
+    victory: boolean,
+    stats: { timeS: number; kills: number; level: number; byWeapon: [Role, number][] },
+    onRetry: () => void,
+  ): void {
     const s = this.newScreen();
     el('h1', '', s, victory ? 'You survived.' : 'You died.');
     const m = Math.floor(stats.timeS / 60);
     const sec = Math.floor(stats.timeS % 60);
     el('p', 'sub', s, `${m}:${String(sec).padStart(2, '0')} · ${stats.kills} kills · level ${stats.level}`);
+    if (stats.byWeapon.length > 0) {
+      const row = el('div', 'kill-row', s);
+      for (const [role, kills] of stats.byWeapon) {
+        const kit = this.kits.get(role)!;
+        const chip = el('span', 'kill-chip', row, `${kit.name} ${kills}`);
+        chip.style.setProperty('--voice-color', kit.color);
+      }
+    }
     const btn = el('button', 'big', s, 'run it back');
     btn.onclick = () => {
       this.closeScreen();

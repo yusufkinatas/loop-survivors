@@ -252,9 +252,9 @@ export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
     ['hard', kickHard],
     ['soft', kickSoft],
   ]);
-  add('snare', 'Snare / Clap', '#ffc93c', false, [
+  add('snare', 'Snare', '#ffc93c', false, [
     ['snare', snare],
-    ['clap', clap],
+    ['clap', clap], // auditionable in the room, never charted
   ]);
   add('hat', 'Hi-hat', '#3ce0ff', false, [
     ['closed', hatClosed],

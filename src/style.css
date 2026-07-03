@@ -357,3 +357,37 @@ button.big {
   border-radius: 3px;
   pointer-events: none;
 }
+
+.debug-row {
+  position: absolute;
+  bottom: 10px;
+  right: 12px;
+  display: flex;
+  gap: 6px;
+}
+
+.debug-btn {
+  color: #9a9ab0;
+  background: rgba(34, 34, 42, 0.85);
+}
+
+.debug-btn.on {
+  border-color: #59ffd1;
+  color: #59ffd1;
+}
+
+.kill-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.kill-chip {
+  font-size: 13px;
+  color: var(--voice-color);
+  border: 1px solid #3a3a46;
+  border-left: 3px solid var(--voice-color);
+  border-radius: 3px;
+  padding: 3px 8px;
+}

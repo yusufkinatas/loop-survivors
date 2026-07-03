@@ -33,6 +33,10 @@ export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void
 
   // ---- transport bar ----
   const bar = el('div', 'transport', root);
+  const backBtn = el('button', 'small', bar, '← game') as HTMLButtonElement;
+  backBtn.onclick = () => {
+    location.hash = '';
+  };
   const playBtn = el('button', 'play', bar, '▶ play') as HTMLButtonElement;
   const position = el('span', 'position', bar, '—');
 

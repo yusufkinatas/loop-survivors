@@ -18,34 +18,36 @@ export const RUN = {
   xpCurve: [8, 20, 40, 70, 110, 160, 220],
 };
 
+// Gate B verdict: the developer never got hit once. The whole curve moved up:
+// faster swarmers, more of them sooner, meaner tanks on a tighter clock.
 export const ENEMIES = {
   swarmer: {
     radius: 9,
-    speed: 75,
+    speed: 95,
     hp: 3,
-    damage: 8,
+    damage: 10,
     xp: 1,
     color: 0x9aa0b4,
   },
   tank: {
     radius: 22,
-    speed: 32,
-    hp: 45,
-    damage: 18,
-    xp: 6,
+    speed: 40,
+    hp: 70,
+    damage: 22,
+    xp: 8,
     color: 0x6a7086,
   },
   /** Swarmers per second: ramps linearly from start to end over the run. */
-  swarmRateStart: 0.9,
-  swarmRateEnd: 5.0,
+  swarmRateStart: 2.2,
+  swarmRateEnd: 13,
   /** Tanks enter at tankFromS; interval shrinks linearly to the end. */
-  tankFromS: 30,
-  tankIntervalStartS: 15,
-  tankIntervalEndS: 6,
+  tankFromS: 25,
+  tankIntervalStartS: 10,
+  tankIntervalEndS: 3.5,
   /** Spawn ring distance beyond the larger screen half-extent. */
   spawnMargin: 80,
   /** Hard cap for M1 (spatial hash comfort zone). */
-  maxAlive: 900,
+  maxAlive: 1200,
 };
 
 export interface WeaponConf {
@@ -56,20 +58,21 @@ export interface WeaponConf {
   pierce?: number;
 }
 
-/** Per-trigger gameplay effect of each kit. */
+/** Per-trigger gameplay effect of each kit. Exaggerated per-archetype so
+ *  picks read as different weapons, not palette swaps (gate B feedback). */
 export const WEAPONS: Record<Role, WeaponConf> = {
   // Downbeat aura pulse around the player.
-  kick: { damage: 8, radius: 150 },
-  // Backbeat directional shot at the nearest enemy.
-  snare: { damage: 14, speed: 520, radius: 7, lifetimeS: 1.2, pierce: 2 },
-  // Dense stream of weak fast hits.
-  hat: { damage: 3, speed: 430, radius: 4, lifetimeS: 0.9, pierce: 1 },
-  // Slow piercing low wave.
-  bass: { damage: 15, speed: 150, radius: 42, lifetimeS: 2.4, pierce: Infinity },
+  kick: { damage: 9, radius: 150 },
+  // Backbeat directional shot: few, fast, hard-hitting, pierces a line.
+  snare: { damage: 20, speed: 620, radius: 7, lifetimeS: 1.5, pierce: 3 },
+  // Dense stream of weak fast chip hits, short range, wide scatter.
+  hat: { damage: 3, speed: 430, radius: 3, lifetimeS: 0.8, pierce: 1 },
+  // Slow wide low wave that rolls through everything.
+  bass: { damage: 18, speed: 140, radius: 46, lifetimeS: 2.6, pierce: Infinity },
   // Zone that lingers and ticks damage on enemies inside.
-  chord: { damage: 4, radius: 95, lifetimeS: 1.6 },
-  // Homing projectile; its chart is a melody.
-  lead: { damage: 7, speed: 320, radius: 6, lifetimeS: 2.0, pierce: 1 },
+  chord: { damage: 5, radius: 95, lifetimeS: 1.6 },
+  // Homing seeker per melody note.
+  lead: { damage: 8, speed: 340, radius: 6, lifetimeS: 2.2, pierce: 1 },
 };
 
 /** How far weapons look for a target. */
