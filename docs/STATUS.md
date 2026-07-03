@@ -8,7 +8,9 @@ Last updated: July 3, 2026
 
 ## Current sub-phase
 
-**Sub-phase A, the instrument** — implemented, awaiting the gate (branch `m1-claude`). The repo is scaffolded (TypeScript, Vite, PixiJS v8 installed for sub-phase B). The Web Audio lookahead scheduler, six kits with charts, and the rehearsal room are built and verified running in-browser. Samples are synthesized placeholders rendered at startup; real CC0 pack samples are auditioned via each voice's "load sample" button in the rehearsal room. Run with `npm run dev`.
+**Sub-phase A, the instrument** — implemented, awaiting the gate (branch `m1-claude`). The repo is scaffolded (TypeScript, Vite, PixiJS v8 installed for sub-phase B). The Web Audio lookahead scheduler, six kits with charts, and the rehearsal room are built and verified running in-browser. Run with `npm run dev`.
+
+Sounds: four switchable sample sets via buttons in the rehearsal room. "Synth" is the builtin placeholder kit; "808", "Machine", and "Electro" use CC0 samples from the Sonic Pi library (`public/samples/sonicpi/`, license recorded there). Pack sets cover drums, bass, and (Machine/Electro) lead; chord stays synth everywhere until a good pack candidate is curated. Single files can still be auditioned per voice via "load sample".
 
 ## Gate ledger (M1)
 
@@ -29,3 +31,4 @@ Gate A: the developer opens the rehearsal room (`npm run dev`), assembles the si
 - July 3, 2026 — Master plan compiled (`docs/plan.md`).
 - July 3, 2026 — M1 grilling session held; three plan inconsistencies fixed (dividing rule reworded, tempo-damage coupling acknowledged, M1 pick scope settled); M1 spec locked (`docs/phases/m1-demo.md`); document structure and agent process established.
 - July 3, 2026 — Sub-phase A implemented on branch `m1-claude`: repo scaffold, lookahead scheduler, six synthesized placeholder kits, one chart per kit, rehearsal room (voice toggles, progression scrub, per-voice volume, sample audition, hotkeys), master limiter, `window.loop` dev console handle. Verified end-to-end in Chrome. Awaiting gate A.
+- July 3, 2026 — Sample sets added: 22 CC0 samples downloaded from the Sonic Pi library, organized as "808" / "Machine" / "Electro" sets with one-click switching in the rehearsal room, pitched samples retuned to the A root (measured, tune values in `src/audio/samplesets.ts`). All three sets verified audible in Chrome.

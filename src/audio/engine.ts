@@ -14,6 +14,11 @@ export interface Voice {
   chart: Chart;
   enabled: boolean;
   gain: GainNode;
+  /** Buffers actually triggered: the kit's own, or a sample set's applied
+   *  over them. The kit stays pristine as the restore point. */
+  activeSamples: Map<string, AudioBuffer>;
+  /** Semitones retuning the active samples' pitch to the run's root. */
+  tune: number;
   /** Audition slot: a sample loaded in the rehearsal room replaces the kit's
    *  buffers for every trigger until reset. */
   override: AudioBuffer | null;
@@ -68,6 +73,8 @@ export class MusicEngine {
         chart: CHARTS[role],
         enabled: false,
         gain,
+        activeSamples: kit.samples,
+        tune: 0,
         override: null,
       });
     }
@@ -98,6 +105,16 @@ export class MusicEngine {
   setVoiceGain(role: Role, value: number): void {
     const voice = this.voices.get(role);
     if (voice) voice.gain.gain.setTargetAtTime(value, this.ctx.currentTime, 0.02);
+  }
+
+  /** Swap a voice's samples for a sample set's buffers (null restores the
+   *  builtin kit). Takes effect on the next trigger; already-scheduled
+   *  sources keep their old buffer, so the swap is click-free mid-play. */
+  setVoiceSamples(role: Role, samples: Map<string, AudioBuffer> | null, tune = 0): void {
+    const voice = this.voices.get(role);
+    if (!voice) return;
+    voice.activeSamples = samples ?? voice.kit.samples;
+    voice.tune = samples ? tune : 0;
   }
 
   /** Triggers whose scheduled time has arrived, for frame-synced visuals. */
@@ -142,13 +159,16 @@ export class MusicEngine {
 
   private trigger(voice: Voice, ev: ChartEvent, time: number): void {
     const variant = ev.variant ?? voice.kit.defaultVariant;
-    const buffer = voice.override ?? voice.kit.samples.get(variant);
+    const buffer =
+      voice.override ??
+      voice.activeSamples.get(variant) ??
+      voice.activeSamples.values().next().value;
     if (!buffer) return;
 
     const src = this.ctx.createBufferSource();
     src.buffer = buffer;
 
-    let rate = ev.note !== undefined ? semitonesToRate(ev.note) : 1;
+    let rate = semitonesToRate((ev.note ?? 0) + voice.tune);
     if (!voice.kit.pitched) {
       rate *= semitonesToRate(((Math.random() * 2 - 1) * HUMANIZE_CENTS) / 100);
     }

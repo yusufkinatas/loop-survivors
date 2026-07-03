@@ -8,6 +8,7 @@
 import { MusicEngine } from '../audio/engine';
 import { ROLES, type Role } from '../audio/kits';
 import { SKELETON, STEPS_PER_BAR } from '../audio/scale';
+import { SAMPLE_SETS, applySampleSet, coveredRoles } from '../audio/samplesets';
 
 /** Voice order used by the progression scrub: lone instrument -> full mix. */
 const PROGRESSION: readonly Role[] = ['kick', 'hat', 'snare', 'bass', 'chord', 'lead'];
@@ -66,6 +67,37 @@ export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void
     }
   };
   playBtn.onclick = () => setPlaying(!engine.clock.running);
+
+  // ---- sample set switcher ----
+  const setsRow = el('div', 'sets', root);
+  el('span', 'sets-label', setsRow, 'sample set');
+  const setButtons = new Map<string, HTMLButtonElement>();
+  const setStatus = el('span', 'sets-status', setsRow);
+  for (const def of SAMPLE_SETS) {
+    const btn = el('button', 'set-btn', setsRow, def.name) as HTMLButtonElement;
+    const covered = coveredRoles(def);
+    btn.title =
+      covered.length === 0
+        ? 'builtin synthesized placeholders'
+        : `${def.source}: ${covered.join(', ')} — other voices stay synth`;
+    btn.onclick = async () => {
+      for (const b of setButtons.values()) b.disabled = true;
+      setStatus.textContent = 'loading…';
+      try {
+        await applySampleSet(engine, def);
+        for (const b of setButtons.values()) b.classList.remove('current');
+        btn.classList.add('current');
+        setStatus.textContent = '';
+      } catch (err) {
+        setStatus.textContent = `failed: ${err instanceof Error ? err.message : err}`;
+      } finally {
+        for (const b of setButtons.values()) b.disabled = false;
+      }
+    };
+    setButtons.set(def.id, btn);
+    setsRow.insertBefore(btn, setStatus);
+  }
+  setButtons.get('synth')!.classList.add('current');
 
   // ---- progression scrub ----
   const scrubWrap = el('label', 'scrub', root, 'progression scrub: build grows voice by voice');

@@ -80,6 +80,31 @@ input[type='range'] {
   max-width: 420px;
 }
 
+/* sample set switcher */
+.sets {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 12px 0 0;
+}
+
+.sets-label {
+  font-size: 13px;
+  color: #9a9ab0;
+  margin-right: 4px;
+}
+
+.set-btn.current {
+  border-color: #8888a0;
+  background: #343442;
+}
+
+.sets-status {
+  font-size: 12px;
+  color: #9a9ab0;
+}
+
 /* voice cards */
 .voices {
   display: grid;
