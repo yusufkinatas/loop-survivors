@@ -100,7 +100,7 @@ export class Hud {
   showStart(onPick: (role: Role) => void, onSandbox: () => void): void {
     const s = this.newScreen();
     el('h1', '', s, 'Loop Survivors');
-    el('p', 'sub', s, 'M2 — pick your starting instrument. WASD to move. Survive 8 minutes.');
+    el('p', 'sub', s, 'M2 — pick your starting instrument. WASD or touch to move. Survive 8 minutes.');
     const grid = el('div', 'pick-grid', s);
     for (const role of ROLES) {
       this.kitCard(grid, { role, tier: 1 }, () => {

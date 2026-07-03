@@ -9,6 +9,7 @@ import { ROLES, type Kit, type Role } from '../audio/kits';
 import { mountPlayground, type Playground } from '../rehearsal/playground';
 import { RUN } from './config';
 import { Hud, type PickOption } from './hud';
+import { mountJoystick } from './joystick';
 import { RunWorld } from './run';
 import { mountSandboxPanel, type SandboxPanel } from './sandbox';
 
@@ -20,9 +21,19 @@ export async function bootGame(
   kits: Map<Role, Kit>,
 ): Promise<void> {
   const app = new Application();
-  await app.init({ background: 0x101014, resizeTo: window, antialias: true });
+  await app.init({
+    background: 0x101014,
+    resizeTo: window,
+    antialias: true,
+    // crisp on phone screens; capped so high-dpr devices don't pay 3x pixels
+    resolution: Math.min(window.devicePixelRatio || 1, 2),
+    autoDensity: true,
+  });
   root.appendChild(app.canvas);
   root.classList.add('game-root');
+  // touch play: floating joystick on the arena; kill the long-press menu
+  mountJoystick(root);
+  root.addEventListener('contextmenu', (e) => e.preventDefault());
 
   const hud = new Hud(root, kits);
   let state: State = 'start';

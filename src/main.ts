@@ -18,6 +18,12 @@ async function boot(): Promise<void> {
   const ctx = new AudioContext({ latencyHint: 'interactive' });
   const engine = new MusicEngine(ctx, kits);
 
+  // Mobile browsers suspend or interrupt the context on tab switches and
+  // ring-switch events; any touch afterwards brings the sound back.
+  document.addEventListener('pointerdown', () => {
+    if (ctx.state !== 'running') void ctx.resume();
+  });
+
   // Developer console handle (docs/phases/m1-demo.md, developer tools):
   // poke the engine from the browser console, e.g. loop.engine.outputLevel(),
   // or dump playground edits: copy(loop.charts.exportEdits()).

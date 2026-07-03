@@ -151,6 +151,23 @@ export class RunWorld {
     return this.enemies.length;
   }
 
+  /** Camera zoom: phones render fewer pixels, so the stage scales down to
+   *  keep the visible slice of world (and the spawn ring, and reaction
+   *  time) comparable across screen sizes. 1 on desktop, down to 0.5. */
+  private get zoom(): number {
+    const z = Math.min(this.view.width / 1280, this.view.height / 800);
+    return Math.min(1, Math.max(0.5, z));
+  }
+
+  /** Visible world extent (screen pixels divided by zoom). */
+  private get worldW(): number {
+    return this.view.width / this.zoom;
+  }
+
+  private get worldH(): number {
+    return this.view.height / this.zoom;
+  }
+
   get projectileCount(): number {
     return this.projectiles.length;
   }
@@ -239,10 +256,12 @@ export class RunWorld {
     this.reapEnemies();
     this.drawGrid();
 
-    // camera locked on player
+    // camera locked on player, scaled for the screen
+    const zoom = this.zoom;
+    this.stage.scale.set(zoom);
     this.stage.position.set(
-      this.view.width / 2 - this.player.x,
-      this.view.height / 2 - this.player.y,
+      this.view.width / 2 - this.player.x * zoom,
+      this.view.height / 2 - this.player.y * zoom,
     );
     this.playerGfx.position.set(this.player.x, this.player.y);
     this.playerGfx.alpha = this.player.iframesT > 0 ? 0.5 : 1;
@@ -313,7 +332,7 @@ export class RunWorld {
   }
 
   private spawnDist(radius: number): number {
-    return Math.max(this.view.width, this.view.height) / 2 + ENEMIES.spawnMargin + radius;
+    return Math.max(this.worldW, this.worldH) / 2 + ENEMIES.spawnMargin + radius;
   }
 
   /** A ring closing in from all sides at once. */
@@ -469,8 +488,8 @@ export class RunWorld {
   killVisible(): void {
     for (const e of this.enemies) {
       if (
-        Math.abs(e.x - this.player.x) < this.view.width / 2 &&
-        Math.abs(e.y - this.player.y) < this.view.height / 2
+        Math.abs(e.x - this.player.x) < this.worldW / 2 &&
+        Math.abs(e.y - this.player.y) < this.worldH / 2
       ) {
         this.damageEnemy(e, Infinity);
       }
@@ -739,8 +758,8 @@ export class RunWorld {
   private drawGrid(): void {
     const g = this.gridGfx;
     const cell = 80;
-    const w = this.view.width;
-    const h = this.view.height;
+    const w = this.worldW;
+    const h = this.worldH;
     const left = this.player.x - w / 2;
     const top = this.player.y - h / 2;
     g.clear();
