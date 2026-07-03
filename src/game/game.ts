@@ -4,12 +4,15 @@
 
 import { Application } from 'pixi.js';
 import type { MusicEngine } from '../audio/engine';
+import { TIER_COUNT } from '../audio/charts';
 import { ROLES, type Kit, type Role } from '../audio/kits';
+import { mountPlayground, type Playground } from '../rehearsal/playground';
 import { RUN } from './config';
-import { Hud } from './hud';
+import { Hud, type PickOption } from './hud';
 import { RunWorld } from './run';
+import { mountSandboxPanel, type SandboxPanel } from './sandbox';
 
-type State = 'start' | 'run' | 'pick' | 'end';
+type State = 'start' | 'run' | 'pick' | 'end' | 'sandbox';
 
 export async function bootGame(
   root: HTMLElement,
@@ -36,19 +39,34 @@ export async function bootGame(
     onLevelUp(level: number): void {
       void level;
       if (state !== 'run') return;
-      const unowned = ROLES.filter((r) => !world!.owned.has(r));
-      if (unowned.length === 0) {
+      // The pool (docs/phases/m2-the-arc.md): unowned weapons enter at tier
+      // 1, owned ones offer their next tier, tier-4 weapons leave the pool.
+      const pool: PickOption[] = [];
+      for (const role of ROLES) {
+        const tier = world!.tiers.get(role);
+        if (!tier) pool.push({ role, tier: 1 });
+        else if (tier < TIER_COUNT) pool.push({ role, tier: tier + 1 });
+      }
+      if (pool.length === 0) {
         world!.player.hp = Math.min(RUN.playerHp, world!.player.hp + 15);
-        hud.showToast('+15 hp — the band is complete');
+        hud.showToast('+15 hp — the track is complete');
         return;
       }
       state = 'pick';
       engine.clock.pause();
-      const options = shuffle(unowned).slice(0, 3);
-      hud.showPick(options, (role) => {
-        engine.setVoiceEnabled(role, true);
-        world!.addWeapon(role);
+      const options = shuffle(pool).slice(0, 3);
+      hud.showPick(options, (option) => {
         state = 'run';
+        // Musical entry rule: the clock resumes, the old chart finishes its
+        // bar, and the new voice or tier enters on the following "1".
+        const w = world;
+        engine.atNextBar(() => {
+          if (state !== 'run' || world !== w) return;
+          engine.setVoiceTier(option.role, option.tier);
+          engine.setVoiceEnabled(option.role, true);
+          w!.addWeapon(option.role, option.tier);
+          chartOverlay?.refresh();
+        });
         engine.clock.resume();
       });
     },
@@ -63,15 +81,57 @@ export async function bootGame(
     },
   };
 
-  function startRun(startingKit: Role): void {
+  // Sandbox: same world, no stage script. Death just refills (the panel's
+  // invulnerability toggle is the real control).
+  const sandboxEvents = {
+    onLevelUp(): void {},
+    onDeath(): void {
+      if (world) world.player.hp = RUN.playerHp;
+      hud.showToast('you would have died — hp refilled');
+    },
+    onVictory(): void {},
+    onHit(): void {
+      hud.hitFlash();
+    },
+  };
+  let sandboxPanel: SandboxPanel | null = null;
+
+  function resetWorld(): void {
+    sandboxPanel?.destroy();
+    sandboxPanel = null;
     world?.destroy();
+    world = null;
+    engine.clearBarQueue();
     for (const role of ROLES) engine.setVoiceEnabled(role, false);
+  }
+
+  function startRun(startingKit: Role): void {
+    resetWorld();
     world = new RunWorld(app.screen, events);
     app.stage.addChild(world.stage);
+    engine.setVoiceTier(startingKit, 1);
     engine.setVoiceEnabled(startingKit, true);
-    world.addWeapon(startingKit);
+    world.addWeapon(startingKit, 1);
     hud.showHud(true);
     state = 'run';
+    void engine.ctx.resume();
+    engine.clock.start();
+  }
+
+  function startSandbox(): void {
+    resetWorld();
+    world = new RunWorld(app.screen, sandboxEvents, { scripted: false });
+    world.invincible = true;
+    app.stage.addChild(world.stage);
+    sandboxPanel = mountSandboxPanel(root, engine, world, () => {
+      resetWorld();
+      engine.clock.stop();
+      hud.showHud(false);
+      hud.showStart(startRun, startSandbox);
+      state = 'start';
+    });
+    hud.showHud(true);
+    state = 'sandbox';
     void engine.ctx.resume();
     engine.clock.start();
   }
@@ -80,6 +140,7 @@ export async function bootGame(
     if (!world || state === 'end') return;
     state = 'end';
     engine.clock.stop();
+    engine.clearBarQueue();
     const byWeapon = (Object.entries(world.killsByRole) as [Role, number][]).sort(
       (a, b) => b[1] - a[1],
     );
@@ -88,21 +149,37 @@ export async function bootGame(
       { timeS: world.timeS, kills: world.kills, level: world.level, byWeapon },
       () => {
         hud.showHud(false);
-        hud.showStart(startRun);
+        hud.showStart(startRun, startSandbox);
         state = 'start';
       },
     );
   }
 
+  // The read-only chart overlay (M2 dev tools): the playground component
+  // mounted over the arena, showing the live engine state of the build.
+  const chartOverlayEl = document.createElement('div');
+  chartOverlayEl.className = 'chart-overlay';
+  chartOverlayEl.style.display = 'none';
+  root.appendChild(chartOverlayEl);
+  let chartOverlay: Playground | null = null;
+  function toggleChartOverlay(): void {
+    const show = chartOverlayEl.style.display === 'none';
+    chartOverlayEl.style.display = show ? '' : 'none';
+    if (show) {
+      chartOverlay ??= mountPlayground(chartOverlayEl, engine, { editable: false });
+      chartOverlay.refresh();
+    }
+  }
+
   // one trigger, two outputs: the engine already made the sound; this makes
   // the damage.
   engine.addTriggerListener((t) => {
-    if (state === 'run' && world) world.fireTrigger(t);
+    if ((state === 'run' || state === 'sandbox') && world) world.fireTrigger(t);
   });
 
   app.ticker.add((ticker) => {
     engine.update();
-    if (state === 'run' && world) {
+    if ((state === 'run' || state === 'sandbox') && world) {
       const dt = Math.min(ticker.deltaMS / 1000, 1 / 20); // clamp long frames
       world.update(dt);
       hud.setStatus(
@@ -154,7 +231,7 @@ export async function bootGame(
       label: 'kill screen',
       hotkey: 'K',
       onClick: () => {
-        if (world && state === 'run') world.killVisible();
+        if (world && (state === 'run' || state === 'sandbox')) world.killVisible();
       },
     },
     overlay: {
@@ -164,6 +241,12 @@ export async function bootGame(
       onClick: () => {
         overlay.style.display = overlay.style.display === 'none' ? '' : 'none';
       },
+    },
+    charts: {
+      label: 'charts',
+      hotkey: 'C',
+      isOn: () => chartOverlayEl.style.display !== 'none',
+      onClick: toggleChartOverlay,
     },
   };
   hud.mountDebug(Object.values(debugActions));
@@ -175,6 +258,7 @@ export async function bootGame(
       KeyX: debugActions.xp,
       KeyK: debugActions.kill,
       KeyO: debugActions.overlay,
+      KeyC: debugActions.charts,
     };
     const action = byKey[e.code];
     if (action) {
@@ -183,7 +267,7 @@ export async function bootGame(
     }
   });
 
-  hud.showStart(startRun);
+  hud.showStart(startRun, startSandbox);
 
   // extend the dev console handle
   Object.assign((window as unknown as { loop: object }).loop, {

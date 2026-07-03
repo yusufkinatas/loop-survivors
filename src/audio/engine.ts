@@ -57,6 +57,7 @@ export class MusicEngine {
   private master: GainNode;
   private pending: ScheduledTrigger[] = [];
   private listeners: TriggerListener[] = [];
+  private barQueue: (() => void)[] = [];
   private stepMarkers: { step: number; time: number }[] = [];
   private lastDueStep = 0;
 
@@ -148,6 +149,19 @@ export class MusicEngine {
     this.listeners.push(cb);
   }
 
+  /** Musical entry rule (M2): run fn at the start of the next bar, so the
+   *  old chart finishes its bar and the change enters on the following "1".
+   *  Executes at schedule time (~0.1s before it is heard) — close enough
+   *  for the visuals that ride on it. */
+  atNextBar(fn: () => void): void {
+    this.barQueue.push(fn);
+  }
+
+  /** Drop queued next-bar changes (a run ended before they landed). */
+  clearBarQueue(): void {
+    this.barQueue = [];
+  }
+
   /** Dispatch every trigger whose scheduled time has arrived. Call once per
    *  frame from whatever loop is driving visuals (room rAF or game ticker). */
   update(): void {
@@ -184,6 +198,11 @@ export class MusicEngine {
     // phrase, so a 4-bar chart's bar 4 is always the phrase's bar 4 and
     // once-per-phrase material lands where it was written.
     const phraseStep = step % STEPS_PER_PHRASE;
+    if (phraseStep % STEPS_PER_BAR === 0 && this.barQueue.length > 0) {
+      const queue = this.barQueue;
+      this.barQueue = [];
+      for (const fn of queue) fn();
+    }
     for (const voice of this.voices.values()) {
       if (!voice.enabled) continue;
       const loopStep = phraseStep % (voice.chart.bars * STEPS_PER_BAR);

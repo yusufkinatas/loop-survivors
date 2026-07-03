@@ -598,6 +598,109 @@ button.big {
   color: #59ffd1;
 }
 
+/* ---- sandbox (M2) ---- */
+
+.sandbox-panel {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 300px;
+  max-height: calc(100vh - 70px);
+  overflow-y: auto;
+  background: rgba(16, 16, 20, 0.88);
+  border: 1px solid #2a2a34;
+  border-radius: 4px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.sb-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sb-title {
+  font-weight: bold;
+}
+
+.sb-section {
+  color: #666674;
+  border-bottom: 1px solid #2a2a34;
+  padding-bottom: 2px;
+  margin-top: 6px;
+}
+
+.sb-enemy,
+.sb-loadout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sb-enemy-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.sb-enemy-name {
+  color: #d8d8e0;
+}
+
+.sb-enemy-stats {
+  color: #666674;
+  font-size: 11px;
+}
+
+.sb-btns {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.sb-btns .small {
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+.sb-btns .small.on {
+  border-color: #59ffd1;
+  color: #59ffd1;
+}
+
+.sb-controls {
+  padding: 4px 0;
+}
+
+.sb-loadout-name {
+  color: var(--voice-color);
+  min-width: 48px;
+}
+
+.sb-hint {
+  color: #666674;
+  font-size: 11px;
+  margin-top: 6px;
+}
+
+/* the read-only chart overlay over the arena */
+.chart-overlay {
+  position: absolute;
+  left: 12px;
+  top: 44px;
+  bottom: 52px;
+  right: 330px;
+  overflow: auto;
+  background: rgba(16, 16, 20, 0.9);
+  border: 1px solid #2a2a34;
+  border-radius: 4px;
+  padding: 10px;
+}
+
 .kill-row {
   display: flex;
   gap: 8px;

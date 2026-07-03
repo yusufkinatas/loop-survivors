@@ -3,15 +3,17 @@
 // end screens, and the hit flash.
 
 import { ROLES, type Kit, type Role } from '../audio/kits';
+import { TIER_LINES } from './config';
 
-const ARCHETYPES: Record<Role, string> = {
-  kick: 'aura pulse around you, on the downbeat',
-  snare: 'directional shot on the backbeat',
-  hat: 'dense stream of weak fast hits',
-  bass: 'slow piercing low wave',
-  chord: 'lingering damage zone',
-  lead: 'homing shots that play the melody',
-};
+/** A level-up option: a new weapon (tier 1) or a tier-up of an owned one.
+ *  Cards are terse by spec: name, tier numeral, one honest gameplay line,
+ *  zero music description (docs/phases/m2-the-arc.md). */
+export interface PickOption {
+  role: Role;
+  tier: number;
+}
+
+export const TIER_NUMERALS = ['I', 'II', 'III', 'IV'];
 
 export interface DebugAction {
   label: string;
@@ -93,33 +95,41 @@ export class Hud {
     }
   }
 
-  /** Start screen: choose the starting kit. */
-  showStart(onPick: (role: Role) => void): void {
+  /** Start screen: choose the starting kit (it begins at tier 1 — the
+   *  lone-instrument opening is the first note of the arc). */
+  showStart(onPick: (role: Role) => void, onSandbox: () => void): void {
     const s = this.newScreen();
     el('h1', '', s, 'Loop Survivors');
-    el('p', 'sub', s, 'M1 demo — pick your starting instrument. WASD to move. Nothing else.');
+    el('p', 'sub', s, 'M2 — pick your starting instrument. WASD to move. Survive 8 minutes.');
     const grid = el('div', 'pick-grid', s);
     for (const role of ROLES) {
-      this.kitCard(grid, role, () => {
+      this.kitCard(grid, { role, tier: 1 }, () => {
         this.closeScreen();
         onPick(role);
       });
     }
-    const roomBtn = el('button', '', s, 'open the rehearsal room');
+    const row = el('div', 'pick-grid', s);
+    const sandboxBtn = el('button', '', row, 'open the sandbox');
+    sandboxBtn.onclick = () => {
+      this.closeScreen();
+      onSandbox();
+    };
+    const roomBtn = el('button', '', row, 'open the rehearsal room');
     roomBtn.onclick = () => {
       location.hash = '#rehearsal';
     };
   }
 
-  /** Level-up pick: choose one of up to three new kits. */
-  showPick(options: Role[], onPick: (role: Role) => void): void {
+  /** Level-up pick: up to three options from the pool of new weapons and
+   *  tier-ups of owned ones. */
+  showPick(options: PickOption[], onPick: (option: PickOption) => void): void {
     const s = this.newScreen();
-    el('h2', '', s, 'Level up — add a voice');
+    el('h2', '', s, 'Level up');
     const grid = el('div', 'pick-grid', s);
-    for (const role of options) {
-      this.kitCard(grid, role, () => {
+    for (const option of options) {
+      this.kitCard(grid, option, () => {
         this.closeScreen();
-        onPick(role);
+        onPick(option);
       });
     }
   }
@@ -155,12 +165,13 @@ export class Hud {
     };
   }
 
-  private kitCard(parent: HTMLElement, role: Role, onClick: () => void): void {
-    const kit = this.kits.get(role)!;
+  private kitCard(parent: HTMLElement, option: PickOption, onClick: () => void): void {
+    const kit = this.kits.get(option.role)!;
     const card = el('button', 'kit-card', parent);
     card.style.setProperty('--voice-color', kit.color);
-    el('span', 'kit-name', card, kit.name);
-    el('span', 'kit-desc', card, ARCHETYPES[role]);
+    const name = option.tier > 1 ? `${kit.name} ${TIER_NUMERALS[option.tier - 1]}` : kit.name;
+    el('span', 'kit-name', card, name);
+    el('span', 'kit-desc', card, TIER_LINES[option.role][option.tier - 1]);
     card.onclick = onClick;
   }
 

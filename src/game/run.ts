@@ -6,11 +6,23 @@
 import { Container, Graphics } from 'pixi.js';
 import type { Role } from '../audio/kits';
 import type { ScheduledTrigger } from '../audio/engine';
-import { AIM_RANGE, ENEMIES, RUN, WEAPONS, ZONE_TICK_S } from './config';
+import {
+  AIM_RANGE,
+  DARTER,
+  ENEMIES,
+  RUN,
+  VARIANT_EFFECTS,
+  WAVES,
+  WEAPONS,
+  ZONE_TICK_S,
+  type EnemyKind,
+  type WeaponConf,
+} from './config';
 import { Input } from './input';
 import { SpatialHash, circlesOverlap } from './spatial';
 
 export interface Enemy {
+  kind: EnemyKind;
   x: number;
   y: number;
   radius: number;
@@ -22,6 +34,12 @@ export interface Enemy {
   gfx: Graphics;
   flashT: number;
   dead: boolean;
+  /** Darter burst state: time left in the current dash/pause, and the
+   *  locked dash direction (darters do not steer mid-dash). */
+  dashT: number;
+  dashX: number;
+  dashY: number;
+  dashing: boolean;
 }
 
 interface Projectile {
@@ -83,7 +101,8 @@ const KIT_COLORS: Record<Role, number> = {
 
 export class RunWorld {
   readonly stage: Container;
-  readonly owned = new Set<Role>();
+  /** Owned weapons and their ladder tier (1-4). */
+  readonly tiers = new Map<Role, number>();
 
   player = { x: 0, y: 0, hp: RUN.playerHp, radius: RUN.playerRadius, iframesT: 0 };
   level = 1;
@@ -108,11 +127,20 @@ export class RunWorld {
   private gridGfx = new Graphics();
   private playerGfx = new Graphics();
   private swarmCarry = 0;
+  private darterCarry = 0;
   private nextTankAtS = ENEMIES.tankFromS;
+  private waveIdx = 0;
+  /** False in the sandbox: no stage script, no waves, no victory timer. */
+  private scripted: boolean;
 
-  constructor(view: { width: number; height: number }, events: RunEvents) {
+  constructor(
+    view: { width: number; height: number },
+    events: RunEvents,
+    opts: { scripted?: boolean } = {},
+  ) {
     this.view = view;
     this.events = events;
+    this.scripted = opts.scripted ?? true;
     this.stage = new Container();
     this.stage.addChild(this.gridGfx);
     this.playerGfx.circle(0, 0, RUN.playerRadius).fill(0xffffff);
@@ -127,13 +155,29 @@ export class RunWorld {
     return this.projectiles.length;
   }
 
-  /** The coupling point: a scheduled trigger fires this kit's weapon. */
+  /** The coupling point: a scheduled trigger fires this kit's weapon at the
+   *  owned tier. Variant peaks (bass sub, chord pad) scale the same weapon. */
   fireTrigger(t: ScheduledTrigger): void {
-    if (!this.owned.has(t.role)) return;
-    const conf = WEAPONS[t.role];
+    const tier = this.tiers.get(t.role);
+    if (!tier) return;
+    let conf: WeaponConf = WEAPONS[t.role][tier - 1];
     const color = KIT_COLORS[t.role];
     const v = t.velocity;
     const p = this.player;
+
+    if (t.role === 'bass' && t.variant === 'sub') {
+      const fx = VARIANT_EFFECTS.bassSub;
+      conf = { ...conf, radius: conf.radius! * fx.radiusMul, damage: conf.damage * fx.damageMul };
+    }
+    if (t.role === 'chord' && t.variant === 'pad') {
+      const fx = VARIANT_EFFECTS.chordPad;
+      conf = {
+        ...conf,
+        radius: conf.radius! * fx.radiusMul,
+        lifetimeS: conf.lifetimeS! * fx.lifetimeMul,
+        damage: conf.damage * fx.damageMul,
+      };
+    }
 
     switch (t.role) {
       case 'kick': {
@@ -157,21 +201,30 @@ export class RunWorld {
     }
   }
 
-  addWeapon(role: Role): void {
-    this.owned.add(role);
-    // pulse when a new voice joins the mix
+  /** Add a weapon or raise its tier. The pulse fires when the change lands
+   *  (next-bar entry), so eye and ear agree on the moment. */
+  addWeapon(role: Role, tier = 1): void {
+    this.tiers.set(role, tier);
     this.spawnRing(this.player.x, this.player.y, 220, KIT_COLORS[role], 0.6);
+  }
+
+  /** Sandbox loadout editor: drop a weapon entirely. */
+  removeWeapon(role: Role): void {
+    this.tiers.delete(role);
   }
 
   update(dt: number): void {
     this.timeS += dt;
-    if (this.timeS >= RUN.durationS) {
+    if (this.scripted && this.timeS >= RUN.durationS) {
       this.events.onVictory();
       return;
     }
 
     this.movePlayer(dt);
-    this.spawnEnemies(dt);
+    if (this.scripted) {
+      this.spawnEnemies(dt);
+      this.runWaves();
+    }
 
     // rebuild the hash, then everything queries it
     this.hash.clear();
@@ -232,6 +285,15 @@ export class RunWorld {
       this.swarmCarry -= 1;
       this.spawnEnemy('swarmer');
     }
+    if (this.timeS >= ENEMIES.darterFromS) {
+      const dRate =
+        ENEMIES.darterRateStart + (ENEMIES.darterRateEnd - ENEMIES.darterRateStart) * t01;
+      this.darterCarry += dRate * dt;
+      while (this.darterCarry >= 1) {
+        this.darterCarry -= 1;
+        this.spawnEnemy('darter');
+      }
+    }
     if (this.timeS >= this.nextTankAtS) {
       const interval =
         ENEMIES.tankIntervalStartS +
@@ -241,22 +303,54 @@ export class RunWorld {
     }
   }
 
-  private spawnEnemy(kind: 'swarmer' | 'tank'): void {
+  /** Wave events, pure data: fire every entry whose time has come. */
+  private runWaves(): void {
+    while (this.waveIdx < WAVES.length && this.timeS >= WAVES[this.waveIdx].atS) {
+      const wave = WAVES[this.waveIdx++];
+      if (wave.kind === 'ring') this.spawnRingOf(wave.enemy, wave.count);
+      else this.spawnSurgeOf(wave.enemy, wave.count);
+    }
+  }
+
+  private spawnDist(radius: number): number {
+    return Math.max(this.view.width, this.view.height) / 2 + ENEMIES.spawnMargin + radius;
+  }
+
+  /** A ring closing in from all sides at once. */
+  spawnRingOf(kind: EnemyKind, count: number): void {
+    const start = Math.random() * Math.PI * 2;
+    for (let i = 0; i < count; i++) {
+      this.spawnEnemy(kind, start + (i / count) * Math.PI * 2);
+    }
+  }
+
+  /** A surge pouring in from one direction in a loose arc. */
+  spawnSurgeOf(kind: EnemyKind, count: number): void {
+    const center = Math.random() * Math.PI * 2;
+    for (let i = 0; i < count; i++) {
+      this.spawnEnemy(kind, center + (Math.random() * 2 - 1) * 0.5, 1 + Math.random() * 0.6);
+    }
+  }
+
+  spawnEnemy(kind: EnemyKind, angle = Math.random() * Math.PI * 2, distMul = 1): void {
+    if (this.enemies.length >= ENEMIES.maxAlive) return;
     const conf = ENEMIES[kind];
-    const dist =
-      Math.max(this.view.width, this.view.height) / 2 + ENEMIES.spawnMargin + conf.radius;
-    const ang = Math.random() * Math.PI * 2;
+    const dist = this.spawnDist(conf.radius) * distMul;
     const gfx = new Graphics();
     if (kind === 'tank') {
       gfx.rect(-conf.radius, -conf.radius, conf.radius * 2, conf.radius * 2).fill(0xffffff);
+    } else if (kind === 'darter') {
+      // pointed sliver: reads as "fast" at a glance
+      gfx.poly([conf.radius * 1.6, 0, -conf.radius, conf.radius * 0.9, -conf.radius, -conf.radius * 0.9]).fill(0xffffff);
     } else {
       gfx.circle(0, 0, conf.radius).fill(0xffffff);
     }
     gfx.tint = conf.color;
     this.stage.addChild(gfx);
     this.enemies.push({
-      x: this.player.x + Math.cos(ang) * dist,
-      y: this.player.y + Math.sin(ang) * dist,
+      kind,
+      x: this.player.x + Math.cos(angle) * dist,
+      y: this.player.y + Math.sin(angle) * dist,
       radius: conf.radius,
       hp: conf.hp,
       speed: conf.speed,
@@ -266,13 +360,52 @@ export class RunWorld {
       gfx,
       flashT: 0,
       dead: false,
+      dashT: 0,
+      dashX: 0,
+      dashY: 0,
+      dashing: false,
     });
+  }
+
+  /** Sandbox: remove every enemy without kills, gems, or pops. */
+  clearEnemies(): void {
+    for (const e of this.enemies) e.gfx.destroy();
+    this.enemies.length = 0;
   }
 
   private moveEnemies(dt: number): void {
     const p = this.player;
     for (const e of this.enemies) {
       if (e.dead) continue;
+
+      if (e.kind === 'darter') {
+        // Straight bursts: lock onto the player's position, dash flat out,
+        // stop dead, re-aim, dash again. Threat is the dodge, not the chase.
+        e.dashT -= dt;
+        if (e.dashT <= 0) {
+          e.dashing = !e.dashing;
+          if (e.dashing) {
+            const dd = Math.hypot(p.x - e.x, p.y - e.y) || 1;
+            e.dashX = (p.x - e.x) / dd;
+            e.dashY = (p.y - e.y) / dd;
+            e.dashT = DARTER.dashS;
+          } else {
+            e.dashT = DARTER.pauseS;
+          }
+        }
+        if (e.dashing) {
+          e.x += e.dashX * e.speed * dt;
+          e.y += e.dashY * e.speed * dt;
+          e.gfx.rotation = Math.atan2(e.dashY, e.dashX);
+        }
+        if (e.flashT > 0) {
+          e.flashT -= dt;
+          if (e.flashT <= 0) e.gfx.tint = e.color;
+        }
+        e.gfx.position.set(e.x, e.y);
+        continue;
+      }
+
       let dx = p.x - e.x;
       let dy = p.y - e.y;
       const d = Math.hypot(dx, dy) || 1;
