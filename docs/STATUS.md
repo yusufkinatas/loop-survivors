@@ -8,7 +8,7 @@ Last updated: July 3, 2026
 
 ## Current sub-phase
 
-**Sub-phase B, the toy** — in progress (branch `m1-claude`). The survivors loop driven by the sub-phase A scheduler: movement, spawning, spatial hash, contact damage, XP, picks. Gate: the Pillar 3 muted run, "muted, this is a competent little survivors-like."
+**Sub-phase B, the toy** — implemented, awaiting the gate (branch `m1-claude`). The survivors loop is playable at `npm run dev`: pick a starting kit, WASD movement, swarmers and tanks on a ramping five-minute spawn script, spatial hash collision with separation steering, contact damage with iframes, XP gems, level-up picks (new kits only), victory and death screens. Weapons fire from the engine's chart triggers (one trigger, two outputs). Debug hotkeys: M mute, I invincible, X +xp, K kill screen, O overlay. The rehearsal room moved to `#rehearsal`. Gate: the Pillar 3 muted run, "muted, this is a competent little survivors-like."
 
 Sub-phase A shipped: lookahead scheduler, six kits, one chart per kit, rehearsal room with four switchable sample sets ("Synth" builtin placeholders; "808" / "Machine" / "Electro" from CC0 Sonic Pi samples in `public/samples/sonicpi/`, license recorded there). Chord has no pack candidate yet and stays synth in every set. Bass is a choked (monophonic) kit after gate feedback.
 
@@ -24,7 +24,7 @@ Sub-phase A shipped: lookahead scheduler, six kits, one chart per kit, rehearsal
 
 ## Next action
 
-Implement sub-phase B: the survivors loop (PixiJS greybox arena, WASD movement, swarmer and tank enemies on a ramping five-minute spawn script, spatial hash collision, contact damage, XP and level-up picks) driven by the sub-phase A engine's trigger events. Then gate B: the developer plays muted runs.
+Gate B: the developer plays runs with M held down (muted) and judges "muted, this is a competent little survivors-like." Tuning numbers all live in `src/game/config.ts`. A fail loops within sub-phase B; a pass starts sub-phase C, the fusion (sound on, rough balance so every kit kills respectably, debug overlay finished).
 
 ## History
 
@@ -33,3 +33,4 @@ Implement sub-phase B: the survivors loop (PixiJS greybox arena, WASD movement, 
 - July 3, 2026 — Sub-phase A implemented on branch `m1-claude`: repo scaffold, lookahead scheduler, six synthesized placeholder kits, one chart per kit, rehearsal room (voice toggles, progression scrub, per-voice volume, sample audition, hotkeys), master limiter, `window.loop` dev console handle. Verified end-to-end in Chrome. Awaiting gate A.
 - July 3, 2026 — Sample sets added: 22 CC0 samples downloaded from the Sonic Pi library, organized as "808" / "Machine" / "Electro" sets with one-click switching in the rehearsal room, pitched samples retuned to the A root (measured, tune values in `src/audio/samplesets.ts`). All three sets verified audible in Chrome.
 - July 3, 2026 — Gate A feedback: Electro bass tail stacked into mud; bass made a choked monophonic kit. **Gate A passed** by the developer. Sub-phase B begins.
+- July 3, 2026 — Sub-phase B implemented: PixiJS greybox arena, six weapon archetypes fired by engine triggers, swarmer/tank spawn script, spatial hash, XP/level-up picks, end screens, debug hotkeys, clock pause/resume for picks. All weapon kill paths, death, victory, pick and retry flows verified by simulation in Chrome. Awaiting gate B (muted runs).

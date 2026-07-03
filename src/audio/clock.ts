@@ -38,18 +38,30 @@ export class Clock {
     return 60 / this.bpm / this.stepsPerBeat;
   }
 
+  /** Start from step 0. */
   start(): void {
     if (this.timer !== null) return;
     this.nextStep = 0;
-    this.nextStepTime = this.ctx.currentTime + 0.06; // small run-in
-    this.timer = window.setInterval(() => this.tick(), LOOKAHEAD_MS);
-    this.tick();
+    this.resume();
   }
 
   stop(): void {
     if (this.timer === null) return;
     window.clearInterval(this.timer);
     this.timer = null;
+  }
+
+  /** Pause without losing the grid position; resume() continues the loop
+   *  where it left off (level-up picks pause the run, not the arrangement). */
+  pause(): void {
+    this.stop();
+  }
+
+  resume(): void {
+    if (this.timer !== null) return;
+    this.nextStepTime = this.ctx.currentTime + 0.06; // small run-in
+    this.timer = window.setInterval(() => this.tick(), LOOKAHEAD_MS);
+    this.tick();
   }
 
   private tick(): void {

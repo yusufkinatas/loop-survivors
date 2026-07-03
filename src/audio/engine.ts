@@ -26,13 +26,18 @@ export interface Voice {
   lastHit: { src: AudioBufferSourceNode; gain: GainNode } | null;
 }
 
-/** A trigger that has been scheduled, for visual sync (voice lights now,
- *  damage events later). Consumed by drainDueTriggers. */
+/** A trigger that has been scheduled. Dispatched to listeners by update()
+ *  once its audio time arrives: one trigger is one event with two outputs,
+ *  a sound in the mix and (in the game) damage in the world. */
 export interface ScheduledTrigger {
   role: Role;
   time: number;
   velocity: number;
+  variant?: string;
+  note?: number;
 }
+
+export type TriggerListener = (t: ScheduledTrigger) => void;
 
 // Free per-hit engine nudges: the first of the three variation layers.
 const HUMANIZE_GAIN = 0.12; // +/- proportional
@@ -46,6 +51,7 @@ export class MusicEngine {
   readonly voices = new Map<Role, Voice>();
   private master: GainNode;
   private pending: ScheduledTrigger[] = [];
+  private listeners: TriggerListener[] = [];
   private stepMarkers: { step: number; time: number }[] = [];
   private lastDueStep = 0;
 
@@ -120,14 +126,20 @@ export class MusicEngine {
     voice.tune = samples ? tune : 0;
   }
 
-  /** Triggers whose scheduled time has arrived, for frame-synced visuals. */
-  drainDueTriggers(): ScheduledTrigger[] {
+  /** Register for due triggers. Fired from update(), i.e. frame-synced. */
+  addTriggerListener(cb: TriggerListener): void {
+    this.listeners.push(cb);
+  }
+
+  /** Dispatch every trigger whose scheduled time has arrived. Call once per
+   *  frame from whatever loop is driving visuals (room rAF or game ticker). */
+  update(): void {
     const now = this.ctx.currentTime;
     const due: ScheduledTrigger[] = [];
     const rest: ScheduledTrigger[] = [];
     for (const t of this.pending) (t.time <= now ? due : rest).push(t);
     this.pending = rest;
-    return due;
+    for (const t of due) for (const cb of this.listeners) cb(t);
   }
 
   /** The grid step currently sounding, for position readouts. Valid while
@@ -194,7 +206,13 @@ export class MusicEngine {
       voice.lastHit = { src, gain: g };
     }
 
-    this.pending.push({ role: voice.role, time, velocity: ev.velocity });
+    this.pending.push({
+      role: voice.role,
+      time,
+      velocity: ev.velocity,
+      variant: ev.variant,
+      note: ev.note,
+    });
     // If no consumer is draining (hidden tab pauses rAF), drop stale entries
     // so the queue cannot grow unboundedly while audio keeps scheduling.
     if (this.pending.length > 64) {

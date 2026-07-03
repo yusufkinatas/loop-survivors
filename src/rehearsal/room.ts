@@ -191,13 +191,15 @@ export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void
   });
 
   // ---- frame loop: trigger lights and position readout ----
+  engine.addTriggerListener((t) => {
+    const light = voiceUis.get(t.role)!.light;
+    light.classList.remove('lit');
+    void light.offsetWidth; // restart the CSS animation
+    light.classList.add('lit');
+  });
+
   function frame(): void {
-    for (const t of engine.drainDueTriggers()) {
-      const light = voiceUis.get(t.role)!.light;
-      light.classList.remove('lit');
-      void light.offsetWidth; // restart the CSS animation
-      light.classList.add('lit');
-    }
+    engine.update();
     if (engine.clock.running) {
       const step = engine.currentStep();
       const barNo = Math.floor(step / STEPS_PER_BAR) + 1;
