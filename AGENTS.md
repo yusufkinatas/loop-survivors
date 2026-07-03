@@ -6,6 +6,10 @@ Read this first. It tells you what this project is, where every document lives, 
 
 A survivors-like (Vampire Survivors genre) where the weapons are sounds and a good build makes a track. Solo designer-director, AI writes all the code. Full design rationale, pillars, architecture, and roadmap: `docs/plan.md`. Read it before doing any design or implementation work.
 
+## About the developer
+
+The developer is not a musician and does not know music theory or its vocabulary. Terms like "chord stab", "quartal voicing", "backbeat", or "pentatonic" mean nothing to him on their own. When a musical term is needed, explain it in plain words the first time it appears in a conversation (for example: "chord stab — several notes played together as one short punchy hit"), or describe the sound and its gameplay role instead of naming the technique. His ear is still the gate for every sound decision: he judges what he hears, not what it is called. This mirrors Pillar 2, the game's players never need theory either.
+
 ## Where things are
 
 ```
