@@ -5,6 +5,10 @@ phase spec: it defines a balance instrument, its architecture, and the limits
 of its authority. Changes require the developer's explicit sign-off, same as a
 phase spec.
 
+**Practical manual** — commands, output format, replay controls, determinism
+rules, experiment recipes for future items/genres, extension points:
+`autoplay-bot-guide.md`. The guide changes freely; this spec does not.
+
 ## Purpose and standing
 
 An automated playtest harness: bots play full runs with no human, no audio,
