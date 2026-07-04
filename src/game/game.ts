@@ -179,7 +179,7 @@ export async function bootGame(
   function startProbe(seed: number, moverName: MoverName, policySpec: string): void {
     const rng = mulberry32(seed);
     const policy = makePolicy(policySpec);
-    const mover = MOVERS[moverName] ?? MOVERS.kiter;
+    const mover = (MOVERS[moverName] ?? MOVERS.kiter)();
     const events = {
       onLevelUp: () => probe?.conductor.onLevelUp(),
       onDeath: () => finishProbe(),
@@ -294,7 +294,7 @@ export async function bootGame(
     lastReplay = { seed, mover: moverName, policy: policySpec };
     const rng = mulberry32(seed);
     const policy = makePolicy(policySpec);
-    const mover = MOVERS[moverName] ?? MOVERS.kiter;
+    const mover = (MOVERS[moverName] ?? MOVERS.kiter)();
     const replayEvents = {
       onLevelUp(): void {
         replayConductor?.onLevelUp();

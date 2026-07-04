@@ -45,7 +45,7 @@ export const SIM_VIEW = { width: 1280, height: 800 };
 export function simulateRun(spec: SimSpec, config: string): RunRecord {
   const rng = mulberry32(spec.seed);
   const policy = makePolicy(spec.policy);
-  const mover = MOVERS[spec.mover];
+  const mover = MOVERS[spec.mover]();
 
   let ended: 'death' | 'victory' | null = null;
   const events = {
