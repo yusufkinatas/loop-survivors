@@ -122,6 +122,10 @@ export class Hud {
     roomBtn.onclick = () => {
       location.hash = '#rehearsal';
     };
+    const labBtn = el('button', '', row, 'open the track lab');
+    labBtn.onclick = () => {
+      location.hash = '#tracklab';
+    };
   }
 
   /** Level-up pick: up to three options from the pool of new weapons and

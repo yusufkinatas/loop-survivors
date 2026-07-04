@@ -900,3 +900,18 @@ button.big {
     max-height: 34vh;
   }
 }
+
+/* ---- track lab (M3 proof of concept) ---- */
+
+.lab-scroll {
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+.lab-notes {
+  max-width: 900px;
+}
+
+.set-btn.pending {
+  outline: 1px dashed #9a9ab0;
+}

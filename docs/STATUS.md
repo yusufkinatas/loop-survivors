@@ -1,14 +1,14 @@
 # Project Status
 
-Last updated: July 4, 2026
+Last updated: July 5, 2026
 
 ## Current phase
 
-**M2 complete (verdict: pass, July 4, 2026).** Spec: `docs/phases/m2-the-arc.md`. Next phase: M3, the drop — grilling session not yet started, on hold at the developer's request.
+**M2 complete (verdict: pass, July 4, 2026).** Spec: `docs/phases/m2-the-arc.md`. Next phase: M3, the drop — grilling session **in progress**, paused for a proof of concept.
 
 ## Current sub-phase
 
-**None in progress.** M2 closed with a pass; M3 grilling begins when the developer says go.
+**M3 grilling, mid-session, on a deliberate detour.** The session surfaced a redefinition of the genre system: a genre lock should swap the build's per-weapon ladder charts for parts of one composed destination track (the sketch→song flip; details in the session transcript, spec not yet written). Before locking anything, the developer ordered a proof of concept: reverse-engineer four real tracks into the engine and see if chart-based covers pass his ear. The **Track Lab** (`#tracklab`, `src/tracklab/`) was built for this — real research-sourced transcriptions (Pursuit 109bpm, Satisfaction 130bpm, Da Funk 111bpm, Sahara pending), new synthesized + CC0-sampled instruments, per-track sections, sidechain pump. Gate: the developer listens; tracks that pass become evidence for the M3 destination-track direction. Nothing here is game code; the game is untouched.
 
 ## Gate ledger (M2)
 
