@@ -678,6 +678,35 @@ button.big {
   z-index: 6;
 }
 
+/* Replay seek bar: bottom-center, video-style scrubbing in 15s stops. */
+.replay-seek {
+  position: absolute;
+  bottom: max(48px, calc(env(safe-area-inset-bottom) + 36px));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(56vw, 520px);
+  padding: 6px 12px;
+  background: rgba(34, 34, 42, 0.85);
+  border: 1px solid #3a3a46;
+  border-radius: 6px;
+  z-index: 6;
+}
+
+.replay-seek input[type='range'] {
+  flex: 1;
+  accent-color: #4dff88;
+}
+
+.replay-seek span {
+  min-width: 38px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: #cfd2e0;
+}
+
 .debug-btn {
   color: #9a9ab0;
   background: rgba(34, 34, 42, 0.85);

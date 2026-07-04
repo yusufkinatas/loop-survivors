@@ -123,8 +123,51 @@ export async function bootGame(
   speedRow.className = 'replay-speed';
   speedRow.style.display = 'none';
   root.appendChild(speedRow);
+
+  // Replay seek: a replay is a simulation, not a video, so seeking means
+  // computing. Forward: fast-forward at uncapped speed (budgeted per frame
+  // so the page stays alive). Backward: restart from the seed — determinism
+  // guarantees the identical run — then fast-forward to the target.
+  let replayTarget: number | null = null;
+  let lastReplay: { seed: number; mover: MoverName; policy: string } | null = null;
+  const seekRow = document.createElement('div');
+  seekRow.className = 'replay-seek';
+  seekRow.style.display = 'none';
+  const seekSlider = document.createElement('input');
+  seekSlider.type = 'range';
+  seekSlider.min = '0';
+  seekSlider.max = String(RUN.durationS);
+  seekSlider.step = '15';
+  seekSlider.value = '0';
+  const seekLabel = document.createElement('span');
+  seekLabel.textContent = '0:00';
+  seekRow.append(seekSlider, seekLabel);
+  root.appendChild(seekRow);
+  let seekDragging = false;
+  seekSlider.addEventListener('pointerdown', () => {
+    seekDragging = true;
+  });
+  seekSlider.addEventListener('input', () => {
+    seekLabel.textContent = fmtTime(Number(seekSlider.value));
+  });
+  seekSlider.addEventListener('change', () => {
+    seekDragging = false;
+    seekTo(Number(seekSlider.value));
+    seekSlider.blur(); // keep arrow keys for the game
+  });
+
+  function seekTo(targetS: number): void {
+    if (!lastReplay) return;
+    if (state !== 'replay' || !world || targetS < world.timeS) {
+      const r = lastReplay;
+      startReplay(r.seed, r.mover, r.policy);
+    }
+    replayTarget = targetS;
+    applyGain();
+  }
+
   function applyGain(): void {
-    engine.setMasterGain(muted || replaySpeed > 1 ? 0 : 0.8);
+    engine.setMasterGain(muted || replaySpeed > 1 || replayTarget !== null ? 0 : 0.8);
   }
   function setReplaySpeed(mult: number): void {
     replaySpeed = mult;
@@ -198,6 +241,8 @@ export async function bootGame(
    *  headless run; the view and the engine's sound ride along. */
   function startReplay(seed: number, moverName: MoverName, policySpec: string): void {
     resetWorld();
+    replayTarget = null;
+    lastReplay = { seed, mover: moverName, policy: policySpec };
     const rng = mulberry32(seed);
     const policy = makePolicy(policySpec);
     const mover = MOVERS[moverName] ?? MOVERS.kiter;
@@ -238,6 +283,9 @@ export async function bootGame(
     hud.showHud(true);
     hud.showToast(`replaying seed ${seed} (${moverName}/${policySpec})`);
     speedRow.style.display = '';
+    seekRow.style.display = '';
+    seekSlider.value = '0';
+    seekLabel.textContent = '0:00';
     setReplaySpeed(1);
     state = 'replay';
     void engine.ctx.resume();
@@ -249,7 +297,9 @@ export async function bootGame(
     if (!world || state === 'end') return;
     state = 'end';
     speedRow.style.display = 'none';
+    seekRow.style.display = 'none';
     replaySpeed = 1;
+    replayTarget = null;
     applyGain();
     engine.clock.stop();
     engine.clearBarQueue();
@@ -305,19 +355,38 @@ export async function bootGame(
         world.timeS,
       );
     } else if (state === 'replay' && world && replayConductor) {
-      // fixed 60 Hz sub-steps: only fixed ticks reproduce the batch run.
-      // replaySpeed pays out more simulated time per frame; the step cap
-      // keeps heavy frames responsive (the replay just falls behind the
-      // requested speed instead of freezing the page).
-      replayAcc += Math.min(ticker.deltaMS / 1000, 1 / 20) * replaySpeed;
-      let steps = 0;
-      while (replayAcc >= SIM_DT && steps < 12 && state === 'replay') {
-        replayAcc -= SIM_DT;
-        steps++;
-        replayConductor.tick(SIM_DT);
-        world.update(SIM_DT);
+      if (replayTarget !== null) {
+        // seeking: step flat out inside a per-frame time budget so the
+        // page stays responsive while the sim catches up to the target
+        const deadline = performance.now() + 24;
+        while (
+          state === 'replay' &&
+          world.timeS < replayTarget &&
+          performance.now() < deadline
+        ) {
+          replayConductor.tick(SIM_DT);
+          world.update(SIM_DT);
+        }
+        if (state === 'replay' && world.timeS >= replayTarget) {
+          replayTarget = null;
+          replayAcc = 0;
+          applyGain();
+        }
+      } else {
+        // fixed 60 Hz sub-steps: only fixed ticks reproduce the batch run.
+        // replaySpeed pays out more simulated time per frame; the step cap
+        // keeps heavy frames responsive (the replay just falls behind the
+        // requested speed instead of freezing the page).
+        replayAcc += Math.min(ticker.deltaMS / 1000, 1 / 20) * replaySpeed;
+        let steps = 0;
+        while (replayAcc >= SIM_DT && steps < 12 && state === 'replay') {
+          replayAcc -= SIM_DT;
+          steps++;
+          replayConductor.tick(SIM_DT);
+          world.update(SIM_DT);
+        }
+        if (replayAcc > SIM_DT * 12) replayAcc = SIM_DT * 12; // don't bank a backlog
       }
-      if (replayAcc > SIM_DT * 12) replayAcc = SIM_DT * 12; // don't bank a backlog
       if (state === 'replay') {
         view?.update((ticker.deltaMS / 1000) * replaySpeed);
         hud.setStatus(
@@ -326,6 +395,10 @@ export async function bootGame(
           world.level,
           world.timeS,
         );
+        if (!seekDragging) {
+          seekSlider.value = String(Math.floor(world.timeS));
+          seekLabel.textContent = fmtTime(world.timeS);
+        }
       }
     }
     if (overlay.style.display !== 'none' && world) {
@@ -409,6 +482,10 @@ export async function bootGame(
       hud.refreshDebug();
     }
   });
+
+  function fmtTime(s: number): string {
+    return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+  }
 
   // ?replay=<seed>&mover=<mover>&policy=<policy> boots straight into a bot
   // replay (the batch report prints these links for its outliers)
