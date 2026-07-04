@@ -32,6 +32,7 @@ export class Hud {
   private levelEl: HTMLElement;
   private flash: HTMLElement;
   private screen: HTMLElement | null = null;
+  private keyHandler: ((e: KeyboardEvent) => void) | null = null;
   private kits: Map<Role, Kit>;
   private debugRow: HTMLElement | null = null;
   private debugButtons: { btn: HTMLElement; action: DebugAction }[] = [];
@@ -102,12 +103,16 @@ export class Hud {
     el('h1', '', s, 'Loop Survivors');
     el('p', 'sub', s, 'M2 — pick your starting instrument. WASD or touch to move. Survive 8 minutes.');
     const grid = el('div', 'pick-grid', s);
+    const cards: HTMLElement[] = [];
     for (const role of ROLES) {
-      this.kitCard(grid, { role, tier: 1 }, () => {
-        this.closeScreen();
-        onPick(role);
-      });
+      cards.push(
+        this.kitCard(grid, { role, tier: 1 }, () => {
+          this.closeScreen();
+          onPick(role);
+        }),
+      );
     }
+    this.armKeys(cards);
     const row = el('div', 'pick-grid', s);
     const sandboxBtn = el('button', '', row, 'open the sandbox');
     sandboxBtn.onclick = () => {
@@ -126,12 +131,36 @@ export class Hud {
     const s = this.newScreen();
     el('h2', '', s, 'Level up');
     const grid = el('div', 'pick-grid', s);
+    const cards: HTMLElement[] = [];
     for (const option of options) {
-      this.kitCard(grid, option, () => {
-        this.closeScreen();
-        onPick(option);
-      });
+      cards.push(
+        this.kitCard(grid, option, () => {
+          this.closeScreen();
+          onPick(option);
+        }),
+      );
     }
+    this.armKeys(cards);
+  }
+
+  /** Arrow keys walk the cards, enter picks the highlighted one (gate B
+   *  feedback: picking by mouse alone breaks the flow mid-run). */
+  private armKeys(cards: HTMLElement[]): void {
+    let idx = 0;
+    const select = (i: number): void => {
+      cards[idx].classList.remove('selected');
+      idx = (i + cards.length) % cards.length;
+      cards[idx].classList.add('selected');
+    };
+    select(0);
+    this.keyHandler = (e) => {
+      if (e.code === 'ArrowDown' || e.code === 'ArrowRight') select(idx + 1);
+      else if (e.code === 'ArrowUp' || e.code === 'ArrowLeft') select(idx - 1);
+      else if (e.code === 'Enter' || e.code === 'NumpadEnter') cards[idx].click();
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', this.keyHandler);
   }
 
   /** Heal fallback when every kit is owned. */
@@ -165,7 +194,7 @@ export class Hud {
     };
   }
 
-  private kitCard(parent: HTMLElement, option: PickOption, onClick: () => void): void {
+  private kitCard(parent: HTMLElement, option: PickOption, onClick: () => void): HTMLElement {
     const kit = this.kits.get(option.role)!;
     const card = el('button', 'kit-card', parent);
     card.style.setProperty('--voice-color', kit.color);
@@ -173,6 +202,7 @@ export class Hud {
     el('span', 'kit-name', card, name);
     el('span', 'kit-desc', card, TIER_LINES[option.role][option.tier - 1]);
     card.onclick = onClick;
+    return card;
   }
 
   private newScreen(): HTMLElement {
@@ -182,6 +212,10 @@ export class Hud {
   }
 
   private closeScreen(): void {
+    if (this.keyHandler) {
+      window.removeEventListener('keydown', this.keyHandler);
+      this.keyHandler = null;
+    }
     this.screen?.remove();
     this.screen = null;
   }

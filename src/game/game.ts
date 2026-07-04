@@ -232,10 +232,10 @@ export async function bootGame(
       },
     },
     xp: {
-      label: '+xp',
+      label: 'level up',
       hotkey: 'X',
       onClick: () => {
-        if (world && state === 'run') world.grantXp(20);
+        if (world && state === 'run') world.levelUp();
       },
     },
     kill: {

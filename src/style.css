@@ -586,6 +586,13 @@ input[type='range'] {
   border-color: var(--voice-color);
 }
 
+/* keyboard navigation: arrows walk the cards, enter picks */
+.kit-card.selected {
+  border-color: var(--voice-color);
+  outline: 2px solid var(--voice-color);
+  outline-offset: 2px;
+}
+
 .kit-name {
   font-weight: bold;
   color: var(--voice-color);
@@ -735,17 +742,20 @@ button.big {
 }
 
 /* the read-only chart overlay over the arena */
+/* Compact dock (gate B note: the old full-screen overlay hid the game).
+ *  Bottom-left corner, capped height, translucent; the arena stays visible. */
 .chart-overlay {
   position: absolute;
   left: 12px;
-  top: 44px;
   bottom: 52px;
-  right: 330px;
+  width: min(480px, 45vw);
+  max-height: 38vh;
   overflow: auto;
-  background: rgba(16, 16, 20, 0.9);
+  background: rgba(16, 16, 20, 0.72);
   border: 1px solid #2a2a34;
   border-radius: 4px;
-  padding: 10px;
+  padding: 8px;
+  font-size: 11px;
 }
 
 .kill-row {
@@ -807,6 +817,7 @@ button.big {
   }
 
   .chart-overlay {
-    right: 12px;
+    width: calc(100vw - 24px);
+    max-height: 34vh;
   }
 }

@@ -6,7 +6,7 @@
 import type { MusicEngine } from '../audio/engine';
 import { ROLES } from '../audio/kits';
 import { TIER_NUMERALS } from './hud';
-import { ENEMIES, type EnemyKind } from './config';
+import { ENEMIES, enemyScaling, RUN, type EnemyKind } from './config';
 import type { RunWorld } from './run';
 
 const ENEMY_KINDS: EnemyKind[] = ['swarmer', 'tank', 'darter'];
@@ -40,17 +40,40 @@ export function mountSandboxPanel(
 
   // ---- enemy roster: stats and spawn buttons ----
   el('div', 'sb-section', panel, 'enemies');
+
+  // Stage-minute preview: spawns come out scaled (hp, damage, speed, xp,
+  // visual band) exactly as they would at that point of a real run.
+  const statEls = new Map<EnemyKind, HTMLElement>();
+  const refreshStats = () => {
+    const t01 = world.stageTimeOverride / RUN.durationS;
+    for (const [kind, node] of statEls) {
+      const conf = ENEMIES[kind];
+      const s = enemyScaling(t01, kind);
+      node.textContent =
+        `hp ${Math.round(conf.hp * s.hpMul)} · dmg ${Math.round(conf.damage * s.dmgMul)}` +
+        ` · spd ${Math.round(conf.speed * s.spdMul)} · xp ${Math.round(conf.xp * s.xpMul)}`;
+    }
+  };
+  const minuteRow = el('div', 'sb-enemy', panel);
+  el('span', 'sb-enemy-name', el('div', 'sb-enemy-info', minuteRow), 'stage minute');
+  const minuteBtns = el('div', 'sb-btns', minuteRow);
+  const minuteOpts: HTMLButtonElement[] = [];
+  for (const min of [0, 2, 4, 6, 8]) {
+    const b = el('button', 'small', minuteBtns, String(min)) as HTMLButtonElement;
+    b.onclick = () => {
+      world.stageTimeOverride = min * 60;
+      minuteOpts.forEach((o) => o.classList.toggle('on', o === b));
+      refreshStats();
+    };
+    minuteOpts.push(b);
+  }
+  minuteOpts[0].classList.add('on');
+
   for (const kind of ENEMY_KINDS) {
-    const conf = ENEMIES[kind];
     const row = el('div', 'sb-enemy', panel);
     const info = el('div', 'sb-enemy-info', row);
     el('span', 'sb-enemy-name', info, kind);
-    el(
-      'span',
-      'sb-enemy-stats',
-      info,
-      `hp ${conf.hp} · dmg ${conf.damage} · spd ${conf.speed} · xp ${conf.xp}`,
-    );
+    statEls.set(kind, el('span', 'sb-enemy-stats', info));
     const btns = el('div', 'sb-btns', row);
     const one = el('button', 'small', btns, '+1') as HTMLButtonElement;
     one.onclick = () => world.spawnEnemy(kind);
@@ -61,6 +84,7 @@ export function mountSandboxPanel(
     const ring = el('button', 'small', btns, 'ring') as HTMLButtonElement;
     ring.onclick = () => world.spawnRingOf(kind, 24);
   }
+  refreshStats();
 
   const controls = el('div', 'sb-btns sb-controls', panel);
   const clear = el('button', 'small', controls, 'clear all') as HTMLButtonElement;

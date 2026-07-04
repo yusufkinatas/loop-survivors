@@ -13,11 +13,11 @@ export const RUN = {
   playerRadius: 12,
   /** Global invulnerability window after taking a hit. */
   iframesS: 0.5,
-  magnetRadius: 90,
+  magnetRadius: 110,
   pickupRadius: 18,
   /** XP needed to reach each next level. Tuned for ~12-14 level-ups over
    *  8 minutes (average pick gap ~35-40s, docs/phases/m2-the-arc.md). */
-  xpCurve: [8, 14, 22, 34, 50, 70, 95, 125, 160, 200, 245, 295, 350, 410, 475, 545],
+  xpCurve: [8, 14, 24, 38, 56, 80, 110, 148, 195, 250, 315, 390, 475, 570, 675, 790],
 };
 
 export type EnemyKind = 'swarmer' | 'tank' | 'darter';
@@ -31,8 +31,10 @@ export interface EnemyConf {
   color: number;
 }
 
-// Gate B (M1) verdict carried forward: the curve stays mean. Stretched from
-// 5 to 8 minutes; the darter threatens by demanding dodges, not attrition.
+// Gate B (M2) verdict carried forward: flat enemy HP against a build that
+// grows every pick made the back half trivial. Enemies now scale HP and
+// contact damage over the run, and the spawn ramp is superlinear so the
+// late game reads as a horde being carved through, not stragglers.
 export const ENEMIES: Record<EnemyKind, EnemyConf> & {
   swarmRateStart: number;
   swarmRateEnd: number;
@@ -44,6 +46,10 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
   darterRateEnd: number;
   spawnMargin: number;
   maxAlive: number;
+  hpScaleEnd: number;
+  damageScaleEnd: number;
+  speedScaleEnd: number;
+  rampExp: number;
 } = {
   swarmer: {
     radius: 9,
@@ -70,22 +76,75 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
     xp: 2,
     color: 0xe08a5a,
   },
-  /** Swarmers per second: ramps linearly from start to end over the run. */
+  /** Swarmers per second: start to end over the run, curved by rampExp. */
   swarmRateStart: 2.0,
-  swarmRateEnd: 14,
-  /** Tanks enter at tankFromS; interval shrinks linearly to the end. */
+  swarmRateEnd: 36,
+  /** Tanks enter at tankFromS; interval shrinks to the end. */
   tankFromS: 30,
   tankIntervalStartS: 12,
-  tankIntervalEndS: 3,
+  tankIntervalEndS: 2,
   /** Darters per second once they enter, ramping to the end. */
   darterFromS: 150,
   darterRateStart: 0.3,
-  darterRateEnd: 2.2,
+  darterRateEnd: 5,
   /** Spawn ring distance beyond the larger screen half-extent. */
   spawnMargin: 80,
-  /** Hard cap (spatial hash comfort zone). */
-  maxAlive: 1200,
+  /** Soft cap on the steady-state horde (VS-density target, see gate B
+   *  round 2: the screen must crowd, not trickle). */
+  maxAlive: 2400,
+  /** Enemy HP multiplier reached at minute 8 (curved by rampExp). Gate B
+   *  round 2 calibration: any build's damage grows multiplicatively, so
+   *  enemies must eventually win the scaling race — the player's damage
+   *  carves a bubble in the horde, it never clears the screen, and an AFK
+   *  player gets overrun no matter the build. */
+  hpScaleEnd: 16,
+  /** Contact damage multiplier reached at minute 8, linear. */
+  damageScaleEnd: 2,
+  /** Speed multiplier reached at minute 8, linear, darters excluded (their
+   *  dash is tuned to stay dodgeable): open-field kiting stops being free
+   *  once the pack can close during any hesitation. */
+  speedScaleEnd: 1.3,
+  /** Exponent shaping the spawn-rate and HP ramps: >1 keeps the early game
+   *  close to M1 and piles the growth into the back half (the horde). */
+  rampExp: 1.8,
 };
+
+/** Wave spawns may exceed maxAlive up to this absolute ceiling: a pinned
+ *  cap must not silently swallow the designed spikes. */
+export const MAX_ALIVE_HARD = 3000;
+
+/** Visual toughness bands (gate B round 3: a minute-7 swarmer is 16x a
+ *  minute-1 swarmer and looked identical). The shape stays the kind's
+ *  read; the band carries the danger read: color runs cool to hot, size
+ *  creeps up, and the top band gets a dark core. */
+export const ENEMY_BANDS = {
+  /** Run progress (0..1) at which the next band starts. */
+  t01: [0.28, 0.55, 0.78],
+  sizeMul: [1, 1.12, 1.22, 1.34],
+  colors: {
+    swarmer: [0x9aa0b4, 0xc9b478, 0xd98a56, 0xd94f5a],
+    tank: [0x6a7086, 0x94805e, 0xb06a46, 0xc04858],
+    darter: [0xe08a5a, 0xe8a04a, 0xff7a3c, 0xff4658],
+  } as Record<EnemyKind, number[]>,
+};
+
+/** The one scaling formula, shared by the run and the sandbox's stage-
+ *  minute preview so both always agree on what "minute N" means. */
+export function enemyScaling(
+  t01: number,
+  kind: EnemyKind,
+): { hpMul: number; dmgMul: number; spdMul: number; xpMul: number; band: number } {
+  const t = Math.min(1, Math.max(0, t01));
+  let band = 0;
+  for (const th of ENEMY_BANDS.t01) if (t >= th) band++;
+  return {
+    hpMul: 1 + (ENEMIES.hpScaleEnd - 1) * Math.pow(t, ENEMIES.rampExp),
+    dmgMul: 1 + (ENEMIES.damageScaleEnd - 1) * t,
+    spdMul: kind === 'darter' ? 1 : 1 + (ENEMIES.speedScaleEnd - 1) * t,
+    xpMul: 1 + 3 * Math.pow(t, 1.3),
+    band,
+  };
+}
 
 /** Darter burst cycle: dash flat-out, stop, re-aim, dash again. */
 export const DARTER = {
@@ -104,17 +163,20 @@ export interface WaveEvent {
 }
 
 export const WAVES: WaveEvent[] = [
-  { atS: 120, kind: 'ring', enemy: 'swarmer', count: 30 },
-  { atS: 180, kind: 'surge', enemy: 'darter', count: 10 },
-  { atS: 240, kind: 'ring', enemy: 'swarmer', count: 45 },
-  { atS: 270, kind: 'surge', enemy: 'tank', count: 4 },
-  { atS: 300, kind: 'ring', enemy: 'darter', count: 16 },
-  { atS: 330, kind: 'surge', enemy: 'swarmer', count: 60 },
-  { atS: 360, kind: 'ring', enemy: 'tank', count: 8 },
-  { atS: 390, kind: 'surge', enemy: 'darter', count: 24 },
-  { atS: 420, kind: 'ring', enemy: 'swarmer', count: 80 },
-  { atS: 450, kind: 'ring', enemy: 'tank', count: 10 },
-  { atS: 465, kind: 'surge', enemy: 'darter', count: 30 },
+  { atS: 120, kind: 'ring', enemy: 'swarmer', count: 40 },
+  { atS: 180, kind: 'surge', enemy: 'darter', count: 12 },
+  { atS: 210, kind: 'ring', enemy: 'swarmer', count: 60 },
+  { atS: 270, kind: 'surge', enemy: 'tank', count: 5 },
+  { atS: 285, kind: 'ring', enemy: 'swarmer', count: 90 },
+  { atS: 300, kind: 'ring', enemy: 'darter', count: 20 },
+  { atS: 330, kind: 'surge', enemy: 'swarmer', count: 160 },
+  { atS: 360, kind: 'ring', enemy: 'tank', count: 10 },
+  { atS: 375, kind: 'ring', enemy: 'swarmer', count: 220 },
+  { atS: 390, kind: 'surge', enemy: 'darter', count: 30 },
+  { atS: 420, kind: 'ring', enemy: 'swarmer', count: 280 },
+  { atS: 440, kind: 'surge', enemy: 'swarmer', count: 200 },
+  { atS: 450, kind: 'ring', enemy: 'tank', count: 14 },
+  { atS: 465, kind: 'surge', enemy: 'darter', count: 40 },
 ];
 
 export interface WeaponConf {
@@ -159,12 +221,14 @@ export const WEAPONS: Record<Role, WeaponConf[]> = {
     { damage: 26, speed: 145, radius: 52, lifetimeS: 2.6, pierce: Infinity },
     { damage: 34, speed: 150, radius: 60, lifetimeS: 2.8, pierce: Infinity },
   ],
-  // Zone that lingers and ticks damage on enemies inside.
+  // Zone thrown onto the nearest pack: ticks damage and slows enemies
+  // inside (gate B rework: zones under the player's own feet were dead
+  // weight — the horde is never standing where you are).
   chord: [
-    { damage: 5, radius: 85, lifetimeS: 1.5 },
-    { damage: 5, radius: 95, lifetimeS: 1.6 },
-    { damage: 6, radius: 105, lifetimeS: 1.8 },
-    { damage: 7, radius: 115, lifetimeS: 2.0 },
+    { damage: 3, radius: 95, lifetimeS: 2.0 },
+    { damage: 4, radius: 105, lifetimeS: 2.2 },
+    { damage: 5, radius: 120, lifetimeS: 2.4 },
+    { damage: 6, radius: 135, lifetimeS: 2.6 },
   ],
   // Homing seeker per melody note.
   lead: [
@@ -205,10 +269,10 @@ export const TIER_LINES: Record<Role, string[]> = {
     'massive wave every 4th bar',
   ],
   chord: [
-    'lingering damage zone',
+    'zone on the nearest pack: damage + slow',
     'zones twice as often',
     'bigger, longer zones',
-    'adds wide slow zones every 4th bar',
+    'adds huge lingering zones every 4th bar',
   ],
   lead: [
     'a few homing seekers',
@@ -228,5 +292,12 @@ export const VARIANT_EFFECTS = {
 /** How far weapons look for a target. */
 export const AIM_RANGE = 750;
 
-/** Zone damage tick interval (chord). */
-export const ZONE_TICK_S = 0.3;
+/** Zone damage tick interval (chord). Slower than M1's 0.3: the zone now
+ *  lands on the pack, so its per-tick reach is the whole horde — the slow
+ *  is the identity, the damage is chip. */
+export const ZONE_TICK_S = 0.45;
+
+/** Chord zones: enemy speed multiplier while inside, and how far a zone
+ *  can be thrown toward the nearest pack. */
+export const ZONE_SLOW_MUL = 0.55;
+export const ZONE_THROW_RANGE = 420;

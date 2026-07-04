@@ -10,10 +10,15 @@ import {
   AIM_RANGE,
   DARTER,
   ENEMIES,
+  ENEMY_BANDS,
+  enemyScaling,
+  MAX_ALIVE_HARD,
   RUN,
   VARIANT_EFFECTS,
   WAVES,
   WEAPONS,
+  ZONE_SLOW_MUL,
+  ZONE_THROW_RANGE,
   ZONE_TICK_S,
   type EnemyKind,
   type WeaponConf,
@@ -40,6 +45,8 @@ export interface Enemy {
   dashX: number;
   dashY: number;
   dashing: boolean;
+  /** Time left under a chord zone's slow. */
+  slowT: number;
 }
 
 interface Projectile {
@@ -111,6 +118,9 @@ export class RunWorld {
   kills = 0;
   killsByRole: Partial<Record<Role, number>> = {};
   invincible = false;
+  /** Sandbox only: spawns scale as if the run were at this many seconds
+   *  (the panel's stage-minute preview). Scripted runs use timeS. */
+  stageTimeOverride = 0;
 
   private input = new Input();
   private events: RunEvents;
@@ -204,7 +214,10 @@ export class RunWorld {
         break;
       }
       case 'chord': {
-        this.spawnZone(p.x, p.y, conf, color);
+        // Thrown at the nearest enemy, not dropped underfoot: the zone has
+        // to land where the horde actually is to be worth a pick.
+        const target = this.nearestEnemy(ZONE_THROW_RANGE);
+        this.spawnZone(target?.x ?? p.x, target?.y ?? p.y, conf, color);
         break;
       }
       case 'snare':
@@ -335,11 +348,12 @@ export class RunWorld {
     return Math.max(this.worldW, this.worldH) / 2 + ENEMIES.spawnMargin + radius;
   }
 
-  /** A ring closing in from all sides at once. */
+  /** A ring closing in from all sides at once. Waves get to exceed the
+   *  soft cap: a pinned cap must not swallow the designed spikes. */
   spawnRingOf(kind: EnemyKind, count: number): void {
     const start = Math.random() * Math.PI * 2;
     for (let i = 0; i < count; i++) {
-      this.spawnEnemy(kind, start + (i / count) * Math.PI * 2);
+      this.spawnEnemy(kind, start + (i / count) * Math.PI * 2, 1, true);
     }
   }
 
@@ -347,35 +361,50 @@ export class RunWorld {
   spawnSurgeOf(kind: EnemyKind, count: number): void {
     const center = Math.random() * Math.PI * 2;
     for (let i = 0; i < count; i++) {
-      this.spawnEnemy(kind, center + (Math.random() * 2 - 1) * 0.5, 1 + Math.random() * 0.6);
+      this.spawnEnemy(kind, center + (Math.random() * 2 - 1) * 0.5, 1 + Math.random() * 0.6, true);
     }
   }
 
-  spawnEnemy(kind: EnemyKind, angle = Math.random() * Math.PI * 2, distMul = 1): void {
-    if (this.enemies.length >= ENEMIES.maxAlive) return;
+  spawnEnemy(kind: EnemyKind, angle = Math.random() * Math.PI * 2, distMul = 1, wave = false): void {
+    if (this.enemies.length >= (wave ? MAX_ALIVE_HARD : ENEMIES.maxAlive)) return;
     const conf = ENEMIES[kind];
     const dist = this.spawnDist(conf.radius) * distMul;
+    // Scaling over the run: HP opposes the build's growth curve, contact
+    // damage creeps so late hits stay scary, and the visual band says how
+    // dangerous this enemy is. The sandbox spawns at its stage-minute
+    // preview (default 0 = the stat-card values).
+    const t = this.scripted ? this.timeS : this.stageTimeOverride;
+    const s = enemyScaling(t / RUN.durationS, kind);
+    const radius = conf.radius * ENEMY_BANDS.sizeMul[s.band];
+    const color = ENEMY_BANDS.colors[kind][s.band];
     const gfx = new Graphics();
     if (kind === 'tank') {
-      gfx.rect(-conf.radius, -conf.radius, conf.radius * 2, conf.radius * 2).fill(0xffffff);
+      gfx.rect(-radius, -radius, radius * 2, radius * 2).fill(0xffffff);
     } else if (kind === 'darter') {
       // pointed sliver: reads as "fast" at a glance
-      gfx.poly([conf.radius * 1.6, 0, -conf.radius, conf.radius * 0.9, -conf.radius, -conf.radius * 0.9]).fill(0xffffff);
+      gfx.poly([radius * 1.6, 0, -radius, radius * 0.9, -radius, -radius * 0.9]).fill(0xffffff);
     } else {
-      gfx.circle(0, 0, conf.radius).fill(0xffffff);
+      gfx.circle(0, 0, radius).fill(0xffffff);
     }
-    gfx.tint = conf.color;
+    // top band: a dark core marks the elites even mid hit-flash
+    if (s.band === 3) {
+      if (kind === 'tank') gfx.rect(-radius * 0.4, -radius * 0.4, radius * 0.8, radius * 0.8).fill(0x101014);
+      else gfx.circle(0, 0, radius * 0.38).fill(0x101014);
+    }
+    gfx.tint = color;
     this.stage.addChild(gfx);
     this.enemies.push({
       kind,
       x: this.player.x + Math.cos(angle) * dist,
       y: this.player.y + Math.sin(angle) * dist,
-      radius: conf.radius,
-      hp: conf.hp,
-      speed: conf.speed,
-      damage: conf.damage,
-      xp: conf.xp,
-      color: conf.color,
+      radius,
+      hp: conf.hp * s.hpMul,
+      speed: conf.speed * s.spdMul,
+      damage: Math.round(conf.damage * s.dmgMul),
+      // Tougher enemies drop more: keeps the pick cadence steady while the
+      // horde thickens, instead of starving the back half of level-ups.
+      xp: Math.round(conf.xp * s.xpMul),
+      color,
       gfx,
       flashT: 0,
       dead: false,
@@ -383,6 +412,7 @@ export class RunWorld {
       dashX: 0,
       dashY: 0,
       dashing: false,
+      slowT: 0,
     });
   }
 
@@ -396,6 +426,11 @@ export class RunWorld {
     const p = this.player;
     for (const e of this.enemies) {
       if (e.dead) continue;
+      let speed = e.speed;
+      if (e.slowT > 0) {
+        e.slowT -= dt;
+        speed *= ZONE_SLOW_MUL;
+      }
 
       if (e.kind === 'darter') {
         // Straight bursts: lock onto the player's position, dash flat out,
@@ -413,8 +448,8 @@ export class RunWorld {
           }
         }
         if (e.dashing) {
-          e.x += e.dashX * e.speed * dt;
-          e.y += e.dashY * e.speed * dt;
+          e.x += e.dashX * speed * dt;
+          e.y += e.dashY * speed * dt;
           e.gfx.rotation = Math.atan2(e.dashY, e.dashX);
         }
         if (e.flashT > 0) {
@@ -430,7 +465,8 @@ export class RunWorld {
       const d = Math.hypot(dx, dy) || 1;
       dx /= d;
       dy /= d;
-      // separation steering against overlapping neighbors
+      // separation steering against overlapping neighbors — kept weak so
+      // the horde packs into a VS-style wall instead of spreading out
       const near = this.hash.query(e.x, e.y, e.radius * 2, this.queryBuf);
       let sx = 0;
       let sy = 0;
@@ -445,8 +481,8 @@ export class RunWorld {
           sy += (oy / od) * overlap;
         }
       }
-      e.x += (dx * e.speed + sx * 4) * dt;
-      e.y += (dy * e.speed + sy * 4) * dt;
+      e.x += (dx * speed + sx * 1.5) * dt;
+      e.y += (dy * speed + sy * 1.5) * dt;
       if (e.flashT > 0) {
         e.flashT -= dt;
         if (e.flashT <= 0) e.gfx.tint = e.color;
@@ -484,6 +520,12 @@ export class RunWorld {
     this.checkLevel();
   }
 
+  /** Debug helper: jump straight to the next level-up. */
+  levelUp(): void {
+    const threshold = RUN.xpCurve[Math.min(this.level - 1, RUN.xpCurve.length - 1)];
+    this.grantXp(Math.max(0, threshold - this.xp));
+  }
+
   /** Debug helper: kill everything on screen. */
   killVisible(): void {
     for (const e of this.enemies) {
@@ -498,10 +540,10 @@ export class RunWorld {
 
   // ---- weapons ----
 
-  private aimDir(spread: number): { x: number; y: number } {
+  private nearestEnemy(range: number): Enemy | null {
     const p = this.player;
     let best: Enemy | null = null;
-    let bestD = AIM_RANGE * AIM_RANGE;
+    let bestD = range * range;
     for (const e of this.enemies) {
       if (e.dead) continue;
       const dx = e.x - p.x;
@@ -512,6 +554,12 @@ export class RunWorld {
         best = e;
       }
     }
+    return best;
+  }
+
+  private aimDir(spread: number): { x: number; y: number } {
+    const p = this.player;
+    const best = this.nearestEnemy(AIM_RANGE);
     let ang: number;
     if (best) {
       ang = Math.atan2(best.y - p.y, best.x - p.x);
@@ -653,6 +701,11 @@ export class RunWorld {
       if (z.tickT <= 0) {
         z.tickT = ZONE_TICK_S;
         this.damageArea(z.x, z.y, z.radius, z.damage, 'chord');
+        // The zone's other half: everything inside wades, it doesn't walk.
+        const near = this.hash.query(z.x, z.y, z.radius + 24, this.queryBuf);
+        for (const e of near) {
+          if (!e.dead && circlesOverlap(z, e)) e.slowT = ZONE_TICK_S + 0.15;
+        }
       }
       z.gfx.alpha = Math.min(1, z.lifeS * 2);
       if (z.lifeS <= 0) {
