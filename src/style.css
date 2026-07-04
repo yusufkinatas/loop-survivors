@@ -707,6 +707,20 @@ button.big {
   color: #cfd2e0;
 }
 
+/* Shown while a seek computes: the picture freezes behind this note. */
+.seek-overlay {
+  position: absolute;
+  top: 42%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(34, 34, 42, 0.92);
+  border: 1px solid #3a3a46;
+  border-radius: 6px;
+  padding: 10px 20px;
+  z-index: 7;
+  font-variant-numeric: tabular-nums;
+}
+
 .debug-btn {
   color: #9a9ab0;
   background: rgba(34, 34, 42, 0.85);

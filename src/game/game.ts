@@ -130,6 +130,14 @@ export async function bootGame(
   // guarantees the identical run — then fast-forward to the target.
   let replayTarget: number | null = null;
   let lastReplay: { seed: number; mover: MoverName; policy: string } | null = null;
+  /** Background probe: a second headless copy of the run raced ahead to
+   *  discover where it actually ends, so the seek bar can span the real
+   *  run (its right edge = the moment of death) instead of a flat 8:00. */
+  let probe: { world: RunWorld; conductor: VirtualConductor; endT: number | null } | null = null;
+  const seekOverlay = document.createElement('div');
+  seekOverlay.className = 'seek-overlay';
+  seekOverlay.style.display = 'none';
+  root.appendChild(seekOverlay);
   const seekRow = document.createElement('div');
   seekRow.className = 'replay-seek';
   seekRow.style.display = 'none';
@@ -166,6 +174,45 @@ export async function bootGame(
     applyGain();
   }
 
+  /** The probe is the same run again (same seed, same policies), stepped in
+   *  spare frame time with no fx and no view until it ends. */
+  function startProbe(seed: number, moverName: MoverName, policySpec: string): void {
+    const rng = mulberry32(seed);
+    const policy = makePolicy(policySpec);
+    const mover = MOVERS[moverName] ?? MOVERS.kiter;
+    const events = {
+      onLevelUp: () => probe?.conductor.onLevelUp(),
+      onDeath: () => finishProbe(),
+      onVictory: () => finishProbe(),
+      onHit: () => {},
+    };
+    const w: RunWorld = new RunWorld(SIM_VIEW, events, {
+      rng,
+      control: () => mover(w),
+      fx: false,
+    });
+    const conductor = new VirtualConductor(w, policy.choose, rng);
+    probe = { world: w, conductor, endT: null };
+    conductor.start(policy.startingKit(rng));
+  }
+
+  function finishProbe(): void {
+    if (!probe || probe.endT !== null) return;
+    probe.endT = probe.world.timeS;
+    seekSlider.max = String(Math.ceil(probe.endT));
+  }
+
+  /** Step the probe inside a small per-frame budget until it ends. */
+  function pumpProbe(): void {
+    if (!probe || probe.endT !== null) return;
+    const deadline = performance.now() + 6;
+    let guard = 0;
+    while (probe.endT === null && performance.now() < deadline && guard++ < 4000) {
+      probe.conductor.tick(SIM_DT);
+      probe.world.update(SIM_DT);
+    }
+  }
+
   function applyGain(): void {
     engine.setMasterGain(muted || replaySpeed > 1 || replayTarget !== null ? 0 : 0.8);
   }
@@ -195,6 +242,8 @@ export async function bootGame(
     world = null;
     replayConductor = null;
     replayAcc = 0;
+    probe = null;
+    seekOverlay.style.display = 'none';
     engine.clearBarQueue();
     for (const role of ROLES) engine.setVoiceEnabled(role, false);
   }
@@ -285,8 +334,10 @@ export async function bootGame(
     speedRow.style.display = '';
     seekRow.style.display = '';
     seekSlider.value = '0';
+    seekSlider.max = String(RUN.durationS);
     seekLabel.textContent = '0:00';
     setReplaySpeed(1);
+    startProbe(seed, moverName, policySpec);
     state = 'replay';
     void engine.ctx.resume();
     engine.clock.start();
@@ -298,8 +349,10 @@ export async function bootGame(
     state = 'end';
     speedRow.style.display = 'none';
     seekRow.style.display = 'none';
+    seekOverlay.style.display = 'none';
     replaySpeed = 1;
     replayTarget = null;
+    probe = null;
     applyGain();
     engine.clock.stop();
     engine.clearBarQueue();
@@ -355,10 +408,12 @@ export async function bootGame(
         world.timeS,
       );
     } else if (state === 'replay' && world && replayConductor) {
+      pumpProbe();
       if (replayTarget !== null) {
-        // seeking: step flat out inside a per-frame time budget so the
-        // page stays responsive while the sim catches up to the target
-        const deadline = performance.now() + 24;
+        // seeking: the picture freezes behind a "jumping to…" note while
+        // the sim computes flat out inside a per-frame budget — a seek
+        // should read as a load, not as hyper-speed gameplay
+        const deadline = performance.now() + 40;
         while (
           state === 'replay' &&
           world.timeS < replayTarget &&
@@ -367,10 +422,20 @@ export async function bootGame(
           replayConductor.tick(SIM_DT);
           world.update(SIM_DT);
         }
-        if (state === 'replay' && world.timeS >= replayTarget) {
-          replayTarget = null;
-          replayAcc = 0;
-          applyGain();
+        if (state === 'replay') {
+          if (world.timeS >= replayTarget) {
+            replayTarget = null;
+            replayAcc = 0;
+            seekOverlay.style.display = 'none';
+            if (world.fx) world.fx.length = 0; // drop queued juice from the jump
+            applyGain();
+          } else {
+            if (world.fx) world.fx.length = 0; // nobody draws during the jump
+            seekOverlay.style.display = '';
+            seekOverlay.textContent = `jumping to ${fmtTime(replayTarget)} — at ${fmtTime(world.timeS)}`;
+            if (!seekDragging) seekSlider.value = String(Math.floor(world.timeS));
+            return; // picture stays frozen while jumping
+          }
         }
       } else {
         // fixed 60 Hz sub-steps: only fixed ticks reproduce the batch run.
