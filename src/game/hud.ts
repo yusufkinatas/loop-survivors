@@ -28,6 +28,7 @@ export class Hud {
   private timer: HTMLElement;
   private levelEl: HTMLElement;
   private flash: HTMLElement;
+  private toastStack: HTMLElement;
   private screen: HTMLElement | null = null;
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
   private kits: Map<Role, Kit>;
@@ -49,6 +50,7 @@ export class Hud {
     this.bar.style.display = 'none';
 
     this.flash = el('div', 'hit-flash', root);
+    this.toastStack = el('div', 'toast-stack', root);
   }
 
   showHud(show: boolean): void {
@@ -160,10 +162,18 @@ export class Hud {
     window.addEventListener('keydown', this.keyHandler);
   }
 
-  /** Heal fallback when every kit is owned. */
+  /** Transient notice (heal fallback, bot replay picks). Toasts stack
+   *  instead of overlapping, animate in and out, and cap at four. */
   showToast(text: string): void {
-    const t = el('div', 'toast', this.root, text);
-    setTimeout(() => t.remove(), 1600);
+    while (this.toastStack.children.length >= 4) this.toastStack.firstElementChild!.remove();
+    const t = el('div', 'toast', this.toastStack, text);
+    void t.offsetWidth; // commit the hidden state so the transition runs
+    t.classList.add('show');
+    setTimeout(() => {
+      t.classList.replace('show', 'hide');
+      t.addEventListener('transitionend', () => t.remove(), { once: true });
+      setTimeout(() => t.remove(), 400); // fallback if transitionend never fires
+    }, 2100);
   }
 
   /** End screen. Weapon chips lead with damage share, kills in parentheses:
