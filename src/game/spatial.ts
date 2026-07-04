@@ -8,10 +8,15 @@ export interface Circle {
   radius: number;
 }
 
-const CELL = 64;
+// Sized to the swarmer, the entity that packs: big cells return the whole
+// packed wall as candidates for every tiny separation query.
+const CELL = 32;
 
 export class SpatialHash<T extends Circle> {
   private cells = new Map<number, T[]>();
+  /** Largest inserted radius: queries widen by this so an item whose body
+   *  crosses cell borders is still found from its single center cell. */
+  private maxR = 0;
 
   private static key(cx: number, cy: number): number {
     // pack two small signed ints into one number key
@@ -20,38 +25,34 @@ export class SpatialHash<T extends Circle> {
 
   clear(): void {
     this.cells.clear();
+    this.maxR = 0;
   }
 
+  /** One cell per item (its center). Multi-cell insertion needed a dedup
+   *  scan on every query — quadratic inside a packed horde bucket, and the
+   *  frame's hot spot above ~2000 alive (M2 sub-phase C). */
   insert(item: T): void {
-    const minX = Math.floor((item.x - item.radius) / CELL);
-    const maxX = Math.floor((item.x + item.radius) / CELL);
-    const minY = Math.floor((item.y - item.radius) / CELL);
-    const maxY = Math.floor((item.y + item.radius) / CELL);
-    for (let cx = minX; cx <= maxX; cx++) {
-      for (let cy = minY; cy <= maxY; cy++) {
-        const k = SpatialHash.key(cx, cy);
-        let bucket = this.cells.get(k);
-        if (!bucket) this.cells.set(k, (bucket = []));
-        bucket.push(item);
-      }
-    }
+    const k = SpatialHash.key(Math.floor(item.x / CELL), Math.floor(item.y / CELL));
+    let bucket = this.cells.get(k);
+    if (!bucket) this.cells.set(k, (bucket = []));
+    bucket.push(item);
+    if (item.radius > this.maxR) this.maxR = item.radius;
   }
 
-  /** Distinct items whose cells overlap the query circle. Callers still do
-   *  the exact circle-vs-circle test. */
+  /** Items whose cells overlap the query circle (a superset; callers still
+   *  do the exact circle-vs-circle test). Never contains duplicates. */
   query(x: number, y: number, radius: number, out: T[] = []): T[] {
     out.length = 0;
-    const minX = Math.floor((x - radius) / CELL);
-    const maxX = Math.floor((x + radius) / CELL);
-    const minY = Math.floor((y - radius) / CELL);
-    const maxY = Math.floor((y + radius) / CELL);
+    const reach = radius + this.maxR;
+    const minX = Math.floor((x - reach) / CELL);
+    const maxX = Math.floor((x + reach) / CELL);
+    const minY = Math.floor((y - reach) / CELL);
+    const maxY = Math.floor((y + reach) / CELL);
     for (let cx = minX; cx <= maxX; cx++) {
       for (let cy = minY; cy <= maxY; cy++) {
         const bucket = this.cells.get(SpatialHash.key(cx, cy));
         if (!bucket) continue;
-        for (const item of bucket) {
-          if (!out.includes(item)) out.push(item);
-        }
+        for (const item of bucket) out.push(item);
       }
     }
     return out;

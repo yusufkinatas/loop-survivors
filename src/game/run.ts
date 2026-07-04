@@ -452,7 +452,9 @@ export class RunWorld {
       dx /= d;
       dy /= d;
       // separation steering against overlapping neighbors — kept weak so
-      // the horde packs into a VS-style wall instead of spreading out
+      // the horde packs into a VS-style wall instead of spreading out.
+      // Squared-distance early-out: in the packed wall most candidates
+      // don't overlap, and this loop is the frame's hottest code.
       const near = this.hash.query(e.x, e.y, e.radius * 2, this.queryBuf);
       let sx = 0;
       let sy = 0;
@@ -460,12 +462,13 @@ export class RunWorld {
         if (o === e || o.dead) continue;
         const ox = e.x - o.x;
         const oy = e.y - o.y;
-        const od = Math.hypot(ox, oy);
-        const overlap = e.radius + o.radius - od;
-        if (overlap > 0 && od > 0.001) {
-          sx += (ox / od) * overlap;
-          sy += (oy / od) * overlap;
-        }
+        const r = e.radius + o.radius;
+        const d2 = ox * ox + oy * oy;
+        if (d2 >= r * r || d2 < 0.000001) continue;
+        const od = Math.sqrt(d2);
+        const overlap = r - od;
+        sx += (ox / od) * overlap;
+        sy += (oy / od) * overlap;
       }
       e.x += (dx * speed + sx * 1.5) * dt;
       e.y += (dy * speed + sy * 1.5) * dt;
