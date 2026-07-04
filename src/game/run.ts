@@ -2,8 +2,13 @@
 // coupling point where an engine trigger becomes damage (Model A: one event,
 // two outputs). The stage script here is time-driven only and carries no
 // musical meaning (the dividing rule, docs/plan.md).
+//
+// This file is pure simulation: no rendering, no input devices, no real
+// time. Rendering lives in view.ts, which reads this world's state each
+// frame. Randomness and movement control are injected so the autoplay bot
+// (docs/tools/autoplay-bot.md) can run the same world headless under a
+// seeded RNG — one source of truth, the game and the bot share this code.
 
-import { Container, Graphics } from 'pixi.js';
 import type { Role } from '../audio/kits';
 import type { ScheduledTrigger } from '../audio/engine';
 import {
@@ -23,7 +28,8 @@ import {
   type EnemyKind,
   type WeaponConf,
 } from './config';
-import { Input } from './input';
+import { dcos, dsin } from './dmath';
+import type { Rng } from './rng';
 import { SpatialHash, circlesOverlap } from './spatial';
 
 export interface Enemy {
@@ -36,7 +42,8 @@ export interface Enemy {
   damage: number;
   xp: number;
   color: number;
-  gfx: Graphics;
+  /** Toughness band 0-3 (visual danger read; the view draws it). */
+  band: number;
   flashT: number;
   dead: boolean;
   /** Darter burst state: time left in the current dash/pause, and the
@@ -49,7 +56,7 @@ export interface Enemy {
   slowT: number;
 }
 
-interface Projectile {
+export interface Projectile {
   role: Role;
   x: number;
   y: number;
@@ -62,33 +69,30 @@ interface Projectile {
   homing: boolean;
   speed: number;
   color: number;
-  gfx: Graphics;
   hit: Set<Enemy>;
 }
 
-interface Zone {
+export interface Zone {
   x: number;
   y: number;
   radius: number;
   damage: number;
   lifeS: number;
   tickT: number;
-  gfx: Graphics;
+  color: number;
 }
 
-interface Gem {
+export interface Gem {
   x: number;
   y: number;
   xp: number;
-  gfx: Graphics;
 }
 
-interface Pop {
-  gfx: Graphics;
-  t: number;
-  dur: number;
-  grow: number;
-}
+/** Fire-and-forget visuals the world requests and the view renders. Null in
+ *  headless runs: the bot pays nothing for juice nobody sees. */
+export type FxEvent =
+  | { type: 'ring'; x: number; y: number; radius: number; color: number; dur: number }
+  | { type: 'pop'; x: number; y: number; radius: number };
 
 export interface RunEvents {
   onLevelUp(level: number): void;
@@ -97,7 +101,7 @@ export interface RunEvents {
   onHit(): void;
 }
 
-const KIT_COLORS: Record<Role, number> = {
+export const KIT_COLORS: Record<Role, number> = {
   kick: 0xff5a3c,
   snare: 0xffc93c,
   hat: 0x3ce0ff,
@@ -106,8 +110,19 @@ const KIT_COLORS: Record<Role, number> = {
   lead: 0xff6bd6,
 };
 
+export interface RunWorldOpts {
+  /** False in the sandbox: no stage script, no waves, no victory timer. */
+  scripted?: boolean;
+  /** Injected randomness; bot runs pass a seeded generator. */
+  rng?: Rng;
+  /** Movement axis provider (magnitude 0..1). The game wires the keyboard/
+   *  joystick here; the bot wires a mover. */
+  control?: () => { x: number; y: number };
+  /** False for headless runs: skip the fx queue entirely. */
+  fx?: boolean;
+}
+
 export class RunWorld {
-  readonly stage: Container;
   /** Owned weapons and their ladder tier (1-4). */
   readonly tiers = new Map<Role, number>();
 
@@ -117,69 +132,73 @@ export class RunWorld {
   timeS = 0;
   kills = 0;
   killsByRole: Partial<Record<Role, number>> = {};
+  /** Effective damage dealt per weapon (overkill not counted): the primary
+   *  attribution metric — kill counts flatter AoE last hits and hide
+   *  single-target work on tanks (docs/tools/autoplay-bot.md). */
+  damageByRole: Partial<Record<Role, number>> = {};
   invincible = false;
   /** Sandbox only: spawns scale as if the run were at this many seconds
    *  (the panel's stage-minute preview). Scripted runs use timeS. */
   stageTimeOverride = 0;
 
-  private input = new Input();
+  /** Visual-effect requests for the view; null when running headless. */
+  readonly fx: FxEvent[] | null;
+
+  readonly enemies: Enemy[] = [];
+  readonly projectiles: Projectile[] = [];
+  readonly zones: Zone[] = [];
+  readonly gems: Gem[] = [];
+
+  private rng: Rng;
+  private control: () => { x: number; y: number };
   private events: RunEvents;
   private view: { width: number; height: number };
 
-  private enemies: Enemy[] = [];
-  private projectiles: Projectile[] = [];
-  private zones: Zone[] = [];
-  private gems: Gem[] = [];
-  private pops: Pop[] = [];
   private hash = new SpatialHash<Enemy>();
   private queryBuf: Enemy[] = [];
 
-  private gridGfx = new Graphics();
-  private playerGfx = new Graphics();
   private swarmCarry = 0;
   private darterCarry = 0;
   private nextTankAtS = ENEMIES.tankFromS;
   private waveIdx = 0;
-  /** False in the sandbox: no stage script, no waves, no victory timer. */
   private scripted: boolean;
 
   constructor(
     view: { width: number; height: number },
     events: RunEvents,
-    opts: { scripted?: boolean } = {},
+    opts: RunWorldOpts = {},
   ) {
     this.view = view;
     this.events = events;
     this.scripted = opts.scripted ?? true;
-    this.stage = new Container();
-    this.stage.addChild(this.gridGfx);
-    this.playerGfx.circle(0, 0, RUN.playerRadius).fill(0xffffff);
-    this.stage.addChild(this.playerGfx);
+    this.rng = opts.rng ?? Math.random;
+    this.control = opts.control ?? (() => ({ x: 0, y: 0 }));
+    this.fx = (opts.fx ?? true) ? [] : null;
   }
 
   get enemyCount(): number {
     return this.enemies.length;
   }
 
+  get projectileCount(): number {
+    return this.projectiles.length;
+  }
+
   /** Camera zoom: phones render fewer pixels, so the stage scales down to
    *  keep the visible slice of world (and the spawn ring, and reaction
    *  time) comparable across screen sizes. 1 on desktop, down to 0.5. */
-  private get zoom(): number {
+  get zoom(): number {
     const z = Math.min(this.view.width / 1280, this.view.height / 800);
     return Math.min(1, Math.max(0.5, z));
   }
 
   /** Visible world extent (screen pixels divided by zoom). */
-  private get worldW(): number {
+  get worldW(): number {
     return this.view.width / this.zoom;
   }
 
-  private get worldH(): number {
+  get worldH(): number {
     return this.view.height / this.zoom;
-  }
-
-  get projectileCount(): number {
-    return this.projectiles.length;
   }
 
   /** The coupling point: a scheduled trigger fires this kit's weapon at the
@@ -264,26 +283,14 @@ export class RunWorld {
     this.updateProjectiles(dt);
     this.updateZones(dt);
     this.updateGems(dt);
-    this.updatePops(dt);
     this.contactDamage(dt);
     this.reapEnemies();
-    this.drawGrid();
-
-    // camera locked on player, scaled for the screen
-    const zoom = this.zoom;
-    this.stage.scale.set(zoom);
-    this.stage.position.set(
-      this.view.width / 2 - this.player.x * zoom,
-      this.view.height / 2 - this.player.y * zoom,
-    );
-    this.playerGfx.position.set(this.player.x, this.player.y);
-    this.playerGfx.alpha = this.player.iframesT > 0 ? 0.5 : 1;
   }
 
   // ---- player ----
 
   private movePlayer(dt: number): void {
-    const a = this.input.axis();
+    const a = this.control();
     this.player.x += a.x * RUN.playerSpeed * dt;
     this.player.y += a.y * RUN.playerSpeed * dt;
     if (this.player.iframesT > 0) this.player.iframesT -= dt;
@@ -351,7 +358,7 @@ export class RunWorld {
   /** A ring closing in from all sides at once. Waves get to exceed the
    *  soft cap: a pinned cap must not swallow the designed spikes. */
   spawnRingOf(kind: EnemyKind, count: number): void {
-    const start = Math.random() * Math.PI * 2;
+    const start = this.rng() * Math.PI * 2;
     for (let i = 0; i < count; i++) {
       this.spawnEnemy(kind, start + (i / count) * Math.PI * 2, 1, true);
     }
@@ -359,14 +366,15 @@ export class RunWorld {
 
   /** A surge pouring in from one direction in a loose arc. */
   spawnSurgeOf(kind: EnemyKind, count: number): void {
-    const center = Math.random() * Math.PI * 2;
+    const center = this.rng() * Math.PI * 2;
     for (let i = 0; i < count; i++) {
-      this.spawnEnemy(kind, center + (Math.random() * 2 - 1) * 0.5, 1 + Math.random() * 0.6, true);
+      this.spawnEnemy(kind, center + (this.rng() * 2 - 1) * 0.5, 1 + this.rng() * 0.6, true);
     }
   }
 
-  spawnEnemy(kind: EnemyKind, angle = Math.random() * Math.PI * 2, distMul = 1, wave = false): void {
+  spawnEnemy(kind: EnemyKind, angle?: number, distMul = 1, wave = false): void {
     if (this.enemies.length >= (wave ? MAX_ALIVE_HARD : ENEMIES.maxAlive)) return;
+    const a = angle ?? this.rng() * Math.PI * 2;
     const conf = ENEMIES[kind];
     const dist = this.spawnDist(conf.radius) * distMul;
     // Scaling over the run: HP opposes the build's growth curve, contact
@@ -377,26 +385,10 @@ export class RunWorld {
     const s = enemyScaling(t / RUN.durationS, kind);
     const radius = conf.radius * ENEMY_BANDS.sizeMul[s.band];
     const color = ENEMY_BANDS.colors[kind][s.band];
-    const gfx = new Graphics();
-    if (kind === 'tank') {
-      gfx.rect(-radius, -radius, radius * 2, radius * 2).fill(0xffffff);
-    } else if (kind === 'darter') {
-      // pointed sliver: reads as "fast" at a glance
-      gfx.poly([radius * 1.6, 0, -radius, radius * 0.9, -radius, -radius * 0.9]).fill(0xffffff);
-    } else {
-      gfx.circle(0, 0, radius).fill(0xffffff);
-    }
-    // top band: a dark core marks the elites even mid hit-flash
-    if (s.band === 3) {
-      if (kind === 'tank') gfx.rect(-radius * 0.4, -radius * 0.4, radius * 0.8, radius * 0.8).fill(0x101014);
-      else gfx.circle(0, 0, radius * 0.38).fill(0x101014);
-    }
-    gfx.tint = color;
-    this.stage.addChild(gfx);
     this.enemies.push({
       kind,
-      x: this.player.x + Math.cos(angle) * dist,
-      y: this.player.y + Math.sin(angle) * dist,
+      x: this.player.x + dcos(a) * dist,
+      y: this.player.y + dsin(a) * dist,
       radius,
       hp: conf.hp * s.hpMul,
       speed: conf.speed * s.spdMul,
@@ -405,7 +397,7 @@ export class RunWorld {
       // horde thickens, instead of starving the back half of level-ups.
       xp: Math.round(conf.xp * s.xpMul),
       color,
-      gfx,
+      band: s.band,
       flashT: 0,
       dead: false,
       dashT: 0,
@@ -418,7 +410,6 @@ export class RunWorld {
 
   /** Sandbox: remove every enemy without kills, gems, or pops. */
   clearEnemies(): void {
-    for (const e of this.enemies) e.gfx.destroy();
     this.enemies.length = 0;
   }
 
@@ -431,6 +422,7 @@ export class RunWorld {
         e.slowT -= dt;
         speed *= ZONE_SLOW_MUL;
       }
+      if (e.flashT > 0) e.flashT -= dt;
 
       if (e.kind === 'darter') {
         // Straight bursts: lock onto the player's position, dash flat out,
@@ -450,13 +442,7 @@ export class RunWorld {
         if (e.dashing) {
           e.x += e.dashX * speed * dt;
           e.y += e.dashY * speed * dt;
-          e.gfx.rotation = Math.atan2(e.dashY, e.dashX);
         }
-        if (e.flashT > 0) {
-          e.flashT -= dt;
-          if (e.flashT <= 0) e.gfx.tint = e.color;
-        }
-        e.gfx.position.set(e.x, e.y);
         continue;
       }
 
@@ -483,19 +469,17 @@ export class RunWorld {
       }
       e.x += (dx * speed + sx * 1.5) * dt;
       e.y += (dy * speed + sy * 1.5) * dt;
-      if (e.flashT > 0) {
-        e.flashT -= dt;
-        if (e.flashT <= 0) e.gfx.tint = e.color;
-      }
-      e.gfx.position.set(e.x, e.y);
     }
   }
 
   private damageEnemy(e: Enemy, amount: number, source?: Role): void {
     if (e.dead) return;
+    // Effective damage only: overkill on a 3hp swarmer must not count as a
+    // 34-damage contribution, or AoE sweeps inflate their share.
+    const dealt = Math.min(e.hp, amount);
     e.hp -= amount;
     e.flashT = 0.08;
-    e.gfx.tint = 0xffffff;
+    if (source) this.damageByRole[source] = (this.damageByRole[source] ?? 0) + dealt;
     if (e.hp <= 0) {
       e.dead = true;
       this.kills++;
@@ -507,10 +491,7 @@ export class RunWorld {
 
   private reapEnemies(): void {
     for (let i = this.enemies.length - 1; i >= 0; i--) {
-      const e = this.enemies[i];
-      if (!e.dead) continue;
-      e.gfx.destroy();
-      this.enemies.splice(i, 1);
+      if (this.enemies[i].dead) this.enemies.splice(i, 1);
     }
   }
 
@@ -564,10 +545,10 @@ export class RunWorld {
     if (best) {
       ang = Math.atan2(best.y - p.y, best.x - p.x);
     } else {
-      ang = Math.random() * Math.PI * 2;
+      ang = this.rng() * Math.PI * 2;
     }
-    ang += (Math.random() * 2 - 1) * spread;
-    return { x: Math.cos(ang), y: Math.sin(ang) };
+    ang += (this.rng() * 2 - 1) * spread;
+    return { x: dcos(ang), y: dsin(ang) };
   }
 
   private spawnProjectile(
@@ -577,25 +558,6 @@ export class RunWorld {
     color: number,
     velocity: number,
   ): void {
-    // Distinct silhouette per weapon (gate B: colored circles read the same).
-    const gfx = new Graphics();
-    switch (role) {
-      case 'snare': // hard-hitting bolt
-        gfx.roundRect(-10, -3, 20, 6, 3).fill(0xffffff);
-        break;
-      case 'bass': // wide rolling wave front
-        gfx.ellipse(0, 0, 16, conf.radius!).fill({ color: 0xffffff, alpha: 0.5 });
-        gfx.ellipse(0, 0, 16, conf.radius!).stroke({ width: 2, color: 0xffffff });
-        break;
-      case 'lead': // homing seeker arrow
-        gfx.poly([12, 0, -6, 6, -2, 0, -6, -6]).fill(0xffffff);
-        break;
-      default: // hat: tiny chip dot
-        gfx.circle(0, 0, conf.radius!).fill(0xffffff);
-    }
-    gfx.tint = color;
-    gfx.rotation = Math.atan2(dir.y, dir.x);
-    this.stage.addChild(gfx);
     this.projectiles.push({
       role,
       x: this.player.x,
@@ -609,7 +571,6 @@ export class RunWorld {
       homing: role === 'lead',
       speed: conf.speed!,
       color,
-      gfx,
       hit: new Set(),
     });
   }
@@ -640,14 +601,12 @@ export class RunWorld {
           // tight turn so seekers snap to targets instead of orbiting them
           const turn = Math.max(-10 * dt, Math.min(10 * dt, diff));
           const next = cur + turn;
-          pr.vx = Math.cos(next) * pr.speed;
-          pr.vy = Math.sin(next) * pr.speed;
+          pr.vx = dcos(next) * pr.speed;
+          pr.vy = dsin(next) * pr.speed;
         }
       }
       pr.x += pr.vx * dt;
       pr.y += pr.vy * dt;
-      pr.gfx.position.set(pr.x, pr.y);
-      if (pr.role !== 'hat') pr.gfx.rotation = Math.atan2(pr.vy, pr.vx);
 
       const near = this.hash.query(pr.x, pr.y, pr.radius + 24, this.queryBuf);
       for (const e of near) {
@@ -662,7 +621,6 @@ export class RunWorld {
       }
 
       if (pr.lifeS <= 0) {
-        pr.gfx.destroy();
         this.projectiles.splice(i, 1);
       }
     }
@@ -674,14 +632,6 @@ export class RunWorld {
     conf: { damage: number; radius?: number; lifetimeS?: number },
     color: number,
   ): void {
-    const gfx = new Graphics()
-      .circle(0, 0, conf.radius!)
-      .fill({ color: 0xffffff, alpha: 0.12 })
-      .circle(0, 0, conf.radius!)
-      .stroke({ width: 2, color: 0xffffff, alpha: 0.5 });
-    gfx.tint = color;
-    gfx.position.set(x, y);
-    this.stage.addChild(gfx);
     this.zones.push({
       x,
       y,
@@ -689,7 +639,7 @@ export class RunWorld {
       damage: conf.damage,
       lifeS: conf.lifetimeS!,
       tickT: 0,
-      gfx,
+      color,
     });
   }
 
@@ -707,9 +657,7 @@ export class RunWorld {
           if (!e.dead && circlesOverlap(z, e)) e.slowT = ZONE_TICK_S + 0.15;
         }
       }
-      z.gfx.alpha = Math.min(1, z.lifeS * 2);
       if (z.lifeS <= 0) {
-        z.gfx.destroy();
         this.zones.splice(i, 1);
       }
     }
@@ -726,17 +674,7 @@ export class RunWorld {
   // ---- pickups and juice ----
 
   private spawnGem(x: number, y: number, xp: number): void {
-    // White with a dark core: reads as "pickup", and can't be confused with
-    // the hat's cyan shots (gate B feedback).
-    const gfx = new Graphics()
-      .rect(-4, -4, 8, 8)
-      .fill(0xffffff)
-      .rect(-1.5, -1.5, 3, 3)
-      .fill(0x101014);
-    gfx.rotation = Math.PI / 4;
-    gfx.position.set(x, y);
-    this.stage.addChild(gfx);
-    this.gems.push({ x, y, xp, gfx });
+    this.gems.push({ x, y, xp });
   }
 
   private updateGems(dt: number): void {
@@ -750,11 +688,9 @@ export class RunWorld {
         const pull = 420 * dt;
         g.x += (dx / (d || 1)) * pull;
         g.y += (dy / (d || 1)) * pull;
-        g.gfx.position.set(g.x, g.y);
       }
       if (d < RUN.pickupRadius) {
         this.xp += g.xp;
-        g.gfx.destroy();
         this.gems.splice(i, 1);
         this.checkLevel();
       }
@@ -777,55 +713,10 @@ export class RunWorld {
   }
 
   private spawnRing(x: number, y: number, radius: number, color: number, dur: number): void {
-    const gfx = new Graphics().circle(0, 0, radius).stroke({ width: 3, color: 0xffffff });
-    gfx.tint = color;
-    gfx.position.set(x, y);
-    gfx.scale.set(0.2);
-    this.stage.addChild(gfx);
-    this.pops.push({ gfx, t: 0, dur, grow: 1 });
+    this.fx?.push({ type: 'ring', x, y, radius, color, dur });
   }
 
   private spawnPop(x: number, y: number, radius: number): void {
-    const gfx = new Graphics().circle(0, 0, radius).fill(0xffffff);
-    gfx.tint = 0xcfd2e0;
-    gfx.position.set(x, y);
-    this.stage.addChild(gfx);
-    this.pops.push({ gfx, t: 0, dur: 0.22, grow: 1.8 });
-  }
-
-  private updatePops(dt: number): void {
-    for (let i = this.pops.length - 1; i >= 0; i--) {
-      const p = this.pops[i];
-      p.t += dt;
-      const k = p.t / p.dur;
-      if (k >= 1) {
-        p.gfx.destroy();
-        this.pops.splice(i, 1);
-        continue;
-      }
-      p.gfx.alpha = 1 - k;
-      p.gfx.scale.set(0.2 + (p.grow - 0.2) * k);
-    }
-  }
-
-  private drawGrid(): void {
-    const g = this.gridGfx;
-    const cell = 80;
-    const w = this.worldW;
-    const h = this.worldH;
-    const left = this.player.x - w / 2;
-    const top = this.player.y - h / 2;
-    g.clear();
-    for (let x = Math.floor(left / cell) * cell; x < left + w + cell; x += cell) {
-      g.moveTo(x, top - cell).lineTo(x, top + h + cell);
-    }
-    for (let y = Math.floor(top / cell) * cell; y < top + h + cell; y += cell) {
-      g.moveTo(left - cell, y).lineTo(left + w + cell, y);
-    }
-    g.stroke({ width: 1, color: 0x23232c });
-  }
-
-  destroy(): void {
-    this.stage.destroy({ children: true });
+    this.fx?.push({ type: 'pop', x, y, radius });
   }
 }

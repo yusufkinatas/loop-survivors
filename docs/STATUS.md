@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: July 3, 2026
+Last updated: July 4, 2026
 
 ## Current phase
 
@@ -8,20 +8,20 @@ Last updated: July 3, 2026
 
 ## Current sub-phase
 
-**Sub-phase B, third pass after two gate B fails, awaiting replay.** Fail 1: run far too easy, stragglers instead of hordes, chord useless. Fail 2 (after the first rework): still super easy — the build always outscaled the enemies, AFK in the middle was safe, screen still empty next to Vampire Survivors, AoE overpowered, chart overlay covered the whole screen. Third pass locks the scaling race in the enemies' favor: any build only ever carves a bubble in the horde, never clears it.
+**Between sub-phases B and C: autoplay bot built, awaiting the calibration gate.** Gate B passed on the third pass (July 4). The bot's two build sub-phases are implemented and verified; the developer's one-time calibration gate (watch Kiter replays, judge believability) is the only step left before batches inform gate C tuning.
 
 ## Gate ledger (M2)
 
 | Gate | Status |
 |---|---|
 | Sub-phase A: every tier ladder audibly grows; both late-game mix shapes pass the ear | **passed** |
-| Sub-phase B: muted 8-minute run plays as a competent survivors-like with real picks | **failed twice, third pass awaiting replay** |
+| Sub-phase B: muted 8-minute run plays as a competent survivors-like with real picks | **passed** (third pass) |
 | Sub-phase C: M2's question answered by the fused build | pending |
 | Verdict: developer's judgment on M2's question | pending |
 
 ## Next action
 
-Gate B replay: the developer plays muted 8-minute runs and judges the Pillar 3 question against the flipped scaling race. Watch for: does the back half read as a VS-style horde being carved, does AFK die, do picks carry weight now that damage can't outscale the wall, do the toughness bands make late enemies read as dangerous at a glance. Known gate-C material, not blockers: per-weapon kill-share balance (bass and chord lead in simulation), frame rate above ~2000 alive enemies, uncollected gems accumulating forever.
+**Calibration gate (developer, one-time):** run `npm run dev`, open a replay link (e.g. `http://localhost:5173/?replay=101&mover=kiter&policy=deep`), watch two or three Kiter runs, and judge one question: does it play believably, like a competent player, neither an idiot nor an exploit? Also confirm the game itself still feels unchanged in hand (the refactor touched the run's plumbing, not its numbers). Known calibration material: the Kiter currently wins 0% (median death 3:34–4:48 by policy) while an attentive human completes runs, so it may need to get smarter before batch win rates carry meaning; the policy spread (deep > random > wide) already shows picks matter. After the gate: sub-phase C begins with known material — per-weapon balance (bass leads damage share in every arm), frame rate above ~2000 alive enemies, uncollected gems accumulating forever.
 
 ## History
 
@@ -46,3 +46,6 @@ Gate B replay: the developer plays muted 8-minute runs and judges the Pillar 3 q
 - July 4, 2026 — **Gate B failed again** with VS screenshots as the density reference: still super easy, the build always outscales the enemies regardless of picks, AFK in the middle is safe, screen still feels empty, AoE overpowered, and the chart overlay covers the whole game.
 - July 4, 2026 — Sub-phase B third pass, the scaling race flipped: enemy HP ×16 by minute 8 (rampExp 1.8) so no build ever clears the screen, only carves a bubble; contact damage ×2; swarm rate 2→36/s; alive caps 2400 soft / 3000 hard for waves; final rings up to 280 swarmers; separation steering weakened so the horde packs into a VS-style wall; gem XP up to ×4 late to hold pick cadence. Chart overlay redone as a compact translucent dock (bottom-left, ~480px, 38vh max). Simulation results: AFK deep build dies ~2:10 (AFK is never safe now), greedy all-tier-4 build dies ~6:40, scattered build dies ~5:30, strong focused build completes with hp scares; 9-16 level-ups; on-screen enemy counts 50-265 through the back half; sim update cost ~11ms/frame above 2000 alive (frame-rate watch item for C). Awaiting gate B replay.
 - July 4, 2026 — Enemy visual clarity (gate B note): a minute-7 swarmer was 16x tougher than a minute-1 swarmer but looked identical. Enemies now carry visual "toughness bands" that advance with the run (at 28% / 55% / 78% of the arc): color runs cool to hot per kind, size creeps up ~34%, and the top band gets a dark core. Shape stays the kind's read, band carries the danger read. One shared `enemyScaling` formula drives stats and band in both the run and the sandbox; the sandbox gained a stage-minute preview (0/2/4/6/8) whose spawn buttons and stat lines reflect the chosen minute. Verified in Chrome with a 4-band × 3-kind lineup.
+- July 4, 2026 — Autoplay bot grilling session held. Locked: balance instrument only (no gate ever passes on bot output; results comparative, never absolute; hands beat numbers); usage doctrine "floors, not peaks" (detects broken, never defines balanced, no target win rates; equal win rates across pick policies is the failure signal); one source of truth (real RunWorld/configs/charts driven by a virtual clock, no-graphics mode, fixed 60 Hz tick, seeded RNG, instant picks); CLI batches with parallel workers + browser replay-from-seed; movers AFK and Kiter; pick policies over real three-card offers (random, deep-first, wide-first, focus), no forced build orders; damage share replaces kill share as primary attribution (in-game end screen/overlay too); JSON-lines per run + ten-second batch report with auto-surfaced outlier seeds; one-time developer calibration gate on the Kiter. Build timing: after the gate B verdict, before gate C tuning. Spec locked at `docs/tools/autoplay-bot.md`.
+- July 4, 2026 — **Gate B passed** on the third pass: the muted 8-minute run plays as a competent survivors-like with real picks. Autoplay bot build begins per the locked tool spec.
+- July 4, 2026 — Autoplay bot implemented per the tool spec, both sub-phases. Sub-phase 1: `run.ts` split into pure simulation (no pixi, no input devices, injectable RNG and movement control, fx queue) and a new `view.ts` renderer that diffs world state per frame; shared trigger matching extracted to `arranger.ts` (engine and bot use the same function); pick pool extracted to `picks.ts` (game and bot face identical offers); damage-share attribution added as the primary metric in the world, end screen, and debug overlay (kills now secondary — the seed-7 replay showed snare at 461 kills but only 24% damage vs bass 490 kills / 38%). Sub-phase 2: virtual conductor (`bot/conductor.ts`) replaces the audio clock for bot runs, next-bar pick entry preserved; AFK and Kiter movers; random/deep/wide/focus pick policies; headless simulator; CLI batch harness (`npm run bot`, parallel workers, JSONL + ten-second report + outlier seeds with replay links); browser replay via `?replay=<seed>&mover=&policy=`. One real bug found and fixed during verification: V8's Math.sin/cos differ bitwise between Node and Chrome, so replays drifted off their batch runs after ~2 minutes; gameplay now uses deterministic fdlibm-kernel sin/cos (`dmath.ts`), and a replay was verified bit-identical to its headless run by full-precision position probes through the full run (seed 7: death at 4:37, level 10, 1429 kills, both sides). Game verified unchanged in Chrome: start, run, arrow-key picks, next-bar entry, end screen, sandbox. Reference batches (config 99e52a0-dirty): AFK dies 0:47 median (canary healthy); Kiter 0% wins, median deaths deep 4:48 / random 4:08 / wide 3:34 (spread exists, mover may be too weak — calibration gate material). Awaiting the calibration gate.

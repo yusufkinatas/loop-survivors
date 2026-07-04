@@ -4,14 +4,11 @@
 
 import { ROLES, type Kit, type Role } from '../audio/kits';
 import { TIER_LINES } from './config';
+import type { PickOption } from './picks';
 
-/** A level-up option: a new weapon (tier 1) or a tier-up of an owned one.
- *  Cards are terse by spec: name, tier numeral, one honest gameplay line,
+/** Cards are terse by spec: name, tier numeral, one honest gameplay line,
  *  zero music description (docs/phases/m2-the-arc.md). */
-export interface PickOption {
-  role: Role;
-  tier: number;
-}
+export type { PickOption };
 
 export const TIER_NUMERALS = ['I', 'II', 'III', 'IV'];
 
@@ -169,9 +166,18 @@ export class Hud {
     setTimeout(() => t.remove(), 1600);
   }
 
+  /** End screen. Weapon chips lead with damage share, kills in parentheses:
+   *  kill counts flatter AoE last hits and hide single-target work on tanks
+   *  (docs/tools/autoplay-bot.md, damage share is the primary attribution). */
   showEnd(
     victory: boolean,
-    stats: { timeS: number; kills: number; level: number; byWeapon: [Role, number][] },
+    stats: {
+      timeS: number;
+      kills: number;
+      level: number;
+      damageByRole: Partial<Record<Role, number>>;
+      killsByRole: Partial<Record<Role, number>>;
+    },
     onRetry: () => void,
   ): void {
     const s = this.newScreen();
@@ -179,11 +185,17 @@ export class Hud {
     const m = Math.floor(stats.timeS / 60);
     const sec = Math.floor(stats.timeS % 60);
     el('p', 'sub', s, `${m}:${String(sec).padStart(2, '0')} · ${stats.kills} kills · level ${stats.level}`);
-    if (stats.byWeapon.length > 0) {
+    const byDamage = (Object.entries(stats.damageByRole) as [Role, number][]).sort(
+      (a, b) => b[1] - a[1],
+    );
+    const total = byDamage.reduce((sum, [, dmg]) => sum + dmg, 0);
+    if (byDamage.length > 0 && total > 0) {
       const row = el('div', 'kill-row', s);
-      for (const [role, kills] of stats.byWeapon) {
+      for (const [role, dmg] of byDamage) {
         const kit = this.kits.get(role)!;
-        const chip = el('span', 'kill-chip', row, `${kit.name} ${kills}`);
+        const pct = Math.round((dmg / total) * 100);
+        const kills = stats.killsByRole[role] ?? 0;
+        const chip = el('span', 'kill-chip', row, `${kit.name} ${pct}% (${kills})`);
         chip.style.setProperty('--voice-color', kit.color);
       }
     }

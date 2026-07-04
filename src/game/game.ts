@@ -4,16 +4,23 @@
 
 import { Application } from 'pixi.js';
 import type { MusicEngine } from '../audio/engine';
-import { TIER_COUNT } from '../audio/charts';
 import { ROLES, type Kit, type Role } from '../audio/kits';
+import { SIM_DT, VirtualConductor } from '../bot/conductor';
+import { MOVERS, type MoverName } from '../bot/movers';
+import { makePolicy } from '../bot/policies';
+import { SIM_VIEW } from '../bot/sim';
 import { mountPlayground, type Playground } from '../rehearsal/playground';
 import { RUN } from './config';
-import { Hud, type PickOption } from './hud';
+import { Hud, TIER_NUMERALS } from './hud';
+import { Input } from './input';
 import { mountJoystick } from './joystick';
+import { buildPickPool, shuffleWith } from './picks';
+import { mulberry32 } from './rng';
 import { RunWorld } from './run';
+import { RunView } from './view';
 import { mountSandboxPanel, type SandboxPanel } from './sandbox';
 
-type State = 'start' | 'run' | 'pick' | 'end' | 'sandbox';
+type State = 'start' | 'run' | 'pick' | 'end' | 'sandbox' | 'replay';
 
 export async function bootGame(
   root: HTMLElement,
@@ -36,8 +43,10 @@ export async function bootGame(
   root.addEventListener('contextmenu', (e) => e.preventDefault());
 
   const hud = new Hud(root, kits);
+  const input = new Input();
   let state: State = 'start';
   let world: RunWorld | null = null;
+  let view: RunView | null = null;
   let muted = false;
 
   // debug overlay
@@ -50,14 +59,9 @@ export async function bootGame(
     onLevelUp(level: number): void {
       void level;
       if (state !== 'run') return;
-      // The pool (docs/phases/m2-the-arc.md): unowned weapons enter at tier
-      // 1, owned ones offer their next tier, tier-4 weapons leave the pool.
-      const pool: PickOption[] = [];
-      for (const role of ROLES) {
-        const tier = world!.tiers.get(role);
-        if (!tier) pool.push({ role, tier: 1 });
-        else if (tier < TIER_COUNT) pool.push({ role, tier: tier + 1 });
-      }
+      // The pool (docs/phases/m2-the-arc.md) is shared with the autoplay
+      // bot via picks.ts, so the bot faces the exact offers a player does.
+      const pool = buildPickPool(world!.tiers);
       if (pool.length === 0) {
         world!.player.hp = Math.min(RUN.playerHp, world!.player.hp + 15);
         hud.showToast('+15 hp — the track is complete');
@@ -65,7 +69,7 @@ export async function bootGame(
       }
       state = 'pick';
       engine.clock.pause();
-      const options = shuffle(pool).slice(0, 3);
+      const options = shuffleWith(pool, Math.random).slice(0, 3);
       hud.showPick(options, (option) => {
         state = 'run';
         // Musical entry rule: the clock resumes, the old chart finishes its
@@ -106,20 +110,26 @@ export async function bootGame(
     },
   };
   let sandboxPanel: SandboxPanel | null = null;
+  let replayConductor: VirtualConductor | null = null;
+  let replayAcc = 0;
 
   function resetWorld(): void {
     sandboxPanel?.destroy();
     sandboxPanel = null;
-    world?.destroy();
+    view?.destroy();
+    view = null;
     world = null;
+    replayConductor = null;
+    replayAcc = 0;
     engine.clearBarQueue();
     for (const role of ROLES) engine.setVoiceEnabled(role, false);
   }
 
   function startRun(startingKit: Role): void {
     resetWorld();
-    world = new RunWorld(app.screen, events);
-    app.stage.addChild(world.stage);
+    world = new RunWorld(app.screen, events, { control: () => input.axis() });
+    view = new RunView(world, app.screen);
+    app.stage.addChild(view.stage);
     engine.setVoiceTier(startingKit, 1);
     engine.setVoiceEnabled(startingKit, true);
     world.addWeapon(startingKit, 1);
@@ -131,9 +141,13 @@ export async function bootGame(
 
   function startSandbox(): void {
     resetWorld();
-    world = new RunWorld(app.screen, sandboxEvents, { scripted: false });
+    world = new RunWorld(app.screen, sandboxEvents, {
+      scripted: false,
+      control: () => input.axis(),
+    });
     world.invincible = true;
-    app.stage.addChild(world.stage);
+    view = new RunView(world, app.screen);
+    app.stage.addChild(view.stage);
     sandboxPanel = mountSandboxPanel(root, engine, world, () => {
       resetWorld();
       engine.clock.stop();
@@ -147,17 +161,71 @@ export async function bootGame(
     engine.clock.start();
   }
 
+  /** Bot replay (docs/tools/autoplay-bot.md): re-run a batch seed live and
+   *  watchable. The world runs at the sim's fixed dimensions and fixed
+   *  60 Hz ticks under the seeded RNG, so it is tick-identical to the
+   *  headless run; the view and the engine's sound ride along. */
+  function startReplay(seed: number, moverName: MoverName, policySpec: string): void {
+    resetWorld();
+    const rng = mulberry32(seed);
+    const policy = makePolicy(policySpec);
+    const mover = MOVERS[moverName] ?? MOVERS.kiter;
+    const replayEvents = {
+      onLevelUp(): void {
+        replayConductor?.onLevelUp();
+      },
+      onDeath(): void {
+        endRun(false);
+      },
+      onVictory(): void {
+        endRun(true);
+      },
+      onHit(): void {
+        hud.hitFlash();
+      },
+    };
+    const w: RunWorld = new RunWorld(SIM_VIEW, replayEvents, { rng, control: () => mover(w) });
+    world = w;
+    replayConductor = new VirtualConductor(w, policy.choose, rng, {
+      onPick(option) {
+        const kit = kits.get(option.role)!;
+        hud.showToast(`bot picks ${kit.name} ${TIER_NUMERALS[option.tier - 1]}`);
+      },
+      onApply(option) {
+        // the sound mirrors the sim's build; gameplay is driven by the
+        // virtual clock, the engine only plays along
+        engine.setVoiceTier(option.role, option.tier);
+        engine.setVoiceEnabled(option.role, true);
+        chartOverlay?.refresh();
+      },
+      onHeal() {
+        hud.showToast('+15 hp — the track is complete');
+      },
+    });
+    view = new RunView(w, app.screen);
+    app.stage.addChild(view.stage);
+    hud.showHud(true);
+    hud.showToast(`replaying seed ${seed} (${moverName}/${policySpec})`);
+    state = 'replay';
+    void engine.ctx.resume();
+    engine.clock.start();
+    replayConductor.start(policy.startingKit(rng));
+  }
+
   function endRun(victory: boolean): void {
     if (!world || state === 'end') return;
     state = 'end';
     engine.clock.stop();
     engine.clearBarQueue();
-    const byWeapon = (Object.entries(world.killsByRole) as [Role, number][]).sort(
-      (a, b) => b[1] - a[1],
-    );
     hud.showEnd(
       victory,
-      { timeS: world.timeS, kills: world.kills, level: world.level, byWeapon },
+      {
+        timeS: world.timeS,
+        kills: world.kills,
+        level: world.level,
+        damageByRole: world.damageByRole,
+        killsByRole: world.killsByRole,
+      },
       () => {
         hud.showHud(false);
         hud.showStart(startRun, startSandbox);
@@ -193,20 +261,44 @@ export async function bootGame(
     if ((state === 'run' || state === 'sandbox') && world) {
       const dt = Math.min(ticker.deltaMS / 1000, 1 / 20); // clamp long frames
       world.update(dt);
+      view?.update(dt);
       hud.setStatus(
         world.player.hp / RUN.playerHp,
         world.xpProgress(),
         world.level,
         world.timeS,
       );
+    } else if (state === 'replay' && world && replayConductor) {
+      // fixed 60 Hz sub-steps: only fixed ticks reproduce the batch run
+      replayAcc += Math.min(ticker.deltaMS / 1000, 1 / 20);
+      let steps = 0;
+      while (replayAcc >= SIM_DT && steps < 4 && state === 'replay') {
+        replayAcc -= SIM_DT;
+        steps++;
+        replayConductor.tick(SIM_DT);
+        world.update(SIM_DT);
+      }
+      if (state === 'replay') {
+        view?.update(ticker.deltaMS / 1000);
+        hud.setStatus(
+          world.player.hp / RUN.playerHp,
+          world.xpProgress(),
+          world.level,
+          world.timeS,
+        );
+      }
     }
     if (overlay.style.display !== 'none' && world) {
-      const attribution = (Object.entries(world.killsByRole) as [Role, number][])
-        .map(([r, k]) => `${r} ${k}`)
+      // damage share, not kills: the primary attribution metric
+      const byDamage = Object.entries(world.damageByRole) as [Role, number][];
+      const total = byDamage.reduce((sum, [, dmg]) => sum + dmg, 0);
+      const attribution = byDamage
+        .sort((a, b) => b[1] - a[1])
+        .map(([r, dmg]) => `${r} ${Math.round((dmg / (total || 1)) * 100)}%`)
         .join(' ');
       overlay.textContent =
         `fps ${Math.round(ticker.FPS)} · enemies ${world.enemyCount} · ` +
-        `shots ${world.projectileCount} · kills ${attribution || '—'}` +
+        `shots ${world.projectileCount} · dmg ${attribution || '—'}` +
         `${world.invincible ? ' · INVINCIBLE' : ''}${muted ? ' · MUTED' : ''}`;
     }
   });
@@ -278,11 +370,24 @@ export async function bootGame(
     }
   });
 
-  hud.showStart(startRun, startSandbox);
+  // ?replay=<seed>&mover=<mover>&policy=<policy> boots straight into a bot
+  // replay (the batch report prints these links for its outliers)
+  const params = new URLSearchParams(location.search);
+  const replaySeed = params.get('replay');
+  if (replaySeed !== null) {
+    startReplay(
+      Number(replaySeed),
+      (params.get('mover') ?? 'kiter') as MoverName,
+      params.get('policy') ?? 'random',
+    );
+  } else {
+    hud.showStart(startRun, startSandbox);
+  }
 
   // extend the dev console handle
   Object.assign((window as unknown as { loop: object }).loop, {
     game: {
+      app,
       get state() {
         return state;
       },
@@ -293,11 +398,3 @@ export async function bootGame(
   });
 }
 
-function shuffle<T>(arr: T[]): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}

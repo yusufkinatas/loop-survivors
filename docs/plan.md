@@ -68,6 +68,8 @@ Every milestone ends playable and answers one named question.
 
 One question per session. The developer plays continuously and is the sole judge at each milestone exit. A recurring muted run enforces pillar 3.
 
+An autoplay bot runs batch playtests as a balance instrument (floors, not peaks; it detects broken, never defines balanced). Spec: `docs/tools/autoplay-bot.md`.
+
 ## Parked Decisions (deliberately deferred to playtesting)
 
 - Genre lock delivery: instant on recipe completion, or offered at the next chest or level-up.

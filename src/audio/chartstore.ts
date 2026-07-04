@@ -13,6 +13,13 @@ import { ROLES, type Role } from './kits';
 
 const storageKey = (role: Role, tier: number) => `loop.chart.${role}.${tier}`;
 
+// The autoplay bot imports this store under Node, where localStorage does not
+// exist: headless runs always play the shipped charts, never local edits.
+const storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> =
+  typeof localStorage !== 'undefined'
+    ? localStorage
+    : { getItem: () => null, setItem: () => {}, removeItem: () => {} };
+
 function cloneChart(chart: Chart): Chart {
   return { role: chart.role, bars: chart.bars, events: chart.events.map((e) => ({ ...e })) };
 }
@@ -25,7 +32,7 @@ for (const role of ROLES) {
   for (let tier = 1; tier <= TIER_COUNT; tier++) {
     const key = storageKey(role, tier);
     const chart = cloneChart(LADDERS[role][tier - 1]);
-    const saved = localStorage.getItem(key);
+    const saved = storage.getItem(key);
     if (saved) {
       try {
         const parsed = JSON.parse(saved) as Chart;
@@ -35,7 +42,7 @@ for (const role of ROLES) {
         chart.events = parsed.events;
         edited.add(key);
       } catch {
-        localStorage.removeItem(key); // stale or invalid edit: fall back to the shipped chart
+        storage.removeItem(key); // stale or invalid edit: fall back to the shipped chart
       }
     }
     working.set(key, chart);
@@ -56,7 +63,7 @@ export function saveChart(role: Role, tier: number): void {
   const key = storageKey(role, tier);
   const chart = working.get(key)!;
   validateChart(chart);
-  localStorage.setItem(key, JSON.stringify({ bars: chart.bars, events: chart.events }));
+  storage.setItem(key, JSON.stringify({ bars: chart.bars, events: chart.events }));
   edited.add(key);
 }
 
@@ -67,7 +74,7 @@ export function resetChart(role: Role, tier: number): void {
   const shipped = LADDERS[role][tier - 1];
   chart.bars = shipped.bars;
   chart.events = shipped.events.map((e) => ({ ...e }));
-  localStorage.removeItem(key);
+  storage.removeItem(key);
   edited.delete(key);
 }
 

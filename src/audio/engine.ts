@@ -4,6 +4,7 @@
 // (which voices are on) and grid (the clock's steps): no stage input exists.
 
 import { Clock } from './clock';
+import { chartEventsAtStep } from './arranger';
 import { M1_TIER, TIER_COUNT, type Chart, type ChartEvent } from './charts';
 import { getChart } from './chartstore';
 import { SKELETON, STEPS_PER_BAR, STEPS_PER_PHRASE, semitonesToRate } from './scale';
@@ -205,9 +206,8 @@ export class MusicEngine {
     }
     for (const voice of this.voices.values()) {
       if (!voice.enabled) continue;
-      const loopStep = phraseStep % (voice.chart.bars * STEPS_PER_BAR);
-      for (const ev of voice.chart.events) {
-        if (ev.step === loopStep) this.trigger(voice, ev, time, phraseStep);
+      for (const ev of chartEventsAtStep(voice.chart, phraseStep)) {
+        this.trigger(voice, ev, time, phraseStep);
       }
     }
   }
