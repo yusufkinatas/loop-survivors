@@ -4,11 +4,11 @@ Last updated: July 4, 2026
 
 ## Current phase
 
-**M2, the arc** — picks and leveling across a short full run. Spec: `docs/phases/m2-the-arc.md` (locked July 3, 2026). M1 completed with a pass on the same day.
+**M2 complete (verdict: pass, July 4, 2026).** Spec: `docs/phases/m2-the-arc.md`. Next phase: M3, the drop — grilling session not yet started, on hold at the developer's request.
 
 ## Current sub-phase
 
-**Sub-phase C, the arc — in progress.** Fusion per the spec: sound on, chart overlay and pick cards already shipped, floor check on every ladder (bot batches), frame rate above ~2000 alive enemies. Gate: M2's question itself, judged across full runs with sound.
+**None in progress.** M2 closed with a pass; M3 grilling begins when the developer says go.
 
 ## Gate ledger (M2)
 
@@ -16,12 +16,12 @@ Last updated: July 4, 2026
 |---|---|
 | Sub-phase A: every tier ladder audibly grows; both late-game mix shapes pass the ear | **passed** |
 | Sub-phase B: muted 8-minute run plays as a competent survivors-like with real picks | **passed** (third pass) |
-| Sub-phase C: M2's question answered by the fused build | pending |
-| Verdict: developer's judgment on M2's question | pending |
+| Sub-phase C: M2's question answered by the fused build | **passed** |
+| Verdict: developer's judgment on M2's question | **pass** |
 
 ## Next action
 
-Agent work in flight for sub-phase C: per-instrument floor-check batches (is any weapon a dead pick at any tier) and the frame-rate fix above ~2000 alive enemies. The developer's next personal action comes after that lands: play full 8-minute runs WITH sound and judge M2's question — does the music growing with the build create the "I'm making a track" feeling. That judgment is gate C and the M2 verdict in one motion.
+Hold. The developer explicitly deferred starting M3. When he says go: hold the M3 grilling session (the drop — first genre recipe and the lock event; question: is the genre moment the peak worth betting the game on?), then lock its spec at `docs/phases/m3-<title>.md`.
 
 ## History
 
@@ -53,3 +53,4 @@ Agent work in flight for sub-phase C: per-instrument floor-check batches (is any
 - July 4, 2026 — Developer decision: the gem economy stays as it is (magnet 110, no merging, no consolidation). The "uncollected gems" gate-C item is closed by decision, not by change.
 - July 4, 2026 — **Calibration gate passed** by the developer with the original Kiter: it plays believably. Bot batch numbers are now trusted tuning input (comparative, never absolute, per the tool spec). Scope decision recorded at the same time: no deep per-weapon balance work in M2. Future systems (items, passives, genres) will reshuffle weapon strength — a hi-hat unlock may someday overwhelm today's dominant bass — so equalizing now would tune a game that will not exist. Sub-phase C keeps only the spec's floor requirement: every ladder kills respectably at every tier, verified by bot floor-check batches, no equalization. Sub-phase C begins.
 - July 4, 2026 — Sub-phase C engineering: frame-rate work landed (spatial hash single-cell insertion + squared-distance early-outs + shared render geometry + off-screen culling; real minute-7 scene now ~11 ms/frame ≈ 89 fps at 836 alive, synthetic 2400-packed worst case 66→25 ms; sim-affecting change, all bot seeds re-baselined). Floor-check batch (focus:each, 90 runs, pre-rebaseline config): bass 6:01 and chord 5:59 median survival, kick 4:44, lead 4:03, snare 3:31 — all with their focused weapon carrying real damage share; **hat collapses at 2:37 median, avg level 4.8**, a possible floor violation. Per the no-equalization decision this goes to the developer's hands at gate C as "is a hat-leaning build still fun to lose with, or a trap?" — no automatic tuning. Practical tool manual written at `docs/tools/autoplay-bot-guide.md` (commands, outputs, replay, determinism rules, experiment recipes for future items/genres).
+- July 4, 2026 — **Gate C passed and M2 verdict: pass**, declared by the developer after full 8-minute runs with sound: music growing with the build creates the "I'm making a track" feeling. M2 complete. M3 (the drop) grilling deliberately not started yet, at the developer's request.
