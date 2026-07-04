@@ -112,6 +112,37 @@ export async function bootGame(
   let sandboxPanel: SandboxPanel | null = null;
   let replayConductor: VirtualConductor | null = null;
   let replayAcc = 0;
+  let replaySpeed = 1;
+
+  // Replay speed control: multiplies how much simulated time each frame
+  // pays out. The fixed-dt step sequence is untouched, so speed never
+  // breaks a replay's tick-identity with its batch run. Above 1x the
+  // audio mutes: the sound clock is real time and cannot be sped up.
+  const REPLAY_SPEEDS = [1, 2, 5, 10];
+  const speedRow = document.createElement('div');
+  speedRow.className = 'replay-speed';
+  speedRow.style.display = 'none';
+  root.appendChild(speedRow);
+  function applyGain(): void {
+    engine.setMasterGain(muted || replaySpeed > 1 ? 0 : 0.8);
+  }
+  function setReplaySpeed(mult: number): void {
+    replaySpeed = mult;
+    applyGain();
+    for (const [i, btn] of [...speedRow.children].entries()) {
+      btn.classList.toggle('on', REPLAY_SPEEDS[i] === mult);
+    }
+  }
+  for (const mult of REPLAY_SPEEDS) {
+    const btn = document.createElement('button');
+    btn.className = 'small debug-btn';
+    btn.textContent = `${mult}x`;
+    btn.onclick = () => {
+      setReplaySpeed(mult);
+      btn.blur();
+    };
+    speedRow.appendChild(btn);
+  }
 
   function resetWorld(): void {
     sandboxPanel?.destroy();
@@ -206,6 +237,8 @@ export async function bootGame(
     app.stage.addChild(view.stage);
     hud.showHud(true);
     hud.showToast(`replaying seed ${seed} (${moverName}/${policySpec})`);
+    speedRow.style.display = '';
+    setReplaySpeed(1);
     state = 'replay';
     void engine.ctx.resume();
     engine.clock.start();
@@ -215,6 +248,9 @@ export async function bootGame(
   function endRun(victory: boolean): void {
     if (!world || state === 'end') return;
     state = 'end';
+    speedRow.style.display = 'none';
+    replaySpeed = 1;
+    applyGain();
     engine.clock.stop();
     engine.clearBarQueue();
     hud.showEnd(
@@ -269,17 +305,21 @@ export async function bootGame(
         world.timeS,
       );
     } else if (state === 'replay' && world && replayConductor) {
-      // fixed 60 Hz sub-steps: only fixed ticks reproduce the batch run
-      replayAcc += Math.min(ticker.deltaMS / 1000, 1 / 20);
+      // fixed 60 Hz sub-steps: only fixed ticks reproduce the batch run.
+      // replaySpeed pays out more simulated time per frame; the step cap
+      // keeps heavy frames responsive (the replay just falls behind the
+      // requested speed instead of freezing the page).
+      replayAcc += Math.min(ticker.deltaMS / 1000, 1 / 20) * replaySpeed;
       let steps = 0;
-      while (replayAcc >= SIM_DT && steps < 4 && state === 'replay') {
+      while (replayAcc >= SIM_DT && steps < 12 && state === 'replay') {
         replayAcc -= SIM_DT;
         steps++;
         replayConductor.tick(SIM_DT);
         world.update(SIM_DT);
       }
+      if (replayAcc > SIM_DT * 12) replayAcc = SIM_DT * 12; // don't bank a backlog
       if (state === 'replay') {
-        view?.update(ticker.deltaMS / 1000);
+        view?.update((ticker.deltaMS / 1000) * replaySpeed);
         hud.setStatus(
           world.player.hp / RUN.playerHp,
           world.xpProgress(),
@@ -312,7 +352,7 @@ export async function bootGame(
       isOn: () => muted,
       onClick: () => {
         muted = !muted;
-        engine.setMasterGain(muted ? 0 : 0.8);
+        applyGain();
       },
     },
     invincible: {

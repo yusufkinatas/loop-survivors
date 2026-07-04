@@ -668,6 +668,16 @@ button.big {
   justify-content: flex-end;
 }
 
+/* Replay speed buttons: top-right, same look as the debug buttons. */
+.replay-speed {
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  display: flex;
+  gap: 6px;
+  z-index: 6;
+}
+
 .debug-btn {
   color: #9a9ab0;
   background: rgba(34, 34, 42, 0.85);
