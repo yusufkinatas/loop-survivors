@@ -12,8 +12,8 @@
 // notes) becomes hard steps in a one-shot engine.
 //
 // The record's robot vocals (MacinTalk Fred + Victoria) were removed on the
-// developer's ear — he didn't like them. The voice samples still live in
-// public/samples/covers/voice/ but are no longer wired into this cover.
+// developer's ear — he didn't like them. The voice samples were deleted too
+// (public/samples/covers/voice/ is gone).
 
 import { fetchSample, noiseRiser, sawStab, variants } from '../labkits';
 import { noteHz } from '../labkits';

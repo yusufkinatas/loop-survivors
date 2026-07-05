@@ -18,9 +18,6 @@ Sample sources:
   **re-verify before anything commercial ships.**
 - `misc/808-bass-dist.wav`, `misc/808-bass-sub.wav` — from
   github.com/Boochi44/free-drum-samples, **CC0 1.0** per its README.
-- `voice/` — rendered locally with macOS `say` (voices Fred and Kathy; the
-  Satisfaction record's robot voice literally is MacinTalk Fred). Demo-only,
-  never ships.
 
 Measured roots (autocorrelation, for `tune` values):
 
