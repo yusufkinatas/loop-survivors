@@ -45,7 +45,7 @@ Cut, deliberately: a shareable per-run track artifact. No recording, rendering, 
 
 **Tempo and damage.** Because charts fire on the grid, raising tempo mathematically raises trigger rate and therefore damage throughput. This is acknowledged, not fought: tempo is one damage lever among several, and per-trigger damage is the other axis. Slow, hard-hitting builds are a legitimate archetype, so stage pressure is tuned against a tempo range, never a constant, and slow genres stay competitive through per-trigger damage rather than special-case compensation.
 
-**Genre system.** A genre is a mid-run evolution earned by meeting a recipe of ingredients, in the structure of VS weapon evolutions. Run arc: sketch phase, genre lock, full track. The genre moment, the musical drop, and the power spike are one event. Content is a reusable graph: one sound can sit inside several genre recipes. The scope currency is the count of genres and sounds, everything else derives.
+**Genre system.** A mid-run evolution earned by meeting a recipe of ingredients, in the structure of VS weapon evolutions. Run arc: sketch phase, lock, full track. The moment, the musical drop, and the power spike are one event. Content is a reusable graph: one instrument type can sit inside many recipes. Scope currency is the count of tracks and instrument types, everything else derives. Refined at M3 grilling (`docs/phases/m3-the-drop.md`): the mechanical unit is a **track** (an exact recipe of instrument types → one composed song, deterministically selected); "genre" is a **flavor/family label** over tracks, not a mechanical layer. A **weapon is an instrument type** re-skinned per track, not a fixed sound. The lock is a **player-fired drop** (armed by an exact-match recipe), and it re-scores the build's weapons into the track's written parts.
 
 **Bosses (candidate direction).** A boss arrives on the clock and carries its own instrument, audible during the fight. Duels are call-and-response, trading verses, never both mixed at once. Beating a boss takes its sound as an unlock. Details are playtest-era.
 
@@ -60,7 +60,7 @@ Every milestone ends playable and answers one named question.
 
 - **M1, causality.** Greybox arena, a few weapon kits firing charts on the grid, enemies dying to it, deliberately ugly. Question: does it feel like my build and sound like music at the same time? This is the project's central bet. Fully specified in `docs/phases/m1-demo.md`.
 - **M2, the arc.** Picks and leveling across a short full run. Question: does music growing with the build create the "I'm making a track" feeling? Fully specified in `docs/phases/m2-the-arc.md`.
-- **M3, the drop.** First genre recipe and the lock event. Question: is the genre moment the peak worth betting the game on?
+- **M3, the drop.** First genre recipe and the lock event. Question: is the genre moment the peak worth betting the game on? Fully specified in `docs/phases/m3-the-drop.md`.
 - **M4, vertical slice.** One stage, one boss (duel candidate auditions here), a few recipes, a first-time experience, and the visual style decision. Question: would a stranger play it twice? Content scope freezes at exit, priced with measured cost per sound and per genre.
 - **M5, production.** Content build-out, meta progression, store prep including AI-content disclosure.
 
@@ -72,12 +72,14 @@ An autoplay bot runs batch playtests as a balance instrument (floors, not peaks;
 
 ## Parked Decisions (deliberately deferred to playtesting)
 
-- Genre lock delivery: instant on recipe completion, or offered at the next chest or level-up.
-- What a genre lock changes: tempo, note set, arrangement rules, some or all.
-- Runs that never lock a genre: fine as freestyle, or gently nudged.
-- Recipe discoverability: cryptic like VS, or hinted in-game.
+- ~~Genre lock delivery~~ **RESOLVED at M3 grilling**: a player-fired button, armed by recipe completion. See `docs/phases/m3-the-drop.md`.
+- ~~What a genre lock changes~~ **RESOLVED at M3 grilling**: re-scores the build's weapons into one composed track (solo ladder charts swapped for the track's written parts, sounds re-skinned). Tempo adoption is build-tuning. See M3 spec.
+- ~~Runs that never lock a genre~~ **RESOLVED at M3 grilling**: fine as freestyle, play the sketch out, no nudge. See M3 spec.
+- ~~Recipe discoverability~~ **RESOLVED at M3 grilling (provisional)**: subtle dev overlay now, secret in the shipped game is the lean, final form deferred. See M3 spec.
+- Collection loop under exact-match: how a player assembles an exact recipe on purpose (guided offers vs pure discovery), plus the brick-risk escape valve (drop/swap an instrument to recover a clean match). Entangled with recipe secrecy (parked at M3 grilling).
 - Boss and enemy sound roles, duel format, whether a boss can silence the player's music for a bar.
-- Audio effects: baked sound variants versus live engine effects, and items that act on sounds.
+- Audio effects: baked sound variants versus live engine effects, and items that act on sounds. (M3 grilling sketched the fit: an effect modifies an instrument slot and carries a coupled gameplay twin, e.g. echo → a delayed extra projectile; open tension is live effects smearing a composed track's mix.)
+- Per-track signature drop effects: bespoke gameplay plus visuals per genre, beyond the shared slam and damage window (parked at M3 grilling; content and polish).
 - Tempo-changing items and other progression mechanisms for sound variety.
 - Multi-axis weapon growth: separate density/richness tiers or other alternative buff structures beyond the single linear ladder (parked at M2 grilling; revisit if ladders feel same-y).
 - A weapon slot cap, once the catalog outgrows six kits (parked at M2 grilling; no cap while the catalog is six).
