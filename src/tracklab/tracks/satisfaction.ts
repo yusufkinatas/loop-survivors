@@ -7,11 +7,13 @@
 // Transcription provenance (research dossier, July 2026): riff notes parsed
 // byte-level from a fan MIDI, cross-confirmed by a bass tab (A#2 core, F2,
 // A#1 dip, B2 neighbor; 8-bar phrase A B A B A B A T with a staccato-triple
-// turnaround). Drum grid inferred but genre-canonical. The robot vocals on
-// the record are Apple MacinTalk Fred + Victoria; these chops are rendered
-// with the real Fred and his surviving colleague Kathy on this very Mac.
+// turnaround). Drum grid inferred but genre-canonical.
 // Approximation: the record's ~130ms portamento (pitch glide between riff
 // notes) becomes hard steps in a one-shot engine.
+//
+// The record's robot vocals (MacinTalk Fred + Victoria) were removed on the
+// developer's ear — he didn't like them. The voice samples still live in
+// public/samples/covers/voice/ but are no longer wired into this cover.
 
 import { fetchSample, noiseRiser, sawStab, variants } from '../labkits';
 import { noteHz } from '../labkits';
@@ -78,21 +80,6 @@ function hatsChart(withSixteenths: boolean): LabChart {
   return { bars: 1, events };
 }
 
-// Robot vocals: one phrase across four bars, twice per 8-bar loop.
-const voiceDrop = hits(4, [
-  [0, 0, 0.95, null, 'push'],
-  [1, 0, 0.95, null, 'touch'],
-  [2, 0, 0.95, null, 'till'],
-  [3, 0, 1.0, null, 'satis-m'],
-]);
-
-const voiceBreakdown = hits(8, [
-  [0, 0, 1.0, null, 'satis-f'],
-  [2, 0, 0.9, null, 'satis-f'],
-  [4, 0, 1.0, null, 'satis-f'],
-  [6, 0, 0.9, null, 'satis-f'],
-]);
-
 const fxCrash = hits(8, [[0, 0, 0.9, null, 'crash']]);
 const fxRiser = hits(8, [[4, 0, 0.9, null, 'riser']]);
 
@@ -118,8 +105,8 @@ export const SATISFACTION: LabTrack = {
   humanizeCents: 0,
   notes:
     'The riff is the bass is the melody; its filter opening across sections IS the arrangement ' +
-    '(muffled → mid → open variants). Robot voices are real MacinTalk. The record’s pitch-glide ' +
-    'between riff notes is approximated with hard steps. Sections: intro → build → drop → breakdown.',
+    '(muffled → mid → open variants). The record’s pitch-glide between riff notes is approximated ' +
+    'with hard steps. Sections: intro → build → drop → breakdown. (Robot vocals removed per ear.)',
   voices: [
     {
       id: 'kick',
@@ -173,21 +160,6 @@ export const SATISFACTION: LabTrack = {
       build: () => riffSamples(noteHz('A#3'), true),
     },
     {
-      id: 'voice',
-      name: 'Robot voice',
-      color: '#4dff88',
-      pitched: false,
-      gain: 0.95,
-      build: async (ctx) =>
-        variants([
-          ['push', await fetchSample(ctx, S + 'voice/push.wav')],
-          ['touch', await fetchSample(ctx, S + 'voice/touch.wav')],
-          ['till', await fetchSample(ctx, S + 'voice/till.wav')],
-          ['satis-m', await fetchSample(ctx, S + 'voice/satisfaction-m.wav')],
-          ['satis-f', await fetchSample(ctx, S + 'voice/satisfaction-f.wav')],
-        ]),
-    },
-    {
       id: 'fx',
       name: 'FX (crash / riser)',
       color: '#9a9ab0',
@@ -227,7 +199,6 @@ export const SATISFACTION: LabTrack = {
         hats: hatsChart(true),
         bass: riffChart('open'),
         lead: riffChart('open', 0.82),
-        voice: voiceDrop,
         fx: fxCrash,
       },
     },
@@ -236,7 +207,6 @@ export const SATISFACTION: LabTrack = {
       name: 'breakdown',
       charts: {
         bass: riffChart('muffled', 0.85),
-        voice: voiceBreakdown,
         fx: fxRiser,
       },
     },
