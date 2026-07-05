@@ -1,5 +1,7 @@
 # M3 Drop Spec
 
+> **SUPERSEDED (July 6, 2026).** The developer dropped the "full tracks" idea — the player-fired drop that re-scored the build into a composed track. Composed tracks moved onto the **bosses** instead (the boss makes the music). This spec is kept only as the record of the abandoned direction. Current direction: `docs/phases/boss-fights.md`.
+
 Phase: M3, the drop. Locked July 5, 2026, after a grilling session that resumed once the Track Lab proof of concept passed (Satisfaction cleared the developer's ear). Parent plan: `docs/plan.md`.
 
 The first genre recipe and the lock event. Answers M3's question: **is the genre moment the peak worth betting the game on?**
