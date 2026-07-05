@@ -41,20 +41,22 @@ const FINAL: { dyad: number; rows: Row[] }[] = [
 ];
 
 /** Build an 8-bar melody chart (the 4-bar loop twice) at an octave shift.
- *  isDouble mirrors everything -12 and adds the tab's one divergent note. */
+ *  The double voice plays the SAME chart notes as the lead: its buffer is
+ *  already rendered an octave down (root E3 vs E4), so the octave lives in
+ *  the sample, not the chart — keeping playback rate near 1.0 so the
+ *  cowbell transient stays tight instead of smearing at half speed.
+ *  isDouble only adds the tab's one divergent note (the Em bar ends F#). */
 function melody(table: typeof MAIN, octave: number, isDouble = false): LabChart {
-  const shift = octave + (isDouble ? -12 : 0);
   const events: LabChartEvent[] = [];
   for (let half = 0; half < 2; half++) {
     table.forEach((bar, i) => {
       const base = (half * 4 + i) * 16;
       for (const [s, n] of bar.rows) {
         let note = n;
-        // Tab-verified divergence: the double's Em bar ends on F#, not B.
         if (isDouble && table === MAIN && i === 1 && s === 14) note = 2;
         const vel = s === 0 ? 0.92 : s === 8 ? 0.72 : s >= 10 ? 0.85 : 0.8;
-        events.push({ step: base + s, velocity: vel, note: note + shift });
-        if (s === 0) events.push({ step: base, velocity: 0.72, note: bar.dyad + shift });
+        events.push({ step: base + s, velocity: vel, note: note + octave });
+        if (s === 0) events.push({ step: base, velocity: 0.72, note: bar.dyad + octave });
       }
     });
   }
@@ -195,9 +197,12 @@ export const METAMORPHOSIS: LabTrack = {
   ],
   sections: [
     {
+      // The low-octave intro melody plays on the double voice (its buffer
+      // is natively an octave down) so it runs at rate ~1.0 — pitching the
+      // lead buffer down 12 would halve its speed and smear the attack.
       id: 'intro',
       name: 'intro',
-      charts: { lead: melody(MAIN, -12), pad: padMain },
+      charts: { double: melody(MAIN, 0, true), pad: padMain },
     },
     {
       id: 'drop',
@@ -228,7 +233,7 @@ export const METAMORPHOSIS: LabTrack = {
     {
       id: 'break',
       name: 'break',
-      charts: { lead: melody(MAIN, -12), pad: padMain, bass: bassBreakTail },
+      charts: { double: melody(MAIN, 0, true), pad: padMain, bass: bassBreakTail },
     },
     {
       id: 'finale',
