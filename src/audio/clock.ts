@@ -21,6 +21,10 @@ export class Clock {
   /** Live tempo. Read once per scheduled step, so changes glide in. */
   bpm: number;
   stepsPerBeat: number;
+  /** Shuffle: the offbeat 8th of each beat is pushed late by this fraction of
+   *  a 16th. 0 is straight; ~0.34 is a heavy lo-fi swing. The grid backbone
+   *  stays even, so downbeats never drift — only the "and" lays back. */
+  swing = 0;
 
   constructor(ctx: AudioContext, bpm: number, stepsPerBeat: number, onStep: StepCallback) {
     this.ctx = ctx;
@@ -66,7 +70,10 @@ export class Clock {
 
   private tick(): void {
     while (this.nextStepTime < this.ctx.currentTime + SCHEDULE_AHEAD_S) {
-      this.onStep(this.nextStep, this.nextStepTime);
+      // Swing delays the offbeat 8th of each beat (steps 2, 6, 10, 14) while
+      // leaving the grid backbone even.
+      const swung = this.nextStep % 4 === 2 ? this.swing * this.stepDuration : 0;
+      this.onStep(this.nextStep, this.nextStepTime + swung);
       this.nextStepTime += this.stepDuration;
       this.nextStep += 1;
     }

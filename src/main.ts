@@ -6,7 +6,6 @@ import { MusicEngine } from './audio/engine';
 import * as charts from './audio/chartstore';
 import { SKELETON } from './audio/scale';
 import { mountRehearsalRoom } from './rehearsal/room';
-import { mountTrackLab } from './tracklab/lab';
 import { bootGame } from './game/game';
 import './style.css';
 
@@ -33,8 +32,6 @@ async function boot(): Promise<void> {
   root.textContent = '';
   if (location.hash === '#rehearsal') {
     mountRehearsalRoom(root, engine);
-  } else if (location.hash === '#tracklab') {
-    mountTrackLab(root, ctx);
   } else {
     await bootGame(root, engine, kits);
   }

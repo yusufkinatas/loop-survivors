@@ -1,3 +1,5 @@
+> ⚠️ **SUPERSEDED (July 6, 2026).** This spec is kept for history only. The developer dropped the full-track / genre-drop direction entirely. Genres are now **playable characters** that re-voice a shared twelve-weapon soundset (tempo, swing, per-weapon patterns); there is no recipe, no drop event, no destination song, and the Track Lab that prototyped it has been removed. The live design is `docs/phases/genres-and-weapons.md`. Nothing below describes the shipped game.
+
 # M3 Drop Spec
 
 Phase: M3, the drop. Locked July 5, 2026, after a grilling session that resumed once the Track Lab proof of concept passed (Satisfaction cleared the developer's ear). Parent plan: `docs/plan.md`.

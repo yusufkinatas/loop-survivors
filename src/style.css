@@ -603,6 +603,29 @@ input[type='range'] {
   color: #9a9ab0;
 }
 
+/* Genre select: the character-pick step. Wider cards, room for six. */
+.genre-grid {
+  max-width: 860px;
+}
+
+.genre-card {
+  width: 244px;
+  border-left-width: 5px;
+}
+
+.genre-card .kit-name {
+  font-size: 18px;
+}
+
+.genre-bpm {
+  margin-top: 4px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--voice-color);
+  opacity: 0.85;
+}
+
 button.big {
   font-size: 18px;
   padding: 10px 26px;
