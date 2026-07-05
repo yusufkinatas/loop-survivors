@@ -244,15 +244,19 @@ export async function crash(opts: { decay?: number } = {}): Promise<AudioBuffer>
 // -------------------------------------------------------------- pitched ----
 
 /** The 808 cowbell: two square waves a wonky fifth-ish apart through a
- *  bandpass. Clean it's the disco cowbell; driven hard it is THE drift
- *  phonk lead. Rendered at rootHz; charts pitch it around. */
+ *  bandpass. Clean it's the disco cowbell; driven hard with a wet plate
+ *  tail it is THE drift phonk lead. Rendered at rootHz; charts pitch it. */
 export async function cowbell808(opts: {
   rootHz: number;
   decay?: number;
   drive?: number;
+  wet?: number;
+  reverbSeconds?: number;
 } = { rootHz: 540 }): Promise<AudioBuffer> {
-  const { rootHz, decay = 0.32, drive = 5 } = opts;
-  const ctx = offline(decay + 0.1);
+  const { rootHz, decay = 0.32, drive = 5, wet = 0, reverbSeconds = 1.1 } = opts;
+  const ctx = offline(decay + (wet > 0 ? reverbSeconds : 0) + 0.1);
+  const out = driveNode(ctx, drive);
+  out.connect(ctx.destination);
   const bp = ctx.createBiquadFilter();
   bp.type = 'bandpass';
   bp.frequency.value = rootHz * 1.9;
@@ -261,8 +265,16 @@ export async function cowbell808(opts: {
   g.gain.setValueAtTime(0.9, 0);
   g.gain.exponentialRampToValueAtTime(0.25, 0.03);
   g.gain.exponentialRampToValueAtTime(0.001, decay);
-  const shaper = driveNode(ctx, drive);
-  bp.connect(g).connect(shaper).connect(ctx.destination);
+  bp.connect(g);
+  g.connect(out);
+  if (wet > 0) {
+    const conv = ctx.createConvolver();
+    conv.buffer = reverbIR(ctx, reverbSeconds, 4800);
+    const wetG = ctx.createGain();
+    wetG.gain.value = wet;
+    g.connect(conv);
+    conv.connect(wetG).connect(out);
+  }
   for (const ratio of [1, 1.48]) {
     const osc = ctx.createOscillator();
     osc.type = 'square';
