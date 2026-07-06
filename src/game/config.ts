@@ -475,6 +475,57 @@ export const WEAPONS: Record<Role, WeaponConf[]> = {
     { damage: 15, radius: 88, lifetimeS: 5.0 },
     { damage: 20, radius: 100, lifetimeS: 5.5 },
   ],
+  // Ride (band, Hats — THE FREEZE WEAPON): a radar beam that sweeps a wedge of
+  // the surrounding circle each trigger, freezing what it crosses. Token damage
+  // (never zero, Pillar 1); radius is the sweep reach. Fires often, so a single
+  // trigger only freezes a slice — never the whole screen (see RIDE).
+  ride: [
+    { damage: 3, radius: 210 },
+    { damage: 3, radius: 235 },
+    { damage: 4, radius: 260 },
+    { damage: 5, radius: 290 },
+  ],
+  // Riser (band, FX — THE AUTO-DASH): its build-and-release grants a short
+  // movement surge (see DASH) and a token whoosh of damage around the player on
+  // release. Radius is the whoosh reach.
+  riser: [
+    { damage: 4, radius: 95 },
+    { damage: 5, radius: 105 },
+    { damage: 6, radius: 118 },
+    { damage: 8, radius: 132 },
+  ],
+  // Reese (band, Bass): a growling wall placed on the nearest pack that grinds
+  // (heavy slow) and ticks damage. Bass weight ladder — per-trigger climbs hard.
+  reese: [
+    { damage: 6, radius: 78, lifetimeS: 2.4 },
+    { damage: 7, radius: 86, lifetimeS: 2.6 },
+    { damage: 10, radius: 96, lifetimeS: 2.8 },
+    { damage: 14, radius: 110, lifetimeS: 3.0 },
+  ],
+  // Choir pad (band, Harmony): a summoned singing orb placed on the nearest
+  // pack that stays and pulses damage (a long-lived ticking zone, no slow).
+  choir: [
+    { damage: 4, radius: 92, lifetimeS: 3.5 },
+    { damage: 5, radius: 102, lifetimeS: 4.0 },
+    { damage: 6, radius: 114, lifetimeS: 4.5 },
+    { damage: 8, radius: 128, lifetimeS: 5.0 },
+  ],
+  // Bell (band, Melody): a note lobbed straight that shatters into shards on
+  // its first hit (shard count per tier in BELL). radius = the shot's own size.
+  bell: [
+    { damage: 7, speed: 360, radius: 6, lifetimeS: 1.8, pierce: 1 },
+    { damage: 8, speed: 365, radius: 6, lifetimeS: 1.9, pierce: 1 },
+    { damage: 10, speed: 375, radius: 7, lifetimeS: 2.0, pierce: 1 },
+    { damage: 12, speed: 390, radius: 7, lifetimeS: 2.1, pierce: 2 },
+  ],
+  // Whistle (band, Melody): tags the nearest enemy; the tag pops a beat later
+  // for a hard delayed burst (see WHISTLE). Hits heavy because it is delayed.
+  whistle: [
+    { damage: 16, radius: 60 },
+    { damage: 19, radius: 66 },
+    { damage: 23, radius: 74 },
+    { damage: 30, radius: 84 },
+  ],
 };
 
 /** Weapon capability tags: the single source of truth for which modifiers a
@@ -504,6 +555,16 @@ export const WEAPON_TAGS: Record<Role, ReadonlySet<WeaponTag>> = {
   acid: new Set(['area']),
   pluck: new Set(['projectile', 'area']),
   rhodes: new Set(['area']),
+  ride: new Set(['area']),
+  riser: new Set(['area']),
+  reese: new Set(['area']),
+  choir: new Set(['area']),
+  // Bell shatters on its first hit; it is not in the multishot/split spawn
+  // paths, so 'count'/'aimedfan' would make Split/Layer legal no-op picks (D10:
+  // a modifier never lands where it does nothing). Only 'projectile' — Drive
+  // and Echo (which re-fires the whole note) are its meaningful modifiers.
+  bell: new Set(['projectile']),
+  whistle: new Set(['area']),
 };
 
 /** The one honest gameplay-effect line on each pick card ([tier-1]). Terse
@@ -619,6 +680,42 @@ export const TIER_LINES: Record<Role, string[]> = {
     'a bigger, harder bloom',
     'a huge bloom',
   ],
+  ride: [
+    'a sweep that freezes what it crosses',
+    'a wider freezing sweep',
+    'freezes longer, reaches further',
+    'a huge freezing sweep',
+  ],
+  riser: [
+    'a surge that dashes you forward',
+    'a longer dash',
+    'a faster, harder dash',
+    'a huge dash surge',
+  ],
+  reese: [
+    'a grinding wall that holds a pack',
+    'a bigger, longer wall',
+    'a heavier grinding wall',
+    'a massive crushing wall',
+  ],
+  choir: [
+    'a singing orb that pulses damage',
+    'a bigger, longer orb',
+    'a stronger pulsing orb',
+    'a huge singing orb',
+  ],
+  bell: [
+    'a note that shatters into shards',
+    'more shards on the shatter',
+    'sharper shards, further',
+    'a burst of shards, pierces',
+  ],
+  whistle: [
+    'tags a foe; it pops a beat later',
+    'a bigger delayed pop',
+    'a harder pop',
+    'a huge delayed pop',
+  ],
 };
 
 /** Bass tier 4's once-per-phrase sub drop and chord tier 4's pads get a
@@ -690,3 +787,35 @@ export const FLASH = {
 
 /** Fan spacing (rad) between multishot/echo-split aimed projectiles. */
 export const ECHO_FAN = 0.14;
+
+// ---- sub-phase C: the two utility systems + the shatter/tag weapons ----
+
+/** Ride, the freeze weapon: a radar beam that rotates a fixed step each trigger
+ *  and freezes only the wedge it crosses, so a fast Hats-lane cadence never
+ *  permafreezes the whole screen. `freezeS` is how long a crossed enemy stays
+ *  frozen; `wedge` is the half-angle (rad) of the beam; `step` is how far the
+ *  beam rotates per trigger (a golden-angle step so successive sweeps spread
+ *  around the circle instead of retracing). */
+export const RIDE = { freezeS: 1.2, wedge: 0.42, step: 2.399963 };
+
+/** Riser, the auto-dash: the release grants a short movement surge. `speed` is
+ *  added (px/s) along the dash direction for `surgeS` seconds (≈ a 180px dash),
+ *  on top of normal movement. Direction is the player's current move input, or
+ *  a fallback when standing still. */
+export const DASH = { surgeS: 0.2, speed: 900 };
+
+/** Bell shatter: per-tier shard count, and the shard projectiles' stats. Shards
+ *  fly out radially from the first hit; each is a small, short-lived bell shot
+ *  that does not itself re-shatter. */
+export const BELL = {
+  shards: [3, 4, 5, 6],
+  shardSpeed: 300,
+  shardDamageMul: 0.5,
+  shardLifeS: 0.45,
+  shardRadius: 4,
+  shardPierce: 1,
+};
+
+/** Whistle: how long after the tag lands the enemy pops (a beat, roughly, at
+ *  the mid-tempo genres — flavor, not tempo-locked). */
+export const WHISTLE = { popS: 0.5 };

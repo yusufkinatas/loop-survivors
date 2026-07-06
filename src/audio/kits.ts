@@ -27,7 +27,15 @@ export type Role =
   | 'shaker'
   | 'acid'
   | 'pluck'
-  | 'rhodes';
+  | 'rhodes'
+  // The band, sub-phase C — the last six hires + the two utility weapons
+  // (ride = freeze, riser = auto-dash). See docs/phases/the-band.md.
+  | 'ride'
+  | 'riser'
+  | 'reese'
+  | 'choir'
+  | 'bell'
+  | 'whistle';
 
 export const ROLES: readonly Role[] = [
   'kick',
@@ -48,6 +56,12 @@ export const ROLES: readonly Role[] = [
   'acid',
   'pluck',
   'rhodes',
+  'ride',
+  'riser',
+  'reese',
+  'choir',
+  'bell',
+  'whistle',
 ];
 
 export interface Kit {
@@ -287,6 +301,215 @@ async function renderRhodes(rootHz: number): Promise<AudioBuffer> {
     osc.start(0);
     osc.stop(0.75);
   }
+  return ctx.startRendering();
+}
+
+async function renderRide(): Promise<AudioBuffer> {
+  // Bright sustained metallic ping that rings: a cluster of high inharmonic
+  // square partials through a bandpass, with a long shimmering tail. The
+  // Hats-lane cousin that sings instead of ticks. (Synthesis-risk flag in the
+  // spec — first candidate for a CC0 sample if the ear rejects it.)
+  const ctx = offline(0.9);
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.value = 7200;
+  bp.Q.value = 0.7;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, 0);
+  g.gain.exponentialRampToValueAtTime(0.42, 0.004); // sharp ping attack
+  g.gain.exponentialRampToValueAtTime(0.08, 0.18);
+  g.gain.exponentialRampToValueAtTime(0.001, 0.85); // long ring-out
+  bp.connect(g).connect(ctx.destination);
+  // Metallic FM-ish cluster: six detuned squares at inharmonic ratios.
+  const base = 540;
+  for (const mult of [1, 1.34, 1.79, 2.41, 3.17, 4.09]) {
+    const o = ctx.createOscillator();
+    o.type = 'square';
+    o.frequency.value = base * mult;
+    const og = ctx.createGain();
+    og.gain.value = 0.16;
+    o.connect(og).connect(bp);
+    o.start(0);
+    o.stop(0.9);
+  }
+  // a whisper of noise for air
+  const n = ctx.createBufferSource();
+  n.buffer = noiseBuffer(ctx, 0.9);
+  const hp = ctx.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = 8000;
+  const ng = ctx.createGain();
+  ng.gain.setValueAtTime(0.09, 0);
+  ng.gain.exponentialRampToValueAtTime(0.001, 0.5);
+  n.connect(hp).connect(ng).connect(ctx.destination);
+  n.start(0);
+  return ctx.startRendering();
+}
+
+async function renderRiser(): Promise<AudioBuffer> {
+  // Reversed-cymbal swell that builds and lifts: filtered noise whose gain
+  // ramps UP into a cut and whose bandpass sweeps up, so it anticipates the
+  // downbeat. FX/Transition punctuation — the auto-dash's wind-up.
+  const dur = 0.85;
+  const ctx = offline(dur + 0.05);
+  const n = ctx.createBufferSource();
+  n.buffer = noiseBuffer(ctx, dur);
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.Q.value = 0.8;
+  bp.frequency.setValueAtTime(600, 0);
+  bp.frequency.exponentialRampToValueAtTime(9000, dur); // rising sweep
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, 0);
+  g.gain.exponentialRampToValueAtTime(0.5, dur * 0.92); // swells to the top
+  g.gain.exponentialRampToValueAtTime(0.001, dur); // then cut on the hit
+  n.connect(bp).connect(g).connect(ctx.destination);
+  n.start(0);
+  return ctx.startRendering();
+}
+
+async function renderReese(rootHz: number): Promise<AudioBuffer> {
+  // Thick growling detuned bass (the Drum & Bass monster): three saws detuned
+  // hard against each other so the beating between them growls, through a
+  // resonant lowpass. Deep and mean.
+  const ctx = offline(0.7);
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.setValueAtTime(700, 0);
+  lp.frequency.exponentialRampToValueAtTime(180, 0.55);
+  lp.Q.value = 6;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.001, 0);
+  g.gain.exponentialRampToValueAtTime(0.75, 0.02);
+  g.gain.setValueAtTime(0.75, 0.4);
+  g.gain.exponentialRampToValueAtTime(0.001, 0.66);
+  lp.connect(g).connect(ctx.destination);
+  for (const det of [-14, 0, 14]) {
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.value = rootHz / 4;
+    o.detune.value = det;
+    const og = ctx.createGain();
+    og.gain.value = 0.4;
+    o.connect(og).connect(lp);
+    o.start(0);
+    o.stop(0.68);
+  }
+  const sub = ctx.createOscillator();
+  sub.type = 'sine';
+  sub.frequency.value = rootHz / 4;
+  const subG = ctx.createGain();
+  subG.gain.value = 0.5;
+  sub.connect(subG).connect(g);
+  sub.start(0);
+  sub.stop(0.68);
+  return ctx.startRendering();
+}
+
+async function renderChoir(rootHz: number): Promise<AudioBuffer> {
+  // Airy sung "aah" pad: sine partials shaped by two vowel formants (bandpass
+  // ~800/1150 Hz) with a slow attack and a long lush tail. Held, not struck.
+  // (Synthesis-risk flag in the spec — CC0 candidate if the ear rejects it.)
+  const ctx = offline(1.8);
+  const master = ctx.createGain();
+  master.gain.setValueAtTime(0.0001, 0);
+  master.gain.linearRampToValueAtTime(0.32, 0.22); // slow breathy swell
+  master.gain.setValueAtTime(0.32, 1.1);
+  master.gain.exponentialRampToValueAtTime(0.001, 1.75);
+  master.connect(ctx.destination);
+  for (const [f, q, amp] of [
+    [800, 4, 0.6],
+    [1150, 5, 0.4],
+  ] as const) {
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = f;
+    bp.Q.value = q;
+    const fg = ctx.createGain();
+    fg.gain.value = amp;
+    bp.connect(fg).connect(master);
+    // a few harmonics per formant, gently detuned for a choir's width
+    for (const [mult, det] of [
+      [1, -5],
+      [2, 4],
+      [3, -3],
+      [4, 6],
+    ] as const) {
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.value = rootHz * mult;
+      o.detune.value = det;
+      const og = ctx.createGain();
+      og.gain.value = 0.14;
+      o.connect(og).connect(bp);
+      o.start(0);
+      o.stop(1.78);
+    }
+  }
+  return ctx.startRendering();
+}
+
+async function renderBell(rootHz: number): Promise<AudioBuffer> {
+  // Twinkly music-box ping: a sine fundamental plus bright inharmonic bell
+  // partials (1, 2.76, 5.4, 8.1) with a fast attack and a shimmering decay.
+  const ctx = offline(0.9);
+  const partials: [number, number, number][] = [
+    [1, 0.5, 0.85],
+    [2.76, 0.3, 0.6],
+    [5.4, 0.18, 0.4],
+    [8.1, 0.1, 0.28],
+  ];
+  for (const [mult, level, dec] of partials) {
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.value = rootHz * 2 * mult; // an octave up: the sparkly top voice
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, 0);
+    g.gain.exponentialRampToValueAtTime(level, 0.004);
+    g.gain.exponentialRampToValueAtTime(0.001, dec);
+    o.connect(g).connect(ctx.destination);
+    o.start(0);
+    o.stop(dec + 0.02);
+  }
+  return ctx.startRendering();
+}
+
+async function renderWhistle(rootHz: number): Promise<AudioBuffer> {
+  // Pure smooth sung line with a gentle wobble: a near-sine tone with a slow
+  // vibrato (an LFO on its frequency) and a soft breath of air.
+  const ctx = offline(0.7);
+  const osc = ctx.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.value = rootHz * 2; // an octave up: a clear top line
+  // vibrato: LFO -> gain -> osc.frequency
+  const lfo = ctx.createOscillator();
+  lfo.type = 'sine';
+  lfo.frequency.value = 5.5;
+  const lfoGain = ctx.createGain();
+  lfoGain.gain.value = rootHz * 2 * 0.012; // ~1.2% wobble
+  lfo.connect(lfoGain).connect(osc.frequency);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, 0);
+  g.gain.linearRampToValueAtTime(0.5, 0.03); // soft breathy onset
+  g.gain.setValueAtTime(0.5, 0.4);
+  g.gain.exponentialRampToValueAtTime(0.001, 0.62);
+  osc.connect(g).connect(ctx.destination);
+  // a faint airy hiss so it reads as "sung", not a test tone
+  const n = ctx.createBufferSource();
+  n.buffer = noiseBuffer(ctx, 0.7);
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.value = rootHz * 4;
+  bp.Q.value = 2;
+  const ng = ctx.createGain();
+  ng.gain.setValueAtTime(0.05, 0);
+  ng.gain.exponentialRampToValueAtTime(0.001, 0.5);
+  n.connect(bp).connect(ng).connect(ctx.destination);
+  osc.start(0);
+  lfo.start(0);
+  n.start(0);
+  osc.stop(0.68);
+  lfo.stop(0.68);
   return ctx.startRendering();
 }
 
@@ -627,6 +850,12 @@ export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
     acid,
     pluck,
     rhodes,
+    ride,
+    riser,
+    reese,
+    choir,
+    bell,
+    whistle,
   ] = await Promise.all([
     renderKick(true),
     renderKick(false),
@@ -651,6 +880,12 @@ export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
     renderAcid(rootHz),
     renderPluck(rootHz),
     renderRhodes(rootHz),
+    renderRide(),
+    renderRiser(),
+    renderReese(rootHz),
+    renderChoir(rootHz),
+    renderBell(rootHz),
+    renderWhistle(rootHz),
   ]);
 
   const kits = new Map<Role, Kit>();
@@ -714,5 +949,13 @@ export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
   add('acid', 'Acid', '#b6ff5a', true, [['acid', acid]]);
   add('pluck', 'Pluck Bass', '#8f7bff', true, [['pluck', pluck]], true);
   add('rhodes', 'Rhodes', '#5ad1ff', true, [['rhodes', rhodes]]);
+  // Sub-phase C. ride/choir choked so their long rings/pads don't stack; the
+  // utility weapons (ride, riser) still make a real sound (Model A).
+  add('ride', 'Ride', '#9fe8ff', false, [['ride', ride]], true);
+  add('riser', 'Riser', '#cbb4ff', false, [['riser', riser]], true);
+  add('reese', 'Reese', '#6a4fd0', true, [['reese', reese]], true);
+  add('choir', 'Choir Pad', '#c7f0d8', true, [['choir', choir]], true);
+  add('bell', 'Bell', '#ffd76b', true, [['bell', bell]]);
+  add('whistle', 'Whistle', '#ff9ecb', true, [['whistle', whistle]]);
   return kits;
 }

@@ -7,7 +7,7 @@
 import { Container, Graphics, GraphicsContext } from 'pixi.js';
 import type { Role } from '../audio/kits';
 import { RUN } from './config';
-import type { Enemy, EnemyShot, FxEvent, Gem, Projectile, RunWorld, Shock, Zone } from './run';
+import type { Enemy, EnemyShot, FxEvent, Gem, Projectile, RunWorld, Shock, WhistleTag, Zone } from './run';
 
 // Projectile trails (pure view): only these low-count roles trail, so the
 // per-frame work stays independent of the 2400-enemy horde. Hat (can be
@@ -70,6 +70,7 @@ export class RunView {
   private zoneGfx = new Map<Zone, Graphics>();
   private shockGfx = new Map<Shock, Graphics>();
   private gemGfx = new Map<Gem, Container>();
+  private tagGfx = new Map<WhistleTag, Graphics>();
   private pops: Pop[] = [];
   private live = new Set<object>();
 
@@ -133,6 +134,14 @@ export class RunView {
     this.sync(this.world.zones, this.zoneGfx, makeZoneGfx, (z, gfx) => {
       gfx.alpha = Math.min(1, z.lifeS * 2);
     });
+    // Whistle tags: a reticle that rides the marked enemy and tightens as the
+    // pop nears (view-only cue; the pop itself is a sim event with its own fx).
+    this.sync(this.world.tags, this.tagGfx, makeTagGfx, (t, gfx) => {
+      gfx.position.set(t.x, t.y);
+      const remain = Math.max(0, t.popAtS - this.world.timeS);
+      gfx.scale.set(0.5 + remain * 1.5); // wide when fresh, tight at the pop
+      gfx.rotation += dt * 4;
+    });
     this.syncShocks();
     const p = this.world.player;
     const cullW = this.world.worldW / 2 + 40;
@@ -182,6 +191,7 @@ export class RunView {
     this.zoneGfx.clear();
     this.shockGfx.clear();
     this.gemGfx.clear();
+    this.tagGfx.clear();
     this.pops.length = 0;
     this.trails.clear();
     this.shakes.length = 0;
@@ -207,7 +217,8 @@ export class RunView {
       gfx.renderable = visible;
       if (!visible) continue;
       gfx.position.set(e.x, e.y);
-      gfx.tint = e.flashT > 0 ? 0xffffff : e.color;
+      // Frozen (ride) reads as an icy tint; the hit-flash still wins over it.
+      gfx.tint = e.flashT > 0 ? 0xffffff : e.frozenT > 0 ? 0xbfeaff : e.color;
       if ((e.kind === 'darter' || e.kind === 'charger') && (e.dashX !== 0 || e.dashY !== 0)) {
         gfx.rotation = Math.atan2(e.dashY, e.dashX);
       }
@@ -656,6 +667,14 @@ function makeProjectileGfx(pr: Projectile): Graphics {
         g.circle(0, 0, 7).fill(0xffffff);
         g.circle(0, 0, 3.5).fill(0x000000);
         break;
+      case 'bell': {
+        // twinkly note: a small four-point sparkle (shards reuse this at their
+        // tiny radius, so they read as fragments of the same note)
+        const r = Math.max(4, pr.radius);
+        g.poly([r * 1.5, 0, r * 0.4, r * 0.4, 0, r * 1.5, -r * 0.4, r * 0.4,
+          -r * 1.5, 0, -r * 0.4, -r * 0.4, 0, -r * 1.5, r * 0.4, -r * 0.4]).fill(0xffffff);
+        break;
+      }
       default: // hat: tiny chip dot
         g.circle(0, 0, pr.radius).fill(0xffffff);
     }
@@ -674,6 +693,27 @@ function makeZoneGfx(z: Zone): Graphics {
     .stroke({ width: 2, color: 0xffffff, alpha: 0.5 });
   gfx.tint = z.color;
   gfx.position.set(z.x, z.y);
+  return gfx;
+}
+
+function makeTagGfx(t: WhistleTag): Graphics {
+  // A reticle: four corner brackets around a small ring, marking the doomed
+  // enemy. Geometry is unit-ish; the sync scales/rotates it per frame.
+  const gfx = new Graphics();
+  const r = 16;
+  gfx.circle(0, 0, r * 0.4).stroke({ width: 2, color: 0xffffff, alpha: 0.9 });
+  for (const a of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+    const cx = Math.cos(a) * r;
+    const cy = Math.sin(a) * r;
+    const px = -Math.sin(a);
+    const py = Math.cos(a);
+    gfx
+      .moveTo(cx - px * 5, cy - py * 5)
+      .lineTo(cx, cy)
+      .lineTo(cx + px * 5, cy + py * 5)
+      .stroke({ width: 2, color: 0xffffff, alpha: 0.9 });
+  }
+  gfx.tint = t.color;
   return gfx;
 }
 

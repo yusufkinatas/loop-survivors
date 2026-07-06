@@ -59,18 +59,18 @@ export const SLOT_LABEL: Record<Slot, string> = {
   melody: 'Hook',
 };
 
-// The roster for each slot — only today's twelve instruments (sub-phase A). The
-// bracketed future hires (heartbeat, rimshot, shaker, ride, acid, riser, Reese,
-// pluck bass, Rhodes, choir pad, bell, whistle) land in sub-phases B and C.
+// The roster for each slot — the full 24-instrument catalog. Sub-phase A wired
+// the original twelve, B added the first six damage hires, and C fills the last
+// six (ride, riser, reese, choir, bell, whistle), two of them utility weapons.
 export const SLOT_ROSTER: Record<Slot, Role[]> = {
   pulse: ['kick', 'tom', 'heartbeat'],
   backbeat: ['snare', 'clap', 'rimshot'],
-  hats: ['hat', 'shaker'],
+  hats: ['hat', 'shaker', 'ride'],
   motion: ['arp', 'cowbell', 'acid'],
-  fx: ['crash', 'zap'],
-  bass: ['bass', 'pluck'],
-  harmony: ['chord', 'rhodes'],
-  melody: ['lead'],
+  fx: ['crash', 'zap', 'riser'],
+  bass: ['bass', 'pluck', 'reese'],
+  harmony: ['chord', 'rhodes', 'choir'],
+  melody: ['lead', 'bell', 'whistle'],
 };
 
 /** Inverse of SLOT_ROSTER, built once so the two can never drift. */
@@ -124,12 +124,12 @@ export function startableRoles(roles: readonly Role[]): Role[] {
  * unlisted is 1.0. Single-member slots (Hats/Bass/Harmony/Melody) are unaffected.
  */
 const GENRE_ROLE_AFFINITY: Record<GenreId, Partial<Record<Role, number>>> = {
-  lofi: { snare: 1.3, clap: 0.7, arp: 1.2, cowbell: 0.85, tom: 1.1 },
-  house: { clap: 1.5, snare: 0.7, cowbell: 1.3, arp: 0.85 },
-  synthwave: { snare: 1.15, clap: 0.9, arp: 1.35, cowbell: 0.7 },
-  hiphop: { snare: 1.4, clap: 0.75, cowbell: 1.15, arp: 0.9 },
-  dnb: { snare: 1.5, clap: 0.7, arp: 1.3, cowbell: 0.75 },
-  techno: { clap: 1.3, snare: 0.85, cowbell: 1.2, arp: 0.9, tom: 1.15 },
+  lofi: { snare: 1.3, clap: 0.7, arp: 1.2, cowbell: 0.85, tom: 1.1, rhodes: 1.3, choir: 1.15, bell: 1.15 },
+  house: { clap: 1.5, snare: 0.7, cowbell: 1.3, arp: 0.85, choir: 1.25, ride: 1.2 },
+  synthwave: { snare: 1.15, clap: 0.9, arp: 1.35, cowbell: 0.7, bell: 1.35, choir: 1.2 },
+  hiphop: { snare: 1.4, clap: 0.75, cowbell: 1.15, arp: 0.9, bell: 1.2, whistle: 1.15 },
+  dnb: { snare: 1.5, clap: 0.7, arp: 1.3, cowbell: 0.75, reese: 1.7, ride: 1.15 },
+  techno: { clap: 1.3, snare: 0.85, cowbell: 1.2, arp: 0.9, tom: 1.15, ride: 1.3, reese: 1.2 },
 };
 
 export function genreRoleWeight(genreId: GenreId, role: Role): number {

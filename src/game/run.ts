@@ -15,10 +15,12 @@ import type { EffectId } from '../audio/voicefx';
 import {
   AIM_RANGE,
   ARP_OMEGA,
+  BELL,
   BOOMERANG_OUT_FRAC,
   CHAIN_HOP,
   CHAIN_SEEK,
   CHARGER,
+  DASH,
   CIRCLER,
   DARTER,
   ECHO_FAN,
@@ -29,6 +31,7 @@ import {
   KNOCK_S,
   MAX_ALIVE_HARD,
   ORBIT_REHIT_S,
+  RIDE,
   RUN,
   SHAKE,
   SHIELDED,
@@ -41,6 +44,7 @@ import {
   WEAPON_SHOVE,
   WEAPON_TAGS,
   WEAPONS,
+  WHISTLE,
   ZAP_RANGE,
   ZONE_SLOW_MUL,
   ZONE_THROW_RANGE,
@@ -92,6 +96,8 @@ export interface Enemy {
   dashing: boolean;
   /** Time left under a chord zone's slow. */
   slowT: number;
+  /** Time left frozen solid by ride's sweep (no movement while > 0). */
+  frozenT: number;
   /** Crash knockback: velocity (px/s) and time left being pushed. While
    *  knockT > 0 the enemy rides this vector instead of chasing. */
   knockX: number;
@@ -150,6 +156,24 @@ export interface Projectile {
   /** pluck: the point it arcs to; on arrival it explodes (damageArea). */
   tx: number;
   ty: number;
+  /** bell: shards to spawn on this shot's first hit (0 for a shard itself, so
+   *  shards never re-shatter). */
+  shatter: number;
+  /** True for a bell shard (a fragment shot), so its hit path skips shattering. */
+  shard: boolean;
+}
+
+/** Whistle's mark: an enemy tagged to pop after a short delay for a heavy
+ *  delayed burst. Follows the enemy while it lives; pops at its last position
+ *  if it dies first. Pure state (timeS-gated), so the bot runs it too. */
+export interface WhistleTag {
+  enemy: Enemy;
+  x: number;
+  y: number;
+  popAtS: number;
+  damage: number;
+  radius: number;
+  color: number;
 }
 
 /** Crash shockwave: an expanding ring; its front damages and knocks back
@@ -245,6 +269,12 @@ export const KIT_COLORS: Record<Role, number> = {
   acid: 0xb6ff5a,
   pluck: 0x8f7bff,
   rhodes: 0x5ad1ff,
+  ride: 0x9fe8ff,
+  riser: 0xcbb4ff,
+  reese: 0x6a4fd0,
+  choir: 0xc7f0d8,
+  bell: 0xffd76b,
+  whistle: 0xff9ecb,
 };
 
 export interface RunWorldOpts {
@@ -263,7 +293,9 @@ export class RunWorld {
   /** Owned weapons and their ladder tier (1-4). */
   readonly tiers = new Map<Role, number>();
 
-  player = { x: 0, y: 0, hp: RUN.playerHp, radius: RUN.playerRadius, iframesT: 0 };
+  // dashT/dashX/dashY: riser's auto-dash surge (a short velocity boost the
+  // release grants, on top of normal movement).
+  player = { x: 0, y: 0, hp: RUN.playerHp, radius: RUN.playerRadius, iframesT: 0, dashT: 0, dashX: 0, dashY: 0 };
   level = 1;
   xp = 0;
   timeS = 0;
@@ -303,6 +335,11 @@ export class RunWorld {
   readonly zones: Zone[] = [];
   readonly shocks: Shock[] = [];
   readonly gems: Gem[] = [];
+  /** Whistle's live tags (sub-phase C). */
+  readonly tags: WhistleTag[] = [];
+  /** Ride's radar beam angle; advances a fixed step each trigger so successive
+   *  sweeps spread around the circle instead of retracing. */
+  private rideAngle = 0;
 
   private rng: Rng;
   private control: () => { x: number; y: number };
@@ -476,6 +513,94 @@ export class RunWorld {
         // Place an armed mine where you stand; it blooms when an enemy steps in.
         this.spawnZone(p.x, p.y, conf, color, 'rhodes', { mine: true });
         this.spawnRing(p.x, p.y, conf.radius!, color, 0.2, true);
+        break;
+      }
+      case 'ride': {
+        // The freeze weapon: a radar beam sweeps a wedge of the surrounding
+        // circle, freezing (and token-damaging) only what it crosses. The beam
+        // rotates a fixed step each trigger, so a fast cadence spreads the freeze
+        // around the ring rather than locking the whole screen.
+        // Wrap into [0, 2π): rideAngle is a monotonic accumulator, and `ang`
+        // below feeds diff-normalization while-loops — an unwrapped angle would
+        // make them spin ~rideAngle/2π times, growing unbounded over a run.
+        this.rideAngle = (this.rideAngle + RIDE.step) % (Math.PI * 2);
+        const ang = this.rideAngle;
+        const R = conf.radius! * (0.9 + 0.2 * v);
+        const near = this.hash.query(p.x, p.y, R + 24, this.queryBuf);
+        for (const e of near) {
+          if (e.dead) continue;
+          const dx = e.x - p.x;
+          const dy = e.y - p.y;
+          const d = Math.hypot(dx, dy);
+          if (d > R + e.radius) continue;
+          let diff = Math.atan2(dy, dx) - ang;
+          while (diff > Math.PI) diff -= Math.PI * 2;
+          while (diff < -Math.PI) diff += Math.PI * 2;
+          if (Math.abs(diff) > RIDE.wedge) continue;
+          this.damageEnemy(e, conf.damage * v, 'ride');
+          e.frozenT = Math.max(e.frozenT, RIDE.freezeS);
+        }
+        // A radar line to the beam tip, plus a faint reach ring.
+        this.fx?.push({
+          type: 'bolt',
+          x1: p.x,
+          y1: p.y,
+          x2: p.x + dcos(ang) * R,
+          y2: p.y + dsin(ang) * R,
+          color,
+        });
+        this.spawnRing(p.x, p.y, R, color, 0.22, true);
+        break;
+      }
+      case 'riser': {
+        // The auto-dash: the release grants a short movement surge (direction =
+        // current move input, or a fallback) plus a token whoosh of damage.
+        const a = this.control();
+        let dx = a.x;
+        let dy = a.y;
+        const mag = Math.hypot(dx, dy);
+        if (mag > 0.001) {
+          dx /= mag;
+          dy /= mag;
+        } else {
+          // standing still: dash toward the nearest pack, else a random way
+          const tgt = this.nearestEnemy(AIM_RANGE);
+          const da = tgt ? Math.atan2(tgt.y - p.y, tgt.x - p.x) : this.rng() * Math.PI * 2;
+          dx = dcos(da);
+          dy = dsin(da);
+        }
+        p.dashT = DASH.surgeS;
+        p.dashX = dx;
+        p.dashY = dy;
+        this.damageArea(p.x, p.y, conf.radius!, conf.damage * v, 'riser');
+        this.spawnRing(p.x, p.y, conf.radius!, color, 0.3);
+        this.fx?.push({ type: 'spark', x: p.x, y: p.y, color, n: 8, spread: conf.radius! * 0.5 });
+        break;
+      }
+      case 'reese': {
+        // A growling bass wall dropped on the nearest pack: grinds (slows) and
+        // ticks heavy damage while enemies are held in it.
+        const target = this.nearestEnemy(ZONE_THROW_RANGE);
+        this.spawnZone(target?.x ?? p.x, target?.y ?? p.y, conf, color, 'reese', { slow: true });
+        break;
+      }
+      case 'choir': {
+        // A singing orb summoned on the nearest pack: it stays and pulses damage
+        // (a long-lived ticking zone, no slow).
+        const target = this.nearestEnemy(ZONE_THROW_RANGE);
+        this.spawnZone(target?.x ?? p.x, target?.y ?? p.y, conf, color, 'choir', { slow: false });
+        this.spawnRing(target?.x ?? p.x, target?.y ?? p.y, conf.radius!, color, 0.3, true);
+        break;
+      }
+      case 'bell': {
+        // A note lobbed straight that shatters into shards on its first hit.
+        this.spawnBell(this.aimDir(0.1), conf, color, v);
+        break;
+      }
+      case 'whistle': {
+        // Tag the nearest un-tagged enemy; it pops a beat later for a heavy
+        // delayed burst.
+        this.spawnWhistleTag(conf, color, v);
         break;
       }
       case 'zap': {
@@ -671,6 +796,7 @@ export class RunWorld {
     this.recycleEnemies();
     this.updateProjectiles(dt);
     this.updateZones(dt);
+    this.updateTags();
     this.updateShocks(dt);
     this.updateGems(dt);
     this.contactDamage(dt);
@@ -714,6 +840,14 @@ export class RunWorld {
     const a = this.control();
     this.player.x += a.x * RUN.playerSpeed * this.mods.moveMul * dt;
     this.player.y += a.y * RUN.playerSpeed * this.mods.moveMul * dt;
+    // Riser's auto-dash surge: a short extra velocity along the locked dash
+    // direction, on top of normal input. Deterministic (timeS-stepped), so the
+    // bot rides it too.
+    if (this.player.dashT > 0) {
+      this.player.dashT -= dt;
+      this.player.x += this.player.dashX * DASH.speed * dt;
+      this.player.y += this.player.dashY * DASH.speed * dt;
+    }
     if (this.player.iframesT > 0) this.player.iframesT -= dt;
   }
 
@@ -851,6 +985,7 @@ export class RunWorld {
       dashY: 0,
       dashing: false,
       slowT: 0,
+      frozenT: 0,
       knockX: 0,
       knockY: 0,
       knockT: 0,
@@ -889,6 +1024,14 @@ export class RunWorld {
         speed *= ZONE_SLOW_MUL;
       }
       if (e.flashT > 0) e.flashT -= dt;
+
+      // Ride's freeze holds an enemy solid: no movement of any kind while it
+      // lasts (knockback still resolves first, below, so a shove isn't cancelled
+      // — but a frozen enemy that isn't being shoved simply stops).
+      if (e.frozenT > 0) {
+        e.frozenT -= dt;
+        if (e.knockT <= 0) continue;
+      }
 
       // Crash knockback overrides everything: ride the push, don't chase.
       if (e.knockT > 0) {
@@ -1201,6 +1344,8 @@ export class RunWorld {
       rehitT: 0,
       tx: 0,
       ty: 0,
+      shatter: 0,
+      shard: false,
     };
   }
 
@@ -1276,6 +1421,101 @@ export class RunWorld {
     pr.x = this.player.x + dcos(angle) * pr.orbitRadius;
     pr.y = this.player.y + dsin(angle) * pr.orbitRadius;
     this.projectiles.push(pr);
+  }
+
+  /** Bell: a note lobbed straight that shatters into shards on its first hit.
+   *  The shatter count (per tier) rides on the shot; the shard spawn happens in
+   *  updateProjectiles when it lands its first hit. */
+  private spawnBell(
+    dir: { x: number; y: number },
+    conf: WeaponConf,
+    color: number,
+    velocity: number,
+  ): void {
+    const tier = this.tiers.get('bell') ?? 1;
+    const pr = this.baseProjectile('bell', conf, color, conf.damage * (0.8 + 0.4 * velocity));
+    pr.vx = dir.x * conf.speed!;
+    pr.vy = dir.y * conf.speed!;
+    pr.shatter = BELL.shards[tier - 1] ?? BELL.shards[0];
+    this.projectiles.push(pr);
+  }
+
+  /** Bell's shatter: fling a radial burst of small shard shots from (x,y). Each
+   *  shard is a bell projectile flagged so it can never itself re-shatter. */
+  private spawnShards(x: number, y: number, count: number, damage: number, color: number): void {
+    const base = this.rng() * Math.PI * 2;
+    for (let i = 0; i < count; i++) {
+      const a = base + (i / count) * Math.PI * 2;
+      const pr = this.baseProjectile(
+        'bell',
+        { damage, radius: BELL.shardRadius, lifetimeS: BELL.shardLifeS, pierce: BELL.shardPierce },
+        color,
+        damage,
+      );
+      pr.damage = damage;
+      pr.x = x;
+      pr.y = y;
+      pr.vx = dcos(a) * BELL.shardSpeed;
+      pr.vy = dsin(a) * BELL.shardSpeed;
+      pr.shard = true;
+      this.projectiles.push(pr);
+    }
+  }
+
+  /** Whistle: tag the nearest un-tagged living enemy; it pops WHISTLE.popS later
+   *  for a heavy delayed burst. Falls back to a token pop at the player if there
+   *  is nothing to tag, so the trigger is never a total no-op (Model A). */
+  private spawnWhistleTag(conf: WeaponConf, color: number, velocity: number): void {
+    const tagged = new Set(this.tags.map((t) => t.enemy));
+    const p = this.player;
+    let best: Enemy | null = null;
+    let bestD = AIM_RANGE * AIM_RANGE;
+    for (const e of this.enemies) {
+      if (e.dead || tagged.has(e)) continue;
+      const dx = e.x - p.x;
+      const dy = e.y - p.y;
+      const d = dx * dx + dy * dy;
+      if (d < bestD) {
+        bestD = d;
+        best = e;
+      }
+    }
+    if (!best) {
+      // Nothing to tag: a token pop at the player so the trigger is never a
+      // total no-op (Model A / Pillar 1 — every trigger deals damage + sound).
+      this.damageArea(p.x, p.y, conf.radius!, conf.damage * (0.85 + 0.3 * velocity), 'whistle');
+      this.spawnRing(p.x, p.y, conf.radius!, color, 0.2, true);
+      return;
+    }
+    this.tags.push({
+      enemy: best,
+      x: best.x,
+      y: best.y,
+      popAtS: this.timeS + WHISTLE.popS,
+      damage: conf.damage * (0.85 + 0.3 * velocity),
+      radius: conf.radius!,
+      color,
+    });
+    this.fx?.push({ type: 'ring', x: best.x, y: best.y, radius: conf.radius! * 0.6, color, dur: 0.3, soft: true });
+  }
+
+  /** Advance whistle tags: track the live target, then pop it (a delayed burst)
+   *  once its timer elapses. timeS-gated, so bot/replay stay deterministic. */
+  private updateTags(): void {
+    for (let i = this.tags.length - 1; i >= 0; i--) {
+      const tag = this.tags[i];
+      if (!tag.enemy.dead) {
+        tag.x = tag.enemy.x;
+        tag.y = tag.enemy.y;
+      }
+      if (this.timeS >= tag.popAtS) {
+        this.damageArea(tag.x, tag.y, tag.radius, tag.damage, 'whistle', 20);
+        this.spawnRing(tag.x, tag.y, tag.radius, tag.color, 0.28);
+        this.fx?.push({ type: 'slam', x: tag.x, y: tag.y, radius: tag.radius * 0.5, color: tag.color });
+        this.fx?.push({ type: 'spark', x: tag.x, y: tag.y, color: tag.color, n: 7, spread: tag.radius * 0.5 });
+        this.tags.splice(i, 1);
+      }
+    }
   }
 
   /** Crash: an expanding shockwave from the player. */
@@ -1469,8 +1709,15 @@ export class RunWorld {
         // knock channel the bot already simulates.
         const sh = WEAPON_SHOVE[pr.role];
         if (sh) this.shove(e, pr.x, pr.y, sh);
+        // Bell: the note shatters into a radial burst of shards on its first
+        // hit. shatter is 0 on a shard, so shards never re-shatter.
+        if (pr.role === 'bell' && pr.shatter > 0) {
+          this.spawnShards(pr.x, pr.y, pr.shatter, pr.damage * BELL.shardDamageMul, pr.color);
+          this.fx?.push({ type: 'spark', x: e.x, y: e.y, color: pr.color, n: 6, spread: 14 });
+          pr.shatter = 0;
+        }
         // Per-hit spark (view-only, bounded to low-count roles).
-        if (SPARK_HIT_ROLES.has(pr.role))
+        if (SPARK_HIT_ROLES.has(pr.role) && !pr.shard)
           this.fx?.push({ type: 'spark', x: e.x, y: e.y, color: pr.color, n: 4, spread: 12 });
         // Sweep weapons (orbit, ricochet, boomerang) gate re-hits with their
         // own hit set instead of spending pierce.

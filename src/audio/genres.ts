@@ -53,6 +53,18 @@ const CRASH: Chart[] = [
   d('crash', 'X...............', '................', 'X...............', '........o.x.X...'),
 ];
 
+// riser (FX slot, sub-phase C): the auto-dash's build-and-release. Like crash
+// and zap it reads the same across genres — a sparse phrase-level swell whose
+// release grants a movement surge. Tempo carries it; no per-genre authoring.
+// The cadence climbs tier to tier so the dash comes more often (1 -> 2 -> 3 ->
+// 4 per phrase), staying transition punctuation, never texture.
+const RISER: Chart[] = [
+  d('riser', 'X...............', '................', '................', '................'),
+  d('riser', 'X...............', '................', 'X...............', '................'),
+  d('riser', 'X...............', '........o.......', 'X...............', '................'),
+  d('riser', 'X...............', '........o.......', 'X...............', '........x.......'),
+];
+
 // =====================================================================
 // LO-FI — 84 BPM, heavily swung boom-bap, warm and dusty.
 // =====================================================================
@@ -65,6 +77,71 @@ const LOFI: Genre = {
   swing: 0.34,
   powerMul: 1.35,
   ladders: {
+    riser: RISER,
+    ride: [
+      // Freeze sweep: a lazy jazz ride ping. Moderate by rule — quarters that
+      // open into a swung 8th feel, growing by accents and the bell (O), never
+      // a 16th wall. Each ping freezes a slice of enemies.
+      d('ride', 'o...o...o...o...'),
+      d('ride', 'x...o...x...o...'),
+      d('ride', 'o.o.o.o.o.o.o.o.'),
+      d('ride', 'x.o.o.o.x.o.o.o.', 'x.o.o.o.x.o.o.oO'),
+    ],
+    reese: [
+      // The low growling monster, dialed to lo-fi: sparse heavy hits that sit
+      // in the kick's gaps (kick is on 0 and 10) and grow by weight, not count.
+      // Low notes only: 0, -5, -7, -2, -12.
+      m('reese', 2, [[6, 0.85, 0], [B + 6, 0.8, -5]]),
+      m('reese', 2, [[6, 0.85, 0], [12, 0.7, -7], [B + 6, 0.8, -5], [B + 12, 0.7, -2]]),
+      m('reese', 2, [[6, 0.9, 0], [12, 0.65, -7], [B + 2, 0.7, -7], [B + 6, 0.85, -5], [B + 12, 0.7, -2]]),
+      m('reese', 2, [
+        [2, 0.7, 0], [6, 0.95, 0], [12, 0.7, -7],
+        [B + 2, 0.7, -7], [B + 6, 0.9, -5], [B + 12, 0.75, -2], [B + 14, 0.7, -12],
+      ]),
+    ],
+    choir: [
+      // Airy 'aah' pad: held and sparse. Grows by stacking a second and third
+      // voice into the chord (root, fifth, octave), not by adding onsets.
+      m('choir', 2, [[0, 0.5, 0], [B, 0.5, 5]]),
+      m('choir', 2, [[0, 0.5, 0], [0, 0.45, 7], [B, 0.5, 5], [B, 0.45, 10]]),
+      m('choir', 2, [
+        [0, 0.5, 0], [0, 0.45, 7], [8, 0.4, 3],
+        [B, 0.5, 5], [B, 0.45, 10], [B + 8, 0.4, 7],
+      ]),
+      m('choir', 2, [
+        [0, 0.55, 0], [0, 0.5, 7], [0, 0.45, 12], [8, 0.4, 3],
+        [B, 0.55, 5], [B, 0.5, 10], [B, 0.45, 12], [B + 8, 0.4, 7],
+      ]),
+    ],
+    bell: [
+      // Twinkly music-box, the brightest voice: sparse high sparkles that grow
+      // into a fuller arpeggiated line. High notes only: 10, 12, 15, 17, 19.
+      m('bell', 2, [[8, 0.55, 12], [B + 8, 0.5, 15]]),
+      m('bell', 2, [[8, 0.55, 12], [12, 0.45, 15], [B + 8, 0.5, 10], [B + 12, 0.45, 15]]),
+      m('bell', 2, [
+        [0, 0.5, 12], [8, 0.55, 15], [12, 0.45, 17],
+        [B, 0.5, 10], [B + 8, 0.55, 15], [B + 12, 0.45, 12],
+      ]),
+      m('bell', 4, [
+        [0, 0.5, 12], [8, 0.55, 15], [12, 0.45, 17], [B, 0.5, 10], [B + 8, 0.55, 15],
+        [2 * B, 0.5, 17], [2 * B + 8, 0.55, 19], [3 * B, 0.5, 15], [3 * B + 8, 0.55, 12], [3 * B + 12, 0.45, 10],
+      ]),
+    ],
+    whistle: [
+      // Smooth sung hook, one enemy tagged per note: kept SPARSE by rule, long
+      // singable tones high in the mix. 1-3 notes a bar. Notes: 7, 10, 12, 15.
+      m('whistle', 2, [[0, 0.6, 7], [B, 0.55, 10]]),
+      m('whistle', 2, [[0, 0.6, 7], [8, 0.5, 10], [B, 0.55, 12], [B + 8, 0.5, 10]]),
+      m('whistle', 2, [
+        [0, 0.65, 7], [8, 0.55, 10],
+        [B, 0.6, 12], [B + 8, 0.55, 15], [B + 12, 0.5, 12],
+      ]),
+      m('whistle', 4, [
+        [0, 0.65, 7], [8, 0.55, 10], [B, 0.6, 12], [B + 8, 0.55, 10],
+        [2 * B, 0.6, 15], [2 * B + 8, 0.55, 12], [3 * B, 0.6, 10], [3 * B + 8, 0.55, 7],
+      ]),
+    ],
+
     kick: [
       d('kick', 'X.........o.....'),
       d('kick', 'X.....-...o.....'),
@@ -219,6 +296,71 @@ const HOUSE: Genre = {
   swing: 0.06,
   powerMul: 0.9,
   ladders: {
+    riser: RISER,
+    // Ride: bright offbeat ride ping, freeze sweep. Moderate 8th feel (never a
+    // 16th wall). Grows by promoting offbeats to accents, then a phrase-end lift.
+    ride: [
+      d('ride', 'o...o...o...o...'),
+      d('ride', 'o.o.o.o.o.o.o.o.'),
+      d('ride', 'o.x.o.x.o.x.o.x.'),
+      d('ride', 'o.x.o.x.o.x.o.x.', 'o.x.o.x.o.x.o.xX'),
+    ],
+    // Reese: thick growling low bass on the offbeats, clear of the four-on-floor
+    // kick (0/4/8/12). Weight ladder: sparse heavy hits, then more movement and
+    // pickup ghosts, always staying low.
+    reese: [
+      m('reese', 1, [[2, 0.9, 0], [10, 0.85, -5]]),
+      m('reese', 1, [[2, 0.9, 0], [6, 0.75, -7], [10, 0.85, 0], [14, 0.75, -5]]),
+      m('reese', 2, [
+        [2, 0.9, 0], [6, 0.75, -7], [10, 0.85, 0], [14, 0.75, -5],
+        [B + 2, 0.9, 3], [B + 6, 0.75, -2], [B + 10, 0.85, 3], [B + 14, 0.75, -5],
+      ]),
+      m('reese', 2, [
+        [2, 0.9, 0], [6, 0.75, -7], [10, 0.85, 0], [14, 0.75, -5], [15, 0.6, 0],
+        [B + 2, 0.9, 3], [B + 6, 0.75, -2], [B + 10, 0.85, 3], [B + 14, 0.75, -5], [B + 15, 0.6, -7],
+      ]),
+    ],
+    // Choir: airy sung 'aah' pad, held and sparse. One long note per bar, then a
+    // stacked voice, then a fuller voicing and a chord change. Grows in harmony,
+    // not density.
+    choir: [
+      m('choir', 1, [[0, 0.55, 0]]),
+      m('choir', 1, [[0, 0.6, 0], [0, 0.5, 7]]),
+      m('choir', 2, [[0, 0.6, 0], [0, 0.5, 7], [B, 0.6, 3], [B, 0.5, 10]]),
+      m('choir', 2, [
+        [0, 0.6, 0], [0, 0.5, 7], [0, 0.45, 12],
+        [B, 0.6, 3], [B, 0.5, 10], [B, 0.45, 12],
+      ]),
+    ],
+    // Bell: twinkly high music-box, the brightest voice. Sparkly arpeggiated
+    // figures on the 8th grid, climbing higher and fuller each tier.
+    bell: [
+      m('bell', 1, [[2, 0.6, 12], [10, 0.55, 15]]),
+      m('bell', 1, [[2, 0.6, 12], [6, 0.5, 15], [10, 0.55, 17], [14, 0.5, 15]]),
+      m('bell', 2, [
+        [2, 0.6, 12], [6, 0.5, 15], [10, 0.55, 17], [14, 0.5, 15],
+        [B + 2, 0.6, 15], [B + 6, 0.5, 19], [B + 10, 0.55, 17], [B + 14, 0.5, 12],
+      ]),
+      m('bell', 2, [
+        [0, 0.55, 12], [2, 0.6, 15], [6, 0.5, 17], [10, 0.55, 19], [14, 0.5, 15],
+        [B, 0.55, 15], [B + 2, 0.6, 17], [B + 6, 0.5, 19], [B + 10, 0.55, 22], [B + 14, 0.5, 15],
+      ]),
+    ],
+    // Whistle: pure smooth sung hook, one hit tags one enemy so it stays sparse.
+    // Long high notes, 1-3 per bar, building a singable rise-and-fall phrase.
+    whistle: [
+      m('whistle', 2, [[0, 0.7, 7], [B, 0.7, 10]]),
+      m('whistle', 2, [[0, 0.7, 7], [8, 0.65, 10], [B, 0.7, 12], [B + 8, 0.65, 10]]),
+      m('whistle', 2, [
+        [0, 0.7, 7], [8, 0.65, 10],
+        [B, 0.7, 12], [B + 6, 0.6, 15], [B + 10, 0.65, 12],
+      ]),
+      m('whistle', 2, [
+        [0, 0.7, 7], [6, 0.6, 10], [10, 0.65, 12],
+        [B, 0.7, 12], [B + 6, 0.6, 15], [B + 10, 0.65, 17],
+      ]),
+    ],
+
     kick: [
       d('kick', 'X...X...X...X...'),
       d('kick', 'X...X...X...X...'),
@@ -388,6 +530,77 @@ const SYNTHWAVE: Genre = {
   swing: 0,
   powerMul: 1.1,
   ladders: {
+    riser: RISER,
+    // ride — freeze sweep. Bright machine ride, dead straight like the kit. Stays
+    // moderate (quarter -> 8th feel), growing by accents and one ringing open, not
+    // into a 16th wall, so each hit reads as a clean slice of the freeze.
+    ride: [
+      d('ride', 'x...x...x...x...'),
+      d('ride', 'x.x.x.x.x.x.x.x.'),
+      d('ride', 'X.x.x.x.X.x.x.xO'),
+      d('ride', 'X.x.x.x.X.x.x.x.', 'X.x.x.x.X.x.x.xO'),
+    ],
+    // reese — growling detuned monster bass. Low notes only, dead-straight rolling.
+    // Sits off the kick's 0/4/8/12 downbeats (odd/offbeat steps), weighting up and
+    // adding 16th rolls tier to tier while staying heavy and dark.
+    reese: [
+      m('reese', 1, [[2, 0.9, 0], [10, 0.85, -5]]),
+      m('reese', 1, [[2, 0.9, 0], [6, 0.8, 0], [10, 0.85, -5], [14, 0.8, -5]]),
+      m('reese', 2, [
+        [2, 0.95, 0], [6, 0.8, 0], [10, 0.9, -5], [14, 0.8, -5],
+        [B + 2, 0.95, -7], [B + 6, 0.8, -7], [B + 10, 0.9, -2], [B + 14, 0.8, -2],
+      ]),
+      m('reese', 2, [
+        [2, 1.0, 0], [3, 0.7, 0], [6, 0.85, 0], [7, 0.65, 0], [10, 0.95, -5], [11, 0.7, -5], [14, 0.85, -5], [15, 0.65, -5],
+        [B + 2, 1.0, -7], [B + 3, 0.7, -7], [B + 6, 0.85, -7], [B + 7, 0.65, -7], [B + 10, 0.95, -2], [B + 11, 0.7, -2], [B + 14, 0.85, -2], [B + 15, 0.65, -2],
+      ]),
+    ],
+    // choir — airy 'aah' pad. Sustained and sparse: one long note per bar at first,
+    // growing by STACKING voices (root, fifth, octave) into a lush held chord over a
+    // four-bar move, never by adding density.
+    choir: [
+      m('choir', 2, [[0, 0.5, 0], [B, 0.5, 5]]),
+      m('choir', 2, [[0, 0.5, 0], [0, 0.5, 7], [B, 0.5, 5], [B, 0.5, 12]]),
+      m('choir', 4, [
+        [0, 0.55, 0], [0, 0.5, 7], [B, 0.55, 5], [B, 0.5, 12],
+        [2 * B, 0.55, 7], [2 * B, 0.5, 12], [3 * B, 0.55, 5], [3 * B, 0.5, 10],
+      ]),
+      m('choir', 4, [
+        [0, 0.6, 0], [0, 0.55, 7], [0, 0.5, 12], [B, 0.6, 5], [B, 0.55, 12], [B, 0.5, 17],
+        [2 * B, 0.6, 7], [2 * B, 0.55, 12], [2 * B, 0.5, 15], [3 * B, 0.6, 5], [3 * B, 0.55, 10], [3 * B, 0.5, 12],
+      ]),
+    ],
+    // bell — twinkly music-box. The brightest voice, high and arpeggiated on the
+    // synthwave even-step grid, sparkling quarters then 8ths then a fuller two-bar
+    // line with 16th ornaments up top.
+    bell: [
+      m('bell', 1, [[0, 0.7, 12], [4, 0.65, 15], [8, 0.7, 19], [12, 0.65, 15]]),
+      m('bell', 1, [[0, 0.7, 12], [2, 0.6, 15], [4, 0.65, 17], [6, 0.6, 15], [8, 0.7, 19], [10, 0.6, 17], [12, 0.65, 15], [14, 0.6, 12]]),
+      m('bell', 2, [
+        [0, 0.7, 12], [2, 0.6, 15], [4, 0.65, 17], [6, 0.6, 15], [8, 0.7, 19], [10, 0.6, 17], [12, 0.65, 15], [14, 0.6, 12],
+        [B, 0.7, 15], [B + 2, 0.6, 17], [B + 4, 0.65, 19], [B + 6, 0.6, 17], [B + 8, 0.7, 22], [B + 10, 0.6, 19], [B + 12, 0.65, 17], [B + 14, 0.6, 15],
+      ]),
+      m('bell', 2, [
+        [0, 0.75, 12], [1, 0.55, 15], [2, 0.6, 15], [4, 0.7, 17], [6, 0.6, 15], [8, 0.75, 19], [10, 0.6, 17], [12, 0.7, 15], [14, 0.6, 12], [15, 0.55, 10],
+        [B, 0.75, 15], [B + 2, 0.6, 17], [B + 4, 0.7, 19], [B + 6, 0.6, 17], [B + 8, 0.75, 22], [B + 9, 0.55, 19], [B + 10, 0.6, 19], [B + 12, 0.7, 17], [B + 14, 0.6, 15],
+      ]),
+    ],
+    // whistle — pure sung hook (one enemy tagged per hit, so it stays sparse). A
+    // singable high-ish line of long notes, 1-3 per bar, growing over four bars with
+    // a gentle wobble ornament, never dense.
+    whistle: [
+      m('whistle', 2, [[0, 0.75, 12], [B, 0.7, 10]]),
+      m('whistle', 2, [[0, 0.75, 12], [8, 0.7, 10], [B, 0.75, 7], [B + 8, 0.7, 10]]),
+      m('whistle', 4, [
+        [0, 0.8, 12], [8, 0.7, 10], [B, 0.8, 7], [B + 8, 0.7, 10],
+        [2 * B, 0.8, 15], [2 * B + 8, 0.7, 12], [3 * B, 0.8, 10], [3 * B + 8, 0.7, 7],
+      ]),
+      m('whistle', 4, [
+        [0, 0.85, 12], [4, 0.7, 15], [8, 0.75, 10], [B, 0.85, 7], [B + 8, 0.7, 10], [B + 12, 0.65, 12],
+        [2 * B, 0.85, 15], [2 * B + 8, 0.75, 12], [3 * B, 0.85, 10], [3 * B + 4, 0.7, 12], [3 * B + 8, 0.75, 7],
+      ]),
+    ],
+
     kick: [
       d('kick', 'X.......X.......'),
       d('kick', 'X...X...X...X...'),
@@ -555,6 +768,75 @@ const HIPHOP: Genre = {
   swing: 0.1,
   powerMul: 0.8,
   ladders: {
+    riser: RISER,
+    ride: [
+      // Freeze sweep: a ringing ride ping that stays out of the rolling hats'
+      // fast lane. Moderate quarter/8th feel, grows by offbeats and accents
+      // (never a 16th wall) so each hit reads as one clean freeze slice.
+      d('ride', 'o...o...o...o...'),
+      d('ride', 'o.o.o.o.o.o.o.o.'),
+      d('ride', 'X.o.X.o.X.o.X.o.', 'X.o.X.o.X.o.X.oo'),
+      d('ride', 'X.o.X.o.X.o.X.oo', 'X.oXX.o.X.oXX.oo'),
+    ],
+    reese: [
+      // The growling 808-monster in the bass slot: low, heavy, syncopated off
+      // the kick core (0/7/10), onset pushed to step 3 off the one. Grows into
+      // a rolling low monster by weight and extra low hits, never up in pitch.
+      m('reese', 2, [[3, 0.95, 0], [B + 3, 0.9, -5]]),
+      m('reese', 2, [[3, 0.95, 0], [6, 0.7, 0], [B + 3, 0.9, -5], [B + 14, 0.75, -2]]),
+      m('reese', 4, [
+        [3, 1.0, 0], [6, 0.7, 0], [14, 0.75, 0], [B + 3, 0.9, -5], [B + 6, 0.65, -5], [B + 14, 0.75, -2],
+        [2 * B + 3, 1.0, 3], [2 * B + 14, 0.75, 0], [3 * B + 3, 0.9, -2], [3 * B + 8, 0.75, -5],
+      ]),
+      m('reese', 4, [
+        [3, 1.0, 0], [6, 0.7, 0], [11, 0.7, -2], [14, 0.7, 0], [B + 3, 0.9, -5], [B + 6, 0.65, -5], [B + 11, 0.65, -7], [B + 14, 0.75, -2],
+        [2 * B + 3, 1.0, 3], [2 * B + 6, 0.7, 0], [2 * B + 11, 0.65, 0], [2 * B + 14, 0.7, 0], [3 * B + 3, 0.9, -2], [3 * B + 6, 0.65, -5], [3 * B + 11, 0.65, -7],
+      ]),
+    ],
+    choir: [
+      // Airy "aah" pad in the harmony slot: sustained and sparse, one held note
+      // per bar. Grows by stacking a second and third voiced note into a lush
+      // chord, not by adding density.
+      m('choir', 2, [[0, 0.5, 0], [B, 0.5, 7]]),
+      m('choir', 2, [[0, 0.5, 0], [0, 0.45, 7], [B, 0.5, 7], [B, 0.45, 12]]),
+      m('choir', 4, [
+        [0, 0.5, 0], [0, 0.45, 7], [B, 0.5, 5], [B, 0.45, 12],
+        [2 * B, 0.5, 7], [2 * B, 0.45, 10], [3 * B, 0.5, 3], [3 * B, 0.45, 10],
+      ]),
+      m('choir', 4, [
+        [0, 0.5, 0], [0, 0.45, 3], [0, 0.4, 7], [B, 0.5, 5], [B, 0.45, 10], [B, 0.4, 12],
+        [2 * B, 0.5, 7], [2 * B, 0.45, 10], [2 * B, 0.4, 12], [3 * B, 0.5, 3], [3 * B, 0.45, 7], [3 * B, 0.4, 10],
+      ]),
+    ],
+    bell: [
+      // Twinkly music-box hook in the melody slot: sparkly high arpeggios, the
+      // brightest voice. Grows from a sparse figure into a fuller melodic run.
+      m('bell', 2, [[0, 0.6, 12], [10, 0.55, 15], [B, 0.6, 10], [B + 10, 0.55, 12]]),
+      m('bell', 2, [[0, 0.6, 12], [6, 0.5, 15], [10, 0.55, 17], [B, 0.6, 10], [B + 6, 0.5, 12], [B + 10, 0.55, 15]]),
+      m('bell', 4, [
+        [0, 0.6, 12], [6, 0.5, 15], [10, 0.55, 17], [B, 0.6, 10], [B + 6, 0.5, 15], [B + 10, 0.55, 12],
+        [2 * B, 0.6, 15], [2 * B + 6, 0.5, 17], [2 * B + 10, 0.55, 19], [3 * B, 0.6, 12], [3 * B + 6, 0.5, 10], [3 * B + 10, 0.55, 7],
+      ]),
+      m('bell', 4, [
+        [0, 0.6, 12], [4, 0.5, 15], [6, 0.5, 17], [10, 0.55, 19], [B, 0.6, 10], [B + 4, 0.5, 12], [B + 6, 0.5, 15], [B + 10, 0.55, 17],
+        [2 * B, 0.6, 15], [2 * B + 4, 0.5, 17], [2 * B + 6, 0.5, 19], [2 * B + 10, 0.55, 15], [3 * B, 0.6, 12], [3 * B + 4, 0.5, 10], [3 * B + 6, 0.5, 7], [3 * B + 10, 0.55, 10],
+      ]),
+    ],
+    whistle: [
+      // Smooth sung hook in the melody slot: sparse, singable, longer notes so
+      // each hit cleanly tags one enemy. High-ish and never dense; grows the
+      // hook, not the note count.
+      m('whistle', 2, [[0, 0.7, 12], [B, 0.7, 10]]),
+      m('whistle', 2, [[0, 0.7, 12], [8, 0.6, 15], [B, 0.7, 10], [B + 8, 0.6, 7]]),
+      m('whistle', 4, [
+        [0, 0.7, 12], [8, 0.6, 15], [B, 0.7, 10], [2 * B, 0.7, 15], [2 * B + 8, 0.6, 12], [3 * B, 0.7, 10], [3 * B + 8, 0.6, 7],
+      ]),
+      m('whistle', 4, [
+        [0, 0.7, 12], [6, 0.6, 15], [B, 0.7, 10], [B + 8, 0.6, 12],
+        [2 * B, 0.7, 15], [2 * B + 6, 0.6, 12], [3 * B, 0.7, 10], [3 * B + 8, 0.6, 7],
+      ]),
+    ],
+
     kick: [
       d('kick', 'X.........X.....'),
       d('kick', 'X......X..X.....'),
@@ -723,6 +1005,88 @@ const DNB: Genre = {
   swing: 0,
   powerMul: 0.66,
   ladders: {
+    riser: RISER,
+    ride: [
+      // Freeze sweep: a bright ride ping that rings. At 174 it stays moderate
+      // (quarter/8th feel, never the 16th wall the hat already owns) so each
+      // freeze lands as a readable slice. Grows by offbeats then accents.
+      d('ride', 'o...o...o...o...'),
+      d('ride', 'o.o.o.o.o.o.o.o.'),
+      d('ride', 'x.o.x.o.x.o.x.o.'),
+      d('ride', 'x.o.x.o.x.o.x.o.', 'x.o.x.o.x.o.x.oO'),
+    ],
+    reese: [
+      // The DnB monster: a thick growling sub that rolls. LOW notes only, sits
+      // on the root with the kick on the one, then rolls off it (stays clear of
+      // the second kick at step 10). Even steps only (8th cap at 174); grows
+      // from sparse weight into the signature busy roll.
+      m('reese', 2, [[0, 0.95, 0], [B + 8, 0.9, -5]]),
+      m('reese', 2, [[0, 0.95, 0], [8, 0.8, 0], [B, 0.9, -5], [B + 8, 0.8, -5]]),
+      m('reese', 2, [
+        [0, 0.95, 0], [6, 0.75, 0], [8, 0.8, -2], [14, 0.7, 0],
+        [B, 0.9, -5], [B + 6, 0.75, -5], [B + 8, 0.8, -7], [B + 14, 0.7, -5],
+      ]),
+      m('reese', 2, [
+        [0, 0.95, 0], [4, 0.7, 0], [6, 0.75, -2], [8, 0.85, 0], [12, 0.7, -5], [14, 0.75, 0],
+        [B, 0.9, -5], [B + 4, 0.7, -5], [B + 6, 0.75, -7], [B + 8, 0.85, -5], [B + 12, 0.7, -2], [B + 14, 0.75, -5],
+      ]),
+    ],
+    choir: [
+      // Airy 'aah' pad: sustained and sparse, one held note per half-phrase.
+      // Mid range. Grows by voicing (stacking a second, then third note at the
+      // same onset) into a lush held chord, not by adding rhythm. Even steps.
+      m('choir', 4, [[0, 0.5, 0], [2 * B, 0.5, 7]]),
+      m('choir', 4, [[0, 0.5, 0], [0, 0.45, 7], [2 * B, 0.5, 7], [2 * B, 0.45, 12]]),
+      m('choir', 4, [
+        [0, 0.5, 0], [0, 0.45, 7], [B, 0.45, 5],
+        [2 * B, 0.5, 7], [2 * B, 0.45, 12], [3 * B, 0.45, 10],
+      ]),
+      m('choir', 4, [
+        [0, 0.5, 0], [0, 0.45, 7], [0, 0.4, 10], [B, 0.45, 5],
+        [2 * B, 0.5, 7], [2 * B, 0.45, 12], [2 * B, 0.4, 15], [3 * B, 0.45, 10],
+      ]),
+    ],
+    bell: [
+      // Twinkly music-box: the brightest voice, high sparkly arpeggios. Even
+      // steps only at 174. Grows from a few pings into a fuller arpeggiated line
+      // across the phrase, staying up in the high register.
+      m('bell', 2, [[0, 0.65, 12], [8, 0.6, 15], [B, 0.65, 17], [B + 8, 0.6, 12]]),
+      m('bell', 2, [
+        [0, 0.65, 12], [4, 0.55, 15], [8, 0.6, 17], [12, 0.55, 15],
+        [B, 0.65, 12], [B + 8, 0.6, 10],
+      ]),
+      m('bell', 4, [
+        [0, 0.65, 12], [4, 0.55, 15], [8, 0.6, 17], [12, 0.55, 15],
+        [B, 0.65, 12], [B + 8, 0.6, 10],
+        [2 * B, 0.65, 15], [2 * B + 4, 0.55, 17], [2 * B + 8, 0.6, 19], [3 * B, 0.65, 15], [3 * B + 8, 0.6, 12],
+      ]),
+      m('bell', 4, [
+        [0, 0.65, 12], [4, 0.55, 15], [8, 0.6, 17], [12, 0.55, 15],
+        [B, 0.65, 12], [B + 4, 0.55, 15], [B + 8, 0.6, 10], [B + 12, 0.55, 12],
+        [2 * B, 0.65, 15], [2 * B + 4, 0.55, 17], [2 * B + 8, 0.6, 19], [2 * B + 12, 0.55, 17],
+        [3 * B, 0.65, 15], [3 * B + 4, 0.55, 12], [3 * B + 8, 0.6, 10], [3 * B + 12, 0.55, 12],
+      ]),
+    ],
+    whistle: [
+      // Smooth sung hook: each hit tags one enemy, so it stays SPARSE (1-3
+      // notes per bar, longer notes, high-ish). Even steps only at 174. Grows
+      // into a fuller singable line across the phrase, never dense.
+      m('whistle', 2, [[0, 0.7, 7], [B + 8, 0.65, 10]]),
+      m('whistle', 2, [[0, 0.7, 7], [8, 0.65, 10], [B, 0.7, 12], [B + 8, 0.65, 7]]),
+      m('whistle', 4, [
+        [0, 0.7, 7], [8, 0.65, 10],
+        [B, 0.7, 12], [B + 8, 0.65, 10],
+        [2 * B, 0.7, 10], [2 * B + 8, 0.65, 12],
+        [3 * B, 0.7, 7], [3 * B + 8, 0.65, 10],
+      ]),
+      m('whistle', 4, [
+        [0, 0.7, 7], [8, 0.65, 10], [12, 0.6, 12],
+        [B, 0.7, 12], [B + 8, 0.65, 10],
+        [2 * B, 0.7, 15], [2 * B + 8, 0.65, 12], [2 * B + 12, 0.6, 10],
+        [3 * B, 0.7, 12], [3 * B + 8, 0.65, 7],
+      ]),
+    ],
+
     kick: [
       d('kick', 'X.........X.....'),
       d('kick', 'X.........X.....'),
@@ -888,6 +1252,73 @@ const TECHNO: Genre = {
   swing: 0,
   powerMul: 0.86,
   ladders: {
+    riser: RISER,
+    // Ride: freeze-sweep in the hats slot. Warehouse ride ping that rides the
+    // pulse. Moderate by design (quarter -> 8th feel, never a 16th wall);
+    // grows by accenting beats then opening the offbeats into bright rings.
+    ride: [
+      d('ride', 'o...o...o...o...'),
+      d('ride', 'o.o.o.o.o.o.o.o.'),
+      d('ride', 'x.o.x.o.x.o.x.o.'),
+      d('ride', 'x.O.x.O.x.O.x.O.', 'x.O.x.O.x.O.x.OX'),
+    ],
+    // Reese: growling low monster in the bass slot. Sits on the offbeats
+    // (2/6/10/14) to stay clear of the four-on-floor kick; grows by weight and
+    // a short roll pickup, not by climbing. Low notes only (0, -5, -2, -7).
+    reese: [
+      m('reese', 1, [[2, 0.85, 0], [10, 0.85, 0]]),
+      m('reese', 1, [[2, 0.9, 0], [6, 0.8, 0], [10, 0.9, -5], [14, 0.8, -5]]),
+      m('reese', 2, [
+        [2, 0.9, 0], [6, 0.8, 0], [10, 0.9, -5], [14, 0.8, -5],
+        [B + 2, 0.9, 0], [B + 6, 0.8, 0], [B + 10, 0.9, -2], [B + 14, 0.8, -7],
+      ]),
+      m('reese', 2, [
+        [2, 1.0, 0], [6, 0.85, 0], [10, 0.95, -5], [13, 0.6, -5], [14, 0.85, -5],
+        [B + 2, 1.0, 0], [B + 6, 0.85, 0], [B + 10, 0.95, -2], [B + 14, 0.85, -7],
+      ]),
+    ],
+    // Choir: airy held 'aah' pad in the harmony slot. Sustained and sparse,
+    // one attack per bar at tier 1; grows by stacking voices into a fuller
+    // chord (not by adding notes), with a lush mid-bar shift at tier 4.
+    choir: [
+      m('choir', 2, [[0, 0.5, 0], [B, 0.5, 7]]),
+      m('choir', 2, [[0, 0.5, 0], [0, 0.45, 7], [B, 0.5, 7], [B, 0.45, 12]]),
+      m('choir', 2, [
+        [0, 0.55, 0], [0, 0.5, 7], [0, 0.45, 10],
+        [B, 0.55, 3], [B, 0.5, 10], [B, 0.45, 12],
+      ]),
+      m('choir', 2, [
+        [0, 0.6, 0], [0, 0.55, 7], [0, 0.5, 10],
+        [8, 0.45, 5], [8, 0.4, 12],
+        [B, 0.6, 3], [B, 0.55, 10], [B, 0.5, 12],
+        [B + 8, 0.45, 7], [B + 8, 0.4, 15],
+      ]),
+    ],
+    // Bell: twinkly music-box ping in the melody slot. Bright and high, but
+    // kept short and repetitive (techno melody stays a looping figure, never a
+    // tune). High notes only (12, 15, 17, 19); grows into a fuller arpeggio.
+    bell: [
+      m('bell', 1, [[0, 0.55, 12], [8, 0.5, 15]]),
+      m('bell', 1, [[0, 0.55, 12], [4, 0.5, 15], [8, 0.55, 12], [12, 0.5, 15]]),
+      m('bell', 1, [[0, 0.55, 12], [4, 0.5, 15], [8, 0.55, 17], [10, 0.5, 15], [12, 0.55, 12], [14, 0.5, 15]]),
+      m('bell', 2, [
+        [0, 0.55, 12], [4, 0.5, 15], [8, 0.55, 17], [10, 0.5, 15], [12, 0.55, 12], [14, 0.5, 15],
+        [B, 0.55, 12], [B + 4, 0.5, 15], [B + 8, 0.55, 19], [B + 10, 0.5, 17], [B + 12, 0.55, 15], [B + 14, 0.5, 12],
+      ]),
+    ],
+    // Whistle: pure smooth sung hook in the melody slot. Sparse by mandate
+    // (each note tags one enemy) — 1-3 long, high-ish notes per bar (7, 10,
+    // 12, 15), a singable loop that grows a touch without getting dense.
+    whistle: [
+      m('whistle', 2, [[0, 0.6, 7], [B, 0.6, 10]]),
+      m('whistle', 2, [[0, 0.6, 7], [8, 0.55, 10], [B, 0.6, 12], [B + 8, 0.55, 10]]),
+      m('whistle', 2, [[0, 0.6, 7], [6, 0.55, 10], [B, 0.6, 12], [B + 6, 0.55, 10], [B + 12, 0.55, 7]]),
+      m('whistle', 2, [
+        [0, 0.65, 7], [6, 0.55, 10], [12, 0.55, 12],
+        [B, 0.65, 15], [B + 6, 0.55, 12], [B + 12, 0.55, 10],
+      ]),
+    ],
+
     kick: [
       d('kick', 'X...X...X...X...'),
       d('kick', 'X...X...X...X...'),
