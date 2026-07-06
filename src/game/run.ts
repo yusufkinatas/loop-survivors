@@ -64,6 +64,13 @@ import {
 } from './effects';
 import { BASE_MODS, ITEMS, type ItemId, type Mods } from './items';
 import type { Rng } from './rng';
+import {
+  DROP,
+  ENERGY_BASE_RATE,
+  ENERGY_PER_DAMAGE,
+  SECTIONS,
+  type SectionId,
+} from './sections';
 import { SpatialHash, circlesOverlap } from './spatial';
 
 /** Weapons whose projectiles pierce: crush grants +pierce on these, +radius
@@ -313,6 +320,17 @@ export class RunWorld {
    *  genres fire more triggers, so their per-trigger damage is scaled down and
    *  slow genres up, applied to every weapon's damage as it fires. */
   powerMul = 1;
+
+  // ---- Perform the track: sections, energy, the drop (src/game/sections.ts) ----
+  /** The active performance section. GROOVE is the baseline (all multipliers 1,
+   *  full band, no drop), so a world that never leaves it — every bot run and
+   *  every existing seeded replay — behaves bit-identically to before. */
+  section: SectionId = 'groove';
+  /** Drop energy, 0..1. Banks from time-in-section + damage dealt; full arms
+   *  the drop. */
+  energy = 0;
+  /** Seconds left in the post-drop hype window (the whole band amped). */
+  dropWindowT = 0;
 
   /** Per-weapon effect slot (Feature 4): the sound + gameplay modifier on a
    *  role. Composes after the global mods, per weapon, in applyBuild. */
@@ -737,16 +755,63 @@ export class RunWorld {
   }
 
   /** The single build-transform pipeline (D1): genre power, then global item
-   *  mods, then this weapon's effect. Nothing else multiplies weapon numbers. */
+   *  mods, then the live performance section (and drop hype), then this
+   *  weapon's effect. Nothing else multiplies weapon numbers.
+   *
+   *  In GROOVE with no drop running (every bot run, every legacy replay) the
+   *  section factors are all 1, so the transform is bit-identical to before. */
   private applyBuild(conf: WeaponConf, effect: EffectId | null, usesPierce: boolean): WeaponConf {
     const m = this.mods;
-    const out: WeaponConf = { ...conf, damage: conf.damage * this.powerMul * m.damageMul };
-    if (out.radius !== undefined) out.radius *= m.areaMul;
+    const dropping = this.dropWindowT > 0;
+    const secDmg = SECTIONS[this.section].dmgMul * (dropping ? DROP.dmgMul : 1);
+    const secArea = dropping ? DROP.areaMul : 1;
+    const out: WeaponConf = { ...conf, damage: conf.damage * this.powerMul * m.damageMul * secDmg };
+    if (out.radius !== undefined) out.radius *= m.areaMul * secArea;
     if (out.lifetimeS !== undefined) out.lifetimeS *= m.durMul;
     if (out.speed !== undefined) out.speed *= m.projSpeedMul;
-    if (out.orbitRadius !== undefined) out.orbitRadius *= m.areaMul;
+    if (out.orbitRadius !== undefined) out.orbitRadius *= m.areaMul * secArea;
     if (effect) return applyEffectConf(out, effect, usesPierce);
     return out;
+  }
+
+  /** Trigger the drop: only when energy is full and no drop is already running.
+   *  Spends all energy, slams the band back to GROOVE for the hype window, rips
+   *  a screen-clearing shockwave out, and gifts a breath of safety. Returns true
+   *  if it fired (so the shell can re-voice the full band and cue the juice). */
+  triggerDrop(): boolean {
+    if (this.energy < 1 || this.dropWindowT > 0) return false;
+    const p = this.player;
+    this.energy = 0;
+    this.dropWindowT = DROP.windowS;
+    this.section = 'groove';
+    p.iframesT = Math.max(p.iframesT, DROP.iframesS);
+    this.shocks.push({
+      x: p.x,
+      y: p.y,
+      radius: 20,
+      maxRadius: DROP.radius,
+      speed: DROP.shockSpeed,
+      damage: DROP.shockDamage * this.powerMul,
+      knockback: DROP.knockback,
+      color: DROP.color,
+      hit: new Set(),
+    });
+    this.spawnRing(p.x, p.y, DROP.radius, DROP.color, 0.6);
+    this.fx?.push({ type: 'slam', x: p.x, y: p.y, radius: DROP.radius * 0.35, color: DROP.color });
+    this.fx?.push({ type: 'shake', mag: 16, dur: 0.5 });
+    this.fx?.push({ type: 'flash', color: DROP.color, alpha: 0.5, dur: 0.5 });
+    return true;
+  }
+
+  /** Switch the live performance section (player input only). The engine's
+   *  voice muting is applied by the game shell; this holds the gameplay state. */
+  setSection(id: SectionId): void {
+    this.section = id;
+  }
+
+  /** True once the meter is full and no drop is mid-flight — the drop is armed. */
+  get dropReady(): boolean {
+    return this.energy >= 1 && this.dropWindowT <= 0;
   }
 
   /** Push an enemy away from a point (Feature 3), sharing the crash knock
@@ -778,6 +843,12 @@ export class RunWorld {
       this.events.onVictory();
       return;
     }
+
+    // Perform the track: bank energy from time-in-section (charges even when a
+    // section is nearly disarmed, so BUILD-UP/BREAKDOWN can load the drop) and
+    // count down the post-drop hype window. No charge while the drop is live.
+    if (this.dropWindowT > 0) this.dropWindowT = Math.max(0, this.dropWindowT - dt);
+    else this.energy = Math.min(1, this.energy + ENERGY_BASE_RATE * SECTIONS[this.section].chargeMul * dt);
 
     this.movePlayer(dt);
     if (this.scripted) {
@@ -838,8 +909,12 @@ export class RunWorld {
 
   private movePlayer(dt: number): void {
     const a = this.control();
-    this.player.x += a.x * RUN.playerSpeed * this.mods.moveMul * dt;
-    this.player.y += a.y * RUN.playerSpeed * this.mods.moveMul * dt;
+    // Section move trade (and the drop's brief surge). GROOVE with no drop = 1,
+    // so the bot/replay path is unchanged.
+    const secMove = SECTIONS[this.section].moveMul * (this.dropWindowT > 0 ? DROP.moveMul : 1);
+    const speed = RUN.playerSpeed * this.mods.moveMul * secMove;
+    this.player.x += a.x * speed * dt;
+    this.player.y += a.y * speed * dt;
     // Riser's auto-dash surge: a short extra velocity along the locked dash
     // direction, on top of normal input. Deterministic (timeS-stepped), so the
     // bot rides it too.
@@ -860,7 +935,12 @@ export class RunWorld {
       if (e.dead || !circlesOverlap(p, e)) continue;
       // Limiter mitigates but never immunizes: floor 1 keeps the AFK-death
       // pillar. contactTakenMul===1 and integer e.damage>=10 -> identical.
-      const dmg = Math.max(1, Math.round(e.damage * this.mods.contactTakenMul));
+      // Section defense trade folds in the same way (GROOVE = 1, so the
+      // bot/replay path keeps the exact rounding).
+      const dmg = Math.max(
+        1,
+        Math.round(e.damage * this.mods.contactTakenMul * SECTIONS[this.section].contactTakenMul),
+      );
       p.hp = Math.max(0, p.hp - dmg);
       p.iframesT = RUN.iframesS;
       this.events.onHit();
@@ -1202,6 +1282,10 @@ export class RunWorld {
     e.hp -= amount;
     e.flashT = 0.08;
     if (source) this.damageByRole[source] = (this.damageByRole[source] ?? 0) + dealt;
+    // Combat kicker on the drop meter, so GROOVE fighting banks energy too (the
+    // bot never drops, so this write is inert to the sim). No charge mid-drop.
+    if (this.dropWindowT <= 0)
+      this.energy = Math.min(1, this.energy + dealt * ENERGY_PER_DAMAGE * SECTIONS[this.section].chargeMul);
     if (e.hp <= 0) {
       e.dead = true;
       this.kills++;

@@ -12,7 +12,9 @@ import { MOVERS, type MoverName } from '../bot/movers';
 import { makePolicy } from '../bot/policies';
 import { SIM_VIEW } from '../bot/sim';
 import { mountPlayground, type Playground } from '../rehearsal/playground';
+import { slotOf } from './band';
 import { RUN } from './config';
+import { SECTIONS, type SectionId } from './sections';
 import { EFFECT_META } from './effects';
 import { Hud, TIER_NUMERALS } from './hud';
 import { Input } from './input';
@@ -86,6 +88,43 @@ export async function bootGame(
   overlay.className = 'debug-overlay';
   overlay.style.display = 'none';
   root.appendChild(overlay);
+
+  // Perform-the-track: push the live section onto the engine's voices (a muted
+  // slot's weapon stops firing — that IS its damage leaving the world, Model A),
+  // tint the arena to the section, and refresh the HUD meter. Cheap; run each
+  // frame while a run/sandbox is live and again on every section swap / drop.
+  function applyPerformance(): void {
+    if (!world) return;
+    const dropping = world.dropWindowT > 0;
+    const sec = SECTIONS[world.section];
+    for (const role of ROLES) {
+      if (!world.tiers.has(role)) continue;
+      const audible = dropping || sec.audible === 'all' || sec.audible.has(slotOf(role));
+      engine.setVoiceEnabled(role, audible);
+    }
+    arenaVignette.className =
+      'arena-vignette' +
+      (dropping ? ' perf-dropping' : world.section !== 'groove' ? ` perf-${world.section}` : '');
+    hud.setPerformance(world.section, world.energy, world.dropReady, dropping);
+  }
+
+  function setSection(id: SectionId): void {
+    if (!world || (state !== 'run' && state !== 'sandbox')) return;
+    if (world.dropWindowT > 0) return; // the drop owns the band during its hype
+    world.setSection(id);
+    applyPerformance();
+  }
+
+  function fireDrop(): void {
+    if (!world || (state !== 'run' && state !== 'sandbox')) return;
+    if (world.triggerDrop()) {
+      applyPerformance();
+      hud.showToast('DROP');
+      view?.pushShake(14, 0.4);
+    }
+  }
+
+  hud.mountPerformance(setSection, fireDrop);
 
   const events = {
     onLevelUp(level: number): void {
@@ -307,6 +346,7 @@ export async function bootGame(
     engine.clearBarQueue();
     engine.clearVoiceEffects();
     for (const role of ROLES) engine.setVoiceEnabled(role, false);
+    arenaVignette.className = 'arena-vignette'; // clear any section tint
   }
 
   function startRun(genre: Genre, startingKit: Role): void {
@@ -500,6 +540,7 @@ export async function bootGame(
     if ((state === 'run' || state === 'sandbox') && world) {
       const dt = Math.min(ticker.deltaMS / 1000, 1 / 20); // clamp long frames
       world.update(dt);
+      applyPerformance(); // reflect the live section + the drop window's end
       view?.update(dt);
       hud.setStatus(
         world.player.hp / RUN.playerHp,
@@ -635,6 +676,17 @@ export async function bootGame(
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Escape') {
       togglePause();
+      return;
+    }
+    // Perform the track (keyboard-first): 1/2/3 swap the live section, SPACE
+    // fires the drop when the meter is full. All guarded to run/sandbox inside
+    // the handlers, so menus and picks ignore them.
+    if (e.code === 'Digit1') return setSection('groove');
+    if (e.code === 'Digit2') return setSection('breakdown');
+    if (e.code === 'Digit3') return setSection('buildup');
+    if (e.code === 'Space') {
+      e.preventDefault(); // no page scroll / button re-trigger
+      fireDrop();
       return;
     }
     const byKey: Record<string, { onClick(): void }> = {

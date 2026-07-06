@@ -1561,3 +1561,133 @@ button.big {
     letter-spacing: 0.06em;
   }
 }
+
+/* Perform the track: the section chips + drop energy meter, bottom-center.
+   Keyboard-first (1/2/3 swap the section, SPACE drops), but chips click too. */
+.perf-panel {
+  position: absolute;
+  left: 50%;
+  bottom: max(12px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--sp-2);
+  width: min(94vw, 560px);
+  padding: var(--sp-3);
+  background: linear-gradient(180deg, rgba(23, 26, 34, 0.82), rgba(16, 18, 24, 0.86));
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  z-index: 2;
+}
+.section-chips {
+  display: flex;
+  gap: var(--sp-2);
+}
+.section-chip {
+  --voice-color: var(--signal);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 7px 9px;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-top: 2px solid color-mix(in srgb, var(--voice-color) 45%, transparent);
+  border-radius: var(--r-sm);
+  background: rgba(10, 11, 15, 0.7);
+  color: var(--ink-dim);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
+}
+.section-chip:hover {
+  border-color: var(--line-2);
+}
+.section-chip.active {
+  border-color: var(--voice-color);
+  background: color-mix(in srgb, var(--voice-color) 16%, rgba(10, 11, 15, 0.7));
+  box-shadow: 0 0 16px -6px var(--voice-color);
+  transform: translateY(-1px);
+}
+.chip-key {
+  font: 800 11px/1 var(--font-mono);
+  letter-spacing: 0.05em;
+  color: var(--voice-color);
+  border: 1px solid color-mix(in srgb, var(--voice-color) 55%, transparent);
+  border-radius: var(--r-sm);
+  padding: 2px 6px;
+}
+.chip-name {
+  font: 800 12px/1 var(--font-mono);
+  letter-spacing: 0.1em;
+  color: var(--ink);
+}
+.section-chip.active .chip-name {
+  color: var(--voice-color);
+}
+.chip-line {
+  font: 10px/1.25 var(--font-mono);
+  color: var(--ink-faint);
+}
+.energy-meter {
+  position: relative;
+  height: 26px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: #0c0e13;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.energy-meter .fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(107, 168, 255, 0.5), var(--signal));
+  box-shadow: 0 0 18px -4px var(--signal);
+  transition: width 0.12s linear;
+}
+.perf-panel.armed .energy-meter .fill {
+  background: linear-gradient(90deg, #ffb454, var(--drop-gold, #fff2a8));
+  box-shadow: 0 0 22px -2px #fff2a8;
+}
+.drop-btn {
+  position: relative;
+  z-index: 1;
+  font: 800 12px/1 var(--font-mono);
+  letter-spacing: 0.16em;
+  color: var(--ink-dim);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+.drop-btn.ready {
+  color: #0a0b0f;
+  font-weight: 900;
+  animation: dropready 0.9s ease-in-out infinite;
+}
+.drop-btn.dropping {
+  color: #0a0b0f;
+}
+@keyframes dropready {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+
+/* Section tints on the arena vignette: a quick read of the live mode without
+   looking away from the horde. Breakdown cools and opens up; build-up warms
+   and closes in (the tension); the drop flashes gold. */
+.arena-vignette.perf-breakdown {
+  background: radial-gradient(130% 130% at 50% 45%, rgba(43, 90, 160, 0.1) 40%, rgba(0, 0, 0, 0.5) 100%);
+}
+.arena-vignette.perf-buildup {
+  background: radial-gradient(115% 115% at 50% 48%, transparent 34%, rgba(120, 60, 0, 0.5) 100%);
+}
+.arena-vignette.perf-dropping {
+  background: radial-gradient(150% 150% at 50% 45%, rgba(255, 220, 120, 0.16) 30%, rgba(40, 20, 0, 0.5) 100%);
+}

@@ -9,6 +9,7 @@ import { TIER_LINES } from './config';
 import { EFFECT_META } from './effects';
 import { ITEMS, type ItemId } from './items';
 import type { PickOption } from './picks';
+import { SECTIONS, SECTION_ORDER, type SectionId } from './sections';
 
 import { TIER_COUNT } from '../audio/charts';
 
@@ -38,6 +39,11 @@ export class Hud {
   private toastStack: HTMLElement;
   private itemStrip: HTMLElement;
   private rack: HTMLElement;
+  // Perform-the-track panel: section chips + the drop energy meter.
+  private perf: HTMLElement;
+  private sectionChips = new Map<SectionId, HTMLElement>();
+  private energyFill: HTMLElement | null = null;
+  private dropBtn: HTMLElement | null = null;
   private screen: HTMLElement | null = null;
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
   private kits: Map<Role, Kit>;
@@ -69,12 +75,62 @@ export class Hud {
     // The band rack: eight sockets, one per band position, empty until hired.
     this.rack = el('div', 'band-rack', root);
     this.rack.style.display = 'none';
+
+    // Perform-the-track panel (bottom-center): section chips + energy meter.
+    this.perf = el('div', 'perf-panel', root);
+    this.perf.style.display = 'none';
   }
 
   showHud(show: boolean): void {
     this.bar.style.display = show ? '' : 'none';
     this.itemStrip.style.display = show ? '' : 'none';
     this.rack.style.display = show ? '' : 'none';
+    this.perf.style.display = show ? '' : 'none';
+  }
+
+  /** Build the performance panel once: a chip per section (its key + plain
+   *  name), then the drop energy meter with an armed DROP prompt. Chips and the
+   *  prompt are clickable for mouse players, but the mechanic is keyboard-first
+   *  (1/2/3 to swap section, SPACE to drop). */
+  mountPerformance(onSelect: (id: SectionId) => void, onDrop: () => void): void {
+    this.perf.replaceChildren();
+    this.sectionChips.clear();
+    const chips = el('div', 'section-chips', this.perf);
+    for (const id of SECTION_ORDER) {
+      const sec = SECTIONS[id];
+      const chip = el('button', 'section-chip', chips);
+      chip.style.setProperty('--voice-color', `#${sec.color.toString(16).padStart(6, '0')}`);
+      el('span', 'chip-key', chip, sec.key);
+      el('span', 'chip-name', chip, sec.label);
+      el('span', 'chip-line', chip, sec.line);
+      chip.onclick = () => {
+        onSelect(id);
+        (chip as HTMLButtonElement).blur();
+      };
+      this.sectionChips.set(id, chip);
+    }
+    const meter = el('div', 'energy-meter', this.perf);
+    this.energyFill = el('div', 'fill', meter);
+    const btn = el('button', 'drop-btn', meter, 'SPACE · DROP');
+    btn.onclick = () => {
+      onDrop();
+      (btn as HTMLButtonElement).blur();
+    };
+    this.dropBtn = btn;
+  }
+
+  /** Per-frame performance readout: which section is live, the energy fill, and
+   *  whether the drop is armed (or currently ripping). Cheap DOM writes. */
+  setPerformance(active: SectionId, energy01: number, ready: boolean, dropping: boolean): void {
+    for (const [id, chip] of this.sectionChips) chip.classList.toggle('active', id === active);
+    if (this.energyFill) this.energyFill.style.width = `${Math.min(1, energy01) * 100}%`;
+    if (this.dropBtn) {
+      this.dropBtn.classList.toggle('ready', ready);
+      this.dropBtn.classList.toggle('dropping', dropping);
+      this.dropBtn.textContent = dropping ? 'DROP!' : ready ? 'SPACE · DROP' : 'CHARGING';
+    }
+    this.perf.classList.toggle('armed', ready);
+    this.perf.classList.toggle('dropping', dropping);
   }
 
   /** The band rack (docs/phases/the-band.md): eight typed sockets in rack
