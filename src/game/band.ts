@@ -63,13 +63,13 @@ export const SLOT_LABEL: Record<Slot, string> = {
 // bracketed future hires (heartbeat, rimshot, shaker, ride, acid, riser, Reese,
 // pluck bass, Rhodes, choir pad, bell, whistle) land in sub-phases B and C.
 export const SLOT_ROSTER: Record<Slot, Role[]> = {
-  pulse: ['kick', 'tom'],
+  pulse: ['kick', 'tom', 'heartbeat'],
   backbeat: ['snare', 'clap', 'rimshot'],
-  hats: ['hat'],
-  motion: ['arp', 'cowbell'],
+  hats: ['hat', 'shaker'],
+  motion: ['arp', 'cowbell', 'acid'],
   fx: ['crash', 'zap'],
-  bass: ['bass'],
-  harmony: ['chord'],
+  bass: ['bass', 'pluck'],
+  harmony: ['chord', 'rhodes'],
   melody: ['lead'],
 };
 

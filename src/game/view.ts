@@ -652,6 +652,10 @@ function makeProjectileGfx(pr: Projectile): Graphics {
         g.circle(0, 0, pr.radius).stroke({ width: 3, color: 0xffffff });
         g.circle(0, 0, pr.radius * 0.45).fill(0xffffff);
         break;
+      case 'pluck': // lobbed note: a small round bead (radius is the blast, not the shot)
+        g.circle(0, 0, 7).fill(0xffffff);
+        g.circle(0, 0, 3.5).fill(0x000000);
+        break;
       default: // hat: tiny chip dot
         g.circle(0, 0, pr.radius).fill(0xffffff);
     }

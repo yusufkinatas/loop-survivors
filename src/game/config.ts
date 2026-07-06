@@ -324,6 +324,8 @@ export interface WeaponConf {
   knockback?: number;
   /** rimshot: how many enemies the crack chains through (hops). */
   chains?: number;
+  /** acid gravity-well pull speed (px/s inward); heartbeat's drag-back distance. */
+  pull?: number;
 }
 
 /** Per-trigger gameplay effect of each kit, one block per tier ([tier-1]).
@@ -433,6 +435,46 @@ export const WEAPONS: Record<Role, WeaponConf[]> = {
     { damage: 13, radius: 26, chains: 4 },
     { damage: 16, radius: 28, chains: 5 },
   ],
+  // Heartbeat (band, Pulse): a breathing field — shoves close enemies out
+  // (knockback) and drags the outer ring in (pull), with a soft tick of damage.
+  heartbeat: [
+    { damage: 5, radius: 130, knockback: 30, pull: 260 },
+    { damage: 6, radius: 150, knockback: 34, pull: 300 },
+    { damage: 7, radius: 170, knockback: 38, pull: 340 },
+    { damage: 9, radius: 190, knockback: 44, pull: 400 },
+  ],
+  // Shaker (band, Hats): drops a short-lived damaging blob at your feet on each
+  // hit, so moving strings a trail of them behind you.
+  shaker: [
+    { damage: 3, radius: 34, lifetimeS: 0.9 },
+    { damage: 3, radius: 38, lifetimeS: 1.0 },
+    { damage: 4, radius: 42, lifetimeS: 1.1 },
+    { damage: 5, radius: 48, lifetimeS: 1.2 },
+  ],
+  // Acid (band, Motion): a placed gravity well that pulls enemies toward its
+  // center and ticks damage while they are caught.
+  acid: [
+    { damage: 4, radius: 100, lifetimeS: 2.2, pull: 90 },
+    { damage: 5, radius: 112, lifetimeS: 2.4, pull: 100 },
+    { damage: 6, radius: 126, lifetimeS: 2.6, pull: 115 },
+    { damage: 8, radius: 142, lifetimeS: 2.8, pull: 135 },
+  ],
+  // Pluck bass (band, Bass): a note lobbed on an arc to the nearest pack that
+  // explodes on landing. Heavy, like the bass wave, but placed.
+  pluck: [
+    { damage: 16, speed: 300, lifetimeS: 0.7, radius: 70 },
+    { damage: 18, speed: 310, lifetimeS: 0.72, radius: 76 },
+    { damage: 24, speed: 320, lifetimeS: 0.74, radius: 86 },
+    { damage: 32, speed: 340, lifetimeS: 0.78, radius: 96 },
+  ],
+  // Rhodes (band, Harmony): chord pools placed as mines that sit armed and
+  // bloom into a damage burst when an enemy steps in.
+  rhodes: [
+    { damage: 10, radius: 70, lifetimeS: 4.0 },
+    { damage: 12, radius: 78, lifetimeS: 4.5 },
+    { damage: 15, radius: 88, lifetimeS: 5.0 },
+    { damage: 20, radius: 100, lifetimeS: 5.5 },
+  ],
 };
 
 /** Weapon capability tags: the single source of truth for which modifiers a
@@ -457,6 +499,11 @@ export const WEAPON_TAGS: Record<Role, ReadonlySet<WeaponTag>> = {
   zap: new Set(['count', 'area']),
   crash: new Set(['area']),
   rimshot: new Set(['count']),
+  heartbeat: new Set(['area']),
+  shaker: new Set(['area', 'count']),
+  acid: new Set(['area']),
+  pluck: new Set(['projectile', 'area']),
+  rhodes: new Set(['area']),
 };
 
 /** The one honest gameplay-effect line on each pick card ([tier-1]). Terse
@@ -541,6 +588,36 @@ export const TIER_LINES: Record<Role, string[]> = {
     'jumps to one more enemy',
     'a longer chain, harder hits',
     'rips through the whole pack',
+  ],
+  heartbeat: [
+    'a pulse that shoves near and gathers far',
+    'a wider breathing field',
+    'pushes harder, pulls further',
+    'a huge breathing field',
+  ],
+  shaker: [
+    'leaves a damaging trail as you move',
+    'a longer-lasting trail',
+    'a wider, hotter trail',
+    'a blazing trail',
+  ],
+  acid: [
+    'a well that pulls enemies in',
+    'pulls harder, wider',
+    'a stronger, bigger well',
+    'a massive crushing well',
+  ],
+  pluck: [
+    'a note lobbed that bursts on landing',
+    'a bigger burst',
+    'a heavier, wider burst',
+    'a huge crushing burst',
+  ],
+  rhodes: [
+    'a mine that blooms when stepped in',
+    'a wider bloom',
+    'a bigger, harder bloom',
+    'a huge bloom',
   ],
 };
 

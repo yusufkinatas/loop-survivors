@@ -22,7 +22,12 @@ export type Role =
   | 'zap'
   | 'crash'
   // The band, sub-phase B — the first damage hires (docs/phases/the-band.md).
-  | 'rimshot';
+  | 'rimshot'
+  | 'heartbeat'
+  | 'shaker'
+  | 'acid'
+  | 'pluck'
+  | 'rhodes';
 
 export const ROLES: readonly Role[] = [
   'kick',
@@ -38,6 +43,11 @@ export const ROLES: readonly Role[] = [
   'arp',
   'lead',
   'rimshot',
+  'heartbeat',
+  'shaker',
+  'acid',
+  'pluck',
+  'rhodes',
 ];
 
 export interface Kit {
@@ -166,6 +176,117 @@ async function renderRimshot(): Promise<AudioBuffer> {
   noise.connect(bp).connect(nGain).connect(ctx.destination);
   tone.start(0);
   noise.start(0);
+  return ctx.startRendering();
+}
+
+async function renderHeartbeat(rootHz: number): Promise<AudioBuffer> {
+  // Soft round "lub-dub" double-thud: two pillowy low sine bumps, no click.
+  const ctx = offline(0.5);
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 220;
+  lp.connect(ctx.destination);
+  for (const [at, level] of [
+    [0, 0.9],
+    [0.14, 0.6],
+  ] as const) {
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(rootHz / 4, at);
+    osc.frequency.exponentialRampToValueAtTime(rootHz / 6, at + 0.16);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.linearRampToValueAtTime(level, at + 0.012); // soft attack, no click
+    g.gain.exponentialRampToValueAtTime(0.001, at + 0.18);
+    osc.connect(g).connect(lp);
+    osc.start(at);
+    osc.stop(at + 0.2);
+  }
+  return ctx.startRendering();
+}
+
+async function renderShaker(): Promise<AudioBuffer> {
+  // Soft "chh" sizzle, the hi-hat's smoother cousin: shaped noise, gentler
+  // attack and a softer high band than the hat.
+  const ctx = offline(0.16);
+  const noise = ctx.createBufferSource();
+  noise.buffer = noiseBuffer(ctx, 0.14);
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.value = 6800;
+  bp.Q.value = 0.9;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, 0);
+  g.gain.linearRampToValueAtTime(0.34, 0.006);
+  g.gain.exponentialRampToValueAtTime(0.001, 0.11);
+  noise.connect(bp).connect(g).connect(ctx.destination);
+  noise.start(0);
+  return ctx.startRendering();
+}
+
+async function renderAcid(rootHz: number): Promise<AudioBuffer> {
+  // Squelchy rubbery 303-style blip: a sawtooth through a resonant lowpass
+  // that sweeps down — the slidey, vocal Motion voice.
+  const ctx = offline(0.34);
+  const osc = ctx.createOscillator();
+  osc.type = 'sawtooth';
+  osc.frequency.value = rootHz;
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.Q.value = 12;
+  lp.frequency.setValueAtTime(rootHz * 6, 0);
+  lp.frequency.exponentialRampToValueAtTime(rootHz * 1.1, 0.26);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.5, 0);
+  g.gain.exponentialRampToValueAtTime(0.001, 0.3);
+  osc.connect(lp).connect(g).connect(ctx.destination);
+  osc.start(0);
+  osc.stop(0.32);
+  return ctx.startRendering();
+}
+
+async function renderPluck(rootHz: number): Promise<AudioBuffer> {
+  // Round short "bomp": a picked upright-bass note — triangle body with a fast
+  // pluck attack and a quick round decay.
+  const ctx = offline(0.4);
+  const osc = ctx.createOscillator();
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(rootHz / 2, 0);
+  osc.frequency.exponentialRampToValueAtTime(rootHz / 2.15, 0.1);
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 900;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, 0);
+  g.gain.linearRampToValueAtTime(0.8, 0.006);
+  g.gain.exponentialRampToValueAtTime(0.001, 0.32);
+  osc.connect(lp).connect(g).connect(ctx.destination);
+  osc.start(0);
+  osc.stop(0.36);
+  return ctx.startRendering();
+}
+
+async function renderRhodes(rootHz: number): Promise<AudioBuffer> {
+  // Warm bell-like electric-piano tone: a fundamental plus a soft bell partial,
+  // gentle attack, medium decay — lo-fi keys color.
+  const ctx = offline(0.8);
+  const partials: [number, number][] = [
+    [1, 0.6],
+    [2, 0.28],
+    [4.2, 0.12], // inharmonic bell shimmer
+  ];
+  for (const [mult, level] of partials) {
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = rootHz * mult;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, 0);
+    g.gain.linearRampToValueAtTime(level, 0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, 0.7);
+    osc.connect(g).connect(ctx.destination);
+    osc.start(0);
+    osc.stop(0.75);
+  }
   return ctx.startRendering();
 }
 
@@ -501,6 +622,11 @@ export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
     zap,
     crash,
     rimshot,
+    heartbeat,
+    shaker,
+    acid,
+    pluck,
+    rhodes,
   ] = await Promise.all([
     renderKick(true),
     renderKick(false),
@@ -520,6 +646,11 @@ export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
     renderZap(),
     renderCrash(),
     renderRimshot(),
+    renderHeartbeat(rootHz),
+    renderShaker(),
+    renderAcid(rootHz),
+    renderPluck(rootHz),
+    renderRhodes(rootHz),
   ]);
 
   const kits = new Map<Role, Kit>();
@@ -578,5 +709,10 @@ export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
   add('zap', 'Zap', '#66b3ff', false, [['zap', zap]]);
   add('crash', 'Crash', '#b9c2dd', false, [['crash', crash]], true);
   add('rimshot', 'Rimshot', '#ff8f5e', false, [['rimshot', rimshot]]);
+  add('heartbeat', 'Heartbeat', '#ff7a9c', false, [['heartbeat', heartbeat]], true);
+  add('shaker', 'Shaker', '#7be0d0', false, [['shaker', shaker]]);
+  add('acid', 'Acid', '#b6ff5a', true, [['acid', acid]]);
+  add('pluck', 'Pluck Bass', '#8f7bff', true, [['pluck', pluck]], true);
+  add('rhodes', 'Rhodes', '#5ad1ff', true, [['rhodes', rhodes]]);
   return kits;
 }
