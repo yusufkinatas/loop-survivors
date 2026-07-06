@@ -16,6 +16,8 @@ import {
   AIM_RANGE,
   ARP_OMEGA,
   BOOMERANG_OUT_FRAC,
+  CHAIN_HOP,
+  CHAIN_SEEK,
   CHARGER,
   CIRCLER,
   DARTER,
@@ -228,6 +230,7 @@ export const KIT_COLORS: Record<Role, number> = {
   arp: 0x33e6c2,
   zap: 0x66b3ff,
   crash: 0xb9c2dd,
+  rimshot: 0xff8f5e,
 };
 
 export interface RunWorldOpts {
@@ -405,6 +408,12 @@ export class RunWorld {
         const reach = conf.radius! * (0.9 + 0.2 * v);
         this.damageCone(p.x, p.y, ang, conf.arc!, reach, conf.damage * (0.85 + 0.3 * v), 'clap', WEAPON_SHOVE.clap);
         this.fx?.push({ type: 'arc', x: p.x, y: p.y, angle: ang, arc: conf.arc!, radius: reach, color });
+        break;
+      }
+      case 'rimshot': {
+        // A crack that leaps enemy-to-enemy through a cluster: seed on the
+        // nearest foe, then hop to the next-nearest un-hit enemy, chaining.
+        this.chainCrack(conf.chains ?? 1, conf.damage * (0.85 + 0.3 * v), conf.radius!, 'rimshot', color);
         break;
       }
       case 'zap': {
@@ -1440,6 +1449,51 @@ export class RunWorld {
       if (z.lifeS <= 0) {
         this.zones.splice(i, 1);
       }
+    }
+  }
+
+  /** Rimshot's chain (the band): a crack that hops through a cluster. Seeds on
+   *  the nearest enemy to the player, then leaps to the next-nearest un-hit
+   *  enemy within CHAIN_HOP, up to `chains` links. Each link is single-target
+   *  and draws a bolt from the previous point. */
+  private chainCrack(
+    chains: number,
+    damage: number,
+    sparkRadius: number,
+    source: Role,
+    color: number,
+  ): void {
+    const p = this.player;
+    const struck = new Set<Enemy>();
+    let px = p.x;
+    let py = p.y;
+    let cx = p.x;
+    let cy = p.y;
+    let range = CHAIN_SEEK;
+    for (let k = 0; k < chains; k++) {
+      const near = this.hash.query(cx, cy, range, this.queryBuf);
+      let best: Enemy | null = null;
+      let bestD = Infinity;
+      for (const e of near) {
+        if (e.dead || struck.has(e)) continue;
+        const dx = e.x - cx;
+        const dy = e.y - cy;
+        const d = dx * dx + dy * dy;
+        if (d < bestD) {
+          bestD = d;
+          best = e;
+        }
+      }
+      if (!best) break;
+      struck.add(best);
+      this.damageEnemy(best, damage, source);
+      this.fx?.push({ type: 'zigbolt', x1: px, y1: py, x2: best.x, y2: best.y, color, branches: 1 });
+      this.fx?.push({ type: 'spark', x: best.x, y: best.y, color, n: 5, spread: sparkRadius });
+      px = best.x;
+      py = best.y;
+      cx = best.x;
+      cy = best.y;
+      range = CHAIN_HOP; // after the seed, only chain through the cluster
     }
   }
 

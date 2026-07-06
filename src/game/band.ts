@@ -64,7 +64,7 @@ export const SLOT_LABEL: Record<Slot, string> = {
 // pluck bass, Rhodes, choir pad, bell, whistle) land in sub-phases B and C.
 export const SLOT_ROSTER: Record<Slot, Role[]> = {
   pulse: ['kick', 'tom'],
-  backbeat: ['snare', 'clap'],
+  backbeat: ['snare', 'clap', 'rimshot'],
   hats: ['hat'],
   motion: ['arp', 'cowbell'],
   fx: ['crash', 'zap'],

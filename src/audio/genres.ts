@@ -89,6 +89,14 @@ const LOFI: Genre = {
       d('clap', '....x.......x...', '....x.......x.o.'),
       d('clap', '....x.......x...', '....x.......x.xx'),
     ],
+    rimshot: [
+      // Backbeat, lazy and sparse: beat-4 tock alone, then beat-2 joins, then a
+      // ghost pickup, then a second bar with an extra ghost. Grows by feel.
+      d('rimshot', '............x...'),
+      d('rimshot', '....x.......x...'),
+      d('rimshot', '....x.....-.x...'),
+      d('rimshot', '....x.....-.x...', '....x...-.-.x...'),
+    ],
     tom: [
       // Pulse: laid-back low pulse on beat 3. Sparse by rule; tiers grow by
       // weight and pitch, then a half-note (beat 1+3) pulse, never clutter.
@@ -195,6 +203,14 @@ const HOUSE: Genre = {
       d('clap', '....x.......x...'),
       d('clap', '....x.......x...', '....x.......x.o.'),
       d('clap', '....o...o...x...', '....o...o...x.xx'),
+    ],
+    rimshot: [
+      // Clean four-on-floor backbeat on 2 and 4; tiers 3-4 add a ghost pickup
+      // into beat 3 (step 7) and a phrase-end ghost (step 15). Stays a backbeat.
+      d('rimshot', '....x.......x...'),
+      d('rimshot', '....x.......x...'),
+      d('rimshot', '....x..-....x...'),
+      d('rimshot', '....x..-....x..-'),
     ],
     tom: [
       // Pulse: offbeat low groove under the four-on-floor kick, sitting on the
@@ -308,6 +324,14 @@ const SYNTHWAVE: Genre = {
       d('clap', '....x.......x...'),
       d('clap', '....x.......x...', '....x.......x.o.'),
       d('clap', '....x.......x...', '....x...o...x.xx'),
+    ],
+    rimshot: [
+      // Crisp machine-tight backbeat, accented on 2 and 4; tier 4 tightens with
+      // ghosts (steps 10 and 15) across a second bar. Dead straight, no swing.
+      d('rimshot', '....X.......X...'),
+      d('rimshot', '....X.......X...'),
+      d('rimshot', '....X.......X...', '....X.......X..-'),
+      d('rimshot', '....X.......X...', '....X.....-.X.-.'),
     ],
     tom: [
       // Pulse: machine-tight straight low pattern on the offbeats, growing into
@@ -423,6 +447,15 @@ const HIPHOP: Genre = {
       d('clap', '........x.......', '........x......o'),
       d('clap', '........x.......', '....o...x....oxx'),
     ],
+    rimshot: [
+      // Halftime: the big answering tock lands on beat 3 (step 8) at low tiers,
+      // then fills toward 2/4 with soft hits and ghosted syncopation by tier 4.
+      // Laid-back and sparse.
+      d('rimshot', '........X.......'),
+      d('rimshot', '........X.......'),
+      d('rimshot', '....o...X.......', '....o...X.......'),
+      d('rimshot', '....o...X...o...', '....o...X..-.o-.'),
+    ],
     cowbell: [
       // Motion thinned (hats own the fast layer): sparse offbeats, growing by
       // range not density — punctuation, not a wall.
@@ -536,6 +569,15 @@ const DNB: Genre = {
       d('clap', '....x.......x...', '....x......ox...'),
       d('clap', '....x.......x...', '....x.....o.x.xx'),
     ],
+    rimshot: [
+      // Classic break: the rim answers on beats 2 and 4 (steps 4, 12). At 174,
+      // hits and ghosts stay on EVEN (8th) steps only — odd 16ths read as an
+      // error tone. Grows with even-step ghosts across a second bar.
+      d('rimshot', '....X.......X...'),
+      d('rimshot', '....X.......X...'),
+      d('rimshot', '....X.......X...', '....X.....-.X...'),
+      d('rimshot', '....X...-...X...', '....X.-.-...X.-.'),
+    ],
     tom: [
       // Pulse: steady low pulse anchored on beat 3, EVEN steps only (8th-note
       // grid max — odd 16th spacing reads as an error tone at 174 BPM).
@@ -643,6 +685,15 @@ const TECHNO: Genre = {
       d('clap', '............x...'),
       d('clap', '....o.......x...', '....o.......x...'),
       d('clap', '....o.......x...', '....o.......x.oo'),
+    ],
+    rimshot: [
+      // Steady, hypnotic backbeat on 2 and 4; tier 3 adds an offbeat ghost
+      // pickup (step 10), tier 4 a second bar with another offbeat ghost (14).
+      // Repetitive by design.
+      d('rimshot', '....x.......x...'),
+      d('rimshot', '....x.......x...'),
+      d('rimshot', '....x.....-.x...'),
+      d('rimshot', '....x.....-.x...', '....x.....-.x.-.'),
     ],
     tom: [
       m('tom', 2, [[B + 4, 0.65, 0], [B + 12, 0.65, 0]]),

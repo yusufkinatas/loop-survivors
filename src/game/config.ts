@@ -322,6 +322,8 @@ export interface WeaponConf {
   orbitRadius?: number;
   /** crash: knockback distance pushed onto enemies the wave front passes. */
   knockback?: number;
+  /** rimshot: how many enemies the crack chains through (hops). */
+  chains?: number;
 }
 
 /** Per-trigger gameplay effect of each kit, one block per tier ([tier-1]).
@@ -422,6 +424,15 @@ export const WEAPONS: Record<Role, WeaponConf[]> = {
     { damage: 24, speed: 560, radius: 340, knockback: 65 },
     { damage: 30, speed: 600, radius: 380, knockback: 80 },
   ],
+  // Rimshot (band, Backbeat): a dry crack that leaps enemy-to-enemy through a
+  // cluster. Single-target per link, but the chain grows tier to tier. radius
+  // is only the hit-spark size.
+  rimshot: [
+    { damage: 10, radius: 22, chains: 2 },
+    { damage: 11, radius: 24, chains: 3 },
+    { damage: 13, radius: 26, chains: 4 },
+    { damage: 16, radius: 28, chains: 5 },
+  ],
 };
 
 /** Weapon capability tags: the single source of truth for which modifiers a
@@ -445,6 +456,7 @@ export const WEAPON_TAGS: Record<Role, ReadonlySet<WeaponTag>> = {
   arp: new Set(['count', 'area']),
   zap: new Set(['count', 'area']),
   crash: new Set(['area']),
+  rimshot: new Set(['count']),
 };
 
 /** The one honest gameplay-effect line on each pick card ([tier-1]). Terse
@@ -524,6 +536,12 @@ export const TIER_LINES: Record<Role, string[]> = {
     'a wider wave, harder knock',
     'a massive wave, huge knockback',
   ],
+  rimshot: [
+    'a crack that chains through a cluster',
+    'jumps to one more enemy',
+    'a longer chain, harder hits',
+    'rips through the whole pack',
+  ],
 };
 
 /** Bass tier 4's once-per-phrase sub drop and chord tier 4's pads get a
@@ -562,6 +580,12 @@ export const KNOCK_S = 0.18;
 
 /** Zap picks its random targets from enemies within this range of the player. */
 export const ZAP_RANGE = 640;
+
+/** Rimshot's crack seeks its first target within SEEK of the player, then each
+ *  link hops to the next-nearest un-hit enemy within HOP (so it chains through
+ *  a pack, not across the whole arena). */
+export const CHAIN_SEEK = 360;
+export const CHAIN_HOP = 150;
 
 // ---- weapon feel & modifier constants (Features 3, 4, 5) ----
 

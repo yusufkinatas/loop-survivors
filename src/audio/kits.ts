@@ -20,7 +20,9 @@ export type Role =
   | 'cowbell'
   | 'arp'
   | 'zap'
-  | 'crash';
+  | 'crash'
+  // The band, sub-phase B — the first damage hires (docs/phases/the-band.md).
+  | 'rimshot';
 
 export const ROLES: readonly Role[] = [
   'kick',
@@ -35,6 +37,7 @@ export const ROLES: readonly Role[] = [
   'chord',
   'arp',
   'lead',
+  'rimshot',
 ];
 
 export interface Kit {
@@ -136,6 +139,33 @@ async function renderClap(): Promise<AudioBuffer> {
     src.connect(g).connect(bp);
     src.start(at);
   }
+  return ctx.startRendering();
+}
+
+async function renderRimshot(): Promise<AudioBuffer> {
+  // Dry woody "tock": a short square body with a fast pitch drop, plus a bright
+  // click transient. No tail — the sharp answering hit on the off-counts.
+  const ctx = offline(0.14);
+  const tone = ctx.createOscillator();
+  tone.type = 'square';
+  tone.frequency.setValueAtTime(440, 0);
+  tone.frequency.exponentialRampToValueAtTime(300, 0.03);
+  const tGain = ctx.createGain();
+  tGain.gain.setValueAtTime(0.5, 0);
+  tGain.gain.exponentialRampToValueAtTime(0.001, 0.07);
+  tone.connect(tGain).connect(ctx.destination);
+  const noise = ctx.createBufferSource();
+  noise.buffer = noiseBuffer(ctx, 0.06);
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.value = 2400;
+  bp.Q.value = 1.6;
+  const nGain = ctx.createGain();
+  nGain.gain.setValueAtTime(0.5, 0);
+  nGain.gain.exponentialRampToValueAtTime(0.001, 0.05);
+  noise.connect(bp).connect(nGain).connect(ctx.destination);
+  tone.start(0);
+  noise.start(0);
   return ctx.startRendering();
 }
 
@@ -470,6 +500,7 @@ export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
     arp,
     zap,
     crash,
+    rimshot,
   ] = await Promise.all([
     renderKick(true),
     renderKick(false),
@@ -488,6 +519,7 @@ export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
     renderArp(rootHz),
     renderZap(),
     renderCrash(),
+    renderRimshot(),
   ]);
 
   const kits = new Map<Role, Kit>();
@@ -545,5 +577,6 @@ export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
   add('arp', 'Arp', '#33e6c2', true, [['arp', arp]]);
   add('zap', 'Zap', '#66b3ff', false, [['zap', zap]]);
   add('crash', 'Crash', '#b9c2dd', false, [['crash', crash]], true);
+  add('rimshot', 'Rimshot', '#ff8f5e', false, [['rimshot', rimshot]]);
   return kits;
 }
