@@ -28,6 +28,7 @@ import {
   ENEMY_BANDS,
   enemyScaling,
   FLASH,
+  HOLD,
   KNOCK_S,
   MAX_ALIVE_HARD,
   ORBIT_REHIT_S,
@@ -314,6 +315,19 @@ export class RunWorld {
    *  slow genres up, applied to every weapon's damage as it fires. */
   powerMul = 1;
 
+  // ---- Hold & Drop (the pull-back mechanic) ----
+  // Player-driven, so untouched by the bot/replay path: these maps stay empty
+  // unless holdRole/releaseRole are called, and fireWeapon/update are
+  // bit-identical to before while they are empty (determinism preserved).
+  /** Instruments currently pulled back (silent, not firing, banking charge). */
+  readonly held = new Set<Role>();
+  /** When each held instrument's charge started accumulating (world time). */
+  private heldSinceS = new Map<Role, number>();
+  /** Remaining amplified-fire window per role after a drop. */
+  private payoffT = new Map<Role, number>();
+  /** Fire multiplier applied during that window (captured at the drop). */
+  private payoffMul = new Map<Role, number>();
+
   /** Per-weapon effect slot (Feature 4): the sound + gameplay modifier on a
    *  role. Composes after the global mods, per weapon, in applyBuild. */
   readonly effects = new Map<Role, EffectId>();
@@ -431,6 +445,17 @@ export class RunWorld {
     // Single build-transform pipeline (D1): genre tempo compensation + global
     // item mods + this weapon's effect, folded in one place.
     conf = this.applyBuild(conf, effect, PIERCE_ROLES.has(t.role));
+    // Hold & Drop payoff: for a short window after a drop, the instrument that
+    // came back in fires far harder (damage full, area at 35%) — the "here it
+    // comes back in" spike. Empty for the bot, so no behavior change there.
+    if (this.payoffT.size > 0 && (this.payoffT.get(t.role) ?? 0) > 0) {
+      const mul = this.payoffMul.get(t.role) ?? 1;
+      conf = {
+        ...conf,
+        damage: conf.damage * mul,
+        radius: conf.radius !== undefined ? conf.radius * (1 + (mul - 1) * 0.35) : conf.radius,
+      };
+    }
     // Echo re-fire pass attenuates damage; the base fire leaves this at 1.
     if (damageMul !== 1) conf = { ...conf, damage: conf.damage * damageMul };
     // Echo schedules a weaker second fire; the re-fire itself passes effect=null.
@@ -706,6 +731,88 @@ export class RunWorld {
   /** Sandbox loadout editor: drop a weapon entirely. */
   removeWeapon(role: Role): void {
     this.tiers.delete(role);
+    this.held.delete(role);
+    this.heldSinceS.delete(role);
+    this.payoffT.delete(role);
+    this.payoffMul.delete(role);
+  }
+
+  // ---- Hold & Drop (the pull-back mechanic) ----
+
+  /** Charge banked by a held instrument, 0..1 (linear over HOLD.chargeFullS).
+   *  0 for anything not currently held. */
+  heldChargeOf(role: Role): number {
+    const since = this.heldSinceS.get(role);
+    if (since === undefined) return 0;
+    return Math.min(1, (this.timeS - since) / HOLD.chargeFullS);
+  }
+
+  /** True while a role is inside its post-drop amplified-fire window. */
+  inPayoff(role: Role): boolean {
+    return (this.payoffT.get(role) ?? 0) > 0;
+  }
+
+  /** Summed held charge, 0..1 against HOLD.tensionFull — the HUD tension read.
+   *  Rises as instruments are held and as their charge fills. */
+  tension01(): number {
+    if (this.held.size === 0) return 0;
+    let s = 0;
+    for (const r of this.held) s += this.heldChargeOf(r);
+    return Math.min(1, s / HOLD.tensionFull);
+  }
+
+  /** Pull an owned instrument back: it stops firing and starts banking charge.
+   *  The caller mutes the audio voice. No-op if unowned or already held. */
+  holdRole(role: Role): boolean {
+    if (!this.tiers.has(role) || this.held.has(role)) return false;
+    this.held.add(role);
+    this.heldSinceS.set(role, this.timeS);
+    return true;
+  }
+
+  /** Bring a held instrument back in — the drop. Opens its amplified-fire
+   *  window and detonates an area slam that clears space, both scaled by the
+   *  banked charge (and comboMul when several are dropped at once). The caller
+   *  re-enables the audio voice on the beat. Returns the banked charge, 0..1,
+   *  so the caller can size the audible/visual payoff (0 if not held). */
+  releaseRole(role: Role, comboMul = 1): number {
+    if (!this.held.has(role)) return 0;
+    const charge = this.heldChargeOf(role);
+    this.held.delete(role);
+    this.heldSinceS.delete(role);
+    // A minimum floor so even a snap tap-off/tap-on reads as a real drop.
+    const power = Math.max(0.25, charge) * comboMul;
+    this.payoffMul.set(role, 1 + charge * (HOLD.maxFireMul - 1) * comboMul);
+    this.payoffT.set(role, HOLD.payoffS);
+    this.dropSlam(power, KIT_COLORS[role]);
+    return charge;
+  }
+
+  /** The drop's kinetic payoff: an expanding shock that knocks the horde back
+   *  plus a heavy hit under the player, sized by drop power. Pure sim + fx. */
+  private dropSlam(power: number, color: number): void {
+    const p = this.player;
+    const k = Math.min(2, power);
+    const radius = HOLD.slamRadius * (0.55 + 0.55 * k);
+    const dmg = HOLD.slamDamage * power * this.powerMul;
+    this.shocks.push({
+      x: p.x,
+      y: p.y,
+      radius: 14,
+      maxRadius: radius,
+      speed: 1000,
+      damage: dmg,
+      knockback: HOLD.slamKnockback,
+      color,
+      hit: new Set(),
+    });
+    // A concentrated core hit so a point-blank swarm takes the drop immediately,
+    // not only when the expanding front reaches it.
+    this.damageArea(p.x, p.y, radius * 0.45, dmg, undefined, HOLD.slamKnockback * 0.6);
+    this.spawnRing(p.x, p.y, radius, color, 0.5);
+    this.fx?.push({ type: 'slam', x: p.x, y: p.y, radius: radius * 0.4, color });
+    this.fx?.push({ type: 'shake', mag: 5 + 9 * k, dur: 0.22 + 0.08 * k });
+    this.fx?.push({ type: 'flash', color, alpha: 0.1 + 0.14 * Math.min(1, power), dur: 0.3 });
   }
 
   /** Slot an effect onto a weapon (Feature 4). The audio chain is wired by
@@ -805,6 +912,19 @@ export class RunWorld {
     // items are owned (regenPerS 0, dropEnabled false). No rng — deterministic.
     if (this.mods.regenPerS > 0 && this.player.hp > 0)
       this.player.hp = Math.min(RUN.playerHp, this.player.hp + this.mods.regenPerS * dt);
+
+    // Hold & Drop: age out each instrument's amplified-fire window.
+    if (this.payoffT.size > 0) {
+      for (const [role, t] of this.payoffT) {
+        const nt = t - dt;
+        if (nt <= 0) {
+          this.payoffT.delete(role);
+          this.payoffMul.delete(role);
+        } else {
+          this.payoffT.set(role, nt);
+        }
+      }
+    }
 
     this.dropCdT -= dt;
     if (

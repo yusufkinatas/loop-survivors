@@ -12,7 +12,8 @@ import { MOVERS, type MoverName } from '../bot/movers';
 import { makePolicy } from '../bot/policies';
 import { SIM_VIEW } from '../bot/sim';
 import { mountPlayground, type Playground } from '../rehearsal/playground';
-import { RUN } from './config';
+import { SLOTS, ownerOfSlot } from './band';
+import { HOLD, RUN } from './config';
 import { EFFECT_META } from './effects';
 import { Hud, TIER_NUMERALS } from './hud';
 import { Input } from './input';
@@ -81,6 +82,43 @@ export async function bootGame(
     } else engine.clock.resume();
   }
 
+  // ---- Hold & Drop (the pull-back mechanic) ----
+  // Number keys 1-8 pull a band position back (it goes silent and stops
+  // firing, banking charge) or bring it back in (a slam + amplified-fire
+  // window). Q drops everything held at once for a synchronized full-band drop.
+  function bringInOnBeat(role: Role): void {
+    const w = world;
+    if (!w) return;
+    // The kinetic payoff (slam + amplified window) fires now for responsive
+    // hands; the instrument's sound re-enters on the next beat, so the "here
+    // it comes back in" lands on the grid.
+    engine.atNextBeat(() => {
+      if (world === w) engine.setVoiceEnabled(role, true);
+    });
+  }
+  function toggleHold(slotIdx: number): void {
+    if (paused || !world || !(state === 'run' || state === 'sandbox')) return;
+    const owner = ownerOfSlot(SLOTS[slotIdx], world.tiers);
+    if (!owner) return;
+    if (world.held.has(owner)) {
+      world.releaseRole(owner, 1);
+      bringInOnBeat(owner);
+    } else if (world.holdRole(owner)) {
+      engine.setVoiceEnabled(owner, false); // pull back: silence immediately
+    }
+  }
+  function dropAll(): void {
+    if (paused || !world || !(state === 'run' || state === 'sandbox')) return;
+    const held = [...world.held];
+    if (held.length === 0) return;
+    // A synchronized multi-drop beats the sum of its parts (comboBonus).
+    const combo = 1 + (held.length - 1) * HOLD.comboBonus;
+    for (const role of held) {
+      world.releaseRole(role, combo);
+      bringInOnBeat(role);
+    }
+  }
+
   // debug overlay
   const overlay = document.createElement('div');
   overlay.className = 'debug-overlay';
@@ -117,7 +155,8 @@ export async function bootGame(
           if (state !== 'run' || world !== w) return;
           if (option.kind === 'weapon') {
             engine.setVoiceTier(option.role, option.tier);
-            engine.setVoiceEnabled(option.role, true);
+            // A tier-up on a held instrument keeps it silent (still pulled back).
+            engine.setVoiceEnabled(option.role, !w!.held.has(option.role));
             w!.addWeapon(option.role, option.tier);
           } else if (option.kind === 'item') {
             w!.addItem(option.item, option.level);
@@ -507,6 +546,7 @@ export async function bootGame(
         world.level,
         world.timeS,
       );
+      hud.updateHold(world);
     } else if (state === 'replay' && world && replayConductor) {
       pumpProbe();
       if (replayTarget !== null) {
@@ -635,6 +675,18 @@ export async function bootGame(
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Escape') {
       togglePause();
+      return;
+    }
+    // Hold & Drop: number keys 1-8 toggle a band position, Q drops all held.
+    if (e.code.startsWith('Digit')) {
+      const n = Number(e.code.slice(5));
+      if (n >= 1 && n <= 8) {
+        toggleHold(n - 1);
+        return;
+      }
+    }
+    if (e.code === 'KeyQ') {
+      dropAll();
       return;
     }
     const byKey: Record<string, { onClick(): void }> = {

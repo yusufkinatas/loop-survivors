@@ -819,3 +819,28 @@ export const BELL = {
 /** Whistle: how long after the tag lands the enemy pops (a beat, roughly, at
  *  the mid-tempo genres — flavor, not tempo-locked). */
 export const WHISTLE = { popS: 0.5 };
+
+/** Hold & Drop (the pull-back mechanic, docs/phases/hold-and-drop.md).
+ *  Pull an owned instrument back (it goes silent and stops firing) to bank
+ *  charge over time; bring it back in on the beat for an area slam that clears
+ *  space plus a short window where that instrument fires far harder. The
+ *  buildup you hold is a bomb you release. */
+export const HOLD = {
+  /** Seconds an instrument must stay held to reach full charge (a buildup). */
+  chargeFullS: 7,
+  /** Amplified-fire window opened by a drop (seconds). */
+  payoffS: 4,
+  /** Fire damage multiplier at full charge during the payoff window (area
+   *  scales more gently, at 35% of this). */
+  maxFireMul: 4,
+  /** Drop slam: base radius (px) at power 1; grows with charge×combo. */
+  slamRadius: 300,
+  /** Drop slam damage at power 1 (scaled by charge × combo × powerMul). */
+  slamDamage: 90,
+  slamKnockback: 460,
+  /** Q multi-drop: extra multiplier per extra instrument dropped together, so
+   *  a synchronized full-band drop beats the sum of its parts. */
+  comboBonus: 0.5,
+  /** Summed held charge that reads as full tension on the HUD meter. */
+  tensionFull: 3,
+};

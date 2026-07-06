@@ -4,7 +4,8 @@
 
 import { ROLES, type Kit, type Role } from '../audio/kits';
 import type { Genre } from '../audio/genres';
-import { SLOTS, SLOT_LABEL, ownerOfSlot, slotOf, startableRoles } from './band';
+import { SLOTS, SLOT_LABEL, ownerOfSlot, slotOf, startableRoles, type Slot } from './band';
+import type { RunWorld } from './run';
 import { TIER_LINES } from './config';
 import { EFFECT_META } from './effects';
 import { ITEMS, type ItemId } from './items';
@@ -38,6 +39,11 @@ export class Hud {
   private toastStack: HTMLElement;
   private itemStrip: HTMLElement;
   private rack: HTMLElement;
+  /** Live HUD-rack socket elements so per-frame hold/charge visuals can update
+   *  them without rebuilding the rack. Keyed by band slot. */
+  private sockets = new Map<Slot, HTMLElement>();
+  private tensionEl: HTMLElement;
+  private tensionFill: HTMLElement;
   private screen: HTMLElement | null = null;
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
   private kits: Map<Role, Kit>;
@@ -69,12 +75,21 @@ export class Hud {
     // The band rack: eight sockets, one per band position, empty until hired.
     this.rack = el('div', 'band-rack', root);
     this.rack.style.display = 'none';
+
+    // Tension meter: rises while instruments are held back and their charge
+    // fills — it reads how big the pending drop is (Hold & Drop mechanic).
+    this.tensionEl = el('div', 'tension-meter', root);
+    el('span', 'tension-cap', this.tensionEl, 'TENSION');
+    const track = el('div', 'tension-track', this.tensionEl);
+    this.tensionFill = el('div', 'tension-fill', track);
+    this.tensionEl.style.display = 'none';
   }
 
   showHud(show: boolean): void {
     this.bar.style.display = show ? '' : 'none';
     this.itemStrip.style.display = show ? '' : 'none';
     this.rack.style.display = show ? '' : 'none';
+    this.tensionEl.style.display = show ? '' : 'none';
   }
 
   /** The band rack (docs/phases/the-band.md): eight typed sockets in rack
@@ -84,9 +99,13 @@ export class Hud {
    *  container so the pause menu can show the same band. */
   renderBand(tiers: ReadonlyMap<Role, number>, into: HTMLElement = this.rack): void {
     into.replaceChildren();
-    for (const slot of SLOTS) {
+    const live = into === this.rack;
+    if (live) this.sockets.clear();
+    SLOTS.forEach((slot, i) => {
       const owner = ownerOfSlot(slot, tiers);
       const socket = el('div', `band-socket ${owner ? 'filled' : 'empty'}`, into);
+      // The number key that pulls this band position back / brings it in.
+      el('span', 'socket-key', socket, String(i + 1));
       el('span', 'socket-slot', socket, SLOT_LABEL[slot]);
       if (owner) {
         const kit = this.kits.get(owner)!;
@@ -97,8 +116,31 @@ export class Hud {
         for (let i = 1; i <= TIER_COUNT; i++) {
           el('span', `pip ${i <= tier ? 'on' : ''}`, pips);
         }
+        // The charge ring overlay (filled per-frame by updateHold).
+        el('span', 'socket-charge', socket);
       }
+      if (live) this.sockets.set(slot, socket);
+    });
+  }
+
+  /** Per-frame Hold & Drop visuals: mark held sockets (pulled back, banking
+   *  charge), payoff sockets (just dropped back in, firing hard), fill each
+   *  socket's charge ring, and drive the tension meter. Cheap: 8 sockets. */
+  updateHold(world: RunWorld): void {
+    for (const [slot, socket] of this.sockets) {
+      const owner = ownerOfSlot(slot, world.tiers);
+      if (!owner) continue;
+      const held = world.held.has(owner);
+      const charge = held ? world.heldChargeOf(owner) : 0;
+      socket.classList.toggle('held', held);
+      socket.classList.toggle('charged', held && charge > 0.98);
+      socket.classList.toggle('payoff', world.inPayoff(owner));
+      socket.style.setProperty('--charge', charge.toFixed(3));
     }
+    const t = world.tension01();
+    this.tensionFill.style.width = `${t * 100}%`;
+    this.tensionEl.classList.toggle('active', t > 0.001);
+    this.tensionEl.classList.toggle('hot', t > 0.66);
   }
 
   /** The persistent bottom-left strip of owned passives, one chip per item

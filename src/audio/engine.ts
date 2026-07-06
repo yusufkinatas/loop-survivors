@@ -78,6 +78,7 @@ export class MusicEngine {
   private pending: ScheduledTrigger[] = [];
   private listeners: TriggerListener[] = [];
   private barQueue: (() => void)[] = [];
+  private beatQueue: (() => void)[] = [];
   private stepMarkers: { step: number; time: number }[] = [];
   private lastDueStep = 0;
 
@@ -253,9 +254,17 @@ export class MusicEngine {
     this.barQueue.push(fn);
   }
 
-  /** Drop queued next-bar changes (a run ended before they landed). */
+  /** Run fn at the start of the next beat (a quarter of the bar). Snappier
+   *  than atNextBar: used by the Hold & Drop mechanic so a dropped instrument
+   *  re-enters on the beat (≤ ~0.5s) rather than waiting for the downbeat. */
+  atNextBeat(fn: () => void): void {
+    this.beatQueue.push(fn);
+  }
+
+  /** Drop queued next-bar / next-beat changes (a run ended before they landed). */
   clearBarQueue(): void {
     this.barQueue = [];
+    this.beatQueue = [];
   }
 
   /** Dispatch every trigger whose scheduled time has arrived. Call once per
@@ -297,6 +306,12 @@ export class MusicEngine {
     if (phraseStep % STEPS_PER_BAR === 0 && this.barQueue.length > 0) {
       const queue = this.barQueue;
       this.barQueue = [];
+      for (const fn of queue) fn();
+    }
+    // Beat boundary (every stepsPerBeat steps): flush next-beat callbacks.
+    if (step % this.clock.stepsPerBeat === 0 && this.beatQueue.length > 0) {
+      const queue = this.beatQueue;
+      this.beatQueue = [];
       for (const fn of queue) fn();
     }
     for (const voice of this.voices.values()) {
