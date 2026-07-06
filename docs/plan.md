@@ -38,6 +38,7 @@ Cut, deliberately: a shareable per-run track artifact. No recording, rendering, 
 
 **Weapons as sound.**
 - The soundset is **twelve instrument types** (the tools), shared across every genre: kick, snare, hi-hat, clap, tom, cowbell, crash, zap, bass, chord, arp, lead. Each is a distinct gameplay archetype (aura pulse, piercing bolt, spray, melee arc, boomerang, ricochet, shockwave, lightning strikes, rolling wave, thrown slow-zone, orbiters, homing seekers), so a muted build already plays like a varied survivors-like.
+- **Band slots (locked July 6, 2026).** Instruments live in eight typed band-position slots (Pulse, Backbeat, Hats, Motion, FX, Bass, Harmony, Melody); a build holds at most one instrument per slot, picks are permanent, and a full build is an 8-voice band — the structural fix for cacophony by accumulation and role collision. The catalog grows to twenty-four (three options per slot), including exactly two utility weapons (a freeze sweep and an auto-dash riser, both token-damage). Spec: `docs/phases/the-band.md`.
 - Atomic unit: a **sound kit** plus a **music chart**. A kit is a small family of related samples per weapon (soft and hard variants, open and closed, multiple notes for pitched instruments). A chart says when, which variant, how hard, and for pitched weapons which note, so a synth chart is a melody.
 - Charts are AI-drafted, approved by the developer's ear.
 - Variation is guaranteed at three layers: free per-hit engine nudges to loudness and pitch, baked kit variants, and progression-driven change (richer charts, new notes, new voices, changed character).
@@ -64,6 +65,7 @@ Every milestone ends playable and answers one named question.
 - **M1, causality.** Greybox arena, a few weapon kits firing charts on the grid, enemies dying to it, deliberately ugly. Question: does it feel like my build and sound like music at the same time? This is the project's central bet. Fully specified in `docs/phases/m1-demo.md`.
 - **M2, the arc.** Picks and leveling across a short full run. Question: does music growing with the build create the "I'm making a track" feeling? Fully specified in `docs/phases/m2-the-arc.md`.
 - ~~**M3, the drop.**~~ **Dropped July 6, 2026.** The genre-drop / full-track direction (`docs/phases/m3-the-drop.md`, now superseded) was abandoned. Replaced by **genres as playable characters**: the same twelve-weapon soundset played through six genres (Lo-Fi, House, Synthwave, Hip-Hop, Drum & Bass, Techno), each with its own tempo, swing, and patterns; a genre + starting weapon chosen at run start. Specced in `docs/phases/genres-and-weapons.md`.
+- **The band (interstitial, before M4).** Eight typed band-position slots cap the build into an 8-voice band; the catalog grows from twelve to twenty-four instruments (three per slot), two of them utility weapons. Question: does capping the build into a band keep a full build sounding like a track while making every pick feel like hiring a character? Specced in `docs/phases/the-band.md`.
 - **M4, vertical slice.** One stage, one boss (duel candidate auditions here), a few recipes, a first-time experience, and the visual style decision. Question: would a stranger play it twice? Content scope freezes at exit, priced with measured cost per sound and per genre.
 - **M5, production.** Content build-out, meta progression, store prep including AI-content disclosure.
 
@@ -87,7 +89,8 @@ An autoplay bot runs batch playtests as a balance instrument (floors, not peaks;
 - Per-track signature drop effects: bespoke gameplay plus visuals per genre, beyond the shared slam and damage window (parked at M3 grilling; content and polish).
 - Tempo-changing items and other progression mechanisms for sound variety.
 - Multi-axis weapon growth: separate density/richness tiers or other alternative buff structures beyond the single linear ladder (parked at M2 grilling; revisit if ladders feel same-y).
-- A weapon slot cap, once the catalog outgrows six kits (parked at M2 grilling; no cap while the catalog is six).
+- ~~A weapon slot cap, once the catalog outgrows six kits~~ **RESOLVED July 6, 2026 at the band grilling**: eight typed band-position slots, one instrument each, permanent picks. See `docs/phases/the-band.md`.
+- Mid-run instrument swapping (a "second audition"): deliberately absent from the band system; a candidate meta-progression unlock later (parked at the band grilling).
 - Visual style (gate at M4).
 
 ## Ship Checklist Seeds
