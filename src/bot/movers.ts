@@ -29,8 +29,19 @@ const kiter: Mover = (world) => {
     const d = Math.hypot(dx, dy);
     if (d > RANGE || d < 0.001) continue;
     let w = (1 - d / RANGE) ** 2;
-    if (e.kind === 'tank') w *= 1.5;
+    if (e.kind === 'tank' || e.kind === 'elite') w *= 1.5;
     if (e.kind === 'darter' && e.dashing) w *= 2.0;
+    if (e.kind === 'charger' && (e.dashing || e.windupT > 0)) w *= 2.0;
+    tx += (dx / d) * w;
+    ty += (dy / d) * w;
+  }
+  // incoming spitter fire: a close, sharp repulsion so the bot sidesteps it
+  for (const s of world.enemyShots) {
+    const dx = p.x - s.x;
+    const dy = p.y - s.y;
+    const d = Math.hypot(dx, dy);
+    if (d > 200 || d < 0.001) continue;
+    const w = (1 - d / 200) ** 2 * 1.5;
     tx += (dx / d) * w;
     ty += (dy / d) * w;
   }
@@ -86,8 +97,19 @@ function threatVector(world: RunWorld): { tx: number; ty: number; threat: number
     const d = Math.hypot(dx, dy);
     if (d > RANGE || d < 0.001) continue;
     let w = (1 - d / RANGE) ** 2;
-    if (e.kind === 'tank') w *= 1.5;
+    if (e.kind === 'tank' || e.kind === 'elite') w *= 1.5;
     if (e.kind === 'darter' && e.dashing) w *= 2.0;
+    if (e.kind === 'charger' && (e.dashing || e.windupT > 0)) w *= 2.0;
+    tx += (dx / d) * w;
+    ty += (dy / d) * w;
+  }
+  // incoming spitter fire: a close, sharp repulsion so the bot sidesteps it
+  for (const s of world.enemyShots) {
+    const dx = p.x - s.x;
+    const dy = p.y - s.y;
+    const d = Math.hypot(dx, dy);
+    if (d > 200 || d < 0.001) continue;
+    const w = (1 - d / 200) ** 2 * 1.5;
     tx += (dx / d) * w;
     ty += (dy / d) * w;
   }

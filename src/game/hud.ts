@@ -5,6 +5,8 @@
 import { ROLES, type Kit, type Role } from '../audio/kits';
 import type { Genre } from '../audio/genres';
 import { TIER_LINES } from './config';
+import { EFFECT_META } from './effects';
+import { ITEMS, type ItemId } from './items';
 import type { PickOption } from './picks';
 
 /** Cards are terse by spec: name, tier numeral, one honest gameplay line,
@@ -29,7 +31,9 @@ export class Hud {
   private timer: HTMLElement;
   private levelEl: HTMLElement;
   private flash: HTMLElement;
+  private pulse: HTMLElement;
   private toastStack: HTMLElement;
+  private itemStrip: HTMLElement;
   private screen: HTMLElement | null = null;
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
   private kits: Map<Role, Kit>;
@@ -40,28 +44,46 @@ export class Hud {
     this.root = root;
     this.kits = kits;
 
+    // Glass transport panel: timer + level chip on top, then the HP and XP
+    // meters (each with a fill and a faint cap label).
     this.bar = el('div', 'hud', root);
+    const top = el('div', 'hud-top', this.bar);
+    this.timer = el('span', 'hud-timer', top, '0:00');
+    this.levelEl = el('span', 'hud-level', top, 'LV 1');
     const hp = el('div', 'meter hp', this.bar);
     this.hpFill = el('div', 'fill', hp);
+    el('span', 'meter-cap', hp, 'HP');
     const xp = el('div', 'meter xp', this.bar);
     this.xpFill = el('div', 'fill', xp);
-    const row = el('div', 'hud-row', this.bar);
-    this.levelEl = el('span', '', row, 'lv 1');
-    this.timer = el('span', '', row, '0:00');
     this.bar.style.display = 'none';
 
     this.flash = el('div', 'hit-flash', root);
+    this.pulse = el('div', 'level-pulse', root);
     this.toastStack = el('div', 'toast-stack', root);
+    this.itemStrip = el('div', 'item-strip', root);
+    this.itemStrip.style.display = 'none';
   }
 
   showHud(show: boolean): void {
     this.bar.style.display = show ? '' : 'none';
+    this.itemStrip.style.display = show ? '' : 'none';
+  }
+
+  /** The persistent bottom-left strip of owned passives, one chip per item
+   *  tinted its --voice-color. Rebuilt on every pick (cheap: <=10 chips). */
+  renderItems(items: ReadonlyMap<ItemId, number>): void {
+    this.itemStrip.replaceChildren();
+    for (const [id, lvl] of items) {
+      const def = ITEMS[id];
+      const chip = el('span', 'item-chip', this.itemStrip, `${def.name} ${lvl}`);
+      chip.style.setProperty('--voice-color', def.color);
+    }
   }
 
   setStatus(hp01: number, xp01: number, level: number, timeS: number): void {
     this.hpFill.style.width = `${Math.max(0, hp01) * 100}%`;
     this.xpFill.style.width = `${xp01 * 100}%`;
-    this.levelEl.textContent = `lv ${level}`;
+    this.levelEl.textContent = `LV ${level}`;
     const m = Math.floor(timeS / 60);
     const s = Math.floor(timeS % 60);
     this.timer.textContent = `${m}:${String(s).padStart(2, '0')}`;
@@ -71,6 +93,14 @@ export class Hud {
     this.flash.classList.remove('on');
     void this.flash.offsetWidth;
     this.flash.classList.add('on');
+  }
+
+  /** Level-up affirmation: a full-screen signal-colored edge vignette, the
+   *  positive twin of hitFlash. Fired on every applied pick. */
+  levelPulse(): void {
+    this.pulse.classList.remove('on');
+    void this.pulse.offsetWidth;
+    this.pulse.classList.add('on');
   }
 
   /** On-screen debug buttons mirroring the hotkeys (gate B feedback: no
@@ -148,7 +178,7 @@ export class Hud {
       const cards: HTMLElement[] = [];
       for (const role of ROLES) {
         cards.push(
-          this.kitCard(grid, { role, tier: 1 }, () => {
+          this.kitCard(grid, { kind: 'weapon', role, tier: 1 }, () => {
             this.closeScreen();
             onStart(genre, role);
           }),
@@ -245,6 +275,9 @@ export class Hud {
         const kills = stats.killsByRole[role] ?? 0;
         const chip = el('span', 'kill-chip', row, `${kit.name} ${pct}% (${kills})`);
         chip.style.setProperty('--voice-color', kit.color);
+        // A mini damage-share bar fills the chip behind the label.
+        chip.style.setProperty('--pct', `${pct}%`);
+        chip.prepend(el('span', 'kill-bar', chip));
       }
     }
     const btn = el('button', 'big', s, 'run it back');
@@ -255,12 +288,26 @@ export class Hud {
   }
 
   private kitCard(parent: HTMLElement, option: PickOption, onClick: () => void): HTMLElement {
-    const kit = this.kits.get(option.role)!;
     const card = el('button', 'kit-card', parent);
-    card.style.setProperty('--voice-color', kit.color);
-    const name = option.tier > 1 ? `${kit.name} ${TIER_NUMERALS[option.tier - 1]}` : kit.name;
-    el('span', 'kit-name', card, name);
-    el('span', 'kit-desc', card, TIER_LINES[option.role][option.tier - 1]);
+    if (option.kind === 'item') {
+      const def = ITEMS[option.item];
+      card.style.setProperty('--voice-color', def.color);
+      el('span', 'kit-name', card, `${def.name} · Lv ${option.level}`);
+      el('span', 'kit-desc', card, def.desc[option.level - 1]);
+    } else if (option.kind === 'effect') {
+      card.classList.add('kit-card--effect');
+      const kit = this.kits.get(option.role)!;
+      card.style.setProperty('--voice-color', kit.color);
+      el('span', 'kit-name', card, `${kit.name} · ${EFFECT_META[option.effect].name}`);
+      el('span', 'kit-desc', card, EFFECT_META[option.effect].line);
+    } else {
+      const kit = this.kits.get(option.role)!;
+      card.style.setProperty('--voice-color', kit.color);
+      el('span', 'kit-name', card, kit.name);
+      el('span', 'kit-desc', card, TIER_LINES[option.role][option.tier - 1]);
+      // Tier > 1 shows its numeral in the corner chip (the name stays plain).
+      if (option.tier > 1) el('span', 'kit-tier', card, TIER_NUMERALS[option.tier - 1]);
+    }
     card.onclick = onClick;
     return card;
   }

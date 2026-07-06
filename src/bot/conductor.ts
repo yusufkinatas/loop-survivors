@@ -12,9 +12,11 @@
 import { chartEventsAtStep } from '../audio/arranger';
 import { activeGenreBpm, getChart } from '../audio/chartstore';
 import type { Role } from '../audio/kits';
+import type { EffectId } from '../audio/voicefx';
 import { SKELETON, STEPS_PER_BAR, STEPS_PER_PHRASE } from '../audio/scale';
 import { RUN } from '../game/config';
-import { buildPickPool, shuffleWith, type PickOption } from '../game/picks';
+import type { ItemId } from '../game/items';
+import { rollOffers, type PickOption } from '../game/picks';
 import type { Rng } from '../game/rng';
 import type { RunWorld } from '../game/run';
 
@@ -56,22 +58,29 @@ export class VirtualConductor {
   start(role: Role): void {
     this.world.addWeapon(role, 1);
     this.picks.push({ t: 0, role, tier: 1 });
-    this.hooks.onApply?.({ role, tier: 1 });
+    this.hooks.onApply?.({ kind: 'weapon', role, tier: 1 });
   }
 
   /** Wire this to RunEvents.onLevelUp. Rolls the real three-card offer and
    *  lets the policy choose; the choice lands at the next bar. */
   onLevelUp(): void {
-    const pool = buildPickPool(this.effectiveTiers());
-    if (pool.length === 0) {
+    const options = rollOffers(
+      this.effectiveTiers(),
+      this.effectiveItems(),
+      this.effectiveEffects(),
+      this.rng,
+    );
+    if (options.length === 0) {
       this.world.player.hp = Math.min(RUN.playerHp, this.world.player.hp + 15);
       this.hooks.onHeal?.();
       return;
     }
-    const options = shuffleWith(pool, this.rng).slice(0, 3);
     const option = this.choose(options, this.world, this.rng);
     this.pending.push(option);
-    this.picks.push({ t: this.world.timeS, role: option.role, tier: option.tier });
+    // The build log stays weapon-shaped (attribution report); item/effect
+    // picks aren't logged there.
+    if (option.kind === 'weapon')
+      this.picks.push({ t: this.world.timeS, role: option.role, tier: option.tier });
     this.hooks.onPick?.(option);
   }
 
@@ -91,8 +100,22 @@ export class VirtualConductor {
    *  offer what is already on its way in. */
   private effectiveTiers(): Map<Role, number> {
     const tiers = new Map(this.world.tiers);
-    for (const p of this.pending) tiers.set(p.role, p.tier);
+    for (const p of this.pending) if (p.kind === 'weapon') tiers.set(p.role, p.tier);
     return tiers;
+  }
+
+  /** Owned items plus item picks still waiting for their bar. */
+  private effectiveItems(): Map<ItemId, number> {
+    const items = new Map(this.world.items);
+    for (const p of this.pending) if (p.kind === 'item') items.set(p.item, p.level);
+    return items;
+  }
+
+  /** Owned effects plus effect picks still waiting for their bar. */
+  private effectiveEffects(): Map<Role, EffectId> {
+    const effects = new Map(this.world.effects);
+    for (const p of this.pending) if (p.kind === 'effect') effects.set(p.role, p.effect);
+    return effects;
   }
 
   private onStep(step: number, time: number): void {
@@ -102,7 +125,9 @@ export class VirtualConductor {
       const queue = this.pending;
       this.pending = [];
       for (const option of queue) {
-        this.world.addWeapon(option.role, option.tier);
+        if (option.kind === 'weapon') this.world.addWeapon(option.role, option.tier);
+        else if (option.kind === 'item') this.world.addItem(option.item, option.level);
+        else this.world.attachEffect(option.role, option.effect);
         this.hooks.onApply?.(option);
       }
     }

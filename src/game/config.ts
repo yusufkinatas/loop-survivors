@@ -20,7 +20,16 @@ export const RUN = {
   xpCurve: [8, 14, 24, 38, 56, 80, 110, 148, 195, 250, 315, 390, 475, 570, 675, 790],
 };
 
-export type EnemyKind = 'swarmer' | 'tank' | 'darter';
+export type EnemyKind =
+  | 'swarmer'
+  | 'tank'
+  | 'darter'
+  | 'splitter'
+  | 'charger'
+  | 'circler'
+  | 'shielded'
+  | 'spitter'
+  | 'elite';
 
 export interface EnemyConf {
   radius: number;
@@ -36,20 +45,13 @@ export interface EnemyConf {
 // contact damage over the run, and the spawn ramp is superlinear so the
 // late game reads as a horde being carved through, not stragglers.
 export const ENEMIES: Record<EnemyKind, EnemyConf> & {
-  swarmRateStart: number;
-  swarmRateEnd: number;
-  tankFromS: number;
-  tankIntervalStartS: number;
-  tankIntervalEndS: number;
-  darterFromS: number;
-  darterRateStart: number;
-  darterRateEnd: number;
   spawnMargin: number;
   maxAlive: number;
   hpScaleEnd: number;
   damageScaleEnd: number;
   speedScaleEnd: number;
   rampExp: number;
+  recycleFactor: number;
 } = {
   swarmer: {
     radius: 9,
@@ -76,17 +78,18 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
     xp: 2,
     color: 0xe08a5a,
   },
-  /** Swarmers per second: start to end over the run, curved by rampExp. */
-  swarmRateStart: 2.0,
-  swarmRateEnd: 36,
-  /** Tanks enter at tankFromS; interval shrinks to the end. */
-  tankFromS: 30,
-  tankIntervalStartS: 12,
-  tankIntervalEndS: 2,
-  /** Darters per second once they enter, ramping to the end. */
-  darterFromS: 150,
-  darterRateStart: 0.3,
-  darterRateEnd: 5,
+  /** Bursts into a knot of swarmers on death. */
+  splitter: { radius: 14, speed: 70, hp: 24, damage: 16, xp: 4, color: 0x8fb46a },
+  /** Telegraphs, then commits a fast fixed-direction dash. */
+  charger: { radius: 12, speed: 60, hp: 30, damage: 20, xp: 5, color: 0xd06a5a },
+  /** Fast, fragile, orbits the player at range and harasses. */
+  circler: { radius: 10, speed: 170, hp: 10, damage: 14, xp: 3, color: 0x6ac2d0 },
+  /** A shield pool absorbs damage before its hp; slow but tough. */
+  shielded: { radius: 16, speed: 55, hp: 30, damage: 18, xp: 6, color: 0x9a86c0 },
+  /** Kites at range and fires enemy projectiles. */
+  spitter: { radius: 11, speed: 90, hp: 16, damage: 8, xp: 4, color: 0xc9a04a },
+  /** Slow, huge, tanky objective; drops one large gem (xp=big drop). */
+  elite: { radius: 34, speed: 48, hp: 500, damage: 30, xp: 80, color: 0xd94f8a },
   /** Spawn ring distance beyond the larger screen half-extent. */
   spawnMargin: 80,
   /** Soft cap on the steady-state horde (VS-density target, see gate B
@@ -107,6 +110,9 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
   /** Exponent shaping the spawn-rate and HP ramps: >1 keeps the early game
    *  close to M1 and piles the growth into the back half (the horde). */
   rampExp: 1.8,
+  /** Enemies farther than spawnDist*recycleFactor behind the moving player are
+   *  silently recycled (no gem/kill). >1 so fresh spawns aren't culled. */
+  recycleFactor: 1.7,
 };
 
 /** Wave spawns may exceed maxAlive up to this absolute ceiling: a pinned
@@ -125,6 +131,12 @@ export const ENEMY_BANDS = {
     swarmer: [0x9aa0b4, 0xc9b478, 0xd98a56, 0xd94f5a],
     tank: [0x6a7086, 0x94805e, 0xb06a46, 0xc04858],
     darter: [0xe08a5a, 0xe8a04a, 0xff7a3c, 0xff4658],
+    splitter: [0x8fb46a, 0xa8b45e, 0xc09a4e, 0xc85a52],
+    charger: [0xd06a5a, 0xdc7a4a, 0xe85a3c, 0xff4046],
+    circler: [0x6ac2d0, 0x6ab0c8, 0x7a9ad0, 0x9a6ad0],
+    shielded: [0x9a86c0, 0xa07ab0, 0xb06a90, 0xc04858],
+    spitter: [0xc9a04a, 0xd09850, 0xd87848, 0xe05248],
+    elite: [0xd94f8a, 0xe0507a, 0xe85068, 0xff4050],
   } as Record<EnemyKind, number[]>,
 };
 
@@ -152,31 +164,144 @@ export const DARTER = {
   pauseS: 0.7,
 };
 
-/** Wave events, pure spawn-script data (docs/phases/m2-the-arc.md): rings
- *  close in from all sides, surges pour in from one direction. Texture for
- *  the back half of the run; no new systems. */
-export interface WaveEvent {
-  atS: number;
-  kind: 'ring' | 'surge';
-  enemy: EnemyKind;
-  count: number;
-}
+/** Splitter: bursts into this many children of childKind on death. Children
+ *  are swarmers (never split → no recursion). */
+export const SPLITTER = { childKind: 'swarmer' as EnemyKind, childCount: 4 };
 
-export const WAVES: WaveEvent[] = [
-  { atS: 120, kind: 'ring', enemy: 'swarmer', count: 40 },
-  { atS: 180, kind: 'surge', enemy: 'darter', count: 12 },
-  { atS: 210, kind: 'ring', enemy: 'swarmer', count: 60 },
-  { atS: 270, kind: 'surge', enemy: 'tank', count: 5 },
-  { atS: 285, kind: 'ring', enemy: 'swarmer', count: 90 },
-  { atS: 300, kind: 'ring', enemy: 'darter', count: 20 },
-  { atS: 330, kind: 'surge', enemy: 'swarmer', count: 160 },
-  { atS: 360, kind: 'ring', enemy: 'tank', count: 10 },
-  { atS: 375, kind: 'ring', enemy: 'swarmer', count: 220 },
-  { atS: 390, kind: 'surge', enemy: 'darter', count: 30 },
-  { atS: 420, kind: 'ring', enemy: 'swarmer', count: 280 },
-  { atS: 440, kind: 'surge', enemy: 'swarmer', count: 200 },
-  { atS: 450, kind: 'ring', enemy: 'tank', count: 14 },
-  { atS: 465, kind: 'surge', enemy: 'darter', count: 40 },
+/** Charger: within triggerRange it stands still (windup), then commits a fast
+ *  fixed-direction dash. dashSpeed is NOT run through speedScaleEnd (stays
+ *  dodgeable, same rule as darter). */
+export const CHARGER = { triggerRange: 240, windupS: 0.7, dashS: 0.5, dashSpeed: 640 };
+
+/** Circler: orbits the player at this radius. */
+export const CIRCLER = { orbitR: 150 };
+
+/** Shielded: shield pool = hp*shieldMul, scaled by hpMul. */
+export const SHIELDED = { shieldMul: 1.0 };
+
+/** Spitter: kites to keepMin..keepMax and fires enemy shots. shotSpeed is NOT
+ *  run through speedScaleEnd (stays dodgeable, same rule as darter). */
+export const SPITTER = {
+  keepMin: 260,
+  keepMax: 460,
+  range: 520,
+  cooldownS: 2.2,
+  spread: 0.1,
+  shotSpeed: 240,
+  shotDamage: 14,
+  shotRadius: 6,
+  shotLifeS: 3.0,
+};
+
+/** Data-driven spawn Director (replaces the ramp + WAVES). `set` beats change
+ *  the steady pressure (rate + weighted kind mix) from that time on; `event`
+ *  beats fire a formation once. Breathers = low-rate `set` beats after event
+ *  clusters. The steady rate must overrun an AFK player by the finale. */
+export type Formation = 'ring' | 'surge' | 'pincer' | 'elite';
+export type KindWeights = Partial<Record<EnemyKind, number>>;
+
+export type DirectorBeat =
+  | { atS: number; set: { rate: number; mix: KindWeights } }
+  | { atS: number; event: { formation: Formation; kind: EnemyKind; count: number } };
+
+/** Time-sorted. Beats at equal `atS` fire in array order in the same frame. */
+export const SPAWN_DIRECTOR: DirectorBeat[] = [
+  { atS: 0, set: { rate: 3, mix: { swarmer: 1 } } },
+  { atS: 30, set: { rate: 5, mix: { swarmer: 1 } } },
+  { atS: 45, event: { formation: 'surge', kind: 'darter', count: 8 } },
+  { atS: 60, set: { rate: 7, mix: { swarmer: 0.9, circler: 0.1 } } },
+  { atS: 75, event: { formation: 'elite', kind: 'elite', count: 1 } },
+  { atS: 90, set: { rate: 9, mix: { swarmer: 0.85, circler: 0.1, spitter: 0.05 } } },
+  { atS: 92, event: { formation: 'ring', kind: 'swarmer', count: 40 } },
+  { atS: 94, set: { rate: 4, mix: { swarmer: 0.85, circler: 0.1, spitter: 0.05 } } }, // breather
+  { atS: 104, set: { rate: 9, mix: { swarmer: 0.85, circler: 0.1, spitter: 0.05 } } },
+  { atS: 120, set: { rate: 11, mix: { swarmer: 0.8, circler: 0.1, spitter: 0.05, darter: 0.05 } } },
+  { atS: 130, event: { formation: 'pincer', kind: 'charger', count: 6 } },
+  {
+    atS: 150,
+    set: { rate: 14, mix: { swarmer: 0.72, circler: 0.1, spitter: 0.06, darter: 0.08, splitter: 0.04 } },
+  },
+  { atS: 150, event: { formation: 'surge', kind: 'splitter', count: 6 } },
+  { atS: 165, event: { formation: 'ring', kind: 'swarmer', count: 70 } },
+  {
+    atS: 167,
+    set: { rate: 6, mix: { swarmer: 0.72, circler: 0.1, spitter: 0.06, darter: 0.08, splitter: 0.04 } },
+  }, // breather
+  {
+    atS: 177,
+    set: { rate: 14, mix: { swarmer: 0.72, circler: 0.1, spitter: 0.06, darter: 0.08, splitter: 0.04 } },
+  },
+  {
+    atS: 180,
+    set: {
+      rate: 17,
+      mix: { swarmer: 0.68, circler: 0.1, spitter: 0.06, darter: 0.08, splitter: 0.04, charger: 0.04 },
+    },
+  },
+  { atS: 200, event: { formation: 'elite', kind: 'elite', count: 1 } },
+  { atS: 200, event: { formation: 'surge', kind: 'swarmer', count: 20 } },
+  {
+    atS: 210,
+    set: {
+      rate: 20,
+      mix: { swarmer: 0.66, circler: 0.1, spitter: 0.06, darter: 0.08, splitter: 0.05, charger: 0.05 },
+    },
+  },
+  { atS: 220, event: { formation: 'pincer', kind: 'darter', count: 16 } },
+  {
+    atS: 240,
+    set: {
+      rate: 24,
+      mix: { swarmer: 0.62, circler: 0.1, spitter: 0.06, darter: 0.1, splitter: 0.06, charger: 0.06 },
+    },
+  },
+  { atS: 250, event: { formation: 'ring', kind: 'shielded', count: 10 } },
+  { atS: 270, event: { formation: 'surge', kind: 'splitter', count: 12 } },
+  { atS: 285, event: { formation: 'ring', kind: 'swarmer', count: 120 } },
+  {
+    atS: 287,
+    set: {
+      rate: 8,
+      mix: { swarmer: 0.62, circler: 0.1, spitter: 0.06, darter: 0.1, splitter: 0.06, charger: 0.06 },
+    },
+  }, // breather
+  {
+    atS: 298,
+    set: {
+      rate: 24,
+      mix: { swarmer: 0.62, circler: 0.1, spitter: 0.06, darter: 0.1, splitter: 0.06, charger: 0.06 },
+    },
+  },
+  {
+    atS: 300,
+    set: {
+      rate: 28,
+      mix: { swarmer: 0.6, circler: 0.1, spitter: 0.07, darter: 0.1, splitter: 0.07, charger: 0.06 },
+    },
+  },
+  { atS: 300, event: { formation: 'elite', kind: 'elite', count: 2 } },
+  { atS: 330, event: { formation: 'pincer', kind: 'charger', count: 14 } },
+  {
+    atS: 360,
+    set: {
+      rate: 32,
+      mix: { swarmer: 0.58, circler: 0.1, spitter: 0.07, darter: 0.1, splitter: 0.08, charger: 0.07 },
+    },
+  },
+  { atS: 360, event: { formation: 'ring', kind: 'swarmer', count: 180 } },
+  { atS: 360, event: { formation: 'surge', kind: 'darter', count: 30 } },
+  { atS: 390, event: { formation: 'surge', kind: 'splitter', count: 20 } },
+  {
+    atS: 420,
+    set: {
+      rate: 38,
+      mix: { swarmer: 0.56, circler: 0.1, spitter: 0.08, darter: 0.1, splitter: 0.08, charger: 0.08 },
+    },
+  },
+  { atS: 420, event: { formation: 'ring', kind: 'swarmer', count: 260 } },
+  { atS: 440, event: { formation: 'elite', kind: 'elite', count: 3 } },
+  { atS: 450, event: { formation: 'ring', kind: 'shielded', count: 14 } },
+  { atS: 465, event: { formation: 'surge', kind: 'darter', count: 40 } },
 ];
 
 export interface WeaponConf {
@@ -299,6 +424,29 @@ export const WEAPONS: Record<Role, WeaponConf[]> = {
   ],
 };
 
+/** Weapon capability tags: the single source of truth for which modifiers a
+ *  weapon can legally take (D10). Effects declare the tags they require and
+ *  eligibility is DERIVED against this (see effects.ts), so a modifier never
+ *  lands where it makes no gameplay sense. `area` = a radius that can grow;
+ *  `pierce` = passes through enemies; `projectile` = a travelling shot;
+ *  `count` = can add another instance; `aimedfan` = aimed shots that fan out
+ *  on multishot. */
+export type WeaponTag = 'area' | 'pierce' | 'projectile' | 'count' | 'aimedfan';
+export const WEAPON_TAGS: Record<Role, ReadonlySet<WeaponTag>> = {
+  kick: new Set(['area']),
+  snare: new Set(['projectile', 'pierce', 'count', 'aimedfan']),
+  hat: new Set(['projectile', 'count', 'aimedfan']),
+  bass: new Set(['projectile', 'pierce', 'area']), // area but NOT count -> never multishots
+  chord: new Set(['area']),
+  lead: new Set(['projectile', 'pierce', 'count', 'aimedfan']),
+  clap: new Set(['area']),
+  tom: new Set(['projectile', 'pierce', 'count']),
+  cowbell: new Set(['projectile', 'pierce']),
+  arp: new Set(['count', 'area']),
+  zap: new Set(['count', 'area']),
+  crash: new Set(['area']),
+};
+
 /** The one honest gameplay-effect line on each pick card ([tier-1]). Terse
  *  VS-style, zero music description (docs/phases/m2-the-arc.md): the sound
  *  change is discovered by ear. Lines state what the chart + stat change
@@ -414,3 +562,30 @@ export const KNOCK_S = 0.18;
 
 /** Zap picks its random targets from enemies within this range of the player. */
 export const ZAP_RANGE = 640;
+
+// ---- weapon feel & modifier constants (Features 3, 4, 5) ----
+
+/** How long an enemy rides a weapon shove before resuming its chase (shares
+ *  the crash knock channel). */
+export const SHOVE_S = 0.12;
+
+/** Per-weapon knock distance applied on hit (Feature 3). Absent = no shove. */
+export const WEAPON_SHOVE: Partial<Record<Role, number>> = { kick: 14, snare: 20, clap: 40, bass: 10 };
+
+/** Screenshake magnitudes/durations (Feature 3, cosmetic). Shake is reserved
+ *  for the rare, heavy moments only — the crash shockwave and the once-per-
+ *  phrase bass sub-drop. Frequent triggers (kick, snare, clap, zap) deliberately
+ *  do NOT shake the camera; they punch through local fx (slam/spark/trails). */
+export const SHAKE = {
+  crash: { mag: 10, dur: 0.35 },
+  bassSub: { mag: 8, dur: 0.3 },
+} as const;
+
+/** Full-screen colored flash per source (Feature 3, cosmetic). */
+export const FLASH = {
+  crash: { alpha: 0.16, dur: 0.18 },
+  bassSub: { alpha: 0.12, dur: 0.16 },
+} as const;
+
+/** Fan spacing (rad) between multishot/echo-split aimed projectiles. */
+export const ECHO_FAN = 0.14;

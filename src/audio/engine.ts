@@ -10,6 +10,7 @@ import { getChart, setActiveGenre } from './chartstore';
 import type { Genre } from './genres';
 import { SKELETON, STEPS_PER_BAR, STEPS_PER_PHRASE, semitonesToRate } from './scale';
 import type { Kit, Role } from './kits';
+import { makeEffectNodes, type EffectId } from './voicefx';
 
 export interface Voice {
   role: Role;
@@ -29,6 +30,10 @@ export interface Voice {
   override: AudioBuffer | null;
   /** The most recent trigger's nodes, so choked kits can cut it. */
   lastHit: { src: AudioBufferSourceNode; gain: GainNode } | null;
+  /** Per-voice sound effect (Feature 4), inserted between gain and master. */
+  effect: EffectId | null;
+  /** Current inserted effect nodes, kept for teardown. */
+  fxNodes: AudioNode[];
 }
 
 /** A trigger that has been scheduled. Dispatched to listeners by update()
@@ -96,6 +101,8 @@ export class MusicEngine {
         tune: 0,
         override: null,
         lastHit: null,
+        effect: null,
+        fxNodes: [],
       });
     }
 
@@ -146,6 +153,59 @@ export class MusicEngine {
   setVoiceGain(role: Role, value: number): void {
     const voice = this.voices.get(role);
     if (voice) voice.gain.gain.setTargetAtTime(value, this.ctx.currentTime, 0.02);
+  }
+
+  /** Rewire a voice's output chain for its current effect: tear the old
+   *  effect nodes down and re-insert (or bypass) between gain and master.
+   *  The insertion point is strictly gain -> [effect] -> master; global
+   *  processing belongs on the master bus, not here. */
+  private buildVoiceChain(voice: Voice): void {
+    voice.gain.disconnect();
+    for (const n of voice.fxNodes) {
+      try {
+        (n as OscillatorNode).stop?.();
+      } catch {
+        /* not an oscillator */
+      }
+      try {
+        n.disconnect();
+      } catch {
+        /* already disconnected */
+      }
+    }
+    voice.fxNodes = [];
+    if (!voice.effect) {
+      voice.gain.connect(this.master);
+      return;
+    }
+    const fx = makeEffectNodes(this.ctx, voice.effect);
+    voice.gain.connect(fx.input);
+    fx.output.connect(this.master);
+    voice.fxNodes = fx.nodes;
+  }
+
+  /** Assign/clear a voice's effect, click-free: dip the voice gain to ~0 over
+   *  12ms, swap the chain, ramp back. Rare (per level-up, at a bar boundary). */
+  setVoiceEffect(role: Role, effect: EffectId | null): void {
+    const voice = this.voices.get(role);
+    if (!voice || voice.effect === effect) return;
+    const now = this.ctx.currentTime;
+    const cur = voice.gain.gain.value;
+    voice.gain.gain.cancelScheduledValues(now);
+    voice.gain.gain.setValueAtTime(cur, now);
+    voice.gain.gain.linearRampToValueAtTime(0.0001, now + 0.012);
+    setTimeout(() => {
+      voice.effect = effect;
+      this.buildVoiceChain(voice);
+      const t = this.ctx.currentTime;
+      voice.gain.gain.setValueAtTime(0.0001, t);
+      voice.gain.gain.linearRampToValueAtTime(cur, t + 0.012);
+    }, 20);
+  }
+
+  /** Run reset: strip every voice back to the dry path (no effect leak). */
+  clearVoiceEffects(): void {
+    for (const r of this.voices.keys()) this.setVoiceEffect(r, null);
   }
 
   /** Swap a voice's samples for a sample set's buffers (null restores the

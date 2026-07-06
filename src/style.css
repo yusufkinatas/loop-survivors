@@ -3,7 +3,62 @@
 
 :root {
   color-scheme: dark;
-  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* fonts (CSP: system/mono only) */
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+  --font-disp: var(--font-mono); /* titles reuse mono, differ by weight+tracking */
+
+  /* surfaces (bg-0 also drives the Pixi arena clear color) */
+  --bg-0: #0a0b0f; /* void / arena */
+  --bg-1: #101218; /* base */
+  --bg-2: #171a22; /* raised panel / card */
+  --bg-3: #1e222c; /* control, hover */
+  --line: #2a2f3b; /* hairline */
+  --line-2: #3a4150; /* strong hairline / focus */
+
+  /* ink */
+  --ink: #e6e8f0;
+  --ink-dim: #9aa0b4; /* == swarmer band-0, deliberate */
+  --ink-faint: #5c6274;
+
+  /* signal + status (signal == existing xp cyan, promoted to brand) */
+  --signal: #59ffd1;
+  --signal-dim: #2c8f79;
+  --hp: #ff4d5e;
+  --hp-dim: #7a2630;
+  --warn: #ffc93c; /* == snare, reused as gold/warn */
+
+  /* radii */
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-lg: 14px;
+  --r-pill: 999px;
+
+  /* type scale */
+  --fs-disp: clamp(30px, 7vw, 46px);
+  --fs-h1: 30px;
+  --fs-h2: 21px;
+  --fs-body: 14px;
+  --fs-sm: 12px;
+  --fs-xs: 11px;
+
+  /* spacing */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 40px;
+
+  /* motion */
+  --dur-fast: 0.12s;
+  --dur: 0.2s;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  /* the shared GLOW recipe every colored chrome element uses.
+     `--voice-color` is set per element (already the codebase convention). */
+  --glow-ring: 0 0 0 1px var(--voice-color), 0 0 22px -8px var(--voice-color);
+  font-family: var(--font-mono);
 }
 
 * {
@@ -17,8 +72,8 @@ html {
 
 body {
   margin: 0;
-  background: #101014;
-  color: #d8d8e0;
+  background: var(--bg-0);
+  color: var(--ink);
   overscroll-behavior: none;
   /* no iOS tap-flash or long-press callouts anywhere */
   -webkit-tap-highlight-color: transparent;
@@ -39,20 +94,31 @@ input {
 
 button {
   font: inherit;
-  color: inherit;
-  background: #22222a;
-  border: 1px solid #3a3a46;
-  border-radius: 4px;
-  padding: 6px 14px;
+  color: var(--ink);
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 8px 16px;
   cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
 }
 
 button:hover {
-  background: #2c2c36;
+  background: #232833;
+  border-color: var(--line-2);
+}
+
+button:focus-visible {
+  outline: none;
+  border-color: var(--signal);
+  box-shadow: 0 0 0 1px var(--signal), 0 0 18px -8px var(--signal);
 }
 
 input[type='range'] {
-  accent-color: #8888a0;
+  accent-color: var(--signal-dim);
   width: 130px;
 }
 
@@ -63,7 +129,7 @@ input[type='range'] {
   gap: 20px;
   flex-wrap: wrap;
   padding: 12px 0;
-  border-bottom: 1px solid #2a2a34;
+  border-bottom: 1px solid var(--line);
 }
 
 .lab-title {
@@ -78,7 +144,7 @@ input[type='range'] {
 
 .position {
   min-width: 110px;
-  color: #9a9ab0;
+  color: var(--ink-dim);
 }
 
 .knob,
@@ -88,12 +154,12 @@ input[type='range'] {
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: #9a9ab0;
+  color: var(--ink-dim);
 }
 
 .scrub {
   padding: 16px 0;
-  border-bottom: 1px solid #2a2a34;
+  border-bottom: 1px solid var(--line);
 }
 
 .scrub input {
@@ -112,18 +178,18 @@ input[type='range'] {
 
 .sets-label {
   font-size: 13px;
-  color: #9a9ab0;
+  color: var(--ink-dim);
   margin-right: 4px;
 }
 
 .set-btn.current {
-  border-color: #8888a0;
-  background: #343442;
+  border-color: var(--line-2);
+  background: var(--bg-3);
 }
 
 .sets-status {
   font-size: 12px;
-  color: #9a9ab0;
+  color: var(--ink-dim);
 }
 
 /* voice cards */
@@ -135,7 +201,7 @@ input[type='range'] {
 }
 
 .voice {
-  border: 1px solid #2a2a34;
+  border: 1px solid var(--line);
   border-left: 4px solid var(--voice-color);
   border-radius: 4px;
   padding: 10px 12px;
@@ -163,9 +229,9 @@ input[type='range'] {
 }
 
 .voice-key {
-  color: #666674;
+  color: var(--ink-faint);
   font-size: 12px;
-  border: 1px solid #3a3a46;
+  border: 1px solid var(--line);
   border-radius: 3px;
   padding: 0 5px;
 }
@@ -174,7 +240,7 @@ input[type='range'] {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #33333e;
+  background: var(--bg-3);
 }
 
 .light.lit {
@@ -187,7 +253,7 @@ input[type='range'] {
     box-shadow: 0 0 8px var(--voice-color);
   }
   100% {
-    background: #33333e;
+    background: var(--bg-3);
     box-shadow: none;
   }
 }
@@ -220,16 +286,16 @@ input[type='range'] {
 .scrub-readout {
   min-width: 150px;
   font-size: 12px;
-  color: #9a9ab0;
+  color: var(--ink-dim);
 }
 
 /* ---- chart playground (M2) ---- */
 
 .pg-caption {
   font-size: 12px;
-  color: #666674;
+  color: var(--ink-faint);
   padding: 18px 0 10px;
-  border-top: 1px solid #2a2a34;
+  border-top: 1px solid var(--line);
   margin-top: 16px;
   max-width: 720px;
 }
@@ -243,7 +309,7 @@ input[type='range'] {
 }
 
 .pg-section {
-  border: 1px solid #2a2a34;
+  border: 1px solid var(--line);
   border-left: 4px solid var(--voice-color);
   border-radius: 4px;
   padding: 8px 10px;
@@ -292,13 +358,13 @@ input[type='range'] {
 .pg-tier {
   font-size: 11px;
   padding: 2px 8px;
-  color: #9a9ab0;
+  color: var(--ink-dim);
 }
 
 .pg-tier.current {
   border-color: var(--voice-color);
   color: var(--voice-color);
-  background: #2c2c36;
+  background: var(--bg-3);
 }
 
 .pg-bars {
@@ -306,19 +372,19 @@ input[type='range'] {
   align-items: center;
   gap: 3px;
   font-size: 11px;
-  color: #666674;
+  color: var(--ink-faint);
   margin-left: 10px;
 }
 
 .pg-bar-n {
   font-size: 11px;
   padding: 2px 7px;
-  color: #9a9ab0;
+  color: var(--ink-dim);
 }
 
 .pg-bar-n.current {
-  border-color: #8888a0;
-  background: #343442;
+  border-color: var(--line-2);
+  background: var(--bg-3);
 }
 
 .pg-edited {
@@ -335,7 +401,7 @@ input[type='range'] {
   font-size: 11px;
   padding: 2px 8px;
   margin-left: auto;
-  color: #9a9ab0;
+  color: var(--ink-dim);
 }
 
 .pg-body {
@@ -356,7 +422,7 @@ input[type='range'] {
   width: 52px;
   flex: none;
   font-size: 11px;
-  color: #9a9ab0;
+  color: var(--ink-dim);
   text-align: right;
 }
 
@@ -474,53 +540,99 @@ input[type='range'] {
   border: 2px solid rgba(216, 216, 224, 0.5);
 }
 
+/* Glass transport panel (Neon Rack). The arena is the perf-critical layer,
+   so the backdrop blur is gated to non-phone widths (see media query below). */
 .hud {
   position: absolute;
   top: max(12px, env(safe-area-inset-top));
   left: max(12px, env(safe-area-inset-left));
-  width: 260px;
+  width: 264px;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  background: linear-gradient(180deg, rgba(23, 26, 34, 0.82), rgba(16, 18, 24, 0.82));
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
   pointer-events: none;
+  z-index: 2;
+}
+
+.hud-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.hud-timer {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.hud-level {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--signal);
+  border: 1px solid var(--signal-dim);
+  border-radius: var(--r-pill);
+  padding: 2px 9px;
 }
 
 .meter {
+  position: relative;
   height: 10px;
-  background: #22222a;
-  border: 1px solid #3a3a46;
-  border-radius: 3px;
+  background: #0c0e13;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
   overflow: hidden;
 }
 
 .meter .fill {
   height: 100%;
   width: 100%;
-  transition: width 0.15s;
+  border-radius: inherit;
+  transition: width var(--dur) var(--ease);
+}
+
+.meter.hp {
+  height: 13px;
 }
 
 .meter.hp .fill {
-  background: #e04545;
+  background: linear-gradient(90deg, var(--hp-dim), var(--hp));
+  box-shadow: 0 0 14px -4px var(--hp);
 }
 
 .meter.xp .fill {
-  background: #59ffd1;
+  background: linear-gradient(90deg, var(--signal-dim), var(--signal));
+  box-shadow: 0 0 14px -4px var(--signal);
   width: 0;
 }
 
-.hud-row {
-  display: flex;
-  justify-content: space-between;
-  font-size: 13px;
-  color: #9a9ab0;
+.meter-cap {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: rgba(255, 255, 255, 0.7);
+  pointer-events: none;
 }
 
+/* Bullet-hell readability: hit feedback is an edge vignette, never a
+   center-flooding wash, so the play area stays legible. */
 .hit-flash {
   position: absolute;
   inset: 0;
-  background: #ff3030;
+  background: radial-gradient(120% 120% at 50% 50%, transparent 52%, rgba(255, 77, 94, 0.55) 100%);
   opacity: 0;
   pointer-events: none;
+  z-index: 2;
 }
 
 .hit-flash.on {
@@ -529,11 +641,44 @@ input[type='range'] {
 
 @keyframes hitflash {
   0% {
-    opacity: 0.35;
+    opacity: 0.9;
   }
   100% {
     opacity: 0;
   }
+}
+
+/* Level-up affirmation: a signal-colored edge vignette, the positive twin
+   of the hit flash. */
+.level-pulse {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 120% at 50% 50%, transparent 50%, rgba(89, 255, 209, 0.42) 100%);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.level-pulse.on {
+  animation: levelpulse 0.6s var(--ease);
+}
+
+@keyframes levelpulse {
+  0% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Camera-independent arena darkening (below the HUD/screens/toasts). */
+.arena-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background: radial-gradient(130% 130% at 50% 45%, transparent 58%, rgba(0, 0, 0, 0.55) 100%);
 }
 
 .screen {
@@ -543,31 +688,48 @@ input[type='range'] {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 18px;
-  background: rgba(10, 10, 14, 0.82);
+  gap: var(--sp-5);
+  background: radial-gradient(120% 90% at 50% 12%, rgba(20, 24, 34, 0.72), rgba(8, 9, 13, 0.94));
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   text-align: center;
-  padding: 24px;
+  padding: var(--sp-5);
+  z-index: 2;
 }
 
 .screen h1 {
+  font-family: var(--font-disp);
+  font-size: var(--fs-disp);
+  font-weight: 800;
+  letter-spacing: 0.06em;
   margin: 0;
-  font-size: 34px;
+  text-transform: uppercase;
+  background: linear-gradient(180deg, #ffffff 0%, var(--signal) 130%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 20px rgba(89, 255, 209, 0.25));
 }
 
 .screen h2 {
+  font-size: var(--fs-h2);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   margin: 0;
-  font-size: 24px;
+  color: var(--ink);
 }
 
 .screen .sub {
   margin: 0;
-  color: #9a9ab0;
+  color: var(--ink-dim);
+  font-size: var(--fs-body);
 }
 
 .screen .hint {
-  margin: 12px 0 0;
-  color: #666674;
-  font-size: 12px;
+  margin-top: var(--sp-3);
+  color: var(--ink-faint);
+  font-size: var(--fs-xs);
 }
 
 .pick-grid {
@@ -578,35 +740,76 @@ input[type='range'] {
   max-width: 720px;
 }
 
+/* The one shared card: a raised panel with a top accent stripe. Used by the
+   start/genre/pick/effect/item screens; --voice-color is the per-card accent. */
 .kit-card {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  width: 200px;
-  padding: 14px 12px;
+  gap: var(--sp-2);
+  width: 210px;
+  padding: var(--sp-4) var(--sp-3) var(--sp-3);
+  background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  overflow: hidden;
   text-align: left;
-  border-left: 4px solid var(--voice-color);
+  transition:
+    transform var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
 }
 
-.kit-card:hover {
-  border-color: var(--voice-color);
+.kit-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 4px;
+  background: var(--voice-color);
+  box-shadow: 0 0 14px -2px var(--voice-color);
 }
 
-/* keyboard navigation: arrows walk the cards, enter picks */
+.kit-card:hover,
 .kit-card.selected {
+  /* restate the gradient so the generic button:hover fill can't flatten it */
+  background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
+  transform: translateY(-3px);
   border-color: var(--voice-color);
-  outline: 2px solid var(--voice-color);
-  outline-offset: 2px;
+  box-shadow: var(--glow-ring);
+}
+
+/* keyboard focus == the same glow, no double ring */
+.kit-card.selected {
+  outline: none;
 }
 
 .kit-name {
-  font-weight: bold;
+  font-weight: 700;
+  font-size: var(--fs-body);
   color: var(--voice-color);
+  letter-spacing: 0.03em;
 }
 
 .kit-desc {
-  font-size: 12px;
-  color: #9a9ab0;
+  font-size: var(--fs-sm);
+  color: var(--ink-dim);
+  line-height: 1.4;
+}
+
+/* Tier numeral chip, top-right (hud.ts appends it for tier > 1). Fallback
+   hex on the border in case color-mix is unsupported. */
+.kit-tier {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--voice-color);
+  border: 1px solid var(--line-2);
+  border: 1px solid color-mix(in srgb, var(--voice-color) 45%, transparent);
+  border-radius: var(--r-sm);
+  padding: 1px 6px;
+  letter-spacing: 0.08em;
 }
 
 /* Genre select: the character-pick step. Wider cards, room for six. */
@@ -616,11 +819,10 @@ input[type='range'] {
 
 .genre-card {
   width: 244px;
-  border-left-width: 5px;
 }
 
 .genre-card .kit-name {
-  font-size: 18px;
+  font-size: 19px;
 }
 
 .genre-bpm {
@@ -629,12 +831,16 @@ input[type='range'] {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--voice-color);
-  opacity: 0.85;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  padding: 2px 10px;
+  width: max-content;
 }
 
 button.big {
   font-size: 18px;
-  padding: 10px 26px;
+  padding: 12px 30px;
+  letter-spacing: 0.03em;
 }
 
 /* Toasts stack top-center and never overlap; each slides in, holds, and
@@ -653,13 +859,16 @@ button.big {
 }
 
 .toast {
-  background: #22222a;
-  border: 1px solid #3a3a46;
-  border-radius: 6px;
+  background: rgba(23, 26, 34, 0.9);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--signal);
+  border-radius: var(--r-md);
   padding: 8px 16px;
   max-width: min(80vw, 480px);
   text-align: center;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   opacity: 0;
   transform: translateY(-10px);
   transition: opacity 0.22s ease, transform 0.22s ease;
@@ -680,7 +889,7 @@ button.big {
   bottom: 10px;
   left: 12px;
   font-size: 12px;
-  color: #9a9ab0;
+  color: var(--ink-dim);
   background: rgba(16, 16, 20, 0.7);
   padding: 4px 8px;
   border-radius: 3px;
@@ -719,21 +928,21 @@ button.big {
   width: min(56vw, 520px);
   padding: 6px 12px;
   background: rgba(34, 34, 42, 0.85);
-  border: 1px solid #3a3a46;
+  border: 1px solid var(--line);
   border-radius: 6px;
   z-index: 6;
 }
 
 .replay-seek input[type='range'] {
   flex: 1;
-  accent-color: #4dff88;
+  accent-color: var(--signal);
 }
 
 .replay-seek span {
   min-width: 38px;
   text-align: right;
   font-variant-numeric: tabular-nums;
-  color: #cfd2e0;
+  color: var(--ink);
 }
 
 /* Shown while a seek computes: the picture freezes behind this note. */
@@ -743,7 +952,7 @@ button.big {
   left: 50%;
   transform: translate(-50%, -50%);
   background: rgba(34, 34, 42, 0.92);
-  border: 1px solid #3a3a46;
+  border: 1px solid var(--line);
   border-radius: 6px;
   padding: 10px 20px;
   z-index: 7;
@@ -751,13 +960,13 @@ button.big {
 }
 
 .debug-btn {
-  color: #9a9ab0;
+  color: var(--ink-dim);
   background: rgba(34, 34, 42, 0.85);
 }
 
 .debug-btn.on {
-  border-color: #59ffd1;
-  color: #59ffd1;
+  border-color: var(--signal);
+  color: var(--signal);
 }
 
 /* ---- sandbox (M2) ---- */
@@ -770,7 +979,7 @@ button.big {
   max-height: calc(100vh - 70px);
   overflow-y: auto;
   background: rgba(16, 16, 20, 0.88);
-  border: 1px solid #2a2a34;
+  border: 1px solid var(--line);
   border-radius: 4px;
   padding: 10px 12px;
   display: flex;
@@ -790,8 +999,8 @@ button.big {
 }
 
 .sb-section {
-  color: #666674;
-  border-bottom: 1px solid #2a2a34;
+  color: var(--ink-faint);
+  border-bottom: 1px solid var(--line);
   padding-bottom: 2px;
   margin-top: 6px;
 }
@@ -810,11 +1019,11 @@ button.big {
 }
 
 .sb-enemy-name {
-  color: #d8d8e0;
+  color: var(--ink);
 }
 
 .sb-enemy-stats {
-  color: #666674;
+  color: var(--ink-faint);
   font-size: 11px;
 }
 
@@ -830,8 +1039,8 @@ button.big {
 }
 
 .sb-btns .small.on {
-  border-color: #59ffd1;
-  color: #59ffd1;
+  border-color: var(--signal);
+  color: var(--signal);
 }
 
 .sb-controls {
@@ -844,7 +1053,7 @@ button.big {
 }
 
 .sb-hint {
-  color: #666674;
+  color: var(--ink-faint);
   font-size: 11px;
   margin-top: 6px;
 }
@@ -860,7 +1069,7 @@ button.big {
   max-height: 38vh;
   overflow: auto;
   background: rgba(16, 16, 20, 0.72);
-  border: 1px solid #2a2a34;
+  border: 1px solid var(--line);
   border-radius: 4px;
   padding: 8px;
   font-size: 11px;
@@ -873,20 +1082,50 @@ button.big {
   justify-content: center;
 }
 
+/* End-screen chips carry a mini damage-share bar behind the label (hud.ts
+   sets --pct + prepends .kill-bar). Fallback hex for the bar fill in case
+   color-mix is unsupported. */
 .kill-chip {
+  position: relative;
+  overflow: hidden;
   font-size: 13px;
-  color: var(--voice-color);
-  border: 1px solid #3a3a46;
+  color: var(--ink);
+  border: 1px solid var(--line);
   border-left: 3px solid var(--voice-color);
-  border-radius: 3px;
-  padding: 3px 8px;
+  border-radius: var(--r-sm);
+  padding: 4px 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.kill-chip .kill-bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--pct, 0%);
+  background: var(--voice-color);
+  background: color-mix(in srgb, var(--voice-color) 22%, transparent);
+  z-index: -1;
+}
+
+/* ---- desktop: the glass backdrop blur costs GPU while 2400 enemies render,
+   so the arena-layer .hud blur is enabled only above phone widths (screens
+   pause the sim, so their blur is always safe). ---- */
+@media (min-width: 601px) {
+  .hud {
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
 }
 
 /* ---- phones ---- */
 
 @media (max-width: 600px) {
   .hud {
-    width: 44vw;
+    width: 46vw;
+    padding: var(--sp-2);
+  }
+
+  .hud-timer {
+    font-size: 18px;
   }
 
   .screen {
@@ -942,7 +1181,7 @@ button.big {
 }
 
 .set-btn.pending {
-  outline: 1px dashed #9a9ab0;
+  outline: 1px dashed var(--ink-dim);
 }
 /* ---- Boss Fights (#boss) ---------------------------------------------- */
 /* The boss makes the music; the whole track is the fight. HUD shows the
@@ -968,14 +1207,14 @@ button.big {
 .boss-name {
   font-weight: bold;
   letter-spacing: 2px;
-  color: #f2f2f7;
+  color: var(--ink);
   font-size: 15px;
 }
 
 .boss-health {
   height: 14px;
   background: #17171f;
-  border: 1px solid #3a3a46;
+  border: 1px solid var(--line);
   border-radius: 4px;
   overflow: hidden;
 }
@@ -989,7 +1228,7 @@ button.big {
 
 .boss-phase {
   font-size: 11px;
-  color: #9a9ab0;
+  color: var(--ink-dim);
   letter-spacing: 1.5px;
   text-transform: uppercase;
 }
@@ -1006,7 +1245,7 @@ button.big {
 
 .boss-playerbar .lbl {
   font-size: 12px;
-  color: #9a9ab0;
+  color: var(--ink-dim);
   letter-spacing: 1px;
 }
 
@@ -1027,8 +1266,8 @@ button.big {
 }
 
 .small.on {
-  border-color: #59ffd1;
-  color: #59ffd1;
+  border-color: var(--signal);
+  color: var(--signal);
 }
 
 .boss-dash {
@@ -1049,7 +1288,7 @@ button.big {
   font-size: 11px;
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  color: #9a9ab0;
+  color: var(--ink-dim);
 }
 
 .boss-sync .small {
@@ -1061,7 +1300,7 @@ button.big {
   min-width: 56px;
   text-align: center;
   font-variant-numeric: tabular-nums;
-  color: #f2f2f7;
+  color: var(--ink);
 }
 
 .boss-select {
@@ -1079,7 +1318,7 @@ button.big {
   width: 246px;
   padding: 18px 16px;
   text-align: left;
-  background: #16161c;
+  background: var(--bg-1);
   border-left: 4px solid var(--boss-color);
 }
 
@@ -1099,7 +1338,7 @@ button.big {
 .boss-card-name {
   font-size: 21px;
   font-weight: bold;
-  color: #f2f2f7;
+  color: var(--ink);
 }
 
 .boss-card-artist {
@@ -1126,4 +1365,41 @@ button.big {
   .boss-card {
     width: min(88vw, 320px);
   }
+}
+
+/* ---- pick cards: effect + item kinds (Features 4, 5) ---- */
+/* Effect cards read as modifiers: dashed border + a ✦ after the name. Item
+   cards use "Lv N" text (set in hud.ts). Both reuse .kit-card + --voice-color;
+   the full Neon Rack reskin lands in a later stage. */
+.kit-card--effect {
+  border-style: dashed;
+}
+.kit-card--effect .kit-name::after {
+  content: ' ✦';
+  opacity: 0.7;
+}
+
+/* Owned-item strip, bottom-left. Inherits the Neon Rack glass tokens and
+   sits above the arena vignette. */
+.item-strip {
+  position: absolute;
+  left: max(8px, env(safe-area-inset-left));
+  bottom: max(8px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  max-width: 40vw;
+  pointer-events: none;
+  z-index: 2;
+}
+.item-chip {
+  font: 11px/1 var(--font-mono);
+  letter-spacing: 0.04em;
+  padding: 4px 8px;
+  border-radius: var(--r-sm);
+  color: var(--voice-color);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--voice-color);
+  background: rgba(10, 11, 15, 0.82);
+  box-shadow: 0 0 12px -6px var(--voice-color);
 }

@@ -12,10 +12,12 @@ import { makePolicy } from '../bot/policies';
 import { SIM_VIEW } from '../bot/sim';
 import { mountPlayground, type Playground } from '../rehearsal/playground';
 import { RUN } from './config';
+import { EFFECT_META } from './effects';
 import { Hud, TIER_NUMERALS } from './hud';
 import { Input } from './input';
+import { ITEMS } from './items';
 import { mountJoystick } from './joystick';
-import { buildPickPool, shuffleWith } from './picks';
+import { rollOffers, type PickOption } from './picks';
 import { mulberry32 } from './rng';
 import { RunWorld } from './run';
 import { RunView } from './view';
@@ -30,7 +32,7 @@ export async function bootGame(
 ): Promise<void> {
   const app = new Application();
   await app.init({
-    background: 0x101014,
+    background: 0x0a0b0f,
     resizeTo: window,
     antialias: true,
     // crisp on phone screens; capped so high-dpr devices don't pay 3x pixels
@@ -39,6 +41,11 @@ export async function bootGame(
   });
   root.appendChild(app.canvas);
   root.classList.add('game-root');
+  // Camera-independent arena darkening: a DOM vignette above the canvas but
+  // below the HUD/screens/toasts (which own z-index >= 2).
+  const arenaVignette = document.createElement('div');
+  arenaVignette.className = 'arena-vignette';
+  root.appendChild(arenaVignette);
   // touch play: floating joystick on the arena; kill the long-press menu
   mountJoystick(root);
   root.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -60,28 +67,38 @@ export async function bootGame(
     onLevelUp(level: number): void {
       void level;
       if (state !== 'run') return;
-      // The pool (docs/phases/m2-the-arc.md) is shared with the autoplay
+      // The offer roll (docs/phases/m2-the-arc.md) is shared with the autoplay
       // bot via picks.ts, so the bot faces the exact offers a player does.
-      const pool = buildPickPool(world!.tiers);
-      if (pool.length === 0) {
+      const options = rollOffers(world!.tiers, world!.items, world!.effects, Math.random);
+      if (options.length === 0) {
         world!.player.hp = Math.min(RUN.playerHp, world!.player.hp + 15);
         hud.showToast('+15 hp — the track is complete');
         return;
       }
       state = 'pick';
       engine.clock.pause();
-      const options = shuffleWith(pool, Math.random).slice(0, 3);
       hud.showPick(options, (option) => {
         state = 'run';
         // Musical entry rule: the clock resumes, the old chart finishes its
-        // bar, and the new voice or tier enters on the following "1".
+        // bar, and the new voice / tier / item / effect enters on the next "1".
         const w = world;
         engine.atNextBar(() => {
           if (state !== 'run' || world !== w) return;
-          engine.setVoiceTier(option.role, option.tier);
-          engine.setVoiceEnabled(option.role, true);
-          w!.addWeapon(option.role, option.tier);
+          if (option.kind === 'weapon') {
+            engine.setVoiceTier(option.role, option.tier);
+            engine.setVoiceEnabled(option.role, true);
+            w!.addWeapon(option.role, option.tier);
+          } else if (option.kind === 'item') {
+            w!.addItem(option.item, option.level);
+          } else {
+            w!.attachEffect(option.role, option.effect);
+            engine.setVoiceEffect(option.role, option.effect);
+          }
+          hud.renderItems(w!.items);
           chartOverlay?.refresh();
+          // Cosmetic affirmation the pick landed (view-only, muted-safe).
+          view?.flourish(w!.player.x, w!.player.y);
+          hud.levelPulse();
         });
         engine.clock.resume();
       });
@@ -94,6 +111,7 @@ export async function bootGame(
     },
     onHit(): void {
       hud.hitFlash();
+      view?.pushShake(7, 0.12);
     },
   };
 
@@ -108,6 +126,7 @@ export async function bootGame(
     onVictory(): void {},
     onHit(): void {
       hud.hitFlash();
+      view?.pushShake(7, 0.12);
     },
   };
   let sandboxPanel: SandboxPanel | null = null;
@@ -252,6 +271,7 @@ export async function bootGame(
     probe = null;
     seekOverlay.style.display = 'none';
     engine.clearBarQueue();
+    engine.clearVoiceEffects();
     for (const role of ROLES) engine.setVoiceEnabled(role, false);
   }
 
@@ -268,6 +288,7 @@ export async function bootGame(
     engine.setVoiceEnabled(startingKit, true);
     world.addWeapon(startingKit, 1);
     hud.showHud(true);
+    hud.renderItems(world.items);
     state = 'run';
     void engine.ctx.resume();
     engine.clock.start();
@@ -338,6 +359,7 @@ export async function bootGame(
       },
       onHit(): void {
         hud.hitFlash();
+        view?.pushShake(7, 0.12);
       },
     };
     const w: RunWorld = new RunWorld(SIM_VIEW, replayEvents, { rng, control: () => mover(w) });
@@ -345,14 +367,19 @@ export async function bootGame(
     world = w;
     replayConductor = new VirtualConductor(w, policy.choose, rng, {
       onPick(option) {
-        const kit = kits.get(option.role)!;
-        hud.showToast(`bot picks ${kit.name} ${TIER_NUMERALS[option.tier - 1]}`);
+        hud.showToast(`bot picks ${pickLabel(option)}`);
       },
       onApply(option) {
         // the sound mirrors the sim's build; gameplay is driven by the
-        // virtual clock, the engine only plays along
-        engine.setVoiceTier(option.role, option.tier);
-        engine.setVoiceEnabled(option.role, true);
+        // virtual clock, the engine only plays along. Items touch no voice
+        // tier; an effect swaps the voice's audio fx chain.
+        if (option.kind === 'weapon') {
+          engine.setVoiceTier(option.role, option.tier);
+          engine.setVoiceEnabled(option.role, true);
+        } else if (option.kind === 'effect') {
+          engine.setVoiceEffect(option.role, option.effect);
+        }
+        hud.renderItems(w.items);
         chartOverlay?.refresh();
       },
       onHeal() {
@@ -362,6 +389,7 @@ export async function bootGame(
     view = new RunView(w, app.screen);
     app.stage.addChild(view.stage);
     hud.showHud(true);
+    hud.renderItems(w.items);
     hud.showToast(`replaying seed ${seed} (${genre.name}/${moverName}/${policySpec})`);
     speedRow.style.display = '';
     seekRow.style.display = '';
@@ -582,6 +610,13 @@ export async function bootGame(
 
   function fmtTime(s: number): string {
     return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+  }
+
+  function pickLabel(option: PickOption): string {
+    if (option.kind === 'item') return `${ITEMS[option.item].name} Lv ${option.level}`;
+    const kit = kits.get(option.role)!;
+    if (option.kind === 'effect') return `${kit.name} · ${EFFECT_META[option.effect].name}`;
+    return option.tier > 1 ? `${kit.name} ${TIER_NUMERALS[option.tier - 1]}` : kit.name;
   }
 
   // ?replay=<seed>&mover=<mover>&policy=<policy> boots straight into a bot

@@ -34,10 +34,15 @@ export function makePolicy(spec: string): Policy {
       name: spec,
       startingKit: (rng) => ROLES[Math.floor(rng() * ROLES.length)],
       choose: (options, _world, rng) => {
-        const ups = options.filter((o) => o.tier > 1);
+        const ups = options.filter(
+          (o): o is Extract<PickOption, { kind: 'weapon' }> => o.kind === 'weapon' && o.tier > 1,
+        );
         if (ups.length === 0) return pickRandom(options, rng);
         const top = Math.max(...ups.map((o) => o.tier));
-        return pickRandom(ups.filter((o) => o.tier === top), rng);
+        return pickRandom(
+          ups.filter((o) => o.tier === top),
+          rng,
+        );
       },
     };
   }
@@ -47,8 +52,24 @@ export function makePolicy(spec: string): Policy {
       name: spec,
       startingKit: (rng) => ROLES[Math.floor(rng() * ROLES.length)],
       choose: (options, _world, rng) => {
-        const fresh = options.filter((o) => o.tier === 1);
+        const fresh = options.filter(
+          (o): o is Extract<PickOption, { kind: 'weapon' }> => o.kind === 'weapon' && o.tier === 1,
+        );
         return fresh.length > 0 ? pickRandom(fresh, rng) : pickRandom(options, rng);
+      },
+    };
+  }
+  if (spec === 'items') {
+    // always grab a passive when one is on offer, so the batch bot can
+    // stress item balance in isolation; else random
+    return {
+      name: spec,
+      startingKit: (rng) => ROLES[Math.floor(rng() * ROLES.length)],
+      choose: (options, _world, rng) => {
+        const items = options.filter(
+          (o): o is Extract<PickOption, { kind: 'item' }> => o.kind === 'item',
+        );
+        return items.length > 0 ? pickRandom(items, rng) : pickRandom(options, rng);
       },
     };
   }
@@ -61,10 +82,10 @@ export function makePolicy(spec: string): Policy {
       name: spec,
       startingKit: () => role,
       choose: (options, _world, rng) => {
-        const mine = options.find((o) => o.role === role);
+        const mine = options.find((o) => o.kind === 'weapon' && o.role === role);
         return mine ?? pickRandom(options, rng);
       },
     };
   }
-  throw new Error(`unknown policy: ${spec} (use random | deep | wide | focus:<role>)`);
+  throw new Error(`unknown policy: ${spec} (use random | deep | wide | items | focus:<role>)`);
 }
