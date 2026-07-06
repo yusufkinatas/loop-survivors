@@ -6,8 +6,8 @@
 //
 // Patterns are grounded in real production practice (see the M3-era research):
 // House four-on-floor + offbeat open hats, Lo-Fi swung boom-bap, Synthwave
-// straight machine drums + 16th arps, Phonk halftime + rolling hats + tuned
-// cowbell over a distorted 808, Drum & Bass 174 two-step + rolling sub, Techno
+// straight machine drums + 16th arps, Hip-Hop halftime + rolling trap hats +
+// booming 808 + a melodic hook, Drum & Bass 174 two-step + rolling sub, Techno
 // relentless four-on-floor + offbeat hats. The coherence skeleton (minor
 // pentatonic, chord roots 0/5/7) still owns the theory, so no genre can clash.
 
@@ -16,7 +16,7 @@ import { TIER_COUNT, validateChart } from './charts';
 import { ROLES, type Role } from './kits';
 import { B, d, m } from './groove';
 
-export type GenreId = 'lofi' | 'house' | 'synthwave' | 'phonk' | 'dnb' | 'techno';
+export type GenreId = 'lofi' | 'house' | 'synthwave' | 'hiphop' | 'dnb' | 'techno';
 
 export interface Genre {
   id: GenreId;
@@ -363,22 +363,23 @@ const SYNTHWAVE: Genre = {
 };
 
 // =====================================================================
-// PHONK — 150 BPM, halftime snare, rolling trap hats, tuned cowbell hook.
+// HIP-HOP — 140 BPM, halftime snare, rolling trap hats, booming 808,
+// a melodic keys/bell hook. Modern trap-flavored hip-hop.
 // =====================================================================
-const PHONK: Genre = {
-  id: 'phonk',
-  name: 'Phonk',
-  blurb: 'Memphis menace. Halftime slam, rolling hats, a cowbell that hooks.',
-  color: '#b04dff',
-  bpm: 150,
-  swing: 0.14,
-  powerMul: 0.78,
+const HIPHOP: Genre = {
+  id: 'hiphop',
+  name: 'Hip-Hop',
+  blurb: 'Trap-flavored boom. Halftime snare, rolling hats, a booming 808, a melodic hook.',
+  color: '#ff8c2b',
+  bpm: 140,
+  swing: 0.1,
+  powerMul: 0.8,
   ladders: {
     kick: [
-      d('kick', 'X.......X..X....'),
-      d('kick', 'X......XX..X....'),
-      d('kick', 'X......XX..X....', 'X......XX..X.X..'),
-      d('kick', 'X......XX..X....', 'X..X...XX..X.X.X'),
+      d('kick', 'X.........X.....'),
+      d('kick', 'X......X..X.....'),
+      d('kick', 'X......X..X.....', 'X......X..X..X..'),
+      d('kick', 'X......X..X.....', 'X..X...X..X.X.X.'),
     ],
     snare: [
       d('snare', '........X.......'),
@@ -389,32 +390,29 @@ const PHONK: Genre = {
     hat: [
       d('hat', 'x.x.x.x.x.x.x.x.'),
       d('hat', 'xxxxxxxxxxxxxxxx'),
-      d('hat', 'xxxxxxxxxxxxxxxx', 'xxxxxxxxxxxxXXXX'),
-      d('hat', 'xxxxxxxxxxxxXXXX', 'xxxxXXXXxxxxXXXX'),
+      d('hat', 'xxxxxxxxxxxxXXXX', 'xxxxxxxxxxxxxxxx'),
+      d('hat', 'xxxxxxxxXXXXxxxx', 'xxxxXXXXxxxxXXXX'),
     ],
     clap: [
       d('clap', '........x.......'),
       d('clap', '........x.......'),
       d('clap', '........x.......', '........x......o'),
-      d('clap', '........o.......', '........x....oxx'),
+      d('clap', '........x.......', '....o...x....oxx'),
     ],
     cowbell: [
-      m('cowbell', 2, [[0, 0.7, 0], [4, 0.65, 7], [10, 0.6, 3], [B + 0, 0.7, 0], [B + 8, 0.65, 5]]),
-      m('cowbell', 2, [[0, 0.7, 0], [4, 0.65, 7], [6, 0.6, 10], [10, 0.6, 3], [B, 0.7, 0], [B + 8, 0.65, 5], [B + 12, 0.6, 3]]),
-      m('cowbell', 4, [
-        [0, 0.75, 0], [4, 0.65, 7], [6, 0.6, 10], [10, 0.6, 3], [B, 0.7, 0], [B + 8, 0.65, 5], [B + 12, 0.6, 3],
-        [2 * B, 0.75, 0], [2 * B + 4, 0.65, 7], [2 * B + 10, 0.6, 10], [3 * B, 0.7, 12], [3 * B + 8, 0.65, 7],
-      ]),
-      m('cowbell', 4, [
-        [0, 0.8, 0], [2, 0.6, 3], [4, 0.7, 7], [6, 0.6, 10], [10, 0.65, 3], [B, 0.7, 0], [B + 6, 0.6, 5], [B + 8, 0.65, 5], [B + 12, 0.6, 3],
-        [2 * B, 0.8, 0], [2 * B + 4, 0.7, 7], [2 * B + 10, 0.6, 10], [3 * B, 0.75, 12], [3 * B + 6, 0.6, 10], [3 * B + 8, 0.7, 7], [3 * B + 12, 0.65, 3],
+      m('cowbell', 1, [[2, 0.45, 0], [10, 0.45, 7]]),
+      m('cowbell', 1, [[2, 0.5, 0], [6, 0.45, 7], [10, 0.5, 0], [14, 0.45, 7]]),
+      m('cowbell', 2, [[2, 0.5, 0], [10, 0.5, 7], [B + 2, 0.5, 5], [B + 10, 0.5, 3]]),
+      m('cowbell', 2, [
+        [2, 0.5, 0], [6, 0.45, 7], [10, 0.5, 0], [14, 0.45, 10],
+        [B + 2, 0.5, 5], [B + 6, 0.45, 7], [B + 10, 0.5, 3], [B + 14, 0.45, 5],
       ]),
     ],
     tom: [
-      m('tom', 2, [[8, 0.75, 0]]),
-      m('tom', 2, [[8, 0.75, 0], [B + 8, 0.75, -5]]),
-      m('tom', 2, [[8, 0.7, 0], [B + 8, 0.75, -5], [B + 12, 0.6, -2], [B + 14, 0.7, 0]]),
-      m('tom', 2, [[8, 0.7, 0], [B + 8, 0.75, -5], [B + 12, 0.6, 0], [B + 13, 0.65, -2], [B + 14, 0.7, -5], [B + 15, 0.8, -7]]),
+      m('tom', 2, [[B + 14, 0.7, 0]]),
+      m('tom', 2, [[B + 12, 0.65, 0], [B + 14, 0.7, -2]]),
+      m('tom', 2, [[B + 8, 0.6, 3], [B + 12, 0.65, 0], [B + 14, 0.7, -2]]),
+      m('tom', 2, [[B + 8, 0.6, 3], [B + 11, 0.6, 0], [B + 12, 0.65, 0], [B + 13, 0.65, -2], [B + 14, 0.7, -5], [B + 15, 0.8, -7]]),
     ],
     crash: CRASH,
     zap: ZAP,
@@ -426,17 +424,20 @@ const PHONK: Genre = {
         [2 * B, 1.0, 3], [2 * B + 10, 0.7, 0], [3 * B, 0.9, -2], [3 * B + 8, 0.8, -5],
       ]),
       m('bass', 4, [
-        [0, 1.0, 0], [7, 0.7, 0], [10, 0.7, -2], [B, 0.9, -5], [B + 8, 0.8, -2], [B + 12, 0.7, -5],
+        [0, 1.0, 0], [7, 0.7, 0], [10, 0.7, -2], [B, 0.9, -5], [B + 8, 0.8, -2], [B + 14, 0.7, -5],
         [2 * B, 1.0, 3], [2 * B + 10, 0.7, 0], [3 * B, 0.9, -2], [3 * B + 8, 0.8, -5], [3 * B + 14, 0.7, -7],
       ]),
     ],
     chord: [
-      m('chord', 2, [[0, 0.6, 0, 'pad'], [B, 0.6, 7, 'pad']]),
-      m('chord', 2, [[0, 0.6, 0, 'pad'], [8, 0.55, 0, 'stab'], [B, 0.6, 7, 'pad']]),
-      m('chord', 4, [[0, 0.6, 0, 'pad'], [8, 0.55, 0, 'stab'], [B, 0.6, 7, 'pad'], [2 * B, 0.6, 5, 'pad'], [3 * B, 0.6, 0, 'pad']]),
+      m('chord', 2, [[4, 0.6, 0, 'stab'], [B + 12, 0.55, 5, 'stab']]),
+      m('chord', 2, [[0, 0.5, 0, 'pad'], [4, 0.65, 0, 'stab'], [B + 4, 0.6, 5, 'stab'], [B + 12, 0.55, 7, 'stab']]),
+      m('chord', 2, [
+        [0, 0.5, 0, 'pad'], [4, 0.65, 0, 'stab'], [10, 0.4, 0, 'stab'],
+        [B, 0.5, 5, 'pad'], [B + 4, 0.6, 5, 'stab'], [B + 12, 0.55, 7, 'stab'],
+      ]),
       m('chord', 4, [
-        [0, 0.6, 0, 'pad'], [8, 0.55, 0, 'stab'], [B, 0.6, 7, 'pad'], [B + 8, 0.55, 7, 'stab'],
-        [2 * B, 0.6, 5, 'pad'], [2 * B + 8, 0.55, 5, 'stab'], [3 * B, 0.6, 0, 'pad'],
+        [0, 0.5, 0, 'pad'], [4, 0.65, 0, 'stab'], [B + 4, 0.6, 5, 'stab'],
+        [2 * B, 0.5, 7, 'pad'], [2 * B + 4, 0.6, 7, 'stab'], [3 * B + 4, 0.6, 5, 'stab'], [3 * B + 12, 0.6, 0, 'stab'],
       ]),
     ],
     arp: [
@@ -444,23 +445,23 @@ const PHONK: Genre = {
       m('arp', 1, [[0, 0.55, 0], [2, 0.45, 3], [4, 0.5, 7], [6, 0.45, 10], [8, 0.55, 7], [10, 0.45, 3], [12, 0.5, 0], [14, 0.45, 3]]),
       m('arp', 2, [
         [0, 0.55, 0], [2, 0.45, 3], [4, 0.5, 7], [6, 0.45, 10], [8, 0.55, 7], [10, 0.45, 3], [12, 0.5, 0], [14, 0.45, 3],
-        [B, 0.55, 12], [B + 4, 0.5, 10], [B + 8, 0.55, 7], [B + 12, 0.5, 3],
+        [B, 0.55, 5], [B + 4, 0.5, 10], [B + 8, 0.55, 12], [B + 12, 0.5, 7],
       ]),
       m('arp', 2, [
-        [0, 0.55, 0], [2, 0.45, 3], [4, 0.5, 7], [6, 0.45, 10], [8, 0.55, 7], [10, 0.45, 3], [12, 0.5, 0], [14, 0.45, 3],
-        [B, 0.55, 12], [B + 2, 0.45, 10], [B + 4, 0.5, 7], [B + 6, 0.45, 10], [B + 8, 0.55, 12], [B + 10, 0.45, 10], [B + 12, 0.5, 7], [B + 14, 0.45, 3],
+        [0, 0.55, 0], [2, 0.45, 3], [4, 0.5, 7], [6, 0.45, 10], [8, 0.55, 12], [10, 0.45, 10], [12, 0.5, 7], [14, 0.45, 3],
+        [B, 0.55, 5], [B + 2, 0.45, 7], [B + 4, 0.5, 10], [B + 6, 0.45, 12], [B + 8, 0.55, 15], [B + 10, 0.45, 12], [B + 12, 0.5, 7], [B + 14, 0.45, 3],
       ]),
     ],
     lead: [
-      m('lead', 2, [[0, 0.7, 0], [8, 0.65, -2], [B, 0.7, 3]]),
-      m('lead', 2, [[0, 0.7, 0], [4, 0.6, 3], [8, 0.65, -2], [B, 0.7, 0], [B + 8, 0.6, -5]]),
+      m('lead', 2, [[0, 0.8, 7], [8, 0.7, 5], [B, 0.8, 3]]),
+      m('lead', 2, [[0, 0.8, 7], [4, 0.65, 5], [8, 0.7, 3], [B, 0.8, 5], [B + 8, 0.7, 0]]),
       m('lead', 4, [
-        [0, 0.7, 0], [4, 0.6, 3], [8, 0.65, -2], [B, 0.7, 0], [B + 8, 0.6, -5],
-        [2 * B, 0.7, 3], [2 * B + 8, 0.65, 0], [3 * B, 0.7, 7], [3 * B + 8, 0.65, 3],
+        [0, 0.8, 7], [4, 0.65, 5], [8, 0.7, 3], [B, 0.8, 5], [B + 8, 0.7, 0],
+        [2 * B, 0.8, 3], [2 * B + 6, 0.65, 5], [2 * B + 8, 0.75, 7], [3 * B, 0.8, 10], [3 * B + 8, 0.7, 7], [3 * B + 12, 0.75, 5],
       ]),
       m('lead', 4, [
-        [0, 0.7, 0], [4, 0.6, 3], [8, 0.65, -2], [12, 0.55, 7], [B, 0.7, 0], [B + 8, 0.6, -5],
-        [2 * B, 0.7, 3], [2 * B + 8, 0.65, 0], [2 * B + 12, 0.55, 10], [3 * B, 0.7, 7], [3 * B + 8, 0.65, 3], [3 * B + 12, 0.7, 0],
+        [0, 0.8, 7], [4, 0.65, 5], [8, 0.7, 3], [12, 0.6, 10], [B, 0.8, 5], [B + 8, 0.7, 0], [B + 14, 0.6, 3],
+        [2 * B, 0.8, 3], [2 * B + 6, 0.65, 5], [2 * B + 8, 0.75, 7], [2 * B + 12, 0.6, 12], [3 * B, 0.8, 10], [3 * B + 8, 0.7, 7], [3 * B + 12, 0.75, 5], [3 * B + 14, 0.65, 3],
       ]),
     ],
   },
@@ -667,7 +668,7 @@ const TECHNO: Genre = {
   },
 };
 
-export const GENRES: Genre[] = [LOFI, HOUSE, SYNTHWAVE, PHONK, DNB, TECHNO];
+export const GENRES: Genre[] = [LOFI, HOUSE, SYNTHWAVE, HIPHOP, DNB, TECHNO];
 
 export const GENRE_BY_ID: Record<GenreId, Genre> = Object.fromEntries(
   GENRES.map((g) => [g.id, g]),

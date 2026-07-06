@@ -37,7 +37,7 @@ off.)
 ## The model
 
 - **A genre is a playable character.** Six ship: Lo-Fi, House, Synthwave,
-  Phonk, Drum & Bass, Techno.
+  Hip-Hop, Drum & Bass, Techno.
 - **The soundset is shared.** All genres play the same twelve instrument types
   (the tools). A genre never adds or removes a weapon.
 - **The track is the difference.** Each genre supplies its own tempo, swing,

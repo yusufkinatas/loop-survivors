@@ -307,7 +307,7 @@ async function renderLead(rootHz: number): Promise<AudioBuffer> {
 }
 
 // A pitched mid-drum. Sine+triangle body with a short pitch drop and a noise
-// attack, so a tom melody (fills, phonk/DnB rolls) reads as pitched but hits
+// attack, so a tom melody (fills, hip-hop/DnB rolls) reads as pitched but hits
 // like a drum. note 0 sits at the run root.
 async function renderTom(rootHz: number): Promise<AudioBuffer> {
   const ctx = offline(0.6);
@@ -341,7 +341,7 @@ async function renderTom(rootHz: number): Promise<AudioBuffer> {
 }
 
 // The classic 808 cowbell: two detuned square waves a ~1.48 ratio apart
-// through a bandpass. Pitched so phonk cowbell riffs land on the note set.
+// through a bandpass. Pitched so hip-hop cowbell riffs land on the note set.
 async function renderCowbell(rootHz: number): Promise<AudioBuffer> {
   const ctx = offline(0.5);
   const base = rootHz * 2;

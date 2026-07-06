@@ -48,7 +48,7 @@ export interface RunRecord {
 export const SIM_VIEW = { width: 1280, height: 800 };
 
 export function simulateRun(spec: SimSpec, config: string): RunRecord {
-  const genre = GENRE_BY_ID[spec.genre ?? DEFAULT_GENRE];
+  const genre = GENRE_BY_ID[spec.genre ?? DEFAULT_GENRE] ?? GENRE_BY_ID[DEFAULT_GENRE];
   setActiveGenre(genre.id);
   const rng = mulberry32(spec.seed);
   const policy = makePolicy(spec.policy);
