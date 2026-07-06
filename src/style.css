@@ -66,6 +66,12 @@ input[type='range'] {
   border-bottom: 1px solid #2a2a34;
 }
 
+.lab-title {
+  font-weight: bold;
+  letter-spacing: 0.04em;
+  margin-right: 4px;
+}
+
 .play {
   min-width: 90px;
 }

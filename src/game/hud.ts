@@ -130,6 +130,10 @@ export class Hud {
       roomBtn.onclick = () => {
         location.hash = '#rehearsal';
       };
+      const labBtn = el('button', '', row, 'open the experimentation room');
+      labBtn.onclick = () => {
+        location.hash = '#tracklab';
+      };
     };
 
     const showWeapons = (genre: Genre): void => {

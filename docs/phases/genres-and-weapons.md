@@ -23,10 +23,16 @@ off.)
 - The **full-track / destination-song** idea, in every form.
 - The **drop event** (player-fired lock, exact-match recipe, vulnerable
   wind-up, synchronized slam, energy meter, re-score).
-- The **Track Lab** (`src/tracklab/`, the `#tracklab` route, its start-screen
-  link). Its research-sourced covers were the proof of concept for the dropped
-  direction. Its generic CC0 drum samples in `public/samples/covers/` were left
-  in place (harmless, reusable), as they are not "full-track" data.
+
+## What was kept
+
+- The **Track Lab** stays, re-labeled the **Experimentation room**
+  (`src/tracklab/`, the `#tracklab` route, a start-screen button). It is a
+  standalone lab for auditioning reverse-engineered covers — no longer tied to
+  a game mechanic, just a place to experiment. It works exactly as before; the
+  only changes are the entry label and a self-identifying title. (It was briefly
+  removed in the first pass of this work, then restored at the developer's
+  request.)
 
 ## The model
 
