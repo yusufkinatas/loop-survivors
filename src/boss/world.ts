@@ -16,9 +16,11 @@ export const BOSS_PLAYER = {
   iframesS: 0.6,
   dashSpeed: 760,
   dashDurS: 0.15,
-  // Snappier than before (was 0.8) so a dash can keep up with beat-frequent
-  // attacks — Pursuit fires roughly every ~0.55s beat.
-  dashCdS: 0.42,
+  // Near-minimal so the dash is almost always available against beat-frequent
+  // attacks (Pursuit fires roughly every ~0.55s beat); at 0.2s it recovers
+  // well within a beat. Barely above the 0.15s dash duration, so back-to-back
+  // dashes are near-continuous.
+  dashCdS: 0.2,
   // The dash is a real dodge: invulnerable for the whole dash plus a short
   // recovery tail, so dashing THROUGH an attack reliably clears it. Longer
   // than dashDurS on purpose (was only ~0.05s, barely covered the move).
