@@ -179,11 +179,6 @@ const SATISFACTION_BOSS: BossDef = {
   chaseSpeed: 0,
   contactDamage: 14,
   spawn: { x: 0, y: -0.16 },
-  onSectionEnter(_sectionId, i, world) {
-    // Drift the core between phases so its rings come from a fresh angle.
-    world.boss.homeX = ((i % 3) - 1) * ARENA.w * 0.16;
-    world.boss.homeY = -ARENA.h * 0.16;
-  },
   onStep(info, world) {
     const P = SAT_PALETTE;
     const b = world.boss;
@@ -192,7 +187,26 @@ const SATISFACTION_BOSS: BossDef = {
     const spiral = info.absStep * 0.16; // continuous rotation for spiral arms
     const { sectionId, stepInBar } = info;
 
-    if (info.isBeat) world.pulseBoss(0.7);
+    // --- movement: the core grooves. It never charges the player. It sways on
+    // a figure-8 around its section anchor (rings then come from a shifting
+    // spot) and punches out a hop on every beat, biased away from the player so
+    // the dance never turns into a charge.
+    const baseX = ((info.entryIndex % 3) - 1) * ARENA.w * 0.16;
+    const baseY = -ARENA.h * 0.16;
+    b.homeX = baseX + Math.sin(info.absStep * 0.11) * ARENA.w * 0.2;
+    b.homeY = baseY + Math.sin(info.absStep * 0.17 + 1) * ARENA.h * 0.12;
+
+    if (info.isBeat) {
+      world.pulseBoss(0.7);
+      let hop = info.beatInBar * 1.7 + info.absBar * 0.5; // rotating hop angle
+      const toPlayer = world.aimAt(b.x, b.y);
+      let diff = hop - toPlayer;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      if (Math.abs(diff) < Math.PI / 2) hop = toPlayer + Math.PI; // flip off the player
+      const dist = 150;
+      world.bossLungeAt(b.x + Math.cos(hop) * dist, b.y + Math.sin(hop) * dist, 900, 0.12);
+    }
 
     switch (sectionId) {
       case 'intro':
