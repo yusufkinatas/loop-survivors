@@ -944,3 +944,158 @@ button.big {
 .set-btn.pending {
   outline: 1px dashed #9a9ab0;
 }
+/* ---- Boss Fights (#boss) ---------------------------------------------- */
+/* The boss makes the music; the whole track is the fight. HUD shows the
+   boss's draining "song" bar (top) and the player's hp (bottom-left). */
+.boss-hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.boss-topbar {
+  position: absolute;
+  top: max(14px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, 84vw);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: center;
+}
+
+.boss-name {
+  font-weight: bold;
+  letter-spacing: 2px;
+  color: #f2f2f7;
+  font-size: 15px;
+}
+
+.boss-health {
+  height: 14px;
+  background: #17171f;
+  border: 1px solid #3a3a46;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.boss-health .fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #ff4658, #ff9a3c);
+  transition: width 0.12s linear;
+}
+
+.boss-phase {
+  font-size: 11px;
+  color: #9a9ab0;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+
+.boss-playerbar {
+  position: absolute;
+  left: max(14px, env(safe-area-inset-left));
+  bottom: max(14px, env(safe-area-inset-bottom));
+  width: 240px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.boss-playerbar .lbl {
+  font-size: 12px;
+  color: #9a9ab0;
+  letter-spacing: 1px;
+}
+
+.boss-playerbar .meter {
+  flex: 1;
+  height: 12px;
+}
+
+.boss-controls {
+  position: absolute;
+  right: max(14px, env(safe-area-inset-right));
+  top: max(14px, env(safe-area-inset-top));
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  z-index: 6;
+}
+
+.small.on {
+  border-color: #59ffd1;
+  color: #59ffd1;
+}
+
+.boss-dash {
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+
+.boss-select {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 860px;
+}
+
+.boss-card {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  width: 246px;
+  padding: 18px 16px;
+  text-align: left;
+  background: #16161c;
+  border-left: 4px solid var(--boss-color);
+}
+
+.boss-card:hover {
+  border-color: var(--boss-color);
+  outline: 2px solid var(--boss-color);
+  outline-offset: 2px;
+}
+
+.boss-card-arch {
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--boss-color);
+}
+
+.boss-card-name {
+  font-size: 21px;
+  font-weight: bold;
+  color: #f2f2f7;
+}
+
+.boss-card-artist {
+  font-size: 12px;
+  color: #8a8a9c;
+}
+
+.boss-card-tag {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: #c2c2ce;
+}
+
+.boss-select-foot {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+@media (max-width: 640px) {
+  .boss-card {
+    width: min(88vw, 320px);
+  }
+}
