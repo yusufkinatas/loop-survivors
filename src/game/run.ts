@@ -13,15 +13,21 @@ import type { Role } from '../audio/kits';
 import type { ScheduledTrigger } from '../audio/engine';
 import {
   AIM_RANGE,
+  ARP_OMEGA,
+  BOOMERANG_OUT_FRAC,
   DARTER,
   ENEMIES,
   ENEMY_BANDS,
   enemyScaling,
+  KNOCK_S,
   MAX_ALIVE_HARD,
+  ORBIT_REHIT_S,
   RUN,
+  SHOCK_BAND,
   VARIANT_EFFECTS,
   WAVES,
   WEAPONS,
+  ZAP_RANGE,
   ZONE_SLOW_MUL,
   ZONE_THROW_RANGE,
   ZONE_TICK_S,
@@ -54,6 +60,11 @@ export interface Enemy {
   dashing: boolean;
   /** Time left under a chord zone's slow. */
   slowT: number;
+  /** Crash knockback: velocity (px/s) and time left being pushed. While
+   *  knockT > 0 the enemy rides this vector instead of chasing. */
+  knockX: number;
+  knockY: number;
+  knockT: number;
 }
 
 export interface Projectile {
@@ -68,6 +79,34 @@ export interface Projectile {
   lifeS: number;
   homing: boolean;
   speed: number;
+  color: number;
+  hit: Set<Enemy>;
+  /** Total time alive; drives the boomerang turnaround. Behavior otherwise
+   *  keys off role: lead homes, tom boomerangs, cowbell ricochets, arp orbits. */
+  age: number;
+  /** cowbell: ricochets off the view edges left before it dies. */
+  bounces: number;
+  /** tom: seconds spent flying outward before it curves home. */
+  outS: number;
+  /** tom: has the boomerang turned around yet. */
+  returned: boolean;
+  /** arp: orbit geometry around the player, and the re-hit cooldown so a slow
+   *  sweep keeps chipping the same enemy. */
+  orbitAngle: number;
+  orbitRadius: number;
+  rehitT: number;
+}
+
+/** Crash shockwave: an expanding ring; its front damages and knocks back
+ *  enemies it passes, each hit once. */
+export interface Shock {
+  x: number;
+  y: number;
+  radius: number;
+  maxRadius: number;
+  speed: number;
+  damage: number;
+  knockback: number;
   color: number;
   hit: Set<Enemy>;
 }
@@ -92,7 +131,17 @@ export interface Gem {
  *  headless runs: the bot pays nothing for juice nobody sees. */
 export type FxEvent =
   | { type: 'ring'; x: number; y: number; radius: number; color: number; dur: number }
-  | { type: 'pop'; x: number; y: number; radius: number };
+  | { type: 'pop'; x: number; y: number; radius: number }
+  | {
+      type: 'arc';
+      x: number;
+      y: number;
+      angle: number;
+      arc: number;
+      radius: number;
+      color: number;
+    }
+  | { type: 'bolt'; x1: number; y1: number; x2: number; y2: number; color: number };
 
 export interface RunEvents {
   onLevelUp(level: number): void;
@@ -108,6 +157,12 @@ export const KIT_COLORS: Record<Role, number> = {
   bass: 0xa06bff,
   chord: 0x4dff88,
   lead: 0xff6bd6,
+  clap: 0xff4f7d,
+  tom: 0xd08a4a,
+  cowbell: 0xc7f24a,
+  arp: 0x33e6c2,
+  zap: 0x66b3ff,
+  crash: 0xb9c2dd,
 };
 
 export interface RunWorldOpts {
@@ -140,6 +195,10 @@ export class RunWorld {
   /** Sandbox only: spawns scale as if the run were at this many seconds
    *  (the panel's stage-minute preview). Scripted runs use timeS. */
   stageTimeOverride = 0;
+  /** Per-genre damage compensation (docs/plan.md, tempo and damage): faster
+   *  genres fire more triggers, so their per-trigger damage is scaled down and
+   *  slow genres up, applied to every weapon's damage as it fires. */
+  powerMul = 1;
 
   /** Visual-effect requests for the view; null when running headless. */
   readonly fx: FxEvent[] | null;
@@ -147,6 +206,7 @@ export class RunWorld {
   readonly enemies: Enemy[] = [];
   readonly projectiles: Projectile[] = [];
   readonly zones: Zone[] = [];
+  readonly shocks: Shock[] = [];
   readonly gems: Gem[] = [];
 
   private rng: Rng;
@@ -224,6 +284,9 @@ export class RunWorld {
         damage: conf.damage * fx.damageMul,
       };
     }
+    // Genre tempo compensation, one multiply for every weapon: a fast genre
+    // fires more triggers, so each one hits softer, and a slow genre harder.
+    conf = { ...conf, damage: conf.damage * this.powerMul };
 
     switch (t.role) {
       case 'kick': {
@@ -237,6 +300,48 @@ export class RunWorld {
         // to land where the horde actually is to be worth a pick.
         const target = this.nearestEnemy(ZONE_THROW_RANGE);
         this.spawnZone(target?.x ?? p.x, target?.y ?? p.y, conf, color);
+        break;
+      }
+      case 'clap': {
+        // Whip: a wide forward slash in the aim direction, hitting a cone.
+        const aim = this.aimDir(0);
+        const ang = Math.atan2(aim.y, aim.x);
+        const reach = conf.radius! * (0.9 + 0.2 * v);
+        this.damageCone(p.x, p.y, ang, conf.arc!, reach, conf.damage * (0.85 + 0.3 * v), 'clap');
+        this.fx?.push({ type: 'arc', x: p.x, y: p.y, angle: ang, arc: conf.arc!, radius: reach, color });
+        break;
+      }
+      case 'zap': {
+        // Lightning Ring: instant strikes on random enemies on screen.
+        for (const e of this.pickRandomEnemies(conf.strikes ?? 1, ZAP_RANGE)) {
+          this.damageArea(e.x, e.y, conf.radius!, conf.damage * (0.85 + 0.3 * v), 'zap');
+          this.spawnRing(e.x, e.y, conf.radius!, color, 0.22);
+          this.fx?.push({ type: 'bolt', x1: p.x, y1: p.y, x2: e.x, y2: e.y, color });
+        }
+        break;
+      }
+      case 'crash': {
+        // Shockwave: an expanding ring that damages and knocks back.
+        this.spawnShock(conf, color);
+        this.spawnRing(p.x, p.y, conf.radius!, color, 0.4);
+        break;
+      }
+      case 'arp': {
+        // King Bible: an orbiter per note, circling the player.
+        this.spawnOrbiter(conf, color, v);
+        break;
+      }
+      case 'tom': {
+        // Cross: one or more boomerangs, spread when there are several.
+        const count = conf.count ?? 1;
+        for (let i = 0; i < count; i++) {
+          this.spawnBoomerang(this.aimDir(count > 1 ? 0.5 : 0.08), conf, color, v);
+        }
+        break;
+      }
+      case 'cowbell': {
+        // Runetracer: a ricocheting bolt.
+        this.spawnRicochet(this.aimDir(0.12), conf, color, v);
         break;
       }
       case 'snare':
@@ -282,6 +387,7 @@ export class RunWorld {
     this.moveEnemies(dt);
     this.updateProjectiles(dt);
     this.updateZones(dt);
+    this.updateShocks(dt);
     this.updateGems(dt);
     this.contactDamage(dt);
     this.reapEnemies();
@@ -405,6 +511,9 @@ export class RunWorld {
       dashY: 0,
       dashing: false,
       slowT: 0,
+      knockX: 0,
+      knockY: 0,
+      knockT: 0,
     });
   }
 
@@ -423,6 +532,14 @@ export class RunWorld {
         speed *= ZONE_SLOW_MUL;
       }
       if (e.flashT > 0) e.flashT -= dt;
+
+      // Crash knockback overrides everything: ride the push, don't chase.
+      if (e.knockT > 0) {
+        e.knockT -= dt;
+        e.x += e.knockX * dt;
+        e.y += e.knockY * dt;
+        continue;
+      }
 
       if (e.kind === 'darter') {
         // Straight bursts: lock onto the player's position, dash flat out,
@@ -554,68 +671,253 @@ export class RunWorld {
     return { x: dcos(ang), y: dsin(ang) };
   }
 
-  private spawnProjectile(
-    role: Role,
-    dir: { x: number; y: number },
-    conf: { damage: number; speed?: number; radius?: number; lifetimeS?: number; pierce?: number },
-    color: number,
-    velocity: number,
-  ): void {
-    this.projectiles.push({
+  /** Base projectile with all fields defaulted; specialized spawners tweak
+   *  the few that matter to them. */
+  private baseProjectile(role: Role, conf: WeaponConf, color: number, damage: number): Projectile {
+    return {
       role,
       x: this.player.x,
       y: this.player.y,
-      vx: dir.x * conf.speed!,
-      vy: dir.y * conf.speed!,
+      vx: 0,
+      vy: 0,
       radius: conf.radius!,
-      damage: conf.damage * (0.75 + 0.5 * velocity),
+      damage,
       pierce: conf.pierce ?? 1,
       lifeS: conf.lifetimeS!,
       homing: role === 'lead',
+      speed: conf.speed ?? 0,
+      color,
+      hit: new Set(),
+      age: 0,
+      bounces: 0,
+      outS: 0,
+      returned: false,
+      orbitAngle: 0,
+      orbitRadius: 0,
+      rehitT: 0,
+    };
+  }
+
+  private spawnProjectile(
+    role: Role,
+    dir: { x: number; y: number },
+    conf: WeaponConf,
+    color: number,
+    velocity: number,
+  ): void {
+    const pr = this.baseProjectile(role, conf, color, conf.damage * (0.75 + 0.5 * velocity));
+    pr.vx = dir.x * conf.speed!;
+    pr.vy = dir.y * conf.speed!;
+    this.projectiles.push(pr);
+  }
+
+  /** Tom: a boomerang that flies out then curves back to the player. */
+  private spawnBoomerang(
+    dir: { x: number; y: number },
+    conf: WeaponConf,
+    color: number,
+    velocity: number,
+  ): void {
+    const pr = this.baseProjectile('tom', conf, color, conf.damage * (0.8 + 0.4 * velocity));
+    pr.vx = dir.x * conf.speed!;
+    pr.vy = dir.y * conf.speed!;
+    pr.outS = conf.lifetimeS! * BOOMERANG_OUT_FRAC;
+    this.projectiles.push(pr);
+  }
+
+  /** Cowbell: a bolt that ricochets off the view edges, re-hitting per leg. */
+  private spawnRicochet(
+    dir: { x: number; y: number },
+    conf: WeaponConf,
+    color: number,
+    velocity: number,
+  ): void {
+    const pr = this.baseProjectile('cowbell', conf, color, conf.damage * (0.75 + 0.5 * velocity));
+    pr.vx = dir.x * conf.speed!;
+    pr.vy = dir.y * conf.speed!;
+    pr.bounces = conf.bounces ?? 3;
+    this.projectiles.push(pr);
+  }
+
+  /** Arp: an orbiter that circles the player, chipping what it sweeps. */
+  private spawnOrbiter(conf: WeaponConf, color: number, velocity: number): void {
+    const angle = this.rng() * Math.PI * 2;
+    const pr = this.baseProjectile('arp', conf, color, conf.damage * (0.8 + 0.4 * velocity));
+    pr.pierce = Infinity;
+    pr.orbitAngle = angle;
+    pr.orbitRadius = conf.orbitRadius!;
+    pr.x = this.player.x + dcos(angle) * pr.orbitRadius;
+    pr.y = this.player.y + dsin(angle) * pr.orbitRadius;
+    this.projectiles.push(pr);
+  }
+
+  /** Crash: an expanding shockwave from the player. */
+  private spawnShock(conf: WeaponConf, color: number): void {
+    this.shocks.push({
+      x: this.player.x,
+      y: this.player.y,
+      radius: 12,
+      maxRadius: conf.radius!,
       speed: conf.speed!,
+      damage: conf.damage,
+      knockback: conf.knockback ?? 50,
       color,
       hit: new Set(),
     });
   }
 
+  /** Clap: damage every enemy inside a forward cone (also point-blank). */
+  private damageCone(
+    x: number,
+    y: number,
+    angle: number,
+    halfArc: number,
+    reach: number,
+    damage: number,
+    source: Role,
+  ): void {
+    const near = this.hash.query(x, y, reach + 24, this.queryBuf);
+    for (const e of near) {
+      if (e.dead) continue;
+      const dx = e.x - x;
+      const dy = e.y - y;
+      const d = Math.hypot(dx, dy);
+      if (d > reach + e.radius) continue;
+      if (d < 34) {
+        this.damageEnemy(e, damage, source);
+        continue;
+      }
+      let diff = Math.atan2(dy, dx) - angle;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      if (Math.abs(diff) <= halfArc) this.damageEnemy(e, damage, source);
+    }
+  }
+
+  /** Zap: up to n distinct random living enemies within range. */
+  private pickRandomEnemies(n: number, range: number): Enemy[] {
+    const p = this.player;
+    const r2 = range * range;
+    const cand: Enemy[] = [];
+    for (const e of this.enemies) {
+      if (e.dead) continue;
+      const dx = e.x - p.x;
+      const dy = e.y - p.y;
+      if (dx * dx + dy * dy <= r2) cand.push(e);
+    }
+    const out: Enemy[] = [];
+    for (let i = 0; i < n && cand.length > 0; i++) {
+      const idx = Math.floor(this.rng() * cand.length);
+      out.push(cand[idx]);
+      cand.splice(idx, 1);
+    }
+    return out;
+  }
+
   private updateProjectiles(dt: number): void {
+    const p = this.player;
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const pr = this.projectiles[i];
+      pr.age += dt;
       pr.lifeS -= dt;
-      if (pr.homing) {
-        let best: Enemy | null = null;
-        let bestD = Infinity;
-        for (const e of this.enemies) {
-          if (e.dead || pr.hit.has(e)) continue;
-          const dx = e.x - pr.x;
-          const dy = e.y - pr.y;
-          const d = dx * dx + dy * dy;
-          if (d < bestD) {
-            bestD = d;
-            best = e;
+
+      if (pr.role === 'arp') {
+        // Orbit the player; clear the hit set on a cooldown so a slow sweep
+        // keeps chipping the same enemy instead of touching it once.
+        pr.orbitAngle += ARP_OMEGA * dt;
+        pr.x = p.x + dcos(pr.orbitAngle) * pr.orbitRadius;
+        pr.y = p.y + dsin(pr.orbitAngle) * pr.orbitRadius;
+        pr.rehitT -= dt;
+        if (pr.rehitT <= 0) {
+          pr.hit.clear();
+          pr.rehitT = ORBIT_REHIT_S;
+        }
+      } else if (pr.role === 'tom') {
+        // Boomerang: fly out, then curve home; both legs land.
+        if (!pr.returned && pr.age >= pr.outS) {
+          pr.returned = true;
+          pr.hit.clear();
+        }
+        if (pr.returned) {
+          const dx = p.x - pr.x;
+          const dy = p.y - pr.y;
+          const ang = Math.atan2(dy, dx);
+          pr.vx = dcos(ang) * pr.speed;
+          pr.vy = dsin(ang) * pr.speed;
+          if (dx * dx + dy * dy < 24 * 24) pr.lifeS = 0;
+        }
+        pr.x += pr.vx * dt;
+        pr.y += pr.vy * dt;
+      } else {
+        if (pr.homing) {
+          let best: Enemy | null = null;
+          let bestD = Infinity;
+          for (const e of this.enemies) {
+            if (e.dead || pr.hit.has(e)) continue;
+            const dx = e.x - pr.x;
+            const dy = e.y - pr.y;
+            const d = dx * dx + dy * dy;
+            if (d < bestD) {
+              bestD = d;
+              best = e;
+            }
+          }
+          if (best) {
+            const ang = Math.atan2(best.y - pr.y, best.x - pr.x);
+            const cur = Math.atan2(pr.vy, pr.vx);
+            let diff = ang - cur;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            // tight turn so seekers snap to targets instead of orbiting them
+            const turn = Math.max(-10 * dt, Math.min(10 * dt, diff));
+            const next = cur + turn;
+            pr.vx = dcos(next) * pr.speed;
+            pr.vy = dsin(next) * pr.speed;
           }
         }
-        if (best) {
-          const ang = Math.atan2(best.y - pr.y, best.x - pr.x);
-          const cur = Math.atan2(pr.vy, pr.vx);
-          let diff = ang - cur;
-          while (diff > Math.PI) diff -= Math.PI * 2;
-          while (diff < -Math.PI) diff += Math.PI * 2;
-          // tight turn so seekers snap to targets instead of orbiting them
-          const turn = Math.max(-10 * dt, Math.min(10 * dt, diff));
-          const next = cur + turn;
-          pr.vx = dcos(next) * pr.speed;
-          pr.vy = dsin(next) * pr.speed;
+        pr.x += pr.vx * dt;
+        pr.y += pr.vy * dt;
+        if (pr.role === 'cowbell' && pr.bounces > 0) {
+          // Ricochet off the camera-locked view edges; re-hit after a bounce.
+          const left = p.x - this.worldW / 2;
+          const right = p.x + this.worldW / 2;
+          const top = p.y - this.worldH / 2;
+          const bottom = p.y + this.worldH / 2;
+          let bounced = false;
+          if (pr.x < left) {
+            pr.x = left;
+            pr.vx = Math.abs(pr.vx);
+            bounced = true;
+          } else if (pr.x > right) {
+            pr.x = right;
+            pr.vx = -Math.abs(pr.vx);
+            bounced = true;
+          }
+          if (pr.y < top) {
+            pr.y = top;
+            pr.vy = Math.abs(pr.vy);
+            bounced = true;
+          } else if (pr.y > bottom) {
+            pr.y = bottom;
+            pr.vy = -Math.abs(pr.vy);
+            bounced = true;
+          }
+          if (bounced) {
+            pr.bounces -= 1;
+            pr.hit.clear();
+            if (pr.bounces < 0) pr.lifeS = 0;
+          }
         }
       }
-      pr.x += pr.vx * dt;
-      pr.y += pr.vy * dt;
 
       const near = this.hash.query(pr.x, pr.y, pr.radius + 24, this.queryBuf);
       for (const e of near) {
         if (e.dead || pr.hit.has(e) || !circlesOverlap(pr, e)) continue;
         pr.hit.add(e);
         this.damageEnemy(e, pr.damage, pr.role);
+        // Sweep weapons (orbit, ricochet, boomerang) gate re-hits with their
+        // own hit set instead of spending pierce.
+        if (pr.role === 'arp' || pr.role === 'cowbell' || pr.role === 'tom') continue;
         pr.pierce -= 1;
         if (pr.pierce <= 0) {
           pr.lifeS = 0;
@@ -626,6 +928,30 @@ export class RunWorld {
       if (pr.lifeS <= 0) {
         this.projectiles.splice(i, 1);
       }
+    }
+  }
+
+  private updateShocks(dt: number): void {
+    for (let i = this.shocks.length - 1; i >= 0; i--) {
+      const s = this.shocks[i];
+      s.radius += s.speed * dt;
+      const near = this.hash.query(s.x, s.y, s.radius + 24, this.queryBuf);
+      for (const e of near) {
+        if (e.dead || s.hit.has(e)) continue;
+        const dx = e.x - s.x;
+        const dy = e.y - s.y;
+        const d = Math.hypot(dx, dy);
+        // Only the growing front hits, and each enemy only once.
+        if (d <= s.radius + e.radius && d >= s.radius - SHOCK_BAND) {
+          s.hit.add(e);
+          this.damageEnemy(e, s.damage, 'crash');
+          const nd = d || 1;
+          e.knockX = (dx / nd) * (s.knockback / KNOCK_S);
+          e.knockY = (dy / nd) * (s.knockback / KNOCK_S);
+          e.knockT = KNOCK_S;
+        }
+      }
+      if (s.radius >= s.maxRadius) this.shocks.splice(i, 1);
     }
   }
 

@@ -1,9 +1,9 @@
-// The Track Lab (#tracklab): audition reverse-engineered covers of real
-// tracks through the LabEngine. M3 proof-of-concept surface: the developer
-// listens and judges whether a chart-based cover of a track he loves is
-// something he'd sincerely want to reach in a run. Read-only grids, voice
+// The Experimentation room (#tracklab): a standalone lab for auditioning
+// reverse-engineered covers of real tracks through the LabEngine. It was the
+// M3 proof-of-concept surface; the full-track game direction it explored was
+// dropped, but the room is kept for experimentation. Read-only grids, voice
 // mutes and solos for A/Bing what each layer contributes, section switching
-// for the arrangement, a tempo nudge for taste.
+// for the arrangement, a tempo nudge for taste. (Internal name: Track Lab.)
 
 import { LabEngine } from './labengine';
 import { TRACKS } from './tracks';
@@ -47,6 +47,7 @@ export function mountTrackLab(root: HTMLElement, ctx: AudioContext): void {
 
   // ---- transport ----
   const bar = el('div', 'transport', root);
+  el('span', 'lab-title', bar, 'experimentation room');
   const backBtn = el('button', 'small', bar, '← game') as HTMLButtonElement;
   backBtn.onclick = () => {
     location.hash = '';

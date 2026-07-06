@@ -6,7 +6,7 @@
 
 import { Container, Graphics, GraphicsContext } from 'pixi.js';
 import { RUN } from './config';
-import type { Enemy, FxEvent, Gem, Projectile, RunWorld, Zone } from './run';
+import type { Enemy, FxEvent, Gem, Projectile, RunWorld, Shock, Zone } from './run';
 
 // Shared geometry (M2 sub-phase C, frame rate above ~2000 alive): every
 // enemy of a (kind, band) is the same shape, so all their Graphics share
@@ -43,6 +43,7 @@ export class RunView {
   private enemyGfx = new Map<Enemy, Graphics>();
   private projectileGfx = new Map<Projectile, Graphics>();
   private zoneGfx = new Map<Zone, Graphics>();
+  private shockGfx = new Map<Shock, Graphics>();
   private gemGfx = new Map<Gem, Graphics>();
   private pops: Pop[] = [];
   private live = new Set<object>();
@@ -69,6 +70,7 @@ export class RunView {
     this.sync(this.world.zones, this.zoneGfx, makeZoneGfx, (z, gfx) => {
       gfx.alpha = Math.min(1, z.lifeS * 2);
     });
+    this.syncShocks();
     const p = this.world.player;
     const cullW = this.world.worldW / 2 + 40;
     const cullH = this.world.worldH / 2 + 40;
@@ -96,6 +98,7 @@ export class RunView {
     this.enemyGfx.clear();
     this.projectileGfx.clear();
     this.zoneGfx.clear();
+    this.shockGfx.clear();
     this.gemGfx.clear();
     this.pops.length = 0;
   }
@@ -158,6 +161,30 @@ export class RunView {
     }
   }
 
+  /** Shockwaves grow every frame, so they are redrawn rather than diffed. */
+  private syncShocks(): void {
+    this.live.clear();
+    for (const s of this.world.shocks) {
+      let gfx = this.shockGfx.get(s);
+      if (!gfx) {
+        gfx = new Graphics();
+        this.stage.addChild(gfx);
+        this.shockGfx.set(s, gfx);
+      }
+      gfx.clear();
+      gfx.circle(s.x, s.y, s.radius).stroke({ width: 6, color: 0xffffff, alpha: 0.85 });
+      gfx.tint = s.color;
+      gfx.alpha = Math.max(0, 1 - s.radius / s.maxRadius);
+      this.live.add(s);
+    }
+    for (const [s, gfx] of this.shockGfx) {
+      if (!this.live.has(s)) {
+        gfx.destroy();
+        this.shockGfx.delete(s);
+      }
+    }
+  }
+
   private spawnFx(fx: FxEvent): void {
     if (fx.type === 'ring') {
       const gfx = new Graphics().circle(0, 0, fx.radius).stroke({ width: 3, color: 0xffffff });
@@ -166,6 +193,25 @@ export class RunView {
       gfx.scale.set(0.2);
       this.stage.addChild(gfx);
       this.pops.push({ gfx, t: 0, dur: fx.dur, grow: 1 });
+    } else if (fx.type === 'arc') {
+      // clap: a filled wedge in the slash direction, fading in place
+      const gfx = new Graphics()
+        .moveTo(fx.x, fx.y)
+        .arc(fx.x, fx.y, fx.radius, fx.angle - fx.arc, fx.angle + fx.arc)
+        .lineTo(fx.x, fx.y)
+        .fill({ color: 0xffffff, alpha: 0.35 });
+      gfx.tint = fx.color;
+      this.stage.addChild(gfx);
+      this.pops.push({ gfx, t: 0, dur: 0.16, grow: 0 });
+    } else if (fx.type === 'bolt') {
+      // zap: a lightning line from the player to the struck enemy
+      const gfx = new Graphics()
+        .moveTo(fx.x1, fx.y1)
+        .lineTo(fx.x2, fx.y2)
+        .stroke({ width: 3, color: 0xffffff, alpha: 0.9 });
+      gfx.tint = fx.color;
+      this.stage.addChild(gfx);
+      this.pops.push({ gfx, t: 0, dur: 0.14, grow: 0 });
     } else {
       const gfx = new Graphics().circle(0, 0, fx.radius).fill(0xffffff);
       gfx.tint = 0xcfd2e0;
@@ -186,7 +232,7 @@ export class RunView {
         continue;
       }
       p.gfx.alpha = 1 - k;
-      p.gfx.scale.set(0.2 + (p.grow - 0.2) * k);
+      if (p.grow > 0) p.gfx.scale.set(0.2 + (p.grow - 0.2) * k);
     }
   }
 
@@ -246,6 +292,19 @@ function makeProjectileGfx(pr: Projectile): Graphics {
         break;
       case 'lead': // homing seeker arrow
         g.poly([12, 0, -6, 6, -2, 0, -6, -6]).fill(0xffffff);
+        break;
+      case 'tom': // boomerang: a fat chevron pointing where it flies
+        g.poly([13, 0, -7, 9, -1, 0, -7, -9]).fill(0xffffff);
+        break;
+      case 'cowbell': {
+        // ricochet: a metallic diamond
+        const r = pr.radius;
+        g.poly([r * 2.4, 0, 0, r * 1.7, -r * 2.4, 0, 0, -r * 1.7]).fill(0xffffff);
+        break;
+      }
+      case 'arp': // orbiter: a bead with a ring
+        g.circle(0, 0, pr.radius).stroke({ width: 3, color: 0xffffff });
+        g.circle(0, 0, pr.radius * 0.45).fill(0xffffff);
         break;
       default: // hat: tiny chip dot
         g.circle(0, 0, pr.radius).fill(0xffffff);

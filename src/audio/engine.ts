@@ -5,8 +5,9 @@
 
 import { Clock } from './clock';
 import { chartEventsAtStep } from './arranger';
-import { M1_TIER, TIER_COUNT, type Chart, type ChartEvent } from './charts';
-import { getChart } from './chartstore';
+import { TIER_COUNT, type Chart, type ChartEvent } from './charts';
+import { getChart, setActiveGenre } from './chartstore';
+import type { Genre } from './genres';
 import { SKELETON, STEPS_PER_BAR, STEPS_PER_PHRASE, semitonesToRate } from './scale';
 import type { Kit, Role } from './kits';
 
@@ -82,13 +83,13 @@ export class MusicEngine {
       const gain = ctx.createGain();
       gain.gain.value = 1;
       gain.connect(this.master);
-      // Default to the tier holding the M1 chart so the M1 game plays
-      // unchanged until sub-phase B wires tiers into the run.
+      // Voices start disabled at tier 1; the run enables and tiers them as the
+      // player picks. The active genre (set at run start) decides what they play.
       this.voices.set(role, {
         role,
         kit,
-        chart: getChart(role, M1_TIER[role]),
-        tier: M1_TIER[role],
+        chart: getChart(role, 1),
+        tier: 1,
         enabled: false,
         gain,
         activeSamples: kit.samples,
@@ -119,6 +120,18 @@ export class MusicEngine {
   setVoiceEnabled(role: Role, on: boolean): void {
     const voice = this.voices.get(role);
     if (voice) voice.enabled = on;
+  }
+
+  /** Switch the run's genre (its playable character): tempo, swing, and the
+   *  whole soundset's patterns change at once. Every voice re-points to the new
+   *  genre's chart at its current tier — same tools, a different track. */
+  setGenre(genre: Genre): void {
+    setActiveGenre(genre.id);
+    this.clock.bpm = genre.bpm;
+    this.clock.swing = genre.swing;
+    for (const voice of this.voices.values()) {
+      voice.chart = getChart(voice.role, voice.tier);
+    }
   }
 
   /** Put a voice on a ladder tier: swaps its chart for the tier's working

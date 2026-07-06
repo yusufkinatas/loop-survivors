@@ -3,6 +3,7 @@
 // end screens, and the hit flash.
 
 import { ROLES, type Kit, type Role } from '../audio/kits';
+import type { Genre } from '../audio/genres';
 import { TIER_LINES } from './config';
 import type { PickOption } from './picks';
 
@@ -95,37 +96,66 @@ export class Hud {
     }
   }
 
-  /** Start screen: choose the starting kit (it begins at tier 1 — the
-   *  lone-instrument opening is the first note of the arc). */
-  showStart(onPick: (role: Role) => void, onSandbox: () => void): void {
-    const s = this.newScreen();
-    el('h1', '', s, 'Loop Survivors');
-    el('p', 'sub', s, 'M2 — pick your starting instrument. WASD or touch to move. Survive 8 minutes.');
-    const grid = el('div', 'pick-grid', s);
-    const cards: HTMLElement[] = [];
-    for (const role of ROLES) {
-      cards.push(
-        this.kitCard(grid, { role, tier: 1 }, () => {
-          this.closeScreen();
-          onPick(role);
-        }),
-      );
-    }
-    this.armKeys(cards);
-    const row = el('div', 'pick-grid', s);
-    const sandboxBtn = el('button', '', row, 'open the sandbox');
-    sandboxBtn.onclick = () => {
-      this.closeScreen();
-      onSandbox();
+  /** Start screen, two steps: choose a genre (your character), then a starting
+   *  instrument (it begins at tier 1 — the lone-instrument opening). The genre
+   *  decides tempo, swing, and how the whole soundset plays. */
+  showStart(
+    genres: Genre[],
+    onStart: (genre: Genre, role: Role) => void,
+    onSandbox: () => void,
+  ): void {
+    const showGenres = (): void => {
+      const s = this.newScreen();
+      el('h1', '', s, 'Loop Survivors');
+      el('p', 'sub', s, 'Pick your genre. WASD or touch to move. Survive 8 minutes.');
+      const grid = el('div', 'pick-grid genre-grid', s);
+      const cards: HTMLElement[] = [];
+      for (const genre of genres) {
+        const card = el('button', 'kit-card genre-card', grid);
+        card.style.setProperty('--voice-color', genre.color);
+        el('span', 'kit-name', card, genre.name);
+        el('span', 'kit-desc', card, genre.blurb);
+        el('span', 'genre-bpm', card, `${genre.bpm} BPM`);
+        card.onclick = () => showWeapons(genre);
+        cards.push(card);
+      }
+      this.armKeys(cards);
+      const row = el('div', 'pick-grid', s);
+      const sandboxBtn = el('button', '', row, 'open the sandbox');
+      sandboxBtn.onclick = () => {
+        this.closeScreen();
+        onSandbox();
+      };
+      const roomBtn = el('button', '', row, 'open the rehearsal room');
+      roomBtn.onclick = () => {
+        location.hash = '#rehearsal';
+      };
+      const labBtn = el('button', '', row, 'open the experimentation room');
+      labBtn.onclick = () => {
+        location.hash = '#tracklab';
+      };
     };
-    const roomBtn = el('button', '', row, 'open the rehearsal room');
-    roomBtn.onclick = () => {
-      location.hash = '#rehearsal';
+
+    const showWeapons = (genre: Genre): void => {
+      const s = this.newScreen();
+      el('h2', '', s, `${genre.name} — pick your starting instrument`);
+      el('p', 'sub', s, 'Same twelve tools every genre; each one plays them differently.');
+      const grid = el('div', 'pick-grid', s);
+      const cards: HTMLElement[] = [];
+      for (const role of ROLES) {
+        cards.push(
+          this.kitCard(grid, { role, tier: 1 }, () => {
+            this.closeScreen();
+            onStart(genre, role);
+          }),
+        );
+      }
+      this.armKeys(cards);
+      const back = el('button', '', s, '← back to genres');
+      back.onclick = () => showGenres();
     };
-    const labBtn = el('button', '', row, 'open the track lab');
-    labBtn.onclick = () => {
-      location.hash = '#tracklab';
-    };
+
+    showGenres();
   }
 
   /** Level-up pick: up to three options from the pool of new weapons and

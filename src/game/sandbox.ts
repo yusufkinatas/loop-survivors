@@ -4,6 +4,7 @@
 // is for listening; the sandbox is for watching and testing.
 
 import type { MusicEngine } from '../audio/engine';
+import type { Genre, GenreId } from '../audio/genres';
 import { ROLES } from '../audio/kits';
 import { TIER_NUMERALS } from './hud';
 import { ENEMIES, enemyScaling, RUN, type EnemyKind } from './config';
@@ -15,11 +16,18 @@ export interface SandboxPanel {
   destroy(): void;
 }
 
+export interface SandboxOpts {
+  genres: Genre[];
+  initial: GenreId;
+  onGenre: (genre: Genre) => void;
+  onExit: () => void;
+}
+
 export function mountSandboxPanel(
   root: HTMLElement,
   engine: MusicEngine,
   world: RunWorld,
-  onExit: () => void,
+  opts: SandboxOpts,
 ): SandboxPanel {
   const panel = document.createElement('div');
   panel.className = 'sandbox-panel';
@@ -36,7 +44,21 @@ export function mountSandboxPanel(
   const head = el('div', 'sb-head', panel);
   el('span', 'sb-title', head, 'sandbox');
   const exitBtn = el('button', 'small', head, '← leave') as HTMLButtonElement;
-  exitBtn.onclick = onExit;
+  exitBtn.onclick = opts.onExit;
+
+  // ---- genre switcher: swap tempo, swing, and every weapon's patterns ----
+  el('div', 'sb-section', panel, 'genre');
+  const genreRow = el('div', 'sb-btns sb-controls', panel);
+  const genreBtns: HTMLButtonElement[] = [];
+  for (const g of opts.genres) {
+    const b = el('button', 'small', genreRow, g.name) as HTMLButtonElement;
+    b.onclick = () => {
+      opts.onGenre(g);
+      genreBtns.forEach((x) => x.classList.toggle('on', x === b));
+    };
+    if (g.id === opts.initial) b.classList.add('on');
+    genreBtns.push(b);
+  }
 
   // ---- enemy roster: stats and spawn buttons ----
   el('div', 'sb-section', panel, 'enemies');

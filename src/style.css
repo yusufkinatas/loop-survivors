@@ -66,6 +66,12 @@ input[type='range'] {
   border-bottom: 1px solid #2a2a34;
 }
 
+.lab-title {
+  font-weight: bold;
+  letter-spacing: 0.04em;
+  margin-right: 4px;
+}
+
 .play {
   min-width: 90px;
 }
@@ -601,6 +607,29 @@ input[type='range'] {
 .kit-desc {
   font-size: 12px;
   color: #9a9ab0;
+}
+
+/* Genre select: the character-pick step. Wider cards, room for six. */
+.genre-grid {
+  max-width: 860px;
+}
+
+.genre-card {
+  width: 244px;
+  border-left-width: 5px;
+}
+
+.genre-card .kit-name {
+  font-size: 18px;
+}
+
+.genre-bpm {
+  margin-top: 4px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--voice-color);
+  opacity: 0.85;
 }
 
 button.big {

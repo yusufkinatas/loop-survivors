@@ -15,6 +15,7 @@ import { cpus, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ROLES } from '../src/audio/kits';
+import type { GenreId } from '../src/audio/genres';
 import type { RunRecord } from '../src/bot/sim';
 import type { MoverName } from '../src/bot/movers';
 import { RUN } from '../src/game/config';
@@ -23,6 +24,7 @@ interface Args {
   runs: number;
   mover: MoverName;
   policies: string[];
+  genre: GenreId;
   seedBase: number;
   workers: number;
   label: string;
@@ -41,6 +43,7 @@ function parseArgs(argv: string[]): Args {
     runs: Number(get('runs') ?? 20),
     mover: (get('mover') ?? 'kiter') as MoverName,
     policies,
+    genre: (get('genre') ?? 'house') as GenreId,
     seedBase: Number(get('seed-base') ?? 1),
     workers: Number(get('workers') ?? Math.max(1, cpus().length - 2)),
     label: get('label') ?? 'batch',
@@ -86,7 +89,7 @@ function report(records: RunRecord[], args: Args, config: string): string {
   }));
 
   const lines: string[] = [];
-  lines.push(`batch: ${args.label}   ${records.length} runs   config ${config}`);
+  lines.push(`batch: ${args.label}   ${records.length} runs   genre ${args.genre}   config ${config}`);
   lines.push('');
   const header = ['arm'.padEnd(18), 'runs', ' win%', 'median death', 'avg lv', 'damage share'];
   lines.push(header.join('  '));
@@ -136,8 +139,8 @@ function report(records: RunRecord[], args: Args, config: string): string {
     for (const { r } of outliers.slice(0, 4)) {
       const what = r.victory ? 'victory' : `death ${fmtTime(r.timeS)}`;
       lines.push(
-        `  seed ${r.seed} (${r.mover}/${r.policy}, ${what})` +
-          `  ?replay=${r.seed}&mover=${r.mover}&policy=${encodeURIComponent(r.policy)}`,
+        `  seed ${r.seed} (${r.genre}/${r.mover}/${r.policy}, ${what})` +
+          `  ?replay=${r.seed}&genre=${r.genre}&mover=${r.mover}&policy=${encodeURIComponent(r.policy)}`,
       );
     }
   }
@@ -153,6 +156,7 @@ async function main(): Promise<void> {
       seed: args.seedBase + ai * args.runs + i,
       mover: args.mover,
       policy,
+      genre: args.genre,
     })),
   );
 

@@ -185,6 +185,18 @@ export interface WeaponConf {
   radius?: number;
   lifetimeS?: number;
   pierce?: number;
+  /** clap: half-angle of the forward damage cone (radians). */
+  arc?: number;
+  /** tom: boomerangs thrown per trigger. */
+  count?: number;
+  /** cowbell: ricochets off the view edges before dying. */
+  bounces?: number;
+  /** zap: how many random visible enemies each trigger strikes. */
+  strikes?: number;
+  /** arp: radius of the orbit around the player. */
+  orbitRadius?: number;
+  /** crash: knockback distance pushed onto enemies the wave front passes. */
+  knockback?: number;
 }
 
 /** Per-trigger gameplay effect of each kit, one block per tier ([tier-1]).
@@ -237,6 +249,54 @@ export const WEAPONS: Record<Role, WeaponConf[]> = {
     { damage: 9, speed: 350, radius: 6, lifetimeS: 2.3, pierce: 1 },
     { damage: 10, speed: 360, radius: 6, lifetimeS: 2.4, pierce: 2 },
   ],
+  // Whip: a wide forward slash that hits everything in a close cone. Melee
+  // crowd control — no travel, instant, safest when the wall is on top of you.
+  clap: [
+    { damage: 14, radius: 140, arc: 1.0 },
+    { damage: 16, radius: 155, arc: 1.1 },
+    { damage: 18, radius: 170, arc: 1.25 },
+    { damage: 22, radius: 190, arc: 1.5 },
+  ],
+  // Cross: a boomerang lobbed outward that curves back to the player, hitting
+  // on the way out and the way home. Deep pierce, both legs.
+  tom: [
+    { damage: 12, speed: 360, radius: 9, lifetimeS: 2.0, pierce: 4, count: 1 },
+    { damage: 13, speed: 370, radius: 9, lifetimeS: 2.0, pierce: 5, count: 1 },
+    { damage: 15, speed: 380, radius: 10, lifetimeS: 2.2, pierce: 6, count: 2 },
+    { damage: 18, speed: 400, radius: 11, lifetimeS: 2.4, pierce: 8, count: 2 },
+  ],
+  // Runetracer: a fast bolt that ricochets off the view edges, carving
+  // unpredictable lines through the horde. Re-hits after each bounce.
+  cowbell: [
+    { damage: 7, speed: 460, radius: 5, lifetimeS: 2.2, pierce: 2, bounces: 3 },
+    { damage: 7, speed: 470, radius: 5, lifetimeS: 2.4, pierce: 2, bounces: 4 },
+    { damage: 8, speed: 480, radius: 6, lifetimeS: 2.6, pierce: 3, bounces: 5 },
+    { damage: 10, speed: 500, radius: 6, lifetimeS: 2.8, pierce: 3, bounces: 6 },
+  ],
+  // King Bible: notes that orbit the player, a rotating shield of damage.
+  // Each trigger adds one orbiter; a melody makes a ring.
+  arp: [
+    { damage: 5, radius: 8, lifetimeS: 2.0, orbitRadius: 80 },
+    { damage: 5, radius: 8, lifetimeS: 2.4, orbitRadius: 92 },
+    { damage: 6, radius: 9, lifetimeS: 2.8, orbitRadius: 104 },
+    { damage: 7, radius: 10, lifetimeS: 3.2, orbitRadius: 120 },
+  ],
+  // Lightning Ring: instant strikes on random enemies on screen, each a small
+  // blast. No travel, no aim — pure horde thinning at range.
+  zap: [
+    { damage: 14, radius: 55, strikes: 1 },
+    { damage: 15, radius: 58, strikes: 2 },
+    { damage: 17, radius: 63, strikes: 3 },
+    { damage: 20, radius: 70, strikes: 4 },
+  ],
+  // Shockwave: an expanding ring from the player that damages and knocks back
+  // enemies its front passes. Rare and heavy — charts fire it on the accents.
+  crash: [
+    { damage: 18, speed: 520, radius: 260, knockback: 50 },
+    { damage: 20, speed: 540, radius: 300, knockback: 55 },
+    { damage: 24, speed: 560, radius: 340, knockback: 65 },
+    { damage: 30, speed: 600, radius: 380, knockback: 80 },
+  ],
 };
 
 /** The one honest gameplay-effect line on each pick card ([tier-1]). Terse
@@ -280,6 +340,42 @@ export const TIER_LINES: Record<Role, string[]> = {
     'the full melody of seekers',
     'denser seekers that pierce',
   ],
+  clap: [
+    'a wide slash close to you',
+    'wider, harder slash',
+    'sweeps a bigger arc',
+    'a huge slash all around you',
+  ],
+  tom: [
+    'a boomerang that flies out and back',
+    'flies further, pierces more',
+    'throws two boomerangs',
+    'two heavy boomerangs, deep pierce',
+  ],
+  cowbell: [
+    'a bolt that ricochets off the edges',
+    'bounces one more time',
+    'bounces and pierces more',
+    'a wild long-bouncing bolt',
+  ],
+  arp: [
+    'orbiting notes circle you',
+    'the orbit lasts longer',
+    'a wider, longer orbit',
+    'a dense ring of orbiters',
+  ],
+  zap: [
+    'lightning hits a random foe',
+    'strikes two at once',
+    'strikes three at once',
+    'strikes four, bigger blasts',
+  ],
+  crash: [
+    'a shockwave knocks enemies back',
+    'a bigger, faster wave',
+    'a wider wave, harder knock',
+    'a massive wave, huge knockback',
+  ],
 };
 
 /** Bass tier 4's once-per-phrase sub drop and chord tier 4's pads get a
@@ -301,3 +397,20 @@ export const ZONE_TICK_S = 0.45;
  *  can be thrown toward the nearest pack. */
 export const ZONE_SLOW_MUL = 0.55;
 export const ZONE_THROW_RANGE = 420;
+
+/** Arp orbiters sweep around the player at this angular speed (rad/s) and
+ *  can re-hit an enemy every ORBIT_REHIT_S, so a slow sweep keeps chipping. */
+export const ARP_OMEGA = 3.4;
+export const ORBIT_REHIT_S = 0.35;
+
+/** Tom boomerangs fly outward for this fraction of their lifetime, then curve
+ *  home; the hit set clears at the turn so both legs land. */
+export const BOOMERANG_OUT_FRAC = 0.45;
+
+/** Crash shockwave: thickness of the damaging front, and how long a knocked
+ *  enemy is pushed before it resumes chasing. */
+export const SHOCK_BAND = 46;
+export const KNOCK_S = 0.18;
+
+/** Zap picks its random targets from enemies within this range of the player. */
+export const ZAP_RANGE = 640;

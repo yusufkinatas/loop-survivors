@@ -5,9 +5,37 @@
 // are auditioned in the room by loading files over these slots. Pitched kits
 // hold one sample at the root and get note variants by playback-rate shifting.
 
-export type Role = 'kick' | 'snare' | 'hat' | 'bass' | 'chord' | 'lead';
+// The soundset: twelve instrument types. Genres reuse this exact set of
+// tools; a genre only changes how they are played (tempo, swing, patterns).
+// Six drums/fx (unpitched) and six pitched voices.
+export type Role =
+  | 'kick'
+  | 'snare'
+  | 'hat'
+  | 'bass'
+  | 'chord'
+  | 'lead'
+  | 'clap'
+  | 'tom'
+  | 'cowbell'
+  | 'arp'
+  | 'zap'
+  | 'crash';
 
-export const ROLES: readonly Role[] = ['kick', 'snare', 'hat', 'bass', 'chord', 'lead'];
+export const ROLES: readonly Role[] = [
+  'kick',
+  'snare',
+  'hat',
+  'clap',
+  'tom',
+  'cowbell',
+  'crash',
+  'zap',
+  'bass',
+  'chord',
+  'arp',
+  'lead',
+];
 
 export interface Kit {
   role: Role;
@@ -278,23 +306,189 @@ async function renderLead(rootHz: number): Promise<AudioBuffer> {
   return ctx.startRendering();
 }
 
+// A pitched mid-drum. Sine+triangle body with a short pitch drop and a noise
+// attack, so a tom melody (fills, hip-hop/DnB rolls) reads as pitched but hits
+// like a drum. note 0 sits at the run root.
+async function renderTom(rootHz: number): Promise<AudioBuffer> {
+  const ctx = offline(0.6);
+  const base = rootHz;
+  const osc = ctx.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(base * 1.5, 0);
+  osc.frequency.exponentialRampToValueAtTime(base * 0.92, 0.13);
+  const tri = ctx.createOscillator();
+  tri.type = 'triangle';
+  tri.frequency.setValueAtTime(base * 1.5, 0);
+  tri.frequency.exponentialRampToValueAtTime(base * 0.92, 0.13);
+  const triG = ctx.createGain();
+  triG.gain.value = 0.3;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.9, 0);
+  g.gain.exponentialRampToValueAtTime(0.001, 0.5);
+  const click = ctx.createBufferSource();
+  click.buffer = noiseBuffer(ctx, 0.02);
+  const cg = ctx.createGain();
+  cg.gain.setValueAtTime(0.2, 0);
+  cg.gain.exponentialRampToValueAtTime(0.001, 0.02);
+  osc.connect(g);
+  tri.connect(triG).connect(g);
+  g.connect(ctx.destination);
+  click.connect(cg).connect(ctx.destination);
+  osc.start(0);
+  tri.start(0);
+  click.start(0);
+  return ctx.startRendering();
+}
+
+// The classic 808 cowbell: two detuned square waves a ~1.48 ratio apart
+// through a bandpass. Pitched so hip-hop cowbell riffs land on the note set.
+async function renderCowbell(rootHz: number): Promise<AudioBuffer> {
+  const ctx = offline(0.5);
+  const base = rootHz * 2;
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.value = base * 1.4;
+  bp.Q.value = 3;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, 0);
+  g.gain.exponentialRampToValueAtTime(0.6, 0.003);
+  g.gain.exponentialRampToValueAtTime(0.001, 0.35);
+  bp.connect(g).connect(ctx.destination);
+  for (const f of [base, base * 1.48]) {
+    const o = ctx.createOscillator();
+    o.type = 'square';
+    o.frequency.value = f;
+    const og = ctx.createGain();
+    og.gain.value = 0.5;
+    o.connect(og).connect(bp);
+    o.start(0);
+  }
+  return ctx.startRendering();
+}
+
+// A bright plucky synth stab, an octave up: square+saw through a fast-closing
+// lowpass. The arpeggio/pluck voice.
+async function renderArp(rootHz: number): Promise<AudioBuffer> {
+  const ctx = offline(0.4);
+  const base = rootHz * 2;
+  const o = ctx.createOscillator();
+  o.type = 'square';
+  o.frequency.value = base;
+  const o2 = ctx.createOscillator();
+  o2.type = 'sawtooth';
+  o2.frequency.value = base;
+  o2.detune.value = 6;
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.setValueAtTime(5200, 0);
+  lp.frequency.exponentialRampToValueAtTime(900, 0.18);
+  lp.Q.value = 2.5;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, 0);
+  g.gain.exponentialRampToValueAtTime(0.45, 0.005);
+  g.gain.exponentialRampToValueAtTime(0.001, 0.33);
+  const o2g = ctx.createGain();
+  o2g.gain.value = 0.5;
+  o.connect(lp);
+  o2.connect(o2g).connect(lp);
+  lp.connect(g).connect(ctx.destination);
+  o.start(0);
+  o2.start(0);
+  return ctx.startRendering();
+}
+
+// An electric zap: a fast-falling saw through a bandpass with a highpassed
+// noise crackle. Reads as a lightning snap.
+async function renderZap(): Promise<AudioBuffer> {
+  const ctx = offline(0.28);
+  const osc = ctx.createOscillator();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(1900, 0);
+  osc.frequency.exponentialRampToValueAtTime(210, 0.14);
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.value = 1200;
+  bp.Q.value = 0.7;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.6, 0);
+  g.gain.exponentialRampToValueAtTime(0.001, 0.16);
+  const n = ctx.createBufferSource();
+  n.buffer = noiseBuffer(ctx, 0.12);
+  const hp = ctx.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = 3000;
+  const ng = ctx.createGain();
+  ng.gain.setValueAtTime(0.3, 0);
+  ng.gain.exponentialRampToValueAtTime(0.001, 0.1);
+  osc.connect(bp).connect(g).connect(ctx.destination);
+  n.connect(hp).connect(ng).connect(ctx.destination);
+  osc.start(0);
+  n.start(0);
+  return ctx.startRendering();
+}
+
+// A cymbal crash: bright filtered white noise with a long tail. Choked so
+// repeated crashes don't stack into a wash.
+async function renderCrash(): Promise<AudioBuffer> {
+  const ctx = offline(1.5);
+  const n = ctx.createBufferSource();
+  n.buffer = noiseBuffer(ctx, 1.5);
+  const hp = ctx.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = 5000;
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.value = 9000;
+  bp.Q.value = 0.4;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, 0);
+  g.gain.exponentialRampToValueAtTime(0.5, 0.005);
+  g.gain.exponentialRampToValueAtTime(0.06, 0.3);
+  g.gain.exponentialRampToValueAtTime(0.001, 1.35);
+  n.connect(hp).connect(bp).connect(g).connect(ctx.destination);
+  n.start(0);
+  return ctx.startRendering();
+}
+
 /** Render every builtin kit. Called once at startup. */
 export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
-  const [kickHard, kickSoft, snare, clap, hatClosed, hatOpen, bass, bassFat, bassSub, stab, pad, lead] =
-    await Promise.all([
-      renderKick(true),
-      renderKick(false),
-      renderSnare(),
-      renderClap(),
-      renderHat(false),
-      renderHat(true),
-      renderBass(rootHz),
-      renderBassFat(rootHz),
-      renderBassSub(rootHz),
-      renderChord(rootHz, false),
-      renderChord(rootHz, true),
-      renderLead(rootHz),
-    ]);
+  const [
+    kickHard,
+    kickSoft,
+    snare,
+    clap,
+    hatClosed,
+    hatOpen,
+    bass,
+    bassFat,
+    bassSub,
+    stab,
+    pad,
+    lead,
+    tom,
+    cowbell,
+    arp,
+    zap,
+    crash,
+  ] = await Promise.all([
+    renderKick(true),
+    renderKick(false),
+    renderSnare(),
+    renderClap(),
+    renderHat(false),
+    renderHat(true),
+    renderBass(rootHz),
+    renderBassFat(rootHz),
+    renderBassSub(rootHz),
+    renderChord(rootHz, false),
+    renderChord(rootHz, true),
+    renderLead(rootHz),
+    renderTom(rootHz),
+    renderCowbell(rootHz),
+    renderArp(rootHz),
+    renderZap(),
+    renderCrash(),
+  ]);
 
   const kits = new Map<Role, Kit>();
   const add = (
@@ -345,5 +539,11 @@ export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
     ['pad', pad],
   ]);
   add('lead', 'Lead', '#ff6bd6', true, [['lead', lead]]);
+  add('clap', 'Clap', '#ff4f7d', false, [['clap', clap]]);
+  add('tom', 'Tom', '#d08a4a', true, [['tom', tom]], true);
+  add('cowbell', 'Cowbell', '#c7f24a', true, [['cowbell', cowbell]]);
+  add('arp', 'Arp', '#33e6c2', true, [['arp', arp]]);
+  add('zap', 'Zap', '#66b3ff', false, [['zap', zap]]);
+  add('crash', 'Crash', '#b9c2dd', false, [['crash', crash]], true);
   return kits;
 }

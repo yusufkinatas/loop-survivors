@@ -34,6 +34,8 @@ async function boot(): Promise<void> {
   if (location.hash === '#rehearsal') {
     mountRehearsalRoom(root, engine);
   } else if (location.hash === '#tracklab') {
+    // The Experimentation room: kept as a standalone lab for auditioning
+    // reverse-engineered covers (see src/tracklab/lab.ts).
     mountTrackLab(root, ctx);
   } else {
     await bootGame(root, engine, kits);
