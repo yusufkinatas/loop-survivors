@@ -54,6 +54,22 @@ for (const genre of GENRES) {
   }
 }
 
+/** Rebuild a genre's working charts from its currently active variant's
+ *  ladders (call after setGenreVariant). Drops any prior in-place edits for the
+ *  genre — they belonged to the old track. The engine must then re-point its
+ *  voices (engine.setGenre) to pick up the new Chart instances. */
+export function rebuildGenreCharts(id: GenreId): void {
+  const genre = GENRE_BY_ID[id];
+  for (const role of ROLES) {
+    for (let tier = 1; tier <= TIER_COUNT; tier++) {
+      const key = storageKey(id, role, tier);
+      working.set(key, cloneChart(genre.ladders[role][tier - 1]));
+      edited.delete(key);
+      storage.removeItem(key);
+    }
+  }
+}
+
 let active: Genre = GENRE_BY_ID[DEFAULT_GENRE];
 
 /** Switch which genre getChart/saveChart/etc. resolve to. */

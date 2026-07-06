@@ -4,8 +4,15 @@
 
 import { Application } from 'pixi.js';
 import type { MusicEngine } from '../audio/engine';
-import { activeGenre } from '../audio/chartstore';
-import { GENRES, GENRE_BY_ID, DEFAULT_GENRE, type Genre, type GenreId } from '../audio/genres';
+import { activeGenre, rebuildGenreCharts } from '../audio/chartstore';
+import {
+  GENRES,
+  GENRE_BY_ID,
+  DEFAULT_GENRE,
+  setGenreVariant,
+  type Genre,
+  type GenreId,
+} from '../audio/genres';
 import { ROLES, type Kit, type Role } from '../audio/kits';
 import { SIM_DT, VirtualConductor } from '../bot/conductor';
 import { MOVERS, type MoverName } from '../bot/movers';
@@ -348,6 +355,13 @@ export async function bootGame(
       genres: GENRES,
       initial: DEFAULT_GENRE,
       onGenre: applyGenre,
+      onVariant: (genreId, variantId) => {
+        setGenreVariant(genreId, variantId);
+        rebuildGenreCharts(genreId);
+        // Re-point the engine at the rebuilt charts for the active genre.
+        engine.setGenre(GENRE_BY_ID[genreId]);
+        w.powerMul = GENRE_BY_ID[genreId].powerMul;
+      },
       onLoadout: () => hud.renderBand(w.tiers),
       onExit: () => {
         resetWorld();

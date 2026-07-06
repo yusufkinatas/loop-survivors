@@ -15,6 +15,13 @@ import type { Chart } from './charts';
 import { TIER_COUNT, validateChart } from './charts';
 import { ROLES, type Role } from './kits';
 import { B, d, m } from './groove';
+import type { GenreVariant } from './variant';
+import { LOFI_VARIANTS } from './variants/lofi';
+import { HOUSE_VARIANTS } from './variants/house';
+import { SYNTHWAVE_VARIANTS } from './variants/synthwave';
+import { HIPHOP_VARIANTS } from './variants/hiphop';
+import { DNB_VARIANTS } from './variants/dnb';
+import { TECHNO_VARIANTS } from './variants/techno';
 
 export type GenreId = 'lofi' | 'house' | 'synthwave' | 'hiphop' | 'dnb' | 'techno';
 
@@ -31,7 +38,12 @@ export interface Genre {
   /** Per-trigger damage compensation for tempo (docs/plan.md, tempo & damage):
    *  a fast genre fires more triggers, so each hits softer. */
   powerMul: number;
+  /** The RESOLVED active-variant patterns. Mutated by setGenreVariant so every
+   *  live reader (engine, chart store, run) picks up a track switch for free. */
   ladders: Record<Role, Chart[]>;
+  /** Selectable tracks. variants[0] is always "Classic" (originally shipped).
+   *  Optional on the literal; always populated by the assembly loop below. */
+  variants?: GenreVariant[];
 }
 
 // ---- shared fx ladders: zap (lightning) and crash (shockwave) read the same
@@ -1472,19 +1484,103 @@ export const GENRE_BY_ID: Record<GenreId, Genre> = Object.fromEntries(
 /** The genre selected before one is chosen (engine construction, headless). */
 export const DEFAULT_GENRE: GenreId = 'house';
 
-// Guard every genre's ladders at build time: a bad shipped chart is a build
-// error, not a runtime surprise, and every genre must cover all twelve weapons.
+// ---------------------------------------------------------------------------
+// Track variants: assemble each genre's selectable tracks and resolve the
+// active one. variants[0] is always "Classic" (the genre's originally shipped
+// patterns), captured from the literal above; the rest are the researched
+// alternatives from ./variants/<id>.ts.
+// ---------------------------------------------------------------------------
+
+const NEW_VARIANTS: Record<GenreId, GenreVariant[]> = {
+  lofi: LOFI_VARIANTS,
+  house: HOUSE_VARIANTS,
+  synthwave: SYNTHWAVE_VARIANTS,
+  hiphop: HIPHOP_VARIANTS,
+  dnb: DNB_VARIANTS,
+  techno: TECHNO_VARIANTS,
+};
+
 for (const genre of GENRES) {
-  for (const role of ROLES) {
-    const ladder = genre.ladders[role];
-    if (!ladder || ladder.length !== TIER_COUNT) {
-      throw new Error(`${genre.id}: ${role} ladder must have ${TIER_COUNT} tiers`);
-    }
-    for (const chart of ladder) {
-      if (chart.role !== role) {
-        throw new Error(`${genre.id}: ${role} ladder holds a ${chart.role} chart`);
+  const classic: GenreVariant = {
+    id: 'classic',
+    name: 'Classic',
+    note: 'Original shipped patterns',
+    bpm: genre.bpm,
+    swing: genre.swing,
+    powerMul: genre.powerMul,
+    ladders: genre.ladders,
+  };
+  genre.variants = [classic, ...NEW_VARIANTS[genre.id]];
+}
+
+// localStorage-safe accessor (mirrors the chart store): headless runs under
+// Node have no localStorage and always resolve to Classic (index 0),
+// deterministic for the bot and replays.
+const variantStore: Pick<Storage, 'getItem' | 'setItem'> =
+  typeof localStorage !== 'undefined' ? localStorage : { getItem: () => null, setItem: () => {} };
+const variantKey = (id: GenreId) => `loop.variant.${id}`;
+
+/** Every selectable track for a genre (Classic first). */
+export function genreVariants(id: GenreId): GenreVariant[] {
+  return GENRE_BY_ID[id].variants!;
+}
+
+/** The id of the track currently active for a genre. */
+export function activeVariantId(id: GenreId): string {
+  const genre = GENRE_BY_ID[id];
+  const stored = variantStore.getItem(variantKey(id));
+  const found = genre.variants!.find((v) => v.id === stored);
+  return (found ?? genre.variants![0]).id;
+}
+
+/** Resolve a variant onto the genre's live fields, so every reader picks it up.
+ *  A variant may override bpm/swing/powerMul; omitted fields inherit Classic. */
+function applyVariant(genre: Genre, variant: GenreVariant): void {
+  const classic = genre.variants![0];
+  genre.ladders = variant.ladders;
+  genre.bpm = variant.bpm ?? classic.bpm!;
+  genre.swing = variant.swing ?? classic.swing!;
+  genre.powerMul = variant.powerMul ?? classic.powerMul!;
+}
+
+/** Switch a genre's active track. Persists the choice so it becomes the default
+ *  for future runs. Callers must rebuild the chart store's working copies for
+ *  the genre (rebuildGenreCharts) and re-point the engine (engine.setGenre). */
+export function setGenreVariant(id: GenreId, variantId: string): void {
+  const genre = GENRE_BY_ID[id];
+  const variant = genre.variants!.find((v) => v.id === variantId);
+  if (!variant) return;
+  applyVariant(genre, variant);
+  variantStore.setItem(variantKey(id), variantId);
+}
+
+// Resolve each genre's persisted (or default) active track at module load,
+// BEFORE the chart store builds its working copies from genre.ladders.
+for (const genre of GENRES) {
+  const stored = variantStore.getItem(variantKey(genre.id));
+  const variant = genre.variants!.find((v) => v.id === stored) ?? genre.variants![0];
+  applyVariant(genre, variant);
+}
+
+// Guard every genre's every variant at build time: a bad shipped chart is a
+// build error, not a runtime surprise, and every track must cover all roles.
+for (const genre of GENRES) {
+  for (const variant of genre.variants!) {
+    for (const role of ROLES) {
+      const ladder = variant.ladders[role];
+      if (!ladder || ladder.length !== TIER_COUNT) {
+        throw new Error(
+          `${genre.id}/${variant.id}: ${role} ladder must have ${TIER_COUNT} tiers`,
+        );
       }
-      validateChart(chart);
+      for (const chart of ladder) {
+        if (chart.role !== role) {
+          throw new Error(
+            `${genre.id}/${variant.id}: ${role} ladder holds a ${chart.role} chart`,
+          );
+        }
+        validateChart(chart);
+      }
     }
   }
 }
