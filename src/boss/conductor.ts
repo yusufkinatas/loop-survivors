@@ -15,10 +15,24 @@
 // time: attacks land exactly when the beat sounds, and a frame stall simply
 // skips the attacks it fell behind on instead of exploding.
 
-import type { LabEngine } from '../tracklab/labengine';
-
 const STEPS_PER_BAR = 16;
 const BEATS_PER_BAR = 4;
+
+/** The slice of a track player the conductor + boss page depend on. Both the
+ *  LabEngine (synthesized cover) and the Mp3Engine (real record) satisfy it, so
+ *  a boss can be driven by either sound source with no other change. */
+export interface BossTransport {
+  readonly ctx: AudioContext;
+  readonly track: { bpm: number; sections: { id: string; name: string }[] };
+  readonly clock: { stepsPerBeat: number };
+  addStepListener(cb: (absStep: number, phraseStep: number, time: number) => void): void;
+  setSection(id: string): void;
+  setMasterGain(value: number): void;
+  start(): void;
+  stop(): void;
+  dispose(): void;
+  update(): void;
+}
 
 /** One block of the song's playthrough: a section id and how many bars to hold
  *  it. A section shorter than `bars` simply loops (an 8-bar section held for 16
@@ -70,7 +84,7 @@ export interface ConductorHooks {
 type QueuedStep = { info: BeatInfo } | { finish: true; time: number };
 
 export class BossConductor {
-  readonly engine: LabEngine;
+  readonly engine: BossTransport;
   readonly arrangement: ArrangementEntry[];
   readonly totalBars: number;
 
@@ -86,7 +100,7 @@ export class BossConductor {
   private scheduledDone = false;
   private finished = false;
 
-  constructor(engine: LabEngine, arrangement: ArrangementEntry[], hooks: ConductorHooks) {
+  constructor(engine: BossTransport, arrangement: ArrangementEntry[], hooks: ConductorHooks) {
     this.engine = engine;
     this.arrangement = arrangement;
     this.hooks = hooks;

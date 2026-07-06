@@ -1036,6 +1036,34 @@ button.big {
   letter-spacing: 1px;
 }
 
+/* mp3 sync-tuning strip: drops onto its own line under the control buttons. */
+.boss-sync {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.boss-sync .lbl {
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #9a9ab0;
+}
+
+.boss-sync .small {
+  min-width: 30px;
+  padding: 4px 8px;
+}
+
+.boss-sync-val {
+  min-width: 56px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: #f2f2f7;
+}
+
 .boss-select {
   display: flex;
   gap: 16px;

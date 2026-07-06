@@ -37,6 +37,11 @@ export interface BossDef {
   /** One line on how it fights. */
   tagline: string;
   track: LabTrack;
+  /** When set, the boss plays this real audio file (via Mp3Engine) instead of
+   *  synthesizing `track` live — same arrangement, same attacks, real record.
+   *  `offsetS` is the file position that plays at fight-step 0 (tunable live
+   *  in the fight, then baked here). File lives in public/, served at `url`. */
+  mp3?: { url: string; offsetS?: number };
   arrangement: ArrangementEntry[];
   palette: BossPalette;
   bossRadius: number;
@@ -330,4 +335,22 @@ const PURSUIT_BOSS: BossDef = {
   },
 };
 
-export const BOSSES: BossDef[] = [METAMORPHOSIS_BOSS, SATISFACTION_BOSS, PURSUIT_BOSS];
+// ---------------------------------------------------------------------------
+// 3b. PURSUIT (record) — the same fight, driven by the real mp3
+// ---------------------------------------------------------------------------
+// Identical arrangement and attack grammar to PURSUIT above; only the sound
+// source changes. It plays public/boss/pursuit.mp3 through the Mp3Engine and
+// stays bar-for-bar comparable to the synth version — the live sync nudge in
+// the fight slides the record so its downbeats sit under the attacks (and skips
+// any silent intro so the two variants line up). Bake the dialed-in number into
+// `offsetS`. If the file isn't present, the boss shows where to drop it.
+const PURSUIT_MP3_BOSS: BossDef = {
+  ...PURSUIT_BOSS,
+  id: 'pursuit-mp3',
+  name: 'Pursuit (record)',
+  archetype: 'Rhythm survival · real record',
+  tagline: 'The same fight — but the boss spins the actual record. Drop pursuit.mp3 in, sync it by ear.',
+  mp3: { url: '/boss/pursuit.mp3', offsetS: 0 },
+};
+
+export const BOSSES: BossDef[] = [METAMORPHOSIS_BOSS, SATISFACTION_BOSS, PURSUIT_BOSS, PURSUIT_MP3_BOSS];

@@ -8,7 +8,8 @@ import { Application } from 'pixi.js';
 import { LabEngine } from '../tracklab/labengine';
 import { Input } from '../game/input';
 import { mountJoystick } from '../game/joystick';
-import { BossConductor } from './conductor';
+import { BossConductor, type BossTransport } from './conductor';
+import { Mp3Engine } from './mp3engine';
 import { BOSSES, type BossDef } from './bosses';
 import { ARENA, BossWorld } from './world';
 import { BossView } from './view';
@@ -46,13 +47,18 @@ export async function mountBossFight(root: HTMLElement, ctx: AudioContext): Prom
   const input = new Input();
   let state: State = 'select';
   let def: BossDef | null = null;
-  let labEngine: LabEngine | null = null;
+  let transport: BossTransport | null = null;
   let conductor: BossConductor | null = null;
   let world: BossWorld | null = null;
   let view: BossView | null = null;
   let muted = false;
   let invincible = false;
   let dashQueued = false;
+  let syncOffset = 0;
+  // Bumped on every startBoss; a load that finishes after a newer one started
+  // (even for the same boss — identity on `def` can't tell two loads apart)
+  // bails instead of spawning a second overlapping fight.
+  let loadToken = 0;
 
   // ---- HUD (built once, shown during the fight) ----
   const hud = el('div', 'boss-hud', root);
@@ -86,10 +92,35 @@ export async function mountBossFight(root: HTMLElement, ctx: AudioContext): Prom
   const muteBtn = el('button', 'small', controls, 'mute') as HTMLButtonElement;
   muteBtn.onclick = () => {
     muted = !muted;
-    labEngine?.setMasterGain(muted ? 0 : 0.85);
+    transport?.setMasterGain(muted ? 0 : 0.85);
     muteBtn.classList.toggle('on', muted);
     muteBtn.blur();
   };
+
+  // Sync strip (mp3 bosses only): slide the record under the attack grid until
+  // the downbeats line up by ear. Coarse (¼s) skips intros; fine (20ms) locks
+  // the beat. The readout is the number to bake into the boss's `offsetS`.
+  const syncRow = el('div', 'boss-sync', controls);
+  syncRow.style.display = 'none';
+  const nudge = (delta: number): void => {
+    if (!(transport instanceof Mp3Engine)) return;
+    syncOffset = Math.max(0, syncOffset + delta);
+    transport.setSyncOffset(syncOffset);
+    syncVal.textContent = `${syncOffset.toFixed(2)}s`;
+  };
+  const mkNudge = (label: string, delta: number): void => {
+    const b = el('button', 'small', syncRow, label) as HTMLButtonElement;
+    b.onclick = () => {
+      nudge(delta);
+      b.blur();
+    };
+  };
+  el('span', 'lbl', syncRow, 'sync');
+  mkNudge('«', -0.25);
+  mkNudge('‹', -0.02);
+  const syncVal = el('span', 'boss-sync-val', syncRow, '0.00s');
+  mkNudge('›', 0.02);
+  mkNudge('»', 0.25);
 
   const flash = el('div', 'hit-flash', root);
   let screen: HTMLElement | null = null;
@@ -105,15 +136,16 @@ export async function mountBossFight(root: HTMLElement, ctx: AudioContext): Prom
 
   function teardownFight(): void {
     conductor?.stop();
-    labEngine?.dispose();
+    transport?.dispose();
     if (view) {
       app.stage.removeChild(view.stage);
       view.destroy();
     }
     conductor = null;
-    labEngine = null;
+    transport = null;
     world = null;
     view = null;
+    dashQueued = false; // don't carry a queued dash into the next fight
   }
 
   function toSelect(): void {
@@ -155,28 +187,38 @@ export async function mountBossFight(root: HTMLElement, ctx: AudioContext): Prom
   async function startBoss(chosen: BossDef): Promise<void> {
     teardownFight();
     def = chosen;
+    const myToken = ++loadToken;
     state = 'loading';
     const s = newScreen();
     el('h2', '', s, `Summoning ${chosen.name}…`);
     el('p', 'sub', s, 'building instruments');
 
-    let engine: LabEngine;
+    let engine: BossTransport;
     try {
-      engine = await LabEngine.load(ctx, chosen.track);
+      engine = chosen.mp3
+        ? await Mp3Engine.load(ctx, chosen.track, chosen.mp3.url, chosen.mp3.offsetS ?? 0)
+        : await LabEngine.load(ctx, chosen.track);
     } catch (err) {
+      if (myToken !== loadToken) return; // a newer load supersedes this one
       const es = newScreen();
       el('h2', '', es, 'Failed to summon');
       el('p', 'sub', es, err instanceof Error ? err.message : String(err));
+      if (chosen.mp3) {
+        el('p', 'sub', es, `Put the track at public${chosen.mp3.url} and try again.`);
+      }
       const b = el('button', 'big', es, 'back') as HTMLButtonElement;
       b.onclick = () => toSelect();
       return;
     }
-    // Bail if the player navigated away while instruments built.
-    if (def !== chosen) {
+    // Bail if a newer fight started while instruments built (navigated away, or
+    // a rapid re-click — even to the same boss). Identity on `def` can't tell
+    // two loads of one boss apart, so gate on the per-invocation token.
+    if (myToken !== loadToken) {
       engine.dispose();
       return;
     }
-    labEngine = engine;
+    transport = engine;
+    syncOffset = chosen.mp3?.offsetS ?? 0;
 
     world = new BossWorld(() => input.axis(), {
       onHit: () => {
@@ -207,7 +249,7 @@ export async function mountBossFight(root: HTMLElement, ctx: AudioContext): Prom
 
     const w = world;
     const d = chosen;
-    conductor = new BossConductor(labEngine, chosen.arrangement, {
+    conductor = new BossConductor(transport, chosen.arrangement, {
       onStep: (info) => d.onStep(info, w),
       onSectionEnter: (id, i) => {
         d.onSectionEnter?.(id, i, w);
@@ -225,11 +267,13 @@ export async function mountBossFight(root: HTMLElement, ctx: AudioContext): Prom
     hpFill.style.width = '100%';
     hud.style.display = '';
     controls.style.display = '';
+    syncRow.style.display = chosen.mp3 ? '' : 'none';
+    syncVal.textContent = `${syncOffset.toFixed(2)}s`;
     invBtn.classList.toggle('on', invincible);
     muteBtn.classList.toggle('on', muted);
     closeScreen();
     state = 'fight';
-    labEngine.setMasterGain(muted ? 0 : 0.85);
+    transport.setMasterGain(muted ? 0 : 0.85);
     conductor.start();
   }
 
@@ -273,11 +317,11 @@ export async function mountBossFight(root: HTMLElement, ctx: AudioContext): Prom
   });
 
   app.ticker.add((ticker) => {
-    if (state === 'fight' && world && view && labEngine && conductor) {
-      labEngine.update();
+    if (state === 'fight' && world && view && transport && conductor) {
+      transport.update();
       // Drain beat events at audio time (spawns this frame's attacks) before
       // the world steps, so new hazards move on the same frame they appear.
-      conductor.update(labEngine.ctx.currentTime);
+      conductor.update(transport.ctx.currentTime);
       const dt = Math.min(ticker.deltaMS / 1000, 1 / 20);
       const dash = dashQueued;
       dashQueued = false;
@@ -305,6 +349,14 @@ export async function mountBossFight(root: HTMLElement, ctx: AudioContext): Prom
       fight: (id: string) => {
         const b = BOSSES.find((x) => x.id === id);
         if (b) void startBoss(b);
+      },
+      /** Set the mp3 sync offset (seconds) precisely from the console. */
+      sync: (seconds: number) => {
+        if (transport instanceof Mp3Engine) {
+          syncOffset = Math.max(0, seconds);
+          transport.setSyncOffset(syncOffset);
+          syncVal.textContent = `${syncOffset.toFixed(2)}s`;
+        }
       },
     };
   }

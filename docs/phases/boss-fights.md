@@ -59,14 +59,58 @@ genres, the run, and the autoplay bot are untouched.
 Boss music deliberately reuses the `LabEngine`, not the weapon engine: the player
 has no weapons in a fight, so a build re-score would be the wrong shape.
 
+## Dodge dash tuning (July 6)
+
+Pursuit read as unfair against its beat-frequent attacks — not the patterns, the
+dodge couldn't keep pace. The fix is the dash, not the attacks: cooldown 0.8s →
+**0.42s** (a dash roughly every beat at 109 bpm) and a real invulnerability
+window — a dedicated `dashIframesS` (0.3s) granted up front on the dash so it
+outlasts the 0.15s movement, making a dash *through* an attack reliably clear it
+(before, the dash only kept i-frames alive at ~0.05s, barely covering the move).
+Both numbers live in `BOSS_PLAYER` in `src/boss/world.ts`.
+
+## Record variant: an mp3 boss (July 6)
+
+A fourth boss, **Pursuit (record)** (`pursuit-mp3`), runs the *identical* fight to
+synth Pursuit — same arrangement, same attack grammar — but plays a real audio
+file of the record instead of synthesizing the cover live. It's a straight A/B on
+the sound; the mechanics are byte-for-byte the same `BossDef`, spread from
+`PURSUIT_BOSS` with only the sound source swapped.
+
+- `mp3engine.ts` — `Mp3Engine`, an alternate track transport that decodes and
+  plays a file and emits the **same beat grid** the conductor drives attacks off.
+  Both it and `LabEngine` satisfy the new `BossTransport` interface (in
+  `conductor.ts`), so a boss runs on either with no other change.
+- **Sync model.** One number, `offsetS`, is the file position that plays at
+  fight-step 0; the grid is anchored so fight-time *t* always sounds file content
+  *(offsetS + t)*, keeping beat-locked attacks on the same musical instant. A live
+  **sync strip** (top-right, mp3 bosses only) nudges `offsetS` — coarse (¼s) skips
+  any silent intro so the two variants line up bar-for-bar, fine (20ms) locks the
+  downbeats under the attacks. Dial it in by ear, then bake the shown number into
+  the boss's `offsetS`. `loop.boss.sync(x)` sets it precisely from the console.
+- **The file isn't committed** (copyrighted recording — supply your own). Drop it
+  at `public/boss/pursuit.mp3` (see `public/boss/README.md`); a missing/undecodable
+  file shows a "drop the track there" screen instead of crashing.
+- The fight stays the same 56-bar length as synth Pursuit (comparable A/B). If the
+  record is shorter than that, its tail plays out in silence and the fight still
+  resolves as a win.
+
 ## Status
 
-`tsc` + production build clean; verified in Chrome (all three bosses load and
-advance their arrangements; movement/dash/clamp, damage + i-frames, every attack
-kind, bounded spawns, and both win/lose end screens all check out). What only the
-developer can judge is whether the three fights feel distinct, fair, and musical
-at 60 fps with sound. Every difficulty number is a one-line edit in
-`src/boss/world.ts` / `src/boss/bosses.ts`.
+`tsc` + production build clean. The three synth bosses were verified in Chrome
+earlier (arrangements advance; movement/dash/clamp, damage + i-frames, every
+attack kind, bounded spawns, both end screens). The dash tuning and the mp3
+transport were verified headlessly: types + build clean, the sync-timing math
+checked numerically (step grid, the re-seek invariant, 56-bar → 123.3s finish at
+109 bpm, downbeats on the bar), the served-file path confirmed, and an adversarial
+code review found and **fixed three real bugs** (an offset-nudge that could stall
+the fight with no win; a same-boss double-click that leaked a second engine/track;
+a queued dash carrying into the next fight). Live in-Chrome playtest of the record
+boss is pending the developer supplying `pursuit.mp3` (the Chrome extension wasn't
+connected this session). What only the developer can judge is whether the fights
+feel distinct, fair, and musical at 60 fps with sound — and, for the A/B, whether
+the record and the engine's cover sit right against each other. Every difficulty
+number is a one-line edit in `src/boss/world.ts` / `src/boss/bosses.ts`.
 
 **Not decided:** whether boss fights join the game at all, and if so how (e.g. an
 interrupt in a run) — and how they'd relate to the genre soundset (a boss could
