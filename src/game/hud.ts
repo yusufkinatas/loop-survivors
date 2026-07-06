@@ -4,10 +4,13 @@
 
 import { ROLES, type Kit, type Role } from '../audio/kits';
 import type { Genre } from '../audio/genres';
+import { SLOTS, SLOT_LABEL, ownerOfSlot, slotOf, startableRoles } from './band';
 import { TIER_LINES } from './config';
 import { EFFECT_META } from './effects';
 import { ITEMS, type ItemId } from './items';
 import type { PickOption } from './picks';
+
+import { TIER_COUNT } from '../audio/charts';
 
 /** Cards are terse by spec: name, tier numeral, one honest gameplay line,
  *  zero music description (docs/phases/m2-the-arc.md). */
@@ -34,6 +37,7 @@ export class Hud {
   private pulse: HTMLElement;
   private toastStack: HTMLElement;
   private itemStrip: HTMLElement;
+  private rack: HTMLElement;
   private screen: HTMLElement | null = null;
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
   private kits: Map<Role, Kit>;
@@ -62,11 +66,39 @@ export class Hud {
     this.toastStack = el('div', 'toast-stack', root);
     this.itemStrip = el('div', 'item-strip', root);
     this.itemStrip.style.display = 'none';
+    // The band rack: eight sockets, one per band position, empty until hired.
+    this.rack = el('div', 'band-rack', root);
+    this.rack.style.display = 'none';
   }
 
   showHud(show: boolean): void {
     this.bar.style.display = show ? '' : 'none';
     this.itemStrip.style.display = show ? '' : 'none';
+    this.rack.style.display = show ? '' : 'none';
+  }
+
+  /** The band rack (docs/phases/the-band.md): eight typed sockets in rack
+   *  order, empty ones asking to be filled, filled ones showing the hired
+   *  instrument (its color + name) and its tier as pips. Rebuilt on every pick
+   *  (cheap: 8 sockets). Renders into the HUD rack by default, or any supplied
+   *  container so the pause menu can show the same band. */
+  renderBand(tiers: ReadonlyMap<Role, number>, into: HTMLElement = this.rack): void {
+    into.replaceChildren();
+    for (const slot of SLOTS) {
+      const owner = ownerOfSlot(slot, tiers);
+      const socket = el('div', `band-socket ${owner ? 'filled' : 'empty'}`, into);
+      el('span', 'socket-slot', socket, SLOT_LABEL[slot]);
+      if (owner) {
+        const kit = this.kits.get(owner)!;
+        socket.style.setProperty('--voice-color', kit.color);
+        el('span', 'socket-name', socket, kit.name);
+        const tier = tiers.get(owner) ?? 1;
+        const pips = el('span', 'socket-pips', socket);
+        for (let i = 1; i <= TIER_COUNT; i++) {
+          el('span', `pip ${i <= tier ? 'on' : ''}`, pips);
+        }
+      }
+    }
   }
 
   /** The persistent bottom-left strip of owned passives, one chip per item
@@ -176,7 +208,9 @@ export class Hud {
       el('p', 'sub', s, 'Same twelve tools every genre; each one plays them differently.');
       const grid = el('div', 'pick-grid', s);
       const cards: HTMLElement[] = [];
-      for (const role of ROLES) {
+      // FX is barred from the starting offer (design rule 5) — a tier-1 FX
+      // voice is near-silent for minutes, a dead opener.
+      for (const role of startableRoles(ROLES)) {
         cards.push(
           this.kitCard(grid, { kind: 'weapon', role, tier: 1 }, () => {
             this.closeScreen();
@@ -298,11 +332,15 @@ export class Hud {
       card.classList.add('kit-card--effect');
       const kit = this.kits.get(option.role)!;
       card.style.setProperty('--voice-color', kit.color);
+      el('span', 'kit-slot-badge', card, SLOT_LABEL[slotOf(option.role)]);
       el('span', 'kit-name', card, `${kit.name} · ${EFFECT_META[option.effect].name}`);
       el('span', 'kit-desc', card, EFFECT_META[option.effect].line);
     } else {
       const kit = this.kits.get(option.role)!;
       card.style.setProperty('--voice-color', kit.color);
+      // The slot badge names the band position this hire plugs, so every card
+      // answers "what does taking this cost me?" at a glance (the band).
+      el('span', 'kit-slot-badge', card, SLOT_LABEL[slotOf(option.role)]);
       el('span', 'kit-name', card, kit.name);
       el('span', 'kit-desc', card, TIER_LINES[option.role][option.tier - 1]);
       // Tier > 1 shows its numeral in the corner chip (the name stays plain).

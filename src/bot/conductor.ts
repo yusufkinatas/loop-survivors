@@ -10,7 +10,7 @@
 // the batch run that produced it.
 
 import { chartEventsAtStep } from '../audio/arranger';
-import { activeGenreBpm, getChart } from '../audio/chartstore';
+import { activeGenre, activeGenreBpm, getChart } from '../audio/chartstore';
 import type { Role } from '../audio/kits';
 import type { EffectId } from '../audio/voicefx';
 import { SKELETON, STEPS_PER_BAR, STEPS_PER_PHRASE } from '../audio/scale';
@@ -69,6 +69,8 @@ export class VirtualConductor {
       this.effectiveItems(),
       this.effectiveEffects(),
       this.rng,
+      activeGenre().id,
+      this.world.timeS,
     );
     if (options.length === 0) {
       this.world.player.hp = Math.min(RUN.playerHp, this.world.player.hp + 15);

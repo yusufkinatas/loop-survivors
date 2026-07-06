@@ -4,9 +4,17 @@
 // economy, not noise. No forced build orders.
 
 import { ROLES, type Role } from '../audio/kits';
+import { startableRoles } from '../game/band';
 import type { PickOption } from '../game/picks';
 import type { Rng } from '../game/rng';
 import type { PickChooser } from './conductor';
+
+// FX is barred from the starting-weapon offer (design rule 5): a tier-1 FX
+// voice is near-silent for minutes, a musically dead opener. The random
+// openers draw from the startable roster; an explicit focus:<role> may still
+// name an FX weapon, since that is a deliberate build-order probe.
+const STARTABLE: readonly Role[] = startableRoles(ROLES);
+const randomStart = (rng: Rng): Role => STARTABLE[Math.floor(rng() * STARTABLE.length)];
 
 export interface Policy {
   name: string;
@@ -24,7 +32,7 @@ export function makePolicy(spec: string): Policy {
   if (spec === 'random') {
     return {
       name: spec,
-      startingKit: (rng) => ROLES[Math.floor(rng() * ROLES.length)],
+      startingKit: randomStart,
       choose: (options, _world, rng) => pickRandom(options, rng),
     };
   }
@@ -32,7 +40,7 @@ export function makePolicy(spec: string): Policy {
     // always tier up something owned; highest tier first
     return {
       name: spec,
-      startingKit: (rng) => ROLES[Math.floor(rng() * ROLES.length)],
+      startingKit: randomStart,
       choose: (options, _world, rng) => {
         const ups = options.filter(
           (o): o is Extract<PickOption, { kind: 'weapon' }> => o.kind === 'weapon' && o.tier > 1,
@@ -50,7 +58,7 @@ export function makePolicy(spec: string): Policy {
     // always take a new weapon while one is on offer
     return {
       name: spec,
-      startingKit: (rng) => ROLES[Math.floor(rng() * ROLES.length)],
+      startingKit: randomStart,
       choose: (options, _world, rng) => {
         const fresh = options.filter(
           (o): o is Extract<PickOption, { kind: 'weapon' }> => o.kind === 'weapon' && o.tier === 1,
@@ -64,7 +72,7 @@ export function makePolicy(spec: string): Policy {
     // stress item balance in isolation; else random
     return {
       name: spec,
-      startingKit: (rng) => ROLES[Math.floor(rng() * ROLES.length)],
+      startingKit: randomStart,
       choose: (options, _world, rng) => {
         const items = options.filter(
           (o): o is Extract<PickOption, { kind: 'item' }> => o.kind === 'item',

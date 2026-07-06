@@ -1438,3 +1438,126 @@ button.big {
   background: rgba(10, 11, 15, 0.82);
   box-shadow: 0 0 12px -6px var(--voice-color);
 }
+
+/* The band rack (docs/phases/the-band.md): the VS-style build row of eight
+   typed sockets, top-center. Empty sockets ask to be filled; filled ones carry
+   the hired instrument's color, name, and tier as pips. */
+.band-rack {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--sp-1);
+  max-width: min(94vw, 720px);
+  pointer-events: none;
+  z-index: 2;
+}
+.band-socket {
+  --voice-color: var(--ink-faint);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 76px;
+  padding: 5px 4px 6px;
+  border: 1px solid var(--line);
+  border-top: 2px solid var(--voice-color);
+  border-radius: var(--r-sm);
+  background: rgba(10, 11, 15, 0.82);
+}
+.band-socket.empty {
+  border-style: dashed;
+  border-top-color: var(--line-2);
+  opacity: 0.6;
+}
+.band-socket.filled {
+  box-shadow: 0 0 12px -6px var(--voice-color);
+}
+.socket-slot {
+  font: 700 9px/1 var(--font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.band-socket.filled .socket-slot {
+  color: var(--ink-dim);
+}
+.socket-name {
+  max-width: 68px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 700 11px/1 var(--font-mono);
+  letter-spacing: 0.02em;
+  color: var(--voice-color);
+}
+.socket-pips {
+  display: flex;
+  gap: 3px;
+}
+.socket-pips .pip {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--voice-color) 55%, transparent);
+}
+.socket-pips .pip.on {
+  background: var(--voice-color);
+  box-shadow: 0 0 6px -1px var(--voice-color);
+}
+
+/* Slot badge on a pick card: the plain player-facing band position this hire
+   plugs, so every card answers "what does taking this cost me?" at a glance. */
+.kit-slot-badge {
+  align-self: flex-start;
+  font: 700 9px/1 var(--font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--voice-color);
+  border-radius: var(--r-sm);
+  padding: 3px 7px;
+  background: rgba(10, 11, 15, 0.5);
+}
+
+/* The same rack, shown roomier while paused. */
+.pause-rack {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--sp-2);
+  max-width: min(90vw, 760px);
+  margin: var(--sp-2) 0 var(--sp-3);
+}
+.pause-rack .band-socket {
+  width: 92px;
+  padding: 8px 6px 9px;
+}
+.pause-rack .socket-name {
+  max-width: 84px;
+  font-size: 12px;
+}
+
+/* Phones: shrink the rack to a compact slot+pip strip so it never covers the
+   arena or the HUD panel. */
+@media (max-width: 640px) {
+  .band-rack {
+    max-width: 96vw;
+    gap: 2px;
+  }
+  .band-rack .band-socket {
+    width: 34px;
+    padding: 3px 2px 4px;
+  }
+  .band-rack .socket-name {
+    display: none;
+  }
+  .band-rack .socket-slot {
+    font-size: 8px;
+    letter-spacing: 0.06em;
+  }
+}

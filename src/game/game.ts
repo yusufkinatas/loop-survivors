@@ -4,6 +4,7 @@
 
 import { Application } from 'pixi.js';
 import type { MusicEngine } from '../audio/engine';
+import { activeGenre } from '../audio/chartstore';
 import { GENRES, GENRE_BY_ID, DEFAULT_GENRE, type Genre, type GenreId } from '../audio/genres';
 import { ROLES, type Kit, type Role } from '../audio/kits';
 import { SIM_DT, VirtualConductor } from '../bot/conductor';
@@ -65,14 +66,19 @@ export async function bootGame(
   const pauseOverlay = document.createElement('div');
   pauseOverlay.className = 'pause-overlay';
   pauseOverlay.style.display = 'none';
-  pauseOverlay.innerHTML = '<h1>Paused</h1><p class="hint">Hit ESC again to continue.</p>';
+  pauseOverlay.innerHTML =
+    '<h1>Paused</h1><div class="pause-rack"></div><p class="hint">Hit ESC again to continue.</p>';
   root.appendChild(pauseOverlay);
+  const pauseRack = pauseOverlay.querySelector('.pause-rack') as HTMLElement;
   function togglePause(): void {
     if (state !== 'run') return;
     paused = !paused;
     pauseOverlay.style.display = paused ? '' : 'none';
-    if (paused) engine.clock.pause();
-    else engine.clock.resume();
+    if (paused) {
+      engine.clock.pause();
+      // Show the current band while paused (the same rack the HUD draws).
+      if (world) hud.renderBand(world.tiers, pauseRack);
+    } else engine.clock.resume();
   }
 
   // debug overlay
@@ -87,7 +93,14 @@ export async function bootGame(
       if (state !== 'run') return;
       // The offer roll (docs/phases/m2-the-arc.md) is shared with the autoplay
       // bot via picks.ts, so the bot faces the exact offers a player does.
-      const options = rollOffers(world!.tiers, world!.items, world!.effects, Math.random);
+      const options = rollOffers(
+        world!.tiers,
+        world!.items,
+        world!.effects,
+        Math.random,
+        activeGenre().id,
+        world!.timeS,
+      );
       if (options.length === 0) {
         world!.player.hp = Math.min(RUN.playerHp, world!.player.hp + 15);
         hud.showToast('+15 hp — the track is complete');
@@ -113,6 +126,7 @@ export async function bootGame(
             engine.setVoiceEffect(option.role, option.effect);
           }
           hud.renderItems(w!.items);
+          hud.renderBand(w!.tiers);
           chartOverlay?.refresh();
           // Cosmetic affirmation the pick landed (view-only, muted-safe).
           view?.flourish(w!.player.x, w!.player.y);
@@ -309,6 +323,7 @@ export async function bootGame(
     world.addWeapon(startingKit, 1);
     hud.showHud(true);
     hud.renderItems(world.items);
+    hud.renderBand(world.tiers);
     state = 'run';
     void engine.ctx.resume();
     engine.clock.start();
@@ -333,6 +348,7 @@ export async function bootGame(
       genres: GENRES,
       initial: DEFAULT_GENRE,
       onGenre: applyGenre,
+      onLoadout: () => hud.renderBand(w.tiers),
       onExit: () => {
         resetWorld();
         engine.clock.stop();
@@ -342,6 +358,7 @@ export async function bootGame(
       },
     });
     hud.showHud(true);
+    hud.renderBand(w.tiers);
     state = 'sandbox';
     void engine.ctx.resume();
     engine.clock.start();
@@ -400,6 +417,7 @@ export async function bootGame(
           engine.setVoiceEffect(option.role, option.effect);
         }
         hud.renderItems(w.items);
+        hud.renderBand(w.tiers);
         chartOverlay?.refresh();
       },
       onHeal() {
@@ -410,6 +428,7 @@ export async function bootGame(
     app.stage.addChild(view.stage);
     hud.showHud(true);
     hud.renderItems(w.items);
+    hud.renderBand(w.tiers);
     hud.showToast(`replaying seed ${seed} (${genre.name}/${moverName}/${policySpec})`);
     speedRow.style.display = '';
     seekRow.style.display = '';

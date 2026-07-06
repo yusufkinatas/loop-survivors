@@ -32,6 +32,9 @@ export interface SandboxOpts {
   initial: GenreId;
   onGenre: (genre: Genre) => void;
   onExit: () => void;
+  /** The loadout changed (force-assembly): keep the band rack in sync. The
+   *  sandbox itself ignores slot rules — it lets any combination be built. */
+  onLoadout?: () => void;
 }
 
 export function mountSandboxPanel(
@@ -151,6 +154,7 @@ export function mountSandboxPanel(
       options.forEach((b, i) =>
         b.classList.toggle('on', tier === null ? i === 0 : i === tier),
       );
+      opts.onLoadout?.();
     };
     const off = el('button', 'small', btns, 'off') as HTMLButtonElement;
     off.onclick = () => set(null);

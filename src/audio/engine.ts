@@ -20,6 +20,9 @@ export interface Voice {
   tier: number;
   enabled: boolean;
   gain: GainNode;
+  /** Sidechain node between gain and the output chain: the kick dips it on the
+   *  bass voice so the two subs never stack (design rule 1). Unity otherwise. */
+  duck: GainNode;
   /** Buffers actually triggered: the kit's own, or a sample set's applied
    *  over them. The kit stays pristine as the restore point. */
   activeSamples: Map<string, AudioBuffer>;
@@ -55,6 +58,13 @@ export type TriggerListener = (t: ScheduledTrigger) => void;
 const HUMANIZE_GAIN = 0.12; // +/- proportional
 const HUMANIZE_CENTS = 8; // +/- pitch, applied only to unpitched kits
 
+// Kick-ducks-bass sidechain (the band, design rule 1): on each kick the bass
+// voice dips to DUCK_DEPTH (~-6 dB) over DUCK_ATTACK and recovers by
+// DUCK_RELEASE — a split-second pump so the two low ends never sum into mud.
+const DUCK_DEPTH = 0.5;
+const DUCK_ATTACK = 0.008;
+const DUCK_RELEASE = 0.14;
+
 export class MusicEngine {
   readonly ctx: AudioContext;
   readonly clock: Clock;
@@ -87,7 +97,13 @@ export class MusicEngine {
     for (const [role, kit] of kits) {
       const gain = ctx.createGain();
       gain.gain.value = 1;
-      gain.connect(this.master);
+      // gain -> duck -> master: the persistent duck node is unity except when
+      // the kick sidechains the bass (design rule 1). buildVoiceChain rewires
+      // duck's downstream when an effect is inserted; gain -> duck stays fixed.
+      const duck = ctx.createGain();
+      duck.gain.value = 1;
+      gain.connect(duck);
+      duck.connect(this.master);
       // Voices start disabled at tier 1; the run enables and tiers them as the
       // player picks. The active genre (set at run start) decides what they play.
       this.voices.set(role, {
@@ -97,6 +113,7 @@ export class MusicEngine {
         tier: 1,
         enabled: false,
         gain,
+        duck,
         activeSamples: kit.samples,
         tune: 0,
         override: null,
@@ -160,7 +177,9 @@ export class MusicEngine {
    *  The insertion point is strictly gain -> [effect] -> master; global
    *  processing belongs on the master bus, not here. */
   private buildVoiceChain(voice: Voice): void {
-    voice.gain.disconnect();
+    // The chain source is the duck node (gain -> duck is fixed); only duck's
+    // downstream is rewired here so the sidechain survives an effect swap.
+    voice.duck.disconnect();
     for (const n of voice.fxNodes) {
       try {
         (n as OscillatorNode).stop?.();
@@ -175,11 +194,11 @@ export class MusicEngine {
     }
     voice.fxNodes = [];
     if (!voice.effect) {
-      voice.gain.connect(this.master);
+      voice.duck.connect(this.master);
       return;
     }
     const fx = makeEffectNodes(this.ctx, voice.effect);
-    voice.gain.connect(fx.input);
+    voice.duck.connect(fx.input);
     fx.output.connect(this.master);
     voice.fxNodes = fx.nodes;
   }
@@ -307,6 +326,21 @@ export class MusicEngine {
     g.gain.value = Math.max(0.01, humanized);
     src.connect(g).connect(voice.gain);
     src.start(time);
+
+    // Kick ducks bass (design rule 1): schedule the dip at the kick's future
+    // audio time (the clock runs ~0.12s ahead), only when a bass voice is in
+    // the band. cancelScheduledValues from `time` keeps rapid kicks from
+    // stacking overlapping ramps.
+    if (voice.role === 'kick') {
+      const bass = this.voices.get('bass');
+      if (bass && bass.enabled) {
+        const p = bass.duck.gain;
+        p.cancelScheduledValues(time);
+        p.setValueAtTime(1, time);
+        p.linearRampToValueAtTime(DUCK_DEPTH, time + DUCK_ATTACK);
+        p.linearRampToValueAtTime(1, time + DUCK_RELEASE);
+      }
+    }
 
     if (voice.kit.choke) {
       const prev = voice.lastHit;
