@@ -51,6 +51,11 @@ export class LabEngine {
   private pending: LabTrigger[] = [];
   private listeners: LabTriggerListener[] = [];
   private sectionListeners: ((id: string) => void)[] = [];
+  /** Absolute-step observers. The boss fight (src/boss) drives its arrangement
+   *  walk and beat-locked attacks off these; the lab itself registers none, so
+   *  this is a no-op for the audition surface. Fired at schedule time (a hair
+   *  before the audio), which reads as a natural telegraph lead. */
+  private stepListeners: ((absStep: number, phraseStep: number, time: number) => void)[] = [];
   private barQueue: (() => void)[] = [];
   private stepMarkers: { step: number; time: number }[] = [];
   private lastDueStep = 0;
@@ -161,6 +166,12 @@ export class LabEngine {
     this.sectionListeners.push(cb);
   }
 
+  /** Observe every scheduled step: absStep is monotonic from start (so
+   *  bars = floor(absStep / stepsPerBar)), phraseStep folds into the loop. */
+  addStepListener(cb: (absStep: number, phraseStep: number, time: number) => void): void {
+    this.stepListeners.push(cb);
+  }
+
   addTriggerListener(cb: LabTriggerListener): void {
     this.listeners.push(cb);
   }
@@ -216,6 +227,10 @@ export class LabEngine {
         if (ev.step === loopStep) this.trigger(voice, ev, swung, phraseStep);
       }
     }
+
+    // Section for THIS step is settled (the bar flush ran above), so observers
+    // see the right section when they walk an arrangement / spawn attacks.
+    for (const cb of this.stepListeners) cb(step, phraseStep, time);
   }
 
   private trigger(voice: LabVoice, ev: LabChartEvent, time: number, phraseStep = -1): void {

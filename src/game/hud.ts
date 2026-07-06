@@ -121,6 +121,10 @@ export class Hud {
       }
       this.armKeys(cards);
       const row = el('div', 'pick-grid', s);
+      const bossBtn = el('button', '', row, 'boss fights');
+      bossBtn.onclick = () => {
+        location.hash = '#boss';
+      };
       const sandboxBtn = el('button', '', row, 'open the sandbox');
       sandboxBtn.onclick = () => {
         this.closeScreen();

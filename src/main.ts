@@ -7,6 +7,7 @@ import * as charts from './audio/chartstore';
 import { SKELETON } from './audio/scale';
 import { mountRehearsalRoom } from './rehearsal/room';
 import { mountTrackLab } from './tracklab/lab';
+import { mountBossFight } from './boss/page';
 import { bootGame } from './game/game';
 import './style.css';
 
@@ -37,6 +38,10 @@ async function boot(): Promise<void> {
     // The Experimentation room: kept as a standalone lab for auditioning
     // reverse-engineered covers (see src/tracklab/lab.ts).
     mountTrackLab(root, ctx);
+  } else if (location.hash === '#boss') {
+    // Standalone Boss Fight area (not wired into the run — a separate
+    // playtest surface). See docs/phases/boss-fights.md.
+    await mountBossFight(root, ctx);
   } else {
     await bootGame(root, engine, kits);
   }
