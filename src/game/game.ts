@@ -56,6 +56,24 @@ export async function bootGame(
   let world: RunWorld | null = null;
   let view: RunView | null = null;
   let muted = false;
+  let paused = false;
+
+  // Pause overlay: ESC freezes the run behind a dimmed screen; the audio clock
+  // stops so no triggers fire, and the game loop skips its world step. A second
+  // ESC resumes. Only the live run pauses — menus and replays have their own
+  // controls (the replay has speed/seek).
+  const pauseOverlay = document.createElement('div');
+  pauseOverlay.className = 'pause-overlay';
+  pauseOverlay.style.display = 'none';
+  pauseOverlay.innerHTML = '<h1>Paused</h1><p class="hint">Hit ESC again to continue.</p>';
+  root.appendChild(pauseOverlay);
+  function togglePause(): void {
+    if (state !== 'run') return;
+    paused = !paused;
+    pauseOverlay.style.display = paused ? '' : 'none';
+    if (paused) engine.clock.pause();
+    else engine.clock.resume();
+  }
 
   // debug overlay
   const overlay = document.createElement('div');
@@ -261,6 +279,8 @@ export async function bootGame(
   }
 
   function resetWorld(): void {
+    paused = false;
+    pauseOverlay.style.display = 'none';
     sandboxPanel?.destroy();
     sandboxPanel = null;
     view?.destroy();
@@ -457,6 +477,7 @@ export async function bootGame(
 
   app.ticker.add((ticker) => {
     engine.update();
+    if (paused) return;
     if ((state === 'run' || state === 'sandbox') && world) {
       const dt = Math.min(ticker.deltaMS / 1000, 1 / 20); // clamp long frames
       world.update(dt);
@@ -593,6 +614,10 @@ export async function bootGame(
   hud.mountDebug(Object.values(debugActions));
 
   window.addEventListener('keydown', (e) => {
+    if (e.code === 'Escape') {
+      togglePause();
+      return;
+    }
     const byKey: Record<string, { onClick(): void }> = {
       KeyM: debugActions.mute,
       KeyI: debugActions.invincible,
