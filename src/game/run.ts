@@ -314,6 +314,19 @@ export class RunWorld {
    *  slow genres up, applied to every weapon's damage as it fires. */
   powerMul = 1;
 
+  // ---- the hype layer (src/game/hype.ts) ----
+  // Three neutral-by-default multipliers the live run drives from the crowd-
+  // energy meter. They stay at 1 in headless/bot/replay runs (the bot never
+  // pumps the crowd), so the autoplay balance tool and seeded replays stay
+  // bit-identical to before this feature. Riding the crowd higher trades
+  // safety for output: more damage dealt and more XP, but more damage taken.
+  /** Outgoing weapon-damage multiplier (rises with hype). */
+  hypeDamageMul = 1;
+  /** Incoming contact/shot-damage multiplier (rises with hype: peak is risky). */
+  hypeDamageTakenMul = 1;
+  /** XP pickup multiplier (rises with hype: a hot crowd pays out more). */
+  hypeXpMul = 1;
+
   /** Per-weapon effect slot (Feature 4): the sound + gameplay modifier on a
    *  role. Composes after the global mods, per weapon, in applyBuild. */
   readonly effects = new Map<Role, EffectId>();
@@ -740,7 +753,10 @@ export class RunWorld {
    *  mods, then this weapon's effect. Nothing else multiplies weapon numbers. */
   private applyBuild(conf: WeaponConf, effect: EffectId | null, usesPierce: boolean): WeaponConf {
     const m = this.mods;
-    const out: WeaponConf = { ...conf, damage: conf.damage * this.powerMul * m.damageMul };
+    const out: WeaponConf = {
+      ...conf,
+      damage: conf.damage * this.powerMul * m.damageMul * this.hypeDamageMul,
+    };
     if (out.radius !== undefined) out.radius *= m.areaMul;
     if (out.lifetimeS !== undefined) out.lifetimeS *= m.durMul;
     if (out.speed !== undefined) out.speed *= m.projSpeedMul;
@@ -860,7 +876,7 @@ export class RunWorld {
       if (e.dead || !circlesOverlap(p, e)) continue;
       // Limiter mitigates but never immunizes: floor 1 keeps the AFK-death
       // pillar. contactTakenMul===1 and integer e.damage>=10 -> identical.
-      const dmg = Math.max(1, Math.round(e.damage * this.mods.contactTakenMul));
+      const dmg = Math.max(1, Math.round(e.damage * this.mods.contactTakenMul * this.hypeDamageTakenMul));
       p.hp = Math.max(0, p.hp - dmg);
       p.iframesT = RUN.iframesS;
       this.events.onHit();
@@ -1252,7 +1268,7 @@ export class RunWorld {
       if (!gone && dx * dx + dy * dy < rr * rr) {
         gone = true;
         if (p.iframesT <= 0 && !this.invincible) {
-          p.hp = Math.max(0, p.hp - s.damage);
+          p.hp = Math.max(0, p.hp - Math.max(1, Math.round(s.damage * this.hypeDamageTakenMul)));
           p.iframesT = RUN.iframesS;
           this.events.onHit();
           if (p.hp <= 0) this.events.onDeath();
@@ -1930,7 +1946,7 @@ export class RunWorld {
         g.y += (dy / (d || 1)) * pull;
       }
       if (d < RUN.pickupRadius) {
-        this.xp += Math.round(g.xp * this.mods.xpMul);
+        this.xp += Math.round(g.xp * this.mods.xpMul * this.hypeXpMul);
         this.gems.splice(i, 1);
         this.checkLevel();
       }

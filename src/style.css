@@ -1561,3 +1561,118 @@ button.big {
     letter-spacing: 0.06em;
   }
 }
+
+/* ---- the hype layer (src/game/hype.ts): a live crowd-energy fader, bottom
+   center, that the player rides on the beat to shape the run's dynamics. ---- */
+.hype-panel {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: max(18px, env(safe-area-inset-bottom));
+  width: min(420px, 74vw);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px 12px;
+  background: linear-gradient(180deg, rgba(23, 26, 34, 0.85), rgba(16, 18, 24, 0.85));
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  pointer-events: none;
+  z-index: 2;
+}
+.hype-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.hype-zone {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: #8a93a8;
+  transition: color 0.15s, text-shadow 0.15s;
+}
+.hype-zone[data-rank='1'] { color: #7be0d0; }
+.hype-zone[data-rank='2'] { color: #3ce0ff; }
+.hype-zone[data-rank='3'] { color: #ffc93c; }
+.hype-zone[data-rank='4'] {
+  color: #ffd76b;
+  text-shadow: 0 0 12px rgba(255, 215, 107, 0.7);
+}
+.hype-streak {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #ff9ecb;
+  margin-left: auto;
+  margin-right: 8px;
+}
+.hype-stat {
+  font-size: 12px;
+  font-weight: 700;
+  color: #b6ff5a;
+  letter-spacing: 0.04em;
+}
+.hype-bar {
+  position: relative;
+  height: 16px;
+  border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+.hype-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 12%;
+  border-radius: var(--r-pill);
+  background: linear-gradient(90deg, #7be0d0, #3ce0ff 40%, #ffc93c 72%, #ffd76b 100%);
+  box-shadow: 0 0 14px -2px #ffd76b;
+  transition: width 0.06s linear;
+}
+.hype-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: rgba(10, 11, 15, 0.6);
+  z-index: 1;
+}
+.hype-blip {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  margin-top: -4.5px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 8px 1px #fff;
+  z-index: 2;
+}
+.hype-hint {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: #6a7086;
+  text-align: center;
+}
+.hype-feedback {
+  position: absolute;
+  left: 50%;
+  top: -14px;
+  transform: translate(-50%, 0);
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  opacity: 0;
+  transition: opacity 0.12s, transform 0.25s;
+}
+.hype-feedback.show {
+  opacity: 1;
+  transform: translate(-50%, -8px);
+}
+.hype-feedback.perfect { color: #ffd76b; text-shadow: 0 0 10px rgba(255, 215, 107, 0.8); }
+.hype-feedback.good { color: #7be0d0; }
+.hype-feedback.off { color: #8a93a8; }

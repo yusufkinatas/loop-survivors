@@ -15,6 +15,7 @@ import { mountPlayground, type Playground } from '../rehearsal/playground';
 import { RUN } from './config';
 import { EFFECT_META } from './effects';
 import { Hud, TIER_NUMERALS } from './hud';
+import { HypeController } from './hype';
 import { Input } from './input';
 import { ITEMS } from './items';
 import { mountJoystick } from './joystick';
@@ -53,6 +54,20 @@ export async function bootGame(
 
   const hud = new Hud(root, kits);
   const input = new Input();
+  // The hype layer: a live crowd-energy fader the player rides on the beat to
+  // shape the run's dynamic arc (see src/game/hype.ts). Its DOM panel mounts
+  // once; it drives the engine (voice gating + tone filter) and the world's
+  // risk/reward multipliers only while a run/sandbox is live.
+  const hype = new HypeController();
+  hype.mount(root);
+  hype.onPeak = () => {
+    if (!world) return;
+    // The payoff of a build: a bright crowd-colored flash + a HUD pulse the
+    // instant the full band drops in. No damage — the reward for peak is the
+    // sustained damage/XP bonus, not a one-shot blast.
+    world.fx?.push({ type: 'flash', color: 0xffd76b, alpha: 0.18, dur: 0.22 });
+    hud.levelPulse();
+  };
   let state: State = 'start';
   let world: RunWorld | null = null;
   let view: RunView | null = null;
@@ -306,7 +321,15 @@ export async function bootGame(
     seekOverlay.style.display = 'none';
     engine.clearBarQueue();
     engine.clearVoiceEffects();
-    for (const role of ROLES) engine.setVoiceEnabled(role, false);
+    for (const role of ROLES) {
+      engine.setVoiceEnabled(role, false);
+      engine.setVoiceGated(role, false);
+    }
+    // Reset the hype layer and re-open the tone filter (a fresh run starts wide
+    // open until the meter drives it back down).
+    hype.reset();
+    hype.show(false);
+    engine.setToneCutoff(20000);
   }
 
   function startRun(genre: Genre, startingKit: Role): void {
@@ -324,6 +347,7 @@ export async function bootGame(
     hud.showHud(true);
     hud.renderItems(world.items);
     hud.renderBand(world.tiers);
+    hype.show(true);
     state = 'run';
     void engine.ctx.resume();
     engine.clock.start();
@@ -359,6 +383,7 @@ export async function bootGame(
     });
     hud.showHud(true);
     hud.renderBand(w.tiers);
+    hype.show(true);
     state = 'sandbox';
     void engine.ctx.resume();
     engine.clock.start();
@@ -455,6 +480,7 @@ export async function bootGame(
     applyGain();
     engine.clock.stop();
     engine.clearBarQueue();
+    hype.show(false);
     hud.showEnd(
       victory,
       {
@@ -499,6 +525,9 @@ export async function bootGame(
     if (paused) return;
     if ((state === 'run' || state === 'sandbox') && world) {
       const dt = Math.min(ticker.deltaMS / 1000, 1 / 20); // clamp long frames
+      // Ride the hype layer: drain the meter, gate the band's layers, sweep the
+      // tone filter, and set the world's risk/reward multipliers for this frame.
+      hype.tick(dt, engine, world, world.tiers);
       world.update(dt);
       view?.update(dt);
       hud.setStatus(
@@ -635,6 +664,13 @@ export async function bootGame(
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Escape') {
       togglePause();
+      return;
+    }
+    // SPACE pumps the crowd, scored against the beat (the hype layer). Ignore
+    // key-repeat so holding it can't cheese the meter — every pump is a tap.
+    if (e.code === 'Space') {
+      e.preventDefault();
+      if (!paused && (state === 'run' || state === 'sandbox') && !e.repeat) hype.pump(engine);
       return;
     }
     const byKey: Record<string, { onClick(): void }> = {

@@ -37,6 +37,12 @@ export interface Voice {
   effect: EffectId | null;
   /** Current inserted effect nodes, kept for teardown. */
   fxNodes: AudioNode[];
+  /** Hype gate (the live-arrangement layer, see src/game/hype.ts): while true
+   *  this voice is silenced at the source — no trigger fires, so it makes no
+   *  sound and (Model A) deals no damage. The band's top layers gate in and out
+   *  as the player rides the crowd's energy, so the mix breathes instead of only
+   *  ever thickening. Owned-but-gated is a live mute, not un-owning the voice. */
+  gated: boolean;
 }
 
 /** A trigger that has been scheduled. Dispatched to listeners by update()
@@ -80,6 +86,14 @@ export class MusicEngine {
   private barQueue: (() => void)[] = [];
   private stepMarkers: { step: number; time: number }[] = [];
   private lastDueStep = 0;
+  /** Master tone filter (the hype layer's "filter opens as energy builds").
+   *  A lowpass on the summed mix: closed it muffles the whole track into a
+   *  breakdown, open it lets the full spectrum through. */
+  private toneFilter: BiquadFilterNode;
+  /** Beat grid tracking for rhythm-timed input (src/game/hype.ts): the audio
+   *  time of the most recent quarter-note and the seconds between beats. */
+  private lastBeatTime = 0;
+  private beatInterval = 0.5;
 
   constructor(ctx: AudioContext, kits: Map<Role, Kit>) {
     this.ctx = ctx;
@@ -95,7 +109,13 @@ export class MusicEngine {
     limiter.release.value = 0.12;
     this.analyser = ctx.createAnalyser();
     this.analyser.fftSize = 2048;
-    this.master.connect(limiter).connect(this.analyser).connect(ctx.destination);
+    // master -> tone -> limiter -> analyser -> out. The tone filter starts wide
+    // open (inert) so nothing changes until the hype layer drives it.
+    this.toneFilter = ctx.createBiquadFilter();
+    this.toneFilter.type = 'lowpass';
+    this.toneFilter.frequency.value = 20000;
+    this.toneFilter.Q.value = 0.7;
+    this.master.connect(this.toneFilter).connect(limiter).connect(this.analyser).connect(ctx.destination);
 
     for (const [role, kit] of kits) {
       const gain = ctx.createGain();
@@ -123,6 +143,7 @@ export class MusicEngine {
         lastHit: null,
         effect: null,
         fxNodes: [],
+        gated: false,
       });
     }
 
@@ -287,8 +308,52 @@ export class MusicEngine {
     this.trigger(voice, ev, this.ctx.currentTime);
   }
 
+  /** Silence/unsilence a voice at the source without un-owning it (the hype
+   *  layer's live mute). A gated voice fires no trigger, so it makes no sound
+   *  and deals no damage. Sustained notes already ringing are left to decay. */
+  setVoiceGated(role: Role, gated: boolean): void {
+    const voice = this.voices.get(role);
+    if (voice) voice.gated = gated;
+  }
+
+  /** Ride the master tone filter's cutoff (Hz). Low = the whole mix muffles
+   *  into a breakdown; 20 kHz = fully open. Glides so a sweep is smooth. */
+  setToneCutoff(hz: number): void {
+    this.toneFilter.frequency.setTargetAtTime(
+      Math.max(200, Math.min(20000, hz)),
+      this.ctx.currentTime,
+      0.05,
+    );
+  }
+
+  /** Seconds from now to the nearest quarter-note beat (0 = dead on). Feeds
+   *  the rhythm-timed hype pump so a tap can be scored against the groove. */
+  beatError(): number {
+    if (this.beatInterval <= 0) return 0;
+    const now = this.ctx.currentTime;
+    let phase = (now - this.lastBeatTime) % this.beatInterval;
+    if (phase < 0) phase += this.beatInterval;
+    return Math.min(phase, this.beatInterval - phase);
+  }
+
+  /** Phase through the current beat, 0..1 (0 = on the beat). Drives the HUD
+   *  beat blip so the player can time taps by eye as well as by ear. */
+  beatPhase(): number {
+    if (this.beatInterval <= 0) return 0;
+    const now = this.ctx.currentTime;
+    let phase = (now - this.lastBeatTime) % this.beatInterval;
+    if (phase < 0) phase += this.beatInterval;
+    return phase / this.beatInterval;
+  }
+
   private onStep(step: number, time: number): void {
     if (step === 0) this.lastDueStep = 0;
+    // Record the audio time of each quarter-note beat (every stepsPerBeat
+    // steps) so key presses can be scored against the live grid.
+    if (step % this.clock.stepsPerBeat === 0) {
+      this.lastBeatTime = time;
+      this.beatInterval = this.clock.stepDuration * this.clock.stepsPerBeat;
+    }
     this.stepMarkers.push({ step, time });
     // The phrase clock: bars 1-4, then roll over. Charts loop inside the
     // phrase, so a 4-bar chart's bar 4 is always the phrase's bar 4 and
@@ -300,7 +365,7 @@ export class MusicEngine {
       for (const fn of queue) fn();
     }
     for (const voice of this.voices.values()) {
-      if (!voice.enabled) continue;
+      if (!voice.enabled || voice.gated) continue;
       for (const ev of chartEventsAtStep(voice.chart, phraseStep)) {
         this.trigger(voice, ev, time, phraseStep);
       }
