@@ -52,7 +52,7 @@ export async function mountSoundCheck(root: HTMLElement, ctx: AudioContext): Pro
     import('../audio/kits/index'),
   ]);
   const { GENRES, supportedRoles } = genresMod;
-  const { kitForGenre } = kitsMod;
+  const { kitForGenre, sampleFilesFor } = kitsMod;
   const { ROLE_META } = await import('../audio/kits');
 
   const el = (tag: string, cls: string, parent: HTMLElement, text = ''): HTMLElement => {
@@ -81,6 +81,21 @@ export async function mountSoundCheck(root: HTMLElement, ctx: AudioContext): Pro
     src.start();
   };
 
+  // Fetch + decode the untouched source files (<file>.raw.wav) for A/B against
+  // the corrected voice. Cached so re-clicking doesn't re-download. Returns []
+  // if a genre's raw files aren't on disk (they're deleted after sign-off).
+  const rawCache = new Map<string, AudioBuffer | null>();
+  const loadRaw = async (url: string): Promise<AudioBuffer | null> => {
+    if (rawCache.has(url)) return rawCache.get(url)!;
+    let buf: AudioBuffer | null = null;
+    try {
+      const res = await fetch(url);
+      if (res.ok) buf = await ctx.decodeAudioData(await res.arrayBuffer());
+    } catch { /* raw not present — button will report it */ }
+    rawCache.set(url, buf);
+    return buf;
+  };
+
   for (const genre of GENRES) {
     const kit = await kitForGenre(genre.id, SKELETON.rootHz);
     const sec = el('div', 'sc-genre', page);
@@ -103,6 +118,22 @@ export async function mountSoundCheck(root: HTMLElement, ctx: AudioContext): Pro
           t += 320;
         }
       };
+      // Raw A/B: only for sample-backed voices (synth voices have no raw source).
+      const rawFiles = sampleFilesFor(genre.id, role);
+      if (rawFiles.length) {
+        const rawBtn = el('button', 'sc-play sc-raw', row, 'raw') as HTMLButtonElement;
+        rawBtn.title = 'Play the untouched source file(s) — compare against the corrected voice';
+        rawBtn.onclick = async () => {
+          rawBtn.disabled = true;
+          let t = 0, any = false;
+          for (const file of rawFiles) {
+            const b = await loadRaw(`/samples/${genre.id}/${file}.raw.wav`);
+            if (b) { any = true; setTimeout(() => playBuffer(b), t); t += 400; }
+          }
+          rawBtn.disabled = false;
+          if (!any) { rawBtn.textContent = 'no raw'; rawBtn.classList.add('warn'); }
+        };
+      }
       el('span', 'sc-name', row, ROLE_META[role].name);
       const badges = el('span', 'sc-badges', row);
       el('span', 'sc-badge', badges, `${m.durationMs}ms`);

@@ -84,6 +84,15 @@ const SAMPLE_OVERLAY: Record<GenreId, Partial<Record<Role, SampleSpec[]>>> = {
   },
 };
 
+/** The raw/corrected sample file bases backing a role for a genre, or [] if the
+ *  role is synthesized (no sample). Used by #soundcheck to A/B the untouched
+ *  `<file>.raw.wav` against the corrected `<file>.wav`. */
+export function sampleFilesFor(id: GenreId, role: Role): string[] {
+  const specs = SAMPLE_OVERLAY[id]?.[role];
+  if (!specs) return [];
+  return [...new Set(specs.map(([, file]) => file))];
+}
+
 /** Overlay a genre's real drum samples onto its synth kit. A role whose every
  *  variant loads is replaced by the sampled kit; if any file fails to load
  *  (offline, 404), that role keeps its synthesized voice (never silent). */

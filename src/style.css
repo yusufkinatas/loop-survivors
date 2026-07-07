@@ -1575,6 +1575,8 @@ button.big {
 .sc-genre { border-top: 1px solid var(--line); padding-top: 6px; }
 .sc-row { display: flex; align-items: center; gap: 10px; padding: 5px 6px; border-radius: var(--r-sm); border-left: 3px solid var(--voice-color); background: rgba(255,255,255,0.02); margin-bottom: 4px; }
 .sc-play { width: 34px; min-width: 34px; }
+.sc-raw { width: auto; min-width: 40px; font: 700 10px/1 var(--font-mono); opacity: 0.75; }
+.sc-raw.warn { color: #ffb43c; opacity: 1; }
 .sc-name { width: 96px; font: 700 12px/1 var(--font-mono); color: var(--voice-color); }
 .sc-badges { display: flex; gap: 5px; }
 .sc-badge { font: 600 10px/1.4 var(--font-mono); padding: 2px 5px; border-radius: 3px; background: rgba(255,255,255,0.06); color: var(--ink-dim); }

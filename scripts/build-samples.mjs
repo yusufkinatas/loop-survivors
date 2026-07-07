@@ -11,7 +11,7 @@
 // genre's identity (909 vs 808 vs LinnDrum vs break) and need no tuning. Melodic +
 // bass voices stay synthesized (src/audio/kits/<genre>.ts).
 
-import { mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -130,8 +130,6 @@ function analyze(w, role) {
   return { role, durationMs, onsetMs, effMs, peak: +peak.toFixed(3), rms: +Math.sqrt(sumSq / d.length).toFixed(3), flags };
 }
 
-const tmp = join(ROOT, '.sample-raw');
-mkdirSync(tmp, { recursive: true });
 const report = {};
 for (const [genre, roles] of Object.entries(MANIFEST)) {
   const dir = join(ROOT, 'public', 'samples', genre);
@@ -142,7 +140,12 @@ for (const [genre, roles] of Object.entries(MANIFEST)) {
     const url = RAW + repoPath.split('/').map(encodeURIComponent).join('/');
     const res = await fetch(url);
     if (!res.ok) { console.error(`FAIL ${genre}/${local}: ${res.status}`); process.exitCode = 1; continue; }
-    const rawPath = join(tmp, `${genre}_${local}.wav`);
+    // Keep the raw download ON DISK next to the corrected file (<role>.raw.wav)
+    // so the #soundcheck screen can A/B the untouched source against the ffmpeg
+    // result. These .raw.wav files are audition-only; delete them once the
+    // developer signs off on the corrections (they should not ship).
+    const rawName = `${local}.raw.wav`;
+    const rawPath = join(dir, rawName);
     writeFileSync(rawPath, Buffer.from(await res.arrayBuffer()));
     const outName = `${local}.wav`;
     const outPath = join(dir, outName);
@@ -158,7 +161,6 @@ for (const [genre, roles] of Object.entries(MANIFEST)) {
     `# ${genre} samples\n\nSource: ${SRC}\n\nProcessed by scripts/build-samples.mjs (ffmpeg).\n\n${credits.join('\n')}\n\n` +
     `Licensing: freely redistributable for music-making; **verify before commercial ship** (docs/plan.md ship checklist).\n`);
 }
-rmSync(tmp, { recursive: true, force: true });
 
 let out = '# Sample health report (processed assets)\n\n';
 let flaggedCount = 0;
