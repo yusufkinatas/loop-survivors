@@ -1723,3 +1723,73 @@ button.big {
 .arena-vignette.perf-dropping {
   background: radial-gradient(150% 150% at 50% 45%, rgba(255, 220, 120, 0.16) 30%, rgba(40, 20, 0, 0.5) 100%);
 }
+/* Round-4 armed/pending tell: the press is acknowledged instantly with a subtle
+   neutral pulse on the edge, but the big color wash waits for the committed bar. */
+.arena-vignette.perf-pending {
+  animation: perfpending 0.5s ease-in-out infinite;
+}
+@keyframes perfpending {
+  0%, 100% { box-shadow: inset 0 0 0 0 rgba(255, 255, 255, 0); }
+  50% { box-shadow: inset 0 0 90px -20px rgba(255, 255, 255, 0.22); }
+}
+
+/* Phrase visualizer (round-4): four cells = the four bars of the phrase. The
+   current bar lights, a beat pulse ticks the four beats, and the 4th cell is the
+   drop-window (the coming phrase "one" where a drop lands). Small + glanceable. */
+.phrase-viz {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.phrase-cell {
+  flex: 1;
+  height: 8px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: #0c0e13;
+  transition: background 0.08s linear, box-shadow 0.08s linear;
+}
+.phrase-cell.drop-window {
+  border-color: rgba(255, 200, 100, 0.5);
+}
+.phrase-cell.active {
+  background: rgba(107, 168, 255, 0.55);
+}
+.phrase-cell.drop-window.active {
+  background: rgba(255, 200, 100, 0.6);
+}
+.phrase-cell.beat {
+  box-shadow: 0 0 10px -1px rgba(255, 255, 255, 0.6);
+}
+
+/* Climb fuse: only meaningful while climbing (the panel gets .fuse). A warm fill
+   toward the ceiling with a notch at the min-arm point; a hot flash near 1.0
+   reads "RESOLVE NOW / DROP NOW". Hidden otherwise so GROOVE/BREAK stay clean. */
+.energy-meter .fuse-fill,
+.energy-meter .fuse-notch {
+  display: none;
+}
+.perf-panel.fuse .energy-meter .fuse-fill {
+  display: block;
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(255, 140, 60, 0.4), #ffb454);
+  box-shadow: 0 0 14px -4px #ffb454;
+  transition: width 0.12s linear;
+}
+.perf-panel.fuse .energy-meter .fuse-fill.hot {
+  background: linear-gradient(90deg, #ffb454, #fff2a8);
+  box-shadow: 0 0 22px -2px #fff2a8;
+  animation: dropready 0.5s ease-in-out infinite;
+}
+.perf-panel.fuse .energy-meter .fuse-notch {
+  display: block;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: rgba(255, 255, 255, 0.7);
+  z-index: 1;
+}

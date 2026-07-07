@@ -39,6 +39,86 @@ and BREAK below — read them as the current truth where they differ:
   CLIMB (arm) → DROP (oversized). Tuning consts in `sections.ts`
   (`BREAK_PULSE_*`, `CONTRAST_*`).
 
+## Round-4 revisions (after the second A playtest)
+
+The developer played the round-3 build and gave detailed feel notes. A two-expert
+reconvene (music producer + survivors-like game designer, via sub-agents) ran two
+rounds and converged. These amend CLIMB, the drop, timing, and the visuals below;
+read them as the current truth where they differ. Not yet implemented at time of
+writing — this section is the build order.
+
+**Diagnosis (two root bugs).**
+1. **CLIMB reads *up*.** It plays a tier denser *and* grants +35% weapon damage,
+   so it sounds and plays like a power spike that competes with the drop. A build
+   is *tension with less body*, not more. This is why CLIMB feels close to GROOVE
+   and why the drop has nothing to release.
+2. **The slam lands on the next beat, not the phrase.** A mid-phrase slam sounds
+   cheap. The weight of a drop comes from landing on the "one" of a 4-bar phrase.
+
+**1. CLIMB becomes an exposed, no-reward risk stance.** You climb to *arm the
+drop*, never to get stronger.
+- Weapon damage back to **1.0** (kill the +35%).
+- Contact damage taken ramps **+40% → +80%** across the climb (it gets more
+  dangerous every bar). Replaces the flat +25%.
+- Enemy speed toward the player **+15%** during CLIMB; **pickup magnet off** (no
+  farming while climbing); **no crowd control** (the shove pulse stays BREAK-only).
+- Audio rebuilt as thin body + hollow low end + rising top: keep the kick pulsing
+  on the beats, pull the snare/clap body *out* (do **not** read a tier up), sub
+  stays thinned to one hit per bar (digs the hole the drop fills), density comes
+  from a roll that subdivides faster each bar (bar 1 eighths → bar 2 sixteenths →
+  bar 3 buzz → bar 4 sweep), filter 2200 → 4400 → 8800 → open across four bars.
+
+**2. The drop: scheduled to the next phrase, safety instant.** (Developer's
+call, integrating both experts' hard lines.)
+- Pressing SPACE **schedules the whole drop** — shockwave *and* musical slam — to
+  the **next phrase downbeat** (step 0 of the 4-bar phrase). It never fires out of
+  nowhere; the track resolves completely on the "one".
+- **i-frames begin instantly on press and last for the entire scheduled gap** (not
+  a fixed 0.7s). You are invulnerable through the wind-up, so survival is never
+  gated on timing. CLIMB's contact-damage exposure ends on press.
+- A **riser sweeps up through the gap** so it audibly "loads to the one" — the
+  armed/untouchable/about-to-detonate window, never dead air, never "nothing
+  happened".
+- **One legal slam target: the phrase downbeat.** No bar/phrase split. Drop *size*
+  scales with climb length in quantized bar tiers (~2 bars = small panic clear,
+  4 bars = full, 8 bars = oversized); *where* it lands is always the phrase "one".
+
+**3. Charge gated to a real climb.** Charge is **bound to the current CLIMB
+entry**; leaving CLIMB (to GROOVE or BREAK) **empties it to zero** (kills the
+charge-dip-re-enter-instant-drop exploit). Minimum **~2 bars** of continuous CLIMB
+before the drop can arm, every time. The contrast meter (from BREAK) may persist
+as the multiplier; the drop *charge* does not.
+
+**4. Can't climb forever — the brownout.** Hard ceiling at **8 bars** (two
+phrases). Overstay it and the build **browns out**: the riser flatlines, the
+filter closes, the track sags back to GROOVE over one bar. It sounds deliberately
+anticlimactic (an authored deflate), never dead air or a bug. **No shockwave, no
+i-frames** — pure loss of the payoff plus the full exposure already eaten. No
+added stun or damage. Telegraphed a beat early ("RESOLVE NOW" flash + the fuse
+draining) so it is always the player's readable mistake.
+
+**5. Timing = carrot, almost never stick** (not a rhythm game — eyes are on the
+horde). A switch within ~4 steps (~220 ms) before a bar line is a **tight switch**
+→ a small perk (tight CLIMB entry = charge head start). Committing the drop *late*
+in the phrase (short, tight wind-up) is the **Perfect Drop** (bonus damage +
+longer window); firing early still lands a great drop on the "one", just smaller.
+**No off-beat punishment anywhere** — the only fail state is greed-overstay.
+
+**6. Visuals synced to the grid (feedback #1).** The screen color / vignette flip
+lands **with the audio on the grid**, not on keypress. The press gets an instant
+**armed/pending tell** (a glow that snaps solid when the switch lands) so input
+never feels dropped, but the big wash lands when the music does.
+
+**7. A phrase visualizer.** Four boxes = the four bars (current bar lit; the 4th
+is the drop-moment box), a beat pulse on the four beats, the arming glow, and a
+CLIMB **fuse meter** marking the "min drop ready" notch (~2 bars) and the
+"must-resolve" ceiling (8 bars), draining into the drop. Reads "switch now / drop
+now" at a glance, sound off (Pillar 3).
+
+Musically-legal switch moments (backbone of the timing layer): Any→BREAK,
+Any→CLIMB, and backing→GROOVE are legal on any **bar** downbeat; CLIMB→DROP lands
+only on a **phrase** downbeat. Never mid-bar.
+
 ## Why v1 is being replaced
 
 The developer likes having sections and swapping between them, but v1 does not

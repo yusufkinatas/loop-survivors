@@ -9,7 +9,8 @@ import { TIER_LINES } from './config';
 import { EFFECT_META } from './effects';
 import { ITEMS, type ItemId } from './items';
 import type { PickOption } from './picks';
-import { SECTIONS, SECTION_ORDER, type SectionId } from './sections';
+import { SECTIONS, SECTION_ORDER, CLIMB_MIN_S, CLIMB_CEILING_S, type SectionId } from './sections';
+import { STEPS_PER_BAR } from '../audio/scale';
 
 import { TIER_COUNT } from '../audio/charts';
 
@@ -45,6 +46,10 @@ export class Hud {
   private energyFill: HTMLElement | null = null;
   private contrastFill: HTMLElement | null = null;
   private dropBtn: HTMLElement | null = null;
+  // Phrase visualizer (round-4): four bar cells + a climb fuse overlay.
+  private phraseCells: HTMLElement[] = [];
+  private fuseFill: HTMLElement | null = null;
+  private fuseNotch: HTMLElement | null = null;
   private screen: HTMLElement | null = null;
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
   private kits: Map<Role, Kit>;
@@ -110,10 +115,24 @@ export class Hud {
       };
       this.sectionChips.set(id, chip);
     }
+    // Phrase visualizer: four bar cells (the 4-bar phrase). The 4th is the
+    // drop-window cell (the coming phrase downbeat = the legal drop landing).
+    // Reads "switch now / drop now" at a glance, sound off (Pillar 3).
+    const phrase = el('div', 'phrase-viz', this.perf);
+    this.phraseCells = [];
+    for (let i = 0; i < 4; i++) {
+      const cell = el('div', 'phrase-cell' + (i === 3 ? ' drop-window' : ''), phrase);
+      this.phraseCells.push(cell);
+    }
     const meter = el('div', 'energy-meter', this.perf);
     // Contrast (banked in BREAK) sits behind the charge fill as a cooler bar.
     this.contrastFill = el('div', 'contrast-fill', meter);
     this.energyFill = el('div', 'fill', meter);
+    // Climb fuse: during CLIMB the charge bar doubles as a fuse — a fill toward
+    // the ceiling with a notch at the min-arm point and a hot flash near 1.0.
+    this.fuseFill = el('div', 'fuse-fill', meter);
+    this.fuseNotch = el('div', 'fuse-notch', meter);
+    this.fuseNotch.style.left = `${(CLIMB_MIN_S / CLIMB_CEILING_S) * 100}%`;
     const btn = el('button', 'drop-btn', meter, 'CHARGE IN CLIMB');
     btn.onclick = () => {
       onDrop();
@@ -135,6 +154,8 @@ export class Hud {
     inClimb: boolean;
     canDrop: boolean;
     dropping: boolean;
+    phraseStep: number;
+    climbFrac: number;
     unlocked: { break: boolean; climb: boolean };
   }): void {
     for (const [id, chip] of this.sectionChips) {
@@ -145,6 +166,21 @@ export class Hud {
     }
     if (this.energyFill) this.energyFill.style.width = `${Math.min(1, s.charge) * 100}%`;
     if (this.contrastFill) this.contrastFill.style.width = `${Math.min(1, s.contrast) * 100}%`;
+    // Phrase visualizer: light the current bar (0..3), pulse on the four beats.
+    const bar = Math.floor(s.phraseStep / STEPS_PER_BAR);
+    const stepsPerBeat = 4; // 16th grid, 4 steps per beat (scale.ts)
+    const onBeat = s.phraseStep % stepsPerBeat === 0;
+    for (let i = 0; i < this.phraseCells.length; i++) {
+      const cell = this.phraseCells[i];
+      cell.classList.toggle('active', i === bar);
+      cell.classList.toggle('beat', i === bar && onBeat);
+    }
+    // Climb fuse: fill toward the ceiling, hot flash near the "resolve now" edge.
+    if (this.fuseFill) {
+      this.fuseFill.style.width = `${Math.min(1, s.climbFrac) * 100}%`;
+      this.fuseFill.classList.toggle('hot', s.inClimb && s.climbFrac >= 0.9);
+    }
+    this.perf.classList.toggle('fuse', s.inClimb);
     // Show the banked bonus once it's worth reading (a bigger drop is coming).
     const bonus = s.dropScale >= 1.15 ? ` ×${s.dropScale.toFixed(1)}` : '';
     if (this.dropBtn) {

@@ -69,6 +69,10 @@ import {
   CLIMB_CHARGE_PER_S,
   CHARGE_PER_DAMAGE,
   CHARGE_MAX,
+  CLIMB_CONTACT_MAX,
+  CLIMB_ENEMY_SPEED_MUL,
+  CLIMB_MIN_S,
+  CLIMB_CEILING_S,
   BREAK_PULSE_S,
   BREAK_PULSE_RADIUS,
   BREAK_PULSE_KNOCK,
@@ -344,8 +348,23 @@ export class RunWorld {
    *  arms the drop. Read-only w.r.t. the sim (never feeds damage/spawns), so it
    *  stays inert for the bot. */
   charge = 0;
+  /** Seconds spent in the committed CLIMB (round-4). Resets on entering/leaving
+   *  CLIMB. Drives the contact-damage ramp, the min-arm gate, and the brownout
+   *  ceiling. Player-only — inert for the bot (which never leaves GROOVE). */
+  climbT = 0;
   /** A drop is armed and waiting for its quantized slam (the pre-drop gap). */
   dropPending = false;
+  /** Set when the drop is armed with a tight (Perfect) wind-up, so resolveDrop
+   *  grants a bonus. Player-only. */
+  dropPerfect = false;
+  /** One-shot: set when a held CLIMB overstays the ceiling and browns out. The
+   *  shell consumes it to commit GROOVE + play the deflate. Player-only. */
+  private brownoutFlag = false;
+  /** Latch so the brownout fires exactly once per climb: section stays 'climb'
+   *  for up to a bar until the shell commits GROOVE, so without this the ceiling
+   *  test would re-arm the flag every frame (toast/callback spam). Reset on a
+   *  fresh CLIMB entry (commitSection). Player-only. */
+  private brownedOut = false;
   /** Seconds of pre-drop gap left (covered by i-frames; HUD reads it). */
   dropGapT = 0;
   /** Contrast banked in BREAK: multiplies the next drop by (1 + contrast).
@@ -823,8 +842,18 @@ export class RunWorld {
       this.section === 'climb' &&
       !this.dropPending &&
       this.dropWindowT <= 0 &&
+      // A real climb must have happened — kills the dip-and-refire exploit.
+      this.climbT >= CLIMB_MIN_S &&
       this.ownedVoiceCount >= DROP.minVoices
     );
+  }
+
+  /** One-shot read of the brownout flag (the shell polls this each frame and,
+   *  when set, deflates the build back to GROOVE on the next bar). */
+  consumeBrownout(): boolean {
+    if (!this.brownoutFlag) return false;
+    this.brownoutFlag = false;
+    return true;
   }
 
   /** Charge as a 0..1 fill for the HUD (the overcharge tail is a bonus). */
@@ -845,9 +874,10 @@ export class RunWorld {
    *  invulnerability, not helplessness. The audio engine schedules the slam on
    *  the next phrase downbeat; the shell calls resolveDrop when it lands. The
    *  charge is spent on resolve, not here. */
-  armDrop(gapS: number): boolean {
+  armDrop(gapS: number, perfect = false): boolean {
     if (!this.canArmDrop) return false;
     this.dropPending = true;
+    this.dropPerfect = perfect;
     this.dropGapT = gapS;
     this.player.iframesT = Math.max(this.player.iframesT, gapS + DROP.iframesS);
     return true;
@@ -862,12 +892,16 @@ export class RunWorld {
     const p = this.player;
     // Payoff scales two ways: overcharge from riding CLIMB longer, and CONTRAST
     // banked in BREAK (going quiet sets up a bigger release).
-    const scale = Math.max(1, Math.min(CHARGE_MAX, this.charge)) * (1 + this.contrast);
+    // Perfect drop (tight late wind-up): a bigger slam and a longer window.
+    const perfect = this.dropPerfect;
+    let scale = Math.max(1, Math.min(CHARGE_MAX, this.charge)) * (1 + this.contrast);
+    if (perfect) scale *= 1.25;
     this.charge = 0;
     this.contrast = 0;
     this.dropPending = false;
+    this.dropPerfect = false;
     this.dropGapT = 0;
-    this.dropWindowT = DROP.windowS;
+    this.dropWindowT = DROP.windowS + (perfect ? 2 : 0);
     this.section = 'groove';
     this.pendingSection = null;
     p.iframesT = Math.max(p.iframesT, DROP.iframesS);
@@ -903,6 +937,17 @@ export class RunWorld {
   /** Commit a requested section as the live arrangement (called on the bar
    *  boundary by the shell, in lockstep with the engine's pattern swap). */
   commitSection(id: SectionId): void {
+    // Round-4: charge exists ONLY during one continuous committed CLIMB. Entering
+    // a fresh CLIMB resets both the climb clock and the charge (this is the fix
+    // that kills the charge-persist-across-dips re-fire exploit); leaving CLIMB
+    // for GROOVE/BREAK empties them too. Contrast (banked in BREAK) may persist;
+    // the drop charge never does. Player-only, so the bot's GROOVE stays inert.
+    if (id !== this.section) {
+      this.climbT = 0;
+      this.charge = 0;
+      // A fresh CLIMB re-arms the brownout latch (the previous climb's is spent).
+      if (id === 'climb') this.brownedOut = false;
+    }
     this.section = id;
     if (this.pendingSection === id) this.pendingSection = null;
   }
@@ -958,8 +1003,22 @@ export class RunWorld {
     // is in CLIMB (never true for the bot / a replay).
     if (this.dropGapT > 0) this.dropGapT = Math.max(0, this.dropGapT - dt);
     if (this.dropWindowT > 0) this.dropWindowT = Math.max(0, this.dropWindowT - dt);
-    if (this.section === 'climb' && !this.dropPending && this.dropWindowT <= 0)
+    if (this.section === 'climb' && !this.dropPending && this.dropWindowT <= 0) {
       this.charge = Math.min(CHARGE_MAX, this.charge + CLIMB_CHARGE_PER_S * dt);
+      // Time in the committed CLIMB: drives the contact ramp, the min-arm gate,
+      // and the brownout ceiling. Capped at the ceiling so it stops accumulating
+      // once the brownout fires (belt-and-braces with the flag being one-shot).
+      this.climbT = Math.min(CLIMB_CEILING_S, this.climbT + dt);
+      // Can't climb forever: overstay the ceiling and the build browns out —
+      // lose the payoff (the shell commits GROOVE + plays the deflate on the bar).
+      // Latched: fires once per climb (section stays 'climb' for up to a bar until
+      // the shell commits GROOVE, so an unlatched test would spam every frame).
+      if (this.climbT >= CLIMB_CEILING_S && !this.brownedOut) {
+        this.brownoutFlag = true;
+        this.brownedOut = true;
+        this.charge = 0;
+      }
+    }
     // BREAK banks CONTRAST (a bigger next drop) and pulses a crowd-control shove
     // — its two reasons to exist. Both player-only (the bot stays in GROOVE).
     if (this.section === 'break' && !this.dropPending && this.dropWindowT <= 0) {
@@ -1064,9 +1123,20 @@ export class RunWorld {
       // Section defense trade folds in the same way (GROOVE = 1, so the
       // bot/replay path keeps the exact rounding).
       const stance = this.pendingSection ?? this.section;
+      // Round-4: in a COMMITTED CLIMB the contact multiplier RAMPS from the base
+      // (SECTIONS.climb.contactTakenMul = 1.4) up to CLIMB_CONTACT_MAX (1.8) by
+      // climbT — the build gets more dangerous every bar. Everywhere else uses the
+      // flat per-section value. GROOVE = 1 (integer-clean), so the bot/replay path
+      // keeps the exact rounding.
+      let secContact = SECTIONS[stance].contactTakenMul;
+      if (this.section === 'climb') {
+        const base = SECTIONS.climb.contactTakenMul;
+        const frac = Math.max(0, Math.min(1, this.climbT / CLIMB_CEILING_S));
+        secContact = base + (CLIMB_CONTACT_MAX - base) * frac;
+      }
       const dmg = Math.max(
         1,
-        Math.round(e.damage * this.mods.contactTakenMul * SECTIONS[stance].contactTakenMul),
+        Math.round(e.damage * this.mods.contactTakenMul * secContact),
       );
       p.hp = Math.max(0, p.hp - dmg);
       p.iframesT = RUN.iframesS;
@@ -1223,9 +1293,12 @@ export class RunWorld {
 
   private moveEnemies(dt: number): void {
     const p = this.player;
+    // Round-4: the horde leans in during a COMMITTED CLIMB (+15% chase speed).
+    // Strictly gated on section === 'climb', so GROOVE (bot/replay) is unchanged.
+    const climbSpeedMul = this.section === 'climb' ? CLIMB_ENEMY_SPEED_MUL : 1;
     for (const e of this.enemies) {
       if (e.dead) continue;
-      let speed = e.speed;
+      let speed = e.speed * climbSpeedMul;
       if (e.slowT > 0) {
         e.slowT -= dt;
         speed *= ZONE_SLOW_MUL;
@@ -2131,12 +2204,16 @@ export class RunWorld {
 
   private updateGems(dt: number): void {
     const p = this.player;
+    // Round-4: no farming while climbing — the pickup magnet is OFF in a
+    // COMMITTED CLIMB (gems still collect on true overlap below). Gated on
+    // section === 'climb', so GROOVE (bot/replay) keeps its magnet.
+    const magnetOn = this.section !== 'climb';
     for (let i = this.gems.length - 1; i >= 0; i--) {
       const g = this.gems[i];
       const dx = p.x - g.x;
       const dy = p.y - g.y;
       const d = Math.hypot(dx, dy);
-      if (d < RUN.magnetRadius * this.mods.magnetMul) {
+      if (magnetOn && d < RUN.magnetRadius * this.mods.magnetMul) {
         const pull = 420 * dt;
         g.x += (dx / (d || 1)) * pull;
         g.y += (dy / (d || 1)) * pull;

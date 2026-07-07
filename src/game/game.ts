@@ -14,7 +14,8 @@ import { SIM_VIEW } from '../bot/sim';
 import { mountPlayground, type Playground } from '../rehearsal/playground';
 import { slotOf } from './band';
 import { RUN } from './config';
-import { SECTIONS, type SectionId } from './sections';
+import { SECTIONS, CLIMB_CEILING_S, type SectionId } from './sections';
+import { STEPS_PER_PHRASE } from '../audio/scale';
 import { EFFECT_META } from './effects';
 import { Hud, TIER_NUMERALS } from './hud';
 import { Input } from './input';
@@ -110,11 +111,19 @@ export async function bootGame(
       engine.endDropWindow();
     }
     const dropping = world.dropWindowT > 0 || world.dropPending;
-    // The edge tint follows the REQUESTED stance so intent reads instantly.
-    const stance = world.pendingSection ?? world.section;
+    // Round-4 (feedback #1): the big color wash follows the COMMITTED section, so
+    // it lands WITH the music on the bar, not on keypress. The press still gets an
+    // instant tell — a `perf-pending` armed pulse — so input never feels dropped.
+    const stance = world.section;
     const tint = SECTIONS[stance].tint;
+    const pendingTell =
+      world.pendingSection && world.pendingSection !== world.section ? ' perf-pending' : '';
     arenaVignette.className =
-      'arena-vignette' + (dropping ? ' perf-dropping' : tint ? ` perf-${tint}` : '');
+      'arena-vignette' +
+      (dropping ? ' perf-dropping' : tint ? ` perf-${tint}` : '') +
+      pendingTell;
+    // Feed the phrase position to the HUD phrase visualizer, and the climb fuse.
+    const phraseStep = engine.currentStep() % STEPS_PER_PHRASE;
     hud.setPerformance({
       section: world.section,
       pending: world.pendingSection,
@@ -124,11 +133,27 @@ export async function bootGame(
       inClimb: world.section === 'climb',
       canDrop: world.canArmDrop,
       dropping,
+      phraseStep,
+      climbFrac: Math.min(1, world.climbT / CLIMB_CEILING_S),
       unlocked: {
         break: world.canSelectSection('break'),
         climb: world.canSelectSection('climb'),
       },
     });
+    // Round-4 brownout: a held CLIMB overstayed the ceiling. Deflate to GROOVE on
+    // the next bar (the authored anticlimax) — no shockwave, no i-frames.
+    if (world.consumeBrownout()) {
+      const w = world;
+      engine.atNextBar(() => {
+        if ((state !== 'run' && state !== 'sandbox') || world !== w) return;
+        w.commitSection('groove');
+        const { plan, filterHz, climbRamp } = buildPlan(w, 'groove');
+        engine.setSection(plan, filterHz, climbRamp);
+        engine.brownout();
+        applyPerformance();
+      });
+      hud.showToast('build fizzled');
+    }
   }
 
   // Build the engine's per-voice arrange plan for a section from the owned band:
@@ -149,7 +174,14 @@ export async function bootGame(
         const audible = sec.audible === 'all' || sec.audible.has(slot);
         plan.set(role, audible ? 'strip' : 'mute');
       } else {
-        plan.set(role, slot === 'bass' ? 'buildbass' : 'build');
+        // Round-4 CLIMB reads as thin body + hollow low end + rising top, NOT
+        // denser everywhere. Per-role: the sub digs the hole (one hit/bar), the
+        // kick keeps the heartbeat, the hats ramp the roll, and the whole body
+        // (backbeat/motion/fx/harmony/melody) hollows out to sparse/held.
+        if (slot === 'bass') plan.set(role, 'buildbass');
+        else if (slot === 'pulse') plan.set(role, 'identity');
+        else if (slot === 'hats') plan.set(role, 'build');
+        else plan.set(role, 'strip');
       }
     }
     return { plan, filterHz: id === 'break' ? 800 : 2200, climbRamp: id === 'climb' };
@@ -198,7 +230,13 @@ export async function bootGame(
       hitstopT = HITSTOP_S;
       applyPerformance();
     });
-    world.armDrop(gapSeconds + 0.05); // +margin so i-frames never lapse mid-gap
+    // PERFECT DROP: pressing late in the phrase (a short, tight wind-up to the
+    // downbeat) is the skill reward — bigger slam + longer window (run.ts). The
+    // gap is the wall-clock time to the phrase "one"; a small gap means the press
+    // was tight. 2.4s ≈ one bar of wind-up at these tempos (a feel constant).
+    const PERFECT_GAP_S = 2.4;
+    const perfect = gapSeconds <= PERFECT_GAP_S;
+    world.armDrop(gapSeconds + 0.05, perfect); // +margin so i-frames never lapse mid-gap
     applyPerformance();
   }
 

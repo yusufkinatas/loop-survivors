@@ -113,13 +113,16 @@ export const SECTIONS: Record<SectionId, Section> = {
   climb: {
     id: 'climb',
     label: 'CLIMB',
-    line: 'Push hard and expose yourself — charge the drop.',
+    line: 'Expose yourself and arm the drop. No shield, no pickups.',
     key: '3',
     code: 'Digit3',
     audible: 'all',
     transform: 'build',
-    dmgMul: 1.35,
-    contactTakenMul: 1.25,
+    // Round-4: CLIMB is a no-reward RISK stance, not a power spike. Weapon damage
+    // is back to baseline (kill the old +35% that made it compete with the drop);
+    // contactTakenMul below is the BASE of a ramp to CLIMB_CONTACT_MAX (run.ts).
+    dmgMul: 1.0,
+    contactTakenMul: 1.4,
     moveMul: 1.0,
     minVoices: 3,
     color: 0xffb454,
@@ -165,13 +168,34 @@ export const DROP = {
 
 /** Charge per second of holding CLIMB (the spring loading on its own). At this
  *  rate a pure hold arms in ~14s; fighting fills it faster. */
-export const CLIMB_CHARGE_PER_S = 0.07;
-/** Charge per point of effective damage dealt while in CLIMB. */
-export const CHARGE_PER_DAMAGE = 0.00006;
+export const CLIMB_CHARGE_PER_S = 0.11;
+/** Charge per point of effective damage dealt while in CLIMB. Kept small so the
+ *  kicker still rewards fighting but cannot trivially skip the min-climb. */
+export const CHARGE_PER_DAMAGE = 0.00003;
 /** Charge caps here. Past 1.0 (armed) the extra "overcharge" scales the drop's
  *  slam, so riding the climb longer trades exposure for a bigger clear — the
- *  "pop now vs push for the huge one" decision. */
+ *  "pop now vs push for the huge one" decision. At CLIMB_CHARGE_PER_S a pure
+ *  hold reaches 1.0 (full drop) around 8.7s and the overcharge tail runs to the
+ *  ceiling (~17.5s) for a bigger drop. */
 export const CHARGE_MAX = 1.6;
+
+// --- CLIMB: the exposed-risk ramp + the brownout (round-4) -------------------
+//
+// CLIMB gets more dangerous every bar (contact damage taken ramps from the base
+// to a ceiling), the horde leans in, and you cannot resolve until a real climb
+// has happened (min-arm), nor hold the build forever (the ceiling browns out).
+// All of these are player-only (the bot stays in GROOVE), so a GROOVE-only world
+// is bit-identical to before.
+
+/** Contact-damage-taken ceiling at the end of a max climb (base is
+ *  SECTIONS.climb.contactTakenMul = 1.4; run.ts ramps base -> this by climbT). */
+export const CLIMB_CONTACT_MAX = 1.8;
+/** The horde leans in during CLIMB: enemy speed toward the player ×this. */
+export const CLIMB_ENEMY_SPEED_MUL = 1.15;
+/** Minimum seconds in CLIMB before the drop can arm (~2 bars @110bpm). */
+export const CLIMB_MIN_S = 4.4;
+/** The build's hard ceiling (~8 bars); overstaying browns out (loses the payoff). */
+export const CLIMB_CEILING_S = 17.5;
 
 // --- BREAK: the crowd-control pulse + the contrast bank (round-3 recast) -----
 //

@@ -337,13 +337,14 @@ export class MusicEngine {
 
   /** Arm the drop: dig the hole (only `gapMuteRoles` cut — the beat keeps
    *  rolling) and swell a short riser, then fire `onResolve` and the audio slam
-   *  on the NEXT BEAT. Returns the gap length in seconds so the shell can cover
-   *  it with i-frames. The bot never calls this. */
+   *  on the next PHRASE downbeat (step 0 of the 4-bar phrase — the weight of a
+   *  drop comes from landing on the "one"). Returns the gap length in seconds so
+   *  the shell can cover it with i-frames. The bot never calls this. */
   armDrop(gapMuteRoles: Set<Role>, onResolve: (time: number) => void): { gapSeconds: number } {
     this.gapMuteRoles = gapMuteRoles;
-    const spb = this.clock.stepsPerBeat; // 4 steps = one beat
+    const per = STEPS_PER_PHRASE; // 64 steps = one 4-bar phrase
     const from = this.lastScheduledStep + 1;
-    const slam = from + ((spb - (from % spb)) % spb);
+    const slam = from + ((per - (from % per)) % per);
     this.dropSlamStep = slam;
     this.dropState = 'gap';
     this.dropResolve = onResolve;
@@ -372,6 +373,22 @@ export class MusicEngine {
     f.setValueAtTime(f.value, now);
     f.linearRampToValueAtTime(6000, now + 0.18);
     f.linearRampToValueAtTime(FILTER_OPEN_HZ, now + 0.6);
+  }
+
+  /** The brownout: a held CLIMB overstayed its ceiling, so the build deflates
+   *  back to GROOVE — a deliberate anticlimax, NOT dead air. Cancel any climb
+   *  ramp and sweep the master low-pass DOWN (the air going out of the room) then
+   *  settle back open. The shell also commits the GROOVE plan on the bar; this is
+   *  the audible "fizzle". Player-only (the bot never climbs). */
+  brownout(): void {
+    this.plan = new Map();
+    this.climbRamp = false;
+    const now = this.ctx.currentTime;
+    const f = this.masterLP.frequency;
+    f.cancelScheduledValues(now);
+    f.setValueAtTime(f.value, now);
+    f.linearRampToValueAtTime(1500, now + 0.25);
+    f.linearRampToValueAtTime(FILTER_OPEN_HZ, now + 0.95);
   }
 
   /** Run reset / exit: back to GROOVE, filter open, drop disarmed. */
