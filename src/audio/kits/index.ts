@@ -93,6 +93,38 @@ export function sampleFilesFor(id: GenreId, role: Role): string[] {
   return [...new Set(specs.map(([, file]) => file))];
 }
 
+// House kit prototypes — alternative drum voicings curated from the Wave Point
+// House Essentials pack (built by scripts/build-house-protos.mjs into
+// public/samples/house/<variant>/). 'original' = the shipped root-level kit.
+// The choice persists in localStorage so the game (setGenre) picks it up too.
+export type HouseVariant = 'original' | 'A' | 'B' | 'C';
+export const HOUSE_VARIANTS: { id: HouseVariant; name: string }[] = [
+  { id: 'original', name: 'Original (shipped)' },
+  { id: 'A', name: 'A · 909 Club' },
+  { id: 'B', name: 'B · Deep & Live' },
+  { id: 'C', name: 'C · Tight Tech' },
+];
+const HV_KEY = 'houseKitVariant';
+let houseVariant: HouseVariant =
+  (typeof localStorage !== 'undefined' && localStorage.getItem(HV_KEY) as HouseVariant) || 'original';
+
+export function getHouseVariant(): HouseVariant { return houseVariant; }
+/** Switch the active House drum voicing and drop its cached kit so the next
+ *  kitForGenre('house') / engine.setGenre re-renders from the new files. */
+export function setHouseVariant(v: HouseVariant): void {
+  if (v === houseVariant) return;
+  houseVariant = v;
+  try { localStorage.setItem(HV_KEY, v); } catch { /* non-browser */ }
+  cache.delete('house');
+}
+
+/** Directory (under /samples) a genre's sample files load from — accounts for
+ *  the active House prototype. */
+export function sampleDir(id: GenreId): string {
+  if (id === 'house' && houseVariant !== 'original') return `house/${houseVariant}`;
+  return id;
+}
+
 /** Overlay a genre's real drum samples onto its synth kit. A role whose every
  *  variant loads is replaced by the sampled kit; if any file fails to load
  *  (offline, 404), that role keeps its synthesized voice (never silent). */
@@ -103,7 +135,7 @@ async function overlaySamples(id: GenreId, kit: Map<Role, Kit>): Promise<void> {
       try {
         const entries = await Promise.all(
           specs.map(async ([variant, file]) =>
-            [variant, await loadSample(`/samples/${id}/${file}.wav`)] as const,
+            [variant, await loadSample(`/samples/${sampleDir(id)}/${file}.wav`)] as const,
           ),
         );
         kit.set(role, makeKit(role, new Map(entries)));
