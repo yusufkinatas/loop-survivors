@@ -40,10 +40,8 @@ const MANIFEST = {
     'kick': '808bd/BD0025.WAV', 'snare': 'sd/rytm-01-classic.wav', 'rimshot': '808/RS.WAV',
     'hat_closed': 'hh/000_hh3closedhh.wav', 'hat_open': 'hh/007_hh3openhh.wav', 'shaker': '808/MA.WAV',
   },
-  house: {
-    'kick': 'bd/BT0A0A7.wav', 'clap': 'realclaps/1.wav', 'rimshot': '808/RS.WAV',
-    'hat_closed': 'hh/000_hh3closedhh.wav', 'hat_open': 'hh/007_hh3openhh.wav', 'shaker': 'linnhats/1.wav',
-  },
+  // house is NOT here: it is sampled from the local Wave Point pack by
+  // scripts/build-house-kit.mjs (the developer-chosen "Tight Tech" voicing).
   synthwave: {
     'kick': 'kicklinn/Linn Kick 1.wav', 'snare': 'sd/rytm-00-hard.wav', 'clap': 'drumtraks/001_DT Claps.wav',
     'hat_closed': 'drumtraks/004_DT Hat Closed.wav', 'hat_open': 'drumtraks/005_DT Hat Open.wav',

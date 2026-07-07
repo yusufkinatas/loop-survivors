@@ -12,15 +12,15 @@ Two build-time scripts, run by hand, never during `vite build` or at runtime:
 
 - `scripts/build-samples.mjs` — the shipped per-genre drum kits (downloads from
   the TidalCycles Dirt-Samples set, corrects, writes to `public/samples/<genre>/`).
-- `scripts/build-house-protos.mjs` — the House prototype kits curated from the
-  local Wave Point pack, written to `public/samples/house/A|B|C/`.
+- `scripts/build-house-kit.mjs` — the House kit (the "Tight Tech" voicing chosen
+  from the local Wave Point pack), written to `public/samples/house/`.
 
 Both apply the **same correction chain** and the **same health analyzer**. Re-run
 after any manifest / PROC change:
 
 ```
 node scripts/build-samples.mjs
-node scripts/build-house-protos.mjs
+node scripts/build-house-kit.mjs
 ```
 
 ## The correction chain (the fixes ffmpeg applies)
@@ -86,15 +86,15 @@ and peak. It flags — it never auto-fixes — the following:
 | `PARSE-FAIL` | couldn't read the output WAV | ffmpeg produced something unexpected |
 
 The counts land in `public/samples/health-report.md` and
-`public/samples/house/protos-health.md`. **A green report means "not broken",
+`public/samples/house/health-report.md`. **A green report means "not broken",
 not "sounds good"** — the ear gate (`#soundcheck`) is the real judge. The analyzer
 only points at files worth listening to first.
 
 ## Raw vs corrected (the A/B)
 
 Both scripts keep the untouched source next to the corrected file as
-`<role>.raw.wav`. `#soundcheck` (and the sandbox, for the active House kit) can
-play either, so you can hear exactly what the correction did before approving it.
+`<role>.raw.wav`. `#soundcheck` can play either, so you can hear exactly what the
+correction did before approving it.
 Raw files are audition-only and should be deleted once corrections are signed off
 — they are not meant to ship.
 

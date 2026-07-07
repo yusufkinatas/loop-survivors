@@ -52,7 +52,7 @@ export async function mountSoundCheck(root: HTMLElement, ctx: AudioContext): Pro
     import('../audio/kits/index'),
   ]);
   const { GENRES, supportedRoles } = genresMod;
-  const { kitForGenre, sampleFilesFor, sampleDir, getHouseVariant, setHouseVariant, HOUSE_VARIANTS } = kitsMod;
+  const { kitForGenre, sampleFilesFor } = kitsMod;
   const { ROLE_META } = await import('../audio/kits');
 
   const el = (tag: string, cls: string, parent: HTMLElement, text = ''): HTMLElement => {
@@ -63,24 +63,10 @@ export async function mountSoundCheck(root: HTMLElement, ctx: AudioContext): Pro
     return n;
   };
 
-  root.innerHTML = ''; // re-entrant: the House-kit selector re-mounts the page
   const page = el('div', 'soundcheck', root);
   el('h1', '', page, 'Sound health check');
   el('p', 'sub', page,
     'Play each voice, judge it by ear, mark it. Badges are automated hints; your ear decides. Export at the bottom and paste the results back.');
-
-  // House drum-kit prototype selector. Swaps which sampled drum voicing the
-  // House kit (and the actual game) uses; persists so a playtest hears the pick.
-  const hv = el('div', 'sc-hv', page);
-  el('span', 'sc-hv-label', hv, 'House kit:');
-  const hvSel = el('select', 'sc-hv-sel', hv) as HTMLSelectElement;
-  for (const v of HOUSE_VARIANTS) {
-    const o = document.createElement('option');
-    o.value = v.id; o.textContent = v.name;
-    if (v.id === getHouseVariant()) o.selected = true;
-    hvSel.appendChild(o);
-  }
-  hvSel.onchange = () => { setHouseVariant(hvSel.value as typeof HOUSE_VARIANTS[number]['id']); void mountSoundCheck(root, ctx); };
 
   const verdicts = new Map<string, 'pass' | 'flag'>();
   const rowRefs: { key: string; genre: string; role: string; play: HTMLButtonElement }[] = [];
@@ -141,7 +127,7 @@ export async function mountSoundCheck(root: HTMLElement, ctx: AudioContext): Pro
           rawBtn.disabled = true;
           let t = 0, any = false;
           for (const file of rawFiles) {
-            const b = await loadRaw(`/samples/${sampleDir(genre.id)}/${file}.raw.wav`);
+            const b = await loadRaw(`/samples/${genre.id}/${file}.raw.wav`);
             if (b) { any = true; setTimeout(() => playBuffer(b), t); t += 400; }
           }
           rawBtn.disabled = false;

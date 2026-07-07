@@ -54,8 +54,6 @@ const SAMPLE_OVERLAY: Record<GenreId, Partial<Record<Role, SampleSpec[]>>> = {
     rimshot: [['rimshot', 'rimshot']],
     hat: [['closed', 'hat_closed'], ['open', 'hat_open']],
     shaker: [['shaker', 'shaker']],
-    // Prototype-only additions (present under house/A|B|C, absent for
-    // 'original' where they gracefully fall back to the synth voice):
     crash: [['crash', 'crash']],
     riser: [['riser', 'riser']],
     bass: [['bass', 'bass'], ['fat', 'bass_fat']], // pitched — see SAMPLE_TUNE
@@ -98,38 +96,6 @@ export function sampleFilesFor(id: GenreId, role: Role): string[] {
   return [...new Set(specs.map(([, file]) => file))];
 }
 
-// House kit prototypes — alternative drum voicings curated from the Wave Point
-// House Essentials pack (built by scripts/build-house-protos.mjs into
-// public/samples/house/<variant>/). 'original' = the shipped root-level kit.
-// The choice persists in localStorage so the game (setGenre) picks it up too.
-export type HouseVariant = 'original' | 'A' | 'B' | 'C';
-export const HOUSE_VARIANTS: { id: HouseVariant; name: string }[] = [
-  { id: 'original', name: 'Original (shipped)' },
-  { id: 'A', name: 'A · 909 Club' },
-  { id: 'B', name: 'B · Deep & Live' },
-  { id: 'C', name: 'C · Tight Tech' },
-];
-const HV_KEY = 'houseKitVariant';
-let houseVariant: HouseVariant =
-  (typeof localStorage !== 'undefined' && localStorage.getItem(HV_KEY) as HouseVariant) || 'original';
-
-export function getHouseVariant(): HouseVariant { return houseVariant; }
-/** Switch the active House drum voicing and drop its cached kit so the next
- *  kitForGenre('house') / engine.setGenre re-renders from the new files. */
-export function setHouseVariant(v: HouseVariant): void {
-  if (v === houseVariant) return;
-  houseVariant = v;
-  try { localStorage.setItem(HV_KEY, v); } catch { /* non-browser */ }
-  cache.delete('house');
-}
-
-/** Directory (under /samples) a genre's sample files load from — accounts for
- *  the active House prototype. */
-export function sampleDir(id: GenreId): string {
-  if (id === 'house' && houseVariant !== 'original') return `house/${houseVariant}`;
-  return id;
-}
-
 // Semitone tune for PITCHED sampled roles: aligns the sample's recorded root to
 // the engine's A reference (note 0). The Wave Point House bass hits are C2
 // (~64 Hz, +3 semis above A1), so -3 seats them in the synth bass's octave.
@@ -140,20 +106,14 @@ const SAMPLE_TUNE: Partial<Record<GenreId, Partial<Record<Role, number>>>> = {
 /** Overlay a genre's real drum samples onto its synth kit. A role whose every
  *  variant loads is replaced by the sampled kit; if any file fails to load
  *  (offline, 404), that role keeps its synthesized voice (never silent). */
-// Roles present only in the House prototype folders (A/B/C), not in the shipped
-// 'original' kit — skipped there so no bogus "sample load failed" warnings fire.
-const HOUSE_PROTO_ONLY: ReadonlySet<Role> = new Set(['crash', 'riser', 'bass']);
-
 async function overlaySamples(id: GenreId, kit: Map<Role, Kit>): Promise<void> {
   const overlay = SAMPLE_OVERLAY[id];
-  const skipProtoOnly = id === 'house' && houseVariant === 'original';
   await Promise.all(
     (Object.entries(overlay) as [Role, SampleSpec[]][]).map(async ([role, specs]) => {
-      if (skipProtoOnly && HOUSE_PROTO_ONLY.has(role)) return;
       try {
         const entries = await Promise.all(
           specs.map(async ([variant, file]) =>
-            [variant, await loadSample(`/samples/${sampleDir(id)}/${file}.wav`)] as const,
+            [variant, await loadSample(`/samples/${id}/${file}.wav`)] as const,
           ),
         );
         kit.set(role, makeKit(role, new Map(entries), SAMPLE_TUNE[id]?.[role] ?? 0));

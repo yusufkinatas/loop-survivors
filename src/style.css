@@ -1574,9 +1574,6 @@ button.big {
 .soundcheck h2 { margin: 22px 0 8px; font: 700 14px/1 var(--font-mono); letter-spacing: 0.06em; color: var(--ink-dim); }
 .sc-genre { border-top: 1px solid var(--line); padding-top: 6px; }
 .sc-row { display: flex; align-items: center; gap: 10px; padding: 5px 6px; border-radius: var(--r-sm); border-left: 3px solid var(--voice-color); background: rgba(255,255,255,0.02); margin-bottom: 4px; }
-.sc-hv { display: flex; align-items: center; gap: 10px; margin: 10px 0 4px; padding: 8px 10px; border-radius: var(--r-sm); background: rgba(120,180,255,0.08); }
-.sc-hv-label { font: 700 12px/1 var(--font-mono); color: var(--ink-dim); }
-.sc-hv-sel { font: 600 12px/1 var(--font-mono); padding: 5px 8px; border-radius: var(--r-sm); background: rgba(255,255,255,0.06); color: var(--ink); border: 1px solid rgba(255,255,255,0.12); }
 .sc-play { width: 34px; min-width: 34px; }
 .sc-raw { width: auto; min-width: 40px; font: 700 10px/1 var(--font-mono); opacity: 0.75; }
 .sc-raw.warn { color: #ffb43c; opacity: 1; }
