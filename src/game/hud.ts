@@ -4,6 +4,7 @@
 
 import { type Kit, type Role } from '../audio/kits';
 import { supportedRoles, type Genre, type GenreId } from '../audio/genres';
+import { sampledRoles } from '../audio/kits/index';
 import { SLOTS, SLOT_LABEL, ownerOfSlot, slotOf, startableRoles, supportedRoster } from './band';
 import { TIER_LINES } from './config';
 import { EFFECT_META } from './effects';
@@ -228,13 +229,16 @@ export class Hud {
       // FX is barred from the starting offer (design rule 5) — a tier-1 FX
       // voice is near-silent for minutes, a dead opener — and only this genre's
       // supported instruments are offered.
+      const custom = sampledRoles(genre.id); // dev aid: which voices are sampled
       for (const role of startableRoles(supportedRoles(genre.id))) {
-        cards.push(
-          this.kitCard(grid, { kind: 'weapon', role, tier: 1 }, () => {
-            this.closeScreen();
-            onStart(genre, role);
-          }),
-        );
+        const card = this.kitCard(grid, { kind: 'weapon', role, tier: 1 }, () => {
+          this.closeScreen();
+          onStart(genre, role);
+        });
+        // ★ custom marks a voice that is sample-backed for this genre (dev only),
+        // matching the sandbox loadout badge.
+        if (custom.has(role)) el('span', 'kit-custom-badge', card, '★ custom');
+        cards.push(card);
       }
       this.armKeys(cards);
       const back = el('button', '', s, '← back to genres');

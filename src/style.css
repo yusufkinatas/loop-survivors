@@ -1569,6 +1569,22 @@ button.big {
   background: rgba(10, 11, 15, 0.5);
 }
 
+/* Dev-only marker on a starting-instrument card whose voice is sample-backed
+ *  for the genre — mirrors the sandbox loadout ★ custom badge. Bottom-right so
+ *  it clears the top-left slot badge and top-right tier chip. */
+.kit-custom-badge {
+  position: absolute;
+  bottom: 8px;
+  right: 10px;
+  font: 700 9px/1 var(--font-mono);
+  letter-spacing: 0.08em;
+  color: var(--signal);
+  border: 1px solid color-mix(in srgb, var(--signal) 55%, transparent);
+  border-radius: var(--r-sm);
+  padding: 2px 5px;
+  background: rgba(10, 11, 15, 0.5);
+}
+
 /* The same rack, shown roomier while paused. */
 .pause-rack {
   display: flex;
