@@ -23,6 +23,13 @@ export interface Voice {
   /** Sidechain node between gain and the output chain: the kick dips it on the
    *  bass voice so the two subs never stack (design rule 1). Unity otherwise. */
   duck: GainNode;
+  /** Per-voice lowpass (the Conducted Grid, src/game/hype.ts): the auto-arranger
+   *  rides this to filter a voice down to a distant whisper when the current
+   *  intensity tier doesn't include it, and open it wide when it does. The
+   *  trigger still fires either way, so damage is unchanged (Model A holds and a
+   *  breakdown costs no firepower) — only the timbre breathes. Open (20 kHz) is
+   *  inert. Chain: gain -> duck -> filter -> [fx] -> master. */
+  filter: BiquadFilterNode;
   /** Buffers actually triggered: the kit's own, or a sample set's applied
    *  over them. The kit stays pristine as the restore point. */
   activeSamples: Map<string, AudioBuffer>;
@@ -84,6 +91,7 @@ export class MusicEngine {
   private pending: ScheduledTrigger[] = [];
   private listeners: TriggerListener[] = [];
   private barQueue: (() => void)[] = [];
+  private barListeners: ((bar: number) => void)[] = [];
   private stepMarkers: { step: number; time: number }[] = [];
   private lastDueStep = 0;
   /** Master tone filter (the hype layer's "filter opens as energy builds").
@@ -125,8 +133,16 @@ export class MusicEngine {
       // duck's downstream when an effect is inserted; gain -> duck stays fixed.
       const duck = ctx.createGain();
       duck.gain.value = 1;
+      // Per-voice lowpass, starts wide open (inert). buildVoiceChain rewires
+      // filter's downstream when an effect is inserted; gain -> duck -> filter
+      // stays fixed so both the sidechain and the arranger's filtering survive.
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 20000;
+      filter.Q.value = 0.7;
       gain.connect(duck);
-      duck.connect(this.master);
+      duck.connect(filter);
+      filter.connect(this.master);
       // Voices start disabled at tier 1; the run enables and tiers them as the
       // player picks. The active genre (set at run start) decides what they play.
       this.voices.set(role, {
@@ -144,6 +160,7 @@ export class MusicEngine {
         effect: null,
         fxNodes: [],
         gated: false,
+        filter,
       });
     }
 
@@ -201,9 +218,10 @@ export class MusicEngine {
    *  The insertion point is strictly gain -> [effect] -> master; global
    *  processing belongs on the master bus, not here. */
   private buildVoiceChain(voice: Voice): void {
-    // The chain source is the duck node (gain -> duck is fixed); only duck's
-    // downstream is rewired here so the sidechain survives an effect swap.
-    voice.duck.disconnect();
+    // The chain source is the filter node (gain -> duck -> filter is fixed);
+    // only the filter's downstream is rewired here so the sidechain and the
+    // arranger's per-voice filtering both survive an effect swap.
+    voice.filter.disconnect();
     for (const n of voice.fxNodes) {
       try {
         (n as OscillatorNode).stop?.();
@@ -218,11 +236,11 @@ export class MusicEngine {
     }
     voice.fxNodes = [];
     if (!voice.effect) {
-      voice.duck.connect(this.master);
+      voice.filter.connect(this.master);
       return;
     }
     const fx = makeEffectNodes(this.ctx, voice.effect);
-    voice.duck.connect(fx.input);
+    voice.filter.connect(fx.input);
     fx.output.connect(this.master);
     voice.fxNodes = fx.nodes;
   }
@@ -326,6 +344,34 @@ export class MusicEngine {
     );
   }
 
+  /** Ride one voice's own lowpass cutoff (Hz), the Conducted Grid's per-voice
+   *  breathing tool. Low = a distant, filtered whisper (still firing, still
+   *  dealing damage — Model A); 20 kHz = fully present. Glides smoothly.
+   *  `timeConstant` lets a drop's riser open faster than the auto-arranger's
+   *  gentle tier moves. */
+  setVoiceCutoff(role: Role, hz: number, timeConstant = 0.12): void {
+    const voice = this.voices.get(role);
+    if (!voice) return;
+    voice.filter.frequency.setTargetAtTime(
+      Math.max(200, Math.min(20000, hz)),
+      this.ctx.currentTime,
+      timeConstant,
+    );
+  }
+
+  /** Register for bar-boundary callbacks: fired at the top of every bar with
+   *  the absolute bar index (a monotonic count from run start). The Conducted
+   *  Grid rides this as its phrase clock — arrangement changes only ever land on
+   *  a bar, so they always sound timed. Live-audio only; headless never runs. */
+  addBarListener(cb: (bar: number) => void): void {
+    this.barListeners.push(cb);
+  }
+
+  /** Drop every bar listener (a run ended). */
+  clearBarListeners(): void {
+    this.barListeners = [];
+  }
+
   /** Seconds from now to the nearest quarter-note beat (0 = dead on). Feeds
    *  the rhythm-timed hype pump so a tap can be scored against the groove. */
   beatError(): number {
@@ -355,6 +401,13 @@ export class MusicEngine {
       this.beatInterval = this.clock.stepDuration * this.clock.stepsPerBeat;
     }
     this.stepMarkers.push({ step, time });
+    // Bar-boundary clock for the Conducted Grid: fire at the top of each bar
+    // with the absolute bar index. Its arrangement moves and the Drop's
+    // strip/build/slam all quantize to this so they land on the grid.
+    if (step % STEPS_PER_BAR === 0 && this.barListeners.length > 0) {
+      const bar = Math.floor(step / STEPS_PER_BAR);
+      for (const cb of this.barListeners) cb(bar);
+    }
     // The phrase clock: bars 1-4, then roll over. Charts loop inside the
     // phrase, so a 4-bar chart's bar 4 is always the phrase's bar 4 and
     // once-per-phrase material lands where it was written.

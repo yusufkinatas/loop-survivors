@@ -1562,8 +1562,9 @@ button.big {
   }
 }
 
-/* ---- the hype layer (src/game/hype.ts): a live crowd-energy fader, bottom
-   center, that the player rides on the beat to shape the run's dynamics. ---- */
+/* ---- the Conducted Grid (src/game/hype.ts): the run's live arrangement
+   dynamics. Bottom center: an ENERGY/tier readout, a DROP charge meter, and a
+   DROP button. The panel is inert to pointers except the button. ---- */
 .hype-panel {
   position: absolute;
   left: 50%;
@@ -1580,6 +1581,14 @@ button.big {
   pointer-events: none;
   z-index: 2;
 }
+/* A brief pulse on arm / big state change. */
+.hype-panel.flash {
+  animation: hype-flash 0.4s ease-out;
+}
+@keyframes hype-flash {
+  0% { box-shadow: 0 0 0 0 rgba(255, 215, 107, 0.6); }
+  100% { box-shadow: 0 0 22px 4px rgba(255, 215, 107, 0); }
+}
 .hype-head {
   display: flex;
   align-items: baseline;
@@ -1592,32 +1601,23 @@ button.big {
   font-weight: 800;
   letter-spacing: 0.14em;
   color: #8a93a8;
-  transition: color 0.15s, text-shadow 0.15s;
+  transition: color 0.2s, text-shadow 0.2s;
 }
-.hype-zone[data-rank='1'] { color: #7be0d0; }
-.hype-zone[data-rank='2'] { color: #3ce0ff; }
-.hype-zone[data-rank='3'] { color: #ffc93c; }
-.hype-zone[data-rank='4'] {
+.hype-zone[data-rank='0'] { color: #7be0d0; }
+.hype-zone[data-rank='1'] { color: #3ce0ff; }
+.hype-zone[data-rank='2'] {
   color: #ffd76b;
   text-shadow: 0 0 12px rgba(255, 215, 107, 0.7);
 }
-.hype-streak {
-  font-size: 13px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  color: #ff9ecb;
-  margin-left: auto;
-  margin-right: 8px;
-}
-.hype-stat {
+.hype-state {
   font-size: 12px;
   font-weight: 700;
   color: #b6ff5a;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
 }
 .hype-bar {
   position: relative;
-  height: 16px;
+  height: 12px;
   border-radius: var(--r-pill);
   background: rgba(255, 255, 255, 0.07);
   border: 1px solid var(--line);
@@ -1626,53 +1626,31 @@ button.big {
 .hype-fill {
   position: absolute;
   inset: 0 auto 0 0;
-  width: 12%;
+  width: 0%;
   border-radius: var(--r-pill);
-  background: linear-gradient(90deg, #7be0d0, #3ce0ff 40%, #ffc93c 72%, #ffd76b 100%);
+  background: linear-gradient(90deg, #7be0d0, #3ce0ff 55%, #ffd76b 100%);
   box-shadow: 0 0 14px -2px #ffd76b;
-  transition: width 0.06s linear;
+  transition: width 0.1s linear;
 }
-.hype-tick {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: rgba(10, 11, 15, 0.6);
-  z-index: 1;
-}
-.hype-blip {
-  position: absolute;
-  right: 6px;
-  top: 50%;
-  width: 9px;
-  height: 9px;
-  margin-top: -4.5px;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 0 8px 1px #fff;
-  z-index: 2;
-}
-.hype-hint {
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  color: #6a7086;
-  text-align: center;
-}
-.hype-feedback {
-  position: absolute;
-  left: 50%;
-  top: -14px;
-  transform: translate(-50%, 0);
+.hype-drop {
+  pointer-events: auto;
+  margin-top: 2px;
+  padding: 8px 0;
   font-size: 14px;
   font-weight: 800;
-  letter-spacing: 0.1em;
-  opacity: 0;
-  transition: opacity 0.12s, transform 0.25s;
+  letter-spacing: 0.2em;
+  color: #6a7086;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, box-shadow 0.15s;
 }
-.hype-feedback.show {
-  opacity: 1;
-  transform: translate(-50%, -8px);
+.hype-drop:disabled {
+  cursor: default;
 }
-.hype-feedback.perfect { color: #ffd76b; text-shadow: 0 0 10px rgba(255, 215, 107, 0.8); }
-.hype-feedback.good { color: #7be0d0; }
-.hype-feedback.off { color: #8a93a8; }
+.hype-drop.ready {
+  color: #0a0b0f;
+  background: linear-gradient(90deg, #ffd76b, #ffc93c);
+  box-shadow: 0 0 16px -2px rgba(255, 215, 107, 0.8);
+}

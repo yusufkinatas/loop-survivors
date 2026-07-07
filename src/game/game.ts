@@ -15,7 +15,7 @@ import { mountPlayground, type Playground } from '../rehearsal/playground';
 import { RUN } from './config';
 import { EFFECT_META } from './effects';
 import { Hud, TIER_NUMERALS } from './hud';
-import { HypeController } from './hype';
+import { ConductedGrid } from './hype';
 import { Input } from './input';
 import { ITEMS } from './items';
 import { mountJoystick } from './joystick';
@@ -54,20 +54,21 @@ export async function bootGame(
 
   const hud = new Hud(root, kits);
   const input = new Input();
-  // The hype layer: a live crowd-energy fader the player rides on the beat to
-  // shape the run's dynamic arc (see src/game/hype.ts). Its DOM panel mounts
-  // once; it drives the engine (voice gating + tone filter) and the world's
-  // risk/reward multipliers only while a run/sandbox is live.
-  const hype = new HypeController();
+  // The Conducted Grid (Hype Layer v2, see src/game/hype.ts): the run's live
+  // arrangement dynamics. Its DOM panel mounts once; it reads world state to
+  // derive combat intensity and drives the engine (per-voice filtering + the
+  // Drop's gating/overdrive) only while a run/sandbox is live. The engine's
+  // bar-boundary callback is its phrase clock.
+  const hype = new ConductedGrid();
   hype.mount(root);
   hype.onPeak = () => {
     if (!world) return;
-    // The payoff of a build: a bright crowd-colored flash + a HUD pulse the
-    // instant the full band drops in. No damage — the reward for peak is the
-    // sustained damage/XP bonus, not a one-shot blast.
-    world.fx?.push({ type: 'flash', color: 0xffd76b, alpha: 0.18, dur: 0.22 });
+    // The Drop payoff: a bright flash + a HUD pulse the instant the whole band
+    // slams back in on the downbeat.
+    world.fx?.push({ type: 'flash', color: 0xffd76b, alpha: 0.22, dur: 0.26 });
     hud.levelPulse();
   };
+  engine.addBarListener((bar) => hype.onBar(bar));
   let state: State = 'start';
   let world: RunWorld | null = null;
   let view: RunView | null = null;
@@ -666,11 +667,12 @@ export async function bootGame(
       togglePause();
       return;
     }
-    // SPACE pumps the crowd, scored against the beat (the hype layer). Ignore
-    // key-repeat so holding it can't cheese the meter — every pump is a tap.
+    // SPACE arms the Drop (the Conducted Grid): a charged Drop strips the band
+    // and slams it back in on the next bars. Desktop twin of the on-screen DROP
+    // button. Ignore key-repeat so a held key is one arm, not a stream.
     if (e.code === 'Space') {
       e.preventDefault();
-      if (!paused && (state === 'run' || state === 'sandbox') && !e.repeat) hype.pump(engine);
+      if (!paused && (state === 'run' || state === 'sandbox') && !e.repeat) hype.arm();
       return;
     }
     const byKey: Record<string, { onClick(): void }> = {

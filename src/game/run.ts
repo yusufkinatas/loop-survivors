@@ -320,11 +320,17 @@ export class RunWorld {
   // pumps the crowd), so the autoplay balance tool and seeded replays stay
   // bit-identical to before this feature. Riding the crowd higher trades
   // safety for output: more damage dealt and more XP, but more damage taken.
-  /** Outgoing weapon-damage multiplier (rises with hype). */
+  /** Outgoing weapon-damage multiplier. In the Conducted Grid (v2) this is the
+   *  Drop's overdrive: 1 at rest, spiked for the ~2-bar slam window when the
+   *  player spends a charged Drop. Live-only (the bot never arms a Drop), so it
+   *  stays at 1 in headless/replay and seeded runs remain bit-identical. */
   hypeDamageMul = 1;
-  /** Incoming contact/shot-damage multiplier (rises with hype: peak is risky). */
+  /** Outgoing weapon-AREA multiplier: the Drop slam also widens every weapon so
+   *  the return reads as a bloom, not just harder hits. 1 at rest, live-only. */
+  hypeAreaMul = 1;
+  /** Retained but unused by v2 (v2 dropped the held-meter scalar economy); left
+   *  at 1 so their read sites stay neutral and replays are unaffected. */
   hypeDamageTakenMul = 1;
-  /** XP pickup multiplier (rises with hype: a hot crowd pays out more). */
   hypeXpMul = 1;
 
   /** Per-weapon effect slot (Feature 4): the sound + gameplay modifier on a
@@ -757,10 +763,10 @@ export class RunWorld {
       ...conf,
       damage: conf.damage * this.powerMul * m.damageMul * this.hypeDamageMul,
     };
-    if (out.radius !== undefined) out.radius *= m.areaMul;
+    if (out.radius !== undefined) out.radius *= m.areaMul * this.hypeAreaMul;
     if (out.lifetimeS !== undefined) out.lifetimeS *= m.durMul;
     if (out.speed !== undefined) out.speed *= m.projSpeedMul;
-    if (out.orbitRadius !== undefined) out.orbitRadius *= m.areaMul;
+    if (out.orbitRadius !== undefined) out.orbitRadius *= m.areaMul * this.hypeAreaMul;
     if (effect) return applyEffectConf(out, effect, usesPierce);
     return out;
   }
