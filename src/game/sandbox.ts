@@ -7,6 +7,7 @@ import type { MusicEngine } from '../audio/engine';
 import type { Genre, GenreId } from '../audio/genres';
 import { supportedRoles } from '../audio/genres';
 import { ROLES, ROLE_META } from '../audio/kits';
+import { HOUSE_VARIANTS, getHouseVariant, setHouseVariant } from '../audio/kits/index';
 import { genreRoleWeight, supportedRoster, supportedSlots } from './band';
 import { TIER_NUMERALS } from './hud';
 import { ENEMIES, enemyScaling, RUN, type EnemyKind } from './config';
@@ -84,6 +85,30 @@ export function mountSandboxPanel(
     };
     if (g.id === opts.initial) b.classList.add('on');
     genreBtns.push(b);
+  }
+
+  // ---- House kit prototype selector: swap the House genre's sampled drum
+  // voicing (909 Club / Deep & Live / Tight Tech) to A/B them in the arena.
+  // Only affects House; the choice persists (localStorage) across runs. ----
+  el('div', 'sb-section', panel, 'house kit');
+  const hkRow = el('div', 'sb-btns sb-controls', panel);
+  const hkBtns: HTMLButtonElement[] = [];
+  for (const v of HOUSE_VARIANTS) {
+    const b = el('button', 'small', hkRow, v.name) as HTMLButtonElement;
+    b.onclick = () => {
+      setHouseVariant(v.id);
+      hkBtns.forEach((x) => x.classList.toggle('on', x === b));
+      // Re-render live if House is the active genre; re-fire the band to reload.
+      if (currentGenreId === 'house') {
+        const house = opts.genres.find((g) => g.id === 'house');
+        if (house) {
+          opts.onGenre(house);
+          if (bandOn) { bandOn = false; bandBtn.click(); }
+        }
+      }
+    };
+    if (v.id === getHouseVariant()) b.classList.add('on');
+    hkBtns.push(b);
   }
 
   // ---- optimized-for readout: which instruments this genre is built around ----
