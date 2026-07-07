@@ -64,9 +64,25 @@ New model — a genre now has:
 
 **Delivery + verification.** Stage 1 (skeleton, behavior-neutral refactor) → Stage 2 (per-genre synth voicings + one authored track each, via an ultracode workflow) → real drum samples + ffmpeg pipeline + health check. Verified at each step: `tsc` + `vite build` clean; headless bot across all six genres (no crashes/NaN); browser render of every genre kit (all voices non-silent, no NaN, no console errors; drums confirmed distinct — lofi kick 257ms vs hiphop 88ms vs techno 108ms, all peak-normalized). Everything is ONE commit on `audio-refresh` (`06b34e9` at time of writing), pushed to origin.
 
-### Kit prototypes for the other five genres (July 7, later)
+### Every genre now has a chosen sampled kit (July 7, later) — DONE
 
-House's finalize process (audition sampled kit prototypes in-game → developer picks one by ear → promote to the single kit, strip the selector) is now **generalized to all genres** and the other five have prototypes built from downloaded sound packs (`/Users/yusufeminkinatas/Desktop/soundpacks/<pack>`), **awaiting the developer's A/B pick**.
+All six genres are voiced by a real sampled drum/bass kit. House adopted Wave Point "Tight Tech"; the developer then auditioned prototypes for the other five and **picked variant A for every one**, each promoted into its shipped voicing (mirroring House's `build-house-kit.mjs` finalize):
+
+- **lofi** → itslucid Tape Kit (kick/kick_soft/snare/rimshot/hat; shaker stays synth)
+- **synthwave** → Clean 808 (TR-808 drums + A1 Jupiter/FM bass, tune 0)
+- **hiphop** → MusicRadar Trap (full trap drums + A1 808 bass, tune 0)
+- **dnb** → MusicRadar 170 Kit A (break kit + C2 bass, tune −3)
+- **techno** → MusicRadar Digital (digital drum core + C2 bass, tune −3)
+
+Each genre's chosen kit is built by `scripts/build-<genre>-kit.mjs` straight into `public/samples/<genre>/` (corrected `.wav` + verbatim `.raw.wav`, 0 health flags), listed in `kits/index.ts` `SAMPLE_OVERLAY`/`SAMPLE_TUNE`. The prototype/selector system is retired for these genres (their `protos/<genre>.ts` manifests are `{ variants: [] }`), so no selector shows — exactly House's end state. Licensing per genre in `public/samples/<genre>/CREDITS.md` (verify before commercial ship; the lofi packs have no explicit license file, flagged).
+
+The generalized variant plumbing (`setGenreVariant`/`variantsFor`/`sampledRoles`/`sampleDir`, the `#soundcheck` dropdown, the sandbox "kit prototype" row) stays in place, dormant, ready to reuse for any future kit audition. The sandbox loadout is now grouped by band slot (rack order) with a `★ custom` badge on sample-backed voices.
+
+Verified: `tsc --noEmit` + `vite build` clean; every `SAMPLE_OVERLAY` file base resolves to a real corrected `.wav`; no prototype folders remain.
+
+#### The original prototype build (superseded by the finalize above)
+
+House's finalize process was generalized to all genres, and the other five got prototypes built from downloaded sound packs (`/Users/yusufeminkinatas/Desktop/soundpacks/<pack>`) for the developer's A/B pick (now made — variant A everywhere).
 
 - **Generalized variant plumbing** (`src/audio/kits/index.ts`): `setGenreVariant`/`getGenreVariant`/`variantsFor`/`sampledRoles`/`sampleDir`, localStorage-persisted per genre, cache-invalidating so `engine.setGenre` re-renders the chosen voicing live. Under a prototype ONLY that prototype's roles are sample-backed (loaded from `public/samples/<genre>/<variant>/`); every other role falls back to synth. Each genre declares its prototypes in its own file `src/audio/kits/protos/<genre>.ts` (a `ProtoManifest`, see `protos/types.ts`) gathered by `protos/index.ts` — conflict-free authoring.
 - **Selectors:** a per-genre dropdown in `#soundcheck` (reloads to the chosen voicing) and an in-arena "kit prototype" button row in the sandbox (swaps live, with the `raw` A/B still available).

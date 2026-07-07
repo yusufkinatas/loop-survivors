@@ -46,11 +46,11 @@ type SampleSpec = [variant: string, file: string];
 // are real one-shots vs synthesized, loaded from public/samples/<genre>/.
 const SAMPLE_OVERLAY: Record<GenreId, Partial<Record<Role, SampleSpec[]>>> = {
   lofi: {
-    kick: [['hard', 'kick'], ['soft', 'kick']],
+    kick: [['hard', 'kick'], ['soft', 'kick_soft']],
     snare: [['snare', 'snare']],
     rimshot: [['rimshot', 'rimshot']],
     hat: [['closed', 'hat_closed'], ['open', 'hat_open']],
-    shaker: [['shaker', 'shaker']],
+    // shaker stays synthesized — the itslucid Tape kit (adopted) has no shaker.
   },
   house: {
     kick: [['hard', 'kick'], ['soft', 'kick']],
@@ -63,24 +63,27 @@ const SAMPLE_OVERLAY: Record<GenreId, Partial<Record<Role, SampleSpec[]>>> = {
     bass: [['bass', 'bass'], ['fat', 'bass_fat']], // pitched — see SAMPLE_TUNE
   },
   synthwave: {
-    kick: [['hard', 'kick'], ['soft', 'kick']],
+    kick: [['hard', 'kick_hard'], ['soft', 'kick_soft']],
     snare: [['snare', 'snare']],
     clap: [['clap', 'clap']],
     hat: [['closed', 'hat_closed'], ['open', 'hat_open']],
+    bass: [['bass', 'bass'], ['fat', 'bass_fat']], // pitched, A1 root — tune 0
   },
   hiphop: {
-    kick: [['hard', 'kick'], ['soft', 'kick']],
+    kick: [['hard', 'kick'], ['soft', 'kick_soft']],
     snare: [['snare', 'snare']],
     clap: [['clap', 'clap']],
     rimshot: [['rimshot', 'rimshot']],
     hat: [['closed', 'hat_closed'], ['open', 'hat_open']],
     shaker: [['shaker', 'shaker']],
+    bass: [['bass', 'bass'], ['fat', 'bass_fat']], // 808 sub, A1 root — tune 0
   },
   dnb: {
     kick: [['hard', 'kick'], ['soft', 'kick']],
     snare: [['snare', 'snare']],
     hat: [['closed', 'hat_closed'], ['open', 'hat_open']],
     ride: [['ride', 'ride']],
+    bass: [['bass', 'bass']], // pitched, C2 root — see SAMPLE_TUNE
   },
   techno: {
     kick: [['hard', 'kick'], ['soft', 'kick']],
@@ -88,6 +91,7 @@ const SAMPLE_OVERLAY: Record<GenreId, Partial<Record<Role, SampleSpec[]>>> = {
     rimshot: [['rimshot', 'rimshot']],
     hat: [['closed', 'hat_closed'], ['open', 'hat_open']],
     ride: [['ride', 'ride']],
+    bass: [['bass', 'bass']], // pitched, C2 root — see SAMPLE_TUNE
   },
 };
 
@@ -171,6 +175,9 @@ export function sampleDir(id: GenreId): string {
 // (~64 Hz, +3 semis above A1), so -3 seats them in the synth bass's octave.
 const SAMPLE_TUNE: Partial<Record<GenreId, Partial<Record<Role, number>>>> = {
   house: { bass: -3 },
+  dnb: { bass: -3 },    // MusicRadar DnB bass sampled at C2
+  techno: { bass: -3 }, // Cyclick Bass Synthesis sampled at C2
+  // synthwave / hiphop bass are rooted at A1 (the engine reference) — tune 0.
 };
 
 /** Overlay a genre's real drum samples onto its synth kit. A role whose every
