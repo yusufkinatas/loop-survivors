@@ -52,6 +52,10 @@ export class Hud {
   private fuseNotch: HTMLElement | null = null;
   private screen: HTMLElement | null = null;
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
+  // Live level-up offer (round-4): a subtle non-blocking strip picked with Q/W/E,
+  // so a level-up never freezes the run mid-build/mid-drop.
+  private liveOffer: HTMLElement | null = null;
+  private liveOfferKeys: ((e: KeyboardEvent) => void) | null = null;
   private kits: Map<Role, Kit>;
   private debugRow: HTMLElement | null = null;
   private debugButtons: { btn: HTMLElement; action: DebugAction }[] = [];
@@ -350,20 +354,43 @@ export class Hud {
 
   /** Level-up pick: up to three options from the pool of new weapons and
    *  tier-ups of owned ones. */
-  showPick(options: PickOption[], onPick: (option: PickOption) => void): void {
-    const s = this.newScreen();
-    el('h2', '', s, 'Level up');
-    const grid = el('div', 'pick-grid', s);
-    const cards: HTMLElement[] = [];
-    for (const option of options) {
-      cards.push(
-        this.kitCard(grid, option, () => {
-          this.closeScreen();
-          onPick(option);
-        }),
-      );
+  /** The live level-up offer (round-4): a subtle strip at the bottom of the
+   *  arena, NOT a modal — the run keeps playing so a build-up or drop is never
+   *  interrupted (the whole point of "perform the track"). Picked with Q/W/E (the
+   *  arrow keys stay on the player) or by clicking a card. Up to three options. */
+  showLiveOffer(options: PickOption[], onPick: (option: PickOption) => void): void {
+    this.hideLiveOffer();
+    const wrap = el('div', 'live-offer', this.root);
+    el('div', 'live-offer-hint', wrap, 'LEVEL UP — keep playing, pick with Q / W / E');
+    const grid = el('div', 'live-offer-grid', wrap);
+    const keys = ['Q', 'W', 'E'];
+    const pick = (i: number): void => {
+      if (i < 0 || i >= options.length) return;
+      this.hideLiveOffer();
+      onPick(options[i]);
+    };
+    options.forEach((option, i) => {
+      const card = this.kitCard(grid, option, () => pick(i));
+      if (i < keys.length) el('span', 'kit-key', card, keys[i]);
+    });
+    this.liveOfferKeys = (e) => {
+      const i = { KeyQ: 0, KeyW: 1, KeyE: 2 }[e.code];
+      if (i === undefined) return;
+      e.preventDefault();
+      pick(i);
+    };
+    window.addEventListener('keydown', this.liveOfferKeys);
+    this.liveOffer = wrap;
+  }
+
+  /** Tear down the live offer (on pick, death, or run reset). Idempotent. */
+  hideLiveOffer(): void {
+    if (this.liveOfferKeys) {
+      window.removeEventListener('keydown', this.liveOfferKeys);
+      this.liveOfferKeys = null;
     }
-    this.armKeys(cards);
+    this.liveOffer?.remove();
+    this.liveOffer = null;
   }
 
   /** Arrow keys walk the cards, enter picks the highlighted one (gate B

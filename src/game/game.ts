@@ -27,7 +27,9 @@ import { RunWorld } from './run';
 import { RunView } from './view';
 import { mountSandboxPanel, type SandboxPanel } from './sandbox';
 
-type State = 'start' | 'run' | 'pick' | 'end' | 'sandbox' | 'replay';
+// No 'pick' state (round-4): level-up offers are live and non-blocking, so the
+// run stays in 'run' while the player picks.
+type State = 'start' | 'run' | 'end' | 'sandbox' | 'replay';
 
 export async function bootGame(
   root: HTMLElement,
@@ -68,6 +70,13 @@ export async function bootGame(
   // Tracks the post-drop hype window so the engine settles the elevated drop
   // arrangement back to plain GROOVE the moment the window expires (the comedown).
   let dropWindowActive = false;
+  // Live level-up offers (round-4): the run NEVER pauses for a pick, so a
+  // build-up/drop is never interrupted. Level-ups can stack faster than the
+  // player picks, so offers are queued and shown one at a time; a pick applies on
+  // the next bar (the musical entry rule) and only then is the next offer shown.
+  let offersPending = 0;
+  let offerOpen = false;
+  let applyPending = false;
 
   // Pause overlay: ESC freezes the run behind a dimmed screen; the audio clock
   // stops so no triggers fire, and the game loop skips its world step. A second
@@ -242,59 +251,69 @@ export async function bootGame(
 
   hud.mountPerformance(requestSection, fireDrop);
 
+  // Apply a chosen pick to the live world + engine, on the next bar (the M2
+  // musical entry rule). No pause: the run has been flowing the whole time.
+  function applyPick(w: RunWorld, option: PickOption): void {
+    if (option.kind === 'weapon') {
+      engine.setVoiceTier(option.role, option.tier);
+      engine.setVoiceEnabled(option.role, true);
+      w.addWeapon(option.role, option.tier);
+    } else if (option.kind === 'item') {
+      w.addItem(option.item, option.level);
+    } else {
+      w.attachEffect(option.role, option.effect);
+      engine.setVoiceEffect(option.role, option.effect);
+    }
+    // If a section is live, fold the new voice into its arrangement so the fresh
+    // hire strips/builds with the rest (not identity by default).
+    if (w.section !== 'groove') {
+      const { plan, filterHz, climbRamp } = buildPlan(w, w.section);
+      engine.setSection(plan, filterHz, climbRamp);
+    }
+    hud.renderItems(w.items);
+    hud.renderBand(w.tiers);
+    chartOverlay?.refresh();
+    view?.flourish(w.player.x, w.player.y); // cosmetic affirmation (muted-safe)
+    hud.levelPulse();
+  }
+
+  // Show the next queued level-up offer, if any and nothing is already open or
+  // waiting to land. Live and non-blocking: the run keeps playing underneath.
+  function maybeShowOffer(): void {
+    if (offerOpen || applyPending || offersPending <= 0 || state !== 'run' || !world) return;
+    const w = world;
+    // The offer roll (docs/phases/m2-the-arc.md) is shared with the autoplay bot
+    // via picks.ts, so the bot faces the exact offers a player does.
+    const options = rollOffers(w.tiers, w.items, w.effects, Math.random, activeGenre().id, w.timeS);
+    if (options.length === 0) {
+      w.player.hp = Math.min(RUN.playerHp, w.player.hp + 15);
+      hud.showToast('+15 hp — the track is complete');
+      offersPending--;
+      maybeShowOffer();
+      return;
+    }
+    offerOpen = true;
+    hud.showLiveOffer(options, (option) => {
+      offerOpen = false;
+      offersPending--;
+      applyPending = true;
+      engine.atNextBar(() => {
+        applyPending = false;
+        if (state !== 'run' || world !== w) return;
+        applyPick(w, option);
+        maybeShowOffer(); // the next queued level-up, now that this one landed
+      });
+    });
+  }
+
   const events = {
     onLevelUp(level: number): void {
       void level;
       if (state !== 'run') return;
-      // The offer roll (docs/phases/m2-the-arc.md) is shared with the autoplay
-      // bot via picks.ts, so the bot faces the exact offers a player does.
-      const options = rollOffers(
-        world!.tiers,
-        world!.items,
-        world!.effects,
-        Math.random,
-        activeGenre().id,
-        world!.timeS,
-      );
-      if (options.length === 0) {
-        world!.player.hp = Math.min(RUN.playerHp, world!.player.hp + 15);
-        hud.showToast('+15 hp — the track is complete');
-        return;
-      }
-      state = 'pick';
-      engine.clock.pause();
-      hud.showPick(options, (option) => {
-        state = 'run';
-        // Musical entry rule: the clock resumes, the old chart finishes its
-        // bar, and the new voice / tier / item / effect enters on the next "1".
-        const w = world;
-        engine.atNextBar(() => {
-          if (state !== 'run' || world !== w) return;
-          if (option.kind === 'weapon') {
-            engine.setVoiceTier(option.role, option.tier);
-            engine.setVoiceEnabled(option.role, true);
-            w!.addWeapon(option.role, option.tier);
-          } else if (option.kind === 'item') {
-            w!.addItem(option.item, option.level);
-          } else {
-            w!.attachEffect(option.role, option.effect);
-            engine.setVoiceEffect(option.role, option.effect);
-          }
-          // If a section is live, fold the new voice into its arrangement so
-          // the fresh hire strips/builds with the rest (not identity by default).
-          if (w!.section !== 'groove') {
-            const { plan, filterHz, climbRamp } = buildPlan(w!, w!.section);
-            engine.setSection(plan, filterHz, climbRamp);
-          }
-          hud.renderItems(w!.items);
-          hud.renderBand(w!.tiers);
-          chartOverlay?.refresh();
-          // Cosmetic affirmation the pick landed (view-only, muted-safe).
-          view?.flourish(w!.player.x, w!.player.y);
-          hud.levelPulse();
-        });
-        engine.clock.resume();
-      });
+      // Never freeze: enqueue and show the offer live (round-4). The build/drop
+      // flow is never interrupted; picks resolve on the next bar as always.
+      offersPending++;
+      maybeShowOffer();
     },
     onDeath(): void {
       endRun(false);
@@ -470,6 +489,10 @@ export async function bootGame(
     engine.resetPerformance(); // back to GROOVE, filter open, drop disarmed
     hitstopT = 0;
     dropWindowActive = false;
+    offersPending = 0;
+    offerOpen = false;
+    applyPending = false;
+    hud.hideLiveOffer();
     for (const role of ROLES) engine.setVoiceEnabled(role, false);
     arenaVignette.className = 'arena-vignette'; // clear any section tint
   }
@@ -611,6 +634,9 @@ export async function bootGame(
   function endRun(victory: boolean): void {
     if (!world || state === 'end') return;
     state = 'end';
+    hud.hideLiveOffer(); // clear any live offer so it can't overlap the end screen
+    offerOpen = false;
+    applyPending = false;
     speedRow.style.display = 'none';
     seekRow.style.display = 'none';
     seekOverlay.style.display = 'none';
