@@ -811,8 +811,29 @@ export class RunWorld {
     this.damageArea(p.x, p.y, radius * 0.45, dmg, undefined, HOLD.slamKnockback * 0.6);
     this.spawnRing(p.x, p.y, radius, color, 0.5);
     this.fx?.push({ type: 'slam', x: p.x, y: p.y, radius: radius * 0.4, color });
-    this.fx?.push({ type: 'shake', mag: 5 + 9 * k, dur: 0.22 + 0.08 * k });
-    this.fx?.push({ type: 'flash', color, alpha: 0.1 + 0.14 * Math.min(1, power), dur: 0.3 });
+    // v2: the slam hits far harder than v1 — bigger trauma shake and a flash
+    // pushed toward flashAlphaMax (docs/phases/hold-and-drop-v2.md juice stack).
+    // The render-clock-only layers (hitstop, slow-mo, zoom punch) are triggered
+    // separately by the view so they never touch the sim timestep.
+    this.fx?.push({ type: 'shake', mag: 6 + 16 * k, dur: 0.28 + 0.12 * k });
+    this.fx?.push({
+      type: 'flash',
+      color,
+      alpha: Math.min(HOLD.juice.flashAlphaMax, 0.14 + 0.34 * Math.min(1, power)),
+      dur: 0.35,
+    });
+  }
+
+  /** Sub-phase A debug drop (docs/phases/hold-and-drop-v2.md): fire the slam
+   *  and open the amplified-fire window on every owned voice, as if a full-band
+   *  drop just landed on the one. Player-driven only, so the bot/replay path is
+   *  untouched (this is never called there). */
+  debugDrop(power = 1.5): void {
+    for (const role of this.tiers.keys()) {
+      this.payoffMul.set(role, 1 + (HOLD.maxFireMul - 1) * Math.min(1, power / 2));
+      this.payoffT.set(role, HOLD.payoffS);
+    }
+    this.dropSlam(power, KIT_COLORS.kick);
   }
 
   /** Slot an effect onto a weapon (Feature 4). The audio chain is wired by

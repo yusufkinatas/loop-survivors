@@ -75,6 +75,10 @@ export class MusicEngine {
   readonly analyser: AnalyserNode;
   readonly voices = new Map<Role, Voice>();
   private master: GainNode;
+  /** Master-bus low-pass swept during a Hold & Drop build so the surviving
+   *  loop muffles then opens up (docs/phases/hold-and-drop-v2.md). Idle at
+   *  20 kHz = transparent. */
+  private buildFilter: BiquadFilterNode;
   private pending: ScheduledTrigger[] = [];
   private listeners: TriggerListener[] = [];
   private barQueue: (() => void)[] = [];
@@ -88,6 +92,10 @@ export class MusicEngine {
     this.master.gain.value = 0.8;
     // Soft-knee limiter on the master so any build stays clean (Pillar 2:
     // the system owns the theory, no combination may sound broken).
+    this.buildFilter = ctx.createBiquadFilter();
+    this.buildFilter.type = 'lowpass';
+    this.buildFilter.frequency.value = 20000; // open = transparent until a drop sweeps it
+    this.buildFilter.Q.value = 0.7;
     const limiter = ctx.createDynamicsCompressor();
     limiter.threshold.value = -10;
     limiter.knee.value = 12;
@@ -96,7 +104,7 @@ export class MusicEngine {
     limiter.release.value = 0.12;
     this.analyser = ctx.createAnalyser();
     this.analyser.fftSize = 2048;
-    this.master.connect(limiter).connect(this.analyser).connect(ctx.destination);
+    this.master.connect(this.buildFilter).connect(limiter).connect(this.analyser).connect(ctx.destination);
 
     for (const [role, kit] of kits) {
       const gain = ctx.createGain();
@@ -286,6 +294,128 @@ export class MusicEngine {
       this.lastDueStep = this.stepMarkers.shift()!.step;
     }
     return this.lastDueStep;
+  }
+
+  /** Seconds per beat / bar at the current tempo (4 beats = 1 bar). */
+  get beatSeconds(): number {
+    return 60 / this.clock.bpm;
+  }
+  get barSeconds(): number {
+    return (this.beatSeconds * STEPS_PER_BAR) / this.clock.stepsPerBeat;
+  }
+
+  /** Fire a voice at a chosen future audio time, borrowing it even if the
+   *  player does not own it (all 24 Voice objects always exist). The Hold &
+   *  Drop build uses this for the guaranteed riser/kick/sub and the roll. */
+  triggerAt(role: Role, ev: ChartEvent, time: number): void {
+    const voice = this.voices.get(role);
+    if (voice) this.trigger(voice, ev, time);
+  }
+
+  /** Schedule a full Hold & Drop build -> gap -> slam on the audio clock and
+   *  return the key times so the render/sim side can lock its juice + slam to
+   *  the same downbeat (docs/phases/hold-and-drop-v2.md, sub-phase A). The slam
+   *  lands on the next bar downbeat at least `bars` bars away; the build swells
+   *  from now to that downbeat, the beat cuts out for the gap, then the loop
+   *  crashes back in with a guaranteed sub + kick. Player-driven only. */
+  scheduleDrop(opts: { bars?: number; gapBeats?: number } = {}): {
+    buildStart: number;
+    gapStart: number;
+    slamTime: number;
+  } {
+    const barS = this.barSeconds;
+    const beatS = this.beatSeconds;
+    const bars = opts.bars ?? 2;
+    const gapBeats = opts.gapBeats ?? 1;
+    const slamTime = this.clock.nextBarTime(bars * barS, STEPS_PER_BAR);
+    const buildStart = this.ctx.currentTime + 0.02;
+    const gapStart = slamTime - gapBeats * beatS;
+
+    this.scheduleBuildRiser(buildStart, slamTime);
+    this.scheduleBuildFilter(buildStart, slamTime);
+    this.scheduleRoll(buildStart, gapStart, beatS);
+    this.scheduleGapCut(['kick', ...SUB_BASS_ROLES], gapStart, slamTime);
+    // The one: a guaranteed sub-bass + kick land on the downbeat regardless of
+    // loadout (a minimal drop is riser + kick). The kick auto-ducks the bass.
+    this.triggerAt('bass', { step: 0, velocity: 1, variant: 'sub', note: 0 }, slamTime);
+    this.triggerAt('kick', { step: 0, velocity: 1, variant: 'hard' }, slamTime);
+    return { buildStart, gapStart, slamTime };
+  }
+
+  /** The build riser: a live noise->bandpass->gain swell that rises across the
+   *  whole build and is cut to hard silence exactly on the one (the "silence-
+   *  into-slam" trick). Routed through master (so mute silences it) then out
+   *  through the build filter; the bandpass keeps it present as the filter
+   *  opens. */
+  private scheduleBuildRiser(start: number, cut: number): void {
+    const dur = Math.max(0.2, cut - start);
+    // Keep the peak time strictly after start even for a compressed build
+    // (sub-phase C grid-flex), so the gain automation never goes out of order.
+    const peak = Math.max(start + 0.01, cut - 0.02);
+    const len = Math.ceil(this.ctx.sampleRate * (dur + 0.1));
+    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    const bp = this.ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.Q.value = 0.9;
+    bp.frequency.setValueAtTime(400, start);
+    bp.frequency.exponentialRampToValueAtTime(8000, Math.max(start + 0.01, cut));
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, start);
+    g.gain.exponentialRampToValueAtTime(0.5, peak);
+    g.gain.setValueAtTime(0.5, Math.max(peak, cut));
+    g.gain.linearRampToValueAtTime(0.0001, Math.max(peak, cut) + 0.02); // hard cut on the one
+    src.connect(bp).connect(g).connect(this.master);
+    src.start(start);
+    src.stop(cut + 0.06);
+  }
+
+  /** Sweep the master build filter from muffled (breakdown) to fully open,
+   *  landing open on the one. Left open after the drop. */
+  private scheduleBuildFilter(start: number, cut: number): void {
+    const f = this.buildFilter.frequency;
+    f.cancelScheduledValues(start);
+    f.setValueAtTime(500, start);
+    f.exponentialRampToValueAtTime(18000, cut);
+    f.setValueAtTime(20000, cut + 0.002);
+  }
+
+  /** The roll: hats accelerating from eighths toward sixteenths across the
+   *  build, plus a snare double just before the gap — the "here it comes" fill.
+   *  Borrows the voices so the roll is guaranteed even at a thin loadout. */
+  private scheduleRoll(start: number, end: number, beatS: number): void {
+    const span = Math.max(0.2, end - start);
+    let t = start + 0.05;
+    while (t < end - 0.02) {
+      const prog = (t - start) / span; // 0..1
+      const interval = (beatS / 2) * (1 - 0.5 * prog); // eighth -> sixteenth
+      const vel = 0.35 + 0.5 * prog;
+      this.triggerAt('hat', { step: 0, velocity: vel }, t);
+      if (prog > 0.72) this.triggerAt('snare', { step: 0, velocity: 0.5 + 0.4 * prog }, t);
+      t += interval;
+    }
+  }
+
+  /** The gap: cut the beat's low end (kick + whichever sub-bass is in the mix)
+   *  to near-silence for the last beat, then slam it back on the one. Only
+   *  voices actually in the loop are cut; the guaranteed one-shots carry the
+   *  slam either way. */
+  private scheduleGapCut(roles: readonly Role[], gapStart: number, slamTime: number): void {
+    for (const role of roles) {
+      const v = this.voices.get(role);
+      if (!v || !v.enabled) continue;
+      const p = v.gain.gain;
+      p.cancelScheduledValues(gapStart);
+      p.setValueAtTime(1, gapStart);
+      p.linearRampToValueAtTime(0.0001, gapStart + 0.02);
+      // Reach full gain BY the downbeat so the guaranteed slam one-shots that
+      // fire exactly at slamTime hit at full punch (not mid-ramp at ~50%).
+      p.setValueAtTime(0.0001, Math.max(gapStart + 0.02, slamTime - 0.012));
+      p.linearRampToValueAtTime(1, slamTime);
+    }
   }
 
   /** Play one event immediately, outside the grid. Rehearsal-room audition. */

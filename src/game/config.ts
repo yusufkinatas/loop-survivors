@@ -843,4 +843,54 @@ export const HOLD = {
   comboBonus: 0.5,
   /** Summed held charge that reads as full tension on the HUD meter. */
   tensionFull: 3,
+
+  // ---- v2 (docs/phases/hold-and-drop-v2.md) --------------------------------
+  // The v1 fields above stay; v2 adds a build->gap->slam timeline and a
+  // render-clock juice stack. Sub-phase A uses `build` and `juice` (a debug-
+  // triggered single drop); `tension` and `fullBandCooldownS` land in B.
+
+  /** Tension economy (danger-priced fill; used in sub-phase B). */
+  tension: {
+    pressureRadius: 260,
+    fillAtMaxDanger: 0.55,
+    heldFillBonus: 0.35,
+    nearMissBonus: 0.04,
+    killStreakScale: 0.5,
+    overflowBleedPerS: 0.15,
+  },
+  /** Full-band drop cooldown so Q reads as a spent resource (sub-phase B). */
+  fullBandCooldownS: 13,
+  /** The grid-locked build. Sub-phase A pins a fixed 2-bar (slowGenreBars)
+   *  build in House; the flex/wait-cap fields are wired in sub-phase C. */
+  build: {
+    minBars: 1,
+    slowGenreBars: 2,
+    fastGenreBars: 1,
+    waitCapMs: 600,
+    compressToHalfBar: true,
+    gapBeats: 1,
+    gapBeatsFast: 0.5,
+    fizzleSlamMul: 0.25,
+  },
+  /** Gap intensity per genre (1 = full cut, <1 = a duck). Keyed by GenreId. */
+  gapDuck: {
+    lofi: 0.4,
+    house: 1.0,
+    synthwave: 0.7,
+    hiphop: 1.0,
+    dnb: 1.0,
+    techno: 0.85,
+  },
+  /** Drop juice — RENDER-CLOCK ONLY. Never scales the sim timestep (that would
+   *  desync seeded replays, docs/phases/hold-and-drop-v2.md determinism note). */
+  juice: {
+    hitstopMinMs: 80,
+    hitstopMaxMs: 120,
+    slowMoScale: 0.4,
+    slowMoHoldS: 0.25,
+    slowMoRampS: 0.2,
+    zoomIn: 0.06,
+    zoomSettleS: 0.3,
+    flashAlphaMax: 0.45,
+  },
 };

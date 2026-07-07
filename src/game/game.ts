@@ -77,6 +77,9 @@ export async function bootGame(
     pauseOverlay.style.display = paused ? '' : 'none';
     if (paused) {
       engine.clock.pause();
+      // A drop mid-build would land its sim slam + juice late (out of sync with
+      // the audio, which keeps running on the context clock). Cancel it.
+      pendingSlam = null;
       // Show the current band while paused (the same rack the HUD draws).
       if (world) hud.renderBand(world.tiers, pauseRack);
     } else engine.clock.resume();
@@ -117,6 +120,23 @@ export async function bootGame(
       world.releaseRole(role, combo);
       bringInOnBeat(role);
     }
+  }
+
+  // ---- Hold & Drop v2, sub-phase A (docs/phases/hold-and-drop-v2.md) ----
+  // A crude debug trigger for the drop EVENT: build -> gap -> slam, grid-locked
+  // in the audio, with the sim slam + render-clock juice fired on the exact
+  // downbeat. The build/juice systems are the real deliverable; the ARM/tension
+  // economy is sub-phase B. Player-driven only, so the bot/replay path is
+  // untouched (`pendingSlam` never runs there).
+  let pendingSlam: { at: number; power: number } | null = null;
+  function triggerDebugDrop(): void {
+    if (paused || !world || !(state === 'run' || state === 'sandbox')) return;
+    if (pendingSlam) return; // one drop in flight at a time
+    if (!engine.clock.running) return;
+    // Schedule the audio build (fixed 2-bar House build in sub-phase A) and
+    // remember the downbeat so the ticker can land the slam + juice on it.
+    const sched = engine.scheduleDrop({ bars: HOLD.build.slowGenreBars, gapBeats: HOLD.build.gapBeats });
+    pendingSlam = { at: sched.slamTime, power: 1.8 };
   }
 
   // debug overlay
@@ -343,6 +363,7 @@ export async function bootGame(
     replayAcc = 0;
     probe = null;
     seekOverlay.style.display = 'none';
+    pendingSlam = null; // don't let a drop scheduled in a dead run fire on the next one
     engine.clearBarQueue();
     engine.clearVoiceEffects();
     for (const role of ROLES) engine.setVoiceEnabled(role, false);
@@ -539,6 +560,14 @@ export async function bootGame(
     if ((state === 'run' || state === 'sandbox') && world) {
       const dt = Math.min(ticker.deltaMS / 1000, 1 / 20); // clamp long frames
       world.update(dt);
+      // Hold & Drop v2: when the audio build reaches its grid-locked downbeat,
+      // land the sim slam and the render-clock juice on the SAME frame as the
+      // beat crashes back in (the flash/shake/wave come from dropSlam's fx).
+      if (pendingSlam && engine.ctx.currentTime >= pendingSlam.at) {
+        world.debugDrop(pendingSlam.power);
+        view?.dropJuice(pendingSlam.power);
+        pendingSlam = null;
+      }
       view?.update(dt);
       hud.setStatus(
         world.player.hp / RUN.playerHp,
@@ -669,6 +698,11 @@ export async function bootGame(
       isOn: () => chartOverlayEl.style.display !== 'none',
       onClick: toggleChartOverlay,
     },
+    drop: {
+      label: 'drop (v2)',
+      hotkey: 'P',
+      onClick: triggerDebugDrop,
+    },
   };
   hud.mountDebug(Object.values(debugActions));
 
@@ -696,6 +730,7 @@ export async function bootGame(
       KeyK: debugActions.kill,
       KeyO: debugActions.overlay,
       KeyC: debugActions.charts,
+      KeyP: debugActions.drop,
     };
     const action = byKey[e.code];
     if (action) {

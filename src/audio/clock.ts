@@ -42,6 +42,24 @@ export class Clock {
     return 60 / this.bpm / this.stepsPerBeat;
   }
 
+  /** AudioContext time of the next bar downbeat at least `minAhead` seconds
+   *  from now. Used to grid-lock the Hold & Drop slam onto a downbeat
+   *  (docs/phases/hold-and-drop-v2.md). Projects forward from the scheduler's
+   *  next step; swing is ignored (it only offsets step 2, never the downbeat). */
+  nextBarTime(minAhead: number, stepsPerBar: number): number {
+    const sd = this.stepDuration;
+    const target = this.ctx.currentTime + minAhead;
+    let s = this.nextStep;
+    const rem = ((s % stepsPerBar) + stepsPerBar) % stepsPerBar;
+    if (rem !== 0) s += stepsPerBar - rem;
+    let t = this.nextStepTime + (s - this.nextStep) * sd;
+    while (t < target) {
+      s += stepsPerBar;
+      t += stepsPerBar * sd;
+    }
+    return t;
+  }
+
   /** Start from step 0. */
   start(): void {
     if (this.timer !== null) return;

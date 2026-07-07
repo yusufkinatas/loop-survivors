@@ -6,7 +6,7 @@
 
 import { Container, Graphics, GraphicsContext } from 'pixi.js';
 import type { Role } from '../audio/kits';
-import { RUN } from './config';
+import { HOLD, RUN } from './config';
 import type { Enemy, EnemyShot, FxEvent, Gem, Projectile, RunWorld, Shock, WhistleTag, Zone } from './run';
 
 // Projectile trails (pure view): only these low-count roles trail, so the
@@ -81,6 +81,13 @@ export class RunView {
   private flashes: { start: number; dur: number; color: number; alpha: number }[] = [];
   private trails = new Map<Projectile, number[]>(); // flattened [x,y,...], newest last
 
+  // Hold & Drop v2 juice (docs/phases/hold-and-drop-v2.md), RENDER-CLOCK ONLY:
+  // these hold/scale the picture and NEVER touch world.update's dt, so seeded
+  // replays stay bit-identical. Never constructed headless.
+  private hitstopT = 0; // seconds of picture freeze remaining
+  private slowmoT = 0; // seconds of view-animation slow-mo remaining
+  private zoomPunchT = 0; // seconds of camera zoom-punch remaining
+
   constructor(world: RunWorld, view: { width: number; height: number }) {
     this.world = world;
     this.view = view;
@@ -116,10 +123,58 @@ export class RunView {
     this.pops.push({ gfx: g, t: 0, dur: 0.7, grow: 9 });
   }
 
+  /** Fire the render-clock juice for a drop, locked to the slam frame: a short
+   *  picture freeze (hitstop), a slow-mo tail on the view animations, and a
+   *  camera zoom-punch. Sized by drop power. Render-only — the sim never sees
+   *  this (docs/phases/hold-and-drop-v2.md). The flash/shake/death-wave arrive
+   *  via the world's fx queue from dropSlam. */
+  dropJuice(power: number): void {
+    const j = HOLD.juice;
+    const k = Math.min(1, power / 2); // 0..1 across power 0..2
+    this.hitstopT = (j.hitstopMinMs + (j.hitstopMaxMs - j.hitstopMinMs) * k) / 1000;
+    this.slowmoT = j.slowMoHoldS;
+    this.zoomPunchT = j.zoomSettleS;
+  }
+
+  /** Lock the camera on the player, at the current zoom-punch, with a shake
+   *  offset. Shared by the normal path and the hitstop freeze. */
+  private applyCamera(sx: number, sy: number): void {
+    const p = this.world.player;
+    const punch =
+      this.zoomPunchT > 0 ? HOLD.juice.zoomIn * (this.zoomPunchT / HOLD.juice.zoomSettleS) : 0;
+    const zoom = this.world.zoom * (1 + punch);
+    this.stage.scale.set(zoom);
+    this.stage.position.set(
+      this.view.width / 2 - p.x * zoom + sx,
+      this.view.height / 2 - p.y * zoom + sy,
+    );
+    this.playerGfx.position.set(p.x, p.y);
+    this.playerGfx.alpha = p.iframesT > 0 ? 0.5 : 1;
+  }
+
   /** Sync visuals to the world. Call once per frame, after world.update. */
   update(dt: number): void {
+    // Drain fx first so the slam's flash/shake/wave spawn on THIS frame, even
+    // when a hitstop is about to freeze the rest of the picture.
     for (const fx of this.world.fx ?? []) this.spawnFx(fx);
     if (this.world.fx) this.world.fx.length = 0;
+
+    // Hitstop: freeze the picture (entities hold their last-drawn positions
+    // while the sim + audio keep running underneath). The flash stays visible
+    // and the zoom-punch holds at its peak through the freeze.
+    if (this.hitstopT > 0) {
+      this.hitstopT -= dt;
+      this.drawFlash();
+      this.applyCamera(0, 0);
+      return;
+    }
+    // Slow-mo tail: scale the view-only animation clock (pops, spins, shake
+    // decay) — not the sim, so gameplay stays real-time and replay-safe.
+    if (this.slowmoT > 0) {
+      this.slowmoT -= dt;
+      dt *= HOLD.juice.slowMoScale;
+    }
+    if (this.zoomPunchT > 0) this.zoomPunchT -= dt;
 
     this.syncEnemies();
     this.sync(this.world.enemyShots, this.enemyShotGfx, makeEnemyShotGfx, (s, gfx) =>
@@ -172,15 +227,8 @@ export class RunView {
     const sx = amp ? (Math.random() * 2 - 1) * amp : 0;
     const sy = amp ? (Math.random() * 2 - 1) * amp : 0;
 
-    // camera locked on player, scaled for the screen
-    const zoom = this.world.zoom;
-    this.stage.scale.set(zoom);
-    this.stage.position.set(
-      this.view.width / 2 - p.x * zoom + sx,
-      this.view.height / 2 - p.y * zoom + sy,
-    );
-    this.playerGfx.position.set(p.x, p.y);
-    this.playerGfx.alpha = p.iframesT > 0 ? 0.5 : 1;
+    // camera locked on player, scaled for the screen (+ drop zoom-punch)
+    this.applyCamera(sx, sy);
   }
 
   destroy(): void {
