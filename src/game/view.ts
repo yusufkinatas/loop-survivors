@@ -7,6 +7,7 @@
 import { Container, Graphics, GraphicsContext } from 'pixi.js';
 import type { Role } from '../audio/kits';
 import { RUN } from './config';
+import { DROP } from './sections';
 import type { Enemy, EnemyShot, FxEvent, Gem, Projectile, RunWorld, Shock, WhistleTag, Zone } from './run';
 
 // Projectile trails (pure view): only these low-count roles trail, so the
@@ -102,6 +103,12 @@ export class RunView {
    *  player-hit shake) — the single shake system (D5). */
   pushShake(mag: number, dur: number): void {
     this.shakes.push({ start: this.world.timeS, mag, dur });
+  }
+
+  /** The drop slam's full-screen gold flash (Perform the Track v2). Rides the
+   *  same flashes[] list the fx queue uses, so a replay seek clears it. */
+  dropFlash(): void {
+    this.flashes.push({ start: this.world.timeS, dur: 0.5, color: DROP.color, alpha: 0.6 });
   }
 
   /** Level-up flourish: a signal-colored ring that expands and fades from

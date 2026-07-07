@@ -89,9 +89,9 @@ export class Hud {
   }
 
   /** Build the performance panel once: a chip per section (its key + plain
-   *  name), then the drop energy meter with an armed DROP prompt. Chips and the
-   *  prompt are clickable for mouse players, but the mechanic is keyboard-first
-   *  (1/2/3 to swap section, SPACE to drop). */
+   *  name), then the CHARGE meter with the DROP prompt. Chips and the prompt are
+   *  clickable for mouse players, but the mechanic is keyboard-first (1/2/3 to
+   *  swap section, SPACE to drop). Charge only fills in CLIMB. */
   mountPerformance(onSelect: (id: SectionId) => void, onDrop: () => void): void {
     this.perf.replaceChildren();
     this.sectionChips.clear();
@@ -111,7 +111,7 @@ export class Hud {
     }
     const meter = el('div', 'energy-meter', this.perf);
     this.energyFill = el('div', 'fill', meter);
-    const btn = el('button', 'drop-btn', meter, 'SPACE · DROP');
+    const btn = el('button', 'drop-btn', meter, 'CHARGE IN CLIMB');
     btn.onclick = () => {
       onDrop();
       (btn as HTMLButtonElement).blur();
@@ -119,18 +119,40 @@ export class Hud {
     this.dropBtn = btn;
   }
 
-  /** Per-frame performance readout: which section is live, the energy fill, and
-   *  whether the drop is armed (or currently ripping). Cheap DOM writes. */
-  setPerformance(active: SectionId, energy01: number, ready: boolean, dropping: boolean): void {
-    for (const [id, chip] of this.sectionChips) chip.classList.toggle('active', id === active);
-    if (this.energyFill) this.energyFill.style.width = `${Math.min(1, energy01) * 100}%`;
-    if (this.dropBtn) {
-      this.dropBtn.classList.toggle('ready', ready);
-      this.dropBtn.classList.toggle('dropping', dropping);
-      this.dropBtn.textContent = dropping ? 'DROP!' : ready ? 'SPACE · DROP' : 'CHARGING';
+  /** Per-frame performance readout (v2): the committed section, the requested
+   *  one (pending its bar), the CHARGE fill (only meaningful in CLIMB), which
+   *  sections the band has unlocked, and whether the drop is armed or ripping.
+   *  Cheap DOM writes. */
+  setPerformance(s: {
+    section: SectionId;
+    pending: SectionId | null;
+    charge: number;
+    inClimb: boolean;
+    canDrop: boolean;
+    dropping: boolean;
+    unlocked: { break: boolean; climb: boolean };
+  }): void {
+    for (const [id, chip] of this.sectionChips) {
+      chip.classList.toggle('active', id === s.section);
+      chip.classList.toggle('pending', id === s.pending);
+      const locked = (id === 'break' && !s.unlocked.break) || (id === 'climb' && !s.unlocked.climb);
+      chip.classList.toggle('locked', locked);
     }
-    this.perf.classList.toggle('armed', ready);
-    this.perf.classList.toggle('dropping', dropping);
+    if (this.energyFill) this.energyFill.style.width = `${Math.min(1, s.charge) * 100}%`;
+    if (this.dropBtn) {
+      this.dropBtn.classList.toggle('ready', s.canDrop);
+      this.dropBtn.classList.toggle('dropping', s.dropping);
+      this.dropBtn.textContent = s.dropping
+        ? 'DROP!'
+        : s.canDrop
+          ? 'SPACE · DROP'
+          : s.inClimb
+            ? 'CHARGING'
+            : 'CHARGE IN CLIMB';
+    }
+    this.perf.classList.toggle('armed', s.canDrop);
+    this.perf.classList.toggle('climbing', s.inClimb);
+    this.perf.classList.toggle('dropping', s.dropping);
   }
 
   /** The band rack (docs/phases/the-band.md): eight typed sockets in rack

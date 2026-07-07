@@ -3,7 +3,7 @@
 // the game only listens to its triggers and toggles voices on picks.
 
 import { Application } from 'pixi.js';
-import type { MusicEngine } from '../audio/engine';
+import type { MusicEngine, ArrangeMode } from '../audio/engine';
 import { activeGenre } from '../audio/chartstore';
 import { GENRES, GENRE_BY_ID, DEFAULT_GENRE, type Genre, type GenreId } from '../audio/genres';
 import { ROLES, type Kit, type Role } from '../audio/kits';
@@ -60,6 +60,10 @@ export async function bootGame(
   let view: RunView | null = null;
   let muted = false;
   let paused = false;
+  // Drop hitstop: a brief sim freeze on the slam so the clear lands with weight.
+  // Shell/view-only — never touches the replay path, so seeded runs stay exact.
+  let hitstopT = 0;
+  const HITSTOP_S = 0.11;
 
   // Pause overlay: ESC freezes the run behind a dimmed screen; the audio clock
   // stops so no triggers fire, and the game loop skips its world step. A second
@@ -89,42 +93,97 @@ export async function bootGame(
   overlay.style.display = 'none';
   root.appendChild(overlay);
 
-  // Perform-the-track: push the live section onto the engine's voices (a muted
-  // slot's weapon stops firing — that IS its damage leaving the world, Model A),
-  // tint the arena to the section, and refresh the HUD meter. Cheap; run each
-  // frame while a run/sandbox is live and again on every section swap / drop.
+  // Perform-the-track v2: the audio engine owns which voices play in a section
+  // (its read-time transform, Model A: a note that doesn't fire deals no damage),
+  // so the shell no longer mutes per-voice. Here it only paints the arena edge
+  // to the live stance and refreshes the HUD. Cheap; run each frame while a
+  // run/sandbox is live and again on every swap / drop.
   function applyPerformance(): void {
     if (!world) return;
-    const dropping = world.dropWindowT > 0;
-    const sec = SECTIONS[world.section];
-    for (const role of ROLES) {
-      if (!world.tiers.has(role)) continue;
-      const audible = dropping || sec.audible === 'all' || sec.audible.has(slotOf(role));
-      engine.setVoiceEnabled(role, audible);
-    }
+    const dropping = world.dropWindowT > 0 || world.dropPending;
+    // The edge tint follows the REQUESTED stance so intent reads instantly.
+    const stance = world.pendingSection ?? world.section;
+    const tint = SECTIONS[stance].tint;
     arenaVignette.className =
-      'arena-vignette' +
-      (dropping ? ' perf-dropping' : world.section !== 'groove' ? ` perf-${world.section}` : '');
-    hud.setPerformance(world.section, world.energy, world.dropReady, dropping);
+      'arena-vignette' + (dropping ? ' perf-dropping' : tint ? ` perf-${tint}` : '');
+    hud.setPerformance({
+      section: world.section,
+      pending: world.pendingSection,
+      charge: world.chargeFill,
+      inClimb: world.section === 'climb',
+      canDrop: world.canArmDrop,
+      dropping,
+      unlocked: {
+        break: world.canSelectSection('break'),
+        climb: world.canSelectSection('climb'),
+      },
+    });
   }
 
-  function setSection(id: SectionId): void {
+  // Build the engine's per-voice arrange plan for a section from the owned band:
+  // BREAK strips the audible slots and mutes the rest; CLIMB densifies everyone
+  // but thins the sub to dig the drop's hole. GROOVE is an empty plan (identity).
+  function buildPlan(w: RunWorld, id: SectionId): {
+    plan: Map<Role, ArrangeMode>;
+    filterHz: number;
+    climbRamp: boolean;
+  } {
+    const plan = new Map<Role, ArrangeMode>();
+    if (id === 'groove') return { plan, filterHz: 20000, climbRamp: false };
+    const sec = SECTIONS[id];
+    for (const role of ROLES) {
+      if (!w.tiers.has(role)) continue;
+      const slot = slotOf(role);
+      if (id === 'break') {
+        const audible = sec.audible === 'all' || sec.audible.has(slot);
+        plan.set(role, audible ? 'strip' : 'mute');
+      } else {
+        plan.set(role, slot === 'bass' ? 'buildbass' : 'build');
+      }
+    }
+    return { plan, filterHz: id === 'break' ? 800 : 2200, climbRamp: id === 'climb' };
+  }
+
+  // A section swap: the defensive stance applies instantly (in the sim), the
+  // arrangement swaps on the next bar (quantized, so the change lands musically
+  // on the "1"). Ignored if the band is too small or the drop owns the band.
+  function requestSection(id: SectionId): void {
     if (!world || (state !== 'run' && state !== 'sandbox')) return;
-    if (world.dropWindowT > 0) return; // the drop owns the band during its hype
-    world.setSection(id);
+    if (!world.requestSection(id)) return;
+    const w = world;
+    engine.atNextBar(() => {
+      if ((state !== 'run' && state !== 'sandbox') || world !== w) return;
+      if (w.dropPending || w.dropWindowT > 0) return; // the drop took the band
+      w.commitSection(id);
+      const { plan, filterHz, climbRamp } = buildPlan(w, id);
+      engine.setSection(plan, filterHz, climbRamp);
+      applyPerformance();
+    });
+    applyPerformance(); // reflect the pending tint / instant stance now
+  }
+
+  // The drop: arm it (charge full, mid-CLIMB), the engine silences the band and
+  // swells a riser through the gap, then slams on the next phrase downbeat. The
+  // sim gets i-frames covering the gap now; the shockwave + hype window land on
+  // the slam, cued from the engine callback.
+  function fireDrop(): void {
+    if (!world || (state !== 'run' && state !== 'sandbox')) return;
+    if (!world.canArmDrop) return;
+    const w = world;
+    const { gapSeconds } = engine.armDrop(() => {
+      if ((state !== 'run' && state !== 'sandbox') || world !== w) return;
+      if (!w.resolveDrop()) return;
+      view?.dropFlash();
+      view?.pushShake(16, 0.5);
+      hud.showToast('DROP');
+      hitstopT = HITSTOP_S;
+      applyPerformance();
+    });
+    world.armDrop(gapSeconds + 0.05); // +margin so i-frames never lapse mid-gap
     applyPerformance();
   }
 
-  function fireDrop(): void {
-    if (!world || (state !== 'run' && state !== 'sandbox')) return;
-    if (world.triggerDrop()) {
-      applyPerformance();
-      hud.showToast('DROP');
-      view?.pushShake(14, 0.4);
-    }
-  }
-
-  hud.mountPerformance(setSection, fireDrop);
+  hud.mountPerformance(requestSection, fireDrop);
 
   const events = {
     onLevelUp(level: number): void {
@@ -163,6 +222,12 @@ export async function bootGame(
           } else {
             w!.attachEffect(option.role, option.effect);
             engine.setVoiceEffect(option.role, option.effect);
+          }
+          // If a section is live, fold the new voice into its arrangement so
+          // the fresh hire strips/builds with the rest (not identity by default).
+          if (w!.section !== 'groove') {
+            const { plan, filterHz, climbRamp } = buildPlan(w!, w!.section);
+            engine.setSection(plan, filterHz, climbRamp);
           }
           hud.renderItems(w!.items);
           hud.renderBand(w!.tiers);
@@ -345,6 +410,8 @@ export async function bootGame(
     seekOverlay.style.display = 'none';
     engine.clearBarQueue();
     engine.clearVoiceEffects();
+    engine.resetPerformance(); // back to GROOVE, filter open, drop disarmed
+    hitstopT = 0;
     for (const role of ROLES) engine.setVoiceEnabled(role, false);
     arenaVignette.className = 'arena-vignette'; // clear any section tint
   }
@@ -539,7 +606,10 @@ export async function bootGame(
     if (paused) return;
     if ((state === 'run' || state === 'sandbox') && world) {
       const dt = Math.min(ticker.deltaMS / 1000, 1 / 20); // clamp long frames
-      world.update(dt);
+      // Drop hitstop: freeze the sim for a beat on the slam (audio keeps running
+      // via engine.update above). Never applied to the replay branch below.
+      if (hitstopT > 0) hitstopT = Math.max(0, hitstopT - dt);
+      else world.update(dt);
       applyPerformance(); // reflect the live section + the drop window's end
       view?.update(dt);
       hud.setStatus(
@@ -679,11 +749,11 @@ export async function bootGame(
       return;
     }
     // Perform the track (keyboard-first): 1/2/3 swap the live section, SPACE
-    // fires the drop when the meter is full. All guarded to run/sandbox inside
-    // the handlers, so menus and picks ignore them.
-    if (e.code === 'Digit1') return setSection('groove');
-    if (e.code === 'Digit2') return setSection('breakdown');
-    if (e.code === 'Digit3') return setSection('buildup');
+    // arms the drop when charged. All guarded to run/sandbox inside the handlers,
+    // so menus and picks ignore them.
+    if (e.code === 'Digit1') return requestSection('groove');
+    if (e.code === 'Digit2') return requestSection('break');
+    if (e.code === 'Digit3') return requestSection('climb');
     if (e.code === 'Space') {
       e.preventDefault(); // no page scroll / button re-trigger
       fireDrop();

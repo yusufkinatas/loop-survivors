@@ -1,24 +1,37 @@
-// Perform the track: swappable SECTIONS.
+// Perform the track v2: swappable SECTIONS that re-arrange, and a charged DROP.
 //
-// A real track is not a monotonic ramp — it has an intro, a groove, a
-// stripped-back breakdown, a build-up, and a drop. Loop Survivors' build only
-// ever ADDS instruments, so the mix only ever thickens. Sections give the
-// player a live performance verb on top of the build: press a key to reshape
-// which band members are playing right now, each swap a real offense / defense /
-// economy trade, and bank ENERGY toward a screen-clearing DROP.
+// A real track is not a monotonic ramp — it has a home groove, a stripped-back
+// breakdown that buys space, an aggressive build that loads the spring, and a
+// drop that releases it. Loop Survivors' build only ever ADDS instruments, so
+// the mix only ever thickens. Sections give the player a live performance verb
+// on top of the build: press a key to reshape what the band PLAYS right now.
 //
-// Coupling stays honest (Model A, docs/plan.md): a section decides which slots
-// are AUDIBLE, and a muted slot's weapon does not fire — so pulling instruments
-// out of the mix is exactly pulling their damage out of the world. The section
-// is the arrangement and the fire-control at once.
+// Two experts (a music producer and a game designer) converged on the model in
+// docs/phases/perform-the-track-v2.md. The key moves over v1:
+//   - Sections change PATTERNS, not just muting. A section is a bundle of
+//     read-time chart transforms (thin / densify / drop-out) plus a master
+//     low-pass sweep and transition synths, all owned by the audio engine.
+//   - The baseline is the FLOOR, not the ceiling. GROOVE is neutral; BREAK
+//     pushes toward defense, CLIMB pushes toward aggression (and IS the wind-up
+//     that charges the drop). No section is "voluntarily play weaker".
+//   - The drop is earned only by fighting through CLIMB, fired manually, and
+//     lands quantized on the next phrase downbeat after a short gap.
 //
-// This is player-only live input: the bot never switches section, so the
-// default GROOVE section (all multipliers 1, all slots audible, no drop) leaves
-// every existing seeded replay bit-identical.
+// Coupling stays honest (Model A, docs/plan.md): the engine's per-section
+// transform decides which chart events actually fire, and a trigger that does
+// not fire deals no damage — so re-arranging the mix is re-arranging the damage.
+//
+// Determinism: GROOVE is the identity transform with every multiplier 1. The
+// autoplay bot and every seeded replay never leave GROOVE and never press a
+// key, so all section / charge / drop state is inert for them — bit-identical
+// to before.
 
 import type { Slot } from './band';
 
-export type SectionId = 'groove' | 'breakdown' | 'buildup';
+export type SectionId = 'groove' | 'break' | 'climb';
+
+/** How the audio engine rewrites a voice's chart in this section. */
+export type SectionTransform = 'identity' | 'strip' | 'build';
 
 export interface Section {
   id: SectionId;
@@ -30,77 +43,99 @@ export interface Section {
   key: string;
   code: string;
   /** Which band positions play in this section. 'all' = the full band. A slot
-   *  that is not audible has its weapon silenced (no sound, no damage). */
+   *  that is not audible has its weapon silenced (no sound, no damage). Only
+   *  meaningful for the 'strip' transform. */
   audible: 'all' | ReadonlySet<Slot>;
-  /** Damage dealt by the weapons that ARE playing, on top of the muting. */
+  /** How the engine rewrites the surviving voices' patterns. */
+  transform: SectionTransform;
+  /** Damage dealt by the weapons that ARE playing (explicit trade on top of the
+   *  pattern change, so the stance reads even muted — Pillar 3). */
   dmgMul: number;
-  /** Contact damage the player takes (defense trade). */
+  /** Contact damage the player takes (the defense trade). Instant on request. */
   contactTakenMul: number;
-  /** Player move speed. */
+  /** Player move speed. Instant on request. */
   moveMul: number;
-  /** Energy charge-rate multiplier (economy trade). */
-  chargeMul: number;
-  /** Chip accent color. */
+  /** Soft unlock: the section is selectable only once the band owns this many
+   *  voices. With too few instruments there is nothing to strip or build. */
+  minVoices: number;
+  /** Chip accent + arena edge tint. */
   color: number;
+  /** Arena-vignette CSS suffix (perf-<tint>), or '' for the neutral home. */
+  tint: string;
 }
 
 export const SECTIONS: Record<SectionId, Section> = {
-  // The verse: the whole band, balanced. This is the baseline the rest of the
-  // game was tuned against — every multiplier is 1 and every slot is audible.
+  // GROOVE — the home floor. The whole band, balanced. This is the baseline the
+  // rest of the game was tuned against: every multiplier is 1, the identity
+  // transform, always available. The bot and every replay live here.
   groove: {
     id: 'groove',
-    label: 'FULL',
+    label: 'GROOVE',
     line: 'The whole band. Balanced.',
     key: '1',
     code: 'Digit1',
     audible: 'all',
+    transform: 'identity',
     dmgMul: 1,
     contactTakenMul: 1,
     moveMul: 1,
-    chargeMul: 1,
+    minVoices: 1,
     color: 0x59ffd1,
+    tint: '',
   },
-  // The breakdown: strip to the low end and the pad — sparse and quiet. You
-  // hit softer, but you shrug off contact and move quick, and energy pours in.
-  // The regroup: go here to survive a swarm and load the spring.
-  breakdown: {
-    id: 'breakdown',
-    label: 'BREAKDOWN',
-    line: 'Stripped back. Tough, quick, soft-hitting. Banks energy.',
+  // BREAK — the defensive valve. Strip to the low end and the pad, thin what
+  // survives, and muffle the top (the engine sweeps a low-pass down). You hit a
+  // little softer but shrug off contact and skate quick: buy space, regroup.
+  // Not a penalty — a different tool. Sittable.
+  break: {
+    id: 'break',
+    label: 'BREAK',
+    line: 'Stripped back. Tough and quick — buy space.',
     key: '2',
     code: 'Digit2',
     audible: new Set<Slot>(['pulse', 'bass', 'harmony']),
-    dmgMul: 0.55,
+    transform: 'strip',
+    dmgMul: 0.7,
     contactTakenMul: 0.5,
-    moveMul: 1.2,
-    chargeMul: 1.8,
+    moveMul: 1.25,
+    minVoices: 2,
     color: 0x6ba8ff,
+    tint: 'break',
   },
-  // The build-up: everything drops out but the kick and the FX riser. Nearly
-  // disarmed and exposed, but the energy floods — the tense bar before the
-  // drop. A gamble: buy the drop faster by going briefly toothless.
-  buildup: {
-    id: 'buildup',
-    label: 'BUILD-UP',
-    line: 'Almost silent and exposed — but energy floods in.',
+  // CLIMB — the aggressive build. The whole band climbs a rung and the density
+  // ramps as you hold it, the filter opening; this is where the drop charges.
+  // You deal the most damage AND take the most: loud and exposed at once. The
+  // wind-up is a fight, not a wait. Reachable at a 3-voice band (something to
+  // build with) — and the only way to arm the drop.
+  climb: {
+    id: 'climb',
+    label: 'CLIMB',
+    line: 'Push hard and expose yourself — charge the drop.',
     key: '3',
     code: 'Digit3',
-    audible: new Set<Slot>(['pulse', 'fx']),
-    dmgMul: 0.2,
-    contactTakenMul: 1.1,
+    audible: 'all',
+    transform: 'build',
+    dmgMul: 1.35,
+    contactTakenMul: 1.25,
     moveMul: 1.0,
-    chargeMul: 3.0,
+    minVoices: 3,
     color: 0xffb454,
+    tint: 'climb',
   },
 };
 
-export const SECTION_ORDER: readonly SectionId[] = ['groove', 'breakdown', 'buildup'];
+export const SECTION_ORDER: readonly SectionId[] = ['groove', 'break', 'climb'];
 
-/** The DROP: the payoff. Armed at full energy, spent with SPACE. In a beat it
- *  all slams back to the full band, a screen-clearing shockwave rips out, and a
- *  short hype window doubles the whole band's damage. */
+/** The DROP: the payoff. Charged only in CLIMB, fired manually, resolves on the
+ *  next phrase downbeat after a short gap (covered by i-frames so the silence
+ *  reads as euphoric invulnerability, not helplessness). On resolve the band
+ *  slams back to GROOVE, a screen-clearing shockwave rips out, and a short hype
+ *  window doubles the whole band's damage. Requires a 3-voice band. */
 export const DROP = {
   code: 'Space',
+  /** Voices the band must own before the drop can arm (needs a low-end return
+   *  + something to slam). Below this the payoff would not read. */
+  minVoices: 3,
   /** Hype window after the slam: the whole band amped. */
   windowS: 6,
   dmgMul: 2.0,
@@ -111,13 +146,26 @@ export const DROP = {
   shockDamage: 280,
   shockSpeed: 940,
   knockback: 150,
-  /** A breath of safety as the drop lands, so it always clears space. */
+  /** A breath of safety AFTER the slam lands, added on top of the gap i-frames,
+   *  so the drop always clears space. */
   iframesS: 0.7,
   color: 0xfff2a8,
 };
 
-/** Energy (0..1) charges from time-in-section (so BUILD-UP and BREAKDOWN can
- *  bank it despite dealing little) plus a combat kicker from damage dealt (so
- *  GROOVE rewards fighting). Tuned for a drop roughly every 20-30s of play. */
-export const ENERGY_BASE_RATE = 0.032; // per second at chargeMul 1
-export const ENERGY_PER_DAMAGE = 0.000028; // per point of effective damage dealt
+// --- Charge economy (v2): the drop is earned by fighting through CLIMB -------
+//
+// v1 banked "energy" from time in ANY section plus a combat kicker, so a drop
+// landed on a passive timer. v2 replaces that: charge accrues ONLY in CLIMB,
+// from time held (the spring loading) plus a kicker from damage dealt (so
+// fighting the climb, not just enduring it, fills the meter). No CLIMB, no
+// charge; the music is the cooldown.
+
+/** Charge per second of holding CLIMB (the spring loading on its own). At this
+ *  rate a pure hold arms in ~14s; fighting fills it faster. */
+export const CLIMB_CHARGE_PER_S = 0.07;
+/** Charge per point of effective damage dealt while in CLIMB. */
+export const CHARGE_PER_DAMAGE = 0.00006;
+/** Charge caps here. Past 1.0 (armed) the extra "overcharge" scales the drop's
+ *  slam, so riding the climb longer trades exposure for a bigger clear — the
+ *  "pop now vs push for the huge one" decision. */
+export const CHARGE_MAX = 1.6;

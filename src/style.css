@@ -1611,6 +1611,22 @@ button.big {
   box-shadow: 0 0 16px -6px var(--voice-color);
   transform: translateY(-1px);
 }
+/* Requested-but-not-yet-committed: the swap lands on the next bar. A pulsing
+   outline is the "armed, firing on the 1" tell (the riser swell is its sound). */
+.section-chip.pending {
+  border-color: var(--voice-color);
+  animation: chippending 0.5s ease-in-out infinite;
+}
+@keyframes chippending {
+  0%, 100% { box-shadow: 0 0 4px -2px var(--voice-color); }
+  50% { box-shadow: 0 0 16px -2px var(--voice-color); }
+}
+/* Not enough band yet: nothing to strip or build. Dimmed and non-interactive. */
+.section-chip.locked {
+  opacity: 0.38;
+  cursor: not-allowed;
+  filter: grayscale(0.6);
+}
 .chip-key {
   font: 800 11px/1 var(--font-mono);
   letter-spacing: 0.05em;
@@ -1651,6 +1667,11 @@ button.big {
   box-shadow: 0 0 18px -4px var(--signal);
   transition: width 0.12s linear;
 }
+/* Charge only accrues in CLIMB, so warm the meter while climbing to say so. */
+.perf-panel.climbing .energy-meter .fill {
+  background: linear-gradient(90deg, rgba(255, 140, 60, 0.55), #ffb454);
+  box-shadow: 0 0 18px -4px #ffb454;
+}
 .perf-panel.armed .energy-meter .fill {
   background: linear-gradient(90deg, #ffb454, var(--drop-gold, #fff2a8));
   box-shadow: 0 0 22px -2px #fff2a8;
@@ -1679,14 +1700,15 @@ button.big {
   50% { opacity: 1; }
 }
 
-/* Section tints on the arena vignette: a quick read of the live mode without
-   looking away from the horde. Breakdown cools and opens up; build-up warms
-   and closes in (the tension); the drop flashes gold. */
-.arena-vignette.perf-breakdown {
+/* Section tints on the arena vignette (v2): a quick read of the live stance
+   without looking away from the horde. GROOVE is the neutral home (no tint);
+   BREAK cools and opens up (calm); CLIMB warms and closes in (the tension);
+   the drop flashes gold. */
+.arena-vignette.perf-break {
   background: radial-gradient(130% 130% at 50% 45%, rgba(43, 90, 160, 0.1) 40%, rgba(0, 0, 0, 0.5) 100%);
 }
-.arena-vignette.perf-buildup {
-  background: radial-gradient(115% 115% at 50% 48%, transparent 34%, rgba(120, 60, 0, 0.5) 100%);
+.arena-vignette.perf-climb {
+  background: radial-gradient(115% 115% at 50% 48%, transparent 34%, rgba(150, 70, 0, 0.55) 100%);
 }
 .arena-vignette.perf-dropping {
   background: radial-gradient(150% 150% at 50% 45%, rgba(255, 220, 120, 0.16) 30%, rgba(40, 20, 0, 0.5) 100%);

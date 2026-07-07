@@ -66,11 +66,13 @@ import { BASE_MODS, ITEMS, type ItemId, type Mods } from './items';
 import type { Rng } from './rng';
 import {
   DROP,
-  ENERGY_BASE_RATE,
-  ENERGY_PER_DAMAGE,
+  CLIMB_CHARGE_PER_S,
+  CHARGE_PER_DAMAGE,
+  CHARGE_MAX,
   SECTIONS,
   type SectionId,
 } from './sections';
+import { SLOTS, slotFilled } from './band';
 import { SpatialHash, circlesOverlap } from './spatial';
 
 /** Weapons whose projectiles pierce: crush grants +pierce on these, +radius
@@ -321,14 +323,25 @@ export class RunWorld {
    *  slow genres up, applied to every weapon's damage as it fires. */
   powerMul = 1;
 
-  // ---- Perform the track: sections, energy, the drop (src/game/sections.ts) ----
-  /** The active performance section. GROOVE is the baseline (all multipliers 1,
+  // ---- Perform the track v2: sections, charge, the drop (src/game/sections.ts) ----
+  /** The COMMITTED performance section — the arrangement actually playing.
+   *  Drives damage + the audio patterns. Swaps land quantized on the next bar
+   *  (the shell calls commitSection). GROOVE is the baseline (all multipliers 1,
    *  full band, no drop), so a world that never leaves it — every bot run and
-   *  every existing seeded replay — behaves bit-identically to before. */
+   *  every seeded replay — behaves bit-identically to before. */
   section: SectionId = 'groove';
-  /** Drop energy, 0..1. Banks from time-in-section + damage dealt; full arms
-   *  the drop. */
-  energy = 0;
+  /** The REQUESTED section, awaiting its bar boundary. Defense/move read this
+   *  the instant it's requested (twitch response); the arrangement waits for
+   *  the "1". Null when nothing is pending. Player-only. */
+  pendingSection: SectionId | null = null;
+  /** Drop charge, 0..CHARGE_MAX. Banks ONLY while fighting through CLIMB; full
+   *  arms the drop. Read-only w.r.t. the sim (never feeds damage/spawns), so it
+   *  stays inert for the bot. */
+  charge = 0;
+  /** A drop is armed and waiting for its quantized slam (the pre-drop gap). */
+  dropPending = false;
+  /** Seconds of pre-drop gap left (covered by i-frames; HUD reads it). */
+  dropGapT = 0;
   /** Seconds left in the post-drop hype window (the whole band amped). */
   dropWindowT = 0;
 
@@ -763,6 +776,9 @@ export class RunWorld {
   private applyBuild(conf: WeaponConf, effect: EffectId | null, usesPierce: boolean): WeaponConf {
     const m = this.mods;
     const dropping = this.dropWindowT > 0;
+    // Damage follows the COMMITTED section (the arrangement actually playing),
+    // so eye/ear/damage agree; defense (below) follows the requested stance for
+    // twitch response. GROOVE = 1, so the bot/replay path is bit-identical.
     const secDmg = SECTIONS[this.section].dmgMul * (dropping ? DROP.dmgMul : 1);
     const secArea = dropping ? DROP.areaMul : 1;
     const out: WeaponConf = { ...conf, damage: conf.damage * this.powerMul * m.damageMul * secDmg };
@@ -774,44 +790,99 @@ export class RunWorld {
     return out;
   }
 
-  /** Trigger the drop: only when energy is full and no drop is already running.
-   *  Spends all energy, slams the band back to GROOVE for the hype window, rips
-   *  a screen-clearing shockwave out, and gifts a breath of safety. Returns true
-   *  if it fired (so the shell can re-voice the full band and cue the juice). */
-  triggerDrop(): boolean {
-    if (this.energy < 1 || this.dropWindowT > 0) return false;
+  /** How many band positions are filled — the soft-unlock gate for sections
+   *  and the drop, and the scale of the drop's payoff. */
+  get ownedVoiceCount(): number {
+    let n = 0;
+    for (const slot of SLOTS) if (slotFilled(slot, this.tiers)) n++;
+    return n;
+  }
+
+  /** Is a section selectable right now? Soft-unlock by band size: with too few
+   *  instruments there is nothing to strip or build (docs spec). */
+  canSelectSection(id: SectionId): boolean {
+    return this.ownedVoiceCount >= SECTIONS[id].minVoices;
+  }
+
+  /** Can the drop be armed? Charge full, band big enough, mid CLIMB (the drop
+   *  is the release of the climb), and none already in flight. */
+  get canArmDrop(): boolean {
+    return (
+      this.charge >= 1 &&
+      this.section === 'climb' &&
+      !this.dropPending &&
+      this.dropWindowT <= 0 &&
+      this.ownedVoiceCount >= DROP.minVoices
+    );
+  }
+
+  /** Charge as a 0..1 fill for the HUD (the overcharge tail is a bonus). */
+  get chargeFill(): number {
+    return Math.min(1, this.charge);
+  }
+
+  /** Arm the drop (player input only, gated by canArmDrop). Grants i-frames
+   *  covering the whole pre-drop gap so the near-silence reads as euphoric
+   *  invulnerability, not helplessness. The audio engine schedules the slam on
+   *  the next phrase downbeat; the shell calls resolveDrop when it lands. The
+   *  charge is spent on resolve, not here. */
+  armDrop(gapS: number): boolean {
+    if (!this.canArmDrop) return false;
+    this.dropPending = true;
+    this.dropGapT = gapS;
+    this.player.iframesT = Math.max(this.player.iframesT, gapS + DROP.iframesS);
+    return true;
+  }
+
+  /** The slam lands (called by the shell on the quantized phrase downbeat):
+   *  spend the charge, slam the band back to GROOVE for the hype window, rip a
+   *  screen-clearing shockwave scaled by the overcharge, and gift a breath of
+   *  safety on top of the gap's. Returns true if a drop was actually pending. */
+  resolveDrop(): boolean {
+    if (!this.dropPending) return false;
     const p = this.player;
-    this.energy = 0;
+    const scale = Math.max(1, Math.min(CHARGE_MAX, this.charge));
+    this.charge = 0;
+    this.dropPending = false;
+    this.dropGapT = 0;
     this.dropWindowT = DROP.windowS;
     this.section = 'groove';
+    this.pendingSection = null;
     p.iframesT = Math.max(p.iframesT, DROP.iframesS);
     this.shocks.push({
       x: p.x,
       y: p.y,
       radius: 20,
-      maxRadius: DROP.radius,
+      maxRadius: DROP.radius * scale,
       speed: DROP.shockSpeed,
-      damage: DROP.shockDamage * this.powerMul,
+      damage: DROP.shockDamage * this.powerMul * scale,
       knockback: DROP.knockback,
       color: DROP.color,
       hit: new Set(),
     });
-    this.spawnRing(p.x, p.y, DROP.radius, DROP.color, 0.6);
-    this.fx?.push({ type: 'slam', x: p.x, y: p.y, radius: DROP.radius * 0.35, color: DROP.color });
+    this.spawnRing(p.x, p.y, DROP.radius * scale, DROP.color, 0.6);
+    this.fx?.push({ type: 'slam', x: p.x, y: p.y, radius: DROP.radius * 0.35 * scale, color: DROP.color });
     this.fx?.push({ type: 'shake', mag: 16, dur: 0.5 });
-    this.fx?.push({ type: 'flash', color: DROP.color, alpha: 0.5, dur: 0.5 });
+    this.fx?.push({ type: 'flash', color: DROP.color, alpha: 0.55, dur: 0.5 });
     return true;
   }
 
-  /** Switch the live performance section (player input only). The engine's
-   *  voice muting is applied by the game shell; this holds the gameplay state. */
-  setSection(id: SectionId): void {
-    this.section = id;
+  /** Request a section (player input only). Defense/move apply instantly via
+   *  pendingSection; the shell commits the arrangement on the next bar. Ignored
+   *  while the drop owns the band, or if the band is too small for the section. */
+  requestSection(id: SectionId): boolean {
+    if (this.dropPending || this.dropWindowT > 0) return false;
+    if (!this.canSelectSection(id)) return false;
+    if (id === this.section && this.pendingSection === null) return false;
+    this.pendingSection = id;
+    return true;
   }
 
-  /** True once the meter is full and no drop is mid-flight — the drop is armed. */
-  get dropReady(): boolean {
-    return this.energy >= 1 && this.dropWindowT <= 0;
+  /** Commit a requested section as the live arrangement (called on the bar
+   *  boundary by the shell, in lockstep with the engine's pattern swap). */
+  commitSection(id: SectionId): void {
+    this.section = id;
+    if (this.pendingSection === id) this.pendingSection = null;
   }
 
   /** Push an enemy away from a point (Feature 3), sharing the crash knock
@@ -844,11 +915,15 @@ export class RunWorld {
       return;
     }
 
-    // Perform the track: bank energy from time-in-section (charges even when a
-    // section is nearly disarmed, so BUILD-UP/BREAKDOWN can load the drop) and
-    // count down the post-drop hype window. No charge while the drop is live.
+    // Perform the track v2: charge banks ONLY while fighting through CLIMB (the
+    // spring loading + a kicker per damage dealt, applied in damageEnemy). No
+    // passive charge in GROOVE/BREAK — the music is the cooldown. Count down the
+    // pre-drop gap and the post-drop hype window. All inert unless the player
+    // is in CLIMB (never true for the bot / a replay).
+    if (this.dropGapT > 0) this.dropGapT = Math.max(0, this.dropGapT - dt);
     if (this.dropWindowT > 0) this.dropWindowT = Math.max(0, this.dropWindowT - dt);
-    else this.energy = Math.min(1, this.energy + ENERGY_BASE_RATE * SECTIONS[this.section].chargeMul * dt);
+    if (this.section === 'climb' && !this.dropPending && this.dropWindowT <= 0)
+      this.charge = Math.min(CHARGE_MAX, this.charge + CLIMB_CHARGE_PER_S * dt);
 
     this.movePlayer(dt);
     if (this.scripted) {
@@ -909,9 +984,12 @@ export class RunWorld {
 
   private movePlayer(dt: number): void {
     const a = this.control();
-    // Section move trade (and the drop's brief surge). GROOVE with no drop = 1,
-    // so the bot/replay path is unchanged.
-    const secMove = SECTIONS[this.section].moveMul * (this.dropWindowT > 0 ? DROP.moveMul : 1);
+    // Section move trade (and the drop's brief surge). Defense/move follow the
+    // REQUESTED stance so a swap feels instant in the hands (the arrangement
+    // still waits for the bar). GROOVE with no drop = 1, so the bot/replay path
+    // is unchanged (pendingSection is always null there).
+    const stance = this.pendingSection ?? this.section;
+    const secMove = SECTIONS[stance].moveMul * (this.dropWindowT > 0 ? DROP.moveMul : 1);
     const speed = RUN.playerSpeed * this.mods.moveMul * secMove;
     this.player.x += a.x * speed * dt;
     this.player.y += a.y * speed * dt;
@@ -937,9 +1015,10 @@ export class RunWorld {
       // pillar. contactTakenMul===1 and integer e.damage>=10 -> identical.
       // Section defense trade folds in the same way (GROOVE = 1, so the
       // bot/replay path keeps the exact rounding).
+      const stance = this.pendingSection ?? this.section;
       const dmg = Math.max(
         1,
-        Math.round(e.damage * this.mods.contactTakenMul * SECTIONS[this.section].contactTakenMul),
+        Math.round(e.damage * this.mods.contactTakenMul * SECTIONS[stance].contactTakenMul),
       );
       p.hp = Math.max(0, p.hp - dmg);
       p.iframesT = RUN.iframesS;
@@ -1282,10 +1361,11 @@ export class RunWorld {
     e.hp -= amount;
     e.flashT = 0.08;
     if (source) this.damageByRole[source] = (this.damageByRole[source] ?? 0) + dealt;
-    // Combat kicker on the drop meter, so GROOVE fighting banks energy too (the
-    // bot never drops, so this write is inert to the sim). No charge mid-drop.
-    if (this.dropWindowT <= 0)
-      this.energy = Math.min(1, this.energy + dealt * ENERGY_PER_DAMAGE * SECTIONS[this.section].chargeMul);
+    // Combat kicker on the drop charge: fighting THROUGH the climb fills it
+    // faster than merely holding it, so aggression is rewarded. Gated to CLIMB
+    // (and not mid-drop), so the bot — always in GROOVE — never writes it.
+    if (this.section === 'climb' && !this.dropPending && this.dropWindowT <= 0)
+      this.charge = Math.min(CHARGE_MAX, this.charge + dealt * CHARGE_PER_DAMAGE);
     if (e.hp <= 0) {
       e.dead = true;
       this.kills++;

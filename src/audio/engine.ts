@@ -4,7 +4,7 @@
 // (which voices are on) and grid (the clock's steps): no stage input exists.
 
 import { Clock } from './clock';
-import { chartEventsAtStep } from './arranger';
+import { chartEventsAtStep, stripEventsAtStep, bassThinAtStep } from './arranger';
 import { TIER_COUNT, type Chart, type ChartEvent } from './charts';
 import { getChart, setActiveGenre } from './chartstore';
 import type { Genre } from './genres';
@@ -54,6 +54,22 @@ export interface ScheduledTrigger {
 
 export type TriggerListener = (t: ScheduledTrigger) => void;
 
+/** How the live performance section rewrites one voice's chart this step
+ *  (Perform the Track v2). Player-only; the bot's plan is always empty
+ *  (every voice 'identity'), so its firing is unchanged.
+ *   - identity : play the tier chart as written (GROOVE, and the drop slam).
+ *   - mute     : silent this section (BREAK drops this slot; the drop gap).
+ *   - strip    : BREAK's thinned survivor (strong beats / held root).
+ *   - build    : CLIMB densifies — reads one tier up once the climb is a bar in.
+ *   - buildbass: CLIMB thins the sub to one hit a bar, digging the drop's hole. */
+export type ArrangeMode = 'identity' | 'mute' | 'strip' | 'build' | 'buildbass';
+
+// The drop's musical staging (docs/phases/perform-the-track-v2.md): a short
+// pre-slam gap of near-silence, then the slam on the next phrase downbeat.
+const MIN_GAP_STEPS = 8; // at least half a bar of gap so the drop always breathes
+const FILTER_OPEN_HZ = 20000;
+const FILTER_CLIMB_START_HZ = 2200;
+
 // Free per-hit engine nudges: the first of the three variation layers.
 const HUMANIZE_GAIN = 0.12; // +/- proportional
 const HUMANIZE_CENTS = 8; // +/- pitch, applied only to unpitched kits
@@ -75,11 +91,31 @@ export class MusicEngine {
   readonly analyser: AnalyserNode;
   readonly voices = new Map<Role, Voice>();
   private master: GainNode;
+  /** Master bus, post-mix, pre-limiter (Perform the Track v2): a drop pump
+   *  gain then a low-pass the sections sweep. master -> pump -> lp -> limiter. */
+  private masterPump: GainNode;
+  private masterLP: BiquadFilterNode;
   private pending: ScheduledTrigger[] = [];
   private listeners: TriggerListener[] = [];
-  private barQueue: (() => void)[] = [];
+  private barQueue: ((time: number) => void)[] = [];
   private stepMarkers: { step: number; time: number }[] = [];
   private lastDueStep = 0;
+
+  // ---- Perform the track v2 (player-only; empty/none for the bot) ----------
+  /** Per-voice arrange mode for the live section; empty = GROOVE (all identity). */
+  private plan: Map<Role, ArrangeMode> = new Map();
+  /** Grid step the current section entered on, for CLIMB's per-bar ramp. */
+  private sectionStartStep = 0;
+  /** CLIMB opens the low-pass a little more each bar; off in other sections. */
+  private climbRamp = false;
+  /** The most recent grid step scheduled by the clock (for drop quantization). */
+  private lastScheduledStep = 0;
+  /** Drop staging: 'gap' silences the band and swells a riser until the slam. */
+  private dropState: 'none' | 'gap' = 'none';
+  private dropSlamStep = -1;
+  private dropResolve: ((time: number) => void) | null = null;
+  /** One reusable white-noise buffer for the transition synths. */
+  private noiseBuf: AudioBuffer | null = null;
 
   constructor(ctx: AudioContext, kits: Map<Role, Kit>) {
     this.ctx = ctx;
@@ -95,7 +131,22 @@ export class MusicEngine {
     limiter.release.value = 0.12;
     this.analyser = ctx.createAnalyser();
     this.analyser.fftSize = 2048;
-    this.master.connect(limiter).connect(this.analyser).connect(ctx.destination);
+    // Master-bus performance nodes (v2): a pump gain (drop "breath") then a
+    // low-pass the sections sweep (BREAK muffles, CLIMB opens, the drop snaps
+    // it wide). Both sit before the limiter so the whole mix is shaped as one.
+    // Unity / fully-open by default, so GROOVE is bit-identical to no section.
+    this.masterPump = ctx.createGain();
+    this.masterPump.gain.value = 1;
+    this.masterLP = ctx.createBiquadFilter();
+    this.masterLP.type = 'lowpass';
+    this.masterLP.frequency.value = FILTER_OPEN_HZ;
+    this.masterLP.Q.value = 0.9;
+    this.master
+      .connect(this.masterPump)
+      .connect(this.masterLP)
+      .connect(limiter)
+      .connect(this.analyser)
+      .connect(ctx.destination);
 
     for (const [role, kit] of kits) {
       const gain = ctx.createGain();
@@ -258,6 +309,134 @@ export class MusicEngine {
     this.barQueue = [];
   }
 
+  // ---- Perform the track v2: sections, the master sweep, the drop -----------
+
+  /** Install the live section's arrange plan and sweep the master low-pass to
+   *  match. The shell builds `plan` from the owned band + section (which slots
+   *  strip / mute / build); the engine just applies it per step. GROOVE is an
+   *  empty plan (all identity) with the filter fully open — bit-identical to no
+   *  section. Called at a bar boundary so patterns swap on the "1". */
+  setSection(plan: Map<Role, ArrangeMode>, filterHz: number, climbRamp: boolean): void {
+    this.plan = plan;
+    this.climbRamp = climbRamp;
+    this.sectionStartStep = this.lastScheduledStep;
+    this.sweepFilter(filterHz, this.ctx.currentTime, 0.18);
+  }
+
+  /** Arm the drop: silence the band and swell a riser through the gap, then
+   *  fire `onResolve` (and the audio slam) on the next phrase downbeat. Returns
+   *  the gap length in seconds so the shell can cover it with i-frames. The bot
+   *  never calls this. */
+  armDrop(onResolve: (time: number) => void): { gapSeconds: number } {
+    const from = this.lastScheduledStep + MIN_GAP_STEPS;
+    const r = ((from % STEPS_PER_PHRASE) + STEPS_PER_PHRASE) % STEPS_PER_PHRASE;
+    const slam = from + ((STEPS_PER_PHRASE - r) % STEPS_PER_PHRASE || STEPS_PER_PHRASE);
+    this.dropSlamStep = slam;
+    this.dropState = 'gap';
+    this.dropResolve = onResolve;
+    const gapSteps = slam - this.lastScheduledStep;
+    const gapSeconds = gapSteps * this.clock.stepDuration;
+    // The riser swells through the whole gap into the slam (capped so a long
+    // gap doesn't drone). Pull the filter down a touch for the held breath.
+    this.scheduleRiser(this.ctx.currentTime + 0.03, Math.min(gapSeconds, 2.2));
+    this.sweepFilter(1400, this.ctx.currentTime, 0.12);
+    return { gapSeconds };
+  }
+
+  /** Run reset / exit: back to GROOVE, filter open, drop disarmed. */
+  resetPerformance(): void {
+    this.plan = new Map();
+    this.climbRamp = false;
+    this.dropState = 'none';
+    this.dropSlamStep = -1;
+    this.dropResolve = null;
+    this.masterPump.gain.cancelScheduledValues(this.ctx.currentTime);
+    this.masterPump.gain.setValueAtTime(1, this.ctx.currentTime);
+    this.sweepFilter(FILTER_OPEN_HZ, this.ctx.currentTime, 0.05);
+  }
+
+  private sweepFilter(hz: number, time: number, ramp: number): void {
+    const f = this.masterLP.frequency;
+    f.cancelScheduledValues(time);
+    f.setValueAtTime(f.value, time);
+    f.linearRampToValueAtTime(hz, time + ramp);
+  }
+
+  /** The band re-enters on the slam: full band, filter wide open, a pump breath
+   *  and a generic impact. Gameplay (shockwave, window) rides the callback. */
+  private resolveDrop(time: number): void {
+    this.plan = new Map(); // full band at peak, on the "1"
+    this.climbRamp = false;
+    this.sectionStartStep = this.lastScheduledStep;
+    this.sweepFilter(FILTER_OPEN_HZ, time, 0.03);
+    const p = this.masterPump.gain;
+    p.cancelScheduledValues(time);
+    p.setValueAtTime(0.55, time);
+    p.linearRampToValueAtTime(1, time + 0.35);
+    this.scheduleImpact(time);
+    this.dropState = 'none';
+    this.dropSlamStep = -1;
+    const cb = this.dropResolve;
+    this.dropResolve = null;
+    cb?.(time);
+  }
+
+  private noise(): AudioBuffer {
+    if (this.noiseBuf) return this.noiseBuf;
+    const len = Math.floor(this.ctx.sampleRate * 2);
+    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    this.noiseBuf = buf;
+    return buf;
+  }
+
+  /** Engine-owned white-noise riser (not a Voice/weapon, deals no damage): a
+   *  rising bandpass swell so CLIMB/the drop gap read even with a sparse band. */
+  private scheduleRiser(time: number, dur: number): void {
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noise();
+    src.loop = true;
+    const bp = this.ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.Q.value = 1.2;
+    bp.frequency.setValueAtTime(400, time);
+    bp.frequency.exponentialRampToValueAtTime(6000, time + dur);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, time);
+    g.gain.exponentialRampToValueAtTime(0.26, time + dur);
+    g.gain.linearRampToValueAtTime(0.0001, time + dur + 0.05);
+    src.connect(bp).connect(g).connect(this.masterPump);
+    src.start(time);
+    src.stop(time + dur + 0.1);
+  }
+
+  /** Engine-owned impact (no damage): a filtered noise crack + a low sine thud
+   *  under the slam, so the drop lands even before the band re-enters. */
+  private scheduleImpact(time: number): void {
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noise();
+    const hp = this.ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 1200;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.5, time);
+    g.gain.exponentialRampToValueAtTime(0.001, time + 0.4);
+    src.connect(hp).connect(g).connect(this.masterPump);
+    src.start(time);
+    src.stop(time + 0.45);
+    const osc = this.ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(150, time);
+    osc.frequency.exponentialRampToValueAtTime(45, time + 0.25);
+    const og = this.ctx.createGain();
+    og.gain.setValueAtTime(0.6, time);
+    og.gain.exponentialRampToValueAtTime(0.001, time + 0.5);
+    osc.connect(og).connect(this.masterPump);
+    osc.start(time);
+    osc.stop(time + 0.55);
+  }
+
   /** Dispatch every trigger whose scheduled time has arrived. Call once per
    *  frame from whatever loop is driving visuals (room rAF or game ticker). */
   update(): void {
@@ -290,20 +469,64 @@ export class MusicEngine {
   private onStep(step: number, time: number): void {
     if (step === 0) this.lastDueStep = 0;
     this.stepMarkers.push({ step, time });
+    this.lastScheduledStep = step;
     // The phrase clock: bars 1-4, then roll over. Charts loop inside the
     // phrase, so a 4-bar chart's bar 4 is always the phrase's bar 4 and
     // once-per-phrase material lands where it was written.
     const phraseStep = step % STEPS_PER_PHRASE;
-    if (phraseStep % STEPS_PER_BAR === 0 && this.barQueue.length > 0) {
-      const queue = this.barQueue;
-      this.barQueue = [];
-      for (const fn of queue) fn();
+    // The drop slam is quantized to the next phrase downbeat (v2): resolve it
+    // the moment the clock reaches its step, so the band re-enters on the "1".
+    if (this.dropState === 'gap' && step >= this.dropSlamStep) {
+      this.resolveDrop(time);
     }
+    if (phraseStep % STEPS_PER_BAR === 0) {
+      if (this.barQueue.length > 0) {
+        const queue = this.barQueue;
+        this.barQueue = [];
+        for (const fn of queue) fn(time);
+      }
+      // CLIMB opens the low-pass a little more each bar it's held — the build
+      // "coming into focus" — until it's wide open ready for the drop.
+      if (this.climbRamp && this.dropState === 'none') {
+        const barsIn = Math.max(0, Math.floor((step - this.sectionStartStep) / STEPS_PER_BAR));
+        const hz = Math.min(15000, FILTER_CLIMB_START_HZ * Math.pow(2, barsIn));
+        this.sweepFilter(hz, time, this.clock.stepDuration * STEPS_PER_BAR);
+      }
+    }
+    // The pre-drop gap: silence the band (the riser is already swelling). The
+    // slam above re-enters it the same step the gap ends.
+    if (this.dropState === 'gap') return;
+    const barInSection = Math.max(0, Math.floor((step - this.sectionStartStep) / STEPS_PER_BAR));
     for (const voice of this.voices.values()) {
       if (!voice.enabled) continue;
-      for (const ev of chartEventsAtStep(voice.chart, phraseStep)) {
+      for (const ev of this.sectionEvents(voice, phraseStep, barInSection)) {
         this.trigger(voice, ev, time, phraseStep);
       }
+    }
+  }
+
+  /** The read-time section transform (v2): given a voice's arrange mode, return
+   *  the events it actually fires this step. GROOVE / an empty plan is the plain
+   *  identity read, so the bot and every replay are unchanged. Pure w.r.t. the
+   *  chart — never mutates the shared working copy. */
+  private sectionEvents(voice: Voice, phraseStep: number, barInSection: number): ChartEvent[] {
+    const mode = this.plan.get(voice.role) ?? 'identity';
+    switch (mode) {
+      case 'mute':
+        return [];
+      case 'strip':
+        return stripEventsAtStep(voice.chart, phraseStep, voice.kit.pitched);
+      case 'buildbass':
+        return bassThinAtStep(voice.chart, phraseStep);
+      case 'build': {
+        // Densify by reading one tier up, but only once the climb is a bar in,
+        // so the ramp builds rather than jumping on entry.
+        const src =
+          barInSection >= 1 ? getChart(voice.role, Math.min(TIER_COUNT, voice.tier + 1)) : voice.chart;
+        return chartEventsAtStep(src, phraseStep);
+      }
+      default:
+        return chartEventsAtStep(voice.chart, phraseStep);
     }
   }
 
