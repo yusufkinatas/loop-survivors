@@ -165,7 +165,7 @@ export async function mountBossFight(root: HTMLElement, ctx: AudioContext): Prom
       'p',
       'sub',
       s,
-      'No weapons here. The boss makes the music, and the whole track is the fight — survive to the last bar and it falls. Move with WASD / arrows or the joystick; dash with Space or Shift.',
+      'No weapons here. The boss makes the music, and the whole track is the fight — survive to the last bar and it falls. Move with the arrow keys or the joystick; dash with Space or Shift.',
     );
     const grid = el('div', 'boss-select', s);
     for (const b of BOSSES) {

@@ -1,5 +1,5 @@
 // Movement is the only player verb: continuous, unquantized, silent
-// (docs/phases/m1-demo.md). WASD/arrows on keyboard; on touch devices the
+// (docs/phases/m1-demo.md). Arrow keys on keyboard; on touch devices the
 // floating joystick (joystick.ts) writes into touchAxis and wins while a
 // finger is down. The joystick vector is analog: partial deflection walks.
 
@@ -19,10 +19,12 @@ export class Input {
     if (touchAxis.active) return { x: touchAxis.x, y: touchAxis.y };
     let x = 0;
     let y = 0;
-    if (this.down.has('KeyA') || this.down.has('ArrowLeft')) x -= 1;
-    if (this.down.has('KeyD') || this.down.has('ArrowRight')) x += 1;
-    if (this.down.has('KeyW') || this.down.has('ArrowUp')) y -= 1;
-    if (this.down.has('KeyS') || this.down.has('ArrowDown')) y += 1;
+    // Arrow keys only. WASD is deliberately not a movement binding — those keys
+    // are reserved for the Perform-the-Track section controls / pick hotkeys.
+    if (this.down.has('ArrowLeft')) x -= 1;
+    if (this.down.has('ArrowRight')) x += 1;
+    if (this.down.has('ArrowUp')) y -= 1;
+    if (this.down.has('ArrowDown')) y += 1;
     if (x !== 0 && y !== 0) {
       const inv = 1 / Math.SQRT2;
       x *= inv;

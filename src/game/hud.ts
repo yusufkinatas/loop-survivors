@@ -319,7 +319,7 @@ export class Hud {
     const showGenres = (): void => {
       const s = this.newScreen();
       el('h1', '', s, 'Loop Survivors');
-      el('p', 'sub', s, 'Pick your genre. WASD or touch to move. Survive 8 minutes.');
+      el('p', 'sub', s, 'Pick your genre. Arrow keys or touch to move. Survive 8 minutes.');
       const grid = el('div', 'pick-grid genre-grid', s);
       const cards: HTMLElement[] = [];
       for (const genre of genres) {
