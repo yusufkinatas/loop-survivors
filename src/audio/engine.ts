@@ -121,6 +121,11 @@ export class MusicEngine {
   /** Voices that cut during the pre-drop gap (the low/harmony/melody hole). The
    *  rest keep firing, so damage never stops. */
   private gapMuteRoles: Set<Role> = new Set();
+  /** The post-slam hype window: the band plays ELEVATED above GROOVE — densified
+   *  where possible, brighter, and pumping on every beat — so when it ends and
+   *  settles to plain GROOVE the ear hears a real comedown (not "the drop just
+   *  keeps going"). Cleared by endDropWindow when the window expires. */
+  private dropPeak = false;
   /** One reusable white-noise buffer for the transition synths. */
   private noiseBuf: AudioBuffer | null = null;
 
@@ -349,6 +354,26 @@ export class MusicEngine {
     return { gapSeconds };
   }
 
+  /** End the post-slam hype window: the band settles from its elevated drop
+   *  arrangement back to plain GROOVE (density drops, the pump stops, a soft
+   *  filter "exhale") — the comedown that makes the drop feel like it landed and
+   *  resolved rather than droning on. Called by the shell when dropWindowT ends. */
+  endDropWindow(): void {
+    if (!this.dropPeak) return;
+    this.dropPeak = false;
+    const now = this.ctx.currentTime;
+    const p = this.masterPump.gain;
+    p.cancelScheduledValues(now);
+    p.setValueAtTime(p.value, now);
+    p.linearRampToValueAtTime(1, now + 0.3);
+    // A quick breath down and back open on the filter reads as the settle.
+    const f = this.masterLP.frequency;
+    f.cancelScheduledValues(now);
+    f.setValueAtTime(f.value, now);
+    f.linearRampToValueAtTime(6000, now + 0.18);
+    f.linearRampToValueAtTime(FILTER_OPEN_HZ, now + 0.6);
+  }
+
   /** Run reset / exit: back to GROOVE, filter open, drop disarmed. */
   resetPerformance(): void {
     this.plan = new Map();
@@ -357,6 +382,7 @@ export class MusicEngine {
     this.dropSlamStep = -1;
     this.dropResolve = null;
     this.gapMuteRoles = new Set();
+    this.dropPeak = false;
     this.masterPump.gain.cancelScheduledValues(this.ctx.currentTime);
     this.masterPump.gain.setValueAtTime(1, this.ctx.currentTime);
     this.sweepFilter(FILTER_OPEN_HZ, this.ctx.currentTime, 0.05);
@@ -372,14 +398,17 @@ export class MusicEngine {
   /** The band re-enters on the slam: full band, filter wide open, a pump breath
    *  and a generic impact. Gameplay (shockwave, window) rides the callback. */
   private resolveDrop(time: number): void {
-    this.plan = new Map(); // full band at peak, on the "1"
+    this.plan = new Map(); // full band; dropPeak elevates it above GROOVE
     this.climbRamp = false;
+    this.dropPeak = true; // the hype window plays densified + pumping (see onStep)
     this.sectionStartStep = this.lastScheduledStep;
     this.sweepFilter(FILTER_OPEN_HZ, time, 0.03);
+    // The slam breath, then hold slightly hot for the window so it reads as
+    // "we're in the drop" until endDropWindow settles it back to unity.
     const p = this.masterPump.gain;
     p.cancelScheduledValues(time);
     p.setValueAtTime(0.55, time);
-    p.linearRampToValueAtTime(1, time + 0.35);
+    p.linearRampToValueAtTime(1.12, time + 0.35);
     this.scheduleImpact(time);
     this.dropState = 'none';
     this.dropSlamStep = -1;
@@ -501,6 +530,16 @@ export class MusicEngine {
         this.sweepFilter(hz, time, this.clock.stepDuration * STEPS_PER_BAR);
       }
     }
+    // Hype-window pump: a sidechain-style breath on every beat — the classic
+    // "drop is playing" texture GROOVE never has, so its absence after the
+    // window is felt as the settle.
+    if (this.dropPeak && step % this.clock.stepsPerBeat === 0) {
+      const beat = this.clock.stepDuration * this.clock.stepsPerBeat;
+      const p = this.masterPump.gain;
+      p.cancelScheduledValues(time);
+      p.setValueAtTime(0.8, time);
+      p.linearRampToValueAtTime(1.12, time + beat * 0.85);
+    }
     // The pre-drop gap digs a hole: only the low/harmony/melody voices cut, so
     // the sub slams back into silence on the one — but the beat keeps rolling
     // (Pulse/Backbeat/Hats fire), so damage never stops and it's never dead air.
@@ -520,6 +559,12 @@ export class MusicEngine {
    *  identity read, so the bot and every replay are unchanged. Pure w.r.t. the
    *  chart — never mutates the shared working copy. */
   private sectionEvents(voice: Voice, phraseStep: number, barInSection: number): ChartEvent[] {
+    // The hype window plays the whole band one tier hotter than GROOVE, so it's
+    // audibly bigger — and dropping back to GROOVE at the end is a real comedown.
+    if (this.dropPeak) {
+      const src = getChart(voice.role, Math.min(TIER_COUNT, voice.tier + 1));
+      return chartEventsAtStep(src, phraseStep);
+    }
     const mode = this.plan.get(voice.role) ?? 'identity';
     switch (mode) {
       case 'mute':

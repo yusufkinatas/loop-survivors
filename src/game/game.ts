@@ -64,6 +64,9 @@ export async function bootGame(
   // Shell/view-only — never touches the replay path, so seeded runs stay exact.
   let hitstopT = 0;
   const HITSTOP_S = 0.11;
+  // Tracks the post-drop hype window so the engine settles the elevated drop
+  // arrangement back to plain GROOVE the moment the window expires (the comedown).
+  let dropWindowActive = false;
 
   // Pause overlay: ESC freezes the run behind a dimmed screen; the audio clock
   // stops so no triggers fire, and the game loop skips its world step. A second
@@ -100,6 +103,12 @@ export async function bootGame(
   // run/sandbox is live and again on every swap / drop.
   function applyPerformance(): void {
     if (!world) return;
+    // Settle the drop's elevated arrangement back to GROOVE when its window ends.
+    if (world.dropWindowT > 0) dropWindowActive = true;
+    else if (dropWindowActive) {
+      dropWindowActive = false;
+      engine.endDropWindow();
+    }
     const dropping = world.dropWindowT > 0 || world.dropPending;
     // The edge tint follows the REQUESTED stance so intent reads instantly.
     const stance = world.pendingSection ?? world.section;
@@ -422,6 +431,7 @@ export async function bootGame(
     engine.clearVoiceEffects();
     engine.resetPerformance(); // back to GROOVE, filter open, drop disarmed
     hitstopT = 0;
+    dropWindowActive = false;
     for (const role of ROLES) engine.setVoiceEnabled(role, false);
     arenaVignette.className = 'arena-vignette'; // clear any section tint
   }
