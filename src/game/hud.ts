@@ -255,13 +255,17 @@ export class Hud {
     el('h2', '', s, 'Level up');
     const grid = el('div', 'pick-grid', s);
     const cards: HTMLElement[] = [];
+    // Dev aid: mark offered weapons whose voice is sample-backed for the genre.
+    const custom = this.genreId !== null ? sampledRoles(this.genreId) : new Set<Role>();
     for (const option of options) {
-      cards.push(
-        this.kitCard(grid, option, () => {
-          this.closeScreen();
-          onPick(option);
-        }),
-      );
+      const card = this.kitCard(grid, option, () => {
+        this.closeScreen();
+        onPick(option);
+      });
+      if (option.kind === 'weapon' && custom.has(option.role)) {
+        el('span', 'kit-custom-badge', card, '★ custom');
+      }
+      cards.push(card);
     }
     this.armKeys(cards);
   }
