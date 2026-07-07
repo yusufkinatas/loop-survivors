@@ -5,6 +5,7 @@
 
 import { Clock } from './clock';
 import { chartEventsAtStep } from './arranger';
+import { programEvents, type ArrangeCtx } from './program';
 import { TIER_COUNT, type Chart, type ChartEvent } from './charts';
 import { getChart, setActiveGenre } from './chartstore';
 import type { Genre } from './genres';
@@ -102,6 +103,11 @@ export class MusicEngine {
    *  time of the most recent quarter-note and the seconds between beats. */
   private lastBeatTime = 0;
   private beatInterval = 0.5;
+  /** The Tension Cycle arrangement context (v3, src/game/hype.ts). When set, the
+   *  live engine transforms each voice's events through programEvents (half-time
+   *  drops, builds, breakdowns) instead of playing the flat chart. Null = the
+   *  plain chart (menus, the headless bot, any run not driving the cycle). */
+  private arrangement: ArrangeCtx | null = null;
 
   constructor(ctx: AudioContext, kits: Map<Role, Kit>) {
     this.ctx = ctx;
@@ -419,10 +425,73 @@ export class MusicEngine {
     }
     for (const voice of this.voices.values()) {
       if (!voice.enabled || voice.gated) continue;
-      for (const ev of chartEventsAtStep(voice.chart, phraseStep)) {
-        this.trigger(voice, ev, time, phraseStep);
-      }
+      const events = this.arrangement
+        ? programEvents(voice.role, voice.chart, phraseStep, this.arrangement)
+        : chartEventsAtStep(voice.chart, phraseStep);
+      for (const ev of events) this.trigger(voice, ev, time, phraseStep);
     }
+  }
+
+  /** Set (or clear, with null) the live arrangement context the Tension Cycle
+   *  drives each frame. Live audio only; the headless bot never sets it, so its
+   *  trigger stream (and damage) is untouched. */
+  setArrangement(ctx: ArrangeCtx | null): void {
+    this.arrangement = ctx;
+  }
+
+  /** A rising noise sweep over `bars` bars — the build's riser. Bandpass climbs
+   *  and the gain swells, then cuts, so the drop's downbeat lands into the gap. */
+  playRiser(bars: number): void {
+    const now = this.ctx.currentTime;
+    const dur = Math.max(0.2, bars * this.clock.stepDuration * STEPS_PER_BAR);
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noise(dur + 0.1);
+    const bp = this.ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.Q.value = 1.4;
+    bp.frequency.setValueAtTime(300, now);
+    bp.frequency.exponentialRampToValueAtTime(7000, now + dur);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(0.45, now + dur * 0.92);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+    src.connect(bp).connect(g).connect(this.master);
+    src.start(now);
+    src.stop(now + dur + 0.1);
+  }
+
+  /** The drop's impact: a low sine boom + a bright noise crash on the downbeat. */
+  playSlam(): void {
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(130, now);
+    osc.frequency.exponentialRampToValueAtTime(42, now + 0.5);
+    const og = this.ctx.createGain();
+    og.gain.setValueAtTime(0.9, now);
+    og.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+    osc.connect(og).connect(this.master);
+    osc.start(now);
+    osc.stop(now + 0.65);
+    const n = this.ctx.createBufferSource();
+    n.buffer = this.noise(0.4);
+    const hp = this.ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 2200;
+    const ng = this.ctx.createGain();
+    ng.gain.setValueAtTime(0.4, now);
+    ng.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+    n.connect(hp).connect(ng).connect(this.master);
+    n.start(now);
+    n.stop(now + 0.45);
+  }
+
+  /** A white-noise buffer (riser/slam excitation). */
+  private noise(seconds: number): AudioBuffer {
+    const buf = this.ctx.createBuffer(1, Math.ceil(seconds * this.ctx.sampleRate), this.ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+    return buf;
   }
 
   private trigger(voice: Voice, ev: ChartEvent, time: number, phraseStep = -1): void {

@@ -667,12 +667,12 @@ export async function bootGame(
       togglePause();
       return;
     }
-    // SPACE arms the Drop (the Conducted Grid): a charged Drop strips the band
-    // and slams it back in on the next bars. Desktop twin of the on-screen DROP
-    // button. Ignore key-repeat so a held key is one arm, not a stream.
+    // SPACE releases the drop (the Tension Cycle): at READY it commits the
+    // BUILD→HOLD→DROP→RELEASE sequence on the next bar. Desktop twin of the DROP
+    // button. Ignore key-repeat so a held key is one release, not a stream.
     if (e.code === 'Space') {
       e.preventDefault();
-      if (!paused && (state === 'run' || state === 'sandbox') && !e.repeat) hype.arm();
+      if (!paused && (state === 'run' || state === 'sandbox') && !e.repeat) hype.release();
       return;
     }
     const byKey: Record<string, { onClick(): void }> = {
