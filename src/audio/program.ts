@@ -8,8 +8,8 @@
 // the events that voice should actually fire this step. Because fired events are
 // the damage stream (Model A), the arrangement and the combat move together.
 //
-// Sub-phase A scope: the transformation is genre-agnostic (half-time drop for all)
-// and driven live by a debug controller, so the developer can judge by ear whether
+// Sub-phase A scope: the transformation is genre-agnostic (a full-band peak drop
+// for all) and driven live by a debug controller, so the developer can judge by ear whether
 // the DROP finally sounds DIFFERENT from the groove before aggression/combat (B)
 // and per-genre drop moves (C) are wired. All transforms are pure functions of
 // (bar, step, section, tension, seed) — deterministic, ready to move onto the
@@ -18,7 +18,6 @@
 import { chartEventsAtStep } from './arranger';
 import type { Chart, ChartEvent } from './charts';
 import type { Role } from './kits';
-import { STEPS_PER_BAR } from './scale';
 import { slotOf, type Slot } from '../game/band';
 
 /** The cycle sections. GROOVE is the resting/winding state (with a held READY
@@ -43,14 +42,6 @@ export const BUILD_BARS = 4;
 export const HOLD_BARS = 1;
 export const DROP_BARS = 8;
 export const RELEASE_BARS = 4;
-
-/** The drop strips to a few big, low elements. Only these slots sound in the drop;
- *  the clutter (backbeat/hats/motion/fx) drops out to create the space. */
-const DROP_ACTIVE: ReadonlySet<Slot> = new Set<Slot>(['pulse', 'bass', 'melody', 'harmony']);
-
-/** Half-time: fire only on the half-note steps (every 8 sixteenths) so the beat
- *  spreads out and feels twice as slow and ten times heavier. */
-const HALFTIME_STEP = 8;
 
 function clampVel(v: number): number {
   return Math.max(0.01, Math.min(1, v));
@@ -131,29 +122,39 @@ function buildEvents(slot: Slot, base: ChartEvent[], phraseStep: number, ctx: Ar
   return out;
 }
 
-/** DROP: the transformation. Strip to a few big low elements; half-time the beat;
- *  drop the bass an octave (the sub arrives); one heavy hook. Emptier, lower,
- *  heavier — not fuller. */
+/** DROP: the peak. The whole band plays, at full weight, denser than the groove —
+ *  the fullest, most complex section of the run, not a stripped half-time break.
+ *  Every voice fires its full chart at max velocity; the low end is thickened by an
+ *  added sub an octave down under the bass, and the percussion is filled in so the
+ *  groove drives harder. Big AND busy. */
 function dropEvents(slot: Slot, chart: Chart, phraseStep: number): ChartEvent[] {
-  if (!DROP_ACTIVE.has(slot)) return []; // clutter drops out to make space
+  const base = chartEventsAtStep(chart, phraseStep).map((ev) => ({ ...ev, velocity: 1 }));
+
+  if (slot === 'bass') {
+    // The sub arrives WITH the full bassline: keep every note at full weight and
+    // stack a sub an octave below the lowest note on each hit for the drop's floor.
+    const sub = dropBassNote(chart);
+    const out = base.slice();
+    for (const ev of base) out.push({ ...ev, note: (ev.note ?? 0) < sub + 12 ? sub : (ev.note ?? 0) - 12, velocity: 1 });
+    return out;
+  }
 
   if (slot === 'pulse') {
-    // A few huge simple thuds on the half-note.
-    return phraseStep % HALFTIME_STEP === 0 ? [{ step: phraseStep, velocity: 1 }] : [];
+    // Four-on-the-floor stays full; fill the offbeats so the kick pounds harder.
+    const out = base.slice();
+    if (phraseStep % 4 === 0 && !out.some((e) => e.step === phraseStep)) {
+      out.push({ step: phraseStep, velocity: 1 });
+    }
+    return out;
   }
-  if (slot === 'bass') {
-    // The sub arrives: half-time, an octave down, full weight.
-    if (phraseStep % HALFTIME_STEP !== 0) return [];
-    return [{ step: phraseStep, velocity: 1, note: dropBassNote(chart) }];
+
+  if (slot === 'hats' || slot === 'backbeat') {
+    // Densest they get: an extra tick on every sixteenth so the top end shimmers.
+    const out = base.slice();
+    if (!out.some((e) => e.step === phraseStep)) out.push({ step: phraseStep, velocity: 0.7 });
+    return out;
   }
-  if (slot === 'harmony') {
-    // One big sustained stab on each bar downbeat, then space.
-    return phraseStep % STEPS_PER_BAR === 0 ? [{ step: phraseStep, velocity: 0.9, note: 0 }] : [];
-  }
-  if (slot === 'melody') {
-    // A slow, fat fragment of the hook: keep only the half-note hits, full weight.
-    if (phraseStep % HALFTIME_STEP !== 0) return [];
-    return chartEventsAtStep(chart, phraseStep).map((ev) => ({ ...ev, velocity: 1 }));
-  }
-  return [];
+
+  // Motion, fx, harmony, melody: full chart at full weight — nothing removed.
+  return base;
 }
