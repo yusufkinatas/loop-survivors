@@ -52,7 +52,7 @@ export async function mountSoundCheck(root: HTMLElement, ctx: AudioContext): Pro
     import('../audio/kits/index'),
   ]);
   const { GENRES, supportedRoles } = genresMod;
-  const { kitForGenre, sampleFilesFor } = kitsMod;
+  const { kitForGenre, sampleFilesFor, sampleDir, variantsFor, getGenreVariant, setGenreVariant } = kitsMod;
   const { ROLE_META } = await import('../audio/kits');
 
   const el = (tag: string, cls: string, parent: HTMLElement, text = ''): HTMLElement => {
@@ -100,7 +100,23 @@ export async function mountSoundCheck(root: HTMLElement, ctx: AudioContext): Pro
     const kit = await kitForGenre(genre.id, SKELETON.rootHz);
     const sec = el('div', 'sc-genre', page);
     const roles = supportedRoles(genre.id);
-    el('h2', '', sec, `${genre.name} — ${roles.length} instruments · ${genre.bpm} BPM`);
+    const h = el('h2', '', sec, `${genre.name} — ${roles.length} instruments · ${genre.bpm} BPM`);
+    // Prototype selector: switch this genre's kit voicing and reload so the
+    // chosen prototype's samples render. The choice persists (localStorage).
+    const variants = variantsFor(genre.id);
+    if (variants.length > 1) {
+      const sel = document.createElement('select');
+      sel.className = 'sc-variant';
+      for (const v of variants) {
+        const o = document.createElement('option');
+        o.value = v.id;
+        o.textContent = v.name;
+        if (v.id === getGenreVariant(genre.id)) o.selected = true;
+        sel.appendChild(o);
+      }
+      sel.onchange = () => { setGenreVariant(genre.id, sel.value); location.reload(); };
+      h.appendChild(sel);
+    }
     for (const role of roles) {
       const k = kit.get(role);
       if (!k) continue;
@@ -127,7 +143,7 @@ export async function mountSoundCheck(root: HTMLElement, ctx: AudioContext): Pro
           rawBtn.disabled = true;
           let t = 0, any = false;
           for (const file of rawFiles) {
-            const b = await loadRaw(`/samples/${genre.id}/${file}.raw.wav`);
+            const b = await loadRaw(`/samples/${sampleDir(genre.id)}/${file}.raw.wav`);
             if (b) { any = true; setTimeout(() => playBuffer(b), t); t += 400; }
           }
           rawBtn.disabled = false;

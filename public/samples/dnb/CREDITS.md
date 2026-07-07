@@ -1,13 +1,30 @@
-# dnb samples
+# dnb samples (MusicRadar SampleRadar Drum & Bass)
 
-Source: TidalCycles/Dirt-Samples (https://github.com/tidalcycles/Dirt-Samples), freely distributed for music-making; mixed provenance — verify per-folder before commercial ship.
+Source: MusicRadar.com SampleRadar "Drum & Bass" 170bpm + 175bpm packs.
+License: royalty-free — free to use in any music (incl. commercial); 
+re-distribution of the samples (individually or as collections) is not permitted.
 
-Processed by scripts/build-samples.mjs (ffmpeg).
+## A — A · MusicRadar 170 Kit A
+- A/kick.wav  <-  DnBk1DHitA-Kick01.wav  (cap 0.7s, peak -1dB)
+- A/snare.wav  <-  DnBk1DHitA-Snare01.wav  (cap 0.55s, peak -3dB)
+- A/hat_closed.wav  <-  DnBk1DHitA-Hat01.wav  (cap 0.22s, peak -9dB)
+- A/hat_open.wav  <-  DnBk1DHitA-Hat03.wav  (cap 0.55s, peak -9dB)
+- A/ride.wav  <-  DnBk1DHitA-Ride01.wav  (cap 1.3s, peak -7dB)
+- A/bass.wav  <-  DnBk1BassA-C2.wav  (cap 0.6s, peak -3dB)
 
-- kick.wav  <-  Dirt-Samples/hardkick/VEC1 BD Distortion 06.wav  (ffmpeg: silence-trimmed, capped 0.7s, peak -1dB, mono/44.1k/16-bit)
-- snare.wav  <-  Dirt-Samples/sd/rytm-00-hard.wav  (ffmpeg: silence-trimmed, capped 0.5s, peak -3dB, mono/44.1k/16-bit)
-- hat_closed.wav  <-  Dirt-Samples/hh27/000_hh27closedhh.wav  (ffmpeg: silence-trimmed, capped 0.22s, peak -9dB, mono/44.1k/16-bit)
-- hat_open.wav  <-  Dirt-Samples/hh27/007_hh27opendhh.wav  (ffmpeg: silence-trimmed, capped 0.55s, peak -9dB, mono/44.1k/16-bit)
-- ride.wav  <-  Dirt-Samples/drumtraks/007_DT Ride.wav  (ffmpeg: silence-trimmed, capped 1.3s, peak -6dB, mono/44.1k/16-bit)
+## B — B · MusicRadar 170 Kit B
+- B/kick.wav  <-  DnBk1DHitB-Kick01.wav  (cap 0.7s, peak -1dB)
+- B/snare.wav  <-  DnBk1DHitB-Snare01.wav  (cap 0.55s, peak -3dB)
+- B/hat_closed.wav  <-  DnBk1DHitB-Hat01.wav  (cap 0.22s, peak -9dB)
+- B/hat_open.wav  <-  DnBk1DHitB-Hat03.wav  (cap 0.55s, peak -9dB)
+- B/ride.wav  <-  DnBk1DHitB-Ride01.wav  (cap 1.3s, peak -7dB)
+- B/bass.wav  <-  DnBk1BassB-C2.wav  (cap 0.6s, peak -3dB)
 
-Licensing: freely redistributable for music-making; **verify before commercial ship** (docs/plan.md ship checklist).
+## C — C · MusicRadar 175 Two-Step
+- C/kick.wav  <-  DnBk2TwoStepAHit-Kick01.wav  (cap 0.7s, peak -1dB)
+- C/snare.wav  <-  DnBk2TwoStepAHit-Snare01.wav  (cap 0.55s, peak -3dB)
+- C/hat_closed.wav  <-  DnBk2TwoStepAHit-Hat01.wav  (cap 0.22s, peak -9dB)
+- C/hat_open.wav  <-  DnBk2TwoStepAHit-Hat03.wav  (cap 0.55s, peak -9dB)
+- C/ride.wav  <-  DnBk2TwoStepAHit-Ride01.wav  (cap 1.3s, peak -7dB)
+- C/bass.wav  <-  DnBk2BassA-C2.wav  (cap 0.6s, peak -3dB)
+

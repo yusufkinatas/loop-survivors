@@ -1085,12 +1085,51 @@ button.big {
 .sb-loadout-name {
   color: var(--voice-color);
   min-width: 48px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sb-loadout-label {
+  color: var(--voice-color);
+}
+
+/* Slot group header in the loadout list — matches the band-rack order/naming. */
+.sb-slot-head {
+  color: var(--ink);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.7;
+  margin: 8px 0 2px;
+}
+
+/* Marks a voice that is sample-backed for the active genre + prototype. */
+.sb-custom-badge {
+  color: var(--signal);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  border: 1px solid var(--signal);
+  border-radius: 3px;
+  padding: 0 4px;
+  white-space: nowrap;
 }
 
 .sb-hint {
   color: var(--ink-faint);
   font-size: 11px;
   margin-top: 6px;
+}
+
+/* Prototype selector dropdown in #soundcheck (per-genre header). */
+.sc-variant {
+  margin-left: 12px;
+  font-size: 12px;
+  padding: 1px 4px;
+  background: var(--panel, #1a1a1a);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 3px;
 }
 
 /* the read-only chart overlay over the arena */

@@ -1,14 +1,24 @@
-# techno samples
+# techno samples (prototypes)
 
-Source: TidalCycles/Dirt-Samples (https://github.com/tidalcycles/Dirt-Samples), freely distributed for music-making; mixed provenance — verify per-folder before commercial ship.
+Drums/FX: MusicRadar free "Techno & Tech-House" drum & FX sample pack (royalty-free).
+Bass: Cyclick Samples "Bass Synthesis" multisamples, root C2 (royalty-free).
 
-Processed by scripts/build-samples.mjs (ffmpeg).
+## A · MusicRadar Digital
+- A/kick.wav  <-  Kick05.wav  (ffmpeg: trimmed, cap 0.7s, peak -1dB)
+- A/clap.wav  <-  Clap03.wav  (ffmpeg: trimmed, cap 0.55s, peak -4dB)
+- A/rimshot.wav  <-  Rimshot01.wav  (ffmpeg: trimmed, cap 0.35s, peak -5dB)
+- A/hat_closed.wav  <-  Closedhat05.wav  (ffmpeg: trimmed, cap 0.22s, peak -9dB)
+- A/hat_open.wav  <-  Openhat05.wav  (ffmpeg: trimmed, cap 0.55s, peak -9dB)
+- A/ride.wav  <-  Jomox_Cymbal05.wav  (ffmpeg: trimmed, cap 1.3s, peak -7dB)
+- A/bass.wav  <-  BassSynth_OppenCrusher_Multi_C2.wav  (ffmpeg: trimmed, cap 0.6s, peak -3dB)
 
-- kick.wav  <-  Dirt-Samples/bd/BT0AAD0.wav  (ffmpeg: silence-trimmed, capped 0.7s, peak -1dB, mono/44.1k/16-bit)
-- clap.wav  <-  Dirt-Samples/realclaps/2.wav  (ffmpeg: silence-trimmed, capped 0.55s, peak -4dB, mono/44.1k/16-bit)
-- rimshot.wav  <-  Dirt-Samples/808/RS.WAV  (ffmpeg: silence-trimmed, capped 0.3s, peak -5dB, mono/44.1k/16-bit)
-- hat_closed.wav  <-  Dirt-Samples/hh/000_hh3closedhh.wav  (ffmpeg: silence-trimmed, capped 0.22s, peak -9dB, mono/44.1k/16-bit)
-- hat_open.wav  <-  Dirt-Samples/hh/007_hh3openhh.wav  (ffmpeg: silence-trimmed, capped 0.55s, peak -9dB, mono/44.1k/16-bit)
-- ride.wav  <-  Dirt-Samples/drumtraks/007_DT Ride.wav  (ffmpeg: silence-trimmed, capped 1.3s, peak -6dB, mono/44.1k/16-bit)
+## B · Analogue Machines
+- B/kick.wav  <-  Vermona_Kick08.wav  (ffmpeg: trimmed, cap 0.7s, peak -1dB)
+- B/clap.wav  <-  Clap03.wav  (ffmpeg: trimmed, cap 0.55s, peak -4dB)
+- B/rimshot.wav  <-  Jomox_Rim05.wav  (ffmpeg: trimmed, cap 0.35s, peak -5dB)
+- B/hat_closed.wav  <-  Jomox_Hat05.wav  (ffmpeg: trimmed, cap 0.22s, peak -9dB)
+- B/hat_open.wav  <-  Vermona_Hat08.wav  (ffmpeg: trimmed, cap 0.55s, peak -9dB)
+- B/ride.wav  <-  Jomox_Cymbal05.wav  (ffmpeg: trimmed, cap 1.3s, peak -7dB)
+- B/bass.wav  <-  BassSynth_MonoPunch_Multi_C2.wav  (ffmpeg: trimmed, cap 0.6s, peak -3dB)
 
-Licensing: freely redistributable for music-making; **verify before commercial ship** (docs/plan.md ship checklist).
+Licensing: royalty-free sample packs (MusicRadar free downloads; Cyclick Samples). Verify pack PDFs before commercial ship.
