@@ -18,8 +18,6 @@ import { PROTOS } from './protos';
 import { buildLofiKit } from './lofi';
 import { buildHouseKit } from './house';
 import { buildSynthwaveKit } from './synthwave';
-import { buildHiphopKit } from './hiphop';
-import { buildDnbKit } from './dnb';
 import { buildTechnoKit } from './techno';
 
 export type KitBuilder = (rootHz: number) => Promise<Map<Role, Kit>>;
@@ -28,13 +26,11 @@ const BUILDERS: Record<GenreId, KitBuilder> = {
   lofi: buildLofiKit,
   house: buildHouseKit,
   synthwave: buildSynthwaveKit,
-  hiphop: buildHiphopKit,
-  dnb: buildDnbKit,
   techno: buildTechnoKit,
 };
 
 // Real signature-drum samples that override the synthesized drums per genre
-// (909 for house, 808 for hiphop, LinnDrum for synthwave, ...). Genres differ
+// (909 for house, LinnDrum for synthwave, ...). Genres differ
 // most audibly in their drums; real one-shots carry that identity in a way one
 // synth engine cannot. Melodic/bass voices stay synthesized (in the builders
 // above). Each entry: role -> [variantId, fileBase]. Files live at
@@ -68,22 +64,6 @@ const SAMPLE_OVERLAY: Record<GenreId, Partial<Record<Role, SampleSpec[]>>> = {
     clap: [['clap', 'clap']],
     hat: [['closed', 'hat_closed'], ['open', 'hat_open']],
     bass: [['bass', 'bass'], ['fat', 'bass_fat']], // pitched, A1 root — tune 0
-  },
-  hiphop: {
-    kick: [['hard', 'kick'], ['soft', 'kick_soft']],
-    snare: [['snare', 'snare']],
-    clap: [['clap', 'clap']],
-    rimshot: [['rimshot', 'rimshot']],
-    hat: [['closed', 'hat_closed'], ['open', 'hat_open']],
-    shaker: [['shaker', 'shaker']],
-    bass: [['bass', 'bass'], ['fat', 'bass_fat']], // 808 sub, A1 root — tune 0
-  },
-  dnb: {
-    kick: [['hard', 'kick'], ['soft', 'kick']],
-    snare: [['snare', 'snare']],
-    hat: [['closed', 'hat_closed'], ['open', 'hat_open']],
-    ride: [['ride', 'ride']],
-    bass: [['bass', 'bass']], // pitched, C2 root — see SAMPLE_TUNE
   },
   techno: {
     kick: [['hard', 'kick'], ['soft', 'kick']],
@@ -175,9 +155,8 @@ export function sampleDir(id: GenreId): string {
 // (~64 Hz, +3 semis above A1), so -3 seats them in the synth bass's octave.
 const SAMPLE_TUNE: Partial<Record<GenreId, Partial<Record<Role, number>>>> = {
   house: { bass: -3 },
-  dnb: { bass: -3 },    // MusicRadar DnB bass sampled at C2
   techno: { bass: -3 }, // Cyclick Bass Synthesis sampled at C2
-  // synthwave / hiphop bass are rooted at A1 (the engine reference) — tune 0.
+  // synthwave bass is rooted at A1 (the engine reference) — tune 0.
 };
 
 /** Overlay a genre's real drum samples onto its synth kit. A role whose every

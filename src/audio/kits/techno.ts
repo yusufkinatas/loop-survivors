@@ -18,7 +18,7 @@ import { makeKit, noiseBuffer, offline, softClipCurve, type Kit, type Role } fro
 // Four-on-floor warehouse kick: a fast pitch drop landing on a solid ~48 Hz
 // sub, harder saturation than a clean kick for the driving edge, and a tight
 // high click so it cuts on any system. Hard = the pulse; soft = a quieter
-// ghost/pickup. Weightier and grittier than a DnB kick, tighter than a Lo-Fi one.
+// ghost/pickup. Weighty and gritty, tighter than a Lo-Fi one.
 async function technoKick(hard: boolean): Promise<AudioBuffer> {
   const ctx = offline(0.5);
   const body = ctx.createOscillator();
@@ -400,7 +400,7 @@ async function technoBassSub(rootHz: number): Promise<AudioBuffer> {
 
 // Dark warehouse rumble: four hard-detuned saws grinding against each other
 // through a resonant lowpass, saturated into a monster, with a clean sine sub
-// underneath. Less wobble than a DnB Reese — a slow, shallow filter drift for a
+// underneath. Only a slow, shallow filter drift for a
 // steadier static grind that sits under the pulse.
 async function technoReese(rootHz: number): Promise<AudioBuffer> {
   const ctx = offline(0.6);

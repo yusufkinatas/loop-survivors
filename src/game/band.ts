@@ -130,7 +130,7 @@ export function startableRoles(roles: readonly Role[]): Role[] {
 /**
  * Design rule 6: genre-weighted roster draws. When a slot with more than one
  * of today's instruments comes up, the genre's idiomatic member is favoured
- * (House leads with clap, DnB with snare, ...). A soft multiplier on the draw
+ * (House leads with clap, Techno with ride, ...). A soft multiplier on the draw
  * weight, never a lock — the off-genre member can still appear. Anything
  * unlisted is 1.0. Single-member slots (Hats/Bass/Harmony/Melody) are unaffected.
  */
@@ -138,8 +138,6 @@ const GENRE_ROLE_AFFINITY: Record<GenreId, Partial<Record<Role, number>>> = {
   lofi: { snare: 1.3, clap: 0.7, arp: 1.2, cowbell: 0.85, tom: 1.1, rhodes: 1.3, choir: 1.15, bell: 1.15 },
   house: { clap: 1.5, snare: 0.7, cowbell: 1.3, arp: 0.85, choir: 1.25, ride: 1.2 },
   synthwave: { snare: 1.15, clap: 0.9, arp: 1.35, cowbell: 0.7, bell: 1.35, choir: 1.2 },
-  hiphop: { snare: 1.4, clap: 0.75, cowbell: 1.15, arp: 0.9, bell: 1.2, whistle: 1.15 },
-  dnb: { snare: 1.5, clap: 0.7, arp: 1.3, cowbell: 0.75, reese: 1.7, ride: 1.15 },
   techno: { clap: 1.3, snare: 0.85, cowbell: 1.2, arp: 0.9, tom: 1.15, ride: 1.3, reese: 1.2 },
 };
 

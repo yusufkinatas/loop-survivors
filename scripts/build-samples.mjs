@@ -46,14 +46,6 @@ const MANIFEST = {
     'kick': 'kicklinn/Linn Kick 1.wav', 'snare': 'sd/rytm-00-hard.wav', 'clap': 'drumtraks/001_DT Claps.wav',
     'hat_closed': 'drumtraks/004_DT Hat Closed.wav', 'hat_open': 'drumtraks/005_DT Hat Open.wav',
   },
-  hiphop: {
-    'kick': '808bd/BD1000.WAV', 'snare': '808sd/SD0010.WAV', 'clap': '808/CP.WAV', 'rimshot': '808/RS.WAV',
-    'hat_closed': '808hc/HC00.WAV', 'hat_open': '808oh/OH00.WAV', 'shaker': '808/MA.WAV',
-  },
-  dnb: {
-    'kick': 'hardkick/VEC1 BD Distortion 06.wav', 'snare': 'sd/rytm-00-hard.wav',
-    'hat_closed': 'hh27/000_hh27closedhh.wav', 'hat_open': 'hh27/007_hh27opendhh.wav', 'ride': 'drumtraks/007_DT Ride.wav',
-  },
   techno: {
     'kick': 'bd/BT0AAD0.wav', 'clap': 'realclaps/2.wav', 'rimshot': '808/RS.WAV',
     'hat_closed': 'hh/000_hh3closedhh.wav', 'hat_open': 'hh/007_hh3openhh.wav', 'ride': 'drumtraks/007_DT Ride.wav',

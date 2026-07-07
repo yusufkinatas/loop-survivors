@@ -4,13 +4,12 @@
 // for; a genre may drop instruments it does not suit, including whole band
 // slots), and ONE track — a single hand-picked pattern per supported role, no
 // alternatives (src/audio/ladders/<genre>.ts). Pick a genre and the whole build
-// re-voices AND re-scopes: a Lo-Fi kick is a different sound from a Drum & Bass
+// re-voices AND re-scopes: a Lo-Fi kick is a different sound from a Techno
 // kick, and the two genres offer different instruments.
 //
 // Patterns are grounded in real production practice: House four-on-floor +
 // offbeat open hats, Lo-Fi swung boom-bap, Synthwave straight machine drums +
-// 16th arps, Hip-Hop halftime + rolling trap hats + booming 808 + a melodic
-// hook, Drum & Bass 174 two-step + rolling sub, Techno relentless four-on-floor
+// 16th arps, Techno relentless four-on-floor
 // + offbeat hats. The coherence skeleton (minor pentatonic, chord roots 0/5/7)
 // still owns the theory, so no genre can clash.
 //
@@ -25,12 +24,10 @@ import { ROLES, type Role } from './kits';
 import { LOFI_LADDERS } from './ladders/lofi';
 import { HOUSE_LADDERS } from './ladders/house';
 import { SYNTHWAVE_LADDERS } from './ladders/synthwave';
-import { HIPHOP_LADDERS } from './ladders/hiphop';
-import { DNB_LADDERS } from './ladders/dnb';
 import { TECHNO_LADDERS } from './ladders/techno';
 import type { Chart } from './charts';
 
-export type GenreId = 'lofi' | 'house' | 'synthwave' | 'hiphop' | 'dnb' | 'techno';
+export type GenreId = 'lofi' | 'house' | 'synthwave' | 'techno';
 
 export interface Genre {
   id: GenreId;
@@ -84,28 +81,6 @@ const SYNTHWAVE: Genre = {
   ladders: SYNTHWAVE_LADDERS,
 };
 
-const HIPHOP: Genre = {
-  id: 'hiphop',
-  name: 'Hip-Hop',
-  blurb: 'Trap-flavored boom. Halftime snare, rolling hats, a booming 808, a melodic hook.',
-  color: '#ff8c2b',
-  bpm: 140,
-  swing: 0.1,
-  powerMul: 0.8,
-  ladders: HIPHOP_LADDERS,
-};
-
-const DNB: Genre = {
-  id: 'dnb',
-  name: 'Drum & Bass',
-  blurb: 'Breakneck two-step at 174. A rolling sub and a fast, sharp break.',
-  color: '#4dffc3',
-  bpm: 174,
-  swing: 0,
-  powerMul: 0.66,
-  ladders: DNB_LADDERS,
-};
-
 const TECHNO: Genre = {
   id: 'techno',
   name: 'Techno',
@@ -117,7 +92,7 @@ const TECHNO: Genre = {
   ladders: TECHNO_LADDERS,
 };
 
-export const GENRES: Genre[] = [LOFI, HOUSE, SYNTHWAVE, HIPHOP, DNB, TECHNO];
+export const GENRES: Genre[] = [LOFI, HOUSE, SYNTHWAVE, TECHNO];
 
 export const GENRE_BY_ID: Record<GenreId, Genre> = Object.fromEntries(
   GENRES.map((g) => [g.id, g]),

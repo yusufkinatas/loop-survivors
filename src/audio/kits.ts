@@ -500,7 +500,7 @@ async function renderRiser(): Promise<AudioBuffer> {
 }
 
 async function renderReese(rootHz: number): Promise<AudioBuffer> {
-  // Thick growling detuned bass (the Drum & Bass monster): three saws detuned
+  // Thick growling detuned bass (a rolling monster sub): three saws detuned
   // hard against each other so the beating between them growls, through a
   // resonant lowpass. Deep and mean.
   const ctx = offline(0.7);
@@ -948,7 +948,7 @@ async function renderLead(rootHz: number): Promise<AudioBuffer> {
 }
 
 // A pitched mid-drum. Sine+triangle body with a short pitch drop and a noise
-// attack, so a tom melody (fills, hip-hop/DnB rolls) reads as pitched but hits
+// attack, so a tom melody (fills, fast rolls) reads as pitched but hits
 // like a drum. note 0 sits at the run root.
 async function renderTom(rootHz: number): Promise<AudioBuffer> {
   const ctx = offline(0.6);
@@ -982,7 +982,7 @@ async function renderTom(rootHz: number): Promise<AudioBuffer> {
 }
 
 // The classic 808 cowbell: two detuned square waves a ~1.48 ratio apart
-// through a bandpass. Pitched so hip-hop cowbell riffs land on the note set.
+// through a bandpass. Pitched so cowbell riffs land on the note set.
 async function renderCowbell(rootHz: number): Promise<AudioBuffer> {
   const ctx = offline(0.5);
   const base = rootHz * 2;
