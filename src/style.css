@@ -1085,6 +1085,34 @@ button.big {
 .sb-loadout-name {
   color: var(--voice-color);
   min-width: 48px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sb-loadout-label {
+  color: var(--voice-color);
+}
+
+/* Slot group header in the loadout list — matches the band-rack order/naming. */
+.sb-slot-head {
+  color: var(--ink);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.7;
+  margin: 8px 0 2px;
+}
+
+/* Marks a voice that is sample-backed for the active genre + prototype. */
+.sb-custom-badge {
+  color: var(--signal);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  border: 1px solid var(--signal);
+  border-radius: 3px;
+  padding: 0 4px;
+  white-space: nowrap;
 }
 
 .sb-hint {
@@ -1476,6 +1504,12 @@ button.big {
 .band-socket.filled {
   box-shadow: 0 0 12px -6px var(--voice-color);
 }
+/* A slot the active genre drops: dimmed, no fill affordance. */
+.band-socket.unavailable {
+  border-style: dashed;
+  border-top-color: var(--line);
+  opacity: 0.28;
+}
 .socket-slot {
   font: 700 9px/1 var(--font-mono);
   letter-spacing: 0.14em;
@@ -1521,6 +1555,22 @@ button.big {
   border-left: 2px solid var(--voice-color);
   border-radius: var(--r-sm);
   padding: 3px 7px;
+  background: rgba(10, 11, 15, 0.5);
+}
+
+/* Dev-only marker on a starting-instrument card whose voice is sample-backed
+ *  for the genre — mirrors the sandbox loadout ★ custom badge. Bottom-right so
+ *  it clears the top-left slot badge and top-right tier chip. */
+.kit-custom-badge {
+  position: absolute;
+  bottom: 8px;
+  right: 10px;
+  font: 700 9px/1 var(--font-mono);
+  letter-spacing: 0.08em;
+  color: var(--signal);
+  border: 1px solid color-mix(in srgb, var(--signal) 55%, transparent);
+  border-radius: var(--r-sm);
+  padding: 2px 5px;
   background: rgba(10, 11, 15, 0.5);
 }
 

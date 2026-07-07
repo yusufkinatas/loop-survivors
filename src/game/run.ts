@@ -38,7 +38,6 @@ import {
   SHOCK_BAND,
   SHOVE_S,
   SPAWN_DIRECTOR,
-  SPITTER,
   SPLITTER,
   VARIANT_EFFECTS,
   WEAPON_SHOVE,
@@ -133,20 +132,6 @@ export interface Enemy {
   spin: number;
   /** charger: telegraph countdown; 0 otherwise. */
   windupT: number;
-  /** spitter: shot cooldown; 0 otherwise. */
-  fireT: number;
-}
-
-/** A spitter's projectile: damages the player, ignored by weapons. */
-export interface EnemyShot {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  radius: number;
-  damage: number;
-  lifeS: number;
-  color: number;
 }
 
 export interface Projectile {
@@ -399,7 +384,6 @@ export class RunWorld {
   readonly fx: FxEvent[] | null;
 
   readonly enemies: Enemy[] = [];
-  readonly enemyShots: EnemyShot[] = [];
   readonly projectiles: Projectile[] = [];
   readonly zones: Zone[] = [];
   readonly shocks: Shock[] = [];
@@ -443,10 +427,6 @@ export class RunWorld {
 
   get enemyCount(): number {
     return this.enemies.length;
-  }
-
-  get enemyShotCount(): number {
-    return this.enemyShots.length;
   }
 
   get projectileCount(): number {
@@ -1063,7 +1043,6 @@ export class RunWorld {
     this.drainEchoes();
 
     this.moveEnemies(dt);
-    this.updateEnemyShots(dt); // after moveEnemies: uses fresh spitter positions
     this.recycleEnemies();
     this.updateProjectiles(dt);
     this.updateZones(dt);
@@ -1284,12 +1263,10 @@ export class RunWorld {
       knockX: 0,
       knockY: 0,
       knockT: 0,
-      // shield pool scales with hp; circler picks an orbit direction; spitter
-      // staggers its first shot so a ring doesn't volley in unison.
+      // shield pool scales with hp; circler picks an orbit direction.
       shieldHp: kind === 'shielded' ? conf.hp * s.hpMul * SHIELDED.shieldMul : 0,
       spin: kind === 'circler' ? (this.rng() < 0.5 ? 1 : -1) : 0,
       windupT: 0,
-      fireT: kind === 'spitter' ? SPITTER.cooldownS * (0.5 + this.rng() * 0.5) : 0,
     });
   }
 
@@ -1306,7 +1283,6 @@ export class RunWorld {
   /** Sandbox: remove every enemy without kills, gems, or pops. */
   clearEnemies(): void {
     this.enemies.length = 0;
-    this.enemyShots.length = 0;
   }
 
   /** The horde reacts to the section being performed (round-5). Returns the
@@ -1427,44 +1403,6 @@ export class RunWorld {
         continue;
       }
 
-      if (e.kind === 'spitter') {
-        // Kite to keepMin..keepMax, strafe in the band, and fire enemy shots.
-        const dx = p.x - e.x;
-        const dy = p.y - e.y;
-        const d = Math.hypot(dx, dy) || 1;
-        const ux = dx / d;
-        const uy = dy / d;
-        if (d < SPITTER.keepMin) {
-          e.x -= ux * speed * dt;
-          e.y -= uy * speed * dt;
-        } else if (d > SPITTER.keepMax) {
-          e.x += ux * speed * dt;
-          e.y += uy * speed * dt;
-        } else {
-          e.x += -uy * speed * 0.5 * dt;
-          e.y += ux * speed * 0.5 * dt;
-        }
-        e.fireT -= dt;
-        if (e.fireT <= 0 && d <= SPITTER.range) {
-          e.fireT = SPITTER.cooldownS;
-          const ang = Math.atan2(dy, dx) + (this.rng() * 2 - 1) * SPITTER.spread;
-          this.enemyShots.push({
-            x: e.x,
-            y: e.y,
-            vx: dcos(ang) * SPITTER.shotSpeed,
-            vy: dsin(ang) * SPITTER.shotSpeed,
-            radius: SPITTER.shotRadius,
-            damage: Math.round(
-              SPITTER.shotDamage *
-                (1 + (ENEMIES.damageScaleEnd - 1) * Math.min(1, this.timeS / RUN.durationS)),
-            ),
-            lifeS: SPITTER.shotLifeS,
-            color: e.color,
-          });
-        }
-        continue;
-      }
-
       let dx = p.x - e.x;
       let dy = p.y - e.y;
       const d = Math.hypot(dx, dy) || 1;
@@ -1551,33 +1489,6 @@ export class RunWorld {
       const dx = e.x - p.x;
       const dy = e.y - p.y;
       if (dx * dx + dy * dy > far2) e.dead = true;
-    }
-  }
-
-  /** Advance spitter shots: move, expire on life/off-screen, and damage the
-   *  player on overlap (same iframes/events as contact). Headless-safe. */
-  private updateEnemyShots(dt: number): void {
-    const p = this.player;
-    const far = this.spawnDist(0) * ENEMIES.recycleFactor;
-    for (let i = this.enemyShots.length - 1; i >= 0; i--) {
-      const s = this.enemyShots[i];
-      s.x += s.vx * dt;
-      s.y += s.vy * dt;
-      s.lifeS -= dt;
-      const dx = s.x - p.x;
-      const dy = s.y - p.y;
-      const rr = s.radius + p.radius;
-      let gone = s.lifeS <= 0 || Math.abs(dx) > far || Math.abs(dy) > far;
-      if (!gone && dx * dx + dy * dy < rr * rr) {
-        gone = true;
-        if (p.iframesT <= 0 && !this.invincible) {
-          p.hp = Math.max(0, p.hp - s.damage);
-          p.iframesT = RUN.iframesS;
-          this.events.onHit();
-          if (p.hp <= 0) this.events.onDeath();
-        }
-      }
-      if (gone) this.enemyShots.splice(i, 1);
     }
   }
 
