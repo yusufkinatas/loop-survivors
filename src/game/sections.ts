@@ -208,10 +208,42 @@ export const CLIMB_CEILING_S = 17.5;
 export const BREAK_PULSE_S = 0.9;
 /** Radius the shove reaches around the player. */
 export const BREAK_PULSE_RADIUS = 260;
-/** How far the shove throws caught enemies. */
+/** How far the shove throws caught enemies (at full potency). */
 export const BREAK_PULSE_KNOCK = 190;
-/** Seconds the shove slows caught enemies. */
+/** Seconds the shove slows caught enemies (at full potency). */
 export const BREAK_PULSE_SLOW_S = 1.4;
+
+// --- The shove tires (kills BREAK-camping without a forced switch) -----------
+//
+// The developer's principle: sections are stances you hold at will — the game
+// must never switch for you. So BREAK-camping is fixed by an opportunity cost,
+// not a kick-out: the shove LOSES potency the longer you sit in BREAK, and only
+// recovers once you LEAVE (any other stance resets it to full). You can still
+// camp as long as you like; it just stops being a free wall — by the time the
+// shove is a limp nudge the crowd (which leans in during BREAK, see moveEnemies)
+// walks through it. Leaving to "breathe" and returning is your call, not the
+// game's. Player-only: the bot never enters BREAK, so GROOVE stays bit-identical.
+//
+/** Seconds of continuous BREAK for the shove to fade from full to its floor. */
+export const BREAK_SHOVE_FADE_S = 6;
+/** Potency floor the fading shove settles at (a nudge, never nothing). */
+export const BREAK_SHOVE_FLOOR = 0.2;
+
+// --- The horde reacts to the section you're performing (round-5) -------------
+//
+// Sections were a player-side monologue the board ignored. Now the crowd answers
+// the stance you're in — the same enum the sim already tracks, so a GROOVE-only
+// run (bot/replay) sees every multiplier at its identity value and stays
+// bit-identical. This makes the muted game read better too (Pillar 3): you can
+// SEE the music in how the horde moves.
+//
+/** BREAK: the crowd leans IN on the beat. Chase speed pulses from this floor
+ *  (just after a shove) up to BREAK_LEAN_MAX (right before the next one), so
+ *  they creep back between shoves and surge into the next pulse. */
+export const BREAK_LEAN_MIN = 0.5;
+export const BREAK_LEAN_MAX = 1.15;
+/** DROP hype window: survivors reel from the slam — dazed, slow to recover. */
+export const DROP_DAZE_MUL = 0.6;
 
 /** Contrast banked per second held in BREAK (caps at CONTRAST_MAX ~= 2 bars). */
 export const CONTRAST_PER_S = 0.22;

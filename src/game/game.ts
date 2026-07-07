@@ -149,19 +149,19 @@ export async function bootGame(
         climb: world.canSelectSection('climb'),
       },
     });
-    // Round-4 brownout: a held CLIMB overstayed the ceiling. Deflate to GROOVE on
-    // the next bar (the authored anticlimax) — no shockwave, no i-frames.
+    // Brownout: a held CLIMB overstayed the ceiling. The build deflates (the
+    // authored anticlimax — no shockwave, no i-frames) but the player KEEPS the
+    // CLIMB stance (round-5: the game never switches sections for you). The build
+    // is now sterile — no charge accrues (run.ts) — until they step out of CLIMB
+    // and climb afresh. engine.brownout() relaxes the arrangement; we do NOT
+    // commit GROOVE, so the HUD/colour stays on CLIMB, matching the sim.
     if (world.consumeBrownout()) {
       const w = world;
       engine.atNextBar(() => {
         if ((state !== 'run' && state !== 'sandbox') || world !== w) return;
-        w.commitSection('groove');
-        const { plan, filterHz, climbRamp } = buildPlan(w, 'groove');
-        engine.setSection(plan, filterHz, climbRamp);
         engine.brownout();
-        applyPerformance();
       });
-      hud.showToast('build fizzled');
+      hud.showToast('build fizzled — leave CLIMB to reset');
     }
   }
 

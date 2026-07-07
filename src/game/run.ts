@@ -77,6 +77,11 @@ import {
   BREAK_PULSE_RADIUS,
   BREAK_PULSE_KNOCK,
   BREAK_PULSE_SLOW_S,
+  BREAK_SHOVE_FADE_S,
+  BREAK_SHOVE_FLOOR,
+  BREAK_LEAN_MIN,
+  BREAK_LEAN_MAX,
+  DROP_DAZE_MUL,
   CONTRAST_PER_S,
   CONTRAST_MAX,
   SECTIONS,
@@ -372,6 +377,9 @@ export class RunWorld {
   contrast = 0;
   /** Countdown to the next BREAK crowd-control shove. */
   private breakPulseT = 0;
+  /** Seconds held continuously in BREAK — fades the shove's potency (resets to
+   *  0 the moment you leave BREAK, so the shove recovers by stepping out). */
+  private breakHoldT = 0;
   /** Seconds left in the post-drop hype window (the whole band amped). */
   dropWindowT = 0;
 
@@ -957,13 +965,19 @@ export class RunWorld {
    *  bot never enters BREAK), so it never perturbs a seeded replay. */
   private breakShove(): void {
     const p = this.player;
+    // The shove tires with time camped in BREAK: full at entry, fading to
+    // BREAK_SHOVE_FLOOR by BREAK_SHOVE_FADE_S. Leaving BREAK resets breakHoldT.
+    const fade = Math.min(1, this.breakHoldT / BREAK_SHOVE_FADE_S);
+    const potency = 1 - (1 - BREAK_SHOVE_FLOOR) * fade;
     const near = this.hash.query(p.x, p.y, BREAK_PULSE_RADIUS, this.queryBuf);
     for (const e of near) {
       if (e.dead) continue;
-      this.shove(e, p.x, p.y, BREAK_PULSE_KNOCK);
-      e.slowT = Math.max(e.slowT, BREAK_PULSE_SLOW_S);
+      this.shove(e, p.x, p.y, BREAK_PULSE_KNOCK * potency);
+      e.slowT = Math.max(e.slowT, BREAK_PULSE_SLOW_S * potency);
     }
-    this.spawnRing(p.x, p.y, BREAK_PULSE_RADIUS, SECTIONS.break.color, 0.4);
+    // The ring visibly shrinks as the shove weakens — the tell that you're
+    // over-camping and the wall is thinning.
+    this.spawnRing(p.x, p.y, BREAK_PULSE_RADIUS * (0.5 + 0.5 * potency), SECTIONS.break.color, 0.4);
   }
 
   /** Push an enemy away from a point (Feature 3), sharing the crash knock
@@ -1004,15 +1018,17 @@ export class RunWorld {
     if (this.dropGapT > 0) this.dropGapT = Math.max(0, this.dropGapT - dt);
     if (this.dropWindowT > 0) this.dropWindowT = Math.max(0, this.dropWindowT - dt);
     if (this.section === 'climb' && !this.dropPending && this.dropWindowT <= 0) {
-      this.charge = Math.min(CHARGE_MAX, this.charge + CLIMB_CHARGE_PER_S * dt);
-      // Time in the committed CLIMB: drives the contact ramp, the min-arm gate,
-      // and the brownout ceiling. Capped at the ceiling so it stops accumulating
-      // once the brownout fires (belt-and-braces with the flag being one-shot).
       this.climbT = Math.min(CLIMB_CEILING_S, this.climbT + dt);
-      // Can't climb forever: overstay the ceiling and the build browns out —
-      // lose the payoff (the shell commits GROOVE + plays the deflate on the bar).
-      // Latched: fires once per climb (section stays 'climb' for up to a bar until
-      // the shell commits GROOVE, so an unlatched test would spam every frame).
+      // Charge only accrues in a LIVE (not browned-out) climb: overstaying the
+      // ceiling stalls the build until you reset it by leaving CLIMB (below).
+      if (!this.brownedOut) {
+        this.charge = Math.min(CHARGE_MAX, this.charge + CLIMB_CHARGE_PER_S * dt);
+      }
+      // Can't climb forever: overstay the ceiling and the build browns out — you
+      // lose the payoff and the build goes sterile, but you KEEP the stance (the
+      // developer's principle: the game never switches sections for you). To arm
+      // again you must step out of CLIMB and climb afresh (commitSection resets
+      // brownedOut on a fresh entry). Latched so it fires once per climb.
       if (this.climbT >= CLIMB_CEILING_S && !this.brownedOut) {
         this.brownoutFlag = true;
         this.brownedOut = true;
@@ -1023,6 +1039,7 @@ export class RunWorld {
     // — its two reasons to exist. Both player-only (the bot stays in GROOVE).
     if (this.section === 'break' && !this.dropPending && this.dropWindowT <= 0) {
       this.contrast = Math.min(CONTRAST_MAX, this.contrast + CONTRAST_PER_S * dt);
+      this.breakHoldT += dt; // the shove tires the longer you camp (breakShove)
       this.breakPulseT -= dt;
       if (this.breakPulseT <= 0) {
         this.breakPulseT = BREAK_PULSE_S;
@@ -1030,6 +1047,7 @@ export class RunWorld {
       }
     } else {
       this.breakPulseT = 0;
+      this.breakHoldT = 0; // stepping out of BREAK recovers the shove to full
     }
 
     this.movePlayer(dt);
@@ -1291,14 +1309,30 @@ export class RunWorld {
     this.enemyShots.length = 0;
   }
 
+  /** The horde reacts to the section being performed (round-5). Returns the
+   *  chase-speed multiplier for the current frame. GROOVE (and thus the bot /
+   *  every seeded replay) returns exactly 1 — no reaction, bit-identical. */
+  private sectionChaseMul(): number {
+    // The DROP's slam leaves survivors dazed for the hype window: they reel,
+    // slow to recover. dropWindowT is only ever >0 after a player-fired drop.
+    if (this.dropWindowT > 0) return DROP_DAZE_MUL;
+    if (this.section === 'climb') return CLIMB_ENEMY_SPEED_MUL; // everyone rushes the stage
+    if (this.section === 'break') {
+      // The crowd leans IN on the beat: chase pulses from a lull just after a
+      // shove up to a surge right before the next one, so they creep back into
+      // the fading shove instead of sitting shoved.
+      const phase = 1 - Math.max(0, Math.min(1, this.breakPulseT / BREAK_PULSE_S));
+      return BREAK_LEAN_MIN + (BREAK_LEAN_MAX - BREAK_LEAN_MIN) * phase;
+    }
+    return 1;
+  }
+
   private moveEnemies(dt: number): void {
     const p = this.player;
-    // Round-4: the horde leans in during a COMMITTED CLIMB (+15% chase speed).
-    // Strictly gated on section === 'climb', so GROOVE (bot/replay) is unchanged.
-    const climbSpeedMul = this.section === 'climb' ? CLIMB_ENEMY_SPEED_MUL : 1;
+    const chaseMul = this.sectionChaseMul();
     for (const e of this.enemies) {
       if (e.dead) continue;
-      let speed = e.speed * climbSpeedMul;
+      let speed = e.speed * chaseMul;
       if (e.slowT > 0) {
         e.slowT -= dt;
         speed *= ZONE_SLOW_MUL;
