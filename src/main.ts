@@ -42,10 +42,6 @@ async function boot(): Promise<void> {
     // Standalone Boss Fight area (not wired into the run — a separate
     // playtest surface). See docs/phases/boss-fights.md.
     await mountBossFight(root, ctx);
-  } else if (location.hash === '#soundcheck') {
-    // Sound health-check: ear-test every genre's every voice (src/soundcheck).
-    const { mountSoundCheck } = await import('./soundcheck/page');
-    await mountSoundCheck(root, ctx);
   } else {
     await bootGame(root, engine, kits);
   }

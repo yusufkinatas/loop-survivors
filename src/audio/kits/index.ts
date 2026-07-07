@@ -136,20 +136,6 @@ export function sampledRoles(id: GenreId): Set<Role> {
   return new Set(Object.keys(activeOverlay(id).overlay) as Role[]);
 }
 
-/** The raw/corrected sample file bases backing a role for a genre under the
- *  ACTIVE variant, or [] if synthesized. Used by #soundcheck to A/B the
- *  untouched `<file>.raw.wav` against the corrected `<file>.wav`. */
-export function sampleFilesFor(id: GenreId, role: Role): string[] {
-  const specs = activeOverlay(id).overlay[role];
-  if (!specs) return [];
-  return [...new Set(specs.map(([, file]) => file))];
-}
-
-/** Directory (under /samples) the active variant's raw A/B files live in. */
-export function sampleDir(id: GenreId): string {
-  return activeOverlay(id).dir;
-}
-
 // Semitone tune for PITCHED sampled roles: aligns the sample's recorded root to
 // the engine's A reference (note 0). The Wave Point House bass hits are C2
 // (~64 Hz, +3 semis above A1), so -3 seats them in the synth bass's octave.

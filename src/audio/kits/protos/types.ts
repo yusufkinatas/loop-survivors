@@ -1,6 +1,6 @@
 // Kit-prototype manifests. Each genre being auditioned declares one or more
 // alternative sampled voicings ("prototypes") built from a downloaded sound
-// pack, so the developer can A/B them in-game (#soundcheck + the sandbox) and
+// pack, so the developer can A/B them in-game (the sandbox) and
 // pick one — the same process House went through before it adopted "Tight Tech".
 //
 // A prototype is nothing more than a directory of corrected sample files under

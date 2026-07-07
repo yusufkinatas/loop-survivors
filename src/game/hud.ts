@@ -210,10 +210,6 @@ export class Hud {
       roomBtn.onclick = () => {
         location.hash = '#rehearsal';
       };
-      const checkBtn = el('button', '', row, 'sound health check');
-      checkBtn.onclick = () => {
-        location.hash = '#soundcheck';
-      };
       const labBtn = el('button', '', row, 'open the experimentation room');
       labBtn.onclick = () => {
         location.hash = '#tracklab';

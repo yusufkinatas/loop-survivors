@@ -8,7 +8,8 @@
 // dependency) and runs the standard ffmpeg correction (strip silence, cap
 // length + fade, peak-normalize, mono/44.1k/16-bit; a reverse/strip/take-tail
 // pass for the riser swell) into public/samples/house/. Each corrected
-// <role>.wav gets a <role>.raw.wav sibling so #soundcheck can A/B. See
+// The verbatim source is
+// copied in as <role>.raw.wav (the ffmpeg input). See
 // docs/tools/audio-sample-pipeline.md for the full pipeline description.
 //
 // House is sampled for: kick, clap, rimshot, hat_closed, hat_open, shaker,

@@ -9,8 +9,8 @@
 // Local build tool: reads the packs from PACK below (NOT downloaded, NOT a build
 // dependency) and runs the standard ffmpeg correction (strip silence, cap
 // length + fade, peak-normalize, mono/44.1k/16-bit) into public/samples/techno/.
-// Each corrected <base>.wav gets a <base>.raw.wav verbatim sibling so #soundcheck
-// can A/B. Mirrors scripts/build-house-kit.mjs. See
+// The verbatim source is copied in as <base>.raw.wav (the
+// ffmpeg input). Mirrors scripts/build-house-kit.mjs. See
 // docs/tools/audio-sample-pipeline.md.
 //
 // Full-coverage drum kit (kick/clap/rimshot/hat closed+open/ride) plus a pitched

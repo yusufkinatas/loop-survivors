@@ -87,13 +87,13 @@ and peak. It flags — it never auto-fixes — the following:
 
 The counts land in `public/samples/health-report.md` and
 `public/samples/house/health-report.md`. **A green report means "not broken",
-not "sounds good"** — the ear gate (`#soundcheck`) is the real judge. The analyzer
+not "sounds good"** — the developer's ear is the real judge. The analyzer
 only points at files worth listening to first.
 
 ## Raw vs corrected (the A/B)
 
 Both scripts keep the untouched source next to the corrected file as
-`<role>.raw.wav`. `#soundcheck` can play either, so you can hear exactly what the
+`<role>.raw.wav` (also the ffmpeg input), so you can hear exactly what the
 correction did before approving it.
 Raw files are audition-only and should be deleted once corrections are signed off
 — they are not meant to ship.

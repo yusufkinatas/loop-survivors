@@ -131,9 +131,9 @@ for (const [genre, roles] of Object.entries(MANIFEST)) {
     const res = await fetch(url);
     if (!res.ok) { console.error(`FAIL ${genre}/${local}: ${res.status}`); process.exitCode = 1; continue; }
     // Keep the raw download ON DISK next to the corrected file (<role>.raw.wav)
-    // so the #soundcheck screen can A/B the untouched source against the ffmpeg
-    // result. These .raw.wav files are audition-only; delete them once the
-    // developer signs off on the corrections (they should not ship).
+    // as the ffmpeg input and a verbatim reference. These .raw.wav files are
+    // audition-only; delete them once the developer signs off on the
+    // corrections (they should not ship).
     const rawName = `${local}.raw.wav`;
     const rawPath = join(dir, rawName);
     writeFileSync(rawPath, Buffer.from(await res.arrayBuffer()));

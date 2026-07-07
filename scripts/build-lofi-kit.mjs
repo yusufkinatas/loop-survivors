@@ -7,8 +7,8 @@
 // Local build tool: reads the pack from PACK below (NOT downloaded, NOT a build
 // dependency) and runs the standard ffmpeg correction (strip silence, cap
 // length + fade, peak-normalize, mono/44.1k/16-bit) into public/samples/lofi/.
-// Each corrected <base>.wav gets a <base>.raw.wav sibling so #soundcheck can
-// A/B. See docs/tools/audio-sample-pipeline.md for the full pipeline.
+// The verbatim source is copied in as <base>.raw.wav (the ffmpeg
+// input). See docs/tools/audio-sample-pipeline.md for the full pipeline.
 //
 // Lo-Fi is sampled for: kick, kick_soft, snare, rimshot, hat_closed, hat_open.
 // The pack ships no dedicated shaker, so the shaker role stays synthesized.

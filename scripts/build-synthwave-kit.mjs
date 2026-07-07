@@ -9,8 +9,8 @@
 // Local build tool: reads the packs from PACK below (NOT downloaded, NOT a build
 // dependency) and runs the standard ffmpeg correction (strip silence, cap
 // length + fade, peak-normalize, mono/44.1k/16-bit) straight into
-// public/samples/synthwave/. Each corrected <role>.wav gets a <role>.raw.wav
-// sibling so #soundcheck can A/B. Mirrors scripts/build-house-kit.mjs.
+// public/samples/synthwave/. The verbatim source is copied in as
+// <role>.raw.wav (the ffmpeg input). Mirrors scripts/build-house-kit.mjs.
 //
 // Both bass notes are rooted at A1, so they seat on the engine's A reference
 // with no tune. Lead / chord / pad stay synthesized (wide-range pitched, need
