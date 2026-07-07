@@ -7,9 +7,10 @@ import { Clock } from './clock';
 import { chartEventsAtStep } from './arranger';
 import { TIER_COUNT, type Chart, type ChartEvent } from './charts';
 import { getChart, setActiveGenre } from './chartstore';
-import type { Genre } from './genres';
+import { genreSupports, type Genre, type GenreId } from './genres';
 import { SKELETON, STEPS_PER_BAR, STEPS_PER_PHRASE, semitonesToRate } from './scale';
 import type { Kit, Role } from './kits';
+import { kitForGenre } from './kits/index';
 import { makeEffectNodes, type EffectId } from './voicefx';
 
 export interface Voice {
@@ -80,6 +81,9 @@ export class MusicEngine {
   private barQueue: (() => void)[] = [];
   private stepMarkers: { step: number; time: number }[] = [];
   private lastDueStep = 0;
+  /** Guards the async genre-kit swap: a newer setGenre invalidates an in-flight
+   *  kit load so a slow older one can't clobber the current voicing. */
+  private genreKitToken = 0;
 
   constructor(ctx: AudioContext, kits: Map<Role, Kit>) {
     this.ctx = ctx;
@@ -149,15 +153,39 @@ export class MusicEngine {
     if (voice) voice.enabled = on;
   }
 
-  /** Switch the run's genre (its playable character): tempo, swing, and the
-   *  whole soundset's patterns change at once. Every voice re-points to the new
-   *  genre's chart at its current tier — same tools, a different track. */
+  /** Switch the run's genre (its playable character): tempo, swing, the genre's
+   *  own voicing of the soundset, AND its supported instrument set all change at
+   *  once. Supported voices re-point to the genre's chart at their current tier;
+   *  a voice for a role this genre does not support is disabled (never offered,
+   *  never voiced). The genre's own buffers are swapped in asynchronously. */
   setGenre(genre: Genre): void {
     setActiveGenre(genre.id);
     this.clock.bpm = genre.bpm;
     this.clock.swing = genre.swing;
     for (const voice of this.voices.values()) {
-      voice.chart = getChart(voice.role, voice.tier);
+      if (genreSupports(genre.id, voice.role)) {
+        voice.chart = getChart(voice.role, voice.tier);
+      } else {
+        voice.enabled = false;
+      }
+    }
+    void this.applyGenreKit(genre.id);
+  }
+
+  /** Swap every voice's active buffers to the genre's own kit (kits/<genre>.ts),
+   *  cached per genre. Async: the kit renders on first use and the swap takes
+   *  effect on each voice's next trigger, so it is click-free mid-play. A role
+   *  the genre kit does not cover keeps the default builtin buffers. */
+  private async applyGenreKit(id: GenreId): Promise<void> {
+    const token = ++this.genreKitToken;
+    const kit = await kitForGenre(id, SKELETON.rootHz);
+    if (token !== this.genreKitToken) return; // superseded by a newer setGenre
+    for (const voice of this.voices.values()) {
+      const k = kit.get(voice.role);
+      voice.activeSamples = k?.samples ?? voice.kit.samples;
+      // A sampled pitched voice carries a tune to align its recorded root to
+      // the A reference; synth kits and drums are 0.
+      voice.tune = k?.tune ?? 0;
     }
   }
 
