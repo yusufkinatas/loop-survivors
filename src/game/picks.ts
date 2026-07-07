@@ -14,7 +14,7 @@
 // deterministic; changing it re-baselines the bot's comparative numbers.
 
 import { TIER_COUNT } from '../audio/charts';
-import type { GenreId } from '../audio/genres';
+import { genreSupports, type GenreId } from '../audio/genres';
 import { ROLES, type Role } from '../audio/kits';
 import { EFFECT_IDS, type EffectId } from '../audio/voicefx';
 import {
@@ -40,9 +40,13 @@ export function buildPickPool(
   tiers: ReadonlyMap<Role, number>,
   items: ReadonlyMap<ItemId, number>,
   effects: ReadonlyMap<Role, EffectId>,
+  genreId: GenreId,
 ): PickOption[] {
   const pool: PickOption[] = [];
   for (const role of ROLES) {
+    // Genres are optimized for a subset of the catalog: a role this genre does
+    // not support is never offered (nor voiced by the engine).
+    if (!genreSupports(genreId, role)) continue;
     const tier = tiers.get(role);
     // Permanent picks (the band): a fresh instrument is offered only while its
     // slot is still empty — once a slot's drummer is hired, its roster rivals
@@ -106,7 +110,7 @@ export function rollOffers(
   genreId: GenreId,
   timeS: number,
 ): PickOption[] {
-  const pool = buildPickPool(tiers, items, effects);
+  const pool = buildPickPool(tiers, items, effects, genreId);
   const weightOf = (o: PickOption): number =>
     o.kind === 'weapon'
       ? weaponWeight(o.role, genreId, timeS)

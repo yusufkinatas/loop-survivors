@@ -78,14 +78,17 @@ export interface Kit {
   defaultVariant: string;
 }
 
-const RENDER_RATE = 44100;
+export const RENDER_RATE = 44100;
 
-function offline(seconds: number): OfflineAudioContext {
+/** A mono offline render context of `seconds` length at the render rate.
+ *  Exported so per-genre kit builders (src/audio/kits/*) synthesize on the
+ *  same clock as the builtin kit. */
+export function offline(seconds: number): OfflineAudioContext {
   return new OfflineAudioContext(1, Math.ceil(seconds * RENDER_RATE), RENDER_RATE);
 }
 
 /** White-noise buffer used as an excitation source by several drums. */
-function noiseBuffer(ctx: BaseAudioContext, seconds: number): AudioBuffer {
+export function noiseBuffer(ctx: BaseAudioContext, seconds: number): AudioBuffer {
   const buf = ctx.createBuffer(1, Math.ceil(seconds * ctx.sampleRate), ctx.sampleRate);
   const data = buf.getChannelData(0);
   for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
@@ -94,7 +97,7 @@ function noiseBuffer(ctx: BaseAudioContext, seconds: number): AudioBuffer {
 
 /** Odd-symmetric soft-clip curve for gentle harmonic saturation. `amount`
  *  sets drive; ~1 is nearly clean, higher values add warmth/grit. */
-function softClipCurve(amount: number): Float32Array<ArrayBuffer> {
+export function softClipCurve(amount: number): Float32Array<ArrayBuffer> {
   const n = 1024;
   const curve = new Float32Array(new ArrayBuffer(n * 4));
   const k = Math.max(0.001, amount);
@@ -1101,7 +1104,79 @@ async function renderCrash(): Promise<AudioBuffer> {
   return ctx.startRendering();
 }
 
-/** Render every builtin kit. Called once at startup. */
+/** Canonical, genre-independent identity of each role: its display name, color,
+ *  pitched/choke behavior, and the sample-variant ids charts may reference. A
+ *  genre re-voices a role by supplying different BUFFERS for these same variant
+ *  ids (src/audio/kits/*); the identity stays fixed so charts and visuals keep
+ *  working across genres. This is the single source of truth — buildKits and
+ *  every per-genre kit stamp their kits from it. */
+export interface RoleMeta {
+  name: string;
+  color: string;
+  pitched: boolean;
+  choke: boolean;
+  /** Chartable variant ids, defaultVariant first. */
+  variants: string[];
+}
+
+export const ROLE_META: Record<Role, RoleMeta> = {
+  kick: { name: 'Kick', color: '#ff5a3c', pitched: false, choke: false, variants: ['hard', 'soft'] },
+  snare: { name: 'Snare', color: '#ffc93c', pitched: false, choke: false, variants: ['snare', 'clap'] },
+  hat: { name: 'Hi-hat', color: '#3ce0ff', pitched: false, choke: false, variants: ['closed', 'open'] },
+  bass: { name: 'Bass', color: '#a06bff', pitched: true, choke: true, variants: ['bass', 'fat', 'sub'] },
+  chord: { name: 'Chord', color: '#4dff88', pitched: true, choke: false, variants: ['stab', 'pad'] },
+  lead: { name: 'Lead', color: '#ff6bd6', pitched: true, choke: false, variants: ['lead'] },
+  clap: { name: 'Clap', color: '#ff4f7d', pitched: false, choke: false, variants: ['clap'] },
+  tom: { name: 'Tom', color: '#d08a4a', pitched: true, choke: true, variants: ['tom'] },
+  cowbell: { name: 'Cowbell', color: '#c7f24a', pitched: true, choke: false, variants: ['cowbell'] },
+  arp: { name: 'Arp', color: '#33e6c2', pitched: true, choke: false, variants: ['arp'] },
+  zap: { name: 'Zap', color: '#66b3ff', pitched: false, choke: false, variants: ['zap'] },
+  crash: { name: 'Crash', color: '#b9c2dd', pitched: false, choke: true, variants: ['crash'] },
+  rimshot: { name: 'Rimshot', color: '#ff8f5e', pitched: false, choke: false, variants: ['rimshot'] },
+  heartbeat: { name: 'Heartbeat', color: '#ff7a9c', pitched: false, choke: true, variants: ['heartbeat'] },
+  shaker: { name: 'Shaker', color: '#7be0d0', pitched: false, choke: false, variants: ['shaker'] },
+  acid: { name: 'Acid', color: '#b6ff5a', pitched: true, choke: false, variants: ['acid'] },
+  pluck: { name: 'Pluck Bass', color: '#8f7bff', pitched: true, choke: true, variants: ['pluck'] },
+  rhodes: { name: 'Rhodes', color: '#5ad1ff', pitched: true, choke: false, variants: ['rhodes'] },
+  ride: { name: 'Ride', color: '#9fe8ff', pitched: false, choke: true, variants: ['ride'] },
+  riser: { name: 'Riser', color: '#cbb4ff', pitched: false, choke: true, variants: ['riser'] },
+  reese: { name: 'Reese', color: '#6a4fd0', pitched: true, choke: true, variants: ['reese'] },
+  choir: { name: 'Choir Pad', color: '#c7f0d8', pitched: true, choke: true, variants: ['choir'] },
+  bell: { name: 'Bell', color: '#ffd76b', pitched: true, choke: false, variants: ['bell'] },
+  whistle: { name: 'Whistle', color: '#ff9ecb', pitched: true, choke: false, variants: ['whistle'] },
+};
+
+/** Load a real sample file and decode it. The files are pre-corrected at build
+ *  time (scripts/build-samples.mjs: ffmpeg strips silence, caps length, fades
+ *  the tail, and peak-normalizes), so the runtime just plays them — no trimming
+ *  or level fixing in code. The fix lives in the asset, not the game. */
+export async function loadSample(url: string): Promise<AudioBuffer> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`sample ${url}: ${res.status}`);
+  return offline(0.05).decodeAudioData(await res.arrayBuffer());
+}
+
+/** Stamp a role's canonical identity (ROLE_META) onto a set of rendered
+ *  buffers. Genre kits and buildKits both assemble their kits through this, so
+ *  a "kick" is always a kick (name/color/choke/defaultVariant) whatever the
+ *  genre swapped its buffers to. `samples` must include the defaultVariant. */
+export function makeKit(role: Role, samples: Map<string, AudioBuffer>): Kit {
+  const meta = ROLE_META[role];
+  const defaultVariant = meta.variants.find((v) => samples.has(v)) ?? samples.keys().next().value!;
+  return {
+    role,
+    name: meta.name,
+    color: meta.color,
+    pitched: meta.pitched,
+    choke: meta.choke,
+    samples,
+    defaultVariant,
+  };
+}
+
+/** Render every builtin kit. Called once at startup. This is the default,
+ *  genre-neutral kit: the rehearsal room's palette and the fallback voicing for
+ *  any role a genre kit does not override. */
 export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
   const [
     kickHard,
@@ -1166,73 +1241,49 @@ export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
   ]);
 
   const kits = new Map<Role, Kit>();
-  const add = (
-    role: Role,
-    name: string,
-    color: string,
-    pitched: boolean,
-    entries: [string, AudioBuffer][],
-    choke = false,
-  ) => {
-    kits.set(role, {
-      role,
-      name,
-      color,
-      pitched,
-      choke,
-      samples: new Map(entries),
-      defaultVariant: entries[0][0],
-    });
+  const add = (role: Role, entries: [string, AudioBuffer][]) => {
+    kits.set(role, makeKit(role, new Map(entries)));
   };
 
-  add('kick', 'Kick', '#ff5a3c', false, [
+  add('kick', [
     ['hard', kickHard],
     ['soft', kickSoft],
   ]);
-  add('snare', 'Snare', '#ffc93c', false, [
+  add('snare', [
     ['snare', snare],
     ['clap', clap], // auditionable in the room, never charted
   ]);
-  add('hat', 'Hi-hat', '#3ce0ff', false, [
+  add('hat', [
     ['closed', hatClosed],
     ['open', hatOpen],
   ]);
-  add(
-    'bass',
-    'Bass',
-    '#a06bff',
-    true,
-    [
-      ['bass', bass],
-      ['fat', bassFat], // tier 3+ weight
-      ['sub', bassSub], // tier 4 once-per-phrase drop
-    ],
-    true,
-  );
-  add('chord', 'Chord', '#4dff88', true, [
+  add('bass', [
+    ['bass', bass],
+    ['fat', bassFat], // tier 3+ weight
+    ['sub', bassSub], // tier 4 once-per-phrase drop
+  ]);
+  add('chord', [
     ['stab', stab],
     ['pad', pad],
   ]);
-  add('lead', 'Lead', '#ff6bd6', true, [['lead', lead]]);
-  add('clap', 'Clap', '#ff4f7d', false, [['clap', clap]]);
-  add('tom', 'Tom', '#d08a4a', true, [['tom', tom]], true);
-  add('cowbell', 'Cowbell', '#c7f24a', true, [['cowbell', cowbell]]);
-  add('arp', 'Arp', '#33e6c2', true, [['arp', arp]]);
-  add('zap', 'Zap', '#66b3ff', false, [['zap', zap]]);
-  add('crash', 'Crash', '#b9c2dd', false, [['crash', crash]], true);
-  add('rimshot', 'Rimshot', '#ff8f5e', false, [['rimshot', rimshot]]);
-  add('heartbeat', 'Heartbeat', '#ff7a9c', false, [['heartbeat', heartbeat]], true);
-  add('shaker', 'Shaker', '#7be0d0', false, [['shaker', shaker]]);
-  add('acid', 'Acid', '#b6ff5a', true, [['acid', acid]]);
-  add('pluck', 'Pluck Bass', '#8f7bff', true, [['pluck', pluck]], true);
-  add('rhodes', 'Rhodes', '#5ad1ff', true, [['rhodes', rhodes]]);
-  // Sub-phase C. ride/choir choked so their long rings/pads don't stack; the
-  // utility weapons (ride, riser) still make a real sound (Model A).
-  add('ride', 'Ride', '#9fe8ff', false, [['ride', ride]], true);
-  add('riser', 'Riser', '#cbb4ff', false, [['riser', riser]], true);
-  add('reese', 'Reese', '#6a4fd0', true, [['reese', reese]], true);
-  add('choir', 'Choir Pad', '#c7f0d8', true, [['choir', choir]], true);
-  add('bell', 'Bell', '#ffd76b', true, [['bell', bell]]);
-  add('whistle', 'Whistle', '#ff9ecb', true, [['whistle', whistle]]);
+  add('lead', [['lead', lead]]);
+  add('clap', [['clap', clap]]);
+  add('tom', [['tom', tom]]);
+  add('cowbell', [['cowbell', cowbell]]);
+  add('arp', [['arp', arp]]);
+  add('zap', [['zap', zap]]);
+  add('crash', [['crash', crash]]);
+  add('rimshot', [['rimshot', rimshot]]);
+  add('heartbeat', [['heartbeat', heartbeat]]);
+  add('shaker', [['shaker', shaker]]);
+  add('acid', [['acid', acid]]);
+  add('pluck', [['pluck', pluck]]);
+  add('rhodes', [['rhodes', rhodes]]);
+  add('ride', [['ride', ride]]);
+  add('riser', [['riser', riser]]);
+  add('reese', [['reese', reese]]);
+  add('choir', [['choir', choir]]);
+  add('bell', [['bell', bell]]);
+  add('whistle', [['whistle', whistle]]);
   return kits;
 }

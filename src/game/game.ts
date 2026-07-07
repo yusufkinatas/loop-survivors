@@ -4,12 +4,11 @@
 
 import { Application } from 'pixi.js';
 import type { MusicEngine } from '../audio/engine';
-import { activeGenre, rebuildGenreCharts } from '../audio/chartstore';
+import { activeGenre } from '../audio/chartstore';
 import {
   GENRES,
   GENRE_BY_ID,
   DEFAULT_GENRE,
-  setGenreVariant,
   type Genre,
   type GenreId,
 } from '../audio/genres';
@@ -325,6 +324,7 @@ export async function bootGame(
     // Set the genre first: it re-points every voice's chart, so the tier set
     // below reads the genre's own pattern for the starting instrument.
     engine.setGenre(genre);
+    hud.setGenre(genre.id);
     engine.setVoiceTier(startingKit, 1);
     engine.setVoiceEnabled(startingKit, true);
     world.addWeapon(startingKit, 1);
@@ -346,6 +346,8 @@ export async function bootGame(
     const applyGenre = (g: Genre): void => {
       engine.setGenre(g);
       w.powerMul = g.powerMul;
+      hud.setGenre(g.id);
+      hud.renderBand(w.tiers);
     };
     applyGenre(GENRE_BY_ID[DEFAULT_GENRE]);
     w.invincible = true;
@@ -355,13 +357,6 @@ export async function bootGame(
       genres: GENRES,
       initial: DEFAULT_GENRE,
       onGenre: applyGenre,
-      onVariant: (genreId, variantId) => {
-        setGenreVariant(genreId, variantId);
-        rebuildGenreCharts(genreId);
-        // Re-point the engine at the rebuilt charts for the active genre.
-        engine.setGenre(GENRE_BY_ID[genreId]);
-        w.powerMul = GENRE_BY_ID[genreId].powerMul;
-      },
       onLoadout: () => hud.renderBand(w.tiers),
       onExit: () => {
         resetWorld();

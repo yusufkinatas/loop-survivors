@@ -47,13 +47,33 @@ On a pass, the phase verdict protocol runs (M4 grilling next). On a fail, rework
 
 **Note:** sub-phase C is engineering-verified but **uncommitted on `main`** (per the harness rule of committing only when asked). Say the word and it will be committed alongside sub-phase B.
 
-## Side branch: audio refresh + track variants (`audio-refresh`, PR open)
+## Side branch: per-genre sound (`audio-refresh`)
 
-A parallel, additive branch (not a phase gate) reworks the sound so the developer can pick better tracks by ear:
-- **Engine synthesis rewritten** (`src/audio/kits.ts`): every voice re-synthesized for richer individual tone AND clean layering in a full band (transient clarity, controlled tails at 174 BPM, low-end separation, no harsh pile-up on bright voices). The flagged risks (ride, choir) were rebuilt to read as a real cymbal / real vocal pad.
-- **Track variants**: each genre now carries selectable "tracks" — Classic (the shipped patterns, still the default until the developer picks) plus **three researched alternatives per genre** grounded in named sub-styles (18 new full ladder sets total). New `src/audio/variant.ts` (type) + `src/audio/variants/<genre>.ts` (self-contained, DSL-authored). `genres.ts` assembles them, resolves the active track, and persists a switch to localStorage so a picked track becomes the run default. `chartstore.rebuildGenreCharts` regenerates working charts on a switch.
-- **Track-test room** (sandbox): a per-genre track switcher (persists as default) and a **▶ play full band** button that force-assembles the genre's idiomatic 8-slot band at tier 4 so a whole track auditions instantly.
-- Verified: `tsc` + `vite build` clean (772 modules; the build-time guard validates all 18 new tracks' charts, in-palette and in-bounds); headless bot smoke across all six genres on Classic (no crashes/NaN, healthy damage shares). The new tracks await the developer's ear in the track-test room; the goal is a second-phase pick of the best track per genre, keeping the alternatives in code.
+A parallel, additive branch (not a phase gate). **Redirected July 7, 2026** away from "pick the best of three tracks per genre by ear" toward **each genre owning its own sound**. Reverses the locked `plan.md:52` model (shared soundset, per-genre patterns) at the developer's explicit direction. The three-pattern-alternatives work (`src/audio/variant.ts`, `src/audio/variants/*.ts`) was removed.
+
+New model — a genre now has:
+- **Its own voicing** of the soundset. A Lo-Fi kick and a Drum & Bass kick are different sounds, not the same sound played differently. `src/audio/kits/<genre>.ts` builds each genre's kit (via the shared primitives + `makeKit`/`ROLE_META` in `kits.ts`); `kits/index.ts` is the cached registry; `engine.setGenre` swaps every voice's buffers to the active genre's kit (async, click-free). Samples may be downloaded where synthesis falls short (logged in `public/samples/<genre>/CREDITS.md`, licensing to clear before ship).
+- **Its own instrument set.** A genre supports exactly the roles it supplies a ladder for; `genres.ts supportedRoles` is the single source of truth, read by the pick pool (`picks.ts`), the band rack (`hud.ts`, dropped slots shown unavailable), and the engine (unsupported voices never enable). Genres may drop whole band slots, subject to a build-time **playability floor** (a beat, a low end, a tick, a melodic voice).
+- **One track.** A single hand-picked four-tier ladder per supported role — no alternatives. The sandbox track-switcher is gone; the sandbox now shows an **"optimized for"** readout of the genre's instrument set and keeps the **▶ play full band** button (assembling only the genre's supported slots).
+
+**Real drum samples (the identity layer).** Synthesized drums from one engine converge on a shared character (the first pass sounded too alike between genres). Signature UNPITCHED drums are now real one-shots from the freely-distributed TidalCycles Dirt-Samples set — 909 for house/techno, 808 for hiphop, LinnDrum for synthwave, distorted break for dnb, warm for lofi — overlaid onto the synth kit in `kits/index.ts` (`SAMPLE_OVERLAY` + `loadSample`), so a role whose files load is voiced by the sample and everything else stays synthesized (melodic/bass), with graceful fallback to synth if a file fails.
+
+**The fix lives in the asset, not the game (ffmpeg pipeline).** `scripts/build-samples.mjs` downloads each raw sample and runs an **ffmpeg** pass that makes the file correct once: strip leading/trailing silence, cap length per role + fade the tail, peak-normalize to a per-role target (so the kit is balanced ON DISK), force mono/44.1k/16-bit. The per-role numbers live in that script's `PROC` table (build tooling), NOT in game code. Consequently the runtime `loadSample` is dumb — **fetch + decode only, no trimming or leveling in code**. The script also writes `public/samples/<genre>/CREDITS.md` (source+license, verify before ship) and a health report at `public/samples/health-report.md` (currently **0 flags** on the processed assets). Re-run with `node scripts/build-samples.mjs` after any manifest/PROC change.
+
+**Sound health-check screen (`#soundcheck`).** A developer surface (link on the start screen: "sound health check") listing every genre × voice with a play button, live health badges (duration / leading-delay / effective-tail / peak, flagged when suspicious), and pass/flag marks that export as text — the human ear-gate the analyzer can only point at.
+
+**Delivery + verification.** Stage 1 (skeleton, behavior-neutral refactor) → Stage 2 (per-genre synth voicings + one authored track each, via an ultracode workflow) → real drum samples + ffmpeg pipeline + health check. Verified at each step: `tsc` + `vite build` clean; headless bot across all six genres (no crashes/NaN); browser render of every genre kit (all voices non-silent, no NaN, no console errors; drums confirmed distinct — lofi kick 257ms vs hiphop 88ms vs techno 108ms, all peak-normalized). Everything is ONE commit on `audio-refresh` (`06b34e9` at time of writing), pushed to origin.
+
+### Current state & how to continue (for the next agent)
+
+**Done and committed/pushed.** The architecture, per-genre voicings, one track each, real ffmpeg-corrected drum samples, the health analyzer, and the `#soundcheck` screen are all in the single `audio-refresh` commit.
+
+**The next step is the developer's ear pass (the real gate).** The developer opens `#soundcheck`, auditions every genre × voice, marks pass/flag, and pastes the exported results back. Then:
+- **A flagged DRUM** (kick/snare/clap/hat/rimshot/shaker/ride) is a FILE fix: adjust that file's entry in `scripts/build-samples.mjs` (`MANIFEST` source swap, or `PROC` cap/level) or add an ffmpeg EQ op (e.g. `highpass=f=45` for boom), then `node scripts/build-samples.mjs`. No game code changes.
+- **A flagged SYNTH voice** (bass/chord/rhodes/lead/bell/reese/acid/…) is a code fix: edit the synthesis params in `src/audio/kits/<genre>.ts`. (If synth voices need frequent fixes, consider "Option 2": pre-render synth voices to WAV assets at build time so every voice is a file — a larger refactor, not yet done. Option 1 = samples-as-files-only is what shipped.)
+- After fixes: re-run health analyzer, `tsc` + `vite build`, browser render check, and **amend** the single commit (force-with-lease to push).
+
+**Key files:** `src/audio/kits.ts` (primitives, `ROLE_META`, `makeKit`, `loadSample`), `src/audio/kits/index.ts` (registry + `SAMPLE_OVERLAY`), `src/audio/kits/<genre>.ts` (synth voicings), `src/audio/ladders/<genre>.ts` (the one track each) + `ladders/shared.ts`, `src/audio/genres.ts` (thin assembler + `supportedRoles` + guards), `src/audio/engine.ts` (`setGenre` swap), `src/soundcheck/page.ts` (ear-check screen), `scripts/build-samples.mjs` (download + ffmpeg + health report).
 
 ## History
 

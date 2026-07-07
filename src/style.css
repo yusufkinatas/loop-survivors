@@ -1476,6 +1476,12 @@ button.big {
 .band-socket.filled {
   box-shadow: 0 0 12px -6px var(--voice-color);
 }
+/* A slot the active genre drops: dimmed, no fill affordance. */
+.band-socket.unavailable {
+  border-style: dashed;
+  border-top-color: var(--line);
+  opacity: 0.28;
+}
 .socket-slot {
   font: 700 9px/1 var(--font-mono);
   letter-spacing: 0.14em;
@@ -1561,3 +1567,20 @@ button.big {
     letter-spacing: 0.06em;
   }
 }
+
+/* Sound health-check screen (#soundcheck) */
+.soundcheck { max-width: 860px; margin: 0 auto; padding: 24px 16px 60px; color: var(--ink); }
+.soundcheck h1 { margin: 0 0 4px; }
+.soundcheck h2 { margin: 22px 0 8px; font: 700 14px/1 var(--font-mono); letter-spacing: 0.06em; color: var(--ink-dim); }
+.sc-genre { border-top: 1px solid var(--line); padding-top: 6px; }
+.sc-row { display: flex; align-items: center; gap: 10px; padding: 5px 6px; border-radius: var(--r-sm); border-left: 3px solid var(--voice-color); background: rgba(255,255,255,0.02); margin-bottom: 4px; }
+.sc-play { width: 34px; min-width: 34px; }
+.sc-name { width: 96px; font: 700 12px/1 var(--font-mono); color: var(--voice-color); }
+.sc-badges { display: flex; gap: 5px; }
+.sc-badge { font: 600 10px/1.4 var(--font-mono); padding: 2px 5px; border-radius: 3px; background: rgba(255,255,255,0.06); color: var(--ink-dim); }
+.sc-badge.warn { background: rgba(255,180,60,0.18); color: #ffb43c; }
+.sc-flags { font: 500 10px/1.3 var(--font-mono); color: #ffb43c; flex: 1; }
+.sc-marks { margin-left: auto; display: flex; gap: 5px; }
+.sc-mark.on { background: var(--voice-color); color: #0a0b0f; }
+.sc-footer { margin-top: 24px; display: flex; flex-direction: column; gap: 8px; }
+.sc-out { width: 100%; font: 500 11px/1.4 var(--font-mono); background: rgba(0,0,0,0.4); color: var(--ink); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 8px; }

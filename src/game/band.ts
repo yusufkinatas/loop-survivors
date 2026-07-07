@@ -10,7 +10,7 @@
 // position several weapons can compete for. Do not conflate the two.
 
 import type { Role } from '../audio/kits';
-import type { GenreId } from '../audio/genres';
+import { genreSupports, type GenreId } from '../audio/genres';
 
 /** The eight band positions, in the on-screen rack order. */
 export type Slot =
@@ -85,6 +85,17 @@ export const ROLE_SLOT: Record<Role, Slot> = (() => {
 /** The band position a weapon belongs to. */
 export function slotOf(role: Role): Slot {
   return ROLE_SLOT[role];
+}
+
+/** A slot's roster restricted to the instruments the genre is optimized for.
+ *  Empty when the genre drops the whole slot (it supports no member of it). */
+export function supportedRoster(genreId: GenreId, slot: Slot): Role[] {
+  return SLOT_ROSTER[slot].filter((r) => genreSupports(genreId, r));
+}
+
+/** The band slots a genre actually fills (drops the ones it supports nothing in). */
+export function supportedSlots(genreId: GenreId): Slot[] {
+  return SLOTS.filter((s) => supportedRoster(genreId, s).length > 0);
 }
 
 /** The instrument currently filling a slot, if any, given the owned tiers. */

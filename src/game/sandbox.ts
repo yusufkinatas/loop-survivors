@@ -5,9 +5,9 @@
 
 import type { MusicEngine } from '../audio/engine';
 import type { Genre, GenreId } from '../audio/genres';
-import { genreVariants, activeVariantId } from '../audio/genres';
-import { ROLES } from '../audio/kits';
-import { SLOTS, SLOT_ROSTER, genreRoleWeight } from './band';
+import { supportedRoles } from '../audio/genres';
+import { ROLES, ROLE_META } from '../audio/kits';
+import { genreRoleWeight, supportedRoster, supportedSlots } from './band';
 import { TIER_NUMERALS } from './hud';
 import { ENEMIES, enemyScaling, RUN, type EnemyKind } from './config';
 import { ITEM_IDS, ITEMS } from './items';
@@ -33,9 +33,6 @@ export interface SandboxOpts {
   genres: Genre[];
   initial: GenreId;
   onGenre: (genre: Genre) => void;
-  /** Switch the active track (variant) of a genre and persist it as the new
-   *  default. The game re-points the engine; the sandbox just calls this. */
-  onVariant: (genreId: GenreId, variantId: string) => void;
   onExit: () => void;
   /** The loadout changed (force-assembly): keep the band rack in sync. The
    *  sandbox itself ignores slot rules — it lets any combination be built. */
@@ -65,7 +62,8 @@ export function mountSandboxPanel(
   const exitBtn = el('button', 'small', head, '← leave') as HTMLButtonElement;
   exitBtn.onclick = opts.onExit;
 
-  // ---- genre switcher: swap tempo, swing, and every weapon's patterns ----
+  // ---- genre switcher: swap tempo, swing, the genre's own voicing, AND its
+  // supported instrument set ----
   el('div', 'sb-section', panel, 'genre');
   const genreRow = el('div', 'sb-btns sb-controls', panel);
   const genreBtns: HTMLButtonElement[] = [];
@@ -76,26 +74,34 @@ export function mountSandboxPanel(
       currentGenreId = g.id;
       opts.onGenre(g);
       genreBtns.forEach((x) => x.classList.toggle('on', x === b));
-      renderTracks();
+      renderOptimizedFor();
+      // A dropped-slot instrument may have vanished from this genre; re-fire the
+      // full band so it reassembles from the genre's supported slots.
+      if (bandOn) {
+        bandOn = false;
+        bandBtn.click();
+      }
     };
     if (g.id === opts.initial) b.classList.add('on');
     genreBtns.push(b);
   }
 
-  // ---- track test room: audition and pick a genre's alternative tracks ----
-  // Each genre ships several tracks (Classic + researched alternatives). Switch
-  // one to hear it live; the choice persists as the new default for real runs.
-  el('div', 'sb-section', panel, 'track (persists as default)');
-  const trackRow = el('div', 'sb-btns sb-controls', panel);
-  const trackHint = el('div', 'sb-hint', panel, '');
+  // ---- optimized-for readout: which instruments this genre is built around ----
+  // Play-testing reads this to know each genre's set (genres may drop slots).
+  el('div', 'sb-section', panel, 'optimized for');
+  const optimizedFor = el('div', 'sb-hint', panel, '');
+  const renderOptimizedFor = (): void => {
+    const names = supportedRoles(currentGenreId).map((r) => ROLE_META[r].name);
+    optimizedFor.textContent = `${names.length} instruments: ${names.join(', ')}`;
+  };
 
-  // Assemble a representative full band for the current genre so a whole track
-  // can be heard at once: the genre's idiomatic instrument in each of the eight
-  // slots, all at tier 4. Toggles off (silences every voice) when pressed again.
+  // Assemble a representative full band for the current genre so its whole track
+  // can be heard at once: its idiomatic instrument in each SUPPORTED slot, all
+  // at tier 4. Toggles off (silences every voice) when pressed again.
   let bandOn = false;
   const bandBtn = el('button', 'small sb-controls', panel, '▶ play full band') as HTMLButtonElement;
-  const bestForSlot = (slot: (typeof SLOTS)[number]): (typeof SLOT_ROSTER)[typeof slot][number] => {
-    const roster = SLOT_ROSTER[slot];
+  const bestForSlot = (slot: Parameters<typeof supportedRoster>[1]): ReturnType<typeof supportedRoster>[number] => {
+    const roster = supportedRoster(currentGenreId, slot);
     return roster.reduce((best, r) =>
       genreRoleWeight(currentGenreId, r) > genreRoleWeight(currentGenreId, best) ? r : best,
     );
@@ -107,7 +113,7 @@ export function mountSandboxPanel(
       world.removeWeapon(role);
     }
     if (bandOn) {
-      for (const slot of SLOTS) {
+      for (const slot of supportedSlots(currentGenreId)) {
         const role = bestForSlot(slot);
         engine.setVoiceTier(role, 4);
         engine.setVoiceEnabled(role, true);
@@ -119,30 +125,7 @@ export function mountSandboxPanel(
     opts.onLoadout?.();
   };
 
-  const renderTracks = (): void => {
-    trackRow.replaceChildren();
-    const active = activeVariantId(currentGenreId);
-    const btns: HTMLButtonElement[] = [];
-    for (const v of genreVariants(currentGenreId)) {
-      const b = el('button', 'small', trackRow, v.name) as HTMLButtonElement;
-      if (v.id === active) b.classList.add('on');
-      b.title = v.note ?? '';
-      b.onclick = () => {
-        opts.onVariant(currentGenreId, v.id);
-        btns.forEach((x) => x.classList.toggle('on', x === b));
-        trackHint.textContent = v.note ?? '';
-        // Re-fire the full band on the new track if it is currently playing.
-        if (bandOn) {
-          bandOn = false;
-          bandBtn.click();
-        }
-      };
-      btns.push(b);
-    }
-    const activeVar = genreVariants(currentGenreId).find((v) => v.id === active);
-    trackHint.textContent = activeVar?.note ?? '';
-  };
-  renderTracks();
+  renderOptimizedFor();
 
   // ---- enemy roster: stats and spawn buttons ----
   el('div', 'sb-section', panel, 'enemies');
