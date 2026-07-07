@@ -110,6 +110,8 @@ export async function bootGame(
       section: world.section,
       pending: world.pendingSection,
       charge: world.chargeFill,
+      contrast: world.contrastFill,
+      dropScale: world.dropScale,
       inClimb: world.section === 'climb',
       canDrop: world.canArmDrop,
       dropping,
@@ -170,7 +172,15 @@ export async function bootGame(
     if (!world || (state !== 'run' && state !== 'sandbox')) return;
     if (!world.canArmDrop) return;
     const w = world;
-    const { gapSeconds } = engine.armDrop(() => {
+    // The pre-drop gap cuts only the low/harmony/melody voices (the hole the sub
+    // slams into); the beat keeps rolling so damage never stops.
+    const gapMute = new Set<Role>();
+    for (const role of ROLES) {
+      if (!w.tiers.has(role)) continue;
+      const slot = slotOf(role);
+      if (slot === 'bass' || slot === 'harmony' || slot === 'melody') gapMute.add(role);
+    }
+    const { gapSeconds } = engine.armDrop(gapMute, () => {
       if ((state !== 'run' && state !== 'sandbox') || world !== w) return;
       if (!w.resolveDrop()) return;
       view?.dropFlash();

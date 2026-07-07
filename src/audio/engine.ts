@@ -64,9 +64,12 @@ export type TriggerListener = (t: ScheduledTrigger) => void;
  *   - buildbass: CLIMB thins the sub to one hit a bar, digging the drop's hole. */
 export type ArrangeMode = 'identity' | 'mute' | 'strip' | 'build' | 'buildbass';
 
-// The drop's musical staging (docs/phases/perform-the-track-v2.md): a short
-// pre-slam gap of near-silence, then the slam on the next phrase downbeat.
-const MIN_GAP_STEPS = 8; // at least half a bar of gap so the drop always breathes
+// The drop's musical staging (docs/phases/perform-the-track-v2.md, round-3 fix):
+// the slam lands on the NEXT BEAT (<=~0.5s), not the phrase — CLIMB already was
+// the build-up, so the drop is a snappy release, not a second wait. During the
+// sub-beat gap only the low/harmony/melody voices cut (the hole the sub slams
+// into); the beat keeps rolling, so weapons/damage never stop and it never
+// reads as dead air.
 const FILTER_OPEN_HZ = 20000;
 const FILTER_CLIMB_START_HZ = 2200;
 
@@ -110,10 +113,14 @@ export class MusicEngine {
   private climbRamp = false;
   /** The most recent grid step scheduled by the clock (for drop quantization). */
   private lastScheduledStep = 0;
-  /** Drop staging: 'gap' silences the band and swells a riser until the slam. */
+  /** Drop staging: 'gap' digs the sub/harmony/melody hole and swells a riser
+   *  until the slam on the next beat (the beat keeps rolling underneath). */
   private dropState: 'none' | 'gap' = 'none';
   private dropSlamStep = -1;
   private dropResolve: ((time: number) => void) | null = null;
+  /** Voices that cut during the pre-drop gap (the low/harmony/melody hole). The
+   *  rest keep firing, so damage never stops. */
+  private gapMuteRoles: Set<Role> = new Set();
   /** One reusable white-noise buffer for the transition synths. */
   private noiseBuf: AudioBuffer | null = null;
 
@@ -323,23 +330,22 @@ export class MusicEngine {
     this.sweepFilter(filterHz, this.ctx.currentTime, 0.18);
   }
 
-  /** Arm the drop: silence the band and swell a riser through the gap, then
-   *  fire `onResolve` (and the audio slam) on the next phrase downbeat. Returns
-   *  the gap length in seconds so the shell can cover it with i-frames. The bot
-   *  never calls this. */
-  armDrop(onResolve: (time: number) => void): { gapSeconds: number } {
-    const from = this.lastScheduledStep + MIN_GAP_STEPS;
-    const r = ((from % STEPS_PER_PHRASE) + STEPS_PER_PHRASE) % STEPS_PER_PHRASE;
-    const slam = from + ((STEPS_PER_PHRASE - r) % STEPS_PER_PHRASE || STEPS_PER_PHRASE);
+  /** Arm the drop: dig the hole (only `gapMuteRoles` cut — the beat keeps
+   *  rolling) and swell a short riser, then fire `onResolve` and the audio slam
+   *  on the NEXT BEAT. Returns the gap length in seconds so the shell can cover
+   *  it with i-frames. The bot never calls this. */
+  armDrop(gapMuteRoles: Set<Role>, onResolve: (time: number) => void): { gapSeconds: number } {
+    this.gapMuteRoles = gapMuteRoles;
+    const spb = this.clock.stepsPerBeat; // 4 steps = one beat
+    const from = this.lastScheduledStep + 1;
+    const slam = from + ((spb - (from % spb)) % spb);
     this.dropSlamStep = slam;
     this.dropState = 'gap';
     this.dropResolve = onResolve;
     const gapSteps = slam - this.lastScheduledStep;
     const gapSeconds = gapSteps * this.clock.stepDuration;
-    // The riser swells through the whole gap into the slam (capped so a long
-    // gap doesn't drone). Pull the filter down a touch for the held breath.
-    this.scheduleRiser(this.ctx.currentTime + 0.03, Math.min(gapSeconds, 2.2));
-    this.sweepFilter(1400, this.ctx.currentTime, 0.12);
+    // A quick riser whoosh up into the slam (floored so a 1-step gap still reads).
+    this.scheduleRiser(this.ctx.currentTime + 0.02, Math.max(gapSeconds, 0.35));
     return { gapSeconds };
   }
 
@@ -350,6 +356,7 @@ export class MusicEngine {
     this.dropState = 'none';
     this.dropSlamStep = -1;
     this.dropResolve = null;
+    this.gapMuteRoles = new Set();
     this.masterPump.gain.cancelScheduledValues(this.ctx.currentTime);
     this.masterPump.gain.setValueAtTime(1, this.ctx.currentTime);
     this.sweepFilter(FILTER_OPEN_HZ, this.ctx.currentTime, 0.05);
@@ -376,6 +383,7 @@ export class MusicEngine {
     this.scheduleImpact(time);
     this.dropState = 'none';
     this.dropSlamStep = -1;
+    this.gapMuteRoles = new Set();
     const cb = this.dropResolve;
     this.dropResolve = null;
     cb?.(time);
@@ -493,12 +501,14 @@ export class MusicEngine {
         this.sweepFilter(hz, time, this.clock.stepDuration * STEPS_PER_BAR);
       }
     }
-    // The pre-drop gap: silence the band (the riser is already swelling). The
-    // slam above re-enters it the same step the gap ends.
-    if (this.dropState === 'gap') return;
+    // The pre-drop gap digs a hole: only the low/harmony/melody voices cut, so
+    // the sub slams back into silence on the one — but the beat keeps rolling
+    // (Pulse/Backbeat/Hats fire), so damage never stops and it's never dead air.
+    const inGap = this.dropState === 'gap';
     const barInSection = Math.max(0, Math.floor((step - this.sectionStartStep) / STEPS_PER_BAR));
     for (const voice of this.voices.values()) {
       if (!voice.enabled) continue;
+      if (inGap && this.gapMuteRoles.has(voice.role)) continue;
       for (const ev of this.sectionEvents(voice, phraseStep, barInSection)) {
         this.trigger(voice, ev, time, phraseStep);
       }

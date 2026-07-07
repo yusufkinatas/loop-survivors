@@ -15,6 +15,30 @@ This document is a hand-off: an implementing agent should be able to build from
 it without re-running the design discussion. The developer's ear and hands
 remain the gate; the sub-phase gates below are his.
 
+## Round-3 revisions (after the first A playtest)
+
+The developer played sub-phase A and flagged two things; the two experts
+reconvened and converged on fixes, now implemented. These amend the drop timing
+and BREAK below — read them as the current truth where they differ:
+
+- **The drop's gap was dead air (a bug).** A was quantizing the slam to the next
+  *phrase* downbeat (up to a full 4 bars, ~7–11s) with the *whole* band silent.
+  Fixed: the slam now lands on the next **beat** (≤~0.5s), and during that
+  sub-beat gap only **Bass + Harmony + Melody** cut (the hole the sub slams back
+  into) — Pulse/Backbeat/Hats keep firing, so weapons/damage never stop and it
+  never reads as silence. CLIMB is the build-up; the drop is a snappy release,
+  not a second wait. (Tuning: `armDrop` in `engine.ts`, quantize to
+  `clock.stepsPerBeat`.)
+- **BREAK had no reason to exist.** "Hit softer, take less, move faster" is a
+  non-choice when moving already dodges. Recast: BREAK now (a) pulses a
+  **knockback + slow shove** while held — the kit's only hard crowd-control, the
+  "make a hole" panic button — and (b) banks a **contrast** meter that
+  multiplies the next drop (going quiet sets up a bigger release, a breakdown's
+  real musical job). CLIMB stays the *only* way to arm the drop; BREAK only
+  makes the payoff bigger. Loop: GROOVE → BREAK (survive + bank contrast) →
+  CLIMB (arm) → DROP (oversized). Tuning consts in `sections.ts`
+  (`BREAK_PULSE_*`, `CONTRAST_*`).
+
 ## Why v1 is being replaced
 
 The developer likes having sections and swapping between them, but v1 does not

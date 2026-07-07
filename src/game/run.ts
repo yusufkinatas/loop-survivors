@@ -69,6 +69,12 @@ import {
   CLIMB_CHARGE_PER_S,
   CHARGE_PER_DAMAGE,
   CHARGE_MAX,
+  BREAK_PULSE_S,
+  BREAK_PULSE_RADIUS,
+  BREAK_PULSE_KNOCK,
+  BREAK_PULSE_SLOW_S,
+  CONTRAST_PER_S,
+  CONTRAST_MAX,
   SECTIONS,
   type SectionId,
 } from './sections';
@@ -342,6 +348,11 @@ export class RunWorld {
   dropPending = false;
   /** Seconds of pre-drop gap left (covered by i-frames; HUD reads it). */
   dropGapT = 0;
+  /** Contrast banked in BREAK: multiplies the next drop by (1 + contrast).
+   *  Read-only w.r.t. the sim, so inert for the bot. */
+  contrast = 0;
+  /** Countdown to the next BREAK crowd-control shove. */
+  private breakPulseT = 0;
   /** Seconds left in the post-drop hype window (the whole band amped). */
   dropWindowT = 0;
 
@@ -821,6 +832,14 @@ export class RunWorld {
     return Math.min(1, this.charge);
   }
 
+  /** Contrast as a 0..1 fill, and the resulting next-drop multiplier, for HUD. */
+  get contrastFill(): number {
+    return Math.min(1, this.contrast / CONTRAST_MAX);
+  }
+  get dropScale(): number {
+    return Math.max(1, Math.min(CHARGE_MAX, this.charge)) * (1 + this.contrast);
+  }
+
   /** Arm the drop (player input only, gated by canArmDrop). Grants i-frames
    *  covering the whole pre-drop gap so the near-silence reads as euphoric
    *  invulnerability, not helplessness. The audio engine schedules the slam on
@@ -841,8 +860,11 @@ export class RunWorld {
   resolveDrop(): boolean {
     if (!this.dropPending) return false;
     const p = this.player;
-    const scale = Math.max(1, Math.min(CHARGE_MAX, this.charge));
+    // Payoff scales two ways: overcharge from riding CLIMB longer, and CONTRAST
+    // banked in BREAK (going quiet sets up a bigger release).
+    const scale = Math.max(1, Math.min(CHARGE_MAX, this.charge)) * (1 + this.contrast);
     this.charge = 0;
+    this.contrast = 0;
     this.dropPending = false;
     this.dropGapT = 0;
     this.dropWindowT = DROP.windowS;
@@ -885,6 +907,20 @@ export class RunWorld {
     if (this.pendingSection === id) this.pendingSection = null;
   }
 
+  /** BREAK's crowd-control pulse: shove every nearby enemy outward and slow it
+   *  — the kit's only hard CC, the panic "make a hole" verb. Player-only (the
+   *  bot never enters BREAK), so it never perturbs a seeded replay. */
+  private breakShove(): void {
+    const p = this.player;
+    const near = this.hash.query(p.x, p.y, BREAK_PULSE_RADIUS, this.queryBuf);
+    for (const e of near) {
+      if (e.dead) continue;
+      this.shove(e, p.x, p.y, BREAK_PULSE_KNOCK);
+      e.slowT = Math.max(e.slowT, BREAK_PULSE_SLOW_S);
+    }
+    this.spawnRing(p.x, p.y, BREAK_PULSE_RADIUS, SECTIONS.break.color, 0.4);
+  }
+
   /** Push an enemy away from a point (Feature 3), sharing the crash knock
    *  channel. Pure arithmetic, so it runs headless untouched. */
   private shove(e: Enemy, fromX: number, fromY: number, dist: number): void {
@@ -924,6 +960,18 @@ export class RunWorld {
     if (this.dropWindowT > 0) this.dropWindowT = Math.max(0, this.dropWindowT - dt);
     if (this.section === 'climb' && !this.dropPending && this.dropWindowT <= 0)
       this.charge = Math.min(CHARGE_MAX, this.charge + CLIMB_CHARGE_PER_S * dt);
+    // BREAK banks CONTRAST (a bigger next drop) and pulses a crowd-control shove
+    // — its two reasons to exist. Both player-only (the bot stays in GROOVE).
+    if (this.section === 'break' && !this.dropPending && this.dropWindowT <= 0) {
+      this.contrast = Math.min(CONTRAST_MAX, this.contrast + CONTRAST_PER_S * dt);
+      this.breakPulseT -= dt;
+      if (this.breakPulseT <= 0) {
+        this.breakPulseT = BREAK_PULSE_S;
+        this.breakShove();
+      }
+    } else {
+      this.breakPulseT = 0;
+    }
 
     this.movePlayer(dt);
     if (this.scripted) {

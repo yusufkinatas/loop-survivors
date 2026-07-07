@@ -1667,6 +1667,16 @@ button.big {
   box-shadow: 0 0 18px -4px var(--signal);
   transition: width 0.12s linear;
 }
+/* Contrast banked in BREAK: a cooler bar behind the charge fill, so "a bigger
+   drop is loaded" reads at a glance. */
+.energy-meter .contrast-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(107, 168, 255, 0.25), rgba(107, 168, 255, 0.6));
+  transition: width 0.12s linear;
+}
 /* Charge only accrues in CLIMB, so warm the meter while climbing to say so. */
 .perf-panel.climbing .energy-meter .fill {
   background: linear-gradient(90deg, rgba(255, 140, 60, 0.55), #ffb454);

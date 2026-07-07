@@ -43,6 +43,7 @@ export class Hud {
   private perf: HTMLElement;
   private sectionChips = new Map<SectionId, HTMLElement>();
   private energyFill: HTMLElement | null = null;
+  private contrastFill: HTMLElement | null = null;
   private dropBtn: HTMLElement | null = null;
   private screen: HTMLElement | null = null;
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
@@ -110,6 +111,8 @@ export class Hud {
       this.sectionChips.set(id, chip);
     }
     const meter = el('div', 'energy-meter', this.perf);
+    // Contrast (banked in BREAK) sits behind the charge fill as a cooler bar.
+    this.contrastFill = el('div', 'contrast-fill', meter);
     this.energyFill = el('div', 'fill', meter);
     const btn = el('button', 'drop-btn', meter, 'CHARGE IN CLIMB');
     btn.onclick = () => {
@@ -127,6 +130,8 @@ export class Hud {
     section: SectionId;
     pending: SectionId | null;
     charge: number;
+    contrast: number;
+    dropScale: number;
     inClimb: boolean;
     canDrop: boolean;
     dropping: boolean;
@@ -139,13 +144,16 @@ export class Hud {
       chip.classList.toggle('locked', locked);
     }
     if (this.energyFill) this.energyFill.style.width = `${Math.min(1, s.charge) * 100}%`;
+    if (this.contrastFill) this.contrastFill.style.width = `${Math.min(1, s.contrast) * 100}%`;
+    // Show the banked bonus once it's worth reading (a bigger drop is coming).
+    const bonus = s.dropScale >= 1.15 ? ` ×${s.dropScale.toFixed(1)}` : '';
     if (this.dropBtn) {
       this.dropBtn.classList.toggle('ready', s.canDrop);
       this.dropBtn.classList.toggle('dropping', s.dropping);
       this.dropBtn.textContent = s.dropping
         ? 'DROP!'
         : s.canDrop
-          ? 'SPACE · DROP'
+          ? `SPACE · DROP${bonus}`
           : s.inClimb
             ? 'CHARGING'
             : 'CHARGE IN CLIMB';

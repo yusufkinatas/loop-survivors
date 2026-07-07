@@ -83,14 +83,17 @@ export const SECTIONS: Record<SectionId, Section> = {
     color: 0x59ffd1,
     tint: '',
   },
-  // BREAK — the defensive valve. Strip to the low end and the pad, thin what
-  // survives, and muffle the top (the engine sweeps a low-pass down). You hit a
-  // little softer but shrug off contact and skate quick: buy space, regroup.
-  // Not a penalty — a different tool. Sittable.
+  // BREAK — the panic-and-setup valve (round-3 recast). Strip to the low end
+  // and the pad, muffle the top (the engine sweeps a low-pass down). While held
+  // it pulses a knockback + slow shove — the kit's only hard crowd-control, the
+  // "make a hole" button when you're boxed in — AND banks a CONTRAST meter that
+  // makes the next drop bigger (a breakdown's whole musical job is the contrast
+  // that makes the release hit harder). You hit softer and are exposed, but you
+  // buy space now and a huge drop later.
   break: {
     id: 'break',
     label: 'BREAK',
-    line: 'Stripped back. Tough and quick — buy space.',
+    line: 'Go quiet: shove the horde back, bank a bigger drop.',
     key: '2',
     code: 'Digit2',
     audible: new Set<Slot>(['pulse', 'bass', 'harmony']),
@@ -169,3 +172,25 @@ export const CHARGE_PER_DAMAGE = 0.00006;
  *  slam, so riding the climb longer trades exposure for a bigger clear — the
  *  "pop now vs push for the huge one" decision. */
 export const CHARGE_MAX = 1.6;
+
+// --- BREAK: the crowd-control pulse + the contrast bank (round-3 recast) -----
+//
+// BREAK earns its key two ways. (1) A repeating knockback + slow "shove" — the
+// only hard crowd-control in the kit, the panic button when you're surrounded.
+// (2) A CONTRAST meter that banks while you sit in it and multiplies the next
+// drop, so going quiet sets up a bigger release (a breakdown's real job).
+
+/** Seconds between BREAK shove pulses (roughly a bar at mid tempo). */
+export const BREAK_PULSE_S = 0.9;
+/** Radius the shove reaches around the player. */
+export const BREAK_PULSE_RADIUS = 260;
+/** How far the shove throws caught enemies. */
+export const BREAK_PULSE_KNOCK = 190;
+/** Seconds the shove slows caught enemies. */
+export const BREAK_PULSE_SLOW_S = 1.4;
+
+/** Contrast banked per second held in BREAK (caps at CONTRAST_MAX ~= 2 bars). */
+export const CONTRAST_PER_S = 0.22;
+/** Contrast cap. The next drop's slam scales by (1 + contrast), so a full
+ *  breakdown roughly doubles the clear; a quick dip barely changes it. */
+export const CONTRAST_MAX = 0.9;
