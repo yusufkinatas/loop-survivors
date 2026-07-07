@@ -857,6 +857,16 @@ export const HOLD = {
     nearMissBonus: 0.04,
     killStreakScale: 0.5,
     overflowBleedPerS: 0.15,
+    /** Weighted crowd score (base 0.5 per enemy in range + up to 1 more the
+     *  closer it is) that reads as maximum danger. ~8 enemies packed at the
+     *  player, or ~20 loosely inside the pressure radius. */
+    crowdFull: 12,
+    /** kills/s (decaying, 1s memory) that reads as full kill-streak danger. */
+    killRateFull: 4,
+    /** A commit with banked tension below this fizzles: voices just pop back,
+     *  a weak slam, no amplified-fire window, no cooldown (an unearned drop is
+     *  its own punishment, docs/phases/hold-and-drop-v2.md). */
+    fizzleBelow: 0.12,
   },
   /** Full-band drop cooldown so Q reads as a spent resource (sub-phase B). */
   fullBandCooldownS: 13,

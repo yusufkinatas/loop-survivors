@@ -2,6 +2,16 @@
 
 Last updated: July 7, 2026
 
+## Current work (branch `prototype-hold-drop`)
+
+**Hold & Drop v2 — sub-phase B (ARM + tension economy) built, awaiting the developer gate.** Spec: `docs/phases/hold-and-drop-v2.md`. Sub-phase A (the drop event: build → gap → slam + juice, debug-triggered) **passed** the developer's ear/hands (`13b72ca`). Sub-phase B now layers the two verbs on top: **ARM** (number keys 1–8 pull a slot back — instant silence, the vulnerability) banks a **danger-priced tension** resource (fills from nearby crowd + kill-streak, ~zero when safe, faster per armed voice); an **overflow latch** bleeds the held bet at 15%/s once it tops out; **DROP** (Q) commits every armed voice into the sub-phase-A build→gap→slam sized by banked tension × combo, spends the tension, and locks a 13s cooldown; a sub-minimum drop (tension < 0.12) **fizzles** for free. HUD tension meter gained overflow-waver + cooldown states. Uncommitted on `prototype-hold-drop`.
+
+**Gate B (the developer's ear/hands):** muted first (Pillar 3) — is arming a real, dangerous decision and the earned drop satisfying to release with the sound off? Then sound on — does tension feel earned (not cheap), does the fizzle punish an unearned drop, does the cooldown make Q feel like a spent resource? Try the parked "small live benefit while armed" nudge if arming feels purely punitive, and the disarm-refund question. Dev server: `npm run dev`, `#sandbox` (force-assemble any loadout, `invulnerable` on, spawn swarms to build danger; number keys arm, Q drops). Engineering-verified: `tsc` + `vite build` clean; bot smoke unchanged (~4:13 median, mechanic off the bot path); Chrome — fill rates, overflow bleed, drop/fizzle/cooldown, key wiring, zero console errors.
+
+---
+
+## Prior phase (before the Hold & Drop prototype)
+
 ## Current phase
 
 **The band — sub-phases B AND C implemented, awaiting a combined gate B+C (the developer's ear/hands).** A grilling session locked the band slot system (`docs/phases/the-band.md`): eight typed band-position slots (Pulse, Backbeat, Hats, Motion, FX, Bass, Harmony, Melody), one instrument per slot, permanent picks, a 24-instrument catalog. Sub-phase A (the system on today's twelve instruments) is built and **passed**. Sub-phase B added the first six damage hires — rimshot, heartbeat, shaker, acid, pluck bass, Rhodes — committed on `main` (`affe831`, `124cc99`, `023c30e`). **Sub-phase C is now built (uncommitted on `main`)**: the last six instruments — ride (Hats, the **freeze weapon**), riser (FX, the **auto-dash**), reese (Bass, a grinding wall), choir pad (Harmony, a pulsing orb), bell (Melody, shatters into shards), whistle (Melody, tags an enemy that pops a beat later) — plus the two new gameplay systems (a freeze status and an auto-dash hook). Per the developer's instruction, sub-phase B's gate was skipped and C built on top so both are judged together at one gate. The catalog is now complete at 24 instruments (8 slots × 3).

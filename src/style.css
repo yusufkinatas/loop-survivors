@@ -1627,6 +1627,22 @@ button.big {
   0%, 100% { box-shadow: 0 0 10px -4px #ff5a3c; }
   50% { box-shadow: 0 0 22px 0 #ff5a3c; }
 }
+/* Overflow: banked full while still armed — the held bet is decaying. The fill
+   wavers so the player reads "spend it or lose it." */
+.tension-meter.overflow .tension-fill {
+  animation: tensionwaver 0.22s ease-in-out infinite;
+}
+@keyframes tensionwaver {
+  0%, 100% { filter: brightness(1); opacity: 1; }
+  50% { filter: brightness(1.6); opacity: 0.7; }
+}
+/* Cooldown: the full-band drop is spent and recharging — meter reads dimmed. */
+.tension-meter.cooldown .tension-fill {
+  background: rgba(255, 255, 255, 0.18);
+}
+.tension-meter.cooldown .tension-cap {
+  color: var(--ink-faint);
+}
 
 /* Slot badge on a pick card: the plain player-facing band position this hire
    plugs, so every card answers "what does taking this cost me?" at a glance. */

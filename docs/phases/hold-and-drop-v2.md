@@ -4,7 +4,7 @@ Status: **Proposed v2. Supersedes the v1 prototype note (`docs/phases/hold-and-d
 
 **Gate ledger:**
 - **Sub-phase A — the drop event (build → gap → slam): PASSED** (July 7, 2026, developer's ear/hands: "drop feels right"). Committed on `prototype-hold-drop` (`13b72ca`). Debug-triggered (KeyP), fixed 2-bar House build, guaranteed riser+kick, render-clock juice; bot-determinism preserved.
-- Sub-phase B (ARM + tension economy) — not started.
+- **Sub-phase B (ARM + tension economy) — built, awaiting developer gate** (July 7, 2026). Number keys 1–8 ARM/disarm owned slots (voice silences instantly); a danger-priced tension fill (nearby-crowd + kill-streak, amplified per armed voice) that sits near zero when safe; an overflow latch that bleeds the held bet at 15%/s once it tops out ("spend it or lose it"); Q commits every armed voice into the sub-phase-A build→gap→slam sized by banked tension × combo, spends the tension, and locks a 13s cooldown; a sub-minimum drop (tension < 0.12) fizzles for free (weak pop, no window, no cooldown). HUD: tension meter with overflow-waver and cooldown states, per-socket armed cue. Determinism preserved (mechanic gated off the bot/replay path via the fx queue). Engineering-verified in Chrome (fill rates, overflow bleed, drop/fizzle/cooldown, key wiring, zero console errors); `tsc` + `vite build` clean; bot smoke unchanged (~4:13 median, mechanic off the bot path).
 - Sub-phase C (all six genres + grid-flex + gap scaling) — not started.
 - Sub-phase D (balance + across-the-run pass) — not started.
 

@@ -123,24 +123,24 @@ export class Hud {
     });
   }
 
-  /** Per-frame Hold & Drop visuals: mark held sockets (pulled back, banking
-   *  charge), payoff sockets (just dropped back in, firing hard), fill each
-   *  socket's charge ring, and drive the tension meter. Cheap: 8 sockets. */
+  /** Per-frame Hold & Drop visuals (v2): mark armed sockets (pulled back,
+   *  silent, banking tension), payoff sockets (just dropped in, firing hard),
+   *  and drive the danger-priced tension meter (overflow waver + spent-resource
+   *  cooldown state). Cheap: 8 sockets. */
   updateHold(world: RunWorld): void {
     for (const [slot, socket] of this.sockets) {
       const owner = ownerOfSlot(slot, world.tiers);
       if (!owner) continue;
-      const held = world.held.has(owner);
-      const charge = held ? world.heldChargeOf(owner) : 0;
-      socket.classList.toggle('held', held);
-      socket.classList.toggle('charged', held && charge > 0.98);
+      const armed = world.held.has(owner);
+      socket.classList.toggle('held', armed);
       socket.classList.toggle('payoff', world.inPayoff(owner));
-      socket.style.setProperty('--charge', charge.toFixed(3));
     }
     const t = world.tension01();
     this.tensionFill.style.width = `${t * 100}%`;
-    this.tensionEl.classList.toggle('active', t > 0.001);
+    this.tensionEl.classList.toggle('active', t > 0.001 || world.held.size > 0);
     this.tensionEl.classList.toggle('hot', t > 0.66);
+    this.tensionEl.classList.toggle('overflow', world.tensionOverflow());
+    this.tensionEl.classList.toggle('cooldown', world.dropOnCooldown());
   }
 
   /** The persistent bottom-left strip of owned passives, one chip per item

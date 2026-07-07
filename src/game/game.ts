@@ -85,58 +85,80 @@ export async function bootGame(
     } else engine.clock.resume();
   }
 
-  // ---- Hold & Drop (the pull-back mechanic) ----
-  // Number keys 1-8 pull a band position back (it goes silent and stops
-  // firing, banking charge) or bring it back in (a slam + amplified-fire
-  // window). Q drops everything held at once for a synchronized full-band drop.
+  // ---- Hold & Drop v2 (ARM + tension economy, docs/phases/hold-and-drop-v2.md) ----
+  // Two verbs. ARM (number keys 1-8): pull a band position back — it goes
+  // silent and stops firing (the vulnerability), banking danger-priced tension.
+  // DROP (Q): commit every armed voice into one build -> gap -> slam. The build
+  // fires immediately in the audio; the sim slam + render-clock juice land on
+  // the exact grid downbeat. A drop with too little tension fizzles for free.
+  // Player-driven only, so the bot/replay path never touches `pendingSlam`.
+  let pendingSlam: { at: number; power: number; land: () => void } | null = null;
+
   function bringInOnBeat(role: Role): void {
     const w = world;
     if (!w) return;
-    // The kinetic payoff (slam + amplified window) fires now for responsive
-    // hands; the instrument's sound re-enters on the next beat, so the "here
-    // it comes back in" lands on the grid.
     engine.atNextBeat(() => {
       if (world === w) engine.setVoiceEnabled(role, true);
     });
   }
-  function toggleHold(slotIdx: number): void {
-    if (paused || !world || !(state === 'run' || state === 'sandbox')) return;
+  // ARM / DISARM a slot. Disarm returns the voice on the next beat with no
+  // build, no slam, no payoff (an escape valve). Blocked while a drop is in
+  // flight (the armed set is committed).
+  function toggleArm(slotIdx: number): void {
+    if (paused || !world || pendingSlam || !(state === 'run' || state === 'sandbox')) return;
     const owner = ownerOfSlot(SLOTS[slotIdx], world.tiers);
     if (!owner) return;
     if (world.held.has(owner)) {
-      world.releaseRole(owner, 1);
-      bringInOnBeat(owner);
+      world.disarmRole(owner);
+      bringInOnBeat(owner); // voice returns on the next beat
     } else if (world.holdRole(owner)) {
-      engine.setVoiceEnabled(owner, false); // pull back: silence immediately
+      engine.setVoiceEnabled(owner, false); // arm: silence immediately
     }
   }
+  // DROP: commit the armed voices. Sizes the payoff by banked tension × combo,
+  // spends the tension, and locks Q on a cooldown. A sub-minimum drop fizzles.
   function dropAll(): void {
-    if (paused || !world || !(state === 'run' || state === 'sandbox')) return;
-    const held = [...world.held];
-    if (held.length === 0) return;
-    // A synchronized multi-drop beats the sum of its parts (comboBonus).
-    const combo = 1 + (held.length - 1) * HOLD.comboBonus;
-    for (const role of held) {
-      world.releaseRole(role, combo);
-      bringInOnBeat(role);
+    if (paused || !world || pendingSlam || !(state === 'run' || state === 'sandbox')) return;
+    if (!engine.clock.running || world.dropOnCooldown()) return;
+    const w = world;
+    const roles = [...w.held];
+    if (roles.length === 0) return;
+    const combo = 1 + (roles.length - 1) * HOLD.comboBonus;
+    const fizzle = w.tension01() < HOLD.tension.fizzleBelow;
+    if (fizzle) {
+      // Unearned: no build, voices just pop back on the next beat, weak slam,
+      // no amplified window, no tension spend, no cooldown — its own punishment.
+      w.landDrop(roles, 1, false);
+      view?.dropJuice(HOLD.build.fizzleSlamMul);
+      for (const role of roles) bringInOnBeat(role);
+      return;
     }
+    // Schedule the audio build (fixed 2-bar House build until sub-phase C adds
+    // the per-genre grid-flex) and land the sim slam + juice on its downbeat.
+    const sched = engine.scheduleDrop({ bars: HOLD.build.slowGenreBars, gapBeats: HOLD.build.gapBeats });
+    const power = Math.max(0.15, w.tension01()) * combo;
+    pendingSlam = {
+      at: sched.slamTime,
+      power,
+      land: () => {
+        if (world !== w) return;
+        w.landDrop(roles, combo, true);
+        // The armed voices crash back in on the one.
+        for (const role of roles) engine.setVoiceEnabled(role, true);
+      },
+    };
   }
 
-  // ---- Hold & Drop v2, sub-phase A (docs/phases/hold-and-drop-v2.md) ----
-  // A crude debug trigger for the drop EVENT: build -> gap -> slam, grid-locked
-  // in the audio, with the sim slam + render-clock juice fired on the exact
-  // downbeat. The build/juice systems are the real deliverable; the ARM/tension
-  // economy is sub-phase B. Player-driven only, so the bot/replay path is
-  // untouched (`pendingSlam` never runs there).
-  let pendingSlam: { at: number; power: number } | null = null;
+  // ---- Sub-phase A debug drop (KeyP) ----
+  // Kept as a crude full-band drop trigger independent of the tension economy,
+  // so the drop EVENT can still be exercised in isolation. Player-driven only.
   function triggerDebugDrop(): void {
     if (paused || !world || !(state === 'run' || state === 'sandbox')) return;
     if (pendingSlam) return; // one drop in flight at a time
     if (!engine.clock.running) return;
-    // Schedule the audio build (fixed 2-bar House build in sub-phase A) and
-    // remember the downbeat so the ticker can land the slam + juice on it.
+    const w = world;
     const sched = engine.scheduleDrop({ bars: HOLD.build.slowGenreBars, gapBeats: HOLD.build.gapBeats });
-    pendingSlam = { at: sched.slamTime, power: 1.8 };
+    pendingSlam = { at: sched.slamTime, power: 1.8, land: () => w.debugDrop(1.8) };
   }
 
   // debug overlay
@@ -564,7 +586,7 @@ export async function bootGame(
       // land the sim slam and the render-clock juice on the SAME frame as the
       // beat crashes back in (the flash/shake/wave come from dropSlam's fx).
       if (pendingSlam && engine.ctx.currentTime >= pendingSlam.at) {
-        world.debugDrop(pendingSlam.power);
+        pendingSlam.land();
         view?.dropJuice(pendingSlam.power);
         pendingSlam = null;
       }
@@ -711,11 +733,11 @@ export async function bootGame(
       togglePause();
       return;
     }
-    // Hold & Drop: number keys 1-8 toggle a band position, Q drops all held.
+    // Hold & Drop: number keys 1-8 arm a band position, Q drops all armed.
     if (e.code.startsWith('Digit')) {
       const n = Number(e.code.slice(5));
       if (n >= 1 && n <= 8) {
-        toggleHold(n - 1);
+        toggleArm(n - 1);
         return;
       }
     }
