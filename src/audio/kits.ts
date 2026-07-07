@@ -76,6 +76,10 @@ export interface Kit {
   /** variant id -> rendered sample. Charts reference variants by id. */
   samples: Map<string, AudioBuffer>;
   defaultVariant: string;
+  /** Semitone offset applied to a PITCHED sampled voice so its recorded root
+   *  lines up with the engine's A reference (note 0). 0 for synth kits (they
+   *  render at the reference already) and for unpitched drums. */
+  tune?: number;
 }
 
 export const RENDER_RATE = 44100;
@@ -1160,7 +1164,7 @@ export async function loadSample(url: string): Promise<AudioBuffer> {
  *  buffers. Genre kits and buildKits both assemble their kits through this, so
  *  a "kick" is always a kick (name/color/choke/defaultVariant) whatever the
  *  genre swapped its buffers to. `samples` must include the defaultVariant. */
-export function makeKit(role: Role, samples: Map<string, AudioBuffer>): Kit {
+export function makeKit(role: Role, samples: Map<string, AudioBuffer>, tune = 0): Kit {
   const meta = ROLE_META[role];
   const defaultVariant = meta.variants.find((v) => samples.has(v)) ?? samples.keys().next().value!;
   return {
@@ -1171,6 +1175,7 @@ export function makeKit(role: Role, samples: Map<string, AudioBuffer>): Kit {
     choke: meta.choke,
     samples,
     defaultVariant,
+    tune,
   };
 }
 

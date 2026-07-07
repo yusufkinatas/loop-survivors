@@ -54,6 +54,11 @@ const SAMPLE_OVERLAY: Record<GenreId, Partial<Record<Role, SampleSpec[]>>> = {
     rimshot: [['rimshot', 'rimshot']],
     hat: [['closed', 'hat_closed'], ['open', 'hat_open']],
     shaker: [['shaker', 'shaker']],
+    // Prototype-only additions (present under house/A|B|C, absent for
+    // 'original' where they gracefully fall back to the synth voice):
+    crash: [['crash', 'crash']],
+    riser: [['riser', 'riser']],
+    bass: [['bass', 'bass'], ['fat', 'bass_fat']], // pitched — see SAMPLE_TUNE
   },
   synthwave: {
     kick: [['hard', 'kick'], ['soft', 'kick']],
@@ -125,20 +130,33 @@ export function sampleDir(id: GenreId): string {
   return id;
 }
 
+// Semitone tune for PITCHED sampled roles: aligns the sample's recorded root to
+// the engine's A reference (note 0). The Wave Point House bass hits are C2
+// (~64 Hz, +3 semis above A1), so -3 seats them in the synth bass's octave.
+const SAMPLE_TUNE: Partial<Record<GenreId, Partial<Record<Role, number>>>> = {
+  house: { bass: -3 },
+};
+
 /** Overlay a genre's real drum samples onto its synth kit. A role whose every
  *  variant loads is replaced by the sampled kit; if any file fails to load
  *  (offline, 404), that role keeps its synthesized voice (never silent). */
+// Roles present only in the House prototype folders (A/B/C), not in the shipped
+// 'original' kit — skipped there so no bogus "sample load failed" warnings fire.
+const HOUSE_PROTO_ONLY: ReadonlySet<Role> = new Set(['crash', 'riser', 'bass']);
+
 async function overlaySamples(id: GenreId, kit: Map<Role, Kit>): Promise<void> {
   const overlay = SAMPLE_OVERLAY[id];
+  const skipProtoOnly = id === 'house' && houseVariant === 'original';
   await Promise.all(
     (Object.entries(overlay) as [Role, SampleSpec[]][]).map(async ([role, specs]) => {
+      if (skipProtoOnly && HOUSE_PROTO_ONLY.has(role)) return;
       try {
         const entries = await Promise.all(
           specs.map(async ([variant, file]) =>
             [variant, await loadSample(`/samples/${sampleDir(id)}/${file}.wav`)] as const,
           ),
         );
-        kit.set(role, makeKit(role, new Map(entries)));
+        kit.set(role, makeKit(role, new Map(entries), SAMPLE_TUNE[id]?.[role] ?? 0));
       } catch (e) {
         console.warn(`[kits] ${id}/${role} sample load failed, keeping synth voice:`, e);
       }

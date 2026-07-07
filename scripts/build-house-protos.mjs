@@ -22,8 +22,11 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // Local source pack (developer's machine). Override with arg 1 if it moves.
 const PACK = process.argv[2] ??
   '/Users/yusufeminkinatas/Downloads/Wave Point - Sample Packs';
-const V1 = join(PACK, 'Wave Point - House Essentials Vol. 1', 'DRUMS', 'DRUMS - ONE SHOTS');
-const P = (sub, name) => join(V1, sub, name);
+const VOL1 = join(PACK, 'Wave Point - House Essentials Vol. 1');
+const V1 = join(VOL1, 'DRUMS', 'DRUMS - ONE SHOTS');
+const P = (sub, name) => join(V1, sub, name);            // drum one-shots (incl. CYMBAL)
+const FX = (name) => join(VOL1, 'FX & FOLEY', 'FX LONG', name);
+const BASS = (name) => join(VOL1, 'MUSIC', 'BASS ONE SHOTS', name);
 
 // Per-role ffmpeg targets. Mirrors build-samples.mjs house numbers, but rimshot
 // is capped a touch longer (0.35s) so a full-body rim keeps its crack + short
@@ -35,6 +38,14 @@ const PROC = {
   hat_closed: { maxSec: 0.22, peakDb: -9 },
   hat_open:   { maxSec: 0.55, peakDb: -9 },
   shaker:     { maxSec: 0.35, peakDb: -9 },
+  crash:      { maxSec: 1.20, peakDb: -3 },
+  // riser is a 15s build; grab the CLIMAX (last ~1.4s), don't strip its
+  // leading swell as silence. swell:true switches processing.
+  riser:      { maxSec: 1.40, peakDb: -6, swell: true },
+  // pitched bass one-shots (C2). Pitch is preserved; the engine repitches via
+  // SAMPLE_TUNE (-3 semis) at play time.
+  bass:       { maxSec: 0.60, peakDb: -3 },
+  bass_fat:   { maxSec: 0.60, peakDb: -3 },
 };
 
 // Three curated prototypes. role -> source file in the pack.
@@ -46,6 +57,10 @@ const PROTOS = {
     hat_closed: P('HAT', 'WavePoint-ClosedHat1.wav'),
     hat_open:   P('HAT', 'WavePoint-OpenHatShort.wav'),
     shaker:     P('SHAKER-TAMBOURINE', 'WavePoint-Shaker1.wav'),
+    crash:      P('CYMBAL', 'WavePoint-Crash909.wav'),
+    riser:      FX('WavePoint-Riser.wav'),
+    bass:       BASS('WavePoint-C-BassHit1.wav'),
+    bass_fat:   BASS('WavePoint-C-BassHit5.wav'),
   },
   B: { // "Deep & Live" — warm, organic, live-kit feel
     kick:       P('KICK', 'WavePoint-KickThump.wav'),
@@ -54,6 +69,10 @@ const PROTOS = {
     hat_closed: P('HAT', 'WavePoint-HatClosedLive1.wav'),
     hat_open:   P('HAT', 'WavePoint-OpenHatLive1.wav'),
     shaker:     P('SHAKER-TAMBOURINE', 'WavePoint-Shaker4.wav'),
+    crash:      P('CYMBAL', 'WavePoint-Crash16Inch.wav'),
+    riser:      FX('WavePoint-Riser.wav'),
+    bass:       BASS('WavePoint-C-BassHit3.wav'),
+    bass_fat:   BASS('WavePoint-C-BassHit9.wav'),
   },
   C: { // "Tight Tech" — minimal, crisp, snappy
     kick:       P('KICK', 'WavePoint-KickPunchy.wav'),
@@ -62,6 +81,10 @@ const PROTOS = {
     hat_closed: P('HAT', 'WavePoint-TightClosedHat.wav'),
     hat_open:   P('HAT', 'WavePoint-OpenHatBig.wav'),
     shaker:     P('SHAKER-TAMBOURINE', 'WavePoint-Shaker2.wav'),
+    crash:      P('CYMBAL', 'WavePoint-CrashSplash10Inch.wav'),
+    riser:      FX('WavePoint-Riser.wav'),
+    bass:       BASS('WavePoint-C-BassHit7.wav'),
+    bass_fat:   BASS('WavePoint-C-BassHit2.wav'),
   },
 };
 
@@ -75,7 +98,21 @@ function ffmpeg(args) {
   return r.stderr || '';
 }
 
-function processFile(rawPath, outPath, maxSec, peakDb) {
+function processFile(rawPath, outPath, p) {
+  const { maxSec, peakDb, swell } = p;
+  if (swell) {
+    // Riser: a 15s build that ENDS in trailing silence. Reverse it, strip the
+    // (now-leading) trailing silence, take the final maxSec climax, reverse
+    // back to correct order, then fade head 20ms / tail 60ms and normalize.
+    const shape =
+      `areverse,silenceremove=start_periods=1:start_threshold=-50dB:detection=peak,` +
+      `atrim=end=${maxSec},areverse,afade=t=in:d=0.02,afade=t=out:st=${(maxSec - 0.06).toFixed(2)}:d=0.06`;
+    const log = ffmpeg(['-i', rawPath, '-af', `${shape},volumedetect`, '-f', 'null', '-']);
+    const m = log.match(/max_volume:\s*(-?\d+(?:\.\d+)?) dB/);
+    const gainDb = (peakDb - (m ? parseFloat(m[1]) : 0)).toFixed(2);
+    ffmpeg(['-i', rawPath, '-af', `${shape},volume=${gainDb}dB`, '-ac', '1', '-ar', '44100', '-acodec', 'pcm_s16le', outPath]);
+    return;
+  }
   const log = ffmpeg(['-i', rawPath, '-af', `${trimChain(maxSec)},volumedetect`, '-f', 'null', '-']);
   const m = log.match(/max_volume:\s*(-?\d+(?:\.\d+)?) dB/);
   const maxVol = m ? parseFloat(m[1]) : 0;
@@ -144,7 +181,7 @@ for (const [proto, roles] of Object.entries(PROTOS)) {
     const outName = `${role}.wav`;
     const outPath = join(dir, outName);
     const p = PROC[role];
-    processFile(src, outPath, p.maxSec, p.peakDb);
+    processFile(src, outPath, p);
     let a;
     try { a = analyze(parseWav(readFileSync(outPath))); } catch (e) { a = { flags: [`PARSE-FAIL ${e}`] }; }
     if (a.flags.length) flagged++;

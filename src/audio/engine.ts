@@ -181,8 +181,11 @@ export class MusicEngine {
     const kit = await kitForGenre(id, SKELETON.rootHz);
     if (token !== this.genreKitToken) return; // superseded by a newer setGenre
     for (const voice of this.voices.values()) {
-      voice.activeSamples = kit.get(voice.role)?.samples ?? voice.kit.samples;
-      voice.tune = 0;
+      const k = kit.get(voice.role);
+      voice.activeSamples = k?.samples ?? voice.kit.samples;
+      // A sampled pitched voice carries a tune to align its recorded root to
+      // the A reference; synth kits and drums are 0.
+      voice.tune = k?.tune ?? 0;
     }
   }
 
