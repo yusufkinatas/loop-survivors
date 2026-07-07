@@ -79,7 +79,7 @@ developer's ear swap to CC0 samples, same as the M1 kits.
 | Riser | FX | reversed-cymbal swell that builds and lifts | **the auto-dash**: the release grants a short movement surge |
 | Reese | Bass | thick growling detuned bass (the Drum & Bass monster) | placed bass wall that blocks and grinds |
 | Pluck bass | Bass | round short "bomp", a picked upright-bass note | lobbed note that arcs and explodes on landing |
-| Rhodes | Harmony | warm bell-like electric-piano chords (lo-fi keys) | chord pools placed as mines that bloom when stepped in |
+| Rhodes | Harmony | warm bell-like electric-piano chords (warm keys) | chord pools placed as mines that bloom when stepped in |
 | Choir pad | Harmony | airy sung "aah" chord, lush and held | summoned singing orb that stays and pulses damage |
 | Bell | Melody | twinkly music-box ping | notes that shatter into shards on impact |
 | Whistle | Melody | pure smooth sung line with a gentle wobble | tags an enemy; it pops one beat later |
@@ -118,14 +118,12 @@ convincingly — first candidates for CC0 samples if they fail the ear.
 6. **Genre-weighted roster draws**: when an offer shows a slot, the roster
    instrument drawn is weighted toward the genre's idiomatic option (House
    leads with clap, DnB with snare).
-7. **Genre chart discipline:** Lo-Fi tiers 3–4 grow in weight and variation,
-   never note count (full-band Lo-Fi must stay sparse); Techno lead charts
-   stay short, low, repetitive riffs — a tune-like techno lead is a genre bug.
+7. **Genre chart discipline:** Techno lead charts stay short, low, repetitive
+   riffs — a tune-like techno lead is a genre bug. (Lo-Fi's sparseness rule
+   retired with the genre on July 8, 2026.)
 
 Flagged for M4, not this phase: the shared sample set is a genre-identity
-ceiling patterns cannot fix (clearest case: the bright crash is genre-alien in
-Lo-Fi, which marks sections with vinyl noise). Re-audit timbre per genre at
-the M4 style gate.
+ceiling patterns cannot fix. Re-audit timbre per genre at the M4 style gate.
 
 ## Pick economy
 

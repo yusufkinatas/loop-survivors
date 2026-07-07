@@ -36,10 +36,6 @@ const PROC = {
 
 // genre -> local role/variant -> repo path. Two entries (closed/open) for hat.
 const MANIFEST = {
-  lofi: {
-    'kick': '808bd/BD0025.WAV', 'snare': 'sd/rytm-01-classic.wav', 'rimshot': '808/RS.WAV',
-    'hat_closed': 'hh/000_hh3closedhh.wav', 'hat_open': 'hh/007_hh3openhh.wav', 'shaker': '808/MA.WAV',
-  },
   // house is NOT here: it is sampled from the local Wave Point pack by
   // scripts/build-house-kit.mjs (the developer-chosen "Tight Tech" voicing).
   synthwave: {

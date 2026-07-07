@@ -1,6 +1,6 @@
 // Per-genre kits: the registry that gives every genre its OWN voicing of the
-// soundset. A genre no longer shares one global kit — a Lo-Fi kick and a Drum &
-// Bass kick are different sounds, not the same sound played differently.
+// soundset. A genre no longer shares one global kit — a House kick and a Techno
+// kick are different sounds, not the same sound played differently.
 //
 // Each genre supplies a builder that renders (or loads) buffers for the roles
 // it supports and stamps them with the canonical role identity (kits.ts
@@ -15,7 +15,6 @@
 import type { GenreId } from '../genres';
 import { loadSample, makeKit, type Kit, type Role } from '../kits';
 import { PROTOS } from './protos';
-import { buildLofiKit } from './lofi';
 import { buildHouseKit } from './house';
 import { buildSynthwaveKit } from './synthwave';
 import { buildTechnoKit } from './techno';
@@ -23,7 +22,6 @@ import { buildTechnoKit } from './techno';
 export type KitBuilder = (rootHz: number) => Promise<Map<Role, Kit>>;
 
 const BUILDERS: Record<GenreId, KitBuilder> = {
-  lofi: buildLofiKit,
   house: buildHouseKit,
   synthwave: buildSynthwaveKit,
   techno: buildTechnoKit,
@@ -41,13 +39,6 @@ type SampleSpec = [variant: string, file: string];
 // The 'original' (currently-shipped) overlay per genre: which drum/bass roles
 // are real one-shots vs synthesized, loaded from public/samples/<genre>/.
 const SAMPLE_OVERLAY: Record<GenreId, Partial<Record<Role, SampleSpec[]>>> = {
-  lofi: {
-    kick: [['hard', 'kick'], ['soft', 'kick_soft']],
-    snare: [['snare', 'snare']],
-    rimshot: [['rimshot', 'rimshot']],
-    hat: [['closed', 'hat_closed'], ['open', 'hat_open']],
-    // shaker stays synthesized — the itslucid Tape kit (adopted) has no shaker.
-  },
   house: {
     kick: [['hard', 'kick'], ['soft', 'kick']],
     clap: [['clap', 'clap']],

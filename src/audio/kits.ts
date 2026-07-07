@@ -383,7 +383,7 @@ async function renderPluck(rootHz: number): Promise<AudioBuffer> {
 
 async function renderRhodes(rootHz: number): Promise<AudioBuffer> {
   // Warm bell-like electric-piano tone: a fundamental plus a soft bell partial,
-  // gentle attack, medium decay — lo-fi keys color.
+  // gentle attack, medium decay — warm keys color.
   const ctx = offline(0.8);
   // Partials: fundamental + octave give the warm body; a bright inharmonic
   // partial adds the metallic "tine" shimmer. Each partial gets its own decay

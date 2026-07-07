@@ -3,7 +3,7 @@
 // bright cutting 909-style hat for the signature offbeat, a screaming resonant
 // 303 acid, dark detuned stabs, a tight rubbery driving bass, and a growling
 // low rumble. Every voice is engineered darker/harder than the neutral builtin
-// so the genre reads unmistakably as techno rather than a re-EQ of house/lofi.
+// so the genre reads unmistakably as techno rather than a re-EQ of house.
 //
 // Supported set (12 roles, all eight band slots represented):
 //   Pulse: kick | Backbeat: clap, rimshot | Hats: hat, ride | Motion: acid
@@ -18,7 +18,7 @@ import { makeKit, noiseBuffer, offline, softClipCurve, type Kit, type Role } fro
 // Four-on-floor warehouse kick: a fast pitch drop landing on a solid ~48 Hz
 // sub, harder saturation than a clean kick for the driving edge, and a tight
 // high click so it cuts on any system. Hard = the pulse; soft = a quieter
-// ghost/pickup. Weighty and gritty, tighter than a Lo-Fi one.
+// ghost/pickup. Weighty and gritty, tight and driving.
 async function technoKick(hard: boolean): Promise<AudioBuffer> {
   const ctx = offline(0.5);
   const body = ctx.createOscillator();

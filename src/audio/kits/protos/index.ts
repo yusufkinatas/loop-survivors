@@ -5,12 +5,10 @@
 
 import type { GenreId } from '../../genres';
 import { EMPTY, type ProtoManifest } from './types';
-import { manifest as lofi } from './lofi';
 import { manifest as synthwave } from './synthwave';
 import { manifest as techno } from './techno';
 
 export const PROTOS: Record<GenreId, ProtoManifest> = {
-  lofi,
   house: EMPTY,
   synthwave,
   techno,

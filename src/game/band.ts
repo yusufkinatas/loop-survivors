@@ -135,7 +135,6 @@ export function startableRoles(roles: readonly Role[]): Role[] {
  * unlisted is 1.0. Single-member slots (Hats/Bass/Harmony/Melody) are unaffected.
  */
 const GENRE_ROLE_AFFINITY: Record<GenreId, Partial<Record<Role, number>>> = {
-  lofi: { snare: 1.3, clap: 0.7, arp: 1.2, cowbell: 0.85, tom: 1.1, rhodes: 1.3, choir: 1.15, bell: 1.15 },
   house: { clap: 1.5, snare: 0.7, cowbell: 1.3, arp: 0.85, choir: 1.25, ride: 1.2 },
   synthwave: { snare: 1.15, clap: 0.9, arp: 1.35, cowbell: 0.7, bell: 1.35, choir: 1.2 },
   techno: { clap: 1.3, snare: 0.85, cowbell: 1.2, arp: 0.9, tom: 1.15, ride: 1.3, reese: 1.2 },

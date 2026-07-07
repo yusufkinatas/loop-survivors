@@ -4,13 +4,12 @@
 // for; a genre may drop instruments it does not suit, including whole band
 // slots), and ONE track — a single hand-picked pattern per supported role, no
 // alternatives (src/audio/ladders/<genre>.ts). Pick a genre and the whole build
-// re-voices AND re-scopes: a Lo-Fi kick is a different sound from a Techno
+// re-voices AND re-scopes: a House kick is a different sound from a Techno
 // kick, and the two genres offer different instruments.
 //
 // Patterns are grounded in real production practice: House four-on-floor +
-// offbeat open hats, Lo-Fi swung boom-bap, Synthwave straight machine drums +
-// 16th arps, Techno relentless four-on-floor
-// + offbeat hats. The coherence skeleton (minor pentatonic, chord roots 0/5/7)
+// offbeat open hats, Synthwave straight machine drums + 16th arps, Techno
+// relentless four-on-floor + offbeat hats. The coherence skeleton (minor pentatonic, chord roots 0/5/7)
 // still owns the theory, so no genre can clash.
 //
 // A genre "supports" exactly the roles it supplies a ladder for: `ladders` is
@@ -21,13 +20,12 @@
 
 import { TIER_COUNT, validateChart } from './charts';
 import { ROLES, type Role } from './kits';
-import { LOFI_LADDERS } from './ladders/lofi';
 import { HOUSE_LADDERS } from './ladders/house';
 import { SYNTHWAVE_LADDERS } from './ladders/synthwave';
 import { TECHNO_LADDERS } from './ladders/techno';
 import type { Chart } from './charts';
 
-export type GenreId = 'lofi' | 'house' | 'synthwave' | 'techno';
+export type GenreId = 'house' | 'synthwave' | 'techno';
 
 export interface Genre {
   id: GenreId;
@@ -47,17 +45,6 @@ export interface Genre {
    *  never offered, never voiced. Partial by design (genres may drop slots). */
   ladders: Partial<Record<Role, Chart[]>>;
 }
-
-const LOFI: Genre = {
-  id: 'lofi',
-  name: 'Lo-Fi',
-  blurb: 'Slow, swung boom-bap. Dusty and warm. Hits soft but heavy.',
-  color: '#d9a05b',
-  bpm: 84,
-  swing: 0.34,
-  powerMul: 1.35,
-  ladders: LOFI_LADDERS,
-};
 
 const HOUSE: Genre = {
   id: 'house',
@@ -92,7 +79,7 @@ const TECHNO: Genre = {
   ladders: TECHNO_LADDERS,
 };
 
-export const GENRES: Genre[] = [LOFI, HOUSE, SYNTHWAVE, TECHNO];
+export const GENRES: Genre[] = [HOUSE, SYNTHWAVE, TECHNO];
 
 export const GENRE_BY_ID: Record<GenreId, Genre> = Object.fromEntries(
   GENRES.map((g) => [g.id, g]),

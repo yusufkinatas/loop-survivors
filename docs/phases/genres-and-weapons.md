@@ -36,14 +36,15 @@ off.)
 
 ## The model
 
-- **A genre is a playable character.** Six ship: Lo-Fi, House, Synthwave,
-  Techno. (Hip-Hop and Drum & Bass were removed July 7, 2026.)
+- **A genre is a playable character.** Three ship: House, Synthwave,
+  Techno. (Hip-Hop and Drum & Bass were removed July 7, 2026; Lo-Fi was
+  removed July 8, 2026.)
 - **The soundset is shared.** All genres play the same twelve instrument types
   (the tools). A genre never adds or removes a weapon.
 - **The track is the difference.** Each genre supplies its own tempo, swing,
   and a four-tier pattern ladder for every one of the twelve weapons. Same
-  tool, different track: a House kick is four-on-the-floor, a Lo-Fi kick lays
-  back, a Techno kick drives relentlessly.
+  tool, different track: a House kick is four-on-the-floor, a Synthwave kick is
+  machine-tight, a Techno kick drives relentlessly.
 - **Selection:** at the start of a run the player picks a genre, then a
   starting weapon (both on the start screen; the sandbox has a live genre
   switcher). Everything after is the M2 pick economy, unchanged, but voiced in

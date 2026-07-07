@@ -1,14 +1,5 @@
 # Sample health report (processed assets)
 
-## lofi
-
-- **kick** (kick.wav): dur 257ms, onset 0ms, effective 197ms, peak 0.892, rms 0.222  ✓
-- **snare** (snare.wav): dur 244ms, onset 0ms, effective 111ms, peak 0.695, rms 0.156  ✓
-- **rimshot** (rimshot.wav): dur 29ms, onset 0ms, effective 11ms, peak 0.564, rms 0.097  ✓
-- **hat_closed** (hat_closed.wav): dur 220ms, onset 0ms, effective 107ms, peak 0.243, rms 0.024  ✓
-- **hat_open** (hat_open.wav): dur 550ms, onset 0ms, effective 545ms, peak 0.271, rms 0.04  ✓
-- **shaker** (shaker.wav): dur 43ms, onset 0ms, effective 25ms, peak 0.357, rms 0.069  ✓
-
 ## house
 
 - **kick** (kick.wav): dur 283ms, onset 0ms, effective 249ms, peak 0.892, rms 0.214  ✓

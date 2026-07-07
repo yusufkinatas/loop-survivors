@@ -22,7 +22,7 @@ export class Clock {
   bpm: number;
   stepsPerBeat: number;
   /** Shuffle: the offbeat 8th of each beat is pushed late by this fraction of
-   *  a 16th. 0 is straight; ~0.34 is a heavy lo-fi swing. The grid backbone
+   *  a 16th. 0 is straight; a larger value is a heavier shuffle. The grid backbone
    *  stays even, so downbeats never drift — only the "and" lays back. */
   swing = 0;
 
