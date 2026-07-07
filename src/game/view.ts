@@ -7,7 +7,7 @@
 import { Container, Graphics, GraphicsContext } from 'pixi.js';
 import type { Role } from '../audio/kits';
 import { RUN } from './config';
-import type { Enemy, EnemyShot, FxEvent, Gem, Projectile, RunWorld, Shock, WhistleTag, Zone } from './run';
+import type { Enemy, FxEvent, Gem, Projectile, RunWorld, Shock, WhistleTag, Zone } from './run';
 
 // Projectile trails (pure view): only these low-count roles trail, so the
 // per-frame work stays independent of the 2400-enemy horde. Hat (can be
@@ -65,7 +65,6 @@ export class RunView {
   // only its .position/.alpha are ever touched, matching the old Graphics.
   private playerGfx = new Container();
   private enemyGfx = new Map<Enemy, Graphics>();
-  private enemyShotGfx = new Map<EnemyShot, Graphics>();
   private projectileGfx = new Map<Projectile, Graphics>();
   private zoneGfx = new Map<Zone, Graphics>();
   private shockGfx = new Map<Shock, Graphics>();
@@ -122,9 +121,6 @@ export class RunView {
     if (this.world.fx) this.world.fx.length = 0;
 
     this.syncEnemies();
-    this.sync(this.world.enemyShots, this.enemyShotGfx, makeEnemyShotGfx, (s, gfx) =>
-      gfx.position.set(s.x, s.y),
-    );
     this.sync(this.world.projectiles, this.projectileGfx, makeProjectileGfx, (pr, gfx) => {
       gfx.position.set(pr.x, pr.y);
       if (pr.role === 'tom' || pr.role === 'cowbell') gfx.rotation += 9 * dt; // spin
@@ -186,7 +182,6 @@ export class RunView {
   destroy(): void {
     this.stage.destroy({ children: true });
     this.enemyGfx.clear();
-    this.enemyShotGfx.clear();
     this.projectileGfx.clear();
     this.zoneGfx.clear();
     this.shockGfx.clear();
@@ -578,14 +573,6 @@ function enemyContext(e: Enemy, shieldOn: boolean): GraphicsContext {
         g.poly(regularPoly(8, radius, Math.PI / 8)).fill(0xffffff);
         if (shieldOn) g.circle(0, 0, radius * 1.35).stroke({ width: 3, color: 0xffffff });
         break;
-      case 'spitter':
-        // diamond outline with a center dot: reads as a ranged threat
-        g.poly([radius * 1.3, 0, 0, radius * 1.3, -radius * 1.3, 0, 0, -radius * 1.3]).stroke({
-          width: 3,
-          color: 0xffffff,
-        });
-        g.circle(0, 0, radius * 0.4).fill(0xffffff);
-        break;
       case 'elite':
         // large octagon: the objective, unmistakable by size and shape
         g.poly(regularPoly(8, radius, Math.PI / 8)).fill(0xffffff);
@@ -615,22 +602,6 @@ function makeEnemyGfx(e: Enemy): Graphics {
   // batching intact across the 2400-strong horde and to preserve the per-frame
   // hit-flash tint. Elites read as elite through size, the hottest band color,
   // and the dark core — no glow child (which Pixi v8 disallows on a Graphics).
-  return gfx;
-}
-
-function makeEnemyShotGfx(s: EnemyShot): Graphics {
-  // A 4-point star outline: incoming fire reads as a threat, distinct from
-  // the player's solid hat dots.
-  const r = s.radius;
-  const ctx = cachedShape(`enemyshot:${r}`, (g) => {
-    g.poly([
-      r * 1.6, 0, r * 0.45, r * 0.45, 0, r * 1.6, -r * 0.45, r * 0.45,
-      -r * 1.6, 0, -r * 0.45, -r * 0.45, 0, -r * 1.6, r * 0.45, -r * 0.45,
-    ]).stroke({ width: 2, color: 0xffffff });
-    g.circle(0, 0, r * 0.5).fill(0xffffff);
-  });
-  const gfx = new Graphics(ctx);
-  gfx.tint = s.color;
   return gfx;
 }
 

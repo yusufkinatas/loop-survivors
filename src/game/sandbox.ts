@@ -19,7 +19,6 @@ const ENEMY_KINDS: EnemyKind[] = [
   'charger',
   'circler',
   'shielded',
-  'spitter',
   'elite',
 ];
 

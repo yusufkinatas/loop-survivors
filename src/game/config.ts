@@ -28,7 +28,6 @@ export type EnemyKind =
   | 'charger'
   | 'circler'
   | 'shielded'
-  | 'spitter'
   | 'elite';
 
 export interface EnemyConf {
@@ -86,8 +85,6 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
   circler: { radius: 10, speed: 170, hp: 10, damage: 14, xp: 3, color: 0x6ac2d0 },
   /** A shield pool absorbs damage before its hp; slow but tough. */
   shielded: { radius: 16, speed: 55, hp: 30, damage: 18, xp: 6, color: 0x9a86c0 },
-  /** Kites at range and fires enemy projectiles. */
-  spitter: { radius: 11, speed: 90, hp: 16, damage: 8, xp: 4, color: 0xc9a04a },
   /** Slow, huge, tanky objective; drops one large gem (xp=big drop). */
   elite: { radius: 34, speed: 48, hp: 500, damage: 30, xp: 80, color: 0xd94f8a },
   /** Spawn ring distance beyond the larger screen half-extent. */
@@ -135,7 +132,6 @@ export const ENEMY_BANDS = {
     charger: [0xd06a5a, 0xdc7a4a, 0xe85a3c, 0xff4046],
     circler: [0x6ac2d0, 0x6ab0c8, 0x7a9ad0, 0x9a6ad0],
     shielded: [0x9a86c0, 0xa07ab0, 0xb06a90, 0xc04858],
-    spitter: [0xc9a04a, 0xd09850, 0xd87848, 0xe05248],
     elite: [0xd94f8a, 0xe0507a, 0xe85068, 0xff4050],
   } as Record<EnemyKind, number[]>,
 };
@@ -179,20 +175,6 @@ export const CIRCLER = { orbitR: 150 };
 /** Shielded: shield pool = hp*shieldMul, scaled by hpMul. */
 export const SHIELDED = { shieldMul: 1.0 };
 
-/** Spitter: kites to keepMin..keepMax and fires enemy shots. shotSpeed is NOT
- *  run through speedScaleEnd (stays dodgeable, same rule as darter). */
-export const SPITTER = {
-  keepMin: 260,
-  keepMax: 460,
-  range: 520,
-  cooldownS: 2.2,
-  spread: 0.1,
-  shotSpeed: 240,
-  shotDamage: 14,
-  shotRadius: 6,
-  shotLifeS: 3.0,
-};
-
 /** Data-driven spawn Director (replaces the ramp + WAVES). `set` beats change
  *  the steady pressure (rate + weighted kind mix) from that time on; `event`
  *  beats fire a formation once. Breathers = low-rate `set` beats after event
@@ -211,31 +193,31 @@ export const SPAWN_DIRECTOR: DirectorBeat[] = [
   { atS: 45, event: { formation: 'surge', kind: 'darter', count: 8 } },
   { atS: 60, set: { rate: 7, mix: { swarmer: 0.9, circler: 0.1 } } },
   { atS: 75, event: { formation: 'elite', kind: 'elite', count: 1 } },
-  { atS: 90, set: { rate: 9, mix: { swarmer: 0.85, circler: 0.1, spitter: 0.05 } } },
+  { atS: 90, set: { rate: 9, mix: { swarmer: 0.85, circler: 0.1 } } },
   { atS: 92, event: { formation: 'ring', kind: 'swarmer', count: 40 } },
-  { atS: 94, set: { rate: 4, mix: { swarmer: 0.85, circler: 0.1, spitter: 0.05 } } }, // breather
-  { atS: 104, set: { rate: 9, mix: { swarmer: 0.85, circler: 0.1, spitter: 0.05 } } },
-  { atS: 120, set: { rate: 11, mix: { swarmer: 0.8, circler: 0.1, spitter: 0.05, darter: 0.05 } } },
+  { atS: 94, set: { rate: 4, mix: { swarmer: 0.85, circler: 0.1 } } }, // breather
+  { atS: 104, set: { rate: 9, mix: { swarmer: 0.85, circler: 0.1 } } },
+  { atS: 120, set: { rate: 11, mix: { swarmer: 0.8, circler: 0.1, darter: 0.05 } } },
   { atS: 130, event: { formation: 'pincer', kind: 'charger', count: 6 } },
   {
     atS: 150,
-    set: { rate: 14, mix: { swarmer: 0.72, circler: 0.1, spitter: 0.06, darter: 0.08, splitter: 0.04 } },
+    set: { rate: 14, mix: { swarmer: 0.72, circler: 0.1, darter: 0.08, splitter: 0.04 } },
   },
   { atS: 150, event: { formation: 'surge', kind: 'splitter', count: 6 } },
   { atS: 165, event: { formation: 'ring', kind: 'swarmer', count: 70 } },
   {
     atS: 167,
-    set: { rate: 6, mix: { swarmer: 0.72, circler: 0.1, spitter: 0.06, darter: 0.08, splitter: 0.04 } },
+    set: { rate: 6, mix: { swarmer: 0.72, circler: 0.1, darter: 0.08, splitter: 0.04 } },
   }, // breather
   {
     atS: 177,
-    set: { rate: 14, mix: { swarmer: 0.72, circler: 0.1, spitter: 0.06, darter: 0.08, splitter: 0.04 } },
+    set: { rate: 14, mix: { swarmer: 0.72, circler: 0.1, darter: 0.08, splitter: 0.04 } },
   },
   {
     atS: 180,
     set: {
       rate: 17,
-      mix: { swarmer: 0.68, circler: 0.1, spitter: 0.06, darter: 0.08, splitter: 0.04, charger: 0.04 },
+      mix: { swarmer: 0.68, circler: 0.1, darter: 0.08, splitter: 0.04, charger: 0.04 },
     },
   },
   { atS: 200, event: { formation: 'elite', kind: 'elite', count: 1 } },
@@ -244,7 +226,7 @@ export const SPAWN_DIRECTOR: DirectorBeat[] = [
     atS: 210,
     set: {
       rate: 20,
-      mix: { swarmer: 0.66, circler: 0.1, spitter: 0.06, darter: 0.08, splitter: 0.05, charger: 0.05 },
+      mix: { swarmer: 0.66, circler: 0.1, darter: 0.08, splitter: 0.05, charger: 0.05 },
     },
   },
   { atS: 220, event: { formation: 'pincer', kind: 'darter', count: 16 } },
@@ -252,7 +234,7 @@ export const SPAWN_DIRECTOR: DirectorBeat[] = [
     atS: 240,
     set: {
       rate: 24,
-      mix: { swarmer: 0.62, circler: 0.1, spitter: 0.06, darter: 0.1, splitter: 0.06, charger: 0.06 },
+      mix: { swarmer: 0.62, circler: 0.1, darter: 0.1, splitter: 0.06, charger: 0.06 },
     },
   },
   { atS: 250, event: { formation: 'ring', kind: 'shielded', count: 10 } },
@@ -262,21 +244,21 @@ export const SPAWN_DIRECTOR: DirectorBeat[] = [
     atS: 287,
     set: {
       rate: 8,
-      mix: { swarmer: 0.62, circler: 0.1, spitter: 0.06, darter: 0.1, splitter: 0.06, charger: 0.06 },
+      mix: { swarmer: 0.62, circler: 0.1, darter: 0.1, splitter: 0.06, charger: 0.06 },
     },
   }, // breather
   {
     atS: 298,
     set: {
       rate: 24,
-      mix: { swarmer: 0.62, circler: 0.1, spitter: 0.06, darter: 0.1, splitter: 0.06, charger: 0.06 },
+      mix: { swarmer: 0.62, circler: 0.1, darter: 0.1, splitter: 0.06, charger: 0.06 },
     },
   },
   {
     atS: 300,
     set: {
       rate: 28,
-      mix: { swarmer: 0.6, circler: 0.1, spitter: 0.07, darter: 0.1, splitter: 0.07, charger: 0.06 },
+      mix: { swarmer: 0.6, circler: 0.1, darter: 0.1, splitter: 0.07, charger: 0.06 },
     },
   },
   { atS: 300, event: { formation: 'elite', kind: 'elite', count: 2 } },
@@ -285,7 +267,7 @@ export const SPAWN_DIRECTOR: DirectorBeat[] = [
     atS: 360,
     set: {
       rate: 32,
-      mix: { swarmer: 0.58, circler: 0.1, spitter: 0.07, darter: 0.1, splitter: 0.08, charger: 0.07 },
+      mix: { swarmer: 0.58, circler: 0.1, darter: 0.1, splitter: 0.08, charger: 0.07 },
     },
   },
   { atS: 360, event: { formation: 'ring', kind: 'swarmer', count: 180 } },
@@ -295,7 +277,7 @@ export const SPAWN_DIRECTOR: DirectorBeat[] = [
     atS: 420,
     set: {
       rate: 38,
-      mix: { swarmer: 0.56, circler: 0.1, spitter: 0.08, darter: 0.1, splitter: 0.08, charger: 0.08 },
+      mix: { swarmer: 0.56, circler: 0.1, darter: 0.1, splitter: 0.08, charger: 0.08 },
     },
   },
   { atS: 420, event: { formation: 'ring', kind: 'swarmer', count: 260 } },
