@@ -78,20 +78,24 @@ export async function bootGame(
     if (paused) {
       engine.clock.pause();
       // A drop mid-build would land its sim slam + juice late (out of sync with
-      // the audio, which keeps running on the context clock). Cancel it.
+      // the audio, which keeps running on the context clock). Cancel it and
+      // unfreeze the armed voices' charge.
       pendingSlam = null;
+      if (world) world.dropInFlight = false;
+      engine.setChargeHums([]);
       // Show the current band while paused (the same rack the HUD draws).
       if (world) hud.renderBand(world.tiers, pauseRack);
     } else engine.clock.resume();
   }
 
-  // ---- Hold & Drop v2 (ARM + tension economy, docs/phases/hold-and-drop-v2.md) ----
-  // Two verbs. ARM (number keys 1-8): pull a band position back — it goes
-  // silent and stops firing (the vulnerability), banking danger-priced tension.
-  // DROP (Q): commit every armed voice into one build -> gap -> slam. The build
-  // fires immediately in the audio; the sim slam + render-clock juice land on
-  // the exact grid downbeat. A drop with too little tension fizzles for free.
-  // Player-driven only, so the bot/replay path never touches `pendingSlam`.
+  // ---- Hold & Drop v2.1 (per-voice charge, docs/phases/hold-and-drop-v2.md) ----
+  // Two verbs. ARM (number keys 1-8): pull a band position back — it leaves the
+  // mix on the next beat (a musical breakdown, not a mid-bar cut) and banks its
+  // OWN charge (the socket is the gauge; charge fills at a base rate danger
+  // multiplies). DROP (Q): commit every armed voice into one build -> gap ->
+  // slam, REBUILT from the player's own instruments; the build fires now and the
+  // sim slam + juice land on the exact grid downbeat. A sub-minimum drop fizzles
+  // for free. Player-driven only, so the bot/replay path never touches this.
   let pendingSlam: { at: number; power: number; land: () => void } | null = null;
 
   function bringInOnBeat(role: Role): void {
@@ -101,64 +105,105 @@ export async function bootGame(
       if (world === w) engine.setVoiceEnabled(role, true);
     });
   }
-  // ARM / DISARM a slot. Disarm returns the voice on the next beat with no
-  // build, no slam, no payoff (an escape valve). Blocked while a drop is in
-  // flight (the armed set is committed).
+  // ARM / DISARM a slot. Arm: the voice leaves on the next beat (quantized, so
+  // it exits musically) while its socket begins charging now. Disarm: returns
+  // the voice on the next beat, no build/slam/payoff, banked charge forfeit.
+  // Blocked while a drop is in flight (the armed set is committed).
   function toggleArm(slotIdx: number): void {
     if (paused || !world || pendingSlam || !(state === 'run' || state === 'sandbox')) return;
-    const owner = ownerOfSlot(SLOTS[slotIdx], world.tiers);
+    const w = world;
+    const owner = ownerOfSlot(SLOTS[slotIdx], w.tiers);
     if (!owner) return;
-    if (world.held.has(owner)) {
-      world.disarmRole(owner);
+    if (w.held.has(owner)) {
+      w.disarmRole(owner);
       bringInOnBeat(owner); // voice returns on the next beat
-    } else if (world.holdRole(owner)) {
-      engine.setVoiceEnabled(owner, false); // arm: silence immediately
+    } else if (w.holdRole(owner)) {
+      // Leave the mix on the next beat (musical), not an instant mid-bar cut.
+      engine.atNextBeat(() => {
+        if (world === w && w.held.has(owner)) engine.setVoiceEnabled(owner, false);
+      });
     }
   }
-  // DROP: commit the armed voices. Sizes the payoff by banked tension × combo,
-  // spends the tension, and locks Q on a cooldown. A sub-minimum drop fizzles.
+  // Resolve the drop's voices by SLOT so the build is made from what the player
+  // owns: roll their Hats+Backbeat, re-fire their Pulse+Bass in key, borrow a
+  // generic voice only to fill an empty slot (docs/phases/hold-and-drop-v2.md).
+  function dropVoices(tiers: ReadonlyMap<Role, number>): {
+    rollRoles: Role[];
+    gapRoles: Role[];
+    oneRoles: Role[];
+    borrowKick: boolean;
+    borrowSub: boolean;
+  } {
+    const pulse = ownerOfSlot('pulse', tiers);
+    const backbeat = ownerOfSlot('backbeat', tiers);
+    const hats = ownerOfSlot('hats', tiers);
+    const bass = ownerOfSlot('bass', tiers);
+    const rollRoles = [hats, backbeat].filter((r): r is Role => !!r);
+    const oneRoles = [pulse, bass].filter((r): r is Role => !!r);
+    return {
+      rollRoles,
+      gapRoles: [...tiers.keys()], // the whole loop
+      oneRoles,
+      borrowKick: !pulse,
+      borrowSub: !bass,
+    };
+  }
+  // DROP: commit the armed voices. The drop's SIZE is frozen here at commit
+  // (summed charge × any sync bonus), so it can't drift as charge keeps moving
+  // through the build; the sim slam + render juice share that one number.
   function dropAll(): void {
     if (paused || !world || pendingSlam || !(state === 'run' || state === 'sandbox')) return;
     if (!engine.clock.running || world.dropOnCooldown()) return;
     const w = world;
     const roles = [...w.held];
     if (roles.length === 0) return;
-    const combo = 1 + (roles.length - 1) * HOLD.comboBonus;
-    const fizzle = w.tension01() < HOLD.tension.fizzleBelow;
-    if (fizzle) {
-      // Unearned: no build, voices just pop back on the next beat, weak slam,
-      // no amplified window, no tension spend, no cooldown — its own punishment.
-      w.landDrop(roles, 1, false);
+    const sum = w.chargeSum();
+    if (sum < HOLD.charge.fizzleBelow) {
+      // Unearned: no build, voices pop back on the next beat, weak slam, no
+      // amplified window, no charge cost, no cooldown — its own punishment.
+      w.landDrop(roles, HOLD.build.fizzleSlamMul, false);
       view?.dropJuice(HOLD.build.fizzleSlamMul);
       for (const role of roles) bringInOnBeat(role);
       return;
     }
-    // Schedule the audio build (fixed 2-bar House build until sub-phase C adds
-    // the per-genre grid-flex) and land the sim slam + juice on its downbeat.
-    const sched = engine.scheduleDrop({ bars: HOLD.build.slowGenreBars, gapBeats: HOLD.build.gapBeats });
-    const power = Math.max(0.15, w.tension01()) * combo;
+    // Synchronized full-band "all-in": every owned voice armed within the window.
+    const synced =
+      HOLD.sync.enabled && w.isFullBandSynced(HOLD.sync.windowBeats * engine.beatSeconds);
+    const syncMul = synced ? 1 + HOLD.sync.bonus : 1;
+    const power = sum * syncMul;
+    // Freeze each voice's amplified-fire multiplier from its charge at commit.
+    const muls = new Map<Role, number>();
+    for (const role of roles) {
+      muls.set(role, 1 + w.chargeOf(role) * (HOLD.maxFireMul - 1) * syncMul);
+    }
+    const dv = dropVoices(w.tiers);
+    const gapFloor = Math.max(0, 1 - (HOLD.gapDuck[activeGenre().id] ?? 1));
+    const sched = engine.scheduleDrop({
+      bars: synced ? HOLD.build.slowGenreBars : HOLD.build.fastGenreBars,
+      gapBeats: HOLD.build.gapBeats,
+      rollRoles: dv.rollRoles,
+      gapRoles: dv.gapRoles,
+      gapFloor,
+      oneRoles: dv.oneRoles,
+      borrowKick: dv.borrowKick,
+      borrowSub: dv.borrowSub,
+      voiceCount: roles.length,
+    });
+    w.dropInFlight = true; // freeze charge through the build
     pendingSlam = {
       at: sched.slamTime,
       power,
       land: () => {
-        if (world !== w) return;
-        w.landDrop(roles, combo, true);
+        if (world !== w) {
+          return;
+        }
+        w.landDrop(roles, power, true, muls);
+        w.dropInFlight = false;
+        engine.setChargeHums([]); // the hums resolved into the slam
         // The armed voices crash back in on the one.
         for (const role of roles) engine.setVoiceEnabled(role, true);
       },
     };
-  }
-
-  // ---- Sub-phase A debug drop (KeyP) ----
-  // Kept as a crude full-band drop trigger independent of the tension economy,
-  // so the drop EVENT can still be exercised in isolation. Player-driven only.
-  function triggerDebugDrop(): void {
-    if (paused || !world || !(state === 'run' || state === 'sandbox')) return;
-    if (pendingSlam) return; // one drop in flight at a time
-    if (!engine.clock.running) return;
-    const w = world;
-    const sched = engine.scheduleDrop({ bars: HOLD.build.slowGenreBars, gapBeats: HOLD.build.gapBeats });
-    pendingSlam = { at: sched.slamTime, power: 1.8, land: () => w.debugDrop(1.8) };
   }
 
   // debug overlay
@@ -386,6 +431,7 @@ export async function bootGame(
     probe = null;
     seekOverlay.style.display = 'none';
     pendingSlam = null; // don't let a drop scheduled in a dead run fire on the next one
+    engine.setChargeHums([]); // stop any lingering charge hums
     engine.clearBarQueue();
     engine.clearVoiceEffects();
     for (const role of ROLES) engine.setVoiceEnabled(role, false);
@@ -598,6 +644,13 @@ export async function bootGame(
         world.timeS,
       );
       hud.updateHold(world);
+      // Drive the per-armed-voice charge hums (you HEAR the bet banking). While a
+      // drop is in flight the hums are cut by its land handler and stay off.
+      if (!pendingSlam) {
+        engine.setChargeHums(
+          [...world.held].map((role) => ({ role, charge: world!.chargeOf(role) })),
+        );
+      }
     } else if (state === 'replay' && world && replayConductor) {
       pumpProbe();
       if (replayTarget !== null) {
@@ -720,11 +773,6 @@ export async function bootGame(
       isOn: () => chartOverlayEl.style.display !== 'none',
       onClick: toggleChartOverlay,
     },
-    drop: {
-      label: 'drop (v2)',
-      hotkey: 'P',
-      onClick: triggerDebugDrop,
-    },
   };
   hud.mountDebug(Object.values(debugActions));
 
@@ -752,7 +800,6 @@ export async function bootGame(
       KeyK: debugActions.kill,
       KeyO: debugActions.overlay,
       KeyC: debugActions.charts,
-      KeyP: debugActions.drop,
     };
     const action = byKey[e.code];
     if (action) {

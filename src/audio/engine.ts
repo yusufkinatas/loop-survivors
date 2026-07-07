@@ -79,6 +79,11 @@ export class MusicEngine {
    *  loop muffles then opens up (docs/phases/hold-and-drop-v2.md). Idle at
    *  20 kHz = transparent. */
   private buildFilter: BiquadFilterNode;
+  /** Live "charging" tones, one per armed voice: a low filtered hum whose pitch
+   *  and brightness climb with that voice's charge, so pulling an instrument
+   *  back audibly winds it up (docs/phases/hold-and-drop-v2.md v2.1). Managed by
+   *  setChargeHums from the render loop; player-driven, never on the bot path. */
+  private chargeHums = new Map<Role, { osc: OscillatorNode; filter: BiquadFilterNode; gain: GainNode }>();
   private pending: ScheduledTrigger[] = [];
   private listeners: TriggerListener[] = [];
   private barQueue: (() => void)[] = [];
@@ -314,11 +319,32 @@ export class MusicEngine {
 
   /** Schedule a full Hold & Drop build -> gap -> slam on the audio clock and
    *  return the key times so the render/sim side can lock its juice + slam to
-   *  the same downbeat (docs/phases/hold-and-drop-v2.md, sub-phase A). The slam
-   *  lands on the next bar downbeat at least `bars` bars away; the build swells
-   *  from now to that downbeat, the beat cuts out for the gap, then the loop
-   *  crashes back in with a guaranteed sub + kick. Player-driven only. */
-  scheduleDrop(opts: { bars?: number; gapBeats?: number } = {}): {
+   *  the same downbeat (docs/phases/hold-and-drop-v2.md). The drop is REBUILT
+   *  FROM THE PLAYER'S OWN VOICES (v2.1): the roll uses their owned Hats/Backbeat
+   *  voices, the gap strips the whole loop, and the one re-fires their owned
+   *  Pulse/Bass in key — a generic voice is borrowed ONLY to fill an empty slot,
+   *  so nothing foreign clashes with what the player owns. The riser is the one
+   *  allowed foreign voice (a whoosh reads as "a hit is coming"). Player-driven. */
+  scheduleDrop(
+    opts: {
+      bars?: number;
+      gapBeats?: number;
+      /** Owned Hats/Backbeat roles to roll; falls back to a borrowed hat/snare. */
+      rollRoles?: readonly Role[];
+      /** The whole loop to strip in the gap (all owned/enabled roles). */
+      gapRoles?: readonly Role[];
+      /** Residual voice level during the gap, 0..1 (1 - gapDuck). 0 = full cut. */
+      gapFloor?: number;
+      /** Owned Pulse/Bass roles re-fired on the one (in key via their tune). */
+      oneRoles?: readonly Role[];
+      /** Fill an empty Pulse slot with a borrowed kick on the one. */
+      borrowKick?: boolean;
+      /** Fill an empty Bass slot with a borrowed sub on the one. */
+      borrowSub?: boolean;
+      /** How many voices crash back together — the slam grows fuller with more. */
+      voiceCount?: number;
+    } = {},
+  ): {
     buildStart: number;
     gapStart: number;
     slamTime: number;
@@ -330,15 +356,31 @@ export class MusicEngine {
     const slamTime = this.clock.nextBarTime(bars * barS, STEPS_PER_BAR);
     const buildStart = this.ctx.currentTime + 0.02;
     const gapStart = slamTime - gapBeats * beatS;
+    const voiceCount = Math.max(1, opts.voiceCount ?? 1);
 
-    this.scheduleBuildRiser(buildStart, slamTime);
+    const rollRoles = opts.rollRoles && opts.rollRoles.length > 0 ? opts.rollRoles : (['hat', 'snare'] as const);
+    const gapRoles = opts.gapRoles && opts.gapRoles.length > 0 ? opts.gapRoles : (['kick', ...SUB_BASS_ROLES] as const);
+    const gapFloor = opts.gapFloor ?? 0;
+
+    this.scheduleBuildRiser(buildStart, slamTime, voiceCount);
     this.scheduleBuildFilter(buildStart, slamTime);
-    this.scheduleRoll(buildStart, gapStart, beatS);
-    this.scheduleGapCut(['kick', ...SUB_BASS_ROLES], gapStart, slamTime);
-    // The one: a guaranteed sub-bass + kick land on the downbeat regardless of
-    // loadout (a minimal drop is riser + kick). The kick auto-ducks the bass.
-    this.triggerAt('bass', { step: 0, velocity: 1, variant: 'sub', note: 0 }, slamTime);
-    this.triggerAt('kick', { step: 0, velocity: 1, variant: 'hard' }, slamTime);
+    this.scheduleRoll(rollRoles, buildStart, gapStart, beatS);
+    this.scheduleGapCut(gapRoles, gapStart, slamTime, gapFloor);
+
+    // The one: re-fire the player's own Pulse/Bass in key (their voice.tune is
+    // applied by trigger), scaling up as more voices return together. Borrow a
+    // generic kick/sub ONLY for an empty slot, so a 2-voice loadout still lands
+    // a minimal riser+low-end drop and an 8-voice one drops in its own timbres.
+    const slamVel = Math.min(1, 0.85 + 0.05 * voiceCount);
+    for (const role of opts.oneRoles ?? []) {
+      this.triggerAt(role, { step: 0, velocity: slamVel }, slamTime);
+    }
+    if (opts.borrowSub ?? (opts.oneRoles ? false : true)) {
+      this.triggerAt('bass', { step: 0, velocity: slamVel, variant: 'sub', note: 0 }, slamTime);
+    }
+    if (opts.borrowKick ?? (opts.oneRoles ? false : true)) {
+      this.triggerAt('kick', { step: 0, velocity: slamVel, variant: 'hard' }, slamTime);
+    }
     return { buildStart, gapStart, slamTime };
   }
 
@@ -347,11 +389,15 @@ export class MusicEngine {
    *  into-slam" trick). Routed through master (so mute silences it) then out
    *  through the build filter; the bandpass keeps it present as the filter
    *  opens. */
-  private scheduleBuildRiser(start: number, cut: number): void {
+  private scheduleBuildRiser(start: number, cut: number, voiceCount = 1): void {
     const dur = Math.max(0.2, cut - start);
     // Keep the peak time strictly after start even for a compressed build
     // (sub-phase C grid-flex), so the gain automation never goes out of order.
     const peak = Math.max(start + 0.01, cut - 0.02);
+    // A busier drop rides a louder, brighter riser so it survives a full mix and
+    // clearly becomes the last thing standing in the gap.
+    const peakGain = Math.min(0.85, 0.5 + 0.05 * (voiceCount - 1));
+    const topHz = Math.min(12000, 8000 + 700 * (voiceCount - 1));
     const len = Math.ceil(this.ctx.sampleRate * (dur + 0.1));
     const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
     const data = buf.getChannelData(0);
@@ -362,11 +408,11 @@ export class MusicEngine {
     bp.type = 'bandpass';
     bp.Q.value = 0.9;
     bp.frequency.setValueAtTime(400, start);
-    bp.frequency.exponentialRampToValueAtTime(8000, Math.max(start + 0.01, cut));
+    bp.frequency.exponentialRampToValueAtTime(topHz, Math.max(start + 0.01, cut));
     const g = this.ctx.createGain();
     g.gain.setValueAtTime(0.0001, start);
-    g.gain.exponentialRampToValueAtTime(0.5, peak);
-    g.gain.setValueAtTime(0.5, Math.max(peak, cut));
+    g.gain.exponentialRampToValueAtTime(peakGain, peak);
+    g.gain.setValueAtTime(peakGain, Math.max(peak, cut));
     g.gain.linearRampToValueAtTime(0.0001, Math.max(peak, cut) + 0.02); // hard cut on the one
     src.connect(bp).connect(g).connect(this.master);
     src.start(start);
@@ -383,38 +429,82 @@ export class MusicEngine {
     f.setValueAtTime(20000, cut + 0.002);
   }
 
-  /** The roll: hats accelerating from eighths toward sixteenths across the
-   *  build, plus a snare double just before the gap — the "here it comes" fill.
-   *  Borrows the voices so the roll is guaranteed even at a thin loadout. */
-  private scheduleRoll(start: number, end: number, beatS: number): void {
+  /** The roll: the player's own primary roll voice (owned Hats, or a borrowed
+   *  hat) accelerating from eighths toward sixteenths across the build, plus a
+   *  second roll voice (owned Backbeat, or a borrowed snare) doubling just
+   *  before the gap — the "here it comes" fill, in the player's own timbres. */
+  private scheduleRoll(rollRoles: readonly Role[], start: number, end: number, beatS: number): void {
+    const primary = rollRoles[0];
+    const accent = rollRoles[1];
     const span = Math.max(0.2, end - start);
     let t = start + 0.05;
     while (t < end - 0.02) {
       const prog = (t - start) / span; // 0..1
       const interval = (beatS / 2) * (1 - 0.5 * prog); // eighth -> sixteenth
       const vel = 0.35 + 0.5 * prog;
-      this.triggerAt('hat', { step: 0, velocity: vel }, t);
-      if (prog > 0.72) this.triggerAt('snare', { step: 0, velocity: 0.5 + 0.4 * prog }, t);
+      this.triggerAt(primary, { step: 0, velocity: vel }, t);
+      if (accent && prog > 0.72) this.triggerAt(accent, { step: 0, velocity: 0.5 + 0.4 * prog }, t);
       t += interval;
     }
   }
 
-  /** The gap: cut the beat's low end (kick + whichever sub-bass is in the mix)
-   *  to near-silence for the last beat, then slam it back on the one. Only
-   *  voices actually in the loop are cut; the guaranteed one-shots carry the
+  /** The gap: strip the whole loop (every owned/enabled voice) down to `floor`
+   *  (0 = full cut; >0 = a duck, e.g. Lo-Fi) for the last beat, leaving only the
+   *  riser, then slam it back on the one. The guaranteed one-shots carry the
    *  slam either way. */
-  private scheduleGapCut(roles: readonly Role[], gapStart: number, slamTime: number): void {
+  private scheduleGapCut(roles: readonly Role[], gapStart: number, slamTime: number, floor = 0): void {
+    const low = Math.max(0.0001, floor);
     for (const role of roles) {
       const v = this.voices.get(role);
       if (!v || !v.enabled) continue;
       const p = v.gain.gain;
       p.cancelScheduledValues(gapStart);
       p.setValueAtTime(1, gapStart);
-      p.linearRampToValueAtTime(0.0001, gapStart + 0.02);
+      p.linearRampToValueAtTime(low, gapStart + 0.02);
       // Reach full gain BY the downbeat so the guaranteed slam one-shots that
-      // fire exactly at slamTime hit at full punch (not mid-ramp at ~50%).
-      p.setValueAtTime(0.0001, Math.max(gapStart + 0.02, slamTime - 0.012));
+      // fire exactly at slamTime hit at full punch (not mid-ramp).
+      p.setValueAtTime(low, Math.max(gapStart + 0.02, slamTime - 0.012));
       p.linearRampToValueAtTime(1, slamTime);
+    }
+  }
+
+  /** Drive the per-armed-voice charge hums from the render loop. `entries` is
+   *  the currently-armed voices with their 0..1 charge; a voice not listed fades
+   *  out and stops. Each hum is a low sine through a low-pass whose pitch and
+   *  cutoff/level climb with charge — you HEAR the bet banking, and multiple
+   *  armed voices give converging rising tails into the drop. Routed through
+   *  master so mute silences them and the limiter guards the sum. */
+  setChargeHums(entries: readonly { role: Role; charge: number }[]): void {
+    const now = this.ctx.currentTime;
+    const active = new Set(entries.map((e) => e.role));
+    for (const [role, h] of this.chargeHums) {
+      if (active.has(role)) continue;
+      h.gain.gain.cancelScheduledValues(now);
+      h.gain.gain.setTargetAtTime(0.0001, now, 0.05);
+      h.osc.stop(now + 0.25);
+      this.chargeHums.delete(role);
+    }
+    for (const { role, charge } of entries) {
+      let h = this.chargeHums.get(role);
+      if (!h) {
+        const osc = this.ctx.createOscillator();
+        osc.type = 'sine';
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.Q.value = 4;
+        const gain = this.ctx.createGain();
+        gain.gain.value = 0.0001;
+        osc.connect(filter).connect(gain).connect(this.master);
+        osc.start(now);
+        h = { osc, filter, gain };
+        this.chargeHums.set(role, h);
+      }
+      const c = Math.max(0, Math.min(1, charge));
+      // Pitch and brightness rise with charge; level stays modest so a stack of
+      // hums layers under the loop rather than dominating it.
+      h.osc.frequency.setTargetAtTime(55 + 165 * c, now, 0.08);
+      h.filter.frequency.setTargetAtTime(280 + 2600 * c, now, 0.08);
+      h.gain.gain.setTargetAtTime(0.015 + 0.05 * c, now, 0.08);
     }
   }
 

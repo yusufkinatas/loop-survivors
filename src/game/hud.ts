@@ -6,7 +6,7 @@ import { ROLES, type Kit, type Role } from '../audio/kits';
 import type { Genre } from '../audio/genres';
 import { SLOTS, SLOT_LABEL, ownerOfSlot, slotOf, startableRoles, type Slot } from './band';
 import type { RunWorld } from './run';
-import { TIER_LINES } from './config';
+import { HOLD, TIER_LINES } from './config';
 import { EFFECT_META } from './effects';
 import { ITEMS, type ItemId } from './items';
 import type { PickOption } from './picks';
@@ -44,6 +44,10 @@ export class Hud {
   private sockets = new Map<Slot, HTMLElement>();
   private tensionEl: HTMLElement;
   private tensionFill: HTMLElement;
+  /** "×1.9" danger-multiplier tag: why the charge is filling fast right now. */
+  private tensionMul: HTMLElement;
+  /** "DROP [Q]" prompt: lit when a real drop is ready, greyed when too weak. */
+  private dropPrompt: HTMLElement;
   private screen: HTMLElement | null = null;
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
   private kits: Map<Role, Kit>;
@@ -76,12 +80,16 @@ export class Hud {
     this.rack = el('div', 'band-rack', root);
     this.rack.style.display = 'none';
 
-    // Tension meter: rises while instruments are held back and their charge
-    // fills — it reads how big the pending drop is (Hold & Drop mechanic).
+    // Drop-charge meter: fills with the summed charge of the armed (closed)
+    // instruments — a live preview of how big the pending drop is. The ×N tag
+    // shows the danger multiplier (why it fills fast); the DROP prompt teaches
+    // the commit verb (Hold & Drop v2.1).
     this.tensionEl = el('div', 'tension-meter', root);
-    el('span', 'tension-cap', this.tensionEl, 'TENSION');
+    el('span', 'tension-cap', this.tensionEl, 'DROP');
     const track = el('div', 'tension-track', this.tensionEl);
     this.tensionFill = el('div', 'tension-fill', track);
+    this.tensionMul = el('span', 'tension-mul', this.tensionEl);
+    this.dropPrompt = el('span', 'drop-prompt', this.tensionEl, 'DROP [Q]');
     this.tensionEl.style.display = 'none';
   }
 
@@ -123,24 +131,41 @@ export class Hud {
     });
   }
 
-  /** Per-frame Hold & Drop visuals (v2): mark armed sockets (pulled back,
-   *  silent, banking tension), payoff sockets (just dropped in, firing hard),
-   *  and drive the danger-priced tension meter (overflow waver + spent-resource
-   *  cooldown state). Cheap: 8 sockets. */
+  /** Per-frame Hold & Drop visuals (v2.1): each armed socket is a capacitor
+   *  filling in its own color (the per-voice charge gauge); the meter previews
+   *  the summed drop size with a danger-multiplier tag; a DROP prompt teaches
+   *  the commit verb and shows when a drop is ready vs too weak. Cheap: 8
+   *  sockets. */
   updateHold(world: RunWorld): void {
     for (const [slot, socket] of this.sockets) {
       const owner = ownerOfSlot(slot, world.tiers);
       if (!owner) continue;
       const armed = world.held.has(owner);
+      const charge = armed ? world.chargeOf(owner) : 0;
       socket.classList.toggle('held', armed);
+      socket.classList.toggle('charged', armed && charge > 0.98);
       socket.classList.toggle('payoff', world.inPayoff(owner));
+      socket.style.setProperty('--charge', charge.toFixed(3));
     }
     const t = world.tension01();
+    const armedCount = world.held.size;
     this.tensionFill.style.width = `${t * 100}%`;
-    this.tensionEl.classList.toggle('active', t > 0.001 || world.held.size > 0);
+    this.tensionEl.classList.toggle('active', t > 0.001 || armedCount > 0);
     this.tensionEl.classList.toggle('hot', t > 0.66);
     this.tensionEl.classList.toggle('overflow', world.tensionOverflow());
     this.tensionEl.classList.toggle('cooldown', world.dropOnCooldown());
+    // Danger multiplier tag: shows why charge is filling fast (×1 safe → ×3
+    // surrounded). Only meaningful while something is armed.
+    const mul = 1 + (HOLD.charge.dangerMul - 1) * world.danger01();
+    const showMul = armedCount > 0 && mul > 1.05;
+    this.tensionMul.textContent = showMul ? `×${mul.toFixed(1)}` : '';
+    this.tensionEl.classList.toggle('danger', showMul && mul > 2);
+    // DROP prompt: ready (lit) when a real drop is loaded and off cooldown;
+    // "too weak" (greyed) when armed but below the fizzle floor.
+    const ready = armedCount > 0 && !world.dropOnCooldown() && world.chargeSum() >= HOLD.charge.fizzleBelow;
+    const tooWeak = armedCount > 0 && !ready && !world.dropOnCooldown();
+    this.dropPrompt.classList.toggle('ready', ready);
+    this.dropPrompt.classList.toggle('weak', tooWeak);
   }
 
   /** The persistent bottom-left strip of owned passives, one chip per item

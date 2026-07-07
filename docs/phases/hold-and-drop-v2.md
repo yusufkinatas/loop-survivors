@@ -4,8 +4,9 @@ Status: **Proposed v2. Supersedes the v1 prototype note (`docs/phases/hold-and-d
 
 **Gate ledger:**
 - **Sub-phase A — the drop event (build → gap → slam): PASSED** (July 7, 2026, developer's ear/hands: "drop feels right"). Committed on `prototype-hold-drop` (`13b72ca`). Debug-triggered (KeyP), fixed 2-bar House build, guaranteed riser+kick, render-clock juice; bot-determinism preserved.
-- **Sub-phase B (ARM + tension economy) — built, awaiting developer gate** (July 7, 2026). Number keys 1–8 ARM/disarm owned slots (voice silences instantly); a danger-priced tension fill (nearby-crowd + kill-streak, amplified per armed voice) that sits near zero when safe; an overflow latch that bleeds the held bet at 15%/s once it tops out ("spend it or lose it"); Q commits every armed voice into the sub-phase-A build→gap→slam sized by banked tension × combo, spends the tension, and locks a 13s cooldown; a sub-minimum drop (tension < 0.12) fizzles for free (weak pop, no window, no cooldown). HUD: tension meter with overflow-waver and cooldown states, per-socket armed cue. Determinism preserved (mechanic gated off the bot/replay path via the fx queue). Engineering-verified in Chrome (fill rates, overflow bleed, drop/fizzle/cooldown, key wiring, zero console errors); `tsc` + `vite build` clean; bot smoke unchanged (~4:13 median, mechanic off the bot path).
-- Sub-phase C (all six genres + grid-flex + gap scaling) — not started.
+- **Sub-phase B (ARM + tension economy) — first pass BUILT, then SENT BACK at an informal gate** (July 7, 2026). The shipped pass (committed `4a6bdbb`) used a danger-priced GLOBAL tension pool; Q committed all armed voices into the sub-phase-A build sized by tension × combo, on a 13s cooldown, with a sub-minimum fizzle. The developer's hands rejected it on four counts: (1) closed sockets don't look like they're charging; (2) the meter is illegible — no read on what tension is or why it fills; (3) the borrowed build voices (a generic snare/hat/kick/sub) clash with the player's owned instruments; (4) P (a leftover debug drop) vs Q is confusing and Q is never taught. A three-expert review (code / game-design / music) traced all four to one mental-model mismatch and a real design flaw (the danger-priced pool punishes good positioning and locks a safe player out of the toy). **The rework is specified below in "Sub-phase B rework (v2.1)" and is signed off by the developer.** The shipped `4a6bdbb` pass is superseded.
+- **Sub-phase B rework (v2.1) — SPEC LOCKED, not yet implemented** (July 7, 2026). See the dedicated section below. The pivot: charge is per-voice and anchored to arming (not the horde); the drop is rebuilt from the player's OWN instruments; one taught verb (Q); a short anti-double-tap cooldown; the synchronized full-band bonus wired behind a flag. This is the current build target.
+- Sub-phase C (all six genres + grid-flex + gap scaling) — not started. **Note:** the "reclaim/resolve-by-slot" audio work the spec originally parked here is pulled FORWARD into the B rework (you cannot honestly gate "does the drop sound earned" with clashing foreign audio). Sub-phase C keeps the multi-genre port, grid-flex, and per-genre gap scaling.
 - Sub-phase D (balance + across-the-run pass) — not started.
 
 Music terms are explained in plain words the first time they appear. The developer is not a musician; his ear is the gate.
@@ -50,7 +51,94 @@ Two phases, two verbs:
 
 ---
 
+## Sub-phase B rework (v2.1) — THE CURRENT BUILD TARGET
+
+This section supersedes the original "Gameplay anatomy → tension economy", "ARM", "DROP", "How it works from 2 instruments to 8+", and the borrowing rules in "Audio anatomy" below. Everything else in this doc (terminology, the timeline shape, Pillar 3, determinism, the verdict protocol) still holds. Where this section and the older prose disagree, **this section wins**; the older prose is kept as design history.
+
+Signed off by the developer (July 7, 2026): the per-voice charge pivot, rebuilding the drop from owned voices, a short anti-double-tap cooldown, and the synchronized full-band bonus (the only skill topping in scope; solo long-hold and the perfect-release ring are parked).
+
+### Why the first pass was sent back (the root cause)
+
+The developer's mental model is *"each instrument I close charges up like a capacitor; when they're loaded I release them."* The shipped pass built *"one hidden global pool that fills from how surrounded I am."* Those are different games, and the gap produced all four complaints. Worse, the danger-priced pool has a real design flaw: it fills fastest when you're swarmed, and arming (losing fire) makes you *more* swarmed, so the optimal line is a near-death spiral — while a well-positioned player who stays safe **can never charge a drop at all**. A toy that is available only when you are dying rewards the wrong behavior and reads as random. The fix re-anchors charge onto the thing the hands are on (the armed voices) and rebuilds the drop out of the player's own track.
+
+### The charge economy (replaces the danger-priced tension pool)
+
+Charge is now **per-armed-voice**, not one global pool.
+
+- **Arming charges the voice.** While a voice is armed (pulled back, silent), it banks its own charge `0..1`. Each armed voice charges at a slow **base rate** (`chargeBaseRate`, charge/s) so that a careful, well-positioned player can *always eventually* load a drop — the toy is never locked out.
+- **Danger multiplies the rate, it is not the source.** A live danger read (`danger01` = enemies inside `pressureRadius` weighted by closeness, plus kill streak) multiplies the base rate up to `chargeDangerMul` (≈3×) at max danger. So charging under fire is faster and bigger — the "earned by surviving danger" identity is preserved for the marquee drops — but safety no longer zeroes it out. Charging under pressure remains genuinely risky because arming costs fire (Pillar 3, below).
+- **The HUD meter is the live SUM of armed charges** = a preview of how big the drop will be. There is no separate mystery pool. `tension01()` becomes that normalized sum (kept as the meter's name-agnostic accessor).
+- **Overflow bleeds per voice.** Once a voice tops out (charge = 1) and stays armed, it bleeds at `overflowBleedPerS` (≈15%/s) — spend it or lose it — with the existing detune/wobble reserved as the *overflow* audio cue (distinct from the rising charge hum below).
+- **The two gates that keep it earned:** (a) the fire loss during ARM (real DPS you gave up, the tactical cost muted), and (b) overflow decay (you cannot bank forever). Danger is a bonus on top, not the gate.
+
+### ARM / DISARM (number keys 1–8) — winding up, not switching off
+
+- Pressing an owned slot's key **arms** that voice: it leaves the mix **on the next beat** (quantized, with a short filter/reverb ring-out — a musical breakdown, not an instant mid-bar cut that sounds like a glitch), its socket begins filling with its own color, and it starts banking charge and emitting a rising charge tone (see audio).
+- Pressing again **disarms**: the voice returns on the next beat, no build, no slam. Banked charge on that voice is **forfeit** (start value; revisit at gate — the bet is the commitment).
+- Arming is still the vulnerability: thinner fire is the risk, and it must bite (Pillar 3).
+
+### DROP (Q) — one taught verb
+
+- **Q is the only player-facing commit.** It commits every currently-armed voice into one build → gap → slam, sized by the summed banked charge × combo (`comboBonus` per extra voice, kept). It spends the charge and locks a **short anti-double-tap cooldown** (`fullBandCooldownS` ≈ 2–3s, shown as the meter briefly refusing to refill — per-voice recharge is now the real rate limit, so the old hard 13s is gone).
+- **Fizzle unchanged in spirit:** committing below `fizzleBelow` summed charge fizzles for free (weak `fizzleSlamMul` pop, voices pop back, no amplified window, no cooldown) — an unearned drop punishing itself.
+- **The P debug drop leaves the player build.** `triggerDebugDrop` stays only behind the debug overlay (KeyO); remove the on-screen "drop (v2)" button and the bare KeyP binding. It made the identical sound as Q while bypassing the economy — the mechanical half of complaint 4.
+- **Teach Q in place** (Pillar 2, no producer vocabulary): a pulsing **"DROP [Q]"** prompt lights on the meter when the summed charge clears the fizzle floor and the cooldown is clear; it shows a distinct greyed/"too weak" state below the floor. The player learns the verb, when it's worth firing, and that a fizzle was foreseeable — in one glance.
+
+### The drop is REBUILT from the player's own instruments (fixes complaint 3)
+
+The single biggest change. The old `scheduleDrop` borrowed voices by literal role (`'hat'`, `'snare'`, `'kick'`, `'bass'`) — but the band is organized by **typed slots**, each holding one of three different-sounding members (a Backbeat can be clap/rimshot, a Pulse tom/heartbeat, a Bass reese/pluck). So it pasted foreign timbres on top of the player's own (an ear-level "mistake"), the guaranteed sub wasn't in the run's key, and the gap only stripped the low end so a non-`kick` Pulse never dropped the floor out. Rebuild it by **slot**:
+
+- **The roll** uses the player's owned **Hats-slot and Backbeat-slot** voices (accelerating eighth→sixteenth). Borrow the generic `hat`/`snare` **only** if those slots are empty.
+- **The gap** strips the **whole loop** to near-silence (scaled by the existing per-genre `gapDuck`), not just the low end, leaving only the riser — so the floor actually drops out in a busy mix.
+- **The one (slam)** re-fires the player's owned **Pulse and Bass** voices with their existing `voice.tune` (in key). A generic **in-key** kick+sub is synthesized **only** when those slots are unowned. So a 2-voice loadout still lands a minimal riser+kick drop; an 8-voice loadout drops entirely in its own timbres with nothing foreign added.
+- **The riser is the one allowed foreign voice** (a rising whoosh reads as "a hit is coming", not as an instrument in the kit) — always present. Boost its peak so it survives a busy mix and clearly becomes the last thing standing in the gap.
+- **The slam audio scales with the number of voices returning together** — a 6-voice synchronized re-entry sounds categorically fuller/wider/brighter than a 2-voice one, so "open everything at once" is rewarded in the channel that matters most.
+- The engine needs the owned-slot map (from `run.ts` `tiers` / `band.ts` `ownerOfSlot`) passed into `scheduleDrop` at drop time.
+
+### Audible + visible charge (fixes complaints 1 & 2 with the same change)
+
+- **Socket = the gauge.** Re-drive the per-socket `--charge` in `hud.ts` `updateHold` from that voice's `charge01`, filling the socket bottom-to-top in the voice's color, ramping the border dim→full, and firing the (currently dead) `.charged` pulse when a voice tops out. Kill the permanently-empty-ring artifact.
+- **Diegetic danger read.** Show the danger multiplier as a **pressure aura/ring** around the player (`view.ts`, render-clock only) that heats cool→red as the crowd tightens, plus a small live "×1.9"-style multiplier tag on the meter. This doubles as the positioning read the player already wants. The unspoken sentence: *"closed instruments fill up, and they fill faster when the ring is hot."*
+- **Audible charging.** Each armed voice emits a low filtered hum whose brightness/pitch climbs with its `charge01` and whose rate-of-rise tracks `danger01`, so the player HEARS the bet banking and hears it accelerate under pressure. Multiple armed voices give multiple rising tails that converge into the gap (run through the shared build filter, staggered peaks). Reserve the detune/wobble for the overflow zone so *banking* and *overcooking* sound distinct.
+
+### Skill topping in scope: the synchronized full-band drop
+
+The one adopted skill mechanic (behind a config flag, conservative by default). Arming your **last remaining owned voices within a short window** (`syncWindowBeats`, all remaining voices armed within ~2 beats) locks the rack: a shared tether/ring draws across all armed sockets, and the pending drop earns a bonus **beyond** the linear `comboBonus` (`syncBonus`) plus a distinctly bigger build (deeper gap, brighter/wider slam). The skill is picking the moment and surviving a near-fireless gap. Muted, the whole lit-and-tethered rack reads as "you are all-in" and the payoff is a visibly larger shockwave + longer burst window. Keep the DPS loss biting so it never becomes the only line. (Solo long-hold and the perfect-release ring are **parked** — not in this rework.)
+
+### One real correctness bug to fix regardless
+
+The shipped pass captured slam power at COMMIT (`game.ts` `dropAll`) but `landDrop` recomputed it from charge read ~4s later at LAND time, so the visual juice and the actual sim slam diverged (a full-charge commit could land near-floor). **Freeze the sized power at commit and pass it into `landDrop`** so the juice and the sim slam share one number and "a drop spends what it was sized by" holds literally. Also guard the stray `killStreak++` write in `run.ts` behind `this.fx` (keep the bot path clean) and delete the dead v1 config `chargeFullS` / `tensionFull`.
+
+### Config (`config.ts` HOLD block) — reworked
+
+Replace the flat danger-priced `tension` block with a `charge` model:
+- Add: `chargeBaseRate` (per-voice charge/s at zero danger — the "always available" floor), `chargeDangerMul` (max rate multiplier at `danger01`=1, ≈3), `perVoiceMax` (1.0).
+- Keep for the `danger01` multiplier input: `pressureRadius`, `crowdFull`, `killRateFull`, `killStreakScale`. **Fix the constant hacks** so the knobs mean what they say — the shipped code uses `nearMissBonus*10` as a closeness weight (there is no real near-miss event) and `killStreakScale*2` (which cancels to 1.0 for the shipped 0.5). Rename/repurpose honestly.
+- Keep: `overflowBleedPerS` (now per-voice), `fizzleBelow`.
+- Change: `fullBandCooldownS` → ≈2–3s (short anti-double-tap floor).
+- Add (behind the sync flag): `syncWindowBeats`, `syncBonus`.
+- Remove: dead `chargeFullS`, `tensionFull`.
+
+### Build order (each step developer-gateable; matches AGENTS.md sub-phase discipline)
+
+0. **Correctness** (unblocks an honest gate): freeze slam power at commit; guard `killStreak++` behind `this.fx`; delete dead config.
+1. **The pivot** (`run.ts`): per-voice charge = `chargeBaseRate` × danger multiplier; per-voice overflow bleed; `tension01()` = normalized sum of armed charges; fix the constant hacks. All writes stay on the fx/player path (determinism unchanged).
+2. **Socket = gauge** (`hud.ts`): re-drive `--charge` per socket in the voice color; fire `.charged` at max; meter = summed preview.
+3. **Diegetic danger** (`view.ts`): pressure aura + the "×1.9" multiplier tag.
+4. **One taught verb** (`game.ts`): pull the P button + bare KeyP from the player build; add the "DROP [Q]" prompt with lit / "too weak" states.
+5. **Build from owned voices** (`engine.ts`): resolve roll/gap/slam by slot via `ownerOfSlot`; strip the whole loop in the gap (scaled by `gapDuck`); re-fire owned Pulse/Bass in key; borrow a root-tuned kick+sub only for empty slots; riser always-on + boosted; slam audio scales with voice count.
+6. **Audible charge** (`engine.ts`): quantize arm-silence to the next beat with a ring-out; per-armed-voice charge hum bound to `charge01` (rate-of-rise tracks danger), detune-wobble reserved for overflow.
+7. **Synchronized full-band** (behind a flag): the sync window + `syncBonus` + bigger build; ship conservative, tune at the gate.
+
+### Gate B (rework) — the developer's ear and hands
+
+Muted first (Pillar 3): does each closed socket read as a capacitor loading; is which-voices-and-how-loaded legible at a glance; is arming a real, dangerous, *authored* decision (not a two-button chore); does the release feel worth mastering? Then sound on: does closing an instrument SOUND like winding it up; does the drop sound like the player's own band crashing back (no foreign clash); does the pressure aura + charge hum make "why is it filling" felt without words; is Q's affordance clear and the fizzle foreseeable? A failed gate loops within the rework.
+
+---
+
 ## Gameplay anatomy
+
+> **Superseded by "Sub-phase B rework (v2.1)" above for the charge/ARM/DROP/borrowing rules.** Kept as design history from the first pass (the danger-priced pool). Read the rework section for the current target.
 
 ### The tension economy (the gate that stops spam)
 
@@ -310,9 +398,19 @@ Locked by the convergence, recorded so they are not re-litigated in code:
 - **Wait cap = one beat** (compress to a half-bar build if the downbeat is imminent), NOT up-to-2-bars. Rationale: a panic button that stalls 5.7s in Lo-Fi gets someone killed; a half-bar build still lands on the grid. This is the tie-break — implement the one-beat cap.
 - **Gap is mandatory in every genre, scaled by intensity.** Lo-Fi is a soft duck (`gapDuck.lofi ≈ 0.4`), not a full cut. The gap cannot be dropped entirely in any genre without breaking the one-rhythm-across-genres rule, because it is the shared gameplay vulnerability window. **Open sub-question for gate C:** is `0.4` the right Lo-Fi duck depth, or does Lo-Fi want an even gentler duck? Developer's ear at gate C.
 
+Open decisions for the B rework (v2.1), tuned by the developer's hands at gate B:
+
+- **Base charge rate (`chargeBaseRate`).** How slow should a fully-safe player charge? Slow enough that arming-and-running is a real vulnerable commitment; fast enough that the toy never feels absent. This number decides whether the "always available" floor feels earned or free.
+- **Danger-multiplier ceiling (`chargeDangerMul`, ≈3×).** Too high re-creates the "reward recklessness" spiral; too low and charging-under-fire feels no different from safe.
+- **Full-band cooldown.** Locked to a short ~2–3s anti-double-tap floor (down from 13s) — but confirm the exact value feels like a beat, not a lockout.
+- **Disarm refund vs forfeit.** Now a per-voice question. Start: forfeit. Revisit at gate B.
+- **Sync-bonus ceiling (`syncBonus`).** Must not make the synchronized full-band drop the only viable line — keep the fire loss biting. Tune live.
+- **Lo-Fi gap depth under a WHOLE-loop strip.** `gapDuck.lofi = 0.4` was tuned for a low-end-only cut; a whole-loop strip at 0.4 may read differently. Confirm at the (now-earlier) audio gate.
+
 Genuinely open / parked to gate tuning:
 
 - **Slam damage vs. the 16× late-game enemy-HP curve.** Carried from v1: should the slam scale with the dropped instrument's own DPS so it stays proportional across the run, or stay a fixed breathing-room tool? Decide at Sub-phase D.
+- **Skill toppings parked from the B rework:** solo long-hold (hold one voice to a gold "max" → a concentrated single-voice slam) and the perfect-release timing ring. Both were designed in the three-expert review but cut from this rework's scope; reconsider after the base loop passes gate B.
 - **A small live benefit while under tension** (a nudge to move speed or pickup range during ARM) — does it make holding feel better moment-to-moment, or muddy the risk? v1 parked this; still open. Try at gate B if arming feels purely punitive.
 - **Exact HUD treatment** of tension, per-socket armed state, and the "brace" telegraph — developer's call at gate time (Pillar 2: no producer vocabulary on screen, ever).
 - **Whether disarm (tap-off without dropping) should refund any banked tension** or forfeit it. Start: forfeit (arming is a commitment). Revisit at gate B.

@@ -826,50 +826,75 @@ export const WHISTLE = { popS: 0.5 };
  *  space plus a short window where that instrument fires far harder. The
  *  buildup you hold is a bomb you release. */
 export const HOLD = {
-  /** Seconds an instrument must stay held to reach full charge (a buildup). */
-  chargeFullS: 7,
   /** Amplified-fire window opened by a drop (seconds). */
   payoffS: 4,
   /** Fire damage multiplier at full charge during the payoff window (area
    *  scales more gently, at 35% of this). */
   maxFireMul: 4,
-  /** Drop slam: base radius (px) at power 1; grows with charge×combo. */
+  /** Drop slam: base radius (px) at power 1; grows with the summed charge. */
   slamRadius: 300,
-  /** Drop slam damage at power 1 (scaled by charge × combo × powerMul). */
+  /** Drop slam damage at power 1 (scaled by summed charge × powerMul). */
   slamDamage: 90,
   slamKnockback: 460,
-  /** Q multi-drop: extra multiplier per extra instrument dropped together, so
-   *  a synchronized full-band drop beats the sum of its parts. */
+  /** Legacy multi-drop bonus. In v2.1 the summed per-voice charge already
+   *  rewards dropping more voices, so this is only the extra edge the
+   *  synchronized full-band drop can add on top (see `sync`). */
   comboBonus: 0.5,
-  /** Summed held charge that reads as full tension on the HUD meter. */
-  tensionFull: 3,
 
-  // ---- v2 (docs/phases/hold-and-drop-v2.md) --------------------------------
-  // The v1 fields above stay; v2 adds a build->gap->slam timeline and a
-  // render-clock juice stack. Sub-phase A uses `build` and `juice` (a debug-
-  // triggered single drop); `tension` and `fullBandCooldownS` land in B.
+  // ---- v2.1 rework (docs/phases/hold-and-drop-v2.md, "Sub-phase B rework") --
+  // Charge is PER-ARMED-VOICE, anchored to the player's action (not a global
+  // horde-driven pool). Each armed voice banks its own charge at a slow base
+  // rate; danger MULTIPLIES that rate (it is not the source), so a safe player
+  // can always eventually load a drop and charging under fire is bigger.
 
-  /** Tension economy (danger-priced fill; used in sub-phase B). */
-  tension: {
+  /** Charge economy. */
+  charge: {
+    /** Per-voice charge/s at zero danger — the "always available" floor.
+     *  Slow enough that arming-and-running is a real vulnerable commitment
+     *  (~6.7s to fully load one voice while safe). Gate-B tuning knob. */
+    baseRate: 0.15,
+    /** Rate multiplier at danger01 = 1 (max danger). At the floor the rate is
+     *  baseRate; surrounded it is baseRate × dangerMul (~2s to load a voice). */
+    dangerMul: 3,
+    /** Per-voice charge cap. */
+    perVoiceMax: 1,
+    /** Once a voice tops out while armed it starts bleeding this much per second
+     *  (spend it or lose it). Tuned ABOVE baseRate but below the danger-boosted
+     *  rate, so a full voice held while SAFE slowly drains, while a full voice
+     *  held UNDER FIRE stays pinned at the top (with a waver cue) — you keep
+     *  what you earned under danger but can't safely sit on a loaded bomb. */
+    overflowBleedPerS: 0.28,
+    /** Summed charge (across armed voices) that fills the HUD drop-size meter.
+     *  ~4 fully-loaded voices maxes the visual; the meter is a preview of how
+     *  big the pending drop is, so more/fuller voices read as a bigger drop. */
+    meterFull: 4,
+    /** A commit whose summed charge is below this fizzles: voices just pop
+     *  back, a weak slam, no amplified window, no cooldown (an unearned drop is
+     *  its own punishment). */
+    fizzleBelow: 0.35,
+    // ---- danger01 read (a MULTIPLIER input, not the charge source) ----
+    /** px; enemies inside this radius feed the danger read. */
     pressureRadius: 260,
-    fillAtMaxDanger: 0.55,
-    heldFillBonus: 0.35,
-    nearMissBonus: 0.04,
-    killStreakScale: 0.5,
-    overflowBleedPerS: 0.15,
-    /** Weighted crowd score (base 0.5 per enemy in range + up to 1 more the
-     *  closer it is) that reads as maximum danger. ~8 enemies packed at the
-     *  player, or ~20 loosely inside the pressure radius. */
+    /** Weighted crowd score (each in-range enemy contributes 0.5 + 0.5×closeness)
+     *  that reads as maximum crowd danger. */
     crowdFull: 12,
-    /** kills/s (decaying, 1s memory) that reads as full kill-streak danger. */
+    /** kills/s (decaying, ~1s memory) that reads as full kill-streak danger. */
     killRateFull: 4,
-    /** A commit with banked tension below this fizzles: voices just pop back,
-     *  a weak slam, no amplified-fire window, no cooldown (an unearned drop is
-     *  its own punishment, docs/phases/hold-and-drop-v2.md). */
-    fizzleBelow: 0.12,
+    /** Weight (0..1) of the kill-streak term in danger01 vs the crowd term. */
+    killStreakWeight: 0.5,
   },
-  /** Full-band drop cooldown so Q reads as a spent resource (sub-phase B). */
-  fullBandCooldownS: 13,
+  /** Synchronized full-band drop (the one skill topping in scope). Arming the
+   *  last of your owned voices within `windowBeats` beats locks the rack and
+   *  the pending drop gets `bonus` extra power on top of the summed charge,
+   *  plus a bigger build. Ship conservative; tune/toggle at gate B. */
+  sync: {
+    enabled: true,
+    windowBeats: 2,
+    bonus: 0.4,
+  },
+  /** Full-band drop cooldown — a short anti-double-tap floor (per-voice
+   *  recharge is now the real rate limit, so the old hard 13s is gone). */
+  fullBandCooldownS: 2.5,
   /** The grid-locked build. Sub-phase A pins a fixed 2-bar (slowGenreBars)
    *  build in House; the flex/wait-cap fields are wired in sub-phase C. */
   build: {

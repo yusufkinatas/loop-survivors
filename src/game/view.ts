@@ -37,6 +37,21 @@ function cachedShape(key: string, draw: (ctx: GraphicsContext) => void): Graphic
 // gems, elites, low-count roles, fx) take a glow — the 2400-strong horde stays
 // flat to preserve GPU batching.
 export const GLOW = { alpha: 0.28, scale: 1.8, blend: 'add' as const };
+/** Lerp between two 0xRRGGBB colors, t in 0..1. */
+function lerpColor(a: number, b: number, t: number): number {
+  const k = Math.max(0, Math.min(1, t));
+  const ar = (a >> 16) & 0xff;
+  const ag = (a >> 8) & 0xff;
+  const ab = a & 0xff;
+  const br = (b >> 16) & 0xff;
+  const bg = (b >> 8) & 0xff;
+  const bb = b & 0xff;
+  const r = Math.round(ar + (br - ar) * k);
+  const g = Math.round(ag + (bg - ag) * k);
+  const bl = Math.round(ab + (bb - ab) * k);
+  return (r << 16) | (g << 8) | bl;
+}
+
 export function makeGlow(radius: number, color: number): Graphics {
   const g = new Graphics(cachedShape(`glow:${radius}`, (c) => c.circle(0, 0, radius).fill(0xffffff)));
   g.tint = color;
@@ -64,6 +79,7 @@ export class RunView {
   // The player is a Container (additive glow child + white core + signal ring);
   // only its .position/.alpha are ever touched, matching the old Graphics.
   private playerGfx = new Container();
+  private pressureAura!: Graphics;
   private enemyGfx = new Map<Enemy, Graphics>();
   private enemyShotGfx = new Map<EnemyShot, Graphics>();
   private projectileGfx = new Map<Projectile, Graphics>();
@@ -100,7 +116,14 @@ export class RunView {
     const body = new Graphics();
     body.circle(0, 0, RUN.playerRadius).fill(0xffffff);
     body.circle(0, 0, RUN.playerRadius + 3).stroke({ width: 2, color: 0x59ffd1, alpha: 0.9 });
-    this.playerGfx.addChild(glow, body);
+    // Pressure aura: a ring that shows the charge danger multiplier while voices
+    // are armed — cool + tight when safe, hot + wide as the crowd tightens
+    // (Hold & Drop v2.1 diegetic "why is it filling fast" read). White geometry
+    // tinted per frame; hidden when nothing is armed.
+    this.pressureAura = new Graphics().circle(0, 0, 40).stroke({ width: 3, color: 0xffffff });
+    this.pressureAura.blendMode = 'add';
+    this.pressureAura.visible = false;
+    this.playerGfx.addChild(glow, this.pressureAura, body);
     this.stage.addChild(this.playerGfx);
     this.stage.addChild(this.flashGfx); // re-topped each active frame
   }
@@ -175,6 +198,20 @@ export class RunView {
       dt *= HOLD.juice.slowMoScale;
     }
     if (this.zoomPunchT > 0) this.zoomPunchT -= dt;
+
+    // Pressure aura: only while voices are armed. Heats cyan→red and widens with
+    // the charge danger multiplier, so the player reads "charging fast because
+    // I'm surrounded" without any text (Pillar 2).
+    const armed = this.world.held.size > 0;
+    this.pressureAura.visible = armed;
+    if (armed) {
+      const d = this.world.danger01();
+      const scale = (RUN.playerRadius + 20 + 22 * d) / 40;
+      this.pressureAura.scale.set(scale);
+      this.pressureAura.alpha = 0.25 + 0.5 * d;
+      // Lerp cyan (safe) → hot orange-red (surrounded).
+      this.pressureAura.tint = lerpColor(0x59ffd1, 0xff4a3c, d);
+    }
 
     this.syncEnemies();
     this.sync(this.world.enemyShots, this.enemyShotGfx, makeEnemyShotGfx, (s, gfx) =>

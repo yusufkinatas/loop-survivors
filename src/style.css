@@ -1532,20 +1532,32 @@ button.big {
 }
 
 /* Charge ring: a thin bar that fills as a held instrument banks its buildup. */
+/* The socket IS the gauge: an armed voice fills bottom-to-top in its own color
+   like a capacitor, driven by --charge (Hold & Drop v2.1). Sits behind the
+   name/pips so they stay readable. */
 .socket-charge {
-  width: 100%;
-  height: 3px;
-  border-radius: 2px;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(var(--charge) * 100%);
+  border-radius: 0 0 var(--r-sm) var(--r-sm);
   background: linear-gradient(
-    90deg,
-    var(--voice-color) calc(var(--charge) * 100%),
-    color-mix(in srgb, var(--voice-color) 16%, transparent) 0
+    0deg,
+    color-mix(in srgb, var(--voice-color) 42%, transparent),
+    color-mix(in srgb, var(--voice-color) 10%, transparent)
   );
   opacity: 0;
-  transition: opacity 0.15s;
+  transition: opacity 0.15s, height 0.09s linear;
+  pointer-events: none;
+  z-index: 0;
 }
 .band-socket.held .socket-charge {
   opacity: 1;
+}
+.band-socket > :not(.socket-charge) {
+  position: relative;
+  z-index: 1;
 }
 
 /* Held: pulled back, silent, banking charge — desaturated and breathing. */
@@ -1642,6 +1654,42 @@ button.big {
 }
 .tension-meter.cooldown .tension-cap {
   color: var(--ink-faint);
+}
+/* Danger-multiplier tag (×1.9): why the charge is filling fast right now. */
+.tension-mul {
+  min-width: 26px;
+  font: 700 10px/1 var(--font-mono);
+  letter-spacing: 0.04em;
+  color: #4dd2ff;
+}
+.tension-meter.danger .tension-mul {
+  color: #ff8a5a;
+}
+/* DROP [Q] prompt: teaches the commit verb in place. Off = hidden; ready =
+   lit + pulsing; weak = greyed "you could press it, but it'd fizzle". */
+.drop-prompt {
+  font: 700 10px/1 var(--font-mono);
+  letter-spacing: 0.08em;
+  padding: 3px 7px;
+  border-radius: var(--r-sm);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.drop-prompt.weak {
+  opacity: 0.5;
+  color: var(--ink-faint);
+  border: 1px solid var(--line);
+}
+.drop-prompt.ready {
+  opacity: 1;
+  color: #0a0b0f;
+  background: #ffdf5a;
+  box-shadow: 0 0 14px -3px #ffdf5a;
+  animation: dropready 0.7s ease-in-out infinite;
+}
+@keyframes dropready {
+  0%, 100% { box-shadow: 0 0 12px -4px #ffdf5a; }
+  50% { box-shadow: 0 0 22px 0 #ffdf5a; }
 }
 
 /* Slot badge on a pick card: the plain player-facing band position this hire

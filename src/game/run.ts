@@ -320,19 +320,29 @@ export class RunWorld {
   // unless holdRole/releaseRole are called, and fireWeapon/update are
   // bit-identical to before while they are empty (determinism preserved).
   /** Instruments currently ARMED (pulled back: silent, not firing). Arming is
-   *  the vulnerability that banks tension under danger (v2). */
+   *  the vulnerability, and each armed voice banks its OWN charge (v2.1). */
   readonly held = new Set<Role>();
-  /** Banked tension, 0..1 — a danger-priced resource (v2). Replaces v1's
-   *  per-instrument clock-fill charge. Fills from nearby danger, faster while
-   *  voices are armed; a drop spends it to size the payoff. */
-  tension = 0;
-  /** Decaying kills-per-second estimate (1s memory) feeding the danger read.
-   *  Incremented on every kill (cheap, unused by the bot); decayed + read only
-   *  on the player path in updateTension. */
+  /** Per-armed-voice charge, 0..1 (v2.1). Anchored to the player's action, not
+   *  the horde: each armed voice fills at a slow base rate that danger merely
+   *  multiplies. The socket is this value's gauge; the drop sums these. */
+  private charge = new Map<Role, number>();
+  /** World time each voice was armed — the synchronized-full-band read. */
+  private armedAtS = new Map<Role, number>();
+  /** Voices that topped out while armed and are now bleeding (spend or lose). */
+  private chargeOverflowing = new Set<Role>();
+  /** Last computed danger read, 0..1 — the charge-rate multiplier and the
+   *  view's pressure-aura intensity. Cached so the view reads it cheaply. */
+  private lastDanger01 = 0;
+  /** Decaying kills-per-second estimate (~1s memory) feeding the danger read.
+   *  Player path only (guarded on fx); the bot never reads or writes it. */
   private killStreak = 0;
-  /** Full-band drop cooldown (v2): Q is locked this long after a real drop so
-   *  it reads as a spent resource, not a mashable button. */
+  /** Full-band drop cooldown (v2.1): a short anti-double-tap floor after a
+   *  drop (per-voice recharge is the real rate limit now). */
   fullBandCdT = 0;
+  /** Set by the game while a committed drop's build is in flight, so per-voice
+   *  charge holds frozen through the build (the drop was sized at commit) and
+   *  the sockets read "locked in" rather than still filling. Display-only. */
+  dropInFlight = false;
   /** Remaining amplified-fire window per role after a drop. */
   private payoffT = new Map<Role, number>();
   /** Fire multiplier applied during that window (captured at the drop). */
@@ -742,66 +752,102 @@ export class RunWorld {
   removeWeapon(role: Role): void {
     this.tiers.delete(role);
     this.held.delete(role);
+    this.charge.delete(role);
+    this.chargeOverflowing.delete(role);
+    this.armedAtS.delete(role);
     this.payoffT.delete(role);
     this.payoffMul.delete(role);
   }
 
-  // ---- Hold & Drop v2 (ARM + tension economy, docs/phases/hold-and-drop-v2.md) ----
+  // ---- Hold & Drop v2.1 (per-voice charge, docs/phases/hold-and-drop-v2.md) ----
 
   /** True while a role is inside its post-drop amplified-fire window. */
   inPayoff(role: Role): boolean {
     return (this.payoffT.get(role) ?? 0) > 0;
   }
 
-  /** Banked tension, 0..1 — the HUD meter read. Priced by danger, not a clock. */
+  /** This voice's own banked charge, 0..1 — the socket gauge (0 if not armed). */
+  chargeOf(role: Role): number {
+    return this.charge.get(role) ?? 0;
+  }
+
+  /** Summed charge across all armed voices — the drop's magnitude (grows with
+   *  how many voices are armed and how loaded each is). Drives fizzle + power. */
+  chargeSum(): number {
+    let s = 0;
+    for (const r of this.held) s += this.charge.get(r) ?? 0;
+    return s;
+  }
+
+  /** The HUD meter, 0..1: the summed charge as a preview of drop size. */
   tension01(): number {
-    return this.tension;
+    return Math.min(1, this.chargeSum() / HOLD.charge.meterFull);
   }
 
-  /** Latches once banked tension tops out while armed, so the bleed continues
-   *  even as it dips below full (you can't sit at the top). Cleared when the
-   *  bet is dropped, disarmed to empty, or fully bled off. */
-  private overflowing = false;
+  /** The live danger read, 0..1 — the charge-rate multiplier input and the
+   *  view's pressure-aura intensity. */
+  danger01(): number {
+    return this.lastDanger01;
+  }
 
-  /** Overcooked: the held bet is decaying (a HUD/audio "waver" cue) — spend it
-   *  or lose it. You can't sit at full forever. */
+  /** Overcooked: at least one armed voice topped out and is bleeding (a HUD/
+   *  audio "waver" cue) — spend it or lose it. */
   tensionOverflow(): boolean {
-    return this.overflowing && this.held.size > 0;
+    return this.chargeOverflowing.size > 0;
   }
 
-  /** True while the full-band drop is on cooldown (a spent resource). */
+  /** True while the full-band drop is on its short anti-double-tap cooldown. */
   dropOnCooldown(): boolean {
     return this.fullBandCdT > 0;
   }
 
   /** ARM an owned instrument: it stops firing and goes silent, and begins
-   *  amplifying the tension fill under danger. The caller mutes the audio
-   *  voice. No-op if unowned or already armed. */
+   *  banking its own charge. The caller silences the audio voice. No-op if
+   *  unowned or already armed. */
   holdRole(role: Role): boolean {
     if (!this.tiers.has(role) || this.held.has(role)) return false;
     this.held.add(role);
+    this.charge.set(role, 0);
+    this.armedAtS.set(role, this.timeS);
     return true;
   }
 
   /** DISARM without dropping (tap-off): the voice returns on the next beat, no
-   *  build, no slam, no payoff. Banked tension is forfeit (it stays as-is on
-   *  the global meter — arming was the bet, disarming just backs out of it). */
+   *  build, no slam, no payoff. This voice's banked charge is forfeit (arming
+   *  was the bet; backing out drops it). */
   disarmRole(role: Role): boolean {
+    this.charge.delete(role);
+    this.chargeOverflowing.delete(role);
+    this.armedAtS.delete(role);
     return this.held.delete(role);
   }
 
-  /** Danger-priced tension fill (player path only — the caller gates on fx so
-   *  the headless bot stays bit-identical). Reads only deterministic world
-   *  state and writes only display-side fields (tension, killStreak), so it
-   *  never perturbs the hashed simulation even where it does run. */
-  updateTension(dt: number): void {
-    const T = HOLD.tension;
+  /** True if every owned voice is armed and they were armed within `windowS` of
+   *  each other — the synchronized full-band "all-in" (needs ≥3 owned voices to
+   *  be meaningful). */
+  isFullBandSynced(windowS: number): boolean {
+    if (this.tiers.size < 3 || this.held.size !== this.tiers.size) return false;
+    let min = Infinity;
+    let max = -Infinity;
+    for (const r of this.held) {
+      const t = this.armedAtS.get(r) ?? 0;
+      if (t < min) min = t;
+      if (t > max) max = t;
+    }
+    return max - min <= windowS;
+  }
+
+  /** Per-voice charge fill (player path only — the caller gates on fx so the
+   *  headless bot stays bit-identical). Reads only deterministic world state
+   *  and writes only display-side fields (charge, killStreak, danger, overflow),
+   *  so it never perturbs the hashed simulation even where it does run. */
+  updateCharge(dt: number): void {
+    const C = HOLD.charge;
     // kill-streak estimate decays with ~1s memory.
     this.killStreak = Math.max(0, this.killStreak - this.killStreak * dt);
-    // Crowd danger: every enemy inside the pressure radius counts (a near-miss
-    // weight makes closer enemies count for more, folding nearMissBonus in).
+    // danger01: crowd (each in-range enemy 0.5 + 0.5×closeness) + weighted kills.
     const p = this.player;
-    const pr = T.pressureRadius;
+    const pr = C.pressureRadius;
     const near = this.hash.query(p.x, p.y, pr, this.queryBuf);
     let crowd = 0;
     for (const e of near) {
@@ -811,48 +857,53 @@ export class RunWorld {
       const d2 = dx * dx + dy * dy;
       if (d2 > pr * pr) continue;
       const closeness = 1 - Math.sqrt(d2) / pr; // 0 at the edge → 1 at the player
-      crowd += 0.5 + (0.5 + T.nearMissBonus * 10) * closeness;
+      crowd += 0.5 + 0.5 * closeness;
     }
-    const crowd01 = Math.min(1, crowd / T.crowdFull);
-    const kill01 = Math.min(1, (this.killStreak / T.killRateFull) * (T.killStreakScale * 2));
-    const danger01 = Math.min(1, crowd01 + kill01);
-    // Fill scales with danger; armed voices amplify it (the bet). Safe = ~0.
-    let fill = T.fillAtMaxDanger * danger01;
-    fill += this.held.size * T.heldFillBonus * danger01;
-    let next = this.tension + fill * dt;
-    // Overflow: topping out while armed latches a bleed that keeps draining the
-    // held bet even after it dips below full — you must spend it or lose it.
-    // Under sustained max danger the fill still out-races the bleed and re-caps
-    // it (the waver cue holds); once the danger eases it drains.
-    if (next >= 1 && this.held.size > 0) this.overflowing = true;
-    if (this.held.size === 0) this.overflowing = false;
-    if (this.overflowing) next -= T.overflowBleedPerS * dt;
-    this.tension = Math.max(0, Math.min(1, next));
-    if (this.tension <= 0) this.overflowing = false;
+    const crowd01 = Math.min(1, crowd / C.crowdFull);
+    const kill01 = Math.min(1, this.killStreak / C.killRateFull);
+    const danger01 = Math.min(1, crowd01 + C.killStreakWeight * kill01);
+    this.lastDanger01 = danger01;
+    // Base rate is always positive (the toy is never locked out); danger only
+    // multiplies it. Charging under fire is faster and banks a bigger drop.
+    // While a committed drop's build is in flight the drop was already sized, so
+    // freeze every armed voice's charge (sockets read "locked in").
+    if (this.dropInFlight) return;
+    const rate = C.baseRate * (1 + (C.dangerMul - 1) * danger01);
+    for (const role of this.held) {
+      // Always bank at the danger-scaled rate; once a voice tops out it latches
+      // "overflowing" and also bleeds. Bleed is tuned above the safe base rate
+      // but below the danger rate, so a full voice drains while safe and holds
+      // (with a waver cue) while under fire — spend it or lose it.
+      let c = (this.charge.get(role) ?? 0) + rate * dt;
+      if (c >= C.perVoiceMax) {
+        c = C.perVoiceMax;
+        this.chargeOverflowing.add(role);
+      }
+      if (this.chargeOverflowing.has(role)) c -= C.overflowBleedPerS * dt;
+      c = Math.max(0, Math.min(C.perVoiceMax, c));
+      this.charge.set(role, c);
+      if (c <= 0) this.chargeOverflowing.delete(role);
+    }
   }
 
   /** Land a committed drop on the one: re-open the armed voices' amplified-fire
    *  windows (unless a fizzle) and detonate the slam. Called from the ticker on
-   *  the exact grid downbeat; the caller re-enables the audio voices. Sized by
-   *  the banked tension × `comboMul` (a synchronized multi-drop beats the sum of
-   *  its parts). A fizzle passes payoff=false for a weak, windowless pop.
-   *  Player-driven only. */
-  landDrop(roles: readonly Role[], comboMul: number, payoff: boolean): void {
-    const tension = this.tension;
-    const power = payoff ? Math.max(0.15, tension) * comboMul : HOLD.build.fizzleSlamMul;
+   *  the exact grid downbeat; the caller re-enables the audio voices. `power`
+   *  and the per-voice `mulByRole` were FROZEN at commit (game.ts), so the sim
+   *  slam and the render juice share one number and can't drift as charge keeps
+   *  moving through the build. A fizzle passes payoff=false. Player-driven. */
+  landDrop(roles: readonly Role[], power: number, payoff: boolean, mulByRole?: ReadonlyMap<Role, number>): void {
     for (const role of roles) {
       this.held.delete(role);
+      this.charge.delete(role);
+      this.chargeOverflowing.delete(role);
+      this.armedAtS.delete(role);
       if (payoff) {
-        this.payoffMul.set(role, 1 + tension * (HOLD.maxFireMul - 1) * comboMul);
+        this.payoffMul.set(role, mulByRole?.get(role) ?? 1);
         this.payoffT.set(role, HOLD.payoffS);
       }
     }
-    // A drop spends the banked tension it was sized by, and locks the cooldown.
-    if (payoff) {
-      this.tension = 0;
-      this.overflowing = false;
-      this.fullBandCdT = HOLD.fullBandCooldownS;
-    }
+    if (payoff) this.fullBandCdT = HOLD.fullBandCooldownS;
     const color = roles.length > 0 ? KIT_COLORS[roles[0]] : KIT_COLORS.kick;
     this.dropSlam(power, color);
   }
@@ -891,18 +942,6 @@ export class RunWorld {
       alpha: Math.min(HOLD.juice.flashAlphaMax, 0.14 + 0.34 * Math.min(1, power)),
       dur: 0.35,
     });
-  }
-
-  /** Sub-phase A debug drop (docs/phases/hold-and-drop-v2.md): fire the slam
-   *  and open the amplified-fire window on every owned voice, as if a full-band
-   *  drop just landed on the one. Player-driven only, so the bot/replay path is
-   *  untouched (this is never called there). */
-  debugDrop(power = 1.5): void {
-    for (const role of this.tiers.keys()) {
-      this.payoffMul.set(role, 1 + (HOLD.maxFireMul - 1) * Math.min(1, power / 2));
-      this.payoffT.set(role, HOLD.payoffS);
-    }
-    this.dropSlam(power, KIT_COLORS.kick);
   }
 
   /** Slot an effect onto a weapon (Feature 4). The audio chain is wired by
@@ -1003,12 +1042,12 @@ export class RunWorld {
     if (this.mods.regenPerS > 0 && this.player.hp > 0)
       this.player.hp = Math.min(RUN.playerHp, this.player.hp + this.mods.regenPerS * dt);
 
-    // Hold & Drop v2 tension economy — player path only (the bot never arms or
+    // Hold & Drop v2.1 charge economy — player path only (the bot never arms or
     // drops, so gating on the fx queue keeps its runs bit-identical and off the
     // re-baseline path, matching the sub-phase A determinism guarantee). Writes
     // only display-side fields, so even here it never perturbs the hashed sim.
     if (this.fx) {
-      this.updateTension(dt);
+      this.updateCharge(dt);
       if (this.fullBandCdT > 0) this.fullBandCdT = Math.max(0, this.fullBandCdT - dt);
     }
 
@@ -1424,8 +1463,9 @@ export class RunWorld {
     if (e.hp <= 0) {
       e.dead = true;
       this.kills++;
-      // Feeds the tension danger read (decayed + used only on the player path).
-      this.killStreak += 1;
+      // Feeds the charge danger read (player path only; guarded so the bot path
+      // stays a pure, side-effect-free write-free hot loop).
+      if (this.fx) this.killStreak += 1;
       if (source) this.killsByRole[source] = (this.killsByRole[source] ?? 0) + 1;
       this.spawnPop(e.x, e.y, e.radius);
       this.spawnGem(e.x, e.y, e.xp);

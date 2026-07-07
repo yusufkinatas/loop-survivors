@@ -4,9 +4,19 @@ Last updated: July 7, 2026
 
 ## Current work (branch `prototype-hold-drop`)
 
-**Hold & Drop v2 — sub-phase B (ARM + tension economy) built, awaiting the developer gate.** Spec: `docs/phases/hold-and-drop-v2.md`. Sub-phase A (the drop event: build → gap → slam + juice, debug-triggered) **passed** the developer's ear/hands (`13b72ca`). Sub-phase B now layers the two verbs on top: **ARM** (number keys 1–8 pull a slot back — instant silence, the vulnerability) banks a **danger-priced tension** resource (fills from nearby crowd + kill-streak, ~zero when safe, faster per armed voice); an **overflow latch** bleeds the held bet at 15%/s once it tops out; **DROP** (Q) commits every armed voice into the sub-phase-A build→gap→slam sized by banked tension × combo, spends the tension, and locks a 13s cooldown; a sub-minimum drop (tension < 0.12) **fizzles** for free. HUD tension meter gained overflow-waver + cooldown states. Uncommitted on `prototype-hold-drop`.
+**Hold & Drop v2 — sub-phase B first pass SENT BACK; the B rework (v2.1) spec is LOCKED and is the next build target.** Spec: `docs/phases/hold-and-drop-v2.md` → the "Sub-phase B rework (v2.1)" section. Sub-phase A (the drop event) passed (`13b72ca`). The shipped B pass (`4a6bdbb`, danger-priced global tension pool + Q commit + 13s cooldown + fizzle) was rejected by the developer's hands on four counts: closed sockets don't look like they're charging; the meter is illegible; the borrowed build voices clash with owned instruments; and P-vs-Q is confusing with Q never taught. A three-expert workflow review (code / game-design / music) traced all four to one mental-model mismatch plus a real design flaw (the danger-priced pool punishes good positioning and locks a safe player out of the toy).
 
-**Gate B (the developer's ear/hands):** muted first (Pillar 3) — is arming a real, dangerous decision and the earned drop satisfying to release with the sound off? Then sound on — does tension feel earned (not cheap), does the fizzle punish an unearned drop, does the cooldown make Q feel like a spent resource? Try the parked "small live benefit while armed" nudge if arming feels purely punitive, and the disarm-refund question. Dev server: `npm run dev`, `#sandbox` (force-assemble any loadout, `invulnerable` on, spawn swarms to build danger; number keys arm, Q drops). Engineering-verified: `tsc` + `vite build` clean; bot smoke unchanged (~4:13 median, mechanic off the bot path); Chrome — fill rates, overflow bleed, drop/fizzle/cooldown, key wiring, zero console errors.
+**The locked rework (developer-signed-off decisions):**
+1. **Per-voice charge pivot** — charge is anchored to each armed voice (a slow base rate, always available), and danger MULTIPLIES the rate (≈3× cap) instead of being the sole source. The socket becomes the gauge; the meter is the summed drop-size preview.
+2. **Rebuild the drop from the player's OWN instruments** — resolve roll/gap/slam by slot via `ownerOfSlot`; strip the whole loop in the gap; re-fire owned Pulse/Bass in key; borrow a generic in-key voice only for empty slots; riser stays the one foreign voice; slam audio scales with voice count. (Pulls the "reclaim voices" work forward from sub-phase C.)
+3. **One taught verb** — Q only, with a "DROP [Q]" prompt (lit above the fizzle floor, greyed "too weak" below); the P debug drop moves behind the debug overlay (KeyO).
+4. **Short anti-double-tap cooldown** (~2–3s) instead of the hard 13s; per-voice recharge is the real rate limit.
+5. **Synchronized full-band bonus** wired behind a config flag (the only skill topping in scope; solo long-hold and perfect-release ring parked).
+Plus a correctness fix: freeze slam power at commit (it currently diverges from the sim slam over the build), guard the stray `killStreak++` behind `this.fx`, delete dead v1 config.
+
+The 7-step build order and the rework gate-B criteria are in the spec section. Not yet implemented.
+
+**Open taste-decisions for gate B** (in the spec's open-questions list): base charge rate, danger-multiplier ceiling, disarm refund vs forfeit, whether arming still needs a live move/pickup nudge, Lo-Fi whole-loop gap depth, the sync bonus ceiling.
 
 ---
 
