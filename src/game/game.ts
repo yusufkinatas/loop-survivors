@@ -73,6 +73,11 @@ export async function bootGame(
   const pauseRack = pauseOverlay.querySelector('.pause-rack') as HTMLElement;
   function togglePause(): void {
     if (state !== 'run') return;
+    // A drop's build is already scheduled to absolute audio times; pausing only
+    // stops the sequencer, not those pre-scheduled riser/roll/gap/slam events,
+    // so they'd play over a frozen pause screen. The build is a ~2-4s window —
+    // just defer the pause until it lands (the drop then resolves normally).
+    if (!paused && world?.dropInFlight) return;
     paused = !paused;
     pauseOverlay.style.display = paused ? '' : 'none';
     if (paused) {
@@ -170,16 +175,22 @@ export async function bootGame(
     const synced =
       HOLD.sync.enabled && w.isFullBandSynced(HOLD.sync.windowBeats * engine.beatSeconds);
     const syncMul = synced ? 1 + HOLD.sync.bonus : 1;
-    const power = sum * syncMul;
+    // Combo (spec, kept): spreading the same charge across more voices beats the
+    // sum of its parts. syncBonus is an extra edge on top for the all-in.
+    const combo = 1 + (roles.length - 1) * HOLD.comboBonus;
+    const power = sum * combo * syncMul;
     // Freeze each voice's amplified-fire multiplier from its charge at commit.
     const muls = new Map<Role, number>();
     for (const role of roles) {
-      muls.set(role, 1 + w.chargeOf(role) * (HOLD.maxFireMul - 1) * syncMul);
+      muls.set(role, 1 + w.chargeOf(role) * (HOLD.maxFireMul - 1) * combo * syncMul);
     }
     const dv = dropVoices(w.tiers);
-    const gapFloor = Math.max(0, 1 - (HOLD.gapDuck[activeGenre().id] ?? 1));
+    // Non-sync drops keep the gate-A-approved 2-bar build; a synchronized all-in
+    // gets a deeper gap (a full cut, over the per-genre duck) so the brace reads
+    // bigger. (Per-genre 1-vs-2-bar / grid-flex is Sub-phase C, not here.)
+    const gapFloor = synced ? 0 : Math.max(0, 1 - (HOLD.gapDuck[activeGenre().id] ?? 1));
     const sched = engine.scheduleDrop({
-      bars: synced ? HOLD.build.slowGenreBars : HOLD.build.fastGenreBars,
+      bars: HOLD.build.slowGenreBars,
       gapBeats: HOLD.build.gapBeats,
       rollRoles: dv.rollRoles,
       gapRoles: dv.gapRoles,
@@ -583,6 +594,10 @@ export async function bootGame(
     applyGain();
     engine.clock.stop();
     engine.clearBarQueue();
+    // Death/victory leaves world.held populated; stop any armed voices' charge
+    // hums so they don't drone through the end screen (they're free-running
+    // oscillators, not sequencer-driven).
+    engine.setChargeHums([]);
     hud.showEnd(
       victory,
       {

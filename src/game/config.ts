@@ -836,9 +836,9 @@ export const HOLD = {
   /** Drop slam damage at power 1 (scaled by summed charge × powerMul). */
   slamDamage: 90,
   slamKnockback: 460,
-  /** Legacy multi-drop bonus. In v2.1 the summed per-voice charge already
-   *  rewards dropping more voices, so this is only the extra edge the
-   *  synchronized full-band drop can add on top (see `sync`). */
+  /** Multi-drop combo (spec, kept): extra power per extra voice dropped, so
+   *  spreading the same charge across more voices beats the sum of its parts.
+   *  The synchronized full-band bonus (`sync`) is an additional edge on top. */
   comboBonus: 0.5,
 
   // ---- v2.1 rework (docs/phases/hold-and-drop-v2.md, "Sub-phase B rework") --
