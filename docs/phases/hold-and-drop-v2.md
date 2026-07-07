@@ -1,6 +1,12 @@
 # Hold & Drop v2 Spec
 
-Status: **Proposed v2. Supersedes the v1 prototype note (`docs/phases/hold-and-drop.md`).** This is the design after the beat-maker / designer convergence. It is written to be implemented by an agent who was not in that conversation. Every decision below is locked EXCEPT the items in "Open questions / parked decisions." Awaiting the developer's ear-and-hands gate on each sub-phase; nothing here has passed a gate yet.
+Status: **Proposed v2. Supersedes the v1 prototype note (`docs/phases/hold-and-drop.md`).** This is the design after the beat-maker / designer convergence. It is written to be implemented by an agent who was not in that conversation. Every decision below is locked EXCEPT the items in "Open questions / parked decisions."
+
+**Gate ledger:**
+- **Sub-phase A — the drop event (build → gap → slam): PASSED** (July 7, 2026, developer's ear/hands: "drop feels right"). Committed on `prototype-hold-drop` (`13b72ca`). Debug-triggered (KeyP), fixed 2-bar House build, guaranteed riser+kick, render-clock juice; bot-determinism preserved.
+- Sub-phase B (ARM + tension economy) — not started.
+- Sub-phase C (all six genres + grid-flex + gap scaling) — not started.
+- Sub-phase D (balance + across-the-run pass) — not started.
 
 Music terms are explained in plain words the first time they appear. The developer is not a musician; his ear is the gate.
 
