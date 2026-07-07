@@ -37,13 +37,13 @@ off.)
 ## The model
 
 - **A genre is a playable character.** Six ship: Lo-Fi, House, Synthwave,
-  Hip-Hop, Drum & Bass, Techno.
+  Techno. (Hip-Hop and Drum & Bass were removed July 7, 2026.)
 - **The soundset is shared.** All genres play the same twelve instrument types
   (the tools). A genre never adds or removes a weapon.
 - **The track is the difference.** Each genre supplies its own tempo, swing,
   and a four-tier pattern ladder for every one of the twelve weapons. Same
   tool, different track: a House kick is four-on-the-floor, a Lo-Fi kick lays
-  back, a Drum & Bass kick snaps a breakbeat.
+  back, a Techno kick drives relentlessly.
 - **Selection:** at the start of a run the player picks a genre, then a
   starting weapon (both on the start screen; the sandbox has a live genre
   switcher). Everything after is the M2 pick economy, unchanged, but voiced in
@@ -84,7 +84,7 @@ with new-weapon behavior inspired by Vampire Survivors, plus a synthesized kit
 - `src/audio/kits.ts` — twelve synthesized kits (`Role` is now twelve-wide).
 - `src/audio/groove.ts` — a tiny pattern DSL (`d()` drum strings, `m()` note
   tuples) so genre ladders stay legible.
-- `src/audio/genres.ts` — the six genres: id, name, blurb, color, bpm, swing,
+- `src/audio/genres.ts` — the genres: id, name, blurb, color, bpm, swing,
   powerMul, and a `Record<Role, Chart[]>` of four-tier ladders. Validated at
   load. Shared zap/crash ladders; everything else per genre.
 - `src/audio/chartstore.ts` — genre-aware working copies; `setActiveGenre`

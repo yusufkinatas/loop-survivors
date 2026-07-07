@@ -10,7 +10,7 @@
 // position several weapons can compete for. Do not conflate the two.
 
 import type { Role } from '../audio/kits';
-import type { GenreId } from '../audio/genres';
+import { genreSupports, type GenreId } from '../audio/genres';
 
 /** The eight band positions, in the on-screen rack order. */
 export type Slot =
@@ -87,6 +87,17 @@ export function slotOf(role: Role): Slot {
   return ROLE_SLOT[role];
 }
 
+/** A slot's roster restricted to the instruments the genre is optimized for.
+ *  Empty when the genre drops the whole slot (it supports no member of it). */
+export function supportedRoster(genreId: GenreId, slot: Slot): Role[] {
+  return SLOT_ROSTER[slot].filter((r) => genreSupports(genreId, r));
+}
+
+/** The band slots a genre actually fills (drops the ones it supports nothing in). */
+export function supportedSlots(genreId: GenreId): Slot[] {
+  return SLOTS.filter((s) => supportedRoster(genreId, s).length > 0);
+}
+
 /** The instrument currently filling a slot, if any, given the owned tiers. */
 export function ownerOfSlot(slot: Slot, tiers: ReadonlyMap<Role, number>): Role | undefined {
   for (const role of SLOT_ROSTER[slot]) {
@@ -119,7 +130,7 @@ export function startableRoles(roles: readonly Role[]): Role[] {
 /**
  * Design rule 6: genre-weighted roster draws. When a slot with more than one
  * of today's instruments comes up, the genre's idiomatic member is favoured
- * (House leads with clap, DnB with snare, ...). A soft multiplier on the draw
+ * (House leads with clap, Techno with ride, ...). A soft multiplier on the draw
  * weight, never a lock — the off-genre member can still appear. Anything
  * unlisted is 1.0. Single-member slots (Hats/Bass/Harmony/Melody) are unaffected.
  */
@@ -127,8 +138,6 @@ const GENRE_ROLE_AFFINITY: Record<GenreId, Partial<Record<Role, number>>> = {
   lofi: { snare: 1.3, clap: 0.7, arp: 1.2, cowbell: 0.85, tom: 1.1, rhodes: 1.3, choir: 1.15, bell: 1.15 },
   house: { clap: 1.5, snare: 0.7, cowbell: 1.3, arp: 0.85, choir: 1.25, ride: 1.2 },
   synthwave: { snare: 1.15, clap: 0.9, arp: 1.35, cowbell: 0.7, bell: 1.35, choir: 1.2 },
-  hiphop: { snare: 1.4, clap: 0.75, cowbell: 1.15, arp: 0.9, bell: 1.2, whistle: 1.15 },
-  dnb: { snare: 1.5, clap: 0.7, arp: 1.3, cowbell: 0.75, reese: 1.7, ride: 1.15 },
   techno: { clap: 1.3, snare: 0.85, cowbell: 1.2, arp: 0.9, tom: 1.15, ride: 1.3, reese: 1.2 },
 };
 

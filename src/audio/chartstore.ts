@@ -9,8 +9,15 @@
 // (plumbing) saves edits to localStorage per genre and re-applies them on load.
 
 import { TIER_COUNT, validateChart, type Chart } from './charts';
-import { GENRES, GENRE_BY_ID, DEFAULT_GENRE, type Genre, type GenreId } from './genres';
-import { ROLES, type Role } from './kits';
+import {
+  GENRES,
+  GENRE_BY_ID,
+  DEFAULT_GENRE,
+  supportedRoles,
+  type Genre,
+  type GenreId,
+} from './genres';
+import { type Role } from './kits';
 
 const storageKey = (genre: GenreId, role: Role, tier: number) =>
   `loop.chart.${genre}.${role}.${tier}`;
@@ -29,13 +36,19 @@ function cloneChart(chart: Chart): Chart {
 const working = new Map<string, Chart>();
 const edited = new Set<string>();
 
-// Build working copies for every genre, overlaying any saved edits that still
-// validate.
+// An empty stand-in for a (genre, role) the genre does not support: getChart
+// stays total, so an unsupported voice that is never enabled reads a silent
+// chart instead of crashing. Never mutated; treat as read-only.
+const EMPTY_CHART = (role: Role): Chart => ({ role, bars: 1, events: [] });
+
+// Build working copies for every genre's SUPPORTED roles only, overlaying any
+// saved edits that still validate. A genre omits the roles it is not optimized
+// for; those have no working copy (getChart returns a silent stand-in).
 for (const genre of GENRES) {
-  for (const role of ROLES) {
+  for (const role of supportedRoles(genre.id)) {
     for (let tier = 1; tier <= TIER_COUNT; tier++) {
       const key = storageKey(genre.id, role, tier);
-      const chart = cloneChart(genre.ladders[role][tier - 1]);
+      const chart = cloneChart(genre.ladders[role]![tier - 1]);
       const saved = storage.getItem(key);
       if (saved) {
         try {
@@ -72,9 +85,10 @@ export function activeGenreBpm(): number {
 }
 
 /** The live working chart for the active genre's (role, tier). Stable object
- *  identity within a genre. */
+ *  identity within a genre. Returns a silent stand-in for a role the active
+ *  genre does not support (that voice is never enabled). */
 export function getChart(role: Role, tier: number): Chart {
-  return working.get(storageKey(active.id, role, tier))!;
+  return working.get(storageKey(active.id, role, tier)) ?? EMPTY_CHART(role);
 }
 
 export function isEdited(role: Role, tier: number): boolean {
@@ -93,8 +107,9 @@ export function saveChart(role: Role, tier: number): void {
 /** Throw away the edit and restore the shipped chart, in place. */
 export function resetChart(role: Role, tier: number): void {
   const key = storageKey(active.id, role, tier);
-  const chart = working.get(key)!;
-  const shipped = active.ladders[role][tier - 1];
+  const chart = working.get(key);
+  const shipped = active.ladders[role]?.[tier - 1];
+  if (!chart || !shipped) return; // unsupported role: nothing to reset
   chart.bars = shipped.bars;
   chart.events = shipped.events.map((e) => ({ ...e }));
   storage.removeItem(key);

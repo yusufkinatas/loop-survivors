@@ -2,9 +2,10 @@
 // away at M4 (docs/phases/m1-demo.md). Start screen, HUD, pick screen,
 // end screens, and the hit flash.
 
-import { ROLES, type Kit, type Role } from '../audio/kits';
-import type { Genre } from '../audio/genres';
-import { SLOTS, SLOT_LABEL, ownerOfSlot, slotOf, startableRoles, type Slot } from './band';
+import { type Kit, type Role } from '../audio/kits';
+import { supportedRoles, type Genre, type GenreId } from '../audio/genres';
+import { sampledRoles } from '../audio/kits/index';
+import { SLOTS, SLOT_LABEL, ownerOfSlot, slotOf, startableRoles, supportedRoster, type Slot } from './band';
 import type { RunWorld } from './run';
 import { HOLD, TIER_LINES } from './config';
 import { EFFECT_META } from './effects';
@@ -51,6 +52,8 @@ export class Hud {
   private screen: HTMLElement | null = null;
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
   private kits: Map<Role, Kit>;
+  /** The active genre, so the rack can mark slots this genre drops. */
+  private genreId: GenreId | null = null;
   private debugRow: HTMLElement | null = null;
   private debugButtons: { btn: HTMLElement; action: DebugAction }[] = [];
 
@@ -100,6 +103,12 @@ export class Hud {
     this.tensionEl.style.display = show ? '' : 'none';
   }
 
+  /** Tell the rack which genre is active, so slots this genre drops (supports
+   *  no instrument for) render as unavailable rather than askable-to-fill. */
+  setGenre(genreId: GenreId): void {
+    this.genreId = genreId;
+  }
+
   /** The band rack (docs/phases/the-band.md): eight typed sockets in rack
    *  order, empty ones asking to be filled, filled ones showing the hired
    *  instrument (its color + name) and its tier as pips. Rebuilt on every pick
@@ -111,11 +120,17 @@ export class Hud {
     if (live) this.sockets.clear();
     SLOTS.forEach((slot, i) => {
       const owner = ownerOfSlot(slot, tiers);
-      const socket = el('div', `band-socket ${owner ? 'filled' : 'empty'}`, into);
-      // The number key that pulls this band position back / brings it in.
-      el('span', 'socket-key', socket, String(i + 1));
+      // A slot the active genre supports no instrument for is dropped: shown
+      // dimmed and unavailable, never asking to be filled.
+      const dropped =
+        this.genreId !== null && supportedRoster(this.genreId, slot).length === 0;
+      const cls = dropped ? 'unavailable' : owner ? 'filled' : 'empty';
+      const socket = el('div', `band-socket ${cls}`, into);
+      // The number key that pulls this band position back / brings it in
+      // (Hold & Drop). A dropped slot offers nothing to interact with.
+      if (!dropped) el('span', 'socket-key', socket, String(i + 1));
       el('span', 'socket-slot', socket, SLOT_LABEL[slot]);
-      if (owner) {
+      if (owner && !dropped) {
         const kit = this.kits.get(owner)!;
         socket.style.setProperty('--voice-color', kit.color);
         el('span', 'socket-name', socket, kit.name);
@@ -272,18 +287,22 @@ export class Hud {
     const showWeapons = (genre: Genre): void => {
       const s = this.newScreen();
       el('h2', '', s, `${genre.name} — pick your starting instrument`);
-      el('p', 'sub', s, 'Same twelve tools every genre; each one plays them differently.');
+      el('p', 'sub', s, `${genre.name} has its own sound and its own instruments.`);
       const grid = el('div', 'pick-grid', s);
       const cards: HTMLElement[] = [];
       // FX is barred from the starting offer (design rule 5) — a tier-1 FX
-      // voice is near-silent for minutes, a dead opener.
-      for (const role of startableRoles(ROLES)) {
-        cards.push(
-          this.kitCard(grid, { kind: 'weapon', role, tier: 1 }, () => {
-            this.closeScreen();
-            onStart(genre, role);
-          }),
-        );
+      // voice is near-silent for minutes, a dead opener — and only this genre's
+      // supported instruments are offered.
+      const custom = sampledRoles(genre.id); // dev aid: which voices are sampled
+      for (const role of startableRoles(supportedRoles(genre.id))) {
+        const card = this.kitCard(grid, { kind: 'weapon', role, tier: 1 }, () => {
+          this.closeScreen();
+          onStart(genre, role);
+        });
+        // ★ custom marks a voice that is sample-backed for this genre (dev only),
+        // matching the sandbox loadout badge.
+        if (custom.has(role)) el('span', 'kit-custom-badge', card, '★ custom');
+        cards.push(card);
       }
       this.armKeys(cards);
       const back = el('button', '', s, '← back to genres');
@@ -300,13 +319,17 @@ export class Hud {
     el('h2', '', s, 'Level up');
     const grid = el('div', 'pick-grid', s);
     const cards: HTMLElement[] = [];
+    // Dev aid: mark offered weapons whose voice is sample-backed for the genre.
+    const custom = this.genreId !== null ? sampledRoles(this.genreId) : new Set<Role>();
     for (const option of options) {
-      cards.push(
-        this.kitCard(grid, option, () => {
-          this.closeScreen();
-          onPick(option);
-        }),
-      );
+      const card = this.kitCard(grid, option, () => {
+        this.closeScreen();
+        onPick(option);
+      });
+      if (option.kind === 'weapon' && custom.has(option.role)) {
+        el('span', 'kit-custom-badge', card, '★ custom');
+      }
+      cards.push(card);
     }
     this.armKeys(cards);
   }

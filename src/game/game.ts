@@ -5,7 +5,13 @@
 import { Application } from 'pixi.js';
 import type { MusicEngine } from '../audio/engine';
 import { activeGenre } from '../audio/chartstore';
-import { GENRES, GENRE_BY_ID, DEFAULT_GENRE, type Genre, type GenreId } from '../audio/genres';
+import {
+  GENRES,
+  GENRE_BY_ID,
+  DEFAULT_GENRE,
+  type Genre,
+  type GenreId,
+} from '../audio/genres';
 import { ROLES, type Kit, type Role } from '../audio/kits';
 import { SIM_DT, VirtualConductor } from '../bot/conductor';
 import { MOVERS, type MoverName } from '../bot/movers';
@@ -457,6 +463,7 @@ export async function bootGame(
     // Set the genre first: it re-points every voice's chart, so the tier set
     // below reads the genre's own pattern for the starting instrument.
     engine.setGenre(genre);
+    hud.setGenre(genre.id);
     engine.setVoiceTier(startingKit, 1);
     engine.setVoiceEnabled(startingKit, true);
     world.addWeapon(startingKit, 1);
@@ -478,6 +485,8 @@ export async function bootGame(
     const applyGenre = (g: Genre): void => {
       engine.setGenre(g);
       w.powerMul = g.powerMul;
+      hud.setGenre(g.id);
+      hud.renderBand(w.tiers);
     };
     applyGenre(GENRE_BY_ID[DEFAULT_GENRE]);
     w.invincible = true;

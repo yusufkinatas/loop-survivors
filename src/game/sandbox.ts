@@ -5,7 +5,17 @@
 
 import type { MusicEngine } from '../audio/engine';
 import type { Genre, GenreId } from '../audio/genres';
-import { ROLES } from '../audio/kits';
+import { supportedRoles } from '../audio/genres';
+import { ROLES, ROLE_META, type Role } from '../audio/kits';
+import { sampledRoles, variantsFor, getGenreVariant, setGenreVariant } from '../audio/kits/index';
+import {
+  genreRoleWeight,
+  supportedRoster,
+  supportedSlots,
+  SLOTS,
+  SLOT_ROSTER,
+  SLOT_LABEL,
+} from './band';
 import { TIER_NUMERALS } from './hud';
 import { ENEMIES, enemyScaling, RUN, type EnemyKind } from './config';
 import { ITEM_IDS, ITEMS } from './items';
@@ -19,7 +29,6 @@ const ENEMY_KINDS: EnemyKind[] = [
   'charger',
   'circler',
   'shielded',
-  'spitter',
   'elite',
 ];
 
@@ -60,19 +69,105 @@ export function mountSandboxPanel(
   const exitBtn = el('button', 'small', head, '← leave') as HTMLButtonElement;
   exitBtn.onclick = opts.onExit;
 
-  // ---- genre switcher: swap tempo, swing, and every weapon's patterns ----
+  // ---- genre switcher: swap tempo, swing, the genre's own voicing, AND its
+  // supported instrument set ----
   el('div', 'sb-section', panel, 'genre');
   const genreRow = el('div', 'sb-btns sb-controls', panel);
   const genreBtns: HTMLButtonElement[] = [];
+  let currentGenreId: GenreId = opts.initial;
   for (const g of opts.genres) {
     const b = el('button', 'small', genreRow, g.name) as HTMLButtonElement;
     b.onclick = () => {
+      currentGenreId = g.id;
       opts.onGenre(g);
       genreBtns.forEach((x) => x.classList.toggle('on', x === b));
+      renderOptimizedFor();
+      renderProtoSelector();
+      refreshCustom();
+      // A dropped-slot instrument may have vanished from this genre; re-fire the
+      // full band so it reassembles from the genre's supported slots.
+      if (bandOn) {
+        bandOn = false;
+        bandBtn.click();
+      }
     };
     if (g.id === opts.initial) b.classList.add('on');
     genreBtns.push(b);
   }
+
+  // ---- optimized-for readout: which instruments this genre is built around ----
+  // Play-testing reads this to know each genre's set (genres may drop slots).
+  el('div', 'sb-section', panel, 'optimized for');
+  const optimizedFor = el('div', 'sb-hint', panel, '');
+  const renderOptimizedFor = (): void => {
+    const names = supportedRoles(currentGenreId).map((r) => ROLE_META[r].name);
+    optimizedFor.textContent = `${names.length} instruments: ${names.join(', ')}`;
+  };
+
+  // Assemble a representative full band for the current genre so its whole track
+  // can be heard at once: its idiomatic instrument in each SUPPORTED slot, all
+  // at tier 4. Toggles off (silences every voice) when pressed again.
+  let bandOn = false;
+  const bandBtn = el('button', 'small sb-controls', panel, '▶ play full band') as HTMLButtonElement;
+  const bestForSlot = (slot: Parameters<typeof supportedRoster>[1]): ReturnType<typeof supportedRoster>[number] => {
+    const roster = supportedRoster(currentGenreId, slot);
+    return roster.reduce((best, r) =>
+      genreRoleWeight(currentGenreId, r) > genreRoleWeight(currentGenreId, best) ? r : best,
+    );
+  };
+  bandBtn.onclick = () => {
+    bandOn = !bandOn;
+    for (const role of ROLES) {
+      engine.setVoiceEnabled(role, false);
+      world.removeWeapon(role);
+    }
+    if (bandOn) {
+      for (const slot of supportedSlots(currentGenreId)) {
+        const role = bestForSlot(slot);
+        engine.setVoiceTier(role, 4);
+        engine.setVoiceEnabled(role, true);
+        world.addWeapon(role, 4);
+      }
+    }
+    bandBtn.classList.toggle('on', bandOn);
+    bandBtn.textContent = bandOn ? '■ stop full band' : '▶ play full band';
+    opts.onLoadout?.();
+  };
+
+  renderOptimizedFor();
+
+  // ---- kit prototype selector: A/B the genre's alternative sampled voicings ----
+  // Switching a prototype re-renders the genre's kit (setGenreVariant drops the
+  // cache) and re-applies the genre so every voice picks up the new samples.
+  // Genres with no prototypes (e.g. House, already finalized) show nothing.
+  el('div', 'sb-section', panel, 'kit prototype');
+  const protoRow = el('div', 'sb-btns sb-controls', panel);
+  const protoHint = el('div', 'sb-hint', panel, '');
+  const renderProtoSelector = (): void => {
+    protoRow.innerHTML = '';
+    const variants = variantsFor(currentGenreId);
+    if (variants.length <= 1) {
+      protoRow.style.display = 'none';
+      protoHint.textContent = 'no alternative kits for this genre (using the shipped voicing).';
+      return;
+    }
+    protoRow.style.display = '';
+    protoHint.textContent = 'pick a voicing, then play the full band or force any voice to compare.';
+    const active = getGenreVariant(currentGenreId);
+    for (const v of variants) {
+      const b = el('button', 'small', protoRow, v.name) as HTMLButtonElement;
+      if (v.desc) b.title = v.desc;
+      b.classList.toggle('on', v.id === active);
+      b.onclick = () => {
+        setGenreVariant(currentGenreId, v.id);
+        opts.onGenre(currentGenre());       // re-apply so the new samples load
+        [...protoRow.children].forEach((c) => c.classList.toggle('on', c === b));
+        refreshCustom();
+      };
+    }
+  };
+  const currentGenre = (): Genre => opts.genres.find((g) => g.id === currentGenreId)!;
+  renderProtoSelector();
 
   // ---- enemy roster: stats and spawn buttons ----
   el('div', 'sb-section', panel, 'enemies');
@@ -134,39 +229,60 @@ export function mountSandboxPanel(
   syncInvuln();
 
   // ---- loadout editor: any weapon at any tier, applied instantly ----
+  // Grouped by band slot (Beat / Snap / Tick / … , the rack order at the top of
+  // the screen) instead of a flat list, so a voice is easy to find by its job.
+  // A ★ custom badge marks the roles that are sample-backed for the active
+  // genre + prototype (its own voicing, worth focusing testing on); it updates
+  // when the genre or prototype changes.
   el('div', 'sb-section', panel, 'loadout');
-  for (const role of ROLES) {
-    const voice = engine.voices.get(role)!;
-    const row = el('div', 'sb-loadout', panel);
-    row.style.setProperty('--voice-color', voice.kit.color);
-    el('span', 'sb-loadout-name', row, voice.kit.name);
-    const btns = el('div', 'sb-btns', row);
-    const options: HTMLButtonElement[] = [];
-    const set = (tier: number | null) => {
-      if (tier === null) {
-        engine.setVoiceEnabled(role, false);
-        world.removeWeapon(role);
-      } else {
-        engine.setVoiceTier(role, tier);
-        engine.setVoiceEnabled(role, true);
-        world.addWeapon(role, tier);
-      }
-      options.forEach((b, i) =>
-        b.classList.toggle('on', tier === null ? i === 0 : i === tier),
-      );
-      opts.onLoadout?.();
-    };
-    const off = el('button', 'small', btns, 'off') as HTMLButtonElement;
-    off.onclick = () => set(null);
-    options.push(off);
-    TIER_NUMERALS.forEach((numeral, i) => {
-      const b = el('button', 'small', btns, numeral) as HTMLButtonElement;
-      b.onclick = () => set(i + 1);
-      options.push(b);
-    });
-    const current = world.tiers.get(role);
-    options.forEach((b, i) => b.classList.toggle('on', current === undefined ? i === 0 : i === current));
+  // Rows carry their slot so the custom badge can refresh on genre/proto change.
+  const customBadges: { role: Role; badge: HTMLElement }[] = [];
+  for (const slot of SLOTS) {
+    el('div', 'sb-slot-head', panel, SLOT_LABEL[slot]);
+    for (const role of SLOT_ROSTER[slot]) {
+      const voice = engine.voices.get(role)!;
+      const row = el('div', 'sb-loadout', panel);
+      row.style.setProperty('--voice-color', voice.kit.color);
+      const name = el('div', 'sb-loadout-name', row);
+      el('span', 'sb-loadout-label', name, voice.kit.name);
+      const badge = el('span', 'sb-custom-badge', name, '★ custom');
+      customBadges.push({ role, badge });
+      const btns = el('div', 'sb-btns', row);
+      const options: HTMLButtonElement[] = [];
+      const set = (tier: number | null) => {
+        if (tier === null) {
+          engine.setVoiceEnabled(role, false);
+          world.removeWeapon(role);
+        } else {
+          engine.setVoiceTier(role, tier);
+          engine.setVoiceEnabled(role, true);
+          world.addWeapon(role, tier);
+        }
+        options.forEach((b, i) =>
+          b.classList.toggle('on', tier === null ? i === 0 : i === tier),
+        );
+        opts.onLoadout?.();
+      };
+      const off = el('button', 'small', btns, 'off') as HTMLButtonElement;
+      off.onclick = () => set(null);
+      options.push(off);
+      TIER_NUMERALS.forEach((numeral, i) => {
+        const b = el('button', 'small', btns, numeral) as HTMLButtonElement;
+        b.onclick = () => set(i + 1);
+        options.push(b);
+      });
+      const current = world.tiers.get(role);
+      options.forEach((b, i) => b.classList.toggle('on', current === undefined ? i === 0 : i === current));
+    }
   }
+  // Show ★ custom only on the roles sampled for the active genre + prototype.
+  function refreshCustom(): void {
+    const custom = sampledRoles(currentGenreId);
+    for (const { role, badge } of customBadges) {
+      badge.style.display = custom.has(role) ? '' : 'none';
+    }
+  }
+  refreshCustom();
 
   // ---- items editor: dial any passive to any level, applied instantly ----
   el('div', 'sb-section', panel, 'items');
