@@ -1736,30 +1736,92 @@ button.big {
 /* Phrase visualizer (round-4): four cells = the four bars of the phrase. The
    current bar lights, a beat pulse ticks the four beats, and the 4th cell is the
    drop-window (the coming phrase "one" where a drop lands). Small + glanceable. */
+/* The drop track: a small "DROP" label + the four-bar phrase, so the strip
+   reads as one thing ("this is where the drop lands"). */
+.phrase-track {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.track-label {
+  font: 800 9px/1 var(--font-mono);
+  letter-spacing: 0.16em;
+  color: var(--ink-faint);
+}
 .phrase-viz {
+  flex: 1;
   display: flex;
   gap: 4px;
-  margin-bottom: 6px;
 }
 .phrase-cell {
+  position: relative;
   flex: 1;
-  height: 8px;
+  height: 16px;
+  display: grid;
+  place-items: center;
   border: 1px solid var(--line);
   border-radius: 3px;
   background: #0c0e13;
   transition: background 0.08s linear, box-shadow 0.08s linear;
 }
+.cell-bar {
+  font: 700 8px/1 var(--font-mono);
+  color: var(--ink-faint);
+  opacity: 0.5;
+  transition: color 0.1s linear, opacity 0.1s linear;
+}
+/* The ⟳ marks the phrase downbeat where a drop lands. */
+.cell-mark {
+  position: absolute;
+  font-size: 10px;
+  line-height: 1;
+  color: rgba(255, 200, 100, 0.75);
+}
 .phrase-cell.drop-window {
   border-color: rgba(255, 200, 100, 0.5);
 }
+.phrase-cell.drop-window .cell-bar {
+  display: none;
+}
 .phrase-cell.active {
   background: rgba(107, 168, 255, 0.55);
+}
+.phrase-cell.active .cell-bar {
+  color: #fff;
+  opacity: 1;
 }
 .phrase-cell.drop-window.active {
   background: rgba(255, 200, 100, 0.6);
 }
 .phrase-cell.beat {
   box-shadow: 0 0 10px -1px rgba(255, 255, 255, 0.6);
+}
+/* Armed: the landing cell glows gold and pulses, so the eye ties SPACE to the
+   exact beat the drop will hit. */
+.perf-panel.armed .phrase-cell.drop-window {
+  border-color: #fff2a8;
+  background: color-mix(in srgb, #ffb454 30%, #0c0e13);
+  box-shadow: 0 0 14px -3px #ffb454;
+  animation: dropready 0.9s ease-in-out infinite;
+}
+.perf-panel.armed .phrase-cell.drop-window .cell-mark {
+  color: #fff2a8;
+}
+
+/* The teaching line: one plain instruction for the current step of the loop. */
+.drop-hint {
+  font: 10px/1.3 var(--font-mono);
+  letter-spacing: 0.03em;
+  text-align: center;
+  color: var(--ink-faint);
+  transition: color 0.15s linear;
+}
+.perf-panel.climbing .drop-hint {
+  color: #ffb454;
+}
+.perf-panel.armed .drop-hint {
+  color: #fff2a8;
+  text-shadow: 0 0 10px rgba(255, 220, 120, 0.5);
 }
 
 /* Climb fuse: only meaningful while climbing (the panel gets .fuse). A warm fill
@@ -1793,14 +1855,36 @@ button.big {
   background: rgba(255, 255, 255, 0.7);
   z-index: 1;
 }
+/* The min-arm mark on the fuse: hold CLIMB past here before the drop can fire. */
+.notch-mark {
+  position: absolute;
+  top: 50%;
+  left: 4px;
+  transform: translateY(-50%);
+  font: 800 7px/1 var(--font-mono);
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow: 0 1px 2px #000;
+  pointer-events: none;
+}
+.notch-mark {
+  display: none;
+}
+.perf-panel.fuse .notch-mark {
+  display: block;
+}
 
-/* Live level-up offer (round-4): a subtle non-blocking strip pinned to the
-   bottom-center. The run keeps playing behind it; only the cards catch the
-   pointer, so it never blocks movement or the arena. Picked with Q/W/E. */
+/* Live level-up offer (round-4): a subtle non-blocking strip. Pinned to the
+   TOP-center so it never covers the bottom drop panel or the section chips, and
+   sits clear of the player at arena center. The run keeps playing behind it;
+   only the cards catch the pointer. Picked with Q/W/E. A soft pulsing glow draws
+   the eye without stealing focus from the horde. */
 .live-offer {
   position: fixed;
   left: 50%;
-  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  /* Clears the band rack (top-center, ~y12-84) above and the perf/drop panel
+     (bottom-center) below — it only ever covers empty playfield during a pick. */
+  top: calc(96px + env(safe-area-inset-top, 0px));
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;
@@ -1808,17 +1892,31 @@ button.big {
   gap: 6px;
   z-index: 3;
   pointer-events: none;
-  animation: liveofferin 0.18s var(--ease);
+  animation: liveofferin 0.2s var(--ease);
 }
 @keyframes liveofferin {
-  from { opacity: 0; transform: translate(-50%, 10px); }
+  from { opacity: 0; transform: translate(-50%, -10px); }
   to { opacity: 1; transform: translateX(-50%); }
 }
 .live-offer-hint {
   font-size: var(--fs-sm);
   letter-spacing: 0.08em;
-  color: var(--muted, #9aa);
-  text-shadow: 0 1px 4px #000;
+  color: var(--signal);
+  text-shadow: 0 0 10px rgba(107, 168, 255, 0.5), 0 1px 4px #000;
+  animation: liveofferpulse 1.6s ease-in-out infinite;
+}
+@keyframes liveofferpulse {
+  0%, 100% { opacity: 0.75; }
+  50% { opacity: 1; }
+}
+/* The attention treatment: a gentle glow breathing around each card, subtle
+   enough to ignore while dodging but bright enough to say "a pick is waiting". */
+.live-offer .kit-card {
+  animation: liveofferglow 1.6s ease-in-out infinite;
+}
+@keyframes liveofferglow {
+  0%, 100% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--voice-color) 30%, transparent), 0 6px 18px -8px #000; }
+  50% { box-shadow: 0 0 16px -2px color-mix(in srgb, var(--voice-color) 55%, transparent), 0 6px 18px -8px #000; }
 }
 .live-offer-grid {
   display: flex;

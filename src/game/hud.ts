@@ -50,6 +50,8 @@ export class Hud {
   private phraseCells: HTMLElement[] = [];
   private fuseFill: HTMLElement | null = null;
   private fuseNotch: HTMLElement | null = null;
+  // One plain-language line that narrates the drop loop, updated each frame.
+  private dropHint: HTMLElement | null = null;
   private screen: HTMLElement | null = null;
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
   // Live level-up offer (round-4): a subtle non-blocking strip picked with Q/W/E,
@@ -119,15 +121,23 @@ export class Hud {
       };
       this.sectionChips.set(id, chip);
     }
-    // Phrase visualizer: four bar cells (the 4-bar phrase). The 4th is the
-    // drop-window cell (the coming phrase downbeat = the legal drop landing).
-    // Reads "switch now / drop now" at a glance, sound off (Pillar 3).
-    const phrase = el('div', 'phrase-viz', this.perf);
+    // Phrase visualizer: four bar cells (the 4-bar phrase) preceded by a small
+    // "DROP" label, so the whole strip reads as "this is the drop track". The
+    // 4th cell is the drop-window (the coming phrase downbeat = the legal drop
+    // landing), marked with a ⟳ glyph. Reads at a glance, sound off (Pillar 3).
+    const track = el('div', 'phrase-track', this.perf);
+    el('span', 'track-label', track, 'DROP');
+    const phrase = el('div', 'phrase-viz', track);
     this.phraseCells = [];
     for (let i = 0; i < 4; i++) {
       const cell = el('div', 'phrase-cell' + (i === 3 ? ' drop-window' : ''), phrase);
+      el('span', 'cell-bar', cell, String(i + 1));
+      if (i === 3) el('span', 'cell-mark', cell, '⟳');
       this.phraseCells.push(cell);
     }
+    // The teaching line: says, in plain words, the one thing to do right now
+    // (unlock CLIMB → hold to charge → SPACE lands the drop on the ⟳ downbeat).
+    this.dropHint = el('div', 'drop-hint', this.perf);
     const meter = el('div', 'energy-meter', this.perf);
     // Contrast (banked in BREAK) sits behind the charge fill as a cooler bar.
     this.contrastFill = el('div', 'contrast-fill', meter);
@@ -137,6 +147,7 @@ export class Hud {
     this.fuseFill = el('div', 'fuse-fill', meter);
     this.fuseNotch = el('div', 'fuse-notch', meter);
     this.fuseNotch.style.left = `${(CLIMB_MIN_S / CLIMB_CEILING_S) * 100}%`;
+    el('span', 'notch-mark', this.fuseNotch, 'ARM');
     const btn = el('button', 'drop-btn', meter, 'CHARGE IN CLIMB');
     btn.onclick = () => {
       onDrop();
@@ -201,6 +212,19 @@ export class Hud {
     this.perf.classList.toggle('armed', s.canDrop);
     this.perf.classList.toggle('climbing', s.inClimb);
     this.perf.classList.toggle('dropping', s.dropping);
+    // Teaching line: one instruction for the current step of the drop loop.
+    if (this.dropHint) {
+      const hint = s.dropping
+        ? 'DROP INBOUND — it lands on the ⟳'
+        : s.canDrop
+          ? 'ARMED · SPACE drops on the next ⟳ downbeat'
+          : s.inClimb
+            ? 'CLIMB charging the fuse — hold past ARM to load it'
+            : !s.unlocked.climb
+              ? 'Grow your band to unlock CLIMB (3), then the drop'
+              : 'Hold CLIMB (3) to charge, then SPACE to DROP';
+      if (this.dropHint.textContent !== hint) this.dropHint.textContent = hint;
+    }
   }
 
   /** The band rack (docs/phases/the-band.md): eight typed sockets in rack
@@ -361,7 +385,7 @@ export class Hud {
   showLiveOffer(options: PickOption[], onPick: (option: PickOption) => void): void {
     this.hideLiveOffer();
     const wrap = el('div', 'live-offer', this.root);
-    el('div', 'live-offer-hint', wrap, 'LEVEL UP — keep playing, pick with Q / W / E');
+    el('div', 'live-offer-hint', wrap, 'LEVEL UP — keep playing · pick with Q / W / E');
     const grid = el('div', 'live-offer-grid', wrap);
     const keys = ['Q', 'W', 'E'];
     const pick = (i: number): void => {
