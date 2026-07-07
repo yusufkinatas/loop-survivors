@@ -1,8 +1,10 @@
 # The Hype Layer v3 — The Tension Cycle (spec / redesign proposal)
 
-Status: **proposed, not yet implemented or gated.** Supersedes v2
-(`docs/phases/hype-layer-v2.md`, "The Conducted Grid"), which was implemented and
-**rejected on playtest**. This is the output of a second three-expert design
+Status: **sub-phase A implemented, awaiting gate A** (branch
+`worktree-agent-ab937d650700e2226`). Sub-phases B and C not started. See "Proposed
+build sub-phases" and "Implementation status" (end) for exactly what's built.
+Supersedes v2 (`docs/phases/hype-layer-v2.md`, "The Conducted Grid"), which was
+implemented and **rejected on playtest**. This is the output of a second three-expert design
 session (a game designer, a music producer, and an interactive/generative
 music-systems expert) held after the v2 playtest, over three dialogue rounds
 (independent analysis → convergence → a player-timed-release refinement on the
@@ -461,3 +463,41 @@ within the sub-phase the failure points to.
 6. Optional **express drop** (2+1-bar shorter arc, smaller drop) as a skill-ceiling
    second timing to master — flagged, not default (the music producer steers against
    variable flight time as the norm because it muddies the aiming skill).
+
+---
+
+## Implementation status
+
+**Sub-phase A — DONE, awaiting gate A** (committed on `worktree-agent-ab937d650700e2226`).
+Built the arrangement TRANSFORMATION on one genre (tested on DnB), debug-driven and
+**live-only** (the headless bot's `conductor.ts` is untouched, so the bot and seeded
+replays are bit-identical — no re-baseline yet). Files:
+- `src/audio/program.ts` (new) — `programEvents(role, chart, phraseStep, ctx)`, the
+  transform arranger: groove thin + velocity-by-tension, build hat-ratchet, the
+  half-time drop (few big thuds on the half-note, octave-down sub-bass, clutter
+  slots stripped, one downbeat harmony stab, sparse melody fragment), release
+  thinning. All pure functions of `(bar, step, section, tension, seed)` via an
+  integer hash — deterministic, ready to move onto the shared engine+bot path in B.
+- `src/audio/engine.ts` — `setArrangement(ctx)` (onStep routes each voice through
+  `programEvents` when set, else the plain chart), `playRiser` (rising noise sweep),
+  `playSlam` (sine boom + noise crash).
+- `src/game/hype.ts` — rewritten as the v3 `ConductedGrid`: auto-wind tension to a
+  held READY plateau, SPACE / DROP-button `release()`, the
+  `GROOVE→BUILD→HOLD→DROP→RELEASE` state machine on the engine's bar clock, riser on
+  build, slam on the drop downbeat, HUD readout.
+- `src/game/game.ts` — SPACE calls `release()`.
+
+Verified: `tsc` + `vite build` clean; DnB bot smoke healthy (determinism intact); a
+17-assertion headless harness (transforms + full state machine); Chrome end-to-end
+(SPACE drove groove→build→hold→drop live via the real audio bar-clock, zero console
+errors). **Gate A question:** does the drop now sound genuinely DIFFERENT from the
+groove (the v2 "drop == peak" failure fixed)? Judge on DnB; per-genre drop moves are C.
+
+**What sub-phase A deliberately does NOT do yet** (so gate A stays a pure "does the
+drop sound different" call): tension is auto-wound on a debug timer, not from real
+combat aggression; the release has no combat overdrive / area spike; it's one genre
+with a blanket half-time (House/Techno will read as a breakdown until C's per-genre
+`dropMove`); nothing is on the shared deterministic path. Those are **sub-phase B**
+(aggression winding + player-timed release skill + overdrive + shared path + bot
+re-baseline) and **sub-phase C** (all six genres + authored hooks + polish), NOT
+started.

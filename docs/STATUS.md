@@ -33,7 +33,11 @@ Gate A also implicitly co-judged the July 6 genres-and-weapons material it stack
 
 ## Next action
 
-**Combined developer gate B+C** on all twelve new hires (dev server: `npm run dev`; the sandbox loadout lists all 24 instruments so any hire can be force-assembled at any tier, and the weapon-select screen offers the full catalog with slot badges). Judge by ear/hands:
+**This branch (`worktree-agent-ab937d650700e2226`): Gate A on Hype Layer v3 sub-phase A** — the developer's ear. Dev server `npm run dev`; open the sandbox, pick **Drum & Bass**, assemble a full band (tier II on Kick/Snare/Hi-hat/Cowbell/Crash/Bass/Chord/Lead), move so the run is live, let the bottom panel wind to **READY**, then hit **SPACE** (or the DROP button). **The only question:** does the drop now sound genuinely DIFFERENT from the groove — half-time, heavier, stripped, sub-bass arriving — i.e. is the v2 "drop sounds like the peak" failure fixed? (Judge on DnB only; combat feel, aggression winding, and per-genre drop moves are sub-phases B/C, not built.) On pass → build sub-phase B; on fail → tune the transform constants in `src/audio/program.ts` and loop within A. Full spec + build order + gates: `docs/phases/hype-layer-v3.md`.
+
+---
+
+**(Separate thread, `main`) Combined developer gate B+C** on all twelve new hires (dev server: `npm run dev`; the sandbox loadout lists all 24 instruments so any hire can be force-assembled at any tier, and the weapon-select screen offers the full catalog with slot badges). Judge by ear/hands:
 - **Sub-phase B (six damage hires):** heartbeat's soft low lub-dub, shaker's sizzle, acid's squelch, pluck's round bomp, Rhodes' warm keys, rimshot's woody tock. Does each starving slot's choice feel like a real fork.
 - **Sub-phase C (six last hires + two systems):** ride's bright metallic ring (**does the freeze feel good and fair**), riser's reversed-cymbal swell (**does the auto-dash feel like the sound moving you**), reese's growl, choir pad's airy "aah", bell's music-box shatter, whistle's sung tag-and-pop. Do the two utility weapons (ride, riser) feel worth a band slot. Does anything sound cheap (ride and choir are the flagged synthesis risks — swap to CC0 if the ear rejects them).
 
