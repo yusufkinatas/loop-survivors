@@ -71,7 +71,7 @@ const DMG_RISE = 34; // px/s upward drift
 const DMG_STYLE = new TextStyle({
   fontFamily: 'system-ui, sans-serif',
   fontSize: 13,
-  fontWeight: '700',
+  fontWeight: '500',
   fill: 0xffffff,
 });
 
