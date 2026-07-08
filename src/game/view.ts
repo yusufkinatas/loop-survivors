@@ -4,7 +4,7 @@
 // world's fx queue. Headless bot runs never construct a view, which is the
 // whole point of the split (docs/tools/autoplay-bot.md).
 
-import { Container, Graphics, GraphicsContext } from 'pixi.js';
+import { Container, Graphics, GraphicsContext, Text, TextStyle } from 'pixi.js';
 import type { Role } from '../audio/kits';
 import { RUN } from './config';
 import type { Enemy, FxEvent, Gem, Projectile, RunWorld, Shock, WhistleTag, Zone } from './run';
@@ -52,6 +52,29 @@ interface Pop {
   grow: number;
 }
 
+/** A floating damage number: rises and fades where a hit landed. */
+interface Floater {
+  txt: Text;
+  x: number;
+  y: number;
+  t: number;
+  dur: number;
+  vy: number;
+}
+
+// Damage numbers stay a quiet layer of feedback, not a wall of text: a hard cap
+// keeps the horde's hits from flooding the screen (and the CPU), and off-screen
+// hits never spawn one at all.
+const DMG_CAP = 100;
+const DMG_DUR = 0.6;
+const DMG_RISE = 34; // px/s upward drift
+const DMG_STYLE = new TextStyle({
+  fontFamily: 'system-ui, sans-serif',
+  fontSize: 13,
+  fontWeight: '700',
+  fill: 0xffffff,
+});
+
 export class RunView {
   readonly stage: Container;
 
@@ -71,6 +94,7 @@ export class RunView {
   private gemGfx = new Map<Gem, Container>();
   private tagGfx = new Map<WhistleTag, Graphics>();
   private pops: Pop[] = [];
+  private floaters: Floater[] = [];
   private live = new Set<object>();
 
   // Shared view-only feel systems (Feature 3). All decay off world.timeS,
@@ -148,6 +172,7 @@ export class RunView {
       if (visible) gfx.position.set(g.x, g.y);
     });
     this.updatePops(dt);
+    this.updateFloaters(dt);
     this.drawGrid();
     this.drawFlash();
 
@@ -188,6 +213,8 @@ export class RunView {
     this.gemGfx.clear();
     this.tagGfx.clear();
     this.pops.length = 0;
+    for (const f of this.floaters) f.txt.destroy();
+    this.floaters.length = 0;
     this.trails.clear();
     this.shakes.length = 0;
     this.flashes.length = 0;
@@ -383,6 +410,22 @@ export class RunView {
         this.pops.push({ gfx, t: 0, dur: 0.14, grow: 0 });
         break;
       }
+      case 'dmg': {
+        // Floating damage number. Bounded by DMG_CAP and culled off-screen so
+        // the horde's hits never become a wall of text.
+        if (this.floaters.length >= DMG_CAP) break;
+        const p = this.world.player;
+        if (Math.abs(fx.x - p.x) > this.world.worldW / 2 + 40) break;
+        if (Math.abs(fx.y - p.y) > this.world.worldH / 2 + 40) break;
+        const txt = new Text({ text: String(fx.amount), style: DMG_STYLE });
+        txt.anchor.set(0.5);
+        txt.tint = fx.color;
+        const x = fx.x + (Math.random() * 2 - 1) * 6;
+        txt.position.set(x, fx.y);
+        this.stage.addChild(txt);
+        this.floaters.push({ txt, x, y: fx.y, t: 0, dur: DMG_DUR, vy: DMG_RISE });
+        break;
+      }
       default: {
         // pop: a fading disc where something died
         const gfx = new Graphics().circle(0, 0, fx.radius).fill(0xffffff);
@@ -394,6 +437,23 @@ export class RunView {
         if (fx.radius > 16)
           this.spawnFx({ type: 'spark', x: fx.x, y: fx.y, color: 0xcfd2e0, n: 4, spread: 14 });
       }
+    }
+  }
+
+  private updateFloaters(dt: number): void {
+    for (let i = this.floaters.length - 1; i >= 0; i--) {
+      const f = this.floaters[i];
+      f.t += dt;
+      const k = f.t / f.dur;
+      if (k >= 1) {
+        f.txt.destroy();
+        this.floaters.splice(i, 1);
+        continue;
+      }
+      f.y -= f.vy * dt;
+      f.txt.position.set(f.x, f.y);
+      // Hold full opacity briefly, then fade out over the back half.
+      f.txt.alpha = k < 0.4 ? 1 : 1 - (k - 0.4) / 0.6;
     }
   }
 

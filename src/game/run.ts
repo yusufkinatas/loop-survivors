@@ -214,6 +214,7 @@ export type FxEvent =
       color: number;
     }
   | { type: 'bolt'; x1: number; y1: number; x2: number; y2: number; color: number }
+  | { type: 'dmg'; x: number; y: number; amount: number; color: number }
   | { type: 'spark'; x: number; y: number; color: number; n: number; spread: number }
   | { type: 'shake'; mag: number; dur: number }
   | { type: 'flash'; color: number; alpha: number; dur: number }
@@ -1123,6 +1124,19 @@ export class RunWorld {
     // Distortion crit (Feature 5). Guarded: with critChance 0 no rng is
     // consumed, so pre-item replays stay bit-identical.
     if (this.mods.critChance > 0 && this.rng() < this.mods.critChance) amount *= this.mods.critMul;
+    // Floating damage number (view-only; fx is null headless). Weapon-colored,
+    // rounded; sub-1 ticks and instakills (Infinity) don't get a number.
+    if (this.fx && Number.isFinite(amount)) {
+      const shown = Math.round(amount);
+      if (shown >= 1)
+        this.fx.push({
+          type: 'dmg',
+          x: e.x,
+          y: e.y - e.radius,
+          amount: shown,
+          color: source ? KIT_COLORS[source] : 0xcfd2e0,
+        });
+    }
     // Shielded: a shield pool absorbs damage before hp. Attribution stays
     // honest — absorbed damage is counted once here, hp damage once below.
     if (e.shieldHp > 0) {
