@@ -21,7 +21,7 @@ import { mountPlayground, type Playground } from '../rehearsal/playground';
 import { RUN } from './config';
 import { EFFECT_META } from './effects';
 import { Hud, TIER_NUMERALS } from './hud';
-import { Input } from './input';
+import { autoMove, Input, type AutoMoveMode } from './input';
 import { ITEMS } from './items';
 import { mountJoystick } from './joystick';
 import { rollOffers, type PickOption } from './picks';
@@ -300,6 +300,7 @@ export async function bootGame(
 
   function resetWorld(): void {
     paused = false;
+    autoMove.active = false; // manual by default; startRun re-arms it if chosen
     pauseOverlay.style.display = 'none';
     sandboxPanel?.destroy();
     sandboxPanel = null;
@@ -315,11 +316,19 @@ export async function bootGame(
     for (const role of ROLES) engine.setVoiceEnabled(role, false);
   }
 
-  function startRun(genre: Genre, startingKit: Role): void {
+  function startRun(genre: Genre, startingKit: Role, mode: AutoMoveMode = 'off'): void {
     resetWorld();
-    world = new RunWorld(app.screen, events, { control: () => input.axis() });
-    world.powerMul = genre.powerMul;
-    view = new RunView(world, app.screen);
+    // Auto-move hands the player's movement to a bot mover (kiter = survival,
+    // greedy = the gem-hungry harvester). Manual keeps the keyboard/joystick.
+    const factory = mode === 'kiter' ? MOVERS.kiter : mode === 'greedy' ? MOVERS.harvester : null;
+    autoMove.active = factory !== null;
+    const mover = factory ? factory() : null;
+    const w: RunWorld = new RunWorld(app.screen, events, {
+      control: mover ? () => mover(w) : () => input.axis(),
+    });
+    world = w;
+    w.powerMul = genre.powerMul;
+    view = new RunView(w, app.screen);
     app.stage.addChild(view.stage);
     // Set the genre first: it re-points every voice's chart, so the tier set
     // below reads the genre's own pattern for the starting instrument.
@@ -327,10 +336,10 @@ export async function bootGame(
     hud.setGenre(genre.id);
     engine.setVoiceTier(startingKit, 1);
     engine.setVoiceEnabled(startingKit, true);
-    world.addWeapon(startingKit, 1);
+    w.addWeapon(startingKit, 1);
     hud.showHud(true);
-    hud.renderItems(world.items);
-    hud.renderBand(world.tiers);
+    hud.renderItems(w.items);
+    hud.renderBand(w.tiers);
     state = 'run';
     void engine.ctx.resume();
     engine.clock.start();
