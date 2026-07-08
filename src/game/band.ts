@@ -136,7 +136,6 @@ export function startableRoles(roles: readonly Role[]): Role[] {
  */
 const GENRE_ROLE_AFFINITY: Record<GenreId, Partial<Record<Role, number>>> = {
   house: { clap: 1.5, snare: 0.7, cowbell: 1.3, arp: 0.85, choir: 1.25, ride: 1.2 },
-  synthwave: { snare: 1.15, clap: 0.9, arp: 1.35, cowbell: 0.7, bell: 1.35, choir: 1.2 },
   techno: { clap: 1.3, snare: 0.85, cowbell: 1.2, arp: 0.9, tom: 1.15, ride: 1.3, reese: 1.2 },
 };
 

@@ -38,10 +38,6 @@ const PROC = {
 const MANIFEST = {
   // house is NOT here: it is sampled from the local Wave Point pack by
   // scripts/build-house-kit.mjs (the developer-chosen "Tight Tech" voicing).
-  synthwave: {
-    'kick': 'kicklinn/Linn Kick 1.wav', 'snare': 'sd/rytm-00-hard.wav', 'clap': 'drumtraks/001_DT Claps.wav',
-    'hat_closed': 'drumtraks/004_DT Hat Closed.wav', 'hat_open': 'drumtraks/005_DT Hat Open.wav',
-  },
   techno: {
     'kick': 'bd/BT0AAD0.wav', 'clap': 'realclaps/2.wav', 'rimshot': '808/RS.WAV',
     'hat_closed': 'hh/000_hh3closedhh.wav', 'hat_open': 'hh/007_hh3openhh.wav', 'ride': 'drumtraks/007_DT Ride.wav',
