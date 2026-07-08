@@ -8,6 +8,7 @@ import { sampledRoles } from '../audio/kits/index';
 import { SLOTS, SLOT_LABEL, ownerOfSlot, slotOf, startableRoles, supportedRoster } from './band';
 import { TIER_LINES } from './config';
 import { EFFECT_META } from './effects';
+import { type AutoMoveMode } from './input';
 import { ITEMS, type ItemId } from './items';
 import type { PickOption } from './picks';
 
@@ -25,6 +26,9 @@ export interface DebugAction {
   onClick(): void;
   /** For toggles: read the current state so the button can show it. */
   isOn?(): boolean;
+  /** For actions whose text changes with state (e.g. the auto-move mode):
+   *  overrides `label` and is re-read on every refresh. */
+  dynamicLabel?(): string;
 }
 
 export class Hud {
@@ -154,7 +158,8 @@ export class Hud {
   mountDebug(actions: DebugAction[]): void {
     this.debugRow = el('div', 'debug-row', this.root);
     for (const action of actions) {
-      const btn = el('button', 'small debug-btn', this.debugRow, `${action.label} (${action.hotkey})`);
+      const text = action.dynamicLabel ? action.dynamicLabel() : action.label;
+      const btn = el('button', 'small debug-btn', this.debugRow, `${text} (${action.hotkey})`);
       btn.onclick = () => {
         action.onClick();
         this.refreshDebug();
@@ -169,6 +174,7 @@ export class Hud {
   refreshDebug(): void {
     for (const { btn, action } of this.debugButtons) {
       if (action.isOn) btn.classList.toggle('on', action.isOn());
+      if (action.dynamicLabel) btn.textContent = `${action.dynamicLabel()} (${action.hotkey})`;
     }
   }
 
@@ -177,13 +183,20 @@ export class Hud {
    *  decides tempo, swing, and how the whole soundset plays. */
   showStart(
     genres: Genre[],
-    onStart: (genre: Genre, role: Role) => void,
+    onStart: (genre: Genre, role: Role, mode: AutoMoveMode) => void,
     onSandbox: () => void,
   ): void {
+    // Movement mode persists across the genre/weapon steps (rebuilt screens),
+    // so it lives out here. Default is manual play.
+    let moveMode: AutoMoveMode = 'off';
+
     const showGenres = (): void => {
       const s = this.newScreen();
       el('h1', '', s, 'Loop Survivors');
       el('p', 'sub', s, 'Pick your genre. WASD or touch to move. Survive 8 minutes.');
+      this.moveModeSelector(s, moveMode, (m) => {
+        moveMode = m;
+      });
       const grid = el('div', 'pick-grid genre-grid', s);
       const cards: HTMLElement[] = [];
       for (const genre of genres) {
@@ -229,7 +242,7 @@ export class Hud {
       for (const role of startableRoles(supportedRoles(genre.id))) {
         const card = this.kitCard(grid, { kind: 'weapon', role, tier: 1 }, () => {
           this.closeScreen();
-          onStart(genre, role);
+          onStart(genre, role, moveMode);
         });
         // ★ custom marks a voice that is sample-backed for this genre (dev only),
         // matching the sandbox loadout badge.
@@ -242,6 +255,50 @@ export class Hud {
     };
 
     showGenres();
+  }
+
+  /** Movement-mode picker on the start screen. Manual is the default; the two
+   *  auto-move modes hand the player's movement to a mover — Kiter flees for
+   *  survival, Greedy survives but chases XP for faster level-ups. The chosen
+   *  run has no player movement input (no joystick on touch). */
+  private moveModeSelector(
+    parent: HTMLElement,
+    current: AutoMoveMode,
+    onChange: (mode: AutoMoveMode) => void,
+  ): void {
+    const opts: { mode: AutoMoveMode; label: string; hint: string }[] = [
+      { mode: 'off', label: 'Manual', hint: 'You move. WASD or touch.' },
+      {
+        mode: 'kiter',
+        label: 'Auto · Kiter',
+        hint: 'Auto-pilot. Flees the horde, survival first. You can’t move.',
+      },
+      {
+        mode: 'greedy',
+        label: 'Auto · Greedy',
+        hint: 'Auto-pilot. Survives but chases XP for faster level-ups. You can’t move.',
+      },
+    ];
+    const wrap = el('div', 'move-mode', parent);
+    el('span', 'move-mode-label', wrap, 'Movement');
+    const row = el('div', 'move-mode-opts', wrap);
+    const hint = el('p', 'move-mode-hint', wrap);
+    const btns: HTMLButtonElement[] = [];
+    const paint = (): void => {
+      for (const [i, b] of btns.entries()) b.classList.toggle('on', opts[i].mode === current);
+      hint.textContent = opts.find((o) => o.mode === current)!.hint;
+    };
+    for (const o of opts) {
+      const btn = el('button', 'small', row, o.label) as HTMLButtonElement;
+      btn.onclick = () => {
+        current = o.mode;
+        onChange(o.mode);
+        paint();
+        btn.blur();
+      };
+      btns.push(btn);
+    }
+    paint();
   }
 
   /** Level-up pick: up to three options from the pool of new weapons and

@@ -3,7 +3,7 @@
 // move, analog deflection, lift to stop. Writes into touchAxis (input.ts).
 // Desktop mouse input is ignored: only pointerType "touch"/"pen" summons it.
 
-import { touchAxis } from './input';
+import { autoMove, touchAxis } from './input';
 
 /** Max knob deflection in px; full deflection = full speed. */
 const STICK_RADIUS = 56;
@@ -33,6 +33,8 @@ export function mountJoystick(root: HTMLElement): void {
   root.addEventListener('pointerdown', (e) => {
     if (pointerId !== null) return;
     if (e.pointerType === 'mouse') return;
+    // auto-move runs take the movement verb away: no stick appears
+    if (autoMove.active) return;
     // only arena touches: taps on buttons, cards, and panels stay taps
     if (!(e.target instanceof HTMLCanvasElement)) return;
     e.preventDefault();
