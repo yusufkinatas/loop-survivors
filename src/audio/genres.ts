@@ -8,8 +8,8 @@
 // kick, and the two genres offer different instruments.
 //
 // Patterns are grounded in real production practice: House four-on-floor +
-// offbeat open hats, Synthwave straight machine drums + 16th arps, Techno
-// relentless four-on-floor + offbeat hats. The coherence skeleton (minor pentatonic, chord roots 0/5/7)
+// offbeat open hats, Techno relentless four-on-floor + offbeat hats. The
+// coherence skeleton (minor pentatonic, chord roots 0/5/7)
 // still owns the theory, so no genre can clash.
 //
 // A genre "supports" exactly the roles it supplies a ladder for: `ladders` is
@@ -21,11 +21,10 @@
 import { TIER_COUNT, validateChart } from './charts';
 import { ROLES, type Role } from './kits';
 import { HOUSE_LADDERS } from './ladders/house';
-import { SYNTHWAVE_LADDERS } from './ladders/synthwave';
 import { TECHNO_LADDERS } from './ladders/techno';
 import type { Chart } from './charts';
 
-export type GenreId = 'house' | 'synthwave' | 'techno';
+export type GenreId = 'house' | 'techno';
 
 export interface Genre {
   id: GenreId;
@@ -57,17 +56,6 @@ const HOUSE: Genre = {
   ladders: HOUSE_LADDERS,
 };
 
-const SYNTHWAVE: Genre = {
-  id: 'synthwave',
-  name: 'Synthwave',
-  blurb: 'Neon 80s. Machine-tight drums, big gated snare, relentless arps.',
-  color: '#ff5ad0',
-  bpm: 100,
-  swing: 0,
-  powerMul: 1.1,
-  ladders: SYNTHWAVE_LADDERS,
-};
-
 const TECHNO: Genre = {
   id: 'techno',
   name: 'Techno',
@@ -79,7 +67,7 @@ const TECHNO: Genre = {
   ladders: TECHNO_LADDERS,
 };
 
-export const GENRES: Genre[] = [HOUSE, SYNTHWAVE, TECHNO];
+export const GENRES: Genre[] = [HOUSE, TECHNO];
 
 export const GENRE_BY_ID: Record<GenreId, Genre> = Object.fromEntries(
   GENRES.map((g) => [g.id, g]),

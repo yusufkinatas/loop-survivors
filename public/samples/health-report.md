@@ -9,14 +9,6 @@
 - **hat_open** (hat_open.wav): dur 550ms, onset 0ms, effective 545ms, peak 0.271, rms 0.04  ✓
 - **shaker** (shaker.wav): dur 113ms, onset 0ms, effective 76ms, peak 0.355, rms 0.04  ✓
 
-## synthwave
-
-- **kick** (kick.wav): dur 119ms, onset 0ms, effective 90ms, peak 0.89, rms 0.266  ✓
-- **snare** (snare.wav): dur 224ms, onset 0ms, effective 125ms, peak 0.697, rms 0.181  ✓
-- **clap** (clap.wav): dur 273ms, onset 0ms, effective 221ms, peak 0.631, rms 0.139  ✓
-- **hat_closed** (hat_closed.wav): dur 112ms, onset 0ms, effective 99ms, peak 0.355, rms 0.065  ✓
-- **hat_open** (hat_open.wav): dur 210ms, onset 0ms, effective 209ms, peak 0.355, rms 0.144  ✓
-
 ## techno
 
 - **kick** (kick.wav): dur 108ms, onset 0ms, effective 98ms, peak 0.891, rms 0.304  ✓

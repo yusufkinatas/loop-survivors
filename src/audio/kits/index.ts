@@ -16,19 +16,17 @@ import type { GenreId } from '../genres';
 import { loadSample, makeKit, type Kit, type Role } from '../kits';
 import { PROTOS } from './protos';
 import { buildHouseKit } from './house';
-import { buildSynthwaveKit } from './synthwave';
 import { buildTechnoKit } from './techno';
 
 export type KitBuilder = (rootHz: number) => Promise<Map<Role, Kit>>;
 
 const BUILDERS: Record<GenreId, KitBuilder> = {
   house: buildHouseKit,
-  synthwave: buildSynthwaveKit,
   techno: buildTechnoKit,
 };
 
 // Real signature-drum samples that override the synthesized drums per genre
-// (909 for house, LinnDrum for synthwave, ...). Genres differ
+// (909 for house, distinct machine drums for techno). Genres differ
 // most audibly in their drums; real one-shots carry that identity in a way one
 // synth engine cannot. Melodic/bass voices stay synthesized (in the builders
 // above). Each entry: role -> [variantId, fileBase]. Files live at
@@ -48,13 +46,6 @@ const SAMPLE_OVERLAY: Record<GenreId, Partial<Record<Role, SampleSpec[]>>> = {
     crash: [['crash', 'crash']],
     riser: [['riser', 'riser']],
     bass: [['bass', 'bass'], ['fat', 'bass_fat']], // pitched — see SAMPLE_TUNE
-  },
-  synthwave: {
-    kick: [['hard', 'kick_hard'], ['soft', 'kick_soft']],
-    snare: [['snare', 'snare']],
-    clap: [['clap', 'clap']],
-    hat: [['closed', 'hat_closed'], ['open', 'hat_open']],
-    bass: [['bass', 'bass'], ['fat', 'bass_fat']], // pitched, A1 root — tune 0
   },
   techno: {
     kick: [['hard', 'kick'], ['soft', 'kick']],
@@ -133,7 +124,6 @@ export function sampledRoles(id: GenreId): Set<Role> {
 const SAMPLE_TUNE: Partial<Record<GenreId, Partial<Record<Role, number>>>> = {
   house: { bass: -3 },
   techno: { bass: -3 }, // Cyclick Bass Synthesis sampled at C2
-  // synthwave bass is rooted at A1 (the engine reference) — tune 0.
 };
 
 /** Overlay a genre's real drum samples onto its synth kit. A role whose every
