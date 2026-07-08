@@ -26,6 +26,9 @@ export interface DebugAction {
   onClick(): void;
   /** For toggles: read the current state so the button can show it. */
   isOn?(): boolean;
+  /** For actions whose text changes with state (e.g. the auto-move mode):
+   *  overrides `label` and is re-read on every refresh. */
+  dynamicLabel?(): string;
 }
 
 export class Hud {
@@ -155,7 +158,8 @@ export class Hud {
   mountDebug(actions: DebugAction[]): void {
     this.debugRow = el('div', 'debug-row', this.root);
     for (const action of actions) {
-      const btn = el('button', 'small debug-btn', this.debugRow, `${action.label} (${action.hotkey})`);
+      const text = action.dynamicLabel ? action.dynamicLabel() : action.label;
+      const btn = el('button', 'small debug-btn', this.debugRow, `${text} (${action.hotkey})`);
       btn.onclick = () => {
         action.onClick();
         this.refreshDebug();
@@ -170,6 +174,7 @@ export class Hud {
   refreshDebug(): void {
     for (const { btn, action } of this.debugButtons) {
       if (action.isOn) btn.classList.toggle('on', action.isOn());
+      if (action.dynamicLabel) btn.textContent = `${action.dynamicLabel()} (${action.hotkey})`;
     }
   }
 

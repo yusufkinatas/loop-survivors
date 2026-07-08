@@ -14,7 +14,7 @@ import {
 } from '../audio/genres';
 import { ROLES, type Kit, type Role } from '../audio/kits';
 import { SIM_DT, VirtualConductor } from '../bot/conductor';
-import { MOVERS, type MoverName } from '../bot/movers';
+import { MOVERS, type Mover, type MoverName } from '../bot/movers';
 import { makePolicy } from '../bot/policies';
 import { SIM_VIEW } from '../bot/sim';
 import { mountPlayground, type Playground } from '../rehearsal/playground';
@@ -64,6 +64,27 @@ export async function bootGame(
   let view: RunView | null = null;
   let muted = false;
   let paused = false;
+
+  // Auto-move (developer request): a mover can drive the player instead of the
+  // keyboard/joystick. The mode is chosen on the start screen AND can be
+  // toggled/cycled live in-game (the auto-move debug button + hotkey). The
+  // control seam reads this state every frame, so a mid-run switch takes hold
+  // on the next tick.
+  let autoMode: AutoMoveMode = 'off';
+  let autoMoverFn: Mover | null = null;
+  function setAutoMode(mode: AutoMoveMode): void {
+    autoMode = mode;
+    autoMove.active = mode !== 'off'; // suppresses the touch joystick on mobile
+    // Movers carry per-run state (the harvester's orbit/target memory), so a
+    // switch hands out a fresh instance.
+    autoMoverFn =
+      mode === 'kiter' ? MOVERS.kiter() : mode === 'greedy' ? MOVERS.harvester() : null;
+    hud.refreshDebug(); // keep the auto-move button's label/state in sync
+  }
+  /** The player's movement each frame: the active mover, or manual input. */
+  function playerControl(w: RunWorld): { x: number; y: number } {
+    return autoMoverFn ? autoMoverFn(w) : input.axis();
+  }
 
   // Pause overlay: ESC freezes the run behind a dimmed screen; the audio clock
   // stops so no triggers fire, and the game loop skips its world step. A second
@@ -300,7 +321,7 @@ export async function bootGame(
 
   function resetWorld(): void {
     paused = false;
-    autoMove.active = false; // manual by default; startRun re-arms it if chosen
+    setAutoMode('off'); // manual by default; startRun re-arms it if chosen
     pauseOverlay.style.display = 'none';
     sandboxPanel?.destroy();
     sandboxPanel = null;
@@ -319,12 +340,11 @@ export async function bootGame(
   function startRun(genre: Genre, startingKit: Role, mode: AutoMoveMode = 'off'): void {
     resetWorld();
     // Auto-move hands the player's movement to a bot mover (kiter = survival,
-    // greedy = the gem-hungry harvester). Manual keeps the keyboard/joystick.
-    const factory = mode === 'kiter' ? MOVERS.kiter : mode === 'greedy' ? MOVERS.harvester : null;
-    autoMove.active = factory !== null;
-    const mover = factory ? factory() : null;
+    // greedy = the gem-hungry harvester); manual keeps the keyboard/joystick.
+    // The seam reads playerControl live, so the in-game toggle works too.
+    setAutoMode(mode);
     const w: RunWorld = new RunWorld(app.screen, events, {
-      control: mover ? () => mover(w) : () => input.axis(),
+      control: () => playerControl(w),
     });
     world = w;
     w.powerMul = genre.powerMul;
@@ -347,9 +367,9 @@ export async function bootGame(
 
   function startSandbox(): void {
     resetWorld();
-    const w = new RunWorld(app.screen, sandboxEvents, {
+    const w: RunWorld = new RunWorld(app.screen, sandboxEvents, {
       scripted: false,
-      control: () => input.axis(),
+      control: () => playerControl(w),
     });
     world = w;
     const applyGenre = (g: Genre): void => {
@@ -619,6 +639,21 @@ export async function bootGame(
         if (world) world.invincible = !world.invincible;
       },
     },
+    // Auto-move toggle: cycles Manual -> Kiter -> Greedy -> Manual live. The
+    // label shows the active mode; highlights (like invincible) while auto.
+    autokite: {
+      label: 'auto-move',
+      hotkey: 'B',
+      isOn: () => autoMode !== 'off',
+      dynamicLabel: () => (autoMode === 'off' ? 'auto-move' : `auto: ${autoMode}`),
+      onClick: () => {
+        if (state !== 'run' && state !== 'sandbox') return;
+        setAutoMode(autoMode === 'off' ? 'kiter' : autoMode === 'kiter' ? 'greedy' : 'off');
+        hud.showToast(
+          autoMode === 'off' ? 'auto-move off — you have the controls' : `auto-move: ${autoMode}`,
+        );
+      },
+    },
     xp: {
       label: 'level up',
       hotkey: 'X',
@@ -658,6 +693,7 @@ export async function bootGame(
     const byKey: Record<string, { onClick(): void }> = {
       KeyM: debugActions.mute,
       KeyI: debugActions.invincible,
+      KeyB: debugActions.autokite,
       KeyX: debugActions.xp,
       KeyK: debugActions.kill,
       KeyO: debugActions.overlay,
