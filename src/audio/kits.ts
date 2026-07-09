@@ -5,9 +5,9 @@
 // are auditioned in the room by loading files over these slots. Pitched kits
 // hold one sample at the root and get note variants by playback-rate shifting.
 
-// The soundset: twelve instrument types. Genres reuse this exact set of
-// tools; a genre only changes how they are played (tempo, swing, patterns).
-// Six drums/fx (unpitched) and six pitched voices.
+// The catalog of instrument types. Six drums/fx (unpitched) and six pitched
+// voices, plus the later hires; the soundset chooses how each is played
+// (tempo, swing, patterns).
 export type Role =
   | 'kick'
   | 'snare'
@@ -85,7 +85,7 @@ export interface Kit {
 export const RENDER_RATE = 44100;
 
 /** A mono offline render context of `seconds` length at the render rate.
- *  Exported so per-genre kit builders (src/audio/kits/*) synthesize on the
+ *  Exported so the soundset kit builders (src/audio/kits/*) synthesize on the
  *  same clock as the builtin kit. */
 export function offline(seconds: number): OfflineAudioContext {
   return new OfflineAudioContext(1, Math.ceil(seconds * RENDER_RATE), RENDER_RATE);
@@ -1108,12 +1108,12 @@ async function renderCrash(): Promise<AudioBuffer> {
   return ctx.startRendering();
 }
 
-/** Canonical, genre-independent identity of each role: its display name, color,
- *  pitched/choke behavior, and the sample-variant ids charts may reference. A
- *  genre re-voices a role by supplying different BUFFERS for these same variant
- *  ids (src/audio/kits/*); the identity stays fixed so charts and visuals keep
- *  working across genres. This is the single source of truth — buildKits and
- *  every per-genre kit stamp their kits from it. */
+/** Canonical identity of each role: its display name, color, pitched/choke
+ *  behavior, and the sample-variant ids charts may reference. The soundset kit
+ *  re-voices a role by supplying different BUFFERS for these same variant ids
+ *  (src/audio/kits/*); the identity stays fixed so charts and visuals keep
+ *  working. This is the single source of truth — buildKits and the soundset kit
+ *  both stamp their kits from it. */
 export interface RoleMeta {
   name: string;
   color: string;
@@ -1161,9 +1161,9 @@ export async function loadSample(url: string): Promise<AudioBuffer> {
 }
 
 /** Stamp a role's canonical identity (ROLE_META) onto a set of rendered
- *  buffers. Genre kits and buildKits both assemble their kits through this, so
- *  a "kick" is always a kick (name/color/choke/defaultVariant) whatever the
- *  genre swapped its buffers to. `samples` must include the defaultVariant. */
+ *  buffers. The soundset kit and buildKits both assemble their kits through
+ *  this, so a "kick" is always a kick (name/color/choke/defaultVariant)
+ *  whatever buffers it was given. `samples` must include the defaultVariant. */
 export function makeKit(role: Role, samples: Map<string, AudioBuffer>, tune = 0): Kit {
   const meta = ROLE_META[role];
   const defaultVariant = meta.variants.find((v) => samples.has(v)) ?? samples.keys().next().value!;
@@ -1179,9 +1179,9 @@ export function makeKit(role: Role, samples: Map<string, AudioBuffer>, tune = 0)
   };
 }
 
-/** Render every builtin kit. Called once at startup. This is the default,
- *  genre-neutral kit: the rehearsal room's palette and the fallback voicing for
- *  any role a genre kit does not override. */
+/** Render every builtin kit. Called once at startup. This is the default kit:
+ *  the rehearsal room's palette and the fallback voicing for any role the
+ *  soundset kit does not override. */
 export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
   const [
     kickHard,

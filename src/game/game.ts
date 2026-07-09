@@ -4,14 +4,7 @@
 
 import { Application } from 'pixi.js';
 import type { MusicEngine } from '../audio/engine';
-import { activeGenre } from '../audio/chartstore';
-import {
-  GENRES,
-  GENRE_BY_ID,
-  DEFAULT_GENRE,
-  type Genre,
-  type GenreId,
-} from '../audio/genres';
+import { SOUNDSET } from '../audio/soundset';
 import { ROLES, type Kit, type Role } from '../audio/kits';
 import { SIM_DT, VirtualConductor } from '../bot/conductor';
 import { MOVERS, type Mover, type MoverName } from '../bot/movers';
@@ -125,7 +118,6 @@ export async function bootGame(
         world!.items,
         world!.effects,
         Math.random,
-        activeGenre().id,
         world!.timeS,
       );
       if (options.length === 0) {
@@ -208,7 +200,7 @@ export async function bootGame(
   // so the page stays alive). Backward: restart from the seed — determinism
   // guarantees the identical run — then fast-forward to the target.
   let replayTarget: number | null = null;
-  let lastReplay: { seed: number; mover: MoverName; policy: string; genre: GenreId } | null = null;
+  let lastReplay: { seed: number; mover: MoverName; policy: string } | null = null;
   /** Background probe: a second headless copy of the run raced ahead to
    *  discover where it actually ends, so the seek bar can span the real
    *  run (its right edge = the moment of death) instead of a flat 8:00. */
@@ -247,7 +239,7 @@ export async function bootGame(
     if (!lastReplay) return;
     if (state !== 'replay' || !world || targetS < world.timeS) {
       const r = lastReplay;
-      startReplay(r.seed, r.mover, r.policy, r.genre);
+      startReplay(r.seed, r.mover, r.policy);
     }
     replayTarget = targetS;
     applyGain();
@@ -259,7 +251,6 @@ export async function bootGame(
     seed: number,
     moverName: MoverName,
     policySpec: string,
-    genreId: GenreId,
   ): void {
     const rng = mulberry32(seed);
     const policy = makePolicy(policySpec);
@@ -275,7 +266,7 @@ export async function bootGame(
       control: () => mover(w),
       fx: false,
     });
-    w.powerMul = (GENRE_BY_ID[genreId] ?? GENRE_BY_ID[DEFAULT_GENRE]).powerMul;
+    w.powerMul = SOUNDSET.powerMul;
     const conductor = new VirtualConductor(w, policy.choose, rng);
     probe = { world: w, conductor, endT: null };
     conductor.start(policy.startingKit(rng));
@@ -337,7 +328,7 @@ export async function bootGame(
     for (const role of ROLES) engine.setVoiceEnabled(role, false);
   }
 
-  function startRun(genre: Genre, startingKit: Role, mode: AutoMoveMode = 'off'): void {
+  function startRun(startingKit: Role, mode: AutoMoveMode = 'off'): void {
     resetWorld();
     // Auto-move hands the player's movement to a bot mover (kiter = survival,
     // greedy = the gem-hungry harvester); manual keeps the keyboard/joystick.
@@ -347,13 +338,9 @@ export async function bootGame(
       control: () => playerControl(w),
     });
     world = w;
-    w.powerMul = genre.powerMul;
+    w.powerMul = SOUNDSET.powerMul;
     view = new RunView(w, app.screen);
     app.stage.addChild(view.stage);
-    // Set the genre first: it re-points every voice's chart, so the tier set
-    // below reads the genre's own pattern for the starting instrument.
-    engine.setGenre(genre);
-    hud.setGenre(genre.id);
     engine.setVoiceTier(startingKit, 1);
     engine.setVoiceEnabled(startingKit, true);
     w.addWeapon(startingKit, 1);
@@ -372,26 +359,17 @@ export async function bootGame(
       control: () => playerControl(w),
     });
     world = w;
-    const applyGenre = (g: Genre): void => {
-      engine.setGenre(g);
-      w.powerMul = g.powerMul;
-      hud.setGenre(g.id);
-      hud.renderBand(w.tiers);
-    };
-    applyGenre(GENRE_BY_ID[DEFAULT_GENRE]);
+    w.powerMul = SOUNDSET.powerMul;
     w.invincible = true;
     view = new RunView(w, app.screen);
     app.stage.addChild(view.stage);
     sandboxPanel = mountSandboxPanel(root, engine, w, {
-      genres: GENRES,
-      initial: DEFAULT_GENRE,
-      onGenre: applyGenre,
       onLoadout: () => hud.renderBand(w.tiers),
       onExit: () => {
         resetWorld();
         engine.clock.stop();
         hud.showHud(false);
-        hud.showStart(GENRES, startRun, startSandbox);
+        hud.showStart(startRun, startSandbox);
         state = 'start';
       },
     });
@@ -410,16 +388,10 @@ export async function bootGame(
     seed: number,
     moverName: MoverName,
     policySpec: string,
-    genreId: GenreId,
   ): void {
     resetWorld();
     replayTarget = null;
-    lastReplay = { seed, mover: moverName, policy: policySpec, genre: genreId };
-    const genre = GENRE_BY_ID[genreId] ?? GENRE_BY_ID[DEFAULT_GENRE];
-    // Set genre before the conductor starts: it drives the virtual clock's
-    // tempo (activeGenreBpm) and the charts, matching the headless batch run.
-    engine.setGenre(genre);
-    hud.setGenre(genre.id);
+    lastReplay = { seed, mover: moverName, policy: policySpec };
     const rng = mulberry32(seed);
     const policy = makePolicy(policySpec);
     const mover = (MOVERS[moverName] ?? MOVERS.kiter)();
@@ -439,7 +411,7 @@ export async function bootGame(
       },
     };
     const w: RunWorld = new RunWorld(SIM_VIEW, replayEvents, { rng, control: () => mover(w) });
-    w.powerMul = genre.powerMul;
+    w.powerMul = SOUNDSET.powerMul;
     world = w;
     replayConductor = new VirtualConductor(w, policy.choose, rng, {
       onPick(option) {
@@ -468,14 +440,14 @@ export async function bootGame(
     hud.showHud(true);
     hud.renderItems(w.items);
     hud.renderBand(w.tiers);
-    hud.showToast(`replaying seed ${seed} (${genre.name}/${moverName}/${policySpec})`);
+    hud.showToast(`replaying seed ${seed} (${moverName}/${policySpec})`);
     speedRow.style.display = '';
     seekRow.style.display = '';
     seekSlider.value = '0';
     seekSlider.max = String(RUN.durationS);
     seekLabel.textContent = '0:00';
     setReplaySpeed(1);
-    startProbe(seed, moverName, policySpec, genreId);
+    startProbe(seed, moverName, policySpec);
     state = 'replay';
     void engine.ctx.resume();
     engine.clock.start();
@@ -505,7 +477,7 @@ export async function bootGame(
       },
       () => {
         hud.showHud(false);
-        hud.showStart(GENRES, startRun, startSandbox);
+        hud.showStart(startRun, startSandbox);
         state = 'start';
       },
     );
@@ -727,10 +699,9 @@ export async function bootGame(
       Number(replaySeed),
       (params.get('mover') ?? 'kiter') as MoverName,
       params.get('policy') ?? 'random',
-      (params.get('genre') ?? DEFAULT_GENRE) as GenreId,
     );
   } else {
-    hud.showStart(GENRES, startRun, startSandbox);
+    hud.showStart(startRun, startSandbox);
   }
 
   // extend the dev console handle

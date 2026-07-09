@@ -3,9 +3,8 @@
 // weapons) which note — so a synth chart is a melody and a drum chart is a
 // groove.
 //
-// The actual patterns are no longer global: every genre supplies its own
-// four-tier ladder for all twelve weapons (src/audio/genres.ts). "Same tools,
-// different tracks" — a genre is a full re-voicing of how the soundset plays.
+// The actual patterns live in the soundset: a hand-authored four-tier ladder
+// per supported weapon (src/audio/soundset.ts, src/audio/ladders/).
 
 import { STEPS_PER_BAR, BARS_PER_PHRASE, inNoteSet } from './scale';
 import type { Role } from './kits';
@@ -29,7 +28,7 @@ export interface Chart {
 /** Tiers per weapon ladder. Tier 1 = first pick, tier 4 = maxed. */
 export const TIER_COUNT = 4;
 
-/** Validate one chart against the coherence skeleton. Used when a genre's
+/** Validate one chart against the coherence skeleton. Used when the soundset's
  *  ladders load and by the chart store for edited charts. */
 export function validateChart(chart: Chart): void {
   if (chart.bars < 1 || chart.bars > BARS_PER_PHRASE) {

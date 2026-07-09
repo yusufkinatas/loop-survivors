@@ -295,9 +295,9 @@ export class RunWorld {
   /** Sandbox only: spawns scale as if the run were at this many seconds
    *  (the panel's stage-minute preview). Scripted runs use timeS. */
   stageTimeOverride = 0;
-  /** Per-genre damage compensation (docs/plan.md, tempo and damage): faster
-   *  genres fire more triggers, so their per-trigger damage is scaled down and
-   *  slow genres up, applied to every weapon's damage as it fires. */
+  /** Tempo damage compensation (docs/plan.md, tempo and damage): more triggers
+   *  per second means each hits softer, so per-trigger damage is scaled by this
+   *  factor as every weapon fires. Set once from the soundset at run start. */
   powerMul = 1;
 
   /** Per-weapon effect slot (Feature 4): the sound + gameplay modifier on a
@@ -409,7 +409,7 @@ export class RunWorld {
         damage: conf.damage * fx.damageMul,
       };
     }
-    // Single build-transform pipeline (D1): genre tempo compensation + global
+    // Single build-transform pipeline (D1): tempo compensation + global
     // item mods + this weapon's effect, folded in one place.
     conf = this.applyBuild(conf, effect, PIERCE_ROLES.has(t.role));
     // Echo re-fire pass attenuates damage; the base fire leaves this at 1.
@@ -717,7 +717,7 @@ export class RunWorld {
     this.mods = m;
   }
 
-  /** The single build-transform pipeline (D1): genre power, then global item
+  /** The single build-transform pipeline (D1): tempo power, then global item
    *  mods, then this weapon's effect. Nothing else multiplies weapon numbers. */
   private applyBuild(conf: WeaponConf, effect: EffectId | null, usesPierce: boolean): WeaponConf {
     const m = this.mods;

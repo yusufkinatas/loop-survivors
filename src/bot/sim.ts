@@ -2,8 +2,7 @@
 // real charts, the virtual conductor, a seeded RNG, no graphics, no real
 // time. Returns the run record that batches aggregate.
 
-import { setActiveGenre } from '../audio/chartstore';
-import { DEFAULT_GENRE, GENRE_BY_ID, type GenreId } from '../audio/genres';
+import { SOUNDSET } from '../audio/soundset';
 import type { Role } from '../audio/kits';
 import { mulberry32 } from '../game/rng';
 import { RunWorld } from '../game/run';
@@ -17,15 +16,12 @@ export interface SimSpec {
   mover: MoverName;
   /** Policy spec string: random | deep | wide | focus:<role>. */
   policy: string;
-  /** Which genre (character) the run plays; defaults to House. */
-  genre?: GenreId;
 }
 
 export interface RunRecord {
   seed: number;
   mover: MoverName;
   policy: string;
-  genre: GenreId;
   /** Git commit (plus -dirty) the run was simulated under. */
   config: string;
   victory: boolean;
@@ -48,8 +44,6 @@ export interface RunRecord {
 export const SIM_VIEW = { width: 1280, height: 800 };
 
 export function simulateRun(spec: SimSpec, config: string): RunRecord {
-  const genre = GENRE_BY_ID[spec.genre ?? DEFAULT_GENRE] ?? GENRE_BY_ID[DEFAULT_GENRE];
-  setActiveGenre(genre.id);
   const rng = mulberry32(spec.seed);
   const policy = makePolicy(spec.policy);
   const mover = MOVERS[spec.mover]();
@@ -71,7 +65,7 @@ export function simulateRun(spec: SimSpec, config: string): RunRecord {
     control: () => mover(world),
     fx: false,
   });
-  world.powerMul = genre.powerMul;
+  world.powerMul = SOUNDSET.powerMul;
   const conductor = new VirtualConductor(world, policy.choose, rng);
   conductor.start(policy.startingKit(rng));
 
@@ -95,7 +89,6 @@ export function simulateRun(spec: SimSpec, config: string): RunRecord {
     seed: spec.seed,
     mover: spec.mover,
     policy: spec.policy,
-    genre: genre.id,
     config,
     victory: ended === 'victory',
     timeS: Math.round(world.timeS * 10) / 10,

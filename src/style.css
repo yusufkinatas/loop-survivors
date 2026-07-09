@@ -784,6 +784,17 @@ input[type='range'] {
   font-size: var(--fs-xs);
 }
 
+/* Primary call-to-action on the start screen: every run opens on the kick,
+   so the one choice left is when to begin. */
+.start-btn {
+  padding: 12px 40px;
+  font-size: var(--fs-h2);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border-color: var(--signal);
+  color: var(--signal);
+}
+
 /* The one shared card: a raised panel with a top accent stripe. Used by the
    start/genre/pick/effect/item screens; --voice-color is the per-card accent. */
 .kit-card {
