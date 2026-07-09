@@ -558,6 +558,15 @@ input[type='range'] {
   z-index: 2;
 }
 
+/* The active genre (your character), the panel's header, in the genre's color. */
+.hud-genre {
+  color: var(--voice-color, var(--ink));
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
 .hud-top {
   display: flex;
   align-items: baseline;
@@ -1079,7 +1088,6 @@ button.big {
 .sb-loadout {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
 }
 
@@ -1099,18 +1107,35 @@ button.big {
 
 .sb-btns {
   display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
+  gap: 3px;
+  /* Buttons stay on a single row — the tier list / level list never wraps. */
+  flex-wrap: nowrap;
+  margin-left: auto;
 }
 
 .sb-btns .small {
-  padding: 2px 8px;
+  padding: 2px 6px;
   font-size: 11px;
+  flex: 0 0 auto;
 }
 
 .sb-btns .small.on {
   border-color: var(--signal);
   color: var(--signal);
+}
+
+/* "off" reads as a muted gray power icon, not a text button, so the row starts
+ *  with a clear "disabled" affordance ahead of the tier/level numerals. */
+.sb-btns .small.off-btn {
+  padding: 2px 5px;
+  color: var(--ink-faint);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.sb-btns .small.off-btn.on {
+  border-color: var(--ink-faint);
+  color: var(--ink);
 }
 
 .sb-controls {
@@ -1119,14 +1144,27 @@ button.big {
 
 .sb-loadout-name {
   color: var(--voice-color);
-  min-width: 48px;
+  /* Compact fixed column: the buttons (pushed right by margin-left:auto) stay on
+   *  one row and the name never steals their space. */
+  flex: 0 1 auto;
+  min-width: 0;
   display: flex;
   align-items: center;
-  gap: 6px;
 }
 
 .sb-loadout-label {
   color: var(--voice-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A voice with its own sample-backed voicing for the active genre: marked by a
+ *  border around the name (no separate badge, so it costs no row width). */
+.sb-loadout-label.custom {
+  border: 1px solid var(--voice-color);
+  border-radius: 4px;
+  padding: 1px 6px;
 }
 
 /* Slot group header in the loadout list — matches the band-rack order/naming. */
@@ -1137,17 +1175,6 @@ button.big {
   text-transform: uppercase;
   opacity: 0.7;
   margin: 8px 0 2px;
-}
-
-/* Marks a voice that is sample-backed for the active genre + prototype. */
-.sb-custom-badge {
-  color: var(--signal);
-  font-size: 9px;
-  letter-spacing: 0.06em;
-  border: 1px solid var(--signal);
-  border-radius: 3px;
-  padding: 0 4px;
-  white-space: nowrap;
 }
 
 .sb-hint {

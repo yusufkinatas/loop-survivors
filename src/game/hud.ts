@@ -3,7 +3,7 @@
 // end screens, and the hit flash.
 
 import { type Kit, type Role } from '../audio/kits';
-import { supportedRoles, type Genre, type GenreId } from '../audio/genres';
+import { GENRES, supportedRoles, type Genre, type GenreId } from '../audio/genres';
 import { sampledRoles } from '../audio/kits/index';
 import { SLOTS, SLOT_LABEL, ownerOfSlot, slotOf, startableRoles, supportedRoster } from './band';
 import { TIER_LINES } from './config';
@@ -43,6 +43,7 @@ export class Hud {
   private toastStack: HTMLElement;
   private itemStrip: HTMLElement;
   private rack: HTMLElement;
+  private genreEl: HTMLElement;
   private screen: HTMLElement | null = null;
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
   private kits: Map<Role, Kit>;
@@ -58,6 +59,9 @@ export class Hud {
     // Glass transport panel: timer + level chip on top, then the HP and XP
     // meters (each with a fill and a faint cap label).
     this.bar = el('div', 'hud', root);
+    // The active genre (your character) reads as the panel's header, tinted its
+    // own color, so you always know which genre you're playing mid-run.
+    this.genreEl = el('span', 'hud-genre', this.bar, '');
     const top = el('div', 'hud-top', this.bar);
     this.timer = el('span', 'hud-timer', top, '0:00');
     this.levelEl = el('span', 'hud-level', top, 'LV 1');
@@ -88,6 +92,11 @@ export class Hud {
    *  no instrument for) render as unavailable rather than askable-to-fill. */
   setGenre(genreId: GenreId): void {
     this.genreId = genreId;
+    const genre = GENRES.find((g) => g.id === genreId);
+    if (genre) {
+      this.genreEl.textContent = genre.name;
+      this.genreEl.style.setProperty('--voice-color', genre.color);
+    }
   }
 
   /** The band rack (docs/phases/the-band.md): eight typed sockets in rack

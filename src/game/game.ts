@@ -419,6 +419,7 @@ export async function bootGame(
     // Set genre before the conductor starts: it drives the virtual clock's
     // tempo (activeGenreBpm) and the charts, matching the headless batch run.
     engine.setGenre(genre);
+    hud.setGenre(genre.id);
     const rng = mulberry32(seed);
     const policy = makePolicy(policySpec);
     const mover = (MOVERS[moverName] ?? MOVERS.kiter)();

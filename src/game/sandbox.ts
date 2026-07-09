@@ -235,8 +235,9 @@ export function mountSandboxPanel(
   // genre + prototype (its own voicing, worth focusing testing on); it updates
   // when the genre or prototype changes.
   el('div', 'sb-section', panel, 'loadout');
-  // Rows carry their slot so the custom badge can refresh on genre/proto change.
-  const customBadges: { role: Role; badge: HTMLElement }[] = [];
+  // Rows carry their name element so the custom mark (a border on the name) can
+  // refresh on genre/proto change.
+  const customMarks: { role: Role; el: HTMLElement }[] = [];
   for (const slot of SLOTS) {
     el('div', 'sb-slot-head', panel, SLOT_LABEL[slot]);
     for (const role of SLOT_ROSTER[slot]) {
@@ -244,9 +245,8 @@ export function mountSandboxPanel(
       const row = el('div', 'sb-loadout', panel);
       row.style.setProperty('--voice-color', voice.kit.color);
       const name = el('div', 'sb-loadout-name', row);
-      el('span', 'sb-loadout-label', name, voice.kit.name);
-      const badge = el('span', 'sb-custom-badge', name, '★ custom');
-      customBadges.push({ role, badge });
+      const label = el('span', 'sb-loadout-label', name, voice.kit.name);
+      customMarks.push({ role, el: label });
       const btns = el('div', 'sb-btns', row);
       const options: HTMLButtonElement[] = [];
       const set = (tier: number | null) => {
@@ -263,7 +263,8 @@ export function mountSandboxPanel(
         );
         opts.onLoadout?.();
       };
-      const off = el('button', 'small', btns, 'off') as HTMLButtonElement;
+      const off = el('button', 'small off-btn', btns, '⏻') as HTMLButtonElement;
+      off.title = 'off';
       off.onclick = () => set(null);
       options.push(off);
       TIER_NUMERALS.forEach((numeral, i) => {
@@ -275,11 +276,14 @@ export function mountSandboxPanel(
       options.forEach((b, i) => b.classList.toggle('on', current === undefined ? i === 0 : i === current));
     }
   }
-  // Show ★ custom only on the roles sampled for the active genre + prototype.
+  // Mark (with a bordered name) only the roles sampled for the active genre +
+  // prototype — their own custom voicing, worth focusing testing on.
   function refreshCustom(): void {
     const custom = sampledRoles(currentGenreId);
-    for (const { role, badge } of customBadges) {
-      badge.style.display = custom.has(role) ? '' : 'none';
+    for (const { role, el: mark } of customMarks) {
+      const on = custom.has(role);
+      mark.classList.toggle('custom', on);
+      mark.title = on ? 'custom voicing (sample-backed for this genre)' : '';
     }
   }
   refreshCustom();
@@ -298,7 +302,8 @@ export function mountSandboxPanel(
       else world.addItem(id, level);
       options.forEach((b, i) => b.classList.toggle('on', level === null ? i === 0 : i === level));
     };
-    const off = el('button', 'small', btns, 'off') as HTMLButtonElement;
+    const off = el('button', 'small off-btn', btns, '⏻') as HTMLButtonElement;
+    off.title = 'off';
     off.onclick = () => set(null);
     options.push(off);
     for (let lvl = 1; lvl <= def.maxLevel; lvl++) {
