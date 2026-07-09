@@ -10,8 +10,9 @@ import { SIM_DT, VirtualConductor } from '../bot/conductor';
 import { MOVERS, type Mover, type MoverName } from '../bot/movers';
 import { makePolicy } from '../bot/policies';
 import { SIM_VIEW } from '../bot/sim';
-import { mountPlayground, type Playground } from '../rehearsal/playground';
 import { RUN } from './config';
+import { SLOTS, ownerOfSlot } from './band';
+import { mountTrackOverlay } from './trackoverlay';
 import { Hud, TIER_NUMERALS } from './hud';
 import { autoMove, Input, type AutoMoveMode } from './input';
 import { mountJoystick } from './joystick';
@@ -82,7 +83,7 @@ export async function bootGame(
   // ESC resumes. Only the live run pauses — menus and replays have their own
   // controls (the replay has speed/seek).
   const pauseOverlay = document.createElement('div');
-  pauseOverlay.className = 'pause-overlay';
+  pauseOverlay.className = 'screen pause-overlay';
   pauseOverlay.style.display = 'none';
   pauseOverlay.innerHTML =
     '<h1>Paused</h1><div class="pause-rack"></div><p class="hint">Hit ESC again to continue.</p>';
@@ -95,7 +96,7 @@ export async function bootGame(
     if (paused) {
       engine.clock.pause();
       // Show the current band while paused (the same rack the HUD draws).
-      if (world) hud.renderBand(world.tiers, pauseRack);
+      if (world) hud.renderBand(world.tiers, pauseRack, mutedRoles);
     } else engine.clock.resume();
   }
 
@@ -129,8 +130,8 @@ export async function bootGame(
           engine.setVoiceTier(option.role, option.tier);
           engine.setVoiceEnabled(option.role, true);
           w!.addWeapon(option.role, option.tier);
-          hud.renderBand(w!.tiers);
-          chartOverlay?.refresh();
+          hud.renderBand(w!.tiers, undefined, mutedRoles);
+          refreshTrackOverlay();
           // Cosmetic affirmation the pick landed (view-only, muted-safe).
           view?.flourish(w!.player.x, w!.player.y);
           hud.levelPulse();
@@ -303,6 +304,7 @@ export async function bootGame(
     view?.destroy();
     view = null;
     world = null;
+    resetMutes(); // new run starts with every voice audible
     replayConductor = null;
     replayAcc = 0;
     probe = null;
@@ -346,7 +348,10 @@ export async function bootGame(
     view = new RunView(w, app.screen);
     app.stage.addChild(view.stage);
     sandboxPanel = mountSandboxPanel(root, engine, w, {
-      onLoadout: () => hud.renderBand(w.tiers),
+      onLoadout: () => {
+        hud.renderBand(w.tiers, undefined, mutedRoles);
+        refreshTrackOverlay();
+      },
       onExit: () => {
         resetWorld();
         engine.clock.stop();
@@ -404,8 +409,8 @@ export async function bootGame(
         // virtual clock, the engine only plays along.
         engine.setVoiceTier(option.role, option.tier);
         engine.setVoiceEnabled(option.role, true);
-        hud.renderBand(w.tiers);
-        chartOverlay?.refresh();
+        hud.renderBand(w.tiers, undefined, mutedRoles);
+        refreshTrackOverlay();
       },
       onHeal() {
         hud.showToast('+15 hp — the track is complete');
@@ -458,20 +463,48 @@ export async function bootGame(
     );
   }
 
-  // The read-only chart overlay (M2 dev tools): the playground component
-  // mounted over the arena, showing the live engine state of the build.
-  const chartOverlayEl = document.createElement('div');
-  chartOverlayEl.className = 'chart-overlay';
-  chartOverlayEl.style.display = 'none';
-  root.appendChild(chartOverlayEl);
-  let chartOverlay: Playground | null = null;
+  // The minimal track overlay (dev tools, hotkey C): a compact "now playing"
+  // readout — one row per active voice with a single-bar mini grid and a
+  // moving playhead. Replaces the old wide chart dock; the rehearsal room
+  // keeps the full editable playground.
+  const trackOverlayEl = document.createElement('div');
+  trackOverlayEl.className = 'track-overlay';
+  trackOverlayEl.style.display = 'none';
+  root.appendChild(trackOverlayEl);
+  const trackOverlay = mountTrackOverlay(trackOverlayEl, engine, kits);
+  function refreshTrackOverlay(): void {
+    if (trackOverlayEl.style.display === 'none') return;
+    trackOverlay.refresh(world?.tiers ?? new Map(), mutedRoles);
+  }
   function toggleChartOverlay(): void {
-    const show = chartOverlayEl.style.display === 'none';
-    chartOverlayEl.style.display = show ? '' : 'none';
-    if (show) {
-      chartOverlay ??= mountPlayground(chartOverlayEl, engine, { editable: false });
-      chartOverlay.refresh();
+    const show = trackOverlayEl.style.display === 'none';
+    trackOverlayEl.style.display = show ? '' : 'none';
+    if (show) refreshTrackOverlay();
+  }
+
+  // Number-key track toggles (dev mechanism): Digit1..Digit8 map to the eight
+  // band slots in rack order and mute the AUDIO of the instrument owning that
+  // slot. Audio-only — engine triggers, damage, determinism, and replays are
+  // untouched; only the voice's gain goes to 0.
+  const mutedRoles = new Set<Role>();
+  function toggleRoleMute(role: Role): void {
+    if (mutedRoles.has(role)) {
+      mutedRoles.delete(role);
+      engine.setVoiceGain(role, 1);
+    } else {
+      mutedRoles.add(role);
+      engine.setVoiceGain(role, 0);
     }
+    if (world) {
+      hud.renderBand(world.tiers, undefined, mutedRoles);
+      // The pause menu mirrors the same rack; keep it truthful if it's open.
+      if (paused) hud.renderBand(world.tiers, pauseRack, mutedRoles);
+    }
+    refreshTrackOverlay();
+  }
+  function resetMutes(): void {
+    for (const role of mutedRoles) engine.setVoiceGain(role, 1);
+    mutedRoles.clear();
   }
 
   // one trigger, two outputs: the engine already made the sound; this makes
@@ -552,6 +585,7 @@ export async function bootGame(
         }
       }
     }
+    if (trackOverlayEl.style.display !== 'none') trackOverlay.tick();
     if (overlay.style.display !== 'none' && world) {
       // damage share, not kills: the primary attribution metric
       const byDamage = Object.entries(world.damageByRole) as [Role, number][];
@@ -625,9 +659,9 @@ export async function bootGame(
       },
     },
     charts: {
-      label: 'charts',
+      label: 'track',
       hotkey: 'C',
-      isOn: () => chartOverlayEl.style.display !== 'none',
+      isOn: () => trackOverlayEl.style.display !== 'none',
       onClick: toggleChartOverlay,
     },
   };
@@ -636,6 +670,16 @@ export async function bootGame(
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Escape') {
       togglePause();
+      return;
+    }
+    // Number-key track toggles: only while playing (never over the start /
+    // pick / end screens, mirroring the state guards the debug actions use).
+    if (/^Digit[1-8]$/.test(e.code) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if ((state === 'run' || state === 'sandbox' || state === 'replay') && world) {
+        const slot = SLOTS[Number(e.code.slice(5)) - 1];
+        const role = ownerOfSlot(slot, world.tiers);
+        if (role) toggleRoleMute(role); // empty slot: the key does nothing
+      }
       return;
     }
     const byKey: Record<string, { onClick(): void }> = {

@@ -188,7 +188,7 @@ input[type='range'] {
 }
 
 .sets-status {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: var(--ink-dim);
 }
 
@@ -203,7 +203,7 @@ input[type='range'] {
 .voice {
   border: 1px solid var(--line);
   border-left: 4px solid var(--voice-color);
-  border-radius: 4px;
+  border-radius: var(--r-sm);
   padding: 10px 12px;
   display: flex;
   flex-direction: column;
@@ -230,9 +230,9 @@ input[type='range'] {
 
 .voice-key {
   color: var(--ink-faint);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   border: 1px solid var(--line);
-  border-radius: 3px;
+  border-radius: var(--r-sm);
   padding: 0 5px;
 }
 
@@ -265,7 +265,7 @@ input[type='range'] {
 }
 
 .small {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   padding: 3px 10px;
 }
 
@@ -285,14 +285,14 @@ input[type='range'] {
 
 .scrub-readout {
   min-width: 150px;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: var(--ink-dim);
 }
 
 /* ---- chart playground (M2) ---- */
 
 .pg-caption {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: var(--ink-faint);
   padding: 18px 0 10px;
   border-top: 1px solid var(--line);
@@ -311,7 +311,7 @@ input[type='range'] {
 .pg-section {
   border: 1px solid var(--line);
   border-left: 4px solid var(--voice-color);
-  border-radius: 4px;
+  border-radius: var(--r-sm);
   padding: 8px 10px;
   opacity: 0.55;
   transition: opacity 0.15s;
@@ -332,7 +332,7 @@ input[type='range'] {
 
 .pg-mix {
   padding: 1px 7px;
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: #444450;
 }
 
@@ -356,7 +356,7 @@ input[type='range'] {
 }
 
 .pg-tier {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   padding: 2px 8px;
   color: var(--ink-dim);
 }
@@ -371,13 +371,13 @@ input[type='range'] {
   display: flex;
   align-items: center;
   gap: 3px;
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--ink-faint);
   margin-left: 10px;
 }
 
 .pg-bar-n {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   padding: 2px 7px;
   color: var(--ink-dim);
 }
@@ -389,7 +389,7 @@ input[type='range'] {
 
 .pg-edited {
   display: none;
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: #ffc93c;
 }
 
@@ -398,7 +398,7 @@ input[type='range'] {
 }
 
 .pg-reset {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   padding: 2px 8px;
   margin-left: auto;
   color: var(--ink-dim);
@@ -421,7 +421,7 @@ input[type='range'] {
 .pg-row-label {
   width: 52px;
   flex: none;
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--ink-dim);
   text-align: right;
 }
@@ -540,8 +540,8 @@ input[type='range'] {
   border: 2px solid rgba(216, 216, 224, 0.5);
 }
 
-/* Glass transport panel (Neon Rack). The arena is the perf-critical layer,
-   so the backdrop blur is gated to non-phone widths (see media query below). */
+/* Transport panel: a flat translucent card (the old gradient + desktop-only
+   backdrop blur read busier and cost GPU over the arena). */
 .hud {
   position: absolute;
   top: max(12px, env(safe-area-inset-top));
@@ -551,20 +551,11 @@ input[type='range'] {
   flex-direction: column;
   gap: var(--sp-2);
   padding: var(--sp-3);
-  background: linear-gradient(180deg, rgba(23, 26, 34, 0.82), rgba(16, 18, 24, 0.82));
+  background: rgba(16, 18, 24, 0.85);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   pointer-events: none;
   z-index: 2;
-}
-
-/* The active genre (your character), the panel's header, in the genre's color. */
-.hud-genre {
-  color: var(--voice-color, var(--ink));
-  font-size: var(--fs-xs);
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
 }
 
 .hud-top {
@@ -574,7 +565,7 @@ input[type='range'] {
 }
 
 .hud-timer {
-  font-size: 22px;
+  font-size: 22px; /* deliberate one-off between --fs-h2 and --fs-h1 */
   font-weight: 700;
   letter-spacing: 0.06em;
   font-variant-numeric: tabular-nums;
@@ -613,12 +604,10 @@ input[type='range'] {
 
 .meter.hp .fill {
   background: linear-gradient(90deg, var(--hp-dim), var(--hp));
-  box-shadow: 0 0 14px -4px var(--hp);
 }
 
 .meter.xp .fill {
   background: linear-gradient(90deg, var(--signal-dim), var(--signal));
-  box-shadow: 0 0 14px -4px var(--signal);
   width: 0;
 }
 
@@ -713,11 +702,7 @@ input[type='range'] {
   letter-spacing: 0.06em;
   margin: 0;
   text-transform: uppercase;
-  background: linear-gradient(180deg, #ffffff 0%, var(--signal) 130%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  filter: drop-shadow(0 0 20px rgba(89, 255, 209, 0.25));
+  color: var(--ink);
 }
 
 .screen h2 {
@@ -796,7 +781,7 @@ input[type='range'] {
 }
 
 /* The one shared card: a raised panel with a top accent stripe. Used by the
-   start/genre/pick/effect/item screens; --voice-color is the per-card accent. */
+   pick screens; --voice-color is the per-card accent. */
 .kit-card {
   position: relative;
   display: flex;
@@ -821,7 +806,6 @@ input[type='range'] {
   inset: 0 0 auto 0;
   height: 4px;
   background: var(--voice-color);
-  box-shadow: 0 0 14px -2px var(--voice-color);
 }
 
 .kit-card:hover,
@@ -867,31 +851,6 @@ input[type='range'] {
   letter-spacing: 0.08em;
 }
 
-/* Genre select: the character-pick step. Wider cards, room for six. */
-.genre-grid {
-  max-width: 860px;
-}
-
-.genre-card {
-  width: 244px;
-}
-
-.genre-card .kit-name {
-  font-size: 19px;
-}
-
-.genre-bpm {
-  margin-top: 4px;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--voice-color);
-  border: 1px solid var(--line);
-  border-radius: var(--r-pill);
-  padding: 2px 10px;
-  width: max-content;
-}
-
 button.big {
   font-size: 18px;
   padding: 12px 30px;
@@ -902,7 +861,8 @@ button.big {
    fades out. Purely informational: clicks pass through. */
 .toast-stack {
   position: absolute;
-  top: 70px;
+  /* clears the band rack even when it wraps onto a short second row */
+  top: calc(env(safe-area-inset-top) + 64px);
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -939,22 +899,34 @@ button.big {
   transform: translateY(-10px);
 }
 
+/* Perf/attribution overlay (hotkey O): bottom-right above the debug row, so
+   the two dev surfaces never stack in the same corner as the track overlay. */
 .debug-overlay {
   position: absolute;
-  bottom: 10px;
-  left: 12px;
-  font-size: 12px;
+  bottom: max(48px, calc(env(safe-area-inset-bottom) + 38px));
+  right: max(12px, env(safe-area-inset-right));
+  max-width: min(70vw, 560px);
+  text-align: right;
+  font-size: var(--fs-sm);
   color: var(--ink-dim);
   background: rgba(16, 16, 20, 0.7);
-  padding: 4px 8px;
-  border-radius: 3px;
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--r-sm);
   pointer-events: none;
 }
 
-.debug-row {
+/* Debug controls, bottom-right: a lone ⚙ chip by default; clicking it
+   reveals the button row (state persists). Hotkeys work either way. */
+.debug-wrap {
   position: absolute;
   bottom: max(10px, env(safe-area-inset-bottom));
   right: max(12px, env(safe-area-inset-right));
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.debug-row {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
@@ -981,10 +953,10 @@ button.big {
   align-items: center;
   gap: 10px;
   width: min(56vw, 520px);
-  padding: 6px 12px;
+  padding: var(--sp-2) var(--sp-3);
   background: rgba(34, 34, 42, 0.85);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--r-md);
   z-index: 6;
 }
 
@@ -1008,39 +980,17 @@ button.big {
   transform: translate(-50%, -50%);
   background: rgba(34, 34, 42, 0.92);
   border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 10px 20px;
+  border-radius: var(--r-md);
+  padding: var(--sp-3) var(--sp-5);
   z-index: 7;
   font-variant-numeric: tabular-nums;
 }
 
+/* The pause overlay is a .screen (game.ts gives it both classes); only its
+   stacking and rhythm differ. */
 .pause-overlay {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
   gap: var(--sp-3);
-  background: radial-gradient(120% 90% at 50% 12%, rgba(20, 24, 34, 0.72), rgba(8, 9, 13, 0.94));
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  text-align: center;
   z-index: 8;
-}
-
-.pause-overlay h1 {
-  font-family: var(--font-disp);
-  font-size: var(--fs-disp);
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  margin: 0;
-  text-transform: uppercase;
-  background: linear-gradient(180deg, #ffffff 0%, var(--signal) 130%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  filter: drop-shadow(0 0 20px rgba(89, 255, 209, 0.25));
 }
 
 .pause-overlay .hint {
@@ -1070,12 +1020,12 @@ button.big {
   overflow-y: auto;
   background: rgba(16, 16, 20, 0.88);
   border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  padding: var(--sp-3);
   display: flex;
   flex-direction: column;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .sb-head {
@@ -1113,7 +1063,7 @@ button.big {
 
 .sb-enemy-stats {
   color: var(--ink-faint);
-  font-size: 11px;
+  font-size: var(--fs-xs);
 }
 
 .sb-btns {
@@ -1126,7 +1076,7 @@ button.big {
 
 .sb-btns .small {
   padding: 2px 6px;
-  font-size: 11px;
+  font-size: var(--fs-xs);
   flex: 0 0 auto;
 }
 
@@ -1140,7 +1090,7 @@ button.big {
 .sb-btns .small.off-btn {
   padding: 2px 5px;
   color: var(--ink-faint);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   line-height: 1;
 }
 
@@ -1174,7 +1124,7 @@ button.big {
  *  border around the name (no separate badge, so it costs no row width). */
 .sb-loadout-label.custom {
   border: 1px solid var(--voice-color);
-  border-radius: 4px;
+  border-radius: var(--r-sm);
   padding: 1px 6px;
 }
 
@@ -1190,25 +1140,107 @@ button.big {
 
 .sb-hint {
   color: var(--ink-faint);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   margin-top: 6px;
 }
 
-/* the read-only chart overlay over the arena */
-/* Compact dock (gate B note: the old full-screen overlay hid the game).
- *  Bottom-left corner, capped height, translucent; the arena stays visible. */
-.chart-overlay {
+/* The minimal track overlay (hotkey C): a compact "now playing" readout,
+   bottom-left — one slim row per active voice with a single-bar mini grid.
+   Fixed narrow width, no scrolling; the arena stays visible. */
+.track-overlay {
   position: absolute;
-  left: 12px;
-  bottom: 52px;
-  width: min(480px, 45vw);
-  max-height: 38vh;
-  overflow: auto;
+  left: max(12px, env(safe-area-inset-left));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
   background: rgba(16, 16, 20, 0.72);
   border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 8px;
-  font-size: 11px;
+  border-radius: var(--r-sm);
+  padding: var(--sp-2);
+  font-size: var(--fs-xs);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.tr-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Audio-muted voice (the number-key dev toggles): dimmed, with an 'm' mark. */
+.tr-row.muted {
+  opacity: 0.4;
+}
+
+.tr-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--voice-color);
+}
+
+.tr-name {
+  flex: none;
+  width: 58px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--voice-color);
+}
+
+.tr-pips {
+  flex: none;
+  display: flex;
+  gap: 2px;
+}
+
+.tr-pips .pip {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--voice-color) 55%, transparent);
+}
+
+.tr-pips .pip.on {
+  background: var(--voice-color);
+}
+
+.tr-mute {
+  flex: none;
+  width: 8px;
+  font-weight: 700;
+  color: var(--warn);
+}
+
+.tr-cells {
+  display: flex;
+  gap: 1px;
+  margin-left: auto;
+}
+
+.tr-cell {
+  flex: none;
+  width: 7px;
+  height: 11px;
+  border-radius: 1px;
+  background: #1c1c24;
+}
+
+.tr-cell.b {
+  background: #242430; /* beat starts read as a faint 4/4 ruler */
+}
+
+.tr-cell.hit {
+  background: var(--voice-color);
+  opacity: 0.85;
+}
+
+.tr-cell.ph {
+  outline: 1px solid rgba(255, 255, 255, 0.55);
 }
 
 .kill-row {
@@ -1218,38 +1250,15 @@ button.big {
   justify-content: center;
 }
 
-/* End-screen chips carry a mini damage-share bar behind the label (hud.ts
-   sets --pct + prepends .kill-bar). Fallback hex for the bar fill in case
-   color-mix is unsupported. */
+/* End-screen chips: colored left border + "name pct% (kills)" text. */
 .kill-chip {
-  position: relative;
-  overflow: hidden;
-  font-size: 13px;
+  font-size: var(--fs-sm);
   color: var(--ink);
   border: 1px solid var(--line);
   border-left: 3px solid var(--voice-color);
   border-radius: var(--r-sm);
   padding: 4px 10px;
   font-variant-numeric: tabular-nums;
-}
-
-.kill-chip .kill-bar {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: var(--pct, 0%);
-  background: var(--voice-color);
-  background: color-mix(in srgb, var(--voice-color) 22%, transparent);
-  z-index: -1;
-}
-
-/* ---- desktop: the glass backdrop blur costs GPU while 2400 enemies render,
-   so the arena-layer .hud blur is enabled only above phone widths (screens
-   pause the sim, so their blur is always safe). ---- */
-@media (min-width: 601px) {
-  .hud {
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-  }
 }
 
 /* ---- phones ---- */
@@ -1285,7 +1294,7 @@ button.big {
   }
 
   .kit-desc {
-    font-size: 11px;
+    font-size: var(--fs-xs);
   }
 
   .debug-row .small {
@@ -1296,12 +1305,11 @@ button.big {
   .sandbox-panel {
     width: 46vw;
     min-width: 210px;
-    font-size: 11px;
+    font-size: var(--fs-xs);
   }
 
-  .chart-overlay {
-    width: calc(100vw - 24px);
-    max-height: 34vh;
+  .track-overlay {
+    width: min(280px, calc(100vw - 24px));
   }
 }
 
@@ -1351,7 +1359,7 @@ button.big {
   height: 14px;
   background: #17171f;
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: var(--r-sm);
   overflow: hidden;
 }
 
@@ -1363,7 +1371,7 @@ button.big {
 }
 
 .boss-phase {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--ink-dim);
   letter-spacing: 1.5px;
   text-transform: uppercase;
@@ -1380,7 +1388,7 @@ button.big {
 }
 
 .boss-playerbar .lbl {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: var(--ink-dim);
   letter-spacing: 1px;
 }
@@ -1421,7 +1429,7 @@ button.big {
 }
 
 .boss-sync .lbl {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   letter-spacing: 1.5px;
   text-transform: uppercase;
   color: var(--ink-dim);
@@ -1465,7 +1473,7 @@ button.big {
 }
 
 .boss-card-arch {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   letter-spacing: 1.5px;
   text-transform: uppercase;
   color: var(--boss-color);
@@ -1478,7 +1486,7 @@ button.big {
 }
 
 .boss-card-artist {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: #8a8a9c;
 }
 
@@ -1501,43 +1509,6 @@ button.big {
   .boss-card {
     width: min(88vw, 320px);
   }
-}
-
-/* ---- pick cards: effect + item kinds (Features 4, 5) ---- */
-/* Effect cards read as modifiers: dashed border + a ✦ after the name. Item
-   cards use "Lv N" text (set in hud.ts). Both reuse .kit-card + --voice-color;
-   the full Neon Rack reskin lands in a later stage. */
-.kit-card--effect {
-  border-style: dashed;
-}
-.kit-card--effect .kit-name::after {
-  content: ' ✦';
-  opacity: 0.7;
-}
-
-/* Owned-item strip, bottom-left. Inherits the Neon Rack glass tokens and
-   sits above the arena vignette. */
-.item-strip {
-  position: absolute;
-  left: max(8px, env(safe-area-inset-left));
-  bottom: max(8px, env(safe-area-inset-bottom));
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-1);
-  max-width: 40vw;
-  pointer-events: none;
-  z-index: 2;
-}
-.item-chip {
-  font: 11px/1 var(--font-mono);
-  letter-spacing: 0.04em;
-  padding: 4px 8px;
-  border-radius: var(--r-sm);
-  color: var(--voice-color);
-  border: 1px solid var(--line);
-  border-left: 2px solid var(--voice-color);
-  background: rgba(10, 11, 15, 0.82);
-  box-shadow: 0 0 12px -6px var(--voice-color);
 }
 
 /* The band rack (docs/phases/the-band.md): the VS-style build row of eight
@@ -1574,10 +1545,11 @@ button.big {
   border-top-color: var(--line-2);
   opacity: 0.6;
 }
-.band-socket.filled {
-  box-shadow: 0 0 12px -6px var(--voice-color);
+/* An audio-muted owner (the number-key dev toggles): dimmed. */
+.band-socket.muted {
+  opacity: 0.45;
 }
-/* A slot the active genre drops: dimmed, no fill affordance. */
+/* A slot the soundset drops: dimmed, no fill affordance. */
 .band-socket.unavailable {
   border-style: dashed;
   border-top-color: var(--line);
@@ -1613,7 +1585,6 @@ button.big {
 }
 .socket-pips .pip.on {
   background: var(--voice-color);
-  box-shadow: 0 0 6px -1px var(--voice-color);
 }
 
 /* Slot badge on a pick card: the plain player-facing band position this hire
@@ -1631,20 +1602,34 @@ button.big {
   background: rgba(10, 11, 15, 0.5);
 }
 
-/* Dev-only marker on a starting-instrument card whose voice is sample-backed
- *  for the genre — mirrors the sandbox loadout ★ custom badge. Bottom-right so
- *  it clears the top-left slot badge and top-right tier chip. */
-.kit-custom-badge {
-  position: absolute;
-  bottom: 8px;
-  right: 10px;
-  font: 700 9px/1 var(--font-mono);
-  letter-spacing: 0.08em;
-  color: var(--signal);
-  border: 1px solid color-mix(in srgb, var(--signal) 55%, transparent);
-  border-radius: var(--r-sm);
-  padding: 2px 5px;
-  background: rgba(10, 11, 15, 0.5);
+/* Start-screen dev entrances: one small disclosure link that reveals the row
+   of lab links (boss fights / sandbox / rehearsal / experimentation). */
+.start-dev {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+}
+
+.start-dev-toggle {
+  color: var(--ink-faint);
+  background: transparent;
+  border-color: transparent;
+}
+
+.start-dev-toggle:hover,
+.start-dev-toggle.on {
+  color: var(--ink-dim);
+  border-color: var(--line);
+  background: var(--bg-3);
+}
+
+.start-dev-row {
+  display: flex;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 /* The same rack, shown roomier while paused. */
@@ -1662,7 +1647,7 @@ button.big {
 }
 .pause-rack .socket-name {
   max-width: 84px;
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 /* Phones: shrink the rack to a compact slot+pip strip so it never covers the

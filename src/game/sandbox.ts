@@ -218,7 +218,7 @@ export function mountSandboxPanel(
     'div',
     'sb-hint',
     panel,
-    'stage script off: nothing spawns by itself. O = perf overlay, C = chart overlay.',
+    'stage script off: nothing spawns by itself. O = perf overlay, C = track overlay, 1-8 = mute a slot.',
   );
 
   return {

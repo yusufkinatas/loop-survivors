@@ -3,7 +3,6 @@
 // end screens, and the hit flash.
 
 import { type Kit, type Role } from '../audio/kits';
-import { sampledRoles } from '../audio/kits/index';
 import { SLOTS, SLOT_LABEL, ownerOfSlot, slotOf, supportedRoster } from './band';
 import { TIER_LINES } from './config';
 import { type AutoMoveMode } from './input';
@@ -79,15 +78,21 @@ export class Hud {
    *  order, empty ones asking to be filled, filled ones showing the hired
    *  instrument (its color + name) and its tier as pips. Rebuilt on every pick
    *  (cheap: 8 sockets). Renders into the HUD rack by default, or any supplied
-   *  container so the pause menu can show the same band. */
-  renderBand(tiers: ReadonlyMap<Role, number>, into: HTMLElement = this.rack): void {
+   *  container so the pause menu can show the same band. An audio-muted owner
+   *  (the dev number-key toggles) renders its socket dimmed. */
+  renderBand(
+    tiers: ReadonlyMap<Role, number>,
+    into: HTMLElement = this.rack,
+    muted?: ReadonlySet<Role>,
+  ): void {
     into.replaceChildren();
     for (const slot of SLOTS) {
       const owner = ownerOfSlot(slot, tiers);
       // A slot the soundset supports no instrument for is dropped: shown dimmed
       // and unavailable, never asking to be filled.
       const dropped = supportedRoster(slot).length === 0;
-      const cls = dropped ? 'unavailable' : owner ? 'filled' : 'empty';
+      let cls = dropped ? 'unavailable' : owner ? 'filled' : 'empty';
+      if (owner && !dropped && muted?.has(owner)) cls += ' muted';
       const socket = el('div', `band-socket ${cls}`, into);
       el('span', 'socket-slot', socket, SLOT_LABEL[slot]);
       if (owner && !dropped) {
@@ -127,9 +132,28 @@ export class Hud {
   }
 
   /** On-screen debug buttons mirroring the hotkeys (gate B feedback: no
-   *  memorizing shortcuts). Always visible; toggles show their state. */
+   *  memorizing shortcuts). Hidden by default behind a small ⚙ toggle (UI
+   *  cleanup — deviates from the old "always visible" gate note, surfaced to
+   *  the developer); the open/closed state persists across sessions. All
+   *  hotkeys keep working regardless. */
   mountDebug(actions: DebugAction[]): void {
-    this.debugRow = el('div', 'debug-row', this.root);
+    const KEY = 'loop.devrow';
+    const wrap = el('div', 'debug-wrap', this.root);
+    this.debugRow = el('div', 'debug-row', wrap);
+    const gear = el('button', 'small debug-btn debug-gear', wrap, '⚙');
+    gear.title = 'dev tools';
+    let open = localStorage.getItem(KEY) === '1';
+    const paint = (): void => {
+      this.debugRow!.style.display = open ? '' : 'none';
+      gear.classList.toggle('on', open);
+    };
+    gear.onclick = () => {
+      open = !open;
+      localStorage.setItem(KEY, open ? '1' : '0');
+      paint();
+      (gear as HTMLButtonElement).blur();
+    };
+    paint();
     for (const action of actions) {
       const text = action.dynamicLabel ? action.dynamicLabel() : action.label;
       const btn = el('button', 'small debug-btn', this.debugRow, `${text} (${action.hotkey})`);
@@ -170,21 +194,31 @@ export class Hud {
       this.closeScreen();
       onStart('kick', moveMode);
     };
-    const row = el('div', 'pick-grid', s);
-    const bossBtn = el('button', '', row, 'boss fights');
+    // Dev lab entrances, tucked behind one small disclosure so the player-
+    // facing start screen stays a single call to action.
+    const dev = el('div', 'start-dev', s);
+    const devToggle = el('button', 'small start-dev-toggle', dev, 'dev tools');
+    const row = el('div', 'start-dev-row', dev);
+    row.style.display = 'none';
+    devToggle.onclick = () => {
+      row.style.display = row.style.display === 'none' ? '' : 'none';
+      devToggle.classList.toggle('on', row.style.display !== 'none');
+      (devToggle as HTMLButtonElement).blur();
+    };
+    const bossBtn = el('button', 'small', row, 'boss fights');
     bossBtn.onclick = () => {
       location.hash = '#boss';
     };
-    const sandboxBtn = el('button', '', row, 'open the sandbox');
+    const sandboxBtn = el('button', 'small', row, 'sandbox');
     sandboxBtn.onclick = () => {
       this.closeScreen();
       onSandbox();
     };
-    const roomBtn = el('button', '', row, 'open the rehearsal room');
+    const roomBtn = el('button', 'small', row, 'rehearsal room');
     roomBtn.onclick = () => {
       location.hash = '#rehearsal';
     };
-    const labBtn = el('button', '', row, 'open the experimentation room');
+    const labBtn = el('button', 'small', row, 'experimentation room');
     labBtn.onclick = () => {
       location.hash = '#tracklab';
     };
@@ -201,16 +235,8 @@ export class Hud {
   ): void {
     const opts: { mode: AutoMoveMode; label: string; hint: string }[] = [
       { mode: 'off', label: 'Manual', hint: 'You move. WASD or touch.' },
-      {
-        mode: 'kiter',
-        label: 'Auto · Kiter',
-        hint: 'Auto-pilot. Flees the horde, survival first. You can’t move.',
-      },
-      {
-        mode: 'greedy',
-        label: 'Auto · Greedy',
-        hint: 'Auto-pilot. Survives but chases XP for faster level-ups. You can’t move.',
-      },
+      { mode: 'kiter', label: 'Auto · Kiter', hint: 'Auto-pilot, flees the horde.' },
+      { mode: 'greedy', label: 'Auto · Greedy', hint: 'Auto-pilot, chases XP.' },
     ];
     const wrap = el('div', 'move-mode', parent);
     el('span', 'move-mode-label', wrap, 'Movement');
@@ -241,16 +267,11 @@ export class Hud {
     el('h2', '', s, 'Level up');
     const grid = el('div', 'pick-grid', s);
     const cards: HTMLElement[] = [];
-    // Dev aid: mark offered weapons whose voice is sample-backed.
-    const custom = sampledRoles();
     for (const option of options) {
       const card = this.kitCard(grid, option, () => {
         this.closeScreen();
         onPick(option);
       });
-      if (custom.has(option.role)) {
-        el('span', 'kit-custom-badge', card, '★ custom');
-      }
       cards.push(card);
     }
     this.armKeys(cards);
@@ -321,9 +342,6 @@ export class Hud {
         const kills = stats.killsByRole[role] ?? 0;
         const chip = el('span', 'kill-chip', row, `${kit.name} ${pct}% (${kills})`);
         chip.style.setProperty('--voice-color', kit.color);
-        // A mini damage-share bar fills the chip behind the label.
-        chip.style.setProperty('--pct', `${pct}%`);
-        chip.prepend(el('span', 'kill-bar', chip));
       }
     }
     const btn = el('button', 'big', s, 'run it back');
