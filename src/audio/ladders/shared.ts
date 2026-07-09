@@ -1,8 +1,6 @@
-// Shared FX ladders reusable across genres: the transition/punctuation voices
-// (zap = lightning, crash = shockwave, riser = the auto-dash wind-up) read the
-// same in any genre because tempo carries them — a genre that supports one may
-// import it here instead of re-authoring. A genre is free to author its own
-// FX ladders in its ladders/<genre>.ts instead, or to drop the FX slot.
+// Shared FX ladders: the transition/punctuation voices (zap = lightning,
+// crash = shockwave, riser = the auto-dash wind-up). A ladder file may import
+// one of these instead of re-authoring it.
 
 import type { Chart } from '../charts';
 import { d } from '../groove';

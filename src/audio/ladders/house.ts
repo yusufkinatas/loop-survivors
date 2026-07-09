@@ -1,18 +1,18 @@
-// House — the one track. 124 BPM, four-on-the-floor. Every tier keeps the
-// relentless dance pulse and grows into it: the kick never leaves the four
-// downbeats, the clap owns 2 & 4, the open hats ride the offbeats, and the bass
-// rolls only in the gaps between kicks so the low end stays clean. Chords stab
-// on the offbeats, the Rhodes comps underneath, and the lead sings on top.
+// The one track. 124 BPM, four-on-the-floor. Every tier keeps the relentless
+// dance pulse and grows into it: the kick never leaves the four downbeats, the
+// clap owns 2 & 4, the open hats ride the offbeats, and the bass rolls only in
+// the gaps between kicks so the low end stays clean. Chords stab on the
+// offbeats, the Rhodes comps underneath, and the lead sings on top.
 //
-// Supported roles = exactly the roles the House kit voices: kick, clap, rimshot,
-// hat, shaker, crash, riser, bass, chord, rhodes, lead. Key A minor pentatonic.
+// Supported roles = exactly the roles the kit voices: kick, clap, rimshot, hat,
+// shaker, crash, riser, bass, chord, rhodes, lead. Key A minor pentatonic.
 
 import type { Chart } from '../charts';
 import type { Role } from '../kits';
 import { B, d, m } from '../groove';
 import { CRASH, RISER } from './shared';
 
-export const HOUSE_LADDERS: Partial<Record<Role, Chart[]>> = {
+export const SOUNDSET_LADDERS: Partial<Record<Role, Chart[]>> = {
   // Pulse: the four-on-the-floor kick, dead on every beat. Grows with soft
   // ghost pickups into the phrase turnaround, never syncopating off the four.
   kick: [
@@ -51,8 +51,7 @@ export const HOUSE_LADDERS: Partial<Record<Role, Chart[]>> = {
     d('shaker', 'xoooxoooxoooxooo'),
     d('shaker', 'xoooxoooxoooxooo', 'xoooxoooxoooxoox'),
   ],
-  // FX: phrase-top crash and the auto-dash riser, shared voicings (tempo carries
-  // them the same in any genre).
+  // FX: phrase-top crash and the auto-dash riser, shared voicings.
   crash: CRASH,
   riser: RISER,
   // Bass: the rolling sub. Only ever on the offbeats and 16th pickups (2/6/10/14

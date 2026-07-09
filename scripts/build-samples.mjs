@@ -34,15 +34,11 @@ const PROC = {
   ride:       { maxSec: 1.30, peakDb: -6 },
 };
 
-// genre -> local role/variant -> repo path. Two entries (closed/open) for hat.
-const MANIFEST = {
-  // house is NOT here: it is sampled from the local Wave Point pack by
-  // scripts/build-house-kit.mjs (the developer-chosen "Tight Tech" voicing).
-  techno: {
-    'kick': 'bd/BT0AAD0.wav', 'clap': 'realclaps/2.wav', 'rimshot': '808/RS.WAV',
-    'hat_closed': 'hh/000_hh3closedhh.wav', 'hat_open': 'hh/007_hh3openhh.wav', 'ride': 'drumtraks/007_DT Ride.wav',
-  },
-};
+// dir -> local role/variant -> repo path. Two entries (closed/open) for hat.
+// The shipped soundset is sampled from the local Wave Point pack by
+// scripts/build-house-kit.mjs (the "Tight Tech" voicing), so this manifest is
+// empty; it stays as the generic download+correct pipeline for future kits.
+const MANIFEST = {};
 
 const ONSET_MAX_MS = 15;
 

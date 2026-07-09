@@ -10,7 +10,8 @@
 // the batch run that produced it.
 
 import { chartEventsAtStep } from '../audio/arranger';
-import { activeGenre, activeGenreBpm, getChart } from '../audio/chartstore';
+import { getChart } from '../audio/chartstore';
+import { SOUNDSET } from '../audio/soundset';
 import type { Role } from '../audio/kits';
 import type { EffectId } from '../audio/voicefx';
 import { SKELETON, STEPS_PER_BAR, STEPS_PER_PHRASE } from '../audio/scale';
@@ -69,7 +70,6 @@ export class VirtualConductor {
       this.effectiveItems(),
       this.effectiveEffects(),
       this.rng,
-      activeGenre().id,
       this.world.timeS,
     );
     if (options.length === 0) {
@@ -90,7 +90,7 @@ export class VirtualConductor {
    *  once per tick, before world.update. */
   tick(dt: number): void {
     this.musicT += dt;
-    const stepDur = 60 / activeGenreBpm() / SKELETON.stepsPerBeat;
+    const stepDur = 60 / SOUNDSET.bpm / SKELETON.stepsPerBeat;
     while (this.nextStepT <= this.musicT) {
       this.onStep(this.step, this.nextStepT);
       this.nextStepT += stepDur;

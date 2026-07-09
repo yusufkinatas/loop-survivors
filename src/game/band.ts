@@ -10,7 +10,7 @@
 // position several weapons can compete for. Do not conflate the two.
 
 import type { Role } from '../audio/kits';
-import { genreSupports, type GenreId } from '../audio/genres';
+import { soundsetSupports } from '../audio/soundset';
 
 /** The eight band positions, in the on-screen rack order. */
 export type Slot =
@@ -59,9 +59,9 @@ export const SLOT_LABEL: Record<Slot, string> = {
   melody: 'Hook',
 };
 
-// The roster for each slot — the full 24-instrument catalog. Sub-phase A wired
-// the original twelve, B added the first six damage hires, and C fills the last
-// six (ride, riser, reese, choir, bell, whistle), two of them utility weapons.
+// The roster for each slot — the full 24-instrument catalog. The soundset
+// supports only a subset (supportedRoster filters to it); the rest stay dormant
+// code, never offered and never voiced.
 export const SLOT_ROSTER: Record<Slot, Role[]> = {
   pulse: ['kick', 'tom', 'heartbeat'],
   backbeat: ['snare', 'clap', 'rimshot'],
@@ -87,15 +87,16 @@ export function slotOf(role: Role): Slot {
   return ROLE_SLOT[role];
 }
 
-/** A slot's roster restricted to the instruments the genre is optimized for.
- *  Empty when the genre drops the whole slot (it supports no member of it). */
-export function supportedRoster(genreId: GenreId, slot: Slot): Role[] {
-  return SLOT_ROSTER[slot].filter((r) => genreSupports(genreId, r));
+/** A slot's roster restricted to the instruments the soundset supports.
+ *  Empty when the soundset drops the whole slot (supports no member of it). */
+export function supportedRoster(slot: Slot): Role[] {
+  return SLOT_ROSTER[slot].filter((r) => soundsetSupports(r));
 }
 
-/** The band slots a genre actually fills (drops the ones it supports nothing in). */
-export function supportedSlots(genreId: GenreId): Slot[] {
-  return SLOTS.filter((s) => supportedRoster(genreId, s).length > 0);
+/** The band slots the soundset actually fills (drops the ones it supports
+ *  nothing in). */
+export function supportedSlots(): Slot[] {
+  return SLOTS.filter((s) => supportedRoster(s).length > 0);
 }
 
 /** The instrument currently filling a slot, if any, given the owned tiers. */
@@ -125,22 +126,6 @@ export function barredFromStart(role: Role): boolean {
 /** Roles eligible as a starting instrument, in a stable order. */
 export function startableRoles(roles: readonly Role[]): Role[] {
   return roles.filter((r) => !barredFromStart(r));
-}
-
-/**
- * Design rule 6: genre-weighted roster draws. When a slot with more than one
- * of today's instruments comes up, the genre's idiomatic member is favoured
- * (House leads with clap, Techno with ride, ...). A soft multiplier on the draw
- * weight, never a lock — the off-genre member can still appear. Anything
- * unlisted is 1.0. Single-member slots (Hats/Bass/Harmony/Melody) are unaffected.
- */
-const GENRE_ROLE_AFFINITY: Record<GenreId, Partial<Record<Role, number>>> = {
-  house: { clap: 1.5, snare: 0.7, cowbell: 1.3, arp: 0.85, choir: 1.25, ride: 1.2 },
-  techno: { clap: 1.3, snare: 0.85, cowbell: 1.2, arp: 0.9, tom: 1.15, ride: 1.3, reese: 1.2 },
-};
-
-export function genreRoleWeight(genreId: GenreId, role: Role): number {
-  return GENRE_ROLE_AFFINITY[genreId]?.[role] ?? 1;
 }
 
 /**

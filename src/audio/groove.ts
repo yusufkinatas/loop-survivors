@@ -1,7 +1,7 @@
-// A tiny pattern language so a genre's twelve four-tier ladders stay short and
-// legible. Drums are written as 16-character-per-bar strings; pitched voices
-// are written as note tuples. Both compile to plain Charts and are validated
-// like any other chart when the genre loads.
+// A tiny pattern language so the four-tier ladders stay short and legible.
+// Drums are written as 16-character-per-bar strings; pitched voices are written
+// as note tuples. Both compile to plain Charts and are validated like any other
+// chart when the ladders load.
 
 import type { Chart, ChartEvent } from './charts';
 import type { Role } from './kits';

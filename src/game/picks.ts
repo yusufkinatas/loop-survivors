@@ -8,19 +8,18 @@
 // The band (docs/phases/the-band.md) shapes the pool and the draw: filling a
 // slot permanently retires its other roster members (a fresh weapon is offered
 // only while its slot is empty), an offer never shows two candidates for the
-// same slot, and the weapon draw is nudged by the genre's idiomatic roster and
-// an early lean toward the drum slots. All of it stays a pure function of
-// (tiers, items, effects, rng, genreId, timeS) so bot runs and replays stay
-// deterministic; changing it re-baselines the bot's comparative numbers.
+// same slot, and the weapon draw leans early toward the drum slots. All of it
+// stays a pure function of (tiers, items, effects, rng, timeS) so bot runs and
+// replays stay deterministic; changing it re-baselines the bot's comparative
+// numbers.
 
 import { TIER_COUNT } from '../audio/charts';
-import { genreSupports, type GenreId } from '../audio/genres';
+import { soundsetSupports } from '../audio/soundset';
 import { ROLES, type Role } from '../audio/kits';
 import { EFFECT_IDS, type EffectId } from '../audio/voicefx';
 import {
   EARLY_NUDGE_FACTOR,
   earlyNudgeApplies,
-  genreRoleWeight,
   slotFilled,
   slotOf,
   type Slot,
@@ -40,13 +39,12 @@ export function buildPickPool(
   tiers: ReadonlyMap<Role, number>,
   items: ReadonlyMap<ItemId, number>,
   effects: ReadonlyMap<Role, EffectId>,
-  genreId: GenreId,
 ): PickOption[] {
   const pool: PickOption[] = [];
   for (const role of ROLES) {
-    // Genres are optimized for a subset of the catalog: a role this genre does
-    // not support is never offered (nor voiced by the engine).
-    if (!genreSupports(genreId, role)) continue;
+    // The soundset is built around a subset of the catalog: a role it does not
+    // support is never offered (nor voiced by the engine).
+    if (!soundsetSupports(role)) continue;
     const tier = tiers.get(role);
     // Permanent picks (the band): a fresh instrument is offered only while its
     // slot is still empty — once a slot's drummer is hired, its roster rivals
@@ -87,11 +85,11 @@ export const WEAPON_WEIGHT = 3;
 export const ITEM_WEIGHT = 1;
 export const EFFECT_WEIGHT = 1;
 
-/** A weapon option's draw weight: the base weapon weight, tilted by the genre's
- *  idiomatic roster (design rule 6) and the early drum nudge. Items/effects use
- *  their flat weights. Pure in (role, genreId, timeS) — no rng. */
-function weaponWeight(role: Role, genreId: GenreId, timeS: number): number {
-  let w = WEAPON_WEIGHT * genreRoleWeight(genreId, role);
+/** A weapon option's draw weight: the base weapon weight, tilted by the early
+ *  drum nudge. Items/effects use their flat weights. Pure in (role, timeS) —
+ *  no rng. */
+function weaponWeight(role: Role, timeS: number): number {
+  let w = WEAPON_WEIGHT;
   if (earlyNudgeApplies(slotOf(role), timeS)) w *= EARLY_NUDGE_FACTOR;
   return w;
 }
@@ -107,13 +105,12 @@ export function rollOffers(
   items: ReadonlyMap<ItemId, number>,
   effects: ReadonlyMap<Role, EffectId>,
   rng: Rng,
-  genreId: GenreId,
   timeS: number,
 ): PickOption[] {
-  const pool = buildPickPool(tiers, items, effects, genreId);
+  const pool = buildPickPool(tiers, items, effects);
   const weightOf = (o: PickOption): number =>
     o.kind === 'weapon'
-      ? weaponWeight(o.role, genreId, timeS)
+      ? weaponWeight(o.role, timeS)
       : o.kind === 'item'
         ? ITEM_WEIGHT
         : EFFECT_WEIGHT;

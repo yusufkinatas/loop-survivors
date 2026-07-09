@@ -6,11 +6,11 @@
 // chords, a mellow deep-house Rhodes comp, and a singing lead over the top. FX
 // are a bright phrase-top crash and a noise riser for the auto-dash.
 //
-// House DROPS whole slots to stay idiomatic: no Motion voice (acid/arp belong to
-// techno and the busier genres), no snare (the clap owns the backbeat), and none
-// of the ambient/topline extras (tom, heartbeat, cowbell, bell, choir, whistle,
-// pluck, reese, ride, zap). The supported set is exactly the roles this file
-// renders, which must equal the roles the ladder file charts.
+// The kit DROPS whole slots to stay idiomatic: no Motion voice (no acid/arp),
+// no snare (the clap owns the backbeat), and none of the ambient/topline extras
+// (tom, heartbeat, cowbell, bell, choir, whistle, pluck, reese, ride, zap). The
+// supported set is exactly the roles this file renders, which must equal the
+// roles the ladder file charts.
 
 import { makeKit, noiseBuffer, offline, softClipCurve, type Kit, type Role } from '../kits';
 

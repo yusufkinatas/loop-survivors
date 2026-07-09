@@ -3,7 +3,7 @@
 // end screens, and the hit flash.
 
 import { type Kit, type Role } from '../audio/kits';
-import { GENRES, supportedRoles, type Genre, type GenreId } from '../audio/genres';
+import { supportedRoles } from '../audio/soundset';
 import { sampledRoles } from '../audio/kits/index';
 import { SLOTS, SLOT_LABEL, ownerOfSlot, slotOf, startableRoles, supportedRoster } from './band';
 import { TIER_LINES } from './config';
@@ -43,12 +43,9 @@ export class Hud {
   private toastStack: HTMLElement;
   private itemStrip: HTMLElement;
   private rack: HTMLElement;
-  private genreEl: HTMLElement;
   private screen: HTMLElement | null = null;
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
   private kits: Map<Role, Kit>;
-  /** The active genre, so the rack can mark slots this genre drops. */
-  private genreId: GenreId | null = null;
   private debugRow: HTMLElement | null = null;
   private debugButtons: { btn: HTMLElement; action: DebugAction }[] = [];
 
@@ -59,9 +56,6 @@ export class Hud {
     // Glass transport panel: timer + level chip on top, then the HP and XP
     // meters (each with a fill and a faint cap label).
     this.bar = el('div', 'hud', root);
-    // The active genre (your character) reads as the panel's header, tinted its
-    // own color, so you always know which genre you're playing mid-run.
-    this.genreEl = el('span', 'hud-genre', this.bar, '');
     const top = el('div', 'hud-top', this.bar);
     this.timer = el('span', 'hud-timer', top, '0:00');
     this.levelEl = el('span', 'hud-level', top, 'LV 1');
@@ -88,17 +82,6 @@ export class Hud {
     this.rack.style.display = show ? '' : 'none';
   }
 
-  /** Tell the rack which genre is active, so slots this genre drops (supports
-   *  no instrument for) render as unavailable rather than askable-to-fill. */
-  setGenre(genreId: GenreId): void {
-    this.genreId = genreId;
-    const genre = GENRES.find((g) => g.id === genreId);
-    if (genre) {
-      this.genreEl.textContent = genre.name;
-      this.genreEl.style.setProperty('--voice-color', genre.color);
-    }
-  }
-
   /** The band rack (docs/phases/the-band.md): eight typed sockets in rack
    *  order, empty ones asking to be filled, filled ones showing the hired
    *  instrument (its color + name) and its tier as pips. Rebuilt on every pick
@@ -108,10 +91,9 @@ export class Hud {
     into.replaceChildren();
     for (const slot of SLOTS) {
       const owner = ownerOfSlot(slot, tiers);
-      // A slot the active genre supports no instrument for is dropped: shown
-      // dimmed and unavailable, never asking to be filled.
-      const dropped =
-        this.genreId !== null && supportedRoster(this.genreId, slot).length === 0;
+      // A slot the soundset supports no instrument for is dropped: shown dimmed
+      // and unavailable, never asking to be filled.
+      const dropped = supportedRoster(slot).length === 0;
       const cls = dropped ? 'unavailable' : owner ? 'filled' : 'empty';
       const socket = el('div', `band-socket ${cls}`, into);
       el('span', 'socket-slot', socket, SLOT_LABEL[slot]);
@@ -187,83 +169,52 @@ export class Hud {
     }
   }
 
-  /** Start screen, two steps: choose a genre (your character), then a starting
-   *  instrument (it begins at tier 1 — the lone-instrument opening). The genre
-   *  decides tempo, swing, and how the whole soundset plays. */
+  /** Start screen: pick a starting instrument (it begins at tier 1 — the
+   *  lone-instrument opening) and go. */
   showStart(
-    genres: Genre[],
-    onStart: (genre: Genre, role: Role, mode: AutoMoveMode) => void,
+    onStart: (role: Role, mode: AutoMoveMode) => void,
     onSandbox: () => void,
   ): void {
-    // Movement mode persists across the genre/weapon steps (rebuilt screens),
-    // so it lives out here. Default is manual play.
     let moveMode: AutoMoveMode = 'off';
 
-    const showGenres = (): void => {
-      const s = this.newScreen();
-      el('h1', '', s, 'Loop Survivors');
-      el('p', 'sub', s, 'Pick your genre. WASD or touch to move. Survive 8 minutes.');
-      this.moveModeSelector(s, moveMode, (m) => {
-        moveMode = m;
-      });
-      const grid = el('div', 'pick-grid genre-grid', s);
-      const cards: HTMLElement[] = [];
-      for (const genre of genres) {
-        const card = el('button', 'kit-card genre-card', grid);
-        card.style.setProperty('--voice-color', genre.color);
-        el('span', 'kit-name', card, genre.name);
-        el('span', 'kit-desc', card, genre.blurb);
-        el('span', 'genre-bpm', card, `${genre.bpm} BPM`);
-        card.onclick = () => showWeapons(genre);
-        cards.push(card);
-      }
-      this.armKeys(cards);
-      const row = el('div', 'pick-grid', s);
-      const bossBtn = el('button', '', row, 'boss fights');
-      bossBtn.onclick = () => {
-        location.hash = '#boss';
-      };
-      const sandboxBtn = el('button', '', row, 'open the sandbox');
-      sandboxBtn.onclick = () => {
+    const s = this.newScreen();
+    el('h1', '', s, 'Loop Survivors');
+    el('p', 'sub', s, 'Pick your starting instrument. WASD or touch to move. Survive 8 minutes.');
+    this.moveModeSelector(s, moveMode, (m) => {
+      moveMode = m;
+    });
+    const grid = el('div', 'pick-grid', s);
+    const cards: HTMLElement[] = [];
+    // FX is barred from the starting offer (design rule 5) — a tier-1 FX voice
+    // is near-silent for minutes, a dead opener.
+    const custom = sampledRoles(); // dev aid: which voices are sample-backed
+    for (const role of startableRoles(supportedRoles())) {
+      const card = this.kitCard(grid, { kind: 'weapon', role, tier: 1 }, () => {
         this.closeScreen();
-        onSandbox();
-      };
-      const roomBtn = el('button', '', row, 'open the rehearsal room');
-      roomBtn.onclick = () => {
-        location.hash = '#rehearsal';
-      };
-      const labBtn = el('button', '', row, 'open the experimentation room');
-      labBtn.onclick = () => {
-        location.hash = '#tracklab';
-      };
+        onStart(role, moveMode);
+      });
+      if (custom.has(role)) el('span', 'kit-custom-badge', card, '★ custom');
+      cards.push(card);
+    }
+    this.armKeys(cards);
+    const row = el('div', 'pick-grid', s);
+    const bossBtn = el('button', '', row, 'boss fights');
+    bossBtn.onclick = () => {
+      location.hash = '#boss';
     };
-
-    const showWeapons = (genre: Genre): void => {
-      const s = this.newScreen();
-      el('h2', '', s, `${genre.name} — pick your starting instrument`);
-      el('p', 'sub', s, `${genre.name} has its own sound and its own instruments.`);
-      const grid = el('div', 'pick-grid', s);
-      const cards: HTMLElement[] = [];
-      // FX is barred from the starting offer (design rule 5) — a tier-1 FX
-      // voice is near-silent for minutes, a dead opener — and only this genre's
-      // supported instruments are offered.
-      const custom = sampledRoles(genre.id); // dev aid: which voices are sampled
-      for (const role of startableRoles(supportedRoles(genre.id))) {
-        const card = this.kitCard(grid, { kind: 'weapon', role, tier: 1 }, () => {
-          this.closeScreen();
-          onStart(genre, role, moveMode);
-        });
-        // ★ custom marks a voice that is sample-backed for this genre (dev only),
-        // matching the sandbox loadout badge.
-        if (custom.has(role)) el('span', 'kit-custom-badge', card, '★ custom');
-        cards.push(card);
-      }
-      this.armKeys(cards);
-      const back = el('button', '', s, '← back to genres');
-      back.onclick = () => showGenres();
+    const sandboxBtn = el('button', '', row, 'open the sandbox');
+    sandboxBtn.onclick = () => {
+      this.closeScreen();
+      onSandbox();
     };
-
-    showGenres();
+    const roomBtn = el('button', '', row, 'open the rehearsal room');
+    roomBtn.onclick = () => {
+      location.hash = '#rehearsal';
+    };
+    const labBtn = el('button', '', row, 'open the experimentation room');
+    labBtn.onclick = () => {
+      location.hash = '#tracklab';
+    };
   }
 
   /** Movement-mode picker on the start screen. Manual is the default; the two
@@ -317,8 +268,8 @@ export class Hud {
     el('h2', '', s, 'Level up');
     const grid = el('div', 'pick-grid', s);
     const cards: HTMLElement[] = [];
-    // Dev aid: mark offered weapons whose voice is sample-backed for the genre.
-    const custom = this.genreId !== null ? sampledRoles(this.genreId) : new Set<Role>();
+    // Dev aid: mark offered weapons whose voice is sample-backed.
+    const custom = sampledRoles();
     for (const option of options) {
       const card = this.kitCard(grid, option, () => {
         this.closeScreen();

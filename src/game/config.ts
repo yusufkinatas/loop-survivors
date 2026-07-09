@@ -798,6 +798,6 @@ export const BELL = {
   shardPierce: 1,
 };
 
-/** Whistle: how long after the tag lands the enemy pops (a beat, roughly, at
- *  the mid-tempo genres — flavor, not tempo-locked). */
+/** Whistle: how long after the tag lands the enemy pops (a beat, roughly —
+ *  flavor, not tempo-locked). */
 export const WHISTLE = { popS: 0.5 };
