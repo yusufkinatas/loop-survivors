@@ -3,9 +3,8 @@
 // end screens, and the hit flash.
 
 import { type Kit, type Role } from '../audio/kits';
-import { supportedRoles } from '../audio/soundset';
 import { sampledRoles } from '../audio/kits/index';
-import { SLOTS, SLOT_LABEL, ownerOfSlot, slotOf, startableRoles, supportedRoster } from './band';
+import { SLOTS, SLOT_LABEL, ownerOfSlot, slotOf, supportedRoster } from './band';
 import { TIER_LINES } from './config';
 import { EFFECT_META } from './effects';
 import { type AutoMoveMode } from './input';
@@ -169,8 +168,8 @@ export class Hud {
     }
   }
 
-  /** Start screen: pick a starting instrument (it begins at tier 1 — the
-   *  lone-instrument opening) and go. */
+  /** Start screen: every run opens on the kick at tier 1 (non-negotiable for
+   *  now) — pick a movement mode and go. */
   showStart(
     onStart: (role: Role, mode: AutoMoveMode) => void,
     onSandbox: () => void,
@@ -179,24 +178,15 @@ export class Hud {
 
     const s = this.newScreen();
     el('h1', '', s, 'Loop Survivors');
-    el('p', 'sub', s, 'Pick your starting instrument. WASD or touch to move. Survive 8 minutes.');
+    el('p', 'sub', s, 'WASD or touch to move. Survive 8 minutes.');
     this.moveModeSelector(s, moveMode, (m) => {
       moveMode = m;
     });
-    const grid = el('div', 'pick-grid', s);
-    const cards: HTMLElement[] = [];
-    // FX is barred from the starting offer (design rule 5) — a tier-1 FX voice
-    // is near-silent for minutes, a dead opener.
-    const custom = sampledRoles(); // dev aid: which voices are sample-backed
-    for (const role of startableRoles(supportedRoles())) {
-      const card = this.kitCard(grid, { kind: 'weapon', role, tier: 1 }, () => {
-        this.closeScreen();
-        onStart(role, moveMode);
-      });
-      if (custom.has(role)) el('span', 'kit-custom-badge', card, '★ custom');
-      cards.push(card);
-    }
-    this.armKeys(cards);
+    const startBtn = el('button', 'start-btn', s, 'start');
+    startBtn.onclick = () => {
+      this.closeScreen();
+      onStart('kick', moveMode);
+    };
     const row = el('div', 'pick-grid', s);
     const bossBtn = el('button', '', row, 'boss fights');
     bossBtn.onclick = () => {

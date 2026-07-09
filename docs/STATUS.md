@@ -5,8 +5,9 @@ Last updated: July 9, 2026
 ## Latest change (July 9, 2026)
 
 **The genre system was removed.** There is no genre selection or genre logic
-anymore: the game boots straight to the starting-instrument screen and plays one
+anymore: the game boots straight to a start screen and plays one
 fixed soundset (the former House voicing, unnamed), default tempo **120 BPM**.
+Every run opens on the kick (no starting-instrument choice, non-negotiable for now).
 Techno is gone entirely. Nothing in the game UI names a genre or "House". This is
 a "for now" simplification ahead of a new version — the soundset content (kit,
 ladders, samples) is kept. See the History entry below for the full teardown.
