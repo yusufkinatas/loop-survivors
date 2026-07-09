@@ -1,8 +1,13 @@
-// The one track. 124 BPM, four-on-the-floor. Every tier keeps the relentless
-// dance pulse and grows into it: the kick never leaves the four downbeats, the
-// clap owns 2 & 4, the open hats ride the offbeats, and the bass rolls only in
-// the gaps between kicks so the low end stays clean. Chords stab on the
-// offbeats, the Rhodes comps underneath, and the lead sings on top.
+// The one track. 122 BPM classic house, four-on-the-floor. Every tier keeps
+// the relentless dance pulse and grows into it: the kick never leaves the four
+// downbeats, the clap/snare own 2 & 4, the open hats ride the off-beats
+// (steps 2/6/10/14), and the bass answers the kick only in the gaps so the
+// low end stays clean. Chords stab syncopated with an anticipation into the
+// next bar, the Rhodes comps underneath, and the lead sings call-and-response
+// on top in 3-3-2 groupings.
+//
+// Grid: 16 steps per bar. Beats on 0/4/8/12, off-beats ("and"s) on 2/6/10/14.
+// Swing comes from the soundset globally; patterns stay on the straight grid.
 //
 // Supported roles = the full instrument catalog. Key A minor pentatonic.
 
@@ -12,76 +17,110 @@ import { B, d, m } from '../groove';
 import { CRASH, RISER } from './shared';
 
 export const SOUNDSET_LADDERS: Partial<Record<Role, Chart[]>> = {
-  // Pulse: the four-on-the-floor kick, dead on every beat. Grows with soft
-  // ghost pickups into the phrase turnaround, never syncopating off the four.
+  // Pulse: four-on-the-floor, dead on every beat at EVERY tier. Growth is
+  // soft ghost pickups (the '-' soft-kick variant) only in the last bar of
+  // the phrase, pulling the loop around — never syncopation off the four.
   kick: [
     d('kick', 'X...X...X...X...'),
-    d('kick', 'X...X...X...X...', 'X...X...X...X..-'),
-    d('kick', 'X...X...X...X...', 'X...X...X..-X..-'),
-    d('kick', 'X...X...X...X...', 'X..-X...X..-X..X'),
+    d('kick',
+      'X...X...X...X...', 'X...X...X...X...',
+      'X...X...X...X...', 'X...X...X...X..-'),
+    d('kick',
+      'X...X...X...X...', 'X...X...X...X...',
+      'X...X...X...X...', 'X...X...X...X.--'),
+    d('kick',
+      'X...X...X...X...', 'X...X...X...X..-',
+      'X...X...X...X...', 'X...X...X..-X.--'),
   ],
-  // Backbeat: the wide 909 clap on 2 & 4. Adds pickup claps and a soft push on
-  // beat 3, but the accents stay locked to the backbeat.
+  // Backbeat: the wide clap locked to steps 4 and 12 (beats 2 & 4) at every
+  // tier. Growth is the classic Chicago extra clap on step 15 pulling into
+  // the next bar — the backbeat itself never moves.
   clap: [
     d('clap', '....X.......X...'),
+    d('clap', '....X.......X...', '....X.......X..-'),
     d('clap', '....X.......X...', '....X.......X..o'),
-    d('clap', '....X.......X...', '....X...o...X.o.'),
-    d('clap', '....X...o...X...', '....X...o...X.oo'),
+    d('clap', '....X.......X..o', '....X.......X.oo'),
   ],
-  // Hats: the signature offbeat open hat, then closed 8ths, then louder, then
-  // 16th closed pairs pushing into each open — the house "tss".
+  // Backbeat alternative: same law as the clap — 2 & 4 locked, growth only in
+  // the step-15 pickup.
+  snare: [
+    d('snare', '....x.......x...'),
+    d('snare', '....x.......x...', '....x.......x..-'),
+    d('snare', '....x.......x...', '....x.......x..o'),
+    d('snare', '....x.......x..o', '....x.......x.oo'),
+  ],
+  // Hats: the signature off-beat open "tss". Tier 1 sparse (opens on 6 and 14
+  // with soft closed on 2 and 10), tier 2 opens on all four off-beats, tiers
+  // 3-4 add closed 16th pairs pushing into each open hat.
   hat: [
+    d('hat', '..o...O...o...O.'),
     d('hat', '..O...O...O...O.'),
-    d('hat', 'o.O.o.O.o.O.o.O.'),
-    d('hat', 'x.O.x.O.x.O.x.O.'),
+    d('hat', 'x.O...O.x.O...O.'),
     d('hat', 'xxO.xxO.xxO.xxO.'),
   ],
-  // Hats: shaker fills the 16ths under the hats, growing from 8ths to accented.
+  // Hats: shaker densifies across tiers — on-beats, then 8ths, then 16ths with
+  // accents on the off-beats and ghosts between. Never just louder-everywhere.
   shaker: [
+    d('shaker', 'o...o...o...o...'),
     d('shaker', 'o.o.o.o.o.o.o.o.'),
-    d('shaker', 'oooooooooooooooo'),
-    d('shaker', 'xoooxoooxoooxooo'),
-    d('shaker', 'xoooxoooxoooxooo', 'xoooxoooxoooxoox'),
+    d('shaker', 'o.xoo.xoo.xoo.xo'),
+    d('shaker', 'ooxoooxoooxoooxo'),
   ],
   // FX: phrase-top crash and the auto-dash riser, shared voicings.
   crash: CRASH,
   riser: RISER,
-  // Bass: the rolling sub. Only ever on the offbeats and 16th pickups (2/6/10/14
-  // + 13/15), never on the kick's 0/4/8/12, so kick and bass interlock instead
-  // of colliding. Upper tiers switch to the fatter, grittier variant.
+  // Bass: OFF-BEAT bass answering the kick — staccato hits on 2/6/10/14, never
+  // on the kick's 0/4/8/12. Root/fifth movement (0/7/12), growth = 16th
+  // pickups (13/15) and octave jumps at high tiers on the fat variant.
   bass: [
-    m('bass', 1, [[2, 0.9, 0], [10, 0.85, 0], [14, 0.7, -2]]),
-    m('bass', 1, [[2, 0.9, 0], [6, 0.8, -2], [10, 0.85, 0], [14, 0.75, -5]]),
+    m('bass', 1, [[2, 0.9, 0], [10, 0.85, 0]]),
+    m('bass', 1, [[2, 0.9, 0], [6, 0.75, 0], [10, 0.85, 7], [14, 0.75, 0]]),
     m('bass', 2, [
-      [2, 0.9, 0, 'fat'], [6, 0.8, -2, 'fat'], [10, 0.85, 0, 'fat'], [14, 0.75, -5, 'fat'],
-      [B + 2, 0.9, 3, 'fat'], [B + 6, 0.8, 0, 'fat'], [B + 10, 0.85, 3, 'fat'], [B + 14, 0.75, -2, 'fat'],
+      [2, 0.9, 0, 'fat'], [6, 0.75, 0, 'fat'], [10, 0.85, 7, 'fat'], [14, 0.75, 0, 'fat'],
+      [B + 2, 0.9, 0, 'fat'], [B + 6, 0.75, 7, 'fat'], [B + 10, 0.85, 0, 'fat'], [B + 15, 0.6, 0, 'fat'],
     ]),
     m('bass', 2, [
-      [2, 0.9, 0, 'fat'], [6, 0.8, -2, 'fat'], [10, 0.85, 0, 'fat'], [13, 0.6, 0, 'fat'], [14, 0.75, -5, 'fat'], [15, 0.6, 0, 'fat'],
-      [B + 2, 0.9, 3, 'fat'], [B + 6, 0.8, 0, 'fat'], [B + 10, 0.85, 5, 'fat'], [B + 13, 0.6, 5, 'fat'], [B + 14, 0.75, 3, 'fat'],
+      [2, 0.9, 0, 'fat'], [6, 0.75, 0, 'fat'], [10, 0.85, 7, 'fat'], [13, 0.55, 0, 'fat'], [14, 0.75, 12, 'fat'],
+      [B + 2, 0.9, 0, 'fat'], [B + 6, 0.75, 7, 'fat'], [B + 10, 0.85, 12, 'fat'], [B + 13, 0.55, 7, 'fat'], [B + 14, 0.75, 0, 'fat'], [B + 15, 0.6, 0, 'fat'],
     ]),
   ],
-  // Harmony: stabby chords on the offbeats (quartal roots 0/5/7). Top tier lays
-  // a slow pad under the stabs and moves the harmony across the two bars.
+  // Bass alternative: plucked low end, same off-beat law as the bass but a
+  // touch sparser and heavier. Never on 0/4/8/12.
+  pluck: [
+    m('pluck', 1, [[2, 0.9, 0], [10, 0.85, 0]]),
+    m('pluck', 1, [[2, 0.9, 0], [10, 0.85, 7], [14, 0.7, 0]]),
+    m('pluck', 2, [
+      [2, 0.9, 0], [6, 0.7, 0], [10, 0.85, 7], [14, 0.7, 0],
+      [B + 2, 0.9, 0], [B + 10, 0.85, 12], [B + 14, 0.7, 7],
+    ]),
+    m('pluck', 2, [
+      [2, 0.9, 0], [6, 0.7, 0], [10, 0.85, 7], [14, 0.7, 12],
+      [B + 2, 0.9, 0], [B + 6, 0.7, 7], [B + 10, 0.85, 12], [B + 13, 0.55, 7], [B + 14, 0.7, 0],
+    ]),
+  ],
+  // Harmony: syncopated piano stabs. Low tiers avoid the downbeat entirely;
+  // step 15 anticipates the next bar's chord; tier 4 is the pumping riff
+  // (Ride On Time feel) with a pad swelling under the downbeats. Chord roots
+  // move 0 -> 5/7 across the two bars.
   chord: [
-    m('chord', 1, [[2, 0.7, 0, 'stab'], [10, 0.65, 0, 'stab']]),
-    m('chord', 1, [[2, 0.75, 0, 'stab'], [6, 0.6, 7, 'stab'], [10, 0.7, 0, 'stab'], [14, 0.6, 5, 'stab']]),
+    m('chord', 1, [[2, 0.75, 0, 'stab'], [10, 0.7, 0, 'stab']]),
+    m('chord', 1, [[2, 0.8, 0, 'stab'], [7, 0.6, 0, 'stab'], [10, 0.7, 7, 'stab'], [15, 0.6, 0, 'stab']]),
     m('chord', 2, [
-      [2, 0.75, 0, 'stab'], [6, 0.6, 7, 'stab'], [10, 0.7, 0, 'stab'], [14, 0.6, 5, 'stab'],
-      [B + 2, 0.75, 7, 'stab'], [B + 6, 0.6, 5, 'stab'], [B + 10, 0.7, 7, 'stab'], [B + 14, 0.6, 0, 'stab'],
+      [2, 0.8, 0, 'stab'], [7, 0.6, 0, 'stab'], [10, 0.7, 7, 'stab'], [15, 0.6, 5, 'stab'],
+      [B + 2, 0.8, 5, 'stab'], [B + 7, 0.6, 5, 'stab'], [B + 10, 0.7, 7, 'stab'], [B + 15, 0.6, 0, 'stab'],
     ]),
     m('chord', 2, [
-      [0, 0.5, 0, 'pad'], [2, 0.75, 0, 'stab'], [6, 0.6, 7, 'stab'], [10, 0.7, 0, 'stab'], [14, 0.6, 5, 'stab'],
-      [B, 0.5, 5, 'pad'], [B + 2, 0.75, 5, 'stab'], [B + 6, 0.6, 7, 'stab'], [B + 10, 0.7, 7, 'stab'], [B + 14, 0.6, 0, 'stab'],
+      [0, 0.5, 0, 'pad'], [2, 0.8, 0, 'stab'], [4, 0.6, 0, 'stab'], [7, 0.65, 0, 'stab'], [10, 0.75, 7, 'stab'], [12, 0.6, 7, 'stab'], [15, 0.65, 5, 'stab'],
+      [B, 0.5, 5, 'pad'], [B + 2, 0.8, 5, 'stab'], [B + 4, 0.6, 5, 'stab'], [B + 7, 0.65, 7, 'stab'], [B + 10, 0.75, 7, 'stab'], [B + 12, 0.6, 5, 'stab'], [B + 15, 0.65, 0, 'stab'],
     ]),
   ],
-  // Harmony: deep-house Rhodes comp, mid register, offbeat placement, growing
-  // fuller and climbing across the phrase.
+  // Harmony: Rhodes comps sparse under the stabs, off-beat placement only,
+  // growing fuller across the two bars.
   rhodes: [
     m('rhodes', 1, [[2, 0.55, 3], [10, 0.5, 7]]),
-    m('rhodes', 1, [[2, 0.6, 3], [6, 0.5, 7], [10, 0.55, 10], [14, 0.5, 7]]),
+    m('rhodes', 2, [[2, 0.6, 3], [10, 0.55, 7], [B + 2, 0.6, 5], [B + 10, 0.55, 10]]),
     m('rhodes', 2, [
-      [2, 0.6, 3], [6, 0.5, 7], [10, 0.55, 10], [14, 0.5, 7],
+      [2, 0.6, 3], [6, 0.5, 7], [10, 0.55, 10], [14, 0.45, 7],
       [B + 2, 0.6, 5], [B + 10, 0.55, 10],
     ]),
     m('rhodes', 2, [
@@ -89,98 +128,106 @@ export const SOUNDSET_LADDERS: Partial<Record<Role, Chart[]>> = {
       [B + 2, 0.6, 5], [B + 6, 0.5, 10], [B + 10, 0.55, 12], [B + 14, 0.5, 7],
     ]),
   ],
-  // Melody: the singing topline, an octave up. A short hook, then a longer
-  // rise-and-fall phrase over the full four bars.
+  // Melody: call-and-response phrases over the full four bars. Low tiers leave
+  // air in bar 4; mid tiers phrase in 3-3-2 groupings (steps 0/3/6 + 8/11/14 —
+  // hits every 3 then 2 steps, the push-pull that makes dance leads bounce);
+  // tier 4 adds stuttered chop repetition (the same note machine-gunned).
   lead: [
-    m('lead', 2, [[0, 0.75, 7], [8, 0.7, 10], [B + 4, 0.7, 12]]),
-    m('lead', 2, [[0, 0.75, 7], [4, 0.6, 10], [8, 0.7, 12], [B, 0.7, 10], [B + 8, 0.65, 7]]),
     m('lead', 4, [
-      [0, 0.75, 7], [4, 0.6, 10], [8, 0.7, 12], [B, 0.7, 10], [B + 8, 0.65, 7],
-      [2 * B, 0.75, 12], [2 * B + 8, 0.7, 15], [3 * B, 0.7, 17], [3 * B + 8, 0.7, 12],
+      [0, 0.75, 7], [6, 0.65, 10],
+      [B + 4, 0.7, 12], [B + 10, 0.6, 10],
+      [2 * B, 0.75, 7], [2 * B + 6, 0.65, 12],
+      // bar 4: air
     ]),
     m('lead', 4, [
-      [0, 0.75, 7], [4, 0.6, 10], [8, 0.7, 12], [12, 0.6, 15], [B, 0.7, 10], [B + 8, 0.65, 7],
-      [2 * B, 0.75, 12], [2 * B + 8, 0.7, 15], [2 * B + 12, 0.6, 17], [3 * B, 0.7, 17], [3 * B + 8, 0.7, 12], [3 * B + 12, 0.6, 10],
+      [0, 0.75, 7], [3, 0.6, 10], [6, 0.7, 12],
+      [B + 4, 0.7, 10], [B + 10, 0.6, 7],
+      [2 * B, 0.75, 7], [2 * B + 3, 0.6, 10], [2 * B + 6, 0.7, 12],
+      [3 * B + 4, 0.65, 10],
+      // bar 4 mostly air
+    ]),
+    m('lead', 4, [
+      [0, 0.75, 7], [3, 0.6, 10], [6, 0.7, 12], [8, 0.7, 15], [11, 0.6, 12], [14, 0.65, 10],
+      [B + 4, 0.7, 12], [B + 10, 0.6, 7],
+      [2 * B, 0.75, 7], [2 * B + 3, 0.6, 10], [2 * B + 6, 0.7, 12], [2 * B + 8, 0.7, 15], [2 * B + 11, 0.6, 17], [2 * B + 14, 0.65, 15],
+      [3 * B + 4, 0.7, 12], [3 * B + 10, 0.6, 10],
+    ]),
+    m('lead', 4, [
+      [0, 0.75, 7], [3, 0.6, 10], [6, 0.7, 12], [8, 0.7, 15], [11, 0.6, 12], [14, 0.65, 10],
+      [B + 4, 0.7, 12], [B + 10, 0.6, 7], [B + 14, 0.55, 10],
+      [2 * B, 0.75, 7], [2 * B + 3, 0.6, 10], [2 * B + 6, 0.7, 12], [2 * B + 8, 0.7, 15], [2 * B + 11, 0.6, 17], [2 * B + 14, 0.65, 15],
+      // stuttered chop: the same note repeated on 16ths, resolving down
+      [3 * B, 0.7, 12], [3 * B + 1, 0.55, 12], [3 * B + 2, 0.7, 12], [3 * B + 3, 0.55, 12],
+      [3 * B + 6, 0.7, 10], [3 * B + 8, 0.7, 7], [3 * B + 12, 0.6, 10],
     ]),
   ],
-
-  // ---------------------------------------------------------------------------
-  // The rest of the catalog. Same House voicing, so every band slot has a full
-  // roster and no instrument is unreachable.
-  // ---------------------------------------------------------------------------
-
-  // Backbeat: the plain 909 snare on 2 & 4, an alternative to the clap.
-  snare: [
-    d('snare', '....x.......x...'),
-    d('snare', '....x.......x...'),
-    d('snare', '....x.......x...', '....x.......x..o'),
-    d('snare', '....x.......x...', '....x.......x.xx'),
-  ],
-  // Pulse: offbeat low tom groove under the four-on-floor kick, sitting on the
-  // "and"s (2/6/10/14) so it never lands on the kick's 0/4/8/12.
+  // Pulse alternative: low conga-style tom groove, a 2-bar answering pattern
+  // on the off-grid slots (3/10 style), the second bar ending in a double.
+  // NEVER on the kick's 0/4/8/12.
   tom: [
-    m('tom', 2, [[10, 0.6, 0], [B + 10, 0.6, 0]]),
-    m('tom', 2, [[2, 0.6, 0], [10, 0.6, 0], [B + 2, 0.6, -2], [B + 10, 0.6, -2]]),
+    m('tom', 2, [[3, 0.6, 0], [10, 0.55, 0], [B + 3, 0.6, 0], [B + 10, 0.55, 0]]),
     m('tom', 2, [
-      [2, 0.6, 0], [6, 0.55, 0], [10, 0.6, 0], [14, 0.55, 0],
-      [B + 2, 0.6, -2], [B + 6, 0.55, -2], [B + 10, 0.6, -2], [B + 14, 0.55, 0],
+      [3, 0.6, 0], [10, 0.55, 0],
+      [B + 3, 0.6, 0], [B + 10, 0.55, 0], [B + 14, 0.55, 0], [B + 15, 0.65, 0],
     ]),
     m('tom', 2, [
-      [2, 0.6, 0], [6, 0.55, 0], [10, 0.6, 0], [14, 0.55, 0],
-      [B + 2, 0.6, -2], [B + 6, 0.55, -2], [B + 10, 0.6, -2],
-      [B + 13, 0.6, 3], [B + 14, 0.7, 5], [B + 15, 0.75, 7],
+      [3, 0.65, 0], [7, 0.5, 0], [10, 0.6, 0],
+      [B + 3, 0.65, 0], [B + 7, 0.5, 0], [B + 10, 0.6, 0], [B + 14, 0.55, 0], [B + 15, 0.65, 0],
+    ]),
+    m('tom', 2, [
+      [3, 0.65, 0], [7, 0.5, 0], [10, 0.6, 0], [14, 0.5, 0],
+      [B + 3, 0.65, 0], [B + 7, 0.5, 0], [B + 10, 0.6, 0],
+      [B + 13, 0.5, 3], [B + 14, 0.6, 5], [B + 15, 0.7, 7],
     ]),
   ],
-  // Motion: the squelchy acid line, a rolling 16th figure that climbs the scale.
+  // Motion: the squelchy acid line — a rolling syncopated 16th figure sliding
+  // up the pentatonic. Growth = more steps and a wider range.
   acid: [
-    m('acid', 1, [[2, 0.5, 0], [6, 0.5, 3], [10, 0.5, 7], [14, 0.5, 10]]),
-    m('acid', 1, [[0, 0.55, 0], [3, 0.45, 3], [6, 0.5, 7], [10, 0.55, 10], [13, 0.45, 7], [14, 0.45, 5]]),
+    m('acid', 1, [[2, 0.55, 0], [6, 0.5, 3], [10, 0.55, 7], [14, 0.5, 10]]),
+    m('acid', 1, [[0, 0.55, 0], [3, 0.45, 3], [6, 0.5, 5], [10, 0.55, 7], [11, 0.45, 10], [14, 0.5, 7]]),
     m('acid', 2, [
-      [0, 0.55, 0], [3, 0.45, 3], [6, 0.5, 7], [10, 0.55, 10], [14, 0.45, 7],
-      [B, 0.55, 5], [B + 3, 0.45, 7], [B + 6, 0.5, 10], [B + 10, 0.55, 12], [B + 14, 0.45, 10],
+      [0, 0.55, 0], [3, 0.45, 3], [6, 0.5, 5], [8, 0.5, 7], [10, 0.55, 10], [11, 0.45, 7], [14, 0.5, 5],
+      [B, 0.55, 3], [B + 3, 0.45, 5], [B + 6, 0.5, 7], [B + 8, 0.5, 10], [B + 10, 0.55, 12], [B + 11, 0.45, 10], [B + 14, 0.5, 7],
     ]),
     m('acid', 2, [
-      [0, 0.55, 0], [2, 0.45, 3], [3, 0.45, 5], [6, 0.5, 7], [8, 0.5, 10], [10, 0.55, 12], [11, 0.45, 10], [14, 0.45, 7],
-      [B, 0.55, 5], [B + 3, 0.45, 7], [B + 6, 0.5, 10], [B + 8, 0.5, 12], [B + 10, 0.55, 15], [B + 14, 0.45, 10],
+      [0, 0.55, 0], [2, 0.45, 3], [3, 0.45, 5], [6, 0.5, 7], [8, 0.5, 10], [10, 0.55, 12], [11, 0.45, 10], [13, 0.45, 7], [14, 0.5, 5],
+      [B, 0.55, 3], [B + 2, 0.45, 5], [B + 3, 0.45, 7], [B + 6, 0.5, 10], [B + 8, 0.5, 12], [B + 10, 0.55, 15], [B + 11, 0.45, 12], [B + 13, 0.45, 10], [B + 14, 0.5, 7],
     ]),
   ],
-  // Bass: a plucked bass lobbed to the nearest pack, off the kick's downbeats.
-  pluck: [
-    m('pluck', 1, [[2, 0.9, 0], [10, 0.8, 0], [14, 0.7, -5]]),
-    m('pluck', 1, [[2, 0.9, 0], [6, 0.7, -5], [10, 0.85, 0], [14, 0.7, -7]]),
-    m('pluck', 2, [
-      [2, 0.9, 0], [6, 0.7, -5], [10, 0.85, 0], [14, 0.7, -7],
-      [B + 2, 0.9, 3], [B + 6, 0.7, -2], [B + 10, 0.85, 3], [B + 14, 0.7, -5],
-    ]),
-    m('pluck', 2, [
-      [2, 0.9, 0], [6, 0.7, -5], [10, 0.85, 0], [13, 0.6, 0], [14, 0.7, -7],
-      [B + 2, 0.9, 3], [B + 6, 0.7, -2], [B + 10, 0.85, 5], [B + 14, 0.7, 3],
-    ]),
-  ],
-  // Motion: arpeggiated 16th figure climbing the pentatonic, driving the groove.
+  // Motion: driving pentatonic climb. Grows from a quarter-note outline of the
+  // figure to full running 16ths across two bars.
   arp: [
-    m('arp', 1, [[0, 0.5, 0], [4, 0.5, 7], [8, 0.5, 12], [12, 0.5, 7]]),
-    m('arp', 1, [[0, 0.55, 0], [2, 0.45, 3], [4, 0.5, 7], [6, 0.45, 10], [8, 0.55, 12], [10, 0.45, 10], [12, 0.5, 7], [14, 0.45, 3]]),
-    m('arp', 2, [
+    m('arp', 1, [[0, 0.55, 0], [4, 0.5, 3], [8, 0.55, 7], [12, 0.5, 12]]),
+    m('arp', 1, [
       [0, 0.55, 0], [2, 0.45, 3], [4, 0.5, 7], [6, 0.45, 10], [8, 0.55, 12], [10, 0.45, 10], [12, 0.5, 7], [14, 0.45, 3],
-      [B, 0.55, 5], [B + 2, 0.45, 7], [B + 4, 0.5, 10], [B + 6, 0.45, 12], [B + 8, 0.55, 15], [B + 12, 0.5, 10],
     ]),
     m('arp', 2, [
-      [0, 0.55, 0], [2, 0.45, 3], [4, 0.5, 7], [6, 0.45, 10], [8, 0.55, 12], [10, 0.45, 10], [12, 0.5, 7], [14, 0.45, 3],
-      [B, 0.55, 5], [B + 2, 0.45, 7], [B + 4, 0.5, 10], [B + 6, 0.45, 12], [B + 8, 0.55, 15], [B + 10, 0.45, 12], [B + 12, 0.55, 10], [B + 14, 0.45, 7],
+      [0, 0.55, 0], [1, 0.4, 3], [2, 0.45, 7], [4, 0.5, 12], [6, 0.45, 10], [8, 0.55, 7], [10, 0.45, 10], [12, 0.5, 12], [14, 0.45, 7],
+      [B, 0.55, 3], [B + 2, 0.45, 7], [B + 4, 0.5, 10], [B + 6, 0.45, 12], [B + 8, 0.55, 15], [B + 10, 0.45, 12], [B + 12, 0.5, 10], [B + 14, 0.45, 7],
+    ]),
+    // Near-running 16ths but with rests punched on 5/9/13 in each bar so the
+    // line breathes and its trigger rate stays comparable to the other
+    // melodic roles at max tier (a solid 16th wall is the hats' privilege).
+    m('arp', 2, [
+      [0, 0.55, 0], [1, 0.4, 3], [2, 0.5, 7], [3, 0.4, 12], [4, 0.55, 7], [6, 0.5, 7], [7, 0.4, 12],
+      [8, 0.55, 15], [10, 0.5, 10], [11, 0.4, 7], [12, 0.55, 12], [14, 0.5, 7], [15, 0.4, 3],
+      [B, 0.55, 5], [B + 1, 0.4, 7], [B + 2, 0.5, 10], [B + 3, 0.4, 12], [B + 4, 0.55, 15], [B + 6, 0.5, 10], [B + 7, 0.4, 7],
+      [B + 8, 0.55, 12], [B + 10, 0.5, 7], [B + 11, 0.4, 5], [B + 12, 0.55, 3], [B + 14, 0.5, 7], [B + 15, 0.4, 10],
     ]),
   ],
-  // Melody: twinkly high music-box bell, sparkly arps climbing higher each tier.
+  // Melody alternative: sparkly high bell arpeggio, off-beats plus 16th
+  // pickups at tier 4 (never on the downbeats), sparse by design so it
+  // glitters over the top instead of crowding the lead.
   bell: [
-    m('bell', 1, [[2, 0.6, 12], [10, 0.55, 15]]),
-    m('bell', 1, [[2, 0.6, 12], [6, 0.5, 15], [10, 0.55, 17], [14, 0.5, 15]]),
+    m('bell', 1, [[2, 0.55, 12], [10, 0.5, 19]]),
+    m('bell', 1, [[2, 0.6, 12], [6, 0.5, 15], [10, 0.55, 19], [14, 0.5, 17]]),
     m('bell', 2, [
-      [2, 0.6, 12], [6, 0.5, 15], [10, 0.55, 17], [14, 0.5, 15],
-      [B + 2, 0.6, 15], [B + 6, 0.5, 19], [B + 10, 0.55, 17], [B + 14, 0.5, 12],
+      [2, 0.6, 12], [6, 0.5, 15], [10, 0.55, 19], [14, 0.5, 17],
+      [B + 2, 0.6, 15], [B + 6, 0.5, 19], [B + 10, 0.55, 22], [B + 14, 0.5, 17],
     ]),
     m('bell', 2, [
-      [0, 0.55, 12], [2, 0.6, 15], [6, 0.5, 17], [10, 0.55, 19], [14, 0.5, 15],
-      [B, 0.55, 15], [B + 2, 0.6, 17], [B + 6, 0.5, 19], [B + 10, 0.55, 22], [B + 14, 0.5, 15],
+      [2, 0.6, 12], [3, 0.45, 15], [6, 0.5, 17], [10, 0.55, 19], [11, 0.45, 22], [14, 0.5, 17],
+      [B + 2, 0.6, 15], [B + 3, 0.45, 19], [B + 6, 0.5, 22], [B + 10, 0.55, 24], [B + 11, 0.45, 19], [B + 14, 0.5, 15],
     ]),
   ],
 };

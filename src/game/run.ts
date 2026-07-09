@@ -348,7 +348,9 @@ export class RunWorld {
         // Thrown at the nearest enemy, not dropped underfoot: the zone has
         // to land where the horde actually is to be worth a pick.
         const target = this.nearestEnemy(ZONE_THROW_RANGE);
-        this.spawnZone(target?.x ?? p.x, target?.y ?? p.y, conf, color, 'chord');
+        // Loud chords stamp a bigger zone (velocity → size).
+        const zc = { ...conf, radius: conf.radius! * (0.85 + 0.3 * v) };
+        this.spawnZone(target?.x ?? p.x, target?.y ?? p.y, zc, color, 'chord');
         break;
       }
       case 'clap': {
@@ -362,18 +364,21 @@ export class RunWorld {
       }
       case 'shaker': {
         // Drop a short-lived damaging blob where you stand; moving strings them
-        // into a trail. No slow — the hats own speed, not control.
-        this.spawnZone(p.x, p.y, conf, color, 'shaker', { slow: false });
-        this.spawnRing(p.x, p.y, conf.radius!, color, 0.18, true);
+        // into a trail. No slow — the hats own speed, not control. Accented
+        // shakes drop fatter blobs (velocity → size).
+        const sc = { ...conf, radius: conf.radius! * (0.8 + 0.4 * v) };
+        this.spawnZone(p.x, p.y, sc, color, 'shaker', { slow: false });
+        this.spawnRing(p.x, p.y, sc.radius, color, 0.18, true);
         break;
       }
       case 'acid': {
         // A gravity well thrown at the nearest pack: pulls enemies in and ticks
         // damage while they are caught.
         const target = this.nearestEnemy(ZONE_THROW_RANGE);
+        // Accented notes pull harder (velocity → suction, the well's punch).
         this.spawnZone(target?.x ?? p.x, target?.y ?? p.y, conf, color, 'acid', {
           slow: false,
-          pull: conf.pull ?? 100,
+          pull: (conf.pull ?? 100) * (0.85 + 0.3 * v),
         });
         break;
       }
@@ -383,9 +388,11 @@ export class RunWorld {
         break;
       }
       case 'rhodes': {
-        // Place an armed mine where you stand; it blooms when an enemy steps in.
-        this.spawnZone(p.x, p.y, conf, color, 'rhodes', { mine: true });
-        this.spawnRing(p.x, p.y, conf.radius!, color, 0.2, true);
+        // Place an armed mine where you stand; it blooms when an enemy steps
+        // in. Loud chords lay bigger, harder mines (velocity → size + damage).
+        const mc = { ...conf, radius: conf.radius! * (0.85 + 0.3 * v), damage: conf.damage * (0.85 + 0.3 * v) };
+        this.spawnZone(p.x, p.y, mc, color, 'rhodes', { mine: true });
+        this.spawnRing(p.x, p.y, mc.radius, color, 0.2, true);
         break;
       }
       case 'riser': {
@@ -420,8 +427,14 @@ export class RunWorld {
       }
       case 'crash': {
         // Shockwave: an expanding ring that damages and knocks back. The
-        // marquee weapon — ground slam + big shake + a screen flash.
-        this.spawnShock(conf, color);
+        // marquee weapon — ground slam + big shake + a screen flash. A hard
+        // crash hits harder and shoves further (velocity → damage + knock).
+        const cc = {
+          ...conf,
+          damage: conf.damage * (0.8 + 0.4 * v),
+          knockback: (conf.knockback ?? 50) * (0.85 + 0.3 * v),
+        };
+        this.spawnShock(cc, color);
         this.fx?.push({ type: 'slam', x: p.x, y: p.y, radius: conf.radius! * 0.4, color });
         this.spawnRing(p.x, p.y, conf.radius!, color, 0.4);
         this.fx?.push({ type: 'shake', mag: SHAKE.crash.mag, dur: SHAKE.crash.dur });
@@ -989,6 +1002,8 @@ export class RunWorld {
     pr.vy = (dy / d) * speed;
     pr.tx = tx;
     pr.ty = ty;
+    // Accented plucks land a wider burst (velocity → blast size).
+    pr.radius = conf.radius! * (0.85 + 0.3 * velocity);
     pr.pierce = Infinity; // never consumed en route — it only bursts on landing
     pr.lifeS = Math.min(conf.lifetimeS ?? 0.7, d / speed);
     this.projectiles.push(pr);

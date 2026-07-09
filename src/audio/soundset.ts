@@ -32,7 +32,7 @@ export interface Soundset {
 
 export const SOUNDSET: Soundset = {
   bpm: 122,
-  swing: 0.06,
+  swing: 0.1,
   powerMul: 0.9,
   ladders: SOUNDSET_LADDERS,
 };
