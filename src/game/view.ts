@@ -7,12 +7,12 @@
 import { Container, Graphics, GraphicsContext, Text, TextStyle } from 'pixi.js';
 import type { Role } from '../audio/kits';
 import { RUN } from './config';
-import type { Enemy, FxEvent, Gem, Projectile, RunWorld, Shock, WhistleTag, Zone } from './run';
+import type { Enemy, FxEvent, Gem, Projectile, RunWorld, Shock, Zone } from './run';
 
 // Projectile trails (pure view): only these low-count roles trail, so the
 // per-frame work stays independent of the 2400-enemy horde. Hat (can be
 // hundreds) and arp/bass are deliberately excluded.
-const TRAIL_ROLES = new Set<Role>(['snare', 'lead', 'tom', 'cowbell']);
+const TRAIL_ROLES = new Set<Role>(['snare', 'lead', 'tom']);
 const TRAIL_LEN = 6; // points kept per trail
 
 // Shared geometry (M2 sub-phase C, frame rate above ~2000 alive): every
@@ -92,7 +92,6 @@ export class RunView {
   private zoneGfx = new Map<Zone, Graphics>();
   private shockGfx = new Map<Shock, Graphics>();
   private gemGfx = new Map<Gem, Container>();
-  private tagGfx = new Map<WhistleTag, Graphics>();
   private pops: Pop[] = [];
   private floaters: Floater[] = [];
   private live = new Set<object>();
@@ -147,20 +146,12 @@ export class RunView {
     this.syncEnemies();
     this.sync(this.world.projectiles, this.projectileGfx, makeProjectileGfx, (pr, gfx) => {
       gfx.position.set(pr.x, pr.y);
-      if (pr.role === 'tom' || pr.role === 'cowbell') gfx.rotation += 9 * dt; // spin
+      if (pr.role === 'tom') gfx.rotation += 9 * dt; // spin
       else if (pr.role !== 'hat') gfx.rotation = Math.atan2(pr.vy, pr.vx);
     });
     this.drawTrails();
     this.sync(this.world.zones, this.zoneGfx, makeZoneGfx, (z, gfx) => {
       gfx.alpha = Math.min(1, z.lifeS * 2);
-    });
-    // Whistle tags: a reticle that rides the marked enemy and tightens as the
-    // pop nears (view-only cue; the pop itself is a sim event with its own fx).
-    this.sync(this.world.tags, this.tagGfx, makeTagGfx, (t, gfx) => {
-      gfx.position.set(t.x, t.y);
-      const remain = Math.max(0, t.popAtS - this.world.timeS);
-      gfx.scale.set(0.5 + remain * 1.5); // wide when fresh, tight at the pop
-      gfx.rotation += dt * 4;
     });
     this.syncShocks();
     const p = this.world.player;
@@ -211,7 +202,6 @@ export class RunView {
     this.zoneGfx.clear();
     this.shockGfx.clear();
     this.gemGfx.clear();
-    this.tagGfx.clear();
     this.pops.length = 0;
     for (const f of this.floaters) f.txt.destroy();
     this.floaters.length = 0;
@@ -239,8 +229,7 @@ export class RunView {
       gfx.renderable = visible;
       if (!visible) continue;
       gfx.position.set(e.x, e.y);
-      // Frozen (ride) reads as an icy tint; the hit-flash still wins over it.
-      gfx.tint = e.flashT > 0 ? 0xffffff : e.frozenT > 0 ? 0xbfeaff : e.color;
+      gfx.tint = e.flashT > 0 ? 0xffffff : e.color;
       if ((e.kind === 'darter' || e.kind === 'charger') && (e.dashX !== 0 || e.dashY !== 0)) {
         gfx.rotation = Math.atan2(e.dashY, e.dashX);
       }
@@ -347,17 +336,6 @@ export class RunView {
         this.pops.push({ gfx, t: 0, dur: 0.16, grow: 0 });
         break;
       }
-      case 'bolt': {
-        // zap: a lightning line from the player to the struck enemy
-        const gfx = new Graphics()
-          .moveTo(fx.x1, fx.y1)
-          .lineTo(fx.x2, fx.y2)
-          .stroke({ width: 3, color: 0xffffff, alpha: 0.9 });
-        gfx.tint = fx.color;
-        this.stage.addChild(gfx);
-        this.pops.push({ gfx, t: 0, dur: 0.14, grow: 0 });
-        break;
-      }
       case 'shake':
         // Firing is deterministic (a sim event); the decay reads world.timeS.
         this.shakes.push({ start: this.world.timeS, mag: fx.mag, dur: fx.dur });
@@ -389,25 +367,6 @@ export class RunView {
         gfx.position.set(fx.x, fx.y);
         this.stage.addChild(gfx);
         this.pops.push({ gfx, t: 0, dur: 0.28, grow: 1.6 });
-        break;
-      }
-      case 'zigbolt': {
-        // Jagged main bolt plus a few short forks off it (grow:0 -> no scale,
-        // geometry is absolute world coords).
-        const gfx = new Graphics();
-        drawZig(gfx, fx.x1, fx.y1, fx.x2, fx.y2, 5);
-        for (let b = 0; b < fx.branches; b++) {
-          const t = 0.3 + Math.random() * 0.5;
-          const mx = fx.x1 + (fx.x2 - fx.x1) * t;
-          const my = fx.y1 + (fx.y2 - fx.y1) * t;
-          const a = Math.random() * Math.PI * 2;
-          const len = 18 + Math.random() * 14;
-          drawZig(gfx, mx, my, mx + Math.cos(a) * len, my + Math.sin(a) * len, 3);
-        }
-        gfx.stroke({ width: 3, color: 0xffffff, alpha: 0.95 });
-        gfx.tint = fx.color;
-        this.stage.addChild(gfx);
-        this.pops.push({ gfx, t: 0, dur: 0.14, grow: 0 });
         break;
       }
       case 'dmg': {
@@ -564,24 +523,6 @@ interface ShieldGfx extends Graphics {
   __shield?: boolean;
 }
 
-/** Build a jagged polyline from (x1,y1)->(x2,y2) into `g` (subpath only; the
- *  caller strokes). Midpoints jitter perpendicular to the line — view-only,
- *  so Math.random is fine. */
-function drawZig(g: Graphics, x1: number, y1: number, x2: number, y2: number, segs: number): void {
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  const len = Math.hypot(dx, dy) || 1;
-  const px = -dy / len;
-  const py = dx / len;
-  g.moveTo(x1, y1);
-  for (let i = 1; i < segs; i++) {
-    const t = i / segs;
-    const off = (Math.random() * 2 - 1) * 12;
-    g.lineTo(x1 + dx * t + px * off, y1 + dy * t + py * off);
-  }
-  g.lineTo(x2, y2);
-}
-
 /** Regular n-gon vertices as a flat [x,y,...] list (view-only geometry). */
 function regularPoly(sides: number, r: number, rot = 0): number[] {
   const pts: number[] = [];
@@ -684,12 +625,6 @@ function makeProjectileGfx(pr: Projectile): Graphics {
       case 'tom': // boomerang: a fat chevron pointing where it flies
         g.poly([13, 0, -7, 9, -1, 0, -7, -9]).fill(0xffffff);
         break;
-      case 'cowbell': {
-        // ricochet: a metallic diamond
-        const r = pr.radius;
-        g.poly([r * 2.4, 0, 0, r * 1.7, -r * 2.4, 0, 0, -r * 1.7]).fill(0xffffff);
-        break;
-      }
       case 'arp': // orbiter: a bead with a ring
         g.circle(0, 0, pr.radius).stroke({ width: 3, color: 0xffffff });
         g.circle(0, 0, pr.radius * 0.45).fill(0xffffff);
@@ -724,27 +659,6 @@ function makeZoneGfx(z: Zone): Graphics {
     .stroke({ width: 2, color: 0xffffff, alpha: 0.5 });
   gfx.tint = z.color;
   gfx.position.set(z.x, z.y);
-  return gfx;
-}
-
-function makeTagGfx(t: WhistleTag): Graphics {
-  // A reticle: four corner brackets around a small ring, marking the doomed
-  // enemy. Geometry is unit-ish; the sync scales/rotates it per frame.
-  const gfx = new Graphics();
-  const r = 16;
-  gfx.circle(0, 0, r * 0.4).stroke({ width: 2, color: 0xffffff, alpha: 0.9 });
-  for (const a of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
-    const cx = Math.cos(a) * r;
-    const cy = Math.sin(a) * r;
-    const px = -Math.sin(a);
-    const py = Math.cos(a);
-    gfx
-      .moveTo(cx - px * 5, cy - py * 5)
-      .lineTo(cx, cy)
-      .lineTo(cx + px * 5, cy + py * 5)
-      .stroke({ width: 2, color: 0xffffff, alpha: 0.9 });
-  }
-  gfx.tint = t.color;
   return gfx;
 }
 

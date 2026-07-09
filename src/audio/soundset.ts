@@ -61,10 +61,10 @@ export function soundsetSupports(role: Role): boolean {
 // SLOT_ROSTER); this file stays free of a runtime import of band.ts to avoid a
 // cycle.
 const FLOOR_GROUPS: { label: string; anyOf: Role[] }[] = [
-  { label: 'a beat (Pulse)', anyOf: ['kick', 'tom', 'heartbeat'] },
-  { label: 'a low end (Bass)', anyOf: ['bass', 'pluck', 'reese'] },
-  { label: 'a tick (Hats)', anyOf: ['hat', 'shaker', 'ride'] },
-  { label: 'a melodic voice (Harmony/Melody)', anyOf: ['chord', 'rhodes', 'choir', 'lead', 'bell', 'whistle'] },
+  { label: 'a beat (Pulse)', anyOf: ['kick', 'tom'] },
+  { label: 'a low end (Bass)', anyOf: ['bass', 'pluck'] },
+  { label: 'a tick (Hats)', anyOf: ['hat', 'shaker'] },
+  { label: 'a melodic voice (Harmony/Melody)', anyOf: ['chord', 'rhodes', 'lead', 'bell'] },
 ];
 
 // Guard the soundset's track at build time: a bad shipped chart is a build

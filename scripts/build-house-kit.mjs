@@ -12,7 +12,7 @@
 // copied in as <role>.raw.wav (the ffmpeg input). See
 // docs/tools/audio-sample-pipeline.md for the full pipeline description.
 //
-// House is sampled for: kick, clap, rimshot, hat_closed, hat_open, shaker,
+// House is sampled for: kick, clap, hat_closed, hat_open, shaker,
 // crash, riser, bass, bass_fat. Chord / rhodes / lead stay synthesized (they
 // need pitched multi-sampling). House is OWNED here, not by build-samples.mjs.
 
@@ -33,7 +33,6 @@ const BASS = (name) => join(VOL1, 'MUSIC', 'BASS ONE SHOTS', name);
 const PROC = {
   kick:       { maxSec: 0.70, peakDb: -1 },
   clap:       { maxSec: 0.55, peakDb: -4 },
-  rimshot:    { maxSec: 0.35, peakDb: -5 },
   hat_closed: { maxSec: 0.22, peakDb: -9 },
   hat_open:   { maxSec: 0.55, peakDb: -9 },
   shaker:     { maxSec: 0.35, peakDb: -9 },
@@ -47,7 +46,6 @@ const PROC = {
 const KIT = {
   kick:       P('KICK', 'WavePoint-KickPunchy.wav'),
   clap:       P('CLAP-SNARE', 'WavePoint-Clap5.wav'),
-  rimshot:    P('PERC', 'WavePoint-Clave.wav'),
   hat_closed: P('HAT', 'WavePoint-TightClosedHat.wav'),
   hat_open:   P('HAT', 'WavePoint-OpenHatBig.wav'),
   shaker:     P('SHAKER-TAMBOURINE', 'WavePoint-Shaker2.wav'),

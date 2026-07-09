@@ -6,9 +6,7 @@ import { type Kit, type Role } from '../audio/kits';
 import { sampledRoles } from '../audio/kits/index';
 import { SLOTS, SLOT_LABEL, ownerOfSlot, slotOf, supportedRoster } from './band';
 import { TIER_LINES } from './config';
-import { EFFECT_META } from './effects';
 import { type AutoMoveMode } from './input';
-import { ITEMS, type ItemId } from './items';
 import type { PickOption } from './picks';
 
 import { TIER_COUNT } from '../audio/charts';
@@ -40,7 +38,6 @@ export class Hud {
   private flash: HTMLElement;
   private pulse: HTMLElement;
   private toastStack: HTMLElement;
-  private itemStrip: HTMLElement;
   private rack: HTMLElement;
   private screen: HTMLElement | null = null;
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
@@ -68,8 +65,6 @@ export class Hud {
     this.flash = el('div', 'hit-flash', root);
     this.pulse = el('div', 'level-pulse', root);
     this.toastStack = el('div', 'toast-stack', root);
-    this.itemStrip = el('div', 'item-strip', root);
-    this.itemStrip.style.display = 'none';
     // The band rack: eight sockets, one per band position, empty until hired.
     this.rack = el('div', 'band-rack', root);
     this.rack.style.display = 'none';
@@ -77,7 +72,6 @@ export class Hud {
 
   showHud(show: boolean): void {
     this.bar.style.display = show ? '' : 'none';
-    this.itemStrip.style.display = show ? '' : 'none';
     this.rack.style.display = show ? '' : 'none';
   }
 
@@ -106,17 +100,6 @@ export class Hud {
           el('span', `pip ${i <= tier ? 'on' : ''}`, pips);
         }
       }
-    }
-  }
-
-  /** The persistent bottom-left strip of owned passives, one chip per item
-   *  tinted its --voice-color. Rebuilt on every pick (cheap: <=10 chips). */
-  renderItems(items: ReadonlyMap<ItemId, number>): void {
-    this.itemStrip.replaceChildren();
-    for (const [id, lvl] of items) {
-      const def = ITEMS[id];
-      const chip = el('span', 'item-chip', this.itemStrip, `${def.name} ${lvl}`);
-      chip.style.setProperty('--voice-color', def.color);
     }
   }
 
@@ -265,7 +248,7 @@ export class Hud {
         this.closeScreen();
         onPick(option);
       });
-      if (option.kind === 'weapon' && custom.has(option.role)) {
+      if (custom.has(option.role)) {
         el('span', 'kit-custom-badge', card, '★ custom');
       }
       cards.push(card);
@@ -352,29 +335,15 @@ export class Hud {
 
   private kitCard(parent: HTMLElement, option: PickOption, onClick: () => void): HTMLElement {
     const card = el('button', 'kit-card', parent);
-    if (option.kind === 'item') {
-      const def = ITEMS[option.item];
-      card.style.setProperty('--voice-color', def.color);
-      el('span', 'kit-name', card, `${def.name} · Lv ${option.level}`);
-      el('span', 'kit-desc', card, def.desc[option.level - 1]);
-    } else if (option.kind === 'effect') {
-      card.classList.add('kit-card--effect');
-      const kit = this.kits.get(option.role)!;
-      card.style.setProperty('--voice-color', kit.color);
-      el('span', 'kit-slot-badge', card, SLOT_LABEL[slotOf(option.role)]);
-      el('span', 'kit-name', card, `${kit.name} · ${EFFECT_META[option.effect].name}`);
-      el('span', 'kit-desc', card, EFFECT_META[option.effect].line);
-    } else {
-      const kit = this.kits.get(option.role)!;
-      card.style.setProperty('--voice-color', kit.color);
-      // The slot badge names the band position this hire plugs, so every card
-      // answers "what does taking this cost me?" at a glance (the band).
-      el('span', 'kit-slot-badge', card, SLOT_LABEL[slotOf(option.role)]);
-      el('span', 'kit-name', card, kit.name);
-      el('span', 'kit-desc', card, TIER_LINES[option.role][option.tier - 1]);
-      // Tier > 1 shows its numeral in the corner chip (the name stays plain).
-      if (option.tier > 1) el('span', 'kit-tier', card, TIER_NUMERALS[option.tier - 1]);
-    }
+    const kit = this.kits.get(option.role)!;
+    card.style.setProperty('--voice-color', kit.color);
+    // The slot badge names the band position this hire plugs, so every card
+    // answers "what does taking this cost me?" at a glance (the band).
+    el('span', 'kit-slot-badge', card, SLOT_LABEL[slotOf(option.role)]);
+    el('span', 'kit-name', card, kit.name);
+    el('span', 'kit-desc', card, TIER_LINES[option.role][option.tier - 1]);
+    // Tier > 1 shows its numeral in the corner chip (the name stays plain).
+    if (option.tier > 1) el('span', 'kit-tier', card, TIER_NUMERALS[option.tier - 1]);
     card.onclick = onClick;
     return card;
   }

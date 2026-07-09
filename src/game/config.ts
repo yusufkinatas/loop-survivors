@@ -296,17 +296,11 @@ export interface WeaponConf {
   arc?: number;
   /** tom: boomerangs thrown per trigger. */
   count?: number;
-  /** cowbell: ricochets off the view edges before dying. */
-  bounces?: number;
-  /** zap: how many random visible enemies each trigger strikes. */
-  strikes?: number;
   /** arp: radius of the orbit around the player. */
   orbitRadius?: number;
   /** crash: knockback distance pushed onto enemies the wave front passes. */
   knockback?: number;
-  /** rimshot: how many enemies the crack chains through (hops). */
-  chains?: number;
-  /** acid gravity-well pull speed (px/s inward); heartbeat's drag-back distance. */
+  /** acid gravity-well pull speed (px/s inward). */
   pull?: number;
 }
 
@@ -376,14 +370,6 @@ export const WEAPONS: Record<Role, WeaponConf[]> = {
     { damage: 15, speed: 380, radius: 10, lifetimeS: 2.2, pierce: 6, count: 2 },
     { damage: 18, speed: 400, radius: 11, lifetimeS: 2.4, pierce: 8, count: 2 },
   ],
-  // Runetracer: a fast bolt that ricochets off the view edges, carving
-  // unpredictable lines through the horde. Re-hits after each bounce.
-  cowbell: [
-    { damage: 7, speed: 460, radius: 5, lifetimeS: 2.2, pierce: 2, bounces: 3 },
-    { damage: 7, speed: 470, radius: 5, lifetimeS: 2.4, pierce: 2, bounces: 4 },
-    { damage: 8, speed: 480, radius: 6, lifetimeS: 2.6, pierce: 3, bounces: 5 },
-    { damage: 10, speed: 500, radius: 6, lifetimeS: 2.8, pierce: 3, bounces: 6 },
-  ],
   // King Bible: notes that orbit the player, a rotating shield of damage.
   // Each trigger adds one orbiter; a melody makes a ring.
   arp: [
@@ -392,14 +378,6 @@ export const WEAPONS: Record<Role, WeaponConf[]> = {
     { damage: 6, radius: 9, lifetimeS: 2.8, orbitRadius: 104 },
     { damage: 7, radius: 10, lifetimeS: 3.2, orbitRadius: 120 },
   ],
-  // Lightning Ring: instant strikes on random enemies on screen, each a small
-  // blast. No travel, no aim — pure horde thinning at range.
-  zap: [
-    { damage: 14, radius: 55, strikes: 1 },
-    { damage: 15, radius: 58, strikes: 2 },
-    { damage: 17, radius: 63, strikes: 3 },
-    { damage: 20, radius: 70, strikes: 4 },
-  ],
   // Shockwave: an expanding ring from the player that damages and knocks back
   // enemies its front passes. Rare and heavy — charts fire it on the accents.
   crash: [
@@ -407,23 +385,6 @@ export const WEAPONS: Record<Role, WeaponConf[]> = {
     { damage: 20, speed: 540, radius: 300, knockback: 55 },
     { damage: 24, speed: 560, radius: 340, knockback: 65 },
     { damage: 30, speed: 600, radius: 380, knockback: 80 },
-  ],
-  // Rimshot (band, Backbeat): a dry crack that leaps enemy-to-enemy through a
-  // cluster. Single-target per link, but the chain grows tier to tier. radius
-  // is only the hit-spark size.
-  rimshot: [
-    { damage: 10, radius: 22, chains: 2 },
-    { damage: 11, radius: 24, chains: 3 },
-    { damage: 13, radius: 26, chains: 4 },
-    { damage: 16, radius: 28, chains: 5 },
-  ],
-  // Heartbeat (band, Pulse): a breathing field — shoves close enemies out
-  // (knockback) and drags the outer ring in (pull), with a soft tick of damage.
-  heartbeat: [
-    { damage: 5, radius: 130, knockback: 30, pull: 260 },
-    { damage: 6, radius: 150, knockback: 34, pull: 300 },
-    { damage: 7, radius: 170, knockback: 38, pull: 340 },
-    { damage: 9, radius: 190, knockback: 44, pull: 400 },
   ],
   // Shaker (band, Hats): drops a short-lived damaging blob at your feet on each
   // hit, so moving strings a trail of them behind you.
@@ -457,16 +418,6 @@ export const WEAPONS: Record<Role, WeaponConf[]> = {
     { damage: 15, radius: 88, lifetimeS: 5.0 },
     { damage: 20, radius: 100, lifetimeS: 5.5 },
   ],
-  // Ride (band, Hats — THE FREEZE WEAPON): a radar beam that sweeps a wedge of
-  // the surrounding circle each trigger, freezing what it crosses. Token damage
-  // (never zero, Pillar 1); radius is the sweep reach. Fires often, so a single
-  // trigger only freezes a slice — never the whole screen (see RIDE).
-  ride: [
-    { damage: 3, radius: 210 },
-    { damage: 3, radius: 235 },
-    { damage: 4, radius: 260 },
-    { damage: 5, radius: 290 },
-  ],
   // Riser (band, FX — THE AUTO-DASH): its build-and-release grants a short
   // movement surge (see DASH) and a token whoosh of damage around the player on
   // release. Radius is the whoosh reach.
@@ -476,22 +427,6 @@ export const WEAPONS: Record<Role, WeaponConf[]> = {
     { damage: 6, radius: 118 },
     { damage: 8, radius: 132 },
   ],
-  // Reese (band, Bass): a growling wall placed on the nearest pack that grinds
-  // (heavy slow) and ticks damage. Bass weight ladder — per-trigger climbs hard.
-  reese: [
-    { damage: 6, radius: 78, lifetimeS: 2.4 },
-    { damage: 7, radius: 86, lifetimeS: 2.6 },
-    { damage: 10, radius: 96, lifetimeS: 2.8 },
-    { damage: 14, radius: 110, lifetimeS: 3.0 },
-  ],
-  // Choir pad (band, Harmony): a summoned singing orb placed on the nearest
-  // pack that stays and pulses damage (a long-lived ticking zone, no slow).
-  choir: [
-    { damage: 4, radius: 92, lifetimeS: 3.5 },
-    { damage: 5, radius: 102, lifetimeS: 4.0 },
-    { damage: 6, radius: 114, lifetimeS: 4.5 },
-    { damage: 8, radius: 128, lifetimeS: 5.0 },
-  ],
   // Bell (band, Melody): a note lobbed straight that shatters into shards on
   // its first hit (shard count per tier in BELL). radius = the shot's own size.
   bell: [
@@ -500,53 +435,6 @@ export const WEAPONS: Record<Role, WeaponConf[]> = {
     { damage: 10, speed: 375, radius: 7, lifetimeS: 2.0, pierce: 1 },
     { damage: 12, speed: 390, radius: 7, lifetimeS: 2.1, pierce: 2 },
   ],
-  // Whistle (band, Melody): tags the nearest enemy; the tag pops a beat later
-  // for a hard delayed burst (see WHISTLE). Hits heavy because it is delayed.
-  whistle: [
-    { damage: 16, radius: 60 },
-    { damage: 19, radius: 66 },
-    { damage: 23, radius: 74 },
-    { damage: 30, radius: 84 },
-  ],
-};
-
-/** Weapon capability tags: the single source of truth for which modifiers a
- *  weapon can legally take (D10). Effects declare the tags they require and
- *  eligibility is DERIVED against this (see effects.ts), so a modifier never
- *  lands where it makes no gameplay sense. `area` = a radius that can grow;
- *  `pierce` = passes through enemies; `projectile` = a travelling shot;
- *  `count` = can add another instance; `aimedfan` = aimed shots that fan out
- *  on multishot. */
-export type WeaponTag = 'area' | 'pierce' | 'projectile' | 'count' | 'aimedfan';
-export const WEAPON_TAGS: Record<Role, ReadonlySet<WeaponTag>> = {
-  kick: new Set(['area']),
-  snare: new Set(['projectile', 'pierce', 'count', 'aimedfan']),
-  hat: new Set(['projectile', 'count', 'aimedfan']),
-  bass: new Set(['projectile', 'pierce', 'area']), // area but NOT count -> never multishots
-  chord: new Set(['area']),
-  lead: new Set(['projectile', 'pierce', 'count', 'aimedfan']),
-  clap: new Set(['area']),
-  tom: new Set(['projectile', 'pierce', 'count']),
-  cowbell: new Set(['projectile', 'pierce']),
-  arp: new Set(['count', 'area']),
-  zap: new Set(['count', 'area']),
-  crash: new Set(['area']),
-  rimshot: new Set(['count']),
-  heartbeat: new Set(['area']),
-  shaker: new Set(['area', 'count']),
-  acid: new Set(['area']),
-  pluck: new Set(['projectile', 'area']),
-  rhodes: new Set(['area']),
-  ride: new Set(['area']),
-  riser: new Set(['area']),
-  reese: new Set(['area']),
-  choir: new Set(['area']),
-  // Bell shatters on its first hit; it is not in the multishot/split spawn
-  // paths, so 'count'/'aimedfan' would make Split/Layer legal no-op picks (D10:
-  // a modifier never lands where it does nothing). Only 'projectile' — Drive
-  // and Echo (which re-fires the whole note) are its meaningful modifiers.
-  bell: new Set(['projectile']),
-  whistle: new Set(['area']),
 };
 
 /** The one honest gameplay-effect line on each pick card ([tier-1]). Terse
@@ -602,41 +490,17 @@ export const TIER_LINES: Record<Role, string[]> = {
     'throws two boomerangs',
     'two heavy boomerangs, deep pierce',
   ],
-  cowbell: [
-    'a bolt that ricochets off the edges',
-    'bounces one more time',
-    'bounces and pierces more',
-    'a wild long-bouncing bolt',
-  ],
   arp: [
     'orbiting notes circle you',
     'the orbit lasts longer',
     'a wider, longer orbit',
     'a dense ring of orbiters',
   ],
-  zap: [
-    'lightning hits a random foe',
-    'strikes two at once',
-    'strikes three at once',
-    'strikes four, bigger blasts',
-  ],
   crash: [
     'a shockwave knocks enemies back',
     'a bigger, faster wave',
     'a wider wave, harder knock',
     'a massive wave, huge knockback',
-  ],
-  rimshot: [
-    'a crack that chains through a cluster',
-    'jumps to one more enemy',
-    'a longer chain, harder hits',
-    'rips through the whole pack',
-  ],
-  heartbeat: [
-    'a pulse that shoves near and gathers far',
-    'a wider breathing field',
-    'pushes harder, pulls further',
-    'a huge breathing field',
   ],
   shaker: [
     'leaves a damaging trail as you move',
@@ -662,41 +526,17 @@ export const TIER_LINES: Record<Role, string[]> = {
     'a bigger, harder bloom',
     'a huge bloom',
   ],
-  ride: [
-    'a sweep that freezes what it crosses',
-    'a wider freezing sweep',
-    'freezes longer, reaches further',
-    'a huge freezing sweep',
-  ],
   riser: [
     'a surge that dashes you forward',
     'a longer dash',
     'a faster, harder dash',
     'a huge dash surge',
   ],
-  reese: [
-    'a grinding wall that holds a pack',
-    'a bigger, longer wall',
-    'a heavier grinding wall',
-    'a massive crushing wall',
-  ],
-  choir: [
-    'a singing orb that pulses damage',
-    'a bigger, longer orb',
-    'a stronger pulsing orb',
-    'a huge singing orb',
-  ],
   bell: [
     'a note that shatters into shards',
     'more shards on the shatter',
     'sharper shards, further',
     'a burst of shards, pierces',
-  ],
-  whistle: [
-    'tags a foe; it pops a beat later',
-    'a bigger delayed pop',
-    'a harder pop',
-    'a huge delayed pop',
   ],
 };
 
@@ -734,16 +574,7 @@ export const BOOMERANG_OUT_FRAC = 0.45;
 export const SHOCK_BAND = 46;
 export const KNOCK_S = 0.18;
 
-/** Zap picks its random targets from enemies within this range of the player. */
-export const ZAP_RANGE = 640;
-
-/** Rimshot's crack seeks its first target within SEEK of the player, then each
- *  link hops to the next-nearest un-hit enemy within HOP (so it chains through
- *  a pack, not across the whole arena). */
-export const CHAIN_SEEK = 360;
-export const CHAIN_HOP = 150;
-
-// ---- weapon feel & modifier constants (Features 3, 4, 5) ----
+// ---- weapon feel constants (Feature 3) ----
 
 /** How long an enemy rides a weapon shove before resuming its chase (shares
  *  the crash knock channel). */
@@ -754,7 +585,7 @@ export const WEAPON_SHOVE: Partial<Record<Role, number>> = { kick: 14, snare: 20
 
 /** Screenshake magnitudes/durations (Feature 3, cosmetic). Shake is reserved
  *  for the rare, heavy moments only — the crash shockwave and the once-per-
- *  phrase bass sub-drop. Frequent triggers (kick, snare, clap, zap) deliberately
+ *  phrase bass sub-drop. Frequent triggers (kick, snare, clap) deliberately
  *  do NOT shake the camera; they punch through local fx (slam/spark/trails). */
 export const SHAKE = {
   crash: { mag: 10, dur: 0.35 },
@@ -767,18 +598,7 @@ export const FLASH = {
   bassSub: { alpha: 0.12, dur: 0.16 },
 } as const;
 
-/** Fan spacing (rad) between multishot/echo-split aimed projectiles. */
-export const ECHO_FAN = 0.14;
-
-// ---- sub-phase C: the two utility systems + the shatter/tag weapons ----
-
-/** Ride, the freeze weapon: a radar beam that rotates a fixed step each trigger
- *  and freezes only the wedge it crosses, so a fast Hats-lane cadence never
- *  permafreezes the whole screen. `freezeS` is how long a crossed enemy stays
- *  frozen; `wedge` is the half-angle (rad) of the beam; `step` is how far the
- *  beam rotates per trigger (a golden-angle step so successive sweeps spread
- *  around the circle instead of retracing). */
-export const RIDE = { freezeS: 1.2, wedge: 0.42, step: 2.399963 };
+// ---- sub-phase C: the auto-dash utility + the shatter weapon ----
 
 /** Riser, the auto-dash: the release grants a short movement surge. `speed` is
  *  added (px/s) along the dash direction for `surgeS` seconds (≈ a 180px dash),
@@ -798,6 +618,3 @@ export const BELL = {
   shardPierce: 1,
 };
 
-/** Whistle: how long after the tag lands the enemy pops (a beat, roughly —
- *  flavor, not tempo-locked). */
-export const WHISTLE = { popS: 0.5 };

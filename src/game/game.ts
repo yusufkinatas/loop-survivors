@@ -12,10 +12,8 @@ import { makePolicy } from '../bot/policies';
 import { SIM_VIEW } from '../bot/sim';
 import { mountPlayground, type Playground } from '../rehearsal/playground';
 import { RUN } from './config';
-import { EFFECT_META } from './effects';
 import { Hud, TIER_NUMERALS } from './hud';
 import { autoMove, Input, type AutoMoveMode } from './input';
-import { ITEMS } from './items';
 import { mountJoystick } from './joystick';
 import { rollOffers, type PickOption } from './picks';
 import { mulberry32 } from './rng';
@@ -113,13 +111,7 @@ export async function bootGame(
       if (state !== 'run') return;
       // The offer roll (docs/phases/m2-the-arc.md) is shared with the autoplay
       // bot via picks.ts, so the bot faces the exact offers a player does.
-      const options = rollOffers(
-        world!.tiers,
-        world!.items,
-        world!.effects,
-        Math.random,
-        world!.timeS,
-      );
+      const options = rollOffers(world!.tiers, Math.random, world!.timeS);
       if (options.length === 0) {
         world!.player.hp = Math.min(RUN.playerHp, world!.player.hp + 15);
         hud.showToast('+15 hp — the track is complete');
@@ -134,17 +126,9 @@ export async function bootGame(
         const w = world;
         engine.atNextBar(() => {
           if (state !== 'run' || world !== w) return;
-          if (option.kind === 'weapon') {
-            engine.setVoiceTier(option.role, option.tier);
-            engine.setVoiceEnabled(option.role, true);
-            w!.addWeapon(option.role, option.tier);
-          } else if (option.kind === 'item') {
-            w!.addItem(option.item, option.level);
-          } else {
-            w!.attachEffect(option.role, option.effect);
-            engine.setVoiceEffect(option.role, option.effect);
-          }
-          hud.renderItems(w!.items);
+          engine.setVoiceTier(option.role, option.tier);
+          engine.setVoiceEnabled(option.role, true);
+          w!.addWeapon(option.role, option.tier);
           hud.renderBand(w!.tiers);
           chartOverlay?.refresh();
           // Cosmetic affirmation the pick landed (view-only, muted-safe).
@@ -324,7 +308,6 @@ export async function bootGame(
     probe = null;
     seekOverlay.style.display = 'none';
     engine.clearBarQueue();
-    engine.clearVoiceEffects();
     for (const role of ROLES) engine.setVoiceEnabled(role, false);
   }
 
@@ -345,7 +328,6 @@ export async function bootGame(
     engine.setVoiceEnabled(startingKit, true);
     w.addWeapon(startingKit, 1);
     hud.showHud(true);
-    hud.renderItems(w.items);
     hud.renderBand(w.tiers);
     state = 'run';
     void engine.ctx.resume();
@@ -419,15 +401,9 @@ export async function bootGame(
       },
       onApply(option) {
         // the sound mirrors the sim's build; gameplay is driven by the
-        // virtual clock, the engine only plays along. Items touch no voice
-        // tier; an effect swaps the voice's audio fx chain.
-        if (option.kind === 'weapon') {
-          engine.setVoiceTier(option.role, option.tier);
-          engine.setVoiceEnabled(option.role, true);
-        } else if (option.kind === 'effect') {
-          engine.setVoiceEffect(option.role, option.effect);
-        }
-        hud.renderItems(w.items);
+        // virtual clock, the engine only plays along.
+        engine.setVoiceTier(option.role, option.tier);
+        engine.setVoiceEnabled(option.role, true);
         hud.renderBand(w.tiers);
         chartOverlay?.refresh();
       },
@@ -438,7 +414,6 @@ export async function bootGame(
     view = new RunView(w, app.screen);
     app.stage.addChild(view.stage);
     hud.showHud(true);
-    hud.renderItems(w.items);
     hud.renderBand(w.tiers);
     hud.showToast(`replaying seed ${seed} (${moverName}/${policySpec})`);
     speedRow.style.display = '';
@@ -684,9 +659,7 @@ export async function bootGame(
   }
 
   function pickLabel(option: PickOption): string {
-    if (option.kind === 'item') return `${ITEMS[option.item].name} Lv ${option.level}`;
     const kit = kits.get(option.role)!;
-    if (option.kind === 'effect') return `${kit.name} · ${EFFECT_META[option.effect].name}`;
     return option.tier > 1 ? `${kit.name} ${TIER_NUMERALS[option.tier - 1]}` : kit.name;
   }
 

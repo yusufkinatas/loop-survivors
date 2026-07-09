@@ -67,20 +67,6 @@ export function makePolicy(spec: string): Policy {
       },
     };
   }
-  if (spec === 'items') {
-    // always grab a passive when one is on offer, so the batch bot can
-    // stress item balance in isolation; else random
-    return {
-      name: spec,
-      startingKit: randomStart,
-      choose: (options, _world, rng) => {
-        const items = options.filter(
-          (o): o is Extract<PickOption, { kind: 'item' }> => o.kind === 'item',
-        );
-        return items.length > 0 ? pickRandom(items, rng) : pickRandom(options, rng);
-      },
-    };
-  }
   const focus = /^focus:(\w+)$/.exec(spec);
   if (focus && (ROLES as readonly string[]).includes(focus[1])) {
     const role = focus[1] as Role;
@@ -95,5 +81,5 @@ export function makePolicy(spec: string): Policy {
       },
     };
   }
-  throw new Error(`unknown policy: ${spec} (use random | deep | wide | items | focus:<role>)`);
+  throw new Error(`unknown policy: ${spec} (use random | deep | wide | focus:<role>)`);
 }

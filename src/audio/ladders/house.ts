@@ -4,12 +4,12 @@
 // the gaps between kicks so the low end stays clean. Chords stab on the
 // offbeats, the Rhodes comps underneath, and the lead sings on top.
 //
-// Supported roles = the full 24-instrument catalog. Key A minor pentatonic.
+// Supported roles = the full instrument catalog. Key A minor pentatonic.
 
 import type { Chart } from '../charts';
 import type { Role } from '../kits';
 import { B, d, m } from '../groove';
-import { CRASH, RISER, ZAP } from './shared';
+import { CRASH, RISER } from './shared';
 
 export const SOUNDSET_LADDERS: Partial<Record<Role, Chart[]>> = {
   // Pulse: the four-on-the-floor kick, dead on every beat. Grows with soft
@@ -27,13 +27,6 @@ export const SOUNDSET_LADDERS: Partial<Record<Role, Chart[]>> = {
     d('clap', '....X.......X...', '....X.......X..o'),
     d('clap', '....X.......X...', '....X...o...X.o.'),
     d('clap', '....X...o...X...', '....X...o...X.oo'),
-  ],
-  // Backbeat: dry rimshot ticks that syncopate between the claps for groove.
-  rimshot: [
-    d('rimshot', '......o.......o.'),
-    d('rimshot', '..o...o...o...o.'),
-    d('rimshot', '..o...o...o.o.o.'),
-    d('rimshot', '..o.o.o...o.o.oo'),
   ],
   // Hats: the signature offbeat open hat, then closed 8ths, then louder, then
   // 16th closed pairs pushing into each open — the house "tss".
@@ -138,25 +131,6 @@ export const SOUNDSET_LADDERS: Partial<Record<Role, Chart[]>> = {
       [B + 13, 0.6, 3], [B + 14, 0.7, 5], [B + 15, 0.75, 7],
     ]),
   ],
-  // Motion: bright cowbell ostinato riding the offbeats, climbing across the phrase.
-  cowbell: [
-    m('cowbell', 1, [[2, 0.45, 0], [10, 0.45, 0]]),
-    m('cowbell', 1, [[2, 0.5, 7], [6, 0.45, 0], [10, 0.5, 7], [14, 0.45, 0]]),
-    m('cowbell', 2, [[2, 0.5, 7], [6, 0.45, 0], [10, 0.5, 7], [14, 0.45, 5], [B + 2, 0.5, 5], [B + 10, 0.5, 3]]),
-    m('cowbell', 2, [
-      [2, 0.5, 7], [6, 0.45, 0], [10, 0.5, 7], [14, 0.45, 5],
-      [B + 2, 0.5, 5], [B + 6, 0.45, 7], [B + 10, 0.5, 10], [B + 14, 0.45, 7],
-    ]),
-  ],
-  // FX: sparse lightning punctuation, shared voicing.
-  zap: ZAP,
-  // Pulse: a breathing low heartbeat, a soft lub-dub that fills as it grows.
-  heartbeat: [
-    d('heartbeat', '..xo............'),
-    d('heartbeat', '..xo......xo....'),
-    d('heartbeat', '..xo..o...xo....'),
-    d('heartbeat', '..xo..o...xo....', '..xo..o...xo..o.'),
-  ],
   // Motion: the squelchy acid line, a rolling 16th figure that climbs the scale.
   acid: [
     m('acid', 1, [[2, 0.5, 0], [6, 0.5, 3], [10, 0.5, 7], [14, 0.5, 10]]),
@@ -196,37 +170,6 @@ export const SOUNDSET_LADDERS: Partial<Record<Role, Chart[]>> = {
       [B, 0.55, 5], [B + 2, 0.45, 7], [B + 4, 0.5, 10], [B + 6, 0.45, 12], [B + 8, 0.55, 15], [B + 10, 0.45, 12], [B + 12, 0.55, 10], [B + 14, 0.45, 7],
     ]),
   ],
-  // Hats: the bright offbeat ride ping (the freeze sweep). Moderate 8th feel,
-  // never a 16th wall, growing by promoting offbeats to accents.
-  ride: [
-    d('ride', 'o...o...o...o...'),
-    d('ride', 'o.o.o.o.o.o.o.o.'),
-    d('ride', 'o.x.o.x.o.x.o.x.'),
-    d('ride', 'o.x.o.x.o.x.o.x.', 'o.x.o.x.o.x.o.xX'),
-  ],
-  // Bass: the thick growling reese, low and off the kick's downbeats.
-  reese: [
-    m('reese', 1, [[2, 0.9, 0], [10, 0.85, -5]]),
-    m('reese', 1, [[2, 0.9, 0], [6, 0.75, -7], [10, 0.85, 0], [14, 0.75, -5]]),
-    m('reese', 2, [
-      [2, 0.9, 0], [6, 0.75, -7], [10, 0.85, 0], [14, 0.75, -5],
-      [B + 2, 0.9, 3], [B + 6, 0.75, -2], [B + 10, 0.85, 3], [B + 14, 0.75, -5],
-    ]),
-    m('reese', 2, [
-      [2, 0.9, 0], [6, 0.75, -7], [10, 0.85, 0], [14, 0.75, -5], [15, 0.6, 0],
-      [B + 2, 0.9, 3], [B + 6, 0.75, -2], [B + 10, 0.85, 3], [B + 14, 0.75, -5], [B + 15, 0.6, -7],
-    ]),
-  ],
-  // Harmony: airy sung 'aah' pad, held and sparse. Grows in harmony, not density.
-  choir: [
-    m('choir', 1, [[0, 0.55, 0]]),
-    m('choir', 1, [[0, 0.6, 0], [0, 0.5, 7]]),
-    m('choir', 2, [[0, 0.6, 0], [0, 0.5, 7], [B, 0.6, 3], [B, 0.5, 10]]),
-    m('choir', 2, [
-      [0, 0.6, 0], [0, 0.5, 7], [0, 0.45, 12],
-      [B, 0.6, 3], [B, 0.5, 10], [B, 0.45, 12],
-    ]),
-  ],
   // Melody: twinkly high music-box bell, sparkly arps climbing higher each tier.
   bell: [
     m('bell', 1, [[2, 0.6, 12], [10, 0.55, 15]]),
@@ -238,19 +181,6 @@ export const SOUNDSET_LADDERS: Partial<Record<Role, Chart[]>> = {
     m('bell', 2, [
       [0, 0.55, 12], [2, 0.6, 15], [6, 0.5, 17], [10, 0.55, 19], [14, 0.5, 15],
       [B, 0.55, 15], [B + 2, 0.6, 17], [B + 6, 0.5, 19], [B + 10, 0.55, 22], [B + 14, 0.5, 15],
-    ]),
-  ],
-  // Melody: pure smooth sung whistle hook, one hit tags one enemy so it stays sparse.
-  whistle: [
-    m('whistle', 2, [[0, 0.7, 7], [B, 0.7, 10]]),
-    m('whistle', 2, [[0, 0.7, 7], [8, 0.65, 10], [B, 0.7, 12], [B + 8, 0.65, 10]]),
-    m('whistle', 2, [
-      [0, 0.7, 7], [8, 0.65, 10],
-      [B, 0.7, 12], [B + 6, 0.6, 15], [B + 10, 0.65, 12],
-    ]),
-    m('whistle', 2, [
-      [0, 0.7, 7], [6, 0.6, 10], [10, 0.65, 12],
-      [B, 0.7, 12], [B + 6, 0.6, 15], [B + 10, 0.65, 17],
     ]),
   ],
 };

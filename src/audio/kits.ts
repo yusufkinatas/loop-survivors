@@ -17,25 +17,17 @@ export type Role =
   | 'lead'
   | 'clap'
   | 'tom'
-  | 'cowbell'
   | 'arp'
-  | 'zap'
   | 'crash'
   // The band, sub-phase B — the first damage hires (docs/phases/the-band.md).
-  | 'rimshot'
-  | 'heartbeat'
   | 'shaker'
   | 'acid'
   | 'pluck'
   | 'rhodes'
-  // The band, sub-phase C — the last six hires + the two utility weapons
-  // (ride = freeze, riser = auto-dash). See docs/phases/the-band.md.
-  | 'ride'
+  // The band, sub-phase C — the last hires + the auto-dash utility weapon
+  // (riser). See docs/phases/the-band.md.
   | 'riser'
-  | 'reese'
-  | 'choir'
-  | 'bell'
-  | 'whistle';
+  | 'bell';
 
 export const ROLES: readonly Role[] = [
   'kick',
@@ -43,25 +35,17 @@ export const ROLES: readonly Role[] = [
   'hat',
   'clap',
   'tom',
-  'cowbell',
   'crash',
-  'zap',
   'bass',
   'chord',
   'arp',
   'lead',
-  'rimshot',
-  'heartbeat',
   'shaker',
   'acid',
   'pluck',
   'rhodes',
-  'ride',
   'riser',
-  'reese',
-  'choir',
   'bell',
-  'whistle',
 ];
 
 export interface Kit {
@@ -230,59 +214,6 @@ async function renderClap(): Promise<AudioBuffer> {
   return ctx.startRendering();
 }
 
-async function renderRimshot(): Promise<AudioBuffer> {
-  // Dry woody "tock": a short square body with a fast pitch drop, plus a bright
-  // click transient. No tail — the sharp answering hit on the off-counts.
-  const ctx = offline(0.14);
-  const tone = ctx.createOscillator();
-  tone.type = 'square';
-  tone.frequency.setValueAtTime(440, 0);
-  tone.frequency.exponentialRampToValueAtTime(300, 0.03);
-  const tGain = ctx.createGain();
-  tGain.gain.setValueAtTime(0.5, 0);
-  tGain.gain.exponentialRampToValueAtTime(0.001, 0.07);
-  tone.connect(tGain).connect(ctx.destination);
-  const noise = ctx.createBufferSource();
-  noise.buffer = noiseBuffer(ctx, 0.06);
-  const bp = ctx.createBiquadFilter();
-  bp.type = 'bandpass';
-  bp.frequency.value = 2400;
-  bp.Q.value = 1.6;
-  const nGain = ctx.createGain();
-  nGain.gain.setValueAtTime(0.5, 0);
-  nGain.gain.exponentialRampToValueAtTime(0.001, 0.05);
-  noise.connect(bp).connect(nGain).connect(ctx.destination);
-  tone.start(0);
-  noise.start(0);
-  return ctx.startRendering();
-}
-
-async function renderHeartbeat(rootHz: number): Promise<AudioBuffer> {
-  // Soft round "lub-dub" double-thud: two pillowy low sine bumps, no click.
-  const ctx = offline(0.5);
-  const lp = ctx.createBiquadFilter();
-  lp.type = 'lowpass';
-  lp.frequency.value = 220;
-  lp.connect(ctx.destination);
-  for (const [at, level] of [
-    [0, 0.9],
-    [0.14, 0.6],
-  ] as const) {
-    const osc = ctx.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(rootHz / 4, at);
-    osc.frequency.exponentialRampToValueAtTime(rootHz / 6, at + 0.16);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, at);
-    g.gain.linearRampToValueAtTime(level, at + 0.012); // soft attack, no click
-    g.gain.exponentialRampToValueAtTime(0.001, at + 0.18);
-    osc.connect(g).connect(lp);
-    osc.start(at);
-    osc.stop(at + 0.2);
-  }
-  return ctx.startRendering();
-}
-
 async function renderShaker(): Promise<AudioBuffer> {
   // Soft "chh" sizzle, the hi-hat's smoother cousin: shaped noise, gentler
   // attack and a softer high band than the hat.
@@ -421,62 +352,6 @@ async function renderRhodes(rootHz: number): Promise<AudioBuffer> {
   return ctx.startRendering();
 }
 
-async function renderRide(): Promise<AudioBuffer> {
-  // Bright sustained metallic ping that rings: a cluster of high inharmonic
-  // square partials through a bandpass, with a long shimmering tail. The
-  // Hats-lane cousin that sings instead of ticks. (Synthesis-risk flag in the
-  // spec — first candidate for a CC0 sample if the ear rejects it.)
-  const ctx = offline(0.9);
-  // A real ride = a defined "ping" (stick striking the bell/bow, a focused
-  // group of high inharmonic partials that decay fairly fast) sitting on top
-  // of a broad shimmering wash that rings much longer. Two decay paths keep
-  // the attack articulate while the tail sings.
-  const bp = ctx.createBiquadFilter();
-  bp.type = 'bandpass';
-  bp.frequency.value = 6400;
-  bp.Q.value = 0.5;
-  bp.connect(ctx.destination);
-  // Ping cluster: brighter, more numerous inharmonic squares. The lowest
-  // partials decay quicker (the initial "tong"), the very high ones shimmer on.
-  const base = 500;
-  const partials: [number, number][] = [
-    [1, 0.22],
-    [1.41, 0.14],
-    [1.83, 0.12],
-    [2.37, 0.14],
-    [3.19, 0.1],
-    [4.11, 0.09],
-    [5.43, 0.07],
-  ];
-  for (const [mult, dec] of partials) {
-    const o = ctx.createOscillator();
-    o.type = 'square';
-    o.frequency.value = base * mult;
-    const og = ctx.createGain();
-    og.gain.setValueAtTime(0.0001, 0);
-    og.gain.exponentialRampToValueAtTime(0.14, 0.003);
-    // higher partials ring longer -> shimmer; lower ones settle -> ping
-    og.gain.exponentialRampToValueAtTime(0.001, 0.25 + dec * 3);
-    o.connect(og).connect(bp);
-    o.start(0);
-    o.stop(0.9);
-  }
-  // Bright noise wash for the sustained "sizzle" of the cymbal ringing out.
-  const n = ctx.createBufferSource();
-  n.buffer = noiseBuffer(ctx, 0.9);
-  const hp = ctx.createBiquadFilter();
-  hp.type = 'highpass';
-  hp.frequency.value = 7500;
-  const ng = ctx.createGain();
-  ng.gain.setValueAtTime(0.0001, 0);
-  ng.gain.exponentialRampToValueAtTime(0.13, 0.004);
-  ng.gain.exponentialRampToValueAtTime(0.02, 0.2);
-  ng.gain.exponentialRampToValueAtTime(0.001, 0.85); // long shimmering ring-out
-  n.connect(hp).connect(ng).connect(ctx.destination);
-  n.start(0);
-  return ctx.startRendering();
-}
-
 async function renderRiser(): Promise<AudioBuffer> {
   // Reversed-cymbal swell that builds and lifts: filtered noise whose gain
   // ramps UP into a cut and whose bandpass sweeps up, so it anticipates the
@@ -495,131 +370,6 @@ async function renderRiser(): Promise<AudioBuffer> {
   g.gain.exponentialRampToValueAtTime(0.5, dur * 0.92); // swells to the top
   g.gain.exponentialRampToValueAtTime(0.001, dur); // then cut on the hit
   n.connect(bp).connect(g).connect(ctx.destination);
-  n.start(0);
-  return ctx.startRendering();
-}
-
-async function renderReese(rootHz: number): Promise<AudioBuffer> {
-  // Thick growling detuned bass (a rolling monster sub): three saws detuned
-  // hard against each other so the beating between them growls, through a
-  // resonant lowpass. Deep and mean.
-  const ctx = offline(0.7);
-  // The growl is the beating between hard-detuned saws. Wider spread (±22c and
-  // a pair an octave-ish apart) plus a slow LFO wobble on the filter gives the
-  // classic writhing Reese movement. Saturation thickens it into a monster.
-  const lp = ctx.createBiquadFilter();
-  lp.type = 'lowpass';
-  lp.frequency.setValueAtTime(900, 0);
-  lp.frequency.exponentialRampToValueAtTime(200, 0.55);
-  lp.Q.value = 7;
-  const lfo = ctx.createOscillator();
-  lfo.type = 'sine';
-  lfo.frequency.value = 6.5;
-  const lfoGain = ctx.createGain();
-  lfoGain.gain.value = 180; // filter wobble depth
-  lfo.connect(lfoGain).connect(lp.frequency);
-  lfo.start(0);
-  lfo.stop(0.68);
-  const drive = ctx.createWaveShaper();
-  drive.curve = softClipCurve(2.4);
-  const g = ctx.createGain();
-  g.gain.setValueAtTime(0.001, 0);
-  g.gain.exponentialRampToValueAtTime(0.7, 0.02);
-  g.gain.setValueAtTime(0.7, 0.4);
-  g.gain.exponentialRampToValueAtTime(0.001, 0.66);
-  lp.connect(drive).connect(g).connect(ctx.destination);
-  for (const det of [-22, -7, 7, 22]) {
-    const o = ctx.createOscillator();
-    o.type = 'sawtooth';
-    o.frequency.value = rootHz / 4;
-    o.detune.value = det;
-    const og = ctx.createGain();
-    og.gain.value = 0.3;
-    o.connect(og).connect(lp);
-    o.start(0);
-    o.stop(0.68);
-  }
-  // Clean sine sub under the growl keeps the low end solid and distinct.
-  const sub = ctx.createOscillator();
-  sub.type = 'sine';
-  sub.frequency.value = rootHz / 4;
-  const subG = ctx.createGain();
-  subG.gain.value = 0.5;
-  sub.connect(subG).connect(g);
-  sub.start(0);
-  sub.stop(0.68);
-  return ctx.startRendering();
-}
-
-async function renderChoir(rootHz: number): Promise<AudioBuffer> {
-  // Airy sung "aah" pad: sine partials shaped by two vowel formants (bandpass
-  // ~800/1150 Hz) with a slow attack and a long lush tail. Held, not struck.
-  // (Synthesis-risk flag in the spec — CC0 candidate if the ear rejects it.)
-  const ctx = offline(1.8);
-  const master = ctx.createGain();
-  master.gain.setValueAtTime(0.0001, 0);
-  master.gain.linearRampToValueAtTime(0.3, 0.28); // slow breathy swell
-  master.gain.setValueAtTime(0.3, 1.05);
-  master.gain.exponentialRampToValueAtTime(0.001, 1.75);
-  master.connect(ctx.destination);
-  // Three formants of the "aah" vowel (F1 ~800, F2 ~1150, F3 ~2900 Hz). The
-  // third formant is what makes it read as a voice rather than a filtered pad.
-  const formants: [number, number, number][] = [
-    [800, 6, 0.7],
-    [1150, 8, 0.45],
-    [2900, 10, 0.18],
-  ];
-  // Shared, slightly irregular vibrato so the section "breathes" and sounds
-  // like many singers rather than one oscillator.
-  const vib = ctx.createOscillator();
-  vib.type = 'sine';
-  vib.frequency.value = 5.2;
-  const vibGain = ctx.createGain();
-  vibGain.gain.value = rootHz * 0.006; // gentle ~0.6% pitch drift
-  vib.connect(vibGain);
-  vib.start(0);
-  vib.stop(1.78);
-  for (const [f, q, amp] of formants) {
-    const bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.frequency.value = f;
-    bp.Q.value = q;
-    const fg = ctx.createGain();
-    fg.gain.value = amp;
-    bp.connect(fg).connect(master);
-    // Harmonics gently detuned/doubled for a choir's width and beating.
-    for (const [mult, det] of [
-      [1, -7],
-      [1, 8],
-      [2, 5],
-      [3, -4],
-      [4, 6],
-      [5, -6],
-    ] as const) {
-      const o = ctx.createOscillator();
-      o.type = 'sawtooth';
-      o.frequency.value = rootHz * mult;
-      o.detune.value = det;
-      vibGain.connect(o.frequency);
-      const og = ctx.createGain();
-      og.gain.value = 0.1;
-      o.connect(og).connect(bp);
-      o.start(0);
-      o.stop(1.78);
-    }
-  }
-  // A breath of filtered noise so onsets read as air moving, not a pure tone.
-  const n = ctx.createBufferSource();
-  n.buffer = noiseBuffer(ctx, 1.8);
-  const nbp = ctx.createBiquadFilter();
-  nbp.type = 'bandpass';
-  nbp.frequency.value = 1150;
-  nbp.Q.value = 2;
-  const ng = ctx.createGain();
-  ng.gain.setValueAtTime(0.0001, 0);
-  ng.gain.linearRampToValueAtTime(0.04, 0.3);
-  ng.gain.exponentialRampToValueAtTime(0.001, 1.6);
-  n.connect(nbp).connect(ng).connect(master);
   n.start(0);
   return ctx.startRendering();
 }
@@ -661,58 +411,6 @@ async function renderBell(rootHz: number): Promise<AudioBuffer> {
   sg.gain.exponentialRampToValueAtTime(0.001, 0.008);
   strike.connect(shp).connect(sg).connect(ctx.destination);
   strike.start(0);
-  return ctx.startRendering();
-}
-
-async function renderWhistle(rootHz: number): Promise<AudioBuffer> {
-  // Pure smooth sung line with a gentle wobble: a near-sine tone with a slow
-  // vibrato (an LFO on its frequency) and a soft breath of air.
-  const ctx = offline(0.7);
-  const g = ctx.createGain();
-  g.gain.setValueAtTime(0.0001, 0);
-  g.gain.linearRampToValueAtTime(0.5, 0.04); // soft breathy onset
-  g.gain.setValueAtTime(0.5, 0.4);
-  g.gain.exponentialRampToValueAtTime(0.001, 0.62);
-  g.connect(ctx.destination);
-  // Vibrato that fades IN (a held human note starts steady, then wavers) makes
-  // it sweet and sung rather than a flat test tone.
-  const lfo = ctx.createOscillator();
-  lfo.type = 'sine';
-  lfo.frequency.value = 5.5;
-  const lfoGain = ctx.createGain();
-  lfoGain.gain.setValueAtTime(0.0001, 0);
-  lfoGain.gain.linearRampToValueAtTime(rootHz * 2 * 0.012, 0.28); // ~1.2% wobble
-  lfo.connect(lfoGain);
-  lfo.start(0);
-  lfo.stop(0.68);
-  // Fundamental plus a quiet octave overtone gives the whistle a little body
-  // (a pure sine reads as a synth beep; flutes/whistles carry a faint octave).
-  for (const [mult, level] of [
-    [1, 0.85],
-    [2, 0.12],
-  ] as const) {
-    const osc = ctx.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.value = rootHz * 2 * mult; // an octave up: a clear top line
-    lfoGain.connect(osc.frequency);
-    const og = ctx.createGain();
-    og.gain.value = level;
-    osc.connect(og).connect(g);
-    osc.start(0);
-    osc.stop(0.68);
-  }
-  // A faint airy breath so it reads as "sung", not a test tone.
-  const n = ctx.createBufferSource();
-  n.buffer = noiseBuffer(ctx, 0.7);
-  const bp = ctx.createBiquadFilter();
-  bp.type = 'bandpass';
-  bp.frequency.value = rootHz * 4;
-  bp.Q.value = 2;
-  const ng = ctx.createGain();
-  ng.gain.setValueAtTime(0.06, 0);
-  ng.gain.exponentialRampToValueAtTime(0.001, 0.4);
-  n.connect(bp).connect(ng).connect(ctx.destination);
-  n.start(0);
   return ctx.startRendering();
 }
 
@@ -981,32 +679,6 @@ async function renderTom(rootHz: number): Promise<AudioBuffer> {
   return ctx.startRendering();
 }
 
-// The classic 808 cowbell: two detuned square waves a ~1.48 ratio apart
-// through a bandpass. Pitched so cowbell riffs land on the note set.
-async function renderCowbell(rootHz: number): Promise<AudioBuffer> {
-  const ctx = offline(0.5);
-  const base = rootHz * 2;
-  const bp = ctx.createBiquadFilter();
-  bp.type = 'bandpass';
-  bp.frequency.value = base * 1.4;
-  bp.Q.value = 3;
-  const g = ctx.createGain();
-  g.gain.setValueAtTime(0.0001, 0);
-  g.gain.exponentialRampToValueAtTime(0.6, 0.003);
-  g.gain.exponentialRampToValueAtTime(0.001, 0.35);
-  bp.connect(g).connect(ctx.destination);
-  for (const f of [base, base * 1.48]) {
-    const o = ctx.createOscillator();
-    o.type = 'square';
-    o.frequency.value = f;
-    const og = ctx.createGain();
-    og.gain.value = 0.5;
-    o.connect(og).connect(bp);
-    o.start(0);
-  }
-  return ctx.startRendering();
-}
-
 // A bright plucky synth stab, an octave up: square+saw through a fast-closing
 // lowpass. The arpeggio/pluck voice.
 async function renderArp(rootHz: number): Promise<AudioBuffer> {
@@ -1035,36 +707,6 @@ async function renderArp(rootHz: number): Promise<AudioBuffer> {
   lp.connect(g).connect(ctx.destination);
   o.start(0);
   o2.start(0);
-  return ctx.startRendering();
-}
-
-// An electric zap: a fast-falling saw through a bandpass with a highpassed
-// noise crackle. Reads as a lightning snap.
-async function renderZap(): Promise<AudioBuffer> {
-  const ctx = offline(0.28);
-  const osc = ctx.createOscillator();
-  osc.type = 'sawtooth';
-  osc.frequency.setValueAtTime(1900, 0);
-  osc.frequency.exponentialRampToValueAtTime(210, 0.14);
-  const bp = ctx.createBiquadFilter();
-  bp.type = 'bandpass';
-  bp.frequency.value = 1200;
-  bp.Q.value = 0.7;
-  const g = ctx.createGain();
-  g.gain.setValueAtTime(0.6, 0);
-  g.gain.exponentialRampToValueAtTime(0.001, 0.16);
-  const n = ctx.createBufferSource();
-  n.buffer = noiseBuffer(ctx, 0.12);
-  const hp = ctx.createBiquadFilter();
-  hp.type = 'highpass';
-  hp.frequency.value = 3000;
-  const ng = ctx.createGain();
-  ng.gain.setValueAtTime(0.3, 0);
-  ng.gain.exponentialRampToValueAtTime(0.001, 0.1);
-  osc.connect(bp).connect(g).connect(ctx.destination);
-  n.connect(hp).connect(ng).connect(ctx.destination);
-  osc.start(0);
-  n.start(0);
   return ctx.startRendering();
 }
 
@@ -1132,22 +774,14 @@ export const ROLE_META: Record<Role, RoleMeta> = {
   lead: { name: 'Lead', color: '#ff6bd6', pitched: true, choke: false, variants: ['lead'] },
   clap: { name: 'Clap', color: '#ff4f7d', pitched: false, choke: false, variants: ['clap'] },
   tom: { name: 'Tom', color: '#d08a4a', pitched: true, choke: true, variants: ['tom'] },
-  cowbell: { name: 'Cowbell', color: '#c7f24a', pitched: true, choke: false, variants: ['cowbell'] },
   arp: { name: 'Arp', color: '#33e6c2', pitched: true, choke: false, variants: ['arp'] },
-  zap: { name: 'Zap', color: '#66b3ff', pitched: false, choke: false, variants: ['zap'] },
   crash: { name: 'Crash', color: '#b9c2dd', pitched: false, choke: true, variants: ['crash'] },
-  rimshot: { name: 'Rimshot', color: '#ff8f5e', pitched: false, choke: false, variants: ['rimshot'] },
-  heartbeat: { name: 'Heartbeat', color: '#ff7a9c', pitched: false, choke: true, variants: ['heartbeat'] },
   shaker: { name: 'Shaker', color: '#7be0d0', pitched: false, choke: false, variants: ['shaker'] },
   acid: { name: 'Acid', color: '#b6ff5a', pitched: true, choke: false, variants: ['acid'] },
   pluck: { name: 'Pluck Bass', color: '#8f7bff', pitched: true, choke: true, variants: ['pluck'] },
   rhodes: { name: 'Rhodes', color: '#5ad1ff', pitched: true, choke: false, variants: ['rhodes'] },
-  ride: { name: 'Ride', color: '#9fe8ff', pitched: false, choke: true, variants: ['ride'] },
   riser: { name: 'Riser', color: '#cbb4ff', pitched: false, choke: true, variants: ['riser'] },
-  reese: { name: 'Reese', color: '#6a4fd0', pitched: true, choke: true, variants: ['reese'] },
-  choir: { name: 'Choir Pad', color: '#c7f0d8', pitched: true, choke: true, variants: ['choir'] },
   bell: { name: 'Bell', color: '#ffd76b', pitched: true, choke: false, variants: ['bell'] },
-  whistle: { name: 'Whistle', color: '#ff9ecb', pitched: true, choke: false, variants: ['whistle'] },
 };
 
 /** Load a real sample file and decode it. The files are pre-corrected at build
@@ -1197,22 +831,14 @@ export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
     pad,
     lead,
     tom,
-    cowbell,
     arp,
-    zap,
     crash,
-    rimshot,
-    heartbeat,
     shaker,
     acid,
     pluck,
     rhodes,
-    ride,
     riser,
-    reese,
-    choir,
     bell,
-    whistle,
   ] = await Promise.all([
     renderKick(true),
     renderKick(false),
@@ -1227,22 +853,14 @@ export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
     renderChord(rootHz, true),
     renderLead(rootHz),
     renderTom(rootHz),
-    renderCowbell(rootHz),
     renderArp(rootHz),
-    renderZap(),
     renderCrash(),
-    renderRimshot(),
-    renderHeartbeat(rootHz),
     renderShaker(),
     renderAcid(rootHz),
     renderPluck(rootHz),
     renderRhodes(rootHz),
-    renderRide(),
     renderRiser(),
-    renderReese(rootHz),
-    renderChoir(rootHz),
     renderBell(rootHz),
-    renderWhistle(rootHz),
   ]);
 
   const kits = new Map<Role, Kit>();
@@ -1274,21 +892,13 @@ export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
   add('lead', [['lead', lead]]);
   add('clap', [['clap', clap]]);
   add('tom', [['tom', tom]]);
-  add('cowbell', [['cowbell', cowbell]]);
   add('arp', [['arp', arp]]);
-  add('zap', [['zap', zap]]);
   add('crash', [['crash', crash]]);
-  add('rimshot', [['rimshot', rimshot]]);
-  add('heartbeat', [['heartbeat', heartbeat]]);
   add('shaker', [['shaker', shaker]]);
   add('acid', [['acid', acid]]);
   add('pluck', [['pluck', pluck]]);
   add('rhodes', [['rhodes', rhodes]]);
-  add('ride', [['ride', ride]]);
   add('riser', [['riser', riser]]);
-  add('reese', [['reese', reese]]);
-  add('choir', [['choir', choir]]);
   add('bell', [['bell', bell]]);
-  add('whistle', [['whistle', whistle]]);
   return kits;
 }

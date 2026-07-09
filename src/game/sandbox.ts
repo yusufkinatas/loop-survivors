@@ -16,7 +16,6 @@ import {
 } from './band';
 import { TIER_NUMERALS } from './hud';
 import { ENEMIES, enemyScaling, RUN, type EnemyKind } from './config';
-import { ITEM_IDS, ITEMS } from './items';
 import type { RunWorld } from './run';
 
 const ENEMY_KINDS: EnemyKind[] = [
@@ -214,33 +213,6 @@ export function mountSandboxPanel(
     }
   }
   refreshCustom();
-
-  // ---- items editor: dial any passive to any level, applied instantly ----
-  el('div', 'sb-section', panel, 'items');
-  for (const id of ITEM_IDS) {
-    const def = ITEMS[id];
-    const row = el('div', 'sb-loadout', panel);
-    row.style.setProperty('--voice-color', def.color);
-    el('span', 'sb-loadout-name', row, def.name);
-    const btns = el('div', 'sb-btns', row);
-    const options: HTMLButtonElement[] = [];
-    const set = (level: number | null): void => {
-      if (level === null) world.removeItem(id);
-      else world.addItem(id, level);
-      options.forEach((b, i) => b.classList.toggle('on', level === null ? i === 0 : i === level));
-    };
-    const off = el('button', 'small off-btn', btns, '⏻') as HTMLButtonElement;
-    off.title = 'off';
-    off.onclick = () => set(null);
-    options.push(off);
-    for (let lvl = 1; lvl <= def.maxLevel; lvl++) {
-      const b = el('button', 'small', btns, String(lvl)) as HTMLButtonElement;
-      b.onclick = () => set(lvl);
-      options.push(b);
-    }
-    const current = world.items.get(id);
-    options.forEach((b, i) => b.classList.toggle('on', current === undefined ? i === 0 : i === current));
-  }
 
   el(
     'div',
