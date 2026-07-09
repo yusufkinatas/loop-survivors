@@ -3,12 +3,9 @@
 // end screens, and the hit flash.
 
 import { type Kit, type Role } from '../audio/kits';
-import { sampledRoles } from '../audio/kits/index';
-import { SLOTS, SLOT_LABEL, ownerOfSlot, slotOf, supportedRoster } from './band';
+import { SLOTS, SLOT_LABEL, slotOf, supportedRoster, type Slot } from './band';
 import { TIER_LINES } from './config';
-import { EFFECT_META } from './effects';
 import { type AutoMoveMode } from './input';
-import { ITEMS, type ItemId } from './items';
 import type { PickOption } from './picks';
 
 import { TIER_COUNT } from '../audio/charts';
@@ -30,6 +27,16 @@ export interface DebugAction {
   dynamicLabel?(): string;
 }
 
+/** The game shell owns audio state and bar-quantized scheduling; the HUD only
+ * reads it and forwards a deck-cell click. Keeping this seam callback-based
+ * also lets the pause copy render the exact same state as the arena deck. */
+export interface TrackDeckHooks {
+  isMuted(role: Role): boolean;
+  pendingMute(slot: Slot): boolean | undefined;
+  canToggle(): boolean;
+  onToggle(slotIndex: number): void;
+}
+
 export class Hud {
   private root: HTMLElement;
   private bar: HTMLElement;
@@ -40,8 +47,9 @@ export class Hud {
   private flash: HTMLElement;
   private pulse: HTMLElement;
   private toastStack: HTMLElement;
-  private itemStrip: HTMLElement;
   private rack: HTMLElement;
+  private trackCells = new Map<Role, HTMLElement>();
+  private trackDeckHooks: TrackDeckHooks | null = null;
   private screen: HTMLElement | null = null;
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
   private kits: Map<Role, Kit>;
@@ -68,56 +76,93 @@ export class Hud {
     this.flash = el('div', 'hit-flash', root);
     this.pulse = el('div', 'level-pulse', root);
     this.toastStack = el('div', 'toast-stack', root);
-    this.itemStrip = el('div', 'item-strip', root);
-    this.itemStrip.style.display = 'none';
-    // The band rack: eight sockets, one per band position, empty until hired.
-    this.rack = el('div', 'band-rack', root);
+    this.toastStack.setAttribute('role', 'status');
+    this.toastStack.setAttribute('aria-live', 'polite');
+    this.toastStack.setAttribute('aria-atomic', 'false');
+    // The live track deck: eight stable slots in a compact, non-scrolling 4x2.
+    this.rack = el('div', 'track-deck', root);
     this.rack.style.display = 'none';
   }
 
   showHud(show: boolean): void {
     this.bar.style.display = show ? '' : 'none';
-    this.itemStrip.style.display = show ? '' : 'none';
     this.rack.style.display = show ? '' : 'none';
   }
 
-  /** The band rack (docs/phases/the-band.md): eight typed sockets in rack
-   *  order, empty ones asking to be filled, filled ones showing the hired
-   *  instrument (its color + name) and its tier as pips. Rebuilt on every pick
-   *  (cheap: 8 sockets). Renders into the HUD rack by default, or any supplied
-   *  container so the pause menu can show the same band. */
+  configureTrackDeck(hooks: TrackDeckHooks): void {
+    this.trackDeckHooks = hooks;
+  }
+
+  /** Eight fixed track cells in SLOTS order. The normal game owns one role per
+   *  slot; the sandbox can force several, in which case the cell represents the
+   *  whole slot group and shows the first name plus a count. */
   renderBand(tiers: ReadonlyMap<Role, number>, into: HTMLElement = this.rack): void {
     into.replaceChildren();
-    for (const slot of SLOTS) {
-      const owner = ownerOfSlot(slot, tiers);
-      // A slot the soundset supports no instrument for is dropped: shown dimmed
-      // and unavailable, never asking to be filled.
-      const dropped = supportedRoster(slot).length === 0;
-      const cls = dropped ? 'unavailable' : owner ? 'filled' : 'empty';
-      const socket = el('div', `band-socket ${cls}`, into);
-      el('span', 'socket-slot', socket, SLOT_LABEL[slot]);
-      if (owner && !dropped) {
-        const kit = this.kits.get(owner)!;
-        socket.style.setProperty('--voice-color', kit.color);
-        el('span', 'socket-name', socket, kit.name);
-        const tier = tiers.get(owner) ?? 1;
-        const pips = el('span', 'socket-pips', socket);
-        for (let i = 1; i <= TIER_COUNT; i++) {
-          el('span', `pip ${i <= tier ? 'on' : ''}`, pips);
-        }
+    const isMainDeck = into === this.rack;
+    if (isMainDeck) this.trackCells.clear();
+
+    for (const [slotIndex, slot] of SLOTS.entries()) {
+      const roster = supportedRoster(slot);
+      const owners = roster.filter((role) => tiers.has(role));
+      const owner = owners[0];
+      const dropped = roster.length === 0;
+      const mutedCount = owners.filter((role) => this.trackDeckHooks?.isMuted(role)).length;
+      const muted = owners.length > 0 && mutedCount === owners.length;
+      const mixed = mutedCount > 0 && !muted;
+      const pending = this.trackDeckHooks?.pendingMute(slot);
+      const interactive = Boolean(owner && !dropped && this.trackDeckHooks?.canToggle());
+      const classes = [
+        'track-cell',
+        dropped ? 'unavailable' : owner ? 'filled' : 'empty',
+        muted ? 'muted' : '',
+        mixed ? 'mixed' : '',
+        pending !== undefined ? 'pending' : '',
+        interactive ? 'interactive' : '',
+      ]
+        .filter(Boolean)
+        .join(' ');
+      const cell = el('button', classes, into) as HTMLButtonElement;
+      cell.type = 'button';
+      cell.disabled = !interactive;
+
+      const head = el('span', 'track-head', cell);
+      el('span', 'track-key', head, String(slotIndex + 1));
+      el('span', 'track-slot', head, SLOT_LABEL[slot]);
+      el('span', 'track-trigger', head);
+
+      const kit = owner ? this.kits.get(owner)! : null;
+      if (kit) cell.style.setProperty('--voice-color', kit.color);
+      const name = kit ? (owners.length > 1 ? `${kit.name} +${owners.length - 1}` : kit.name) : 'empty';
+      el('span', 'track-name', cell, name);
+
+      const foot = el('span', 'track-foot', cell);
+      const pips = el('span', 'track-pips', foot);
+      const tier = owner ? (tiers.get(owner) ?? 1) : 0;
+      for (let i = 1; i <= TIER_COUNT; i++) el('span', `pip ${i <= tier ? 'on' : ''}`, pips);
+      const status =
+        pending !== undefined ? (pending ? 'next off' : 'next on') : muted ? 'off' : mixed ? 'mixed' : '';
+      el('span', 'track-state', foot, status);
+
+      if (owner) {
+        const action = pending !== undefined ? status : muted ? 'audio off' : 'audio on';
+        cell.title = `${slotIndex + 1} · ${SLOT_LABEL[slot]} · ${name} · ${action}`;
+        cell.setAttribute('aria-label', `${SLOT_LABEL[slot]} track, ${name}, ${action}`);
+        cell.onclick = () => this.trackDeckHooks?.onToggle(slotIndex);
+        if (isMainDeck) for (const role of owners) this.trackCells.set(role, cell);
+      } else {
+        cell.setAttribute('aria-label', `${SLOT_LABEL[slot]} track, empty`);
       }
     }
   }
 
-  /** The persistent bottom-left strip of owned passives, one chip per item
-   *  tinted its --voice-color. Rebuilt on every pick (cheap: <=10 chips). */
-  renderItems(items: ReadonlyMap<ItemId, number>): void {
-    this.itemStrip.replaceChildren();
-    for (const [id, lvl] of items) {
-      const def = ITEMS[id];
-      const chip = el('span', 'item-chip', this.itemStrip, `${def.name} ${lvl}`);
-      chip.style.setProperty('--voice-color', def.color);
-    }
+  /** A scheduled trigger briefly lights its slot. Muted tracks still pulse so
+   *  the developer can see that gameplay is continuing behind the monitor mute. */
+  pulseTrack(role: Role): void {
+    const cell = this.trackCells.get(role);
+    if (!cell) return;
+    cell.classList.remove('firing');
+    void cell.offsetWidth;
+    cell.classList.add('firing');
   }
 
   setStatus(hp01: number, xp01: number, level: number, timeS: number): void {
@@ -143,10 +188,12 @@ export class Hud {
     this.pulse.classList.add('on');
   }
 
-  /** On-screen debug buttons mirroring the hotkeys (gate B feedback: no
-   *  memorizing shortcuts). Always visible; toggles show their state. */
+  /** Debug buttons mirror the hotkeys but live behind one compact disclosure,
+   *  keeping the arena free of a permanent button ribbon. */
   mountDebug(actions: DebugAction[]): void {
-    this.debugRow = el('div', 'debug-row', this.root);
+    const panel = el('details', 'debug-panel', this.root);
+    el('summary', 'debug-summary', panel, 'DEV');
+    this.debugRow = el('div', 'debug-actions', panel);
     for (const action of actions) {
       const text = action.dynamicLabel ? action.dynamicLabel() : action.label;
       const btn = el('button', 'small debug-btn', this.debugRow, `${text} (${action.hotkey})`);
@@ -168,8 +215,8 @@ export class Hud {
     }
   }
 
-  /** Start screen: every run opens on the kick at tier 1 (non-negotiable for
-   *  now) — pick a movement mode and go. */
+  /** Start screen: the normal path is one action. Autoplay and workrooms are
+   *  deliberately nested under Developer tools. */
   showStart(
     onStart: (role: Role, mode: AutoMoveMode) => void,
     onSandbox: () => void,
@@ -179,29 +226,34 @@ export class Hud {
     const s = this.newScreen();
     el('h1', '', s, 'Loop Survivors');
     el('p', 'sub', s, 'WASD or touch to move. Survive 8 minutes.');
-    this.moveModeSelector(s, moveMode, (m) => {
-      moveMode = m;
-    });
     const startBtn = el('button', 'start-btn', s, 'start');
     startBtn.onclick = () => {
       this.closeScreen();
       onStart('kick', moveMode);
     };
-    const row = el('div', 'pick-grid', s);
-    const bossBtn = el('button', '', row, 'boss fights');
+    const secondary = el('div', 'start-secondary', s);
+    const bossBtn = el('button', 'small', secondary, 'boss fights');
     bossBtn.onclick = () => {
       location.hash = '#boss';
     };
-    const sandboxBtn = el('button', '', row, 'open the sandbox');
+
+    const tools = el('details', 'start-dev-tools', s);
+    el('summary', 'start-dev-summary', tools, 'Developer tools');
+    const toolsBody = el('div', 'start-dev-body', tools);
+    this.moveModeSelector(toolsBody, moveMode, (m) => {
+      moveMode = m;
+    });
+    const links = el('div', 'start-dev-links', toolsBody);
+    const sandboxBtn = el('button', 'small', links, 'sandbox');
     sandboxBtn.onclick = () => {
       this.closeScreen();
       onSandbox();
     };
-    const roomBtn = el('button', '', row, 'open the rehearsal room');
+    const roomBtn = el('button', 'small', links, 'rehearsal room');
     roomBtn.onclick = () => {
       location.hash = '#rehearsal';
     };
-    const labBtn = el('button', '', row, 'open the experimentation room');
+    const labBtn = el('button', 'small', links, 'experimentation room');
     labBtn.onclick = () => {
       location.hash = '#tracklab';
     };
@@ -258,16 +310,11 @@ export class Hud {
     el('h2', '', s, 'Level up');
     const grid = el('div', 'pick-grid', s);
     const cards: HTMLElement[] = [];
-    // Dev aid: mark offered weapons whose voice is sample-backed.
-    const custom = sampledRoles();
     for (const option of options) {
       const card = this.kitCard(grid, option, () => {
         this.closeScreen();
         onPick(option);
       });
-      if (option.kind === 'weapon' && custom.has(option.role)) {
-        el('span', 'kit-custom-badge', card, '★ custom');
-      }
       cards.push(card);
     }
     this.armKeys(cards);
@@ -352,29 +399,12 @@ export class Hud {
 
   private kitCard(parent: HTMLElement, option: PickOption, onClick: () => void): HTMLElement {
     const card = el('button', 'kit-card', parent);
-    if (option.kind === 'item') {
-      const def = ITEMS[option.item];
-      card.style.setProperty('--voice-color', def.color);
-      el('span', 'kit-name', card, `${def.name} · Lv ${option.level}`);
-      el('span', 'kit-desc', card, def.desc[option.level - 1]);
-    } else if (option.kind === 'effect') {
-      card.classList.add('kit-card--effect');
-      const kit = this.kits.get(option.role)!;
-      card.style.setProperty('--voice-color', kit.color);
-      el('span', 'kit-slot-badge', card, SLOT_LABEL[slotOf(option.role)]);
-      el('span', 'kit-name', card, `${kit.name} · ${EFFECT_META[option.effect].name}`);
-      el('span', 'kit-desc', card, EFFECT_META[option.effect].line);
-    } else {
-      const kit = this.kits.get(option.role)!;
-      card.style.setProperty('--voice-color', kit.color);
-      // The slot badge names the band position this hire plugs, so every card
-      // answers "what does taking this cost me?" at a glance (the band).
-      el('span', 'kit-slot-badge', card, SLOT_LABEL[slotOf(option.role)]);
-      el('span', 'kit-name', card, kit.name);
-      el('span', 'kit-desc', card, TIER_LINES[option.role][option.tier - 1]);
-      // Tier > 1 shows its numeral in the corner chip (the name stays plain).
-      if (option.tier > 1) el('span', 'kit-tier', card, TIER_NUMERALS[option.tier - 1]);
-    }
+    const kit = this.kits.get(option.role)!;
+    card.style.setProperty('--voice-color', kit.color);
+    el('span', 'kit-slot-badge', card, SLOT_LABEL[slotOf(option.role)]);
+    el('span', 'kit-name', card, kit.name);
+    el('span', 'kit-desc', card, TIER_LINES[option.role][option.tier - 1]);
+    if (option.tier > 1) el('span', 'kit-tier', card, TIER_NUMERALS[option.tier - 1]);
     card.onclick = onClick;
     return card;
   }

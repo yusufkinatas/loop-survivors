@@ -6,13 +6,13 @@
 
 import { Container, Graphics, GraphicsContext, Text, TextStyle } from 'pixi.js';
 import type { Role } from '../audio/kits';
-import { RUN } from './config';
+import { CHARGER, DARTER, RUN } from './config';
 import type { Enemy, FxEvent, Gem, Projectile, RunWorld, Shock, WhistleTag, Zone } from './run';
 
 // Projectile trails (pure view): only these low-count roles trail, so the
 // per-frame work stays independent of the 2400-enemy horde. Hat (can be
-// hundreds) and arp/bass are deliberately excluded.
-const TRAIL_ROLES = new Set<Role>(['snare', 'lead', 'tom', 'cowbell']);
+// hundreds) and the broad bass wave is deliberately excluded.
+const TRAIL_ROLES = new Set<Role>(['lead']);
 const TRAIL_LEN = 6; // points kept per trail
 
 // Shared geometry (M2 sub-phase C, frame rate above ~2000 alive): every
@@ -153,6 +153,7 @@ export class RunView {
     this.drawTrails();
     this.sync(this.world.zones, this.zoneGfx, makeZoneGfx, (z, gfx) => {
       gfx.alpha = Math.min(1, z.lifeS * 2);
+      if (z.source === 'acid') gfx.rotation += dt * 0.9;
     });
     // Whistle tags: a reticle that rides the marked enemy and tightens as the
     // pop nears (view-only cue; the pop itself is a sim event with its own fx).
@@ -221,7 +222,7 @@ export class RunView {
   }
 
   private syncEnemies(): void {
-    // culling: the horde can be 2400 strong while ~300 fit on screen; the
+    // Culling: the authored horde can exceed what fits on screen; the
     // rest skip rendering entirely (the sim is untouched, they still chase)
     const p = this.world.player;
     const cullW = this.world.worldW / 2 + 80;
@@ -239,20 +240,20 @@ export class RunView {
       gfx.renderable = visible;
       if (!visible) continue;
       gfx.position.set(e.x, e.y);
-      // Frozen (ride) reads as an icy tint; the hit-flash still wins over it.
-      gfx.tint = e.flashT > 0 ? 0xffffff : e.frozenT > 0 ? 0xbfeaff : e.color;
+      // A warm swell is the muted tell for both dash enemies. Hit-flash wins,
+      // then the tell, then ride's frozen tint.
+      gfx.tint = e.flashT > 0 ? 0xffffff : e.windupT > 0 ? 0xffd166 : e.frozenT > 0 ? 0xbfeaff : e.color;
       if ((e.kind === 'darter' || e.kind === 'charger') && (e.dashX !== 0 || e.dashY !== 0)) {
         gfx.rotation = Math.atan2(e.dashY, e.dashX);
       }
-      // Shield break: a Graphics's shape is fixed at creation, so swap the
-      // shared context when the ring should appear/disappear (bounded count).
-      if (e.kind === 'shielded') {
-        const sg = gfx as ShieldGfx;
-        const want = e.shieldHp > 0;
-        if (sg.__shield !== want) {
-          gfx.context = enemyContext(e, want);
-          sg.__shield = want;
-        }
+      if (e.windupT > 0 && (e.kind === 'darter' || e.kind === 'charger')) {
+        const tellS = e.kind === 'darter' ? DARTER.tellS : CHARGER.windupS;
+        const ready = Math.max(0, Math.min(1, 1 - e.windupT / tellS));
+        gfx.scale.set(1 + ready * 0.28);
+        gfx.alpha = 0.65 + ready * 0.35;
+      } else {
+        gfx.scale.set(1);
+        gfx.alpha = 1;
       }
     }
     for (const [e, gfx] of this.enemyGfx) {
@@ -558,12 +559,6 @@ export class RunView {
   }
 }
 
-/** A Graphics tagged with the last-rendered shield state, so syncEnemies can
- *  detect a shield break and swap the shared context. */
-interface ShieldGfx extends Graphics {
-  __shield?: boolean;
-}
-
 /** Build a jagged polyline from (x1,y1)->(x2,y2) into `g` (subpath only; the
  *  caller strokes). Midpoints jitter perpendicular to the line — view-only,
  *  so Math.random is fine. */
@@ -592,12 +587,10 @@ function regularPoly(sides: number, r: number, rot = 0): number[] {
   return pts;
 }
 
-/** The shared GraphicsContext for an enemy's (kind, band, radius[, shield]).
- *  Shielded's context depends on shieldOn so the ring can be swapped away. */
-function enemyContext(e: Enemy, shieldOn: boolean): GraphicsContext {
+/** The shared GraphicsContext for an enemy's (kind, band, radius). */
+function enemyContext(e: Enemy): GraphicsContext {
   const radius = e.radius;
-  const shieldKey = e.kind === 'shielded' ? (shieldOn ? ':1' : ':0') : '';
-  return cachedShape(`enemy:${e.kind}:${e.band}:${radius}${shieldKey}`, (g) => {
+  return cachedShape(`enemy:${e.kind}:${e.band}:${radius}`, (g) => {
     switch (e.kind) {
       case 'tank':
         g.rect(-radius, -radius, radius * 2, radius * 2).fill(0xffffff);
@@ -623,16 +616,6 @@ function enemyContext(e: Enemy, shieldOn: boolean): GraphicsContext {
           -radius * 1.1,
         ]).fill(0xffffff);
         break;
-      case 'circler':
-        // hollow ring with a center dot
-        g.circle(0, 0, radius).stroke({ width: 3, color: 0xffffff });
-        g.circle(0, 0, radius * 0.4).fill(0xffffff);
-        break;
-      case 'shielded':
-        // octagon body; the shield ring shows only while shieldHp > 0
-        g.poly(regularPoly(8, radius, Math.PI / 8)).fill(0xffffff);
-        if (shieldOn) g.circle(0, 0, radius * 1.35).stroke({ width: 3, color: 0xffffff });
-        break;
       case 'elite':
         // large octagon: the objective, unmistakable by size and shape
         g.poly(regularPoly(8, radius, Math.PI / 8)).fill(0xffffff);
@@ -654,12 +637,10 @@ function enemyContext(e: Enemy, shieldOn: boolean): GraphicsContext {
 }
 
 function makeEnemyGfx(e: Enemy): Graphics {
-  const shieldOn = e.shieldHp > 0;
-  const gfx = new Graphics(enemyContext(e, shieldOn)) as ShieldGfx;
+  const gfx = new Graphics(enemyContext(e));
   gfx.tint = e.color;
-  if (e.kind === 'shielded') gfx.__shield = shieldOn;
   // Enemies stay flat cachedShape Graphics (no child nodes) to keep GPU
-  // batching intact across the 2400-strong horde and to preserve the per-frame
+  // batching intact across the full horde and to preserve the per-frame
   // hit-flash tint. Elites read as elite through size, the hottest band color,
   // and the dark core — no glow child (which Pixi v8 disallows on a Graphics).
   return gfx;
@@ -669,6 +650,9 @@ function makeProjectileGfx(pr: Projectile): Graphics {
   // Distinct silhouette per weapon (gate B: colored circles read the same).
   const ctx = cachedShape(`shot:${pr.role}:${pr.radius}`, (g) => {
     switch (pr.role) {
+      case 'hat': // a thin metallic needle, readable even in a dense volley
+        g.poly([11, 0, -5, 2.2, -8, 0, -5, -2.2]).fill(0xffffff);
+        break;
       case 'snare': // hard-hitting bolt with a bright leading tip
         g.roundRect(-10, -3, 20, 6, 3).fill(0xffffff);
         g.rect(8, -3, 4, 6).fill(0xffffff);
@@ -706,7 +690,7 @@ function makeProjectileGfx(pr: Projectile): Graphics {
           -r * 1.5, 0, -r * 0.4, -r * 0.4, 0, -r * 1.5, r * 0.4, -r * 0.4]).fill(0xffffff);
         break;
       }
-      default: // hat: tiny chip dot
+      default:
         g.circle(0, 0, pr.radius).fill(0xffffff);
     }
   });
@@ -717,11 +701,65 @@ function makeProjectileGfx(pr: Projectile): Graphics {
 }
 
 function makeZoneGfx(z: Zone): Graphics {
-  const gfx = new Graphics()
-    .circle(0, 0, z.radius)
-    .fill({ color: 0xffffff, alpha: 0.12 })
-    .circle(0, 0, z.radius)
-    .stroke({ width: 2, color: 0xffffff, alpha: 0.5 });
+  const gfx = new Graphics();
+  switch (z.source) {
+    case 'shaker': {
+      // A fading footprint/pool: several small grains make the movement trail
+      // distinct from the larger persistent control fields.
+      gfx.circle(0, 0, z.radius).fill({ color: 0xffffff, alpha: 0.1 });
+      for (const [x, y, r] of [
+        [-0.36, -0.12, 0.12],
+        [0.1, -0.3, 0.09],
+        [0.34, 0.12, 0.11],
+        [-0.08, 0.3, 0.08],
+      ] as const) {
+        gfx.circle(x * z.radius, y * z.radius, r * z.radius).fill({ color: 0xffffff, alpha: 0.55 });
+      }
+      break;
+    }
+    case 'acid': {
+      // Rotating vortex: offset inner rings and spokes imply inward pull.
+      gfx.circle(0, 0, z.radius).fill({ color: 0xffffff, alpha: 0.1 });
+      gfx.circle(0, 0, z.radius).stroke({ width: 2, color: 0xffffff, alpha: 0.6 });
+      gfx.circle(z.radius * 0.13, 0, z.radius * 0.58).stroke({ width: 2, color: 0xffffff, alpha: 0.42 });
+      gfx.circle(-z.radius * 0.08, 0, z.radius * 0.28).stroke({ width: 2, color: 0xffffff, alpha: 0.55 });
+      for (let i = 0; i < 3; i++) {
+        const a = (i / 3) * Math.PI * 2;
+        gfx.moveTo(Math.cos(a) * z.radius * 0.3, Math.sin(a) * z.radius * 0.3)
+          .lineTo(Math.cos(a + 0.55) * z.radius * 0.82, Math.sin(a + 0.55) * z.radius * 0.82);
+      }
+      gfx.stroke({ width: 1.5, color: 0xffffff, alpha: 0.35 });
+      break;
+    }
+    case 'chord': {
+      // Segmented harmony field: four broken arcs, visibly different from an
+      // Acid vortex even when colors are hard to distinguish.
+      gfx.circle(0, 0, z.radius).fill({ color: 0xffffff, alpha: 0.09 });
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * Math.PI * 2;
+        gfx.arc(0, 0, z.radius, a + 0.12, a + Math.PI / 2 - 0.12);
+      }
+      gfx.stroke({ width: 3, color: 0xffffff, alpha: 0.58 });
+      gfx.poly(regularPoly(6, z.radius * 0.48, Math.PI / 6))
+        .stroke({ width: 1.5, color: 0xffffff, alpha: 0.32 });
+      break;
+    }
+    case 'rhodes': {
+      // Armed mine: a compact diamond target inside its faint trigger radius.
+      const r = Math.min(24, z.radius * 0.34);
+      gfx.circle(0, 0, z.radius).fill({ color: 0xffffff, alpha: 0.05 });
+      gfx.circle(0, 0, z.radius).stroke({ width: 1, color: 0xffffff, alpha: 0.25 });
+      gfx.poly([0, -r, r, 0, 0, r, -r, 0]).fill({ color: 0xffffff, alpha: 0.24 });
+      gfx.poly([0, -r, r, 0, 0, r, -r, 0]).stroke({ width: 2, color: 0xffffff, alpha: 0.8 });
+      gfx.circle(0, 0, r * 0.24).fill(0xffffff);
+      break;
+    }
+    default:
+      gfx.circle(0, 0, z.radius)
+        .fill({ color: 0xffffff, alpha: 0.12 })
+        .circle(0, 0, z.radius)
+        .stroke({ width: 2, color: 0xffffff, alpha: 0.5 });
+  }
   gfx.tint = z.color;
   gfx.position.set(z.x, z.y);
   return gfx;

@@ -1,24 +1,16 @@
-// Pick policies (docs/tools/autoplay-bot.md): how a bot chooses among the
-// REAL three-card offers. The offer system stays part of what is measured —
-// a focused bot that gets starved by offers is a finding about the pick
-// economy, not noise. No forced build orders.
+// Bot pick policies over the real weapon-only three-card offers.
 
-import { ROLES, type Role } from '../audio/kits';
-import { startableRoles } from '../game/band';
+import { supportedRoles } from '../audio/soundset';
+import type { Role } from '../audio/kits';
+import { slotOf } from '../game/band';
 import type { PickOption } from '../game/picks';
 import type { Rng } from '../game/rng';
 import type { PickChooser } from './conductor';
 
-// FX is barred from the starting-weapon offer (design rule 5): a tier-1 FX
-// voice is near-silent for minutes, a musically dead opener. The random
-// openers draw from the startable roster; an explicit focus:<role> may still
-// name an FX weapon, since that is a deliberate build-order probe.
-const STARTABLE: readonly Role[] = startableRoles(ROLES);
-const randomStart = (rng: Rng): Role => STARTABLE[Math.floor(rng() * STARTABLE.length)];
+const CATALOG = supportedRoles();
 
 export interface Policy {
   name: string;
-  /** The start-screen choice: which instrument the run opens on. */
   startingKit(rng: Rng): Role;
   choose: PickChooser;
 }
@@ -27,73 +19,50 @@ function pickRandom(options: PickOption[], rng: Rng): PickOption {
   return options[Math.floor(rng() * options.length)];
 }
 
-/** Parse a policy spec: 'random' | 'deep' | 'wide' | 'focus:<role>'. */
 export function makePolicy(spec: string): Policy {
   if (spec === 'random') {
-    return {
-      name: spec,
-      startingKit: randomStart,
-      choose: (options, _world, rng) => pickRandom(options, rng),
-    };
+    return { name: spec, startingKit: () => 'kick', choose: (options, _world, rng) => pickRandom(options, rng) };
   }
   if (spec === 'deep') {
-    // always tier up something owned; highest tier first
     return {
       name: spec,
-      startingKit: randomStart,
+      startingKit: () => 'kick',
       choose: (options, _world, rng) => {
-        const ups = options.filter(
-          (o): o is Extract<PickOption, { kind: 'weapon' }> => o.kind === 'weapon' && o.tier > 1,
-        );
-        if (ups.length === 0) return pickRandom(options, rng);
-        const top = Math.max(...ups.map((o) => o.tier));
-        return pickRandom(
-          ups.filter((o) => o.tier === top),
-          rng,
-        );
+        const upgrades = options.filter((option) => option.tier > 1);
+        if (upgrades.length === 0) return pickRandom(options, rng);
+        const highest = Math.max(...upgrades.map((option) => option.tier));
+        return pickRandom(upgrades.filter((option) => option.tier === highest), rng);
       },
     };
   }
   if (spec === 'wide') {
-    // always take a new weapon while one is on offer
     return {
       name: spec,
-      startingKit: randomStart,
+      startingKit: () => 'kick',
       choose: (options, _world, rng) => {
-        const fresh = options.filter(
-          (o): o is Extract<PickOption, { kind: 'weapon' }> => o.kind === 'weapon' && o.tier === 1,
-        );
+        const fresh = options.filter((option) => option.tier === 1);
         return fresh.length > 0 ? pickRandom(fresh, rng) : pickRandom(options, rng);
       },
     };
   }
-  if (spec === 'items') {
-    // always grab a passive when one is on offer, so the batch bot can
-    // stress item balance in isolation; else random
-    return {
-      name: spec,
-      startingKit: randomStart,
-      choose: (options, _world, rng) => {
-        const items = options.filter(
-          (o): o is Extract<PickOption, { kind: 'item' }> => o.kind === 'item',
-        );
-        return items.length > 0 ? pickRandom(items, rng) : pickRandom(options, rng);
-      },
-    };
-  }
   const focus = /^focus:(\w+)$/.exec(spec);
-  if (focus && (ROLES as readonly string[]).includes(focus[1])) {
+  if (focus && (CATALOG as readonly string[]).includes(focus[1])) {
     const role = focus[1] as Role;
-    // take the focus role when offered, else random — starvation by the
-    // offer system is part of what this policy measures
+    const targetSlot = slotOf(role);
     return {
       name: spec,
-      startingKit: () => role,
+      // Focus runs obey the real opening rule (Kick first), then lean toward
+      // the requested weapon whenever its card appears.
+      startingKit: () => 'kick',
       choose: (options, _world, rng) => {
-        const mine = options.find((o) => o.kind === 'weapon' && o.role === role);
-        return mine ?? pickRandom(options, rng);
+        const target = options.find((option) => option.role === role);
+        if (target) return target;
+        // Never hire the target's roster rival as a random fallback: permanent
+        // slot ownership would make the requested focus weapon unreachable.
+        const safe = options.filter((option) => slotOf(option.role) !== targetSlot);
+        return pickRandom(safe.length > 0 ? safe : options, rng);
       },
     };
   }
-  throw new Error(`unknown policy: ${spec} (use random | deep | wide | items | focus:<role>)`);
+  throw new Error(`unknown policy: ${spec} (use random | deep | wide | focus:<weapon>)`);
 }

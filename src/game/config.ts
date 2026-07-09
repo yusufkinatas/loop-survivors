@@ -13,11 +13,15 @@ export const RUN = {
   playerRadius: 12,
   /** Global invulnerability window after taking a hit. */
   iframesS: 0.5,
-  magnetRadius: 110,
+  // Large enough to keep a moving player in the upgrade loop, but smaller
+  // than the broadest attacks: standing still leaves outer-ring gems behind
+  // while moving through the arena turns combat success into build growth.
+  magnetRadius: 180,
   pickupRadius: 18,
-  /** XP needed to reach each next level. Tuned for ~12-14 level-ups over
-   *  8 minutes (average pick gap ~35-40s, docs/phases/m2-the-arc.md). */
-  xpCurve: [8, 14, 24, 38, 56, 80, 110, 148, 195, 250, 315, 390, 475, 570, 675, 790],
+  /** XP needed for each next level. Front-loaded growth establishes a band
+   *  before the director's minute-three pressure jump, then the curve opens
+   *  toward the 14-18-pick target without trivially maxing eight slots. */
+  xpCurve: [6, 10, 16, 25, 38, 54, 74, 98, 128, 162, 200, 242, 288, 338, 392, 450, 512, 580],
 };
 
 export type EnemyKind =
@@ -26,8 +30,6 @@ export type EnemyKind =
   | 'darter'
   | 'splitter'
   | 'charger'
-  | 'circler'
-  | 'shielded'
   | 'elite';
 
 export interface EnemyConf {
@@ -39,10 +41,9 @@ export interface EnemyConf {
   color: number;
 }
 
-// Gate B (M2) verdict carried forward: flat enemy HP against a build that
-// grows every pick made the back half trivial. Enemies now scale HP and
-// contact damage over the run, and the spawn ramp is superlinear so the
-// late game reads as a horde being carved through, not stragglers.
+// The stage grows through a changing roster and authored pressure beats. The
+// global curve keeps late enemies relevant without turning every body into a
+// bullet sponge; the adaptive Director below supplies density independently.
 export const ENEMIES: Record<EnemyKind, EnemyConf> & {
   spawnMargin: number;
   maxAlive: number;
@@ -54,59 +55,48 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
 } = {
   swarmer: {
     radius: 9,
-    speed: 95,
-    hp: 3,
-    damage: 10,
+    speed: 100,
+    hp: 4,
+    damage: 8,
     xp: 1,
     color: 0x9aa0b4,
   },
   tank: {
-    radius: 22,
-    speed: 40,
-    hp: 70,
-    damage: 22,
-    xp: 8,
+    radius: 20,
+    speed: 58,
+    hp: 50,
+    damage: 18,
+    xp: 5,
     color: 0x6a7086,
   },
-  /** Fast, fragile, rushes the player in straight bursts. */
+  /** Fast, fragile, visibly aims before each straight burst. */
   darter: {
     radius: 8,
-    speed: 360, // dash speed; it pauses between bursts (see run.ts)
-    hp: 5,
-    damage: 12,
+    speed: 380, // fixed dash speed; it does not use the global speed curve
+    hp: 10,
+    damage: 16,
     xp: 2,
     color: 0xe08a5a,
   },
   /** Bursts into a knot of swarmers on death. */
-  splitter: { radius: 14, speed: 70, hp: 24, damage: 16, xp: 4, color: 0x8fb46a },
+  splitter: { radius: 14, speed: 70, hp: 24, damage: 14, xp: 3, color: 0x8fb46a },
   /** Telegraphs, then commits a fast fixed-direction dash. */
-  charger: { radius: 12, speed: 60, hp: 30, damage: 20, xp: 5, color: 0xd06a5a },
-  /** Fast, fragile, orbits the player at range and harasses. */
-  circler: { radius: 10, speed: 170, hp: 10, damage: 14, xp: 3, color: 0x6ac2d0 },
-  /** A shield pool absorbs damage before its hp; slow but tough. */
-  shielded: { radius: 16, speed: 55, hp: 30, damage: 18, xp: 6, color: 0x9a86c0 },
-  /** Slow, huge, tanky objective; drops one large gem (xp=big drop). */
-  elite: { radius: 34, speed: 48, hp: 500, damage: 30, xp: 80, color: 0xd94f8a },
+  charger: { radius: 12, speed: 62, hp: 32, damage: 20, xp: 5, color: 0xd06a5a },
+  /** Slow, large, persistent objective; reward is XP only. */
+  elite: { radius: 30, speed: 45, hp: 160, damage: 26, xp: 24, color: 0xd94f8a },
   /** Spawn ring distance beyond the larger screen half-extent. */
   spawnMargin: 80,
-  /** Soft cap on the steady-state horde (VS-density target, see gate B
-   *  round 2: the screen must crowd, not trickle). */
-  maxAlive: 2400,
-  /** Enemy HP multiplier reached at minute 8 (curved by rampExp). Gate B
-   *  round 2 calibration: any build's damage grows multiplicatively, so
-   *  enemies must eventually win the scaling race — the player's damage
-   *  carves a bubble in the horde, it never clears the screen, and an AFK
-   *  player gets overrun no matter the build. */
-  hpScaleEnd: 16,
+  /** Soft ceiling for adaptive steady spawning; formations may exceed it up
+   *  to MAX_ALIVE_HARD so authored spikes are never swallowed. */
+  maxAlive: 450,
+  /** Enemy HP multiplier reached at minute 8 (curved by rampExp). */
+  hpScaleEnd: 5,
   /** Contact damage multiplier reached at minute 8, linear. */
-  damageScaleEnd: 2,
-  /** Speed multiplier reached at minute 8, linear, darters excluded (their
-   *  dash is tuned to stay dodgeable): open-field kiting stops being free
-   *  once the pack can close during any hesitation. */
-  speedScaleEnd: 1.3,
-  /** Exponent shaping the spawn-rate and HP ramps: >1 keeps the early game
-   *  close to M1 and piles the growth into the back half (the horde). */
-  rampExp: 1.8,
+  damageScaleEnd: 1.65,
+  /** Speed multiplier reached at minute 8; fixed dash speeds are excluded. */
+  speedScaleEnd: 1.18,
+  /** HP grows gently early, then asks more of the finished build. */
+  rampExp: 1.35,
   /** Enemies farther than spawnDist*recycleFactor behind the moving player are
    *  silently recycled (no gem/kill). >1 so fresh spawns aren't culled. */
   recycleFactor: 1.7,
@@ -114,24 +104,20 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
 
 /** Wave spawns may exceed maxAlive up to this absolute ceiling: a pinned
  *  cap must not silently swallow the designed spikes. */
-export const MAX_ALIVE_HARD = 3000;
+export const MAX_ALIVE_HARD = 600;
 
-/** Visual toughness bands (gate B round 3: a minute-7 swarmer is 16x a
- *  minute-1 swarmer and looked identical). The shape stays the kind's
- *  read; the band carries the danger read: color runs cool to hot, size
- *  creeps up, and the top band gets a dark core. */
+/** The shape stays the kind's read; restrained size/color bands communicate
+ *  the shared run scaling without making collision radii jump dramatically. */
 export const ENEMY_BANDS = {
   /** Run progress (0..1) at which the next band starts. */
-  t01: [0.28, 0.55, 0.78],
-  sizeMul: [1, 1.12, 1.22, 1.34],
+  t01: [0.25, 0.5, 0.75],
+  sizeMul: [1, 1.06, 1.12, 1.18],
   colors: {
     swarmer: [0x9aa0b4, 0xc9b478, 0xd98a56, 0xd94f5a],
     tank: [0x6a7086, 0x94805e, 0xb06a46, 0xc04858],
     darter: [0xe08a5a, 0xe8a04a, 0xff7a3c, 0xff4658],
     splitter: [0x8fb46a, 0xa8b45e, 0xc09a4e, 0xc85a52],
     charger: [0xd06a5a, 0xdc7a4a, 0xe85a3c, 0xff4046],
-    circler: [0x6ac2d0, 0x6ab0c8, 0x7a9ad0, 0x9a6ad0],
-    shielded: [0x9a86c0, 0xa07ab0, 0xb06a90, 0xc04858],
     elite: [0xd94f8a, 0xe0507a, 0xe85068, 0xff4050],
   } as Record<EnemyKind, number[]>,
 };
@@ -145,145 +131,100 @@ export function enemyScaling(
   const t = Math.min(1, Math.max(0, t01));
   let band = 0;
   for (const th of ENEMY_BANDS.t01) if (t >= th) band++;
+  const hpMul = 1 + (ENEMIES.hpScaleEnd - 1) * Math.pow(t, ENEMIES.rampExp);
   return {
-    hpMul: 1 + (ENEMIES.hpScaleEnd - 1) * Math.pow(t, ENEMIES.rampExp),
+    hpMul,
     dmgMul: 1 + (ENEMIES.damageScaleEnd - 1) * t,
     spdMul: kind === 'darter' ? 1 : 1 + (ENEMIES.speedScaleEnd - 1) * t,
-    xpMul: 1 + 3 * Math.pow(t, 1.3),
+    xpMul: Math.sqrt(hpMul),
     band,
   };
 }
 
-/** Darter burst cycle: dash flat-out, stop, re-aim, dash again. */
+/** Darter cycle: rest, visibly aim, then dash flat-out. */
 export const DARTER = {
-  dashS: 0.55,
-  pauseS: 0.7,
+  tellS: 0.34,
+  dashS: 0.46,
+  pauseS: 0.9,
 };
 
 /** Splitter: bursts into this many children of childKind on death. Children
  *  are swarmers (never split → no recursion). */
-export const SPLITTER = { childKind: 'swarmer' as EnemyKind, childCount: 4 };
+export const SPLITTER = { childKind: 'swarmer' as EnemyKind, childCount: 3 };
 
 /** Charger: within triggerRange it stands still (windup), then commits a fast
  *  fixed-direction dash. dashSpeed is NOT run through speedScaleEnd (stays
  *  dodgeable, same rule as darter). */
-export const CHARGER = { triggerRange: 240, windupS: 0.7, dashS: 0.5, dashSpeed: 640 };
+export const CHARGER = {
+  triggerRange: 230,
+  windupS: 0.85,
+  dashS: 0.42,
+  dashSpeed: 520,
+  recoveryS: 0.45,
+};
 
-/** Circler: orbits the player at this radius. */
-export const CIRCLER = { orbitR: 150 };
-
-/** Shielded: shield pool = hp*shieldMul, scaled by hpMul. */
-export const SHIELDED = { shieldMul: 1.0 };
-
-/** Data-driven spawn Director (replaces the ramp + WAVES). `set` beats change
- *  the steady pressure (rate + weighted kind mix) from that time on; `event`
- *  beats fire a formation once. Breathers = low-rate `set` beats after event
- *  clusters. The steady rate must overrun an AFK player by the finale. */
+/** `set` beats define a regular-enemy population target, the maximum refill
+ *  rate while below it, and the weighted roster. Elites never consume that
+ *  target. `event` beats are authored spikes and may exceed it. */
 export type Formation = 'ring' | 'surge' | 'pincer' | 'elite';
 export type KindWeights = Partial<Record<EnemyKind, number>>;
 
 export type DirectorBeat =
-  | { atS: number; set: { rate: number; mix: KindWeights } }
+  | { atS: number; set: { targetAlive: number; refillRate: number; mix: KindWeights } }
   | { atS: number; event: { formation: Formation; kind: EnemyKind; count: number } };
 
 /** Time-sorted. Beats at equal `atS` fire in array order in the same frame. */
 export const SPAWN_DIRECTOR: DirectorBeat[] = [
-  { atS: 0, set: { rate: 3, mix: { swarmer: 1 } } },
-  { atS: 30, set: { rate: 5, mix: { swarmer: 1 } } },
-  { atS: 45, event: { formation: 'surge', kind: 'darter', count: 8 } },
-  { atS: 60, set: { rate: 7, mix: { swarmer: 0.9, circler: 0.1 } } },
-  { atS: 75, event: { formation: 'elite', kind: 'elite', count: 1 } },
-  { atS: 90, set: { rate: 9, mix: { swarmer: 0.85, circler: 0.1 } } },
-  { atS: 92, event: { formation: 'ring', kind: 'swarmer', count: 40 } },
-  { atS: 94, set: { rate: 4, mix: { swarmer: 0.85, circler: 0.1 } } }, // breather
-  { atS: 104, set: { rate: 9, mix: { swarmer: 0.85, circler: 0.1 } } },
-  { atS: 120, set: { rate: 11, mix: { swarmer: 0.8, circler: 0.1, darter: 0.05 } } },
-  { atS: 130, event: { formation: 'pincer', kind: 'charger', count: 6 } },
-  {
-    atS: 150,
-    set: { rate: 14, mix: { swarmer: 0.72, circler: 0.1, darter: 0.08, splitter: 0.04 } },
-  },
-  { atS: 150, event: { formation: 'surge', kind: 'splitter', count: 6 } },
-  { atS: 165, event: { formation: 'ring', kind: 'swarmer', count: 70 } },
-  {
-    atS: 167,
-    set: { rate: 6, mix: { swarmer: 0.72, circler: 0.1, darter: 0.08, splitter: 0.04 } },
-  }, // breather
-  {
-    atS: 177,
-    set: { rate: 14, mix: { swarmer: 0.72, circler: 0.1, darter: 0.08, splitter: 0.04 } },
-  },
-  {
-    atS: 180,
-    set: {
-      rate: 17,
-      mix: { swarmer: 0.68, circler: 0.1, darter: 0.08, splitter: 0.04, charger: 0.04 },
-    },
-  },
-  { atS: 200, event: { formation: 'elite', kind: 'elite', count: 1 } },
-  { atS: 200, event: { formation: 'surge', kind: 'swarmer', count: 20 } },
-  {
-    atS: 210,
-    set: {
-      rate: 20,
-      mix: { swarmer: 0.66, circler: 0.1, darter: 0.08, splitter: 0.05, charger: 0.05 },
-    },
-  },
-  { atS: 220, event: { formation: 'pincer', kind: 'darter', count: 16 } },
-  {
-    atS: 240,
-    set: {
-      rate: 24,
-      mix: { swarmer: 0.62, circler: 0.1, darter: 0.1, splitter: 0.06, charger: 0.06 },
-    },
-  },
-  { atS: 250, event: { formation: 'ring', kind: 'shielded', count: 10 } },
-  { atS: 270, event: { formation: 'surge', kind: 'splitter', count: 12 } },
-  { atS: 285, event: { formation: 'ring', kind: 'swarmer', count: 120 } },
-  {
-    atS: 287,
-    set: {
-      rate: 8,
-      mix: { swarmer: 0.62, circler: 0.1, darter: 0.1, splitter: 0.06, charger: 0.06 },
-    },
-  }, // breather
-  {
-    atS: 298,
-    set: {
-      rate: 24,
-      mix: { swarmer: 0.62, circler: 0.1, darter: 0.1, splitter: 0.06, charger: 0.06 },
-    },
-  },
-  {
-    atS: 300,
-    set: {
-      rate: 28,
-      mix: { swarmer: 0.6, circler: 0.1, darter: 0.1, splitter: 0.07, charger: 0.06 },
-    },
-  },
-  { atS: 300, event: { formation: 'elite', kind: 'elite', count: 2 } },
-  { atS: 330, event: { formation: 'pincer', kind: 'charger', count: 14 } },
-  {
-    atS: 360,
-    set: {
-      rate: 32,
-      mix: { swarmer: 0.58, circler: 0.1, darter: 0.1, splitter: 0.08, charger: 0.07 },
-    },
-  },
-  { atS: 360, event: { formation: 'ring', kind: 'swarmer', count: 180 } },
-  { atS: 360, event: { formation: 'surge', kind: 'darter', count: 30 } },
-  { atS: 390, event: { formation: 'surge', kind: 'splitter', count: 20 } },
-  {
-    atS: 420,
-    set: {
-      rate: 38,
-      mix: { swarmer: 0.56, circler: 0.1, darter: 0.1, splitter: 0.08, charger: 0.08 },
-    },
-  },
-  { atS: 420, event: { formation: 'ring', kind: 'swarmer', count: 260 } },
-  { atS: 440, event: { formation: 'elite', kind: 'elite', count: 3 } },
-  { atS: 450, event: { formation: 'ring', kind: 'shielded', count: 14 } },
-  { atS: 465, event: { formation: 'surge', kind: 'darter', count: 40 } },
+  { atS: 0, set: { targetAlive: 24, refillRate: 10, mix: { swarmer: 100 } } },
+  // Tanks enter at 0:30 rather than waiting a full minute: their durable wall
+  // is the first movement check and prevents the starting aura from making a
+  // stationary player safe. Darters follow as the second, dodgeable check.
+  { atS: 30, set: { targetAlive: 36, refillRate: 12, mix: { swarmer: 70, tank: 20, darter: 10 } } },
+  { atS: 35, event: { formation: 'pincer', kind: 'darter', count: 4 } },
+  { atS: 45, event: { formation: 'pincer', kind: 'darter', count: 6 } },
+  { atS: 50, event: { formation: 'pincer', kind: 'darter', count: 6 } },
+  { atS: 60, set: { targetAlive: 55, refillRate: 14, mix: { swarmer: 60, tank: 25, darter: 15 } } },
+  { atS: 60, event: { formation: 'surge', kind: 'darter', count: 8 } },
+  { atS: 65, event: { formation: 'pincer', kind: 'darter', count: 5 } },
+  { atS: 75, event: { formation: 'pincer', kind: 'darter', count: 8 } },
+  { atS: 85, event: { formation: 'pincer', kind: 'darter', count: 8 } },
+  { atS: 90, set: { targetAlive: 72, refillRate: 16, mix: { swarmer: 55, tank: 25, darter: 15, splitter: 5 } } },
+  { atS: 90, event: { formation: 'elite', kind: 'elite', count: 1 } },
+  { atS: 95, event: { formation: 'pincer', kind: 'darter', count: 6 } },
+  { atS: 105, set: { targetAlive: 45, refillRate: 8, mix: { swarmer: 70, tank: 15, darter: 15 } } },
+  { atS: 110, event: { formation: 'pincer', kind: 'darter', count: 10 } },
+  { atS: 120, set: { targetAlive: 90, refillRate: 18, mix: { swarmer: 65, tank: 15, darter: 10, splitter: 10 } } },
+  { atS: 120, event: { formation: 'ring', kind: 'swarmer', count: 32 } },
+  { atS: 150, set: { targetAlive: 115, refillRate: 20, mix: { swarmer: 55, tank: 20, darter: 10, splitter: 10, charger: 5 } } },
+  { atS: 150, event: { formation: 'pincer', kind: 'charger', count: 4 } },
+  { atS: 170, set: { targetAlive: 75, refillRate: 10, mix: { swarmer: 55, tank: 20, darter: 10, splitter: 10, charger: 5 } } },
+  { atS: 180, set: { targetAlive: 140, refillRate: 22, mix: { swarmer: 52, tank: 18, darter: 10, splitter: 15, charger: 5 } } },
+  { atS: 210, set: { targetAlive: 165, refillRate: 24, mix: { swarmer: 47, tank: 20, darter: 10, splitter: 15, charger: 8 } } },
+  { atS: 210, event: { formation: 'elite', kind: 'elite', count: 1 } },
+  { atS: 210, event: { formation: 'surge', kind: 'splitter', count: 8 } },
+  { atS: 230, set: { targetAlive: 110, refillRate: 12, mix: { swarmer: 47, tank: 20, darter: 10, splitter: 15, charger: 8 } } },
+  { atS: 240, set: { targetAlive: 195, refillRate: 26, mix: { swarmer: 45, tank: 22, darter: 10, splitter: 15, charger: 8 } } },
+  { atS: 240, event: { formation: 'ring', kind: 'swarmer', count: 50 } },
+  { atS: 270, set: { targetAlive: 225, refillRate: 28, mix: { swarmer: 42, tank: 23, darter: 10, splitter: 15, charger: 10 } } },
+  { atS: 270, event: { formation: 'pincer', kind: 'charger', count: 8 } },
+  { atS: 290, set: { targetAlive: 145, refillRate: 14, mix: { swarmer: 42, tank: 23, darter: 10, splitter: 15, charger: 10 } } },
+  { atS: 300, set: { targetAlive: 255, refillRate: 30, mix: { swarmer: 40, tank: 25, darter: 10, splitter: 15, charger: 10 } } },
+  { atS: 330, set: { targetAlive: 285, refillRate: 32, mix: { swarmer: 38, tank: 25, darter: 12, splitter: 15, charger: 10 } } },
+  { atS: 330, event: { formation: 'elite', kind: 'elite', count: 1 } },
+  { atS: 330, event: { formation: 'surge', kind: 'darter', count: 16 } },
+  { atS: 350, set: { targetAlive: 190, refillRate: 16, mix: { swarmer: 38, tank: 25, darter: 12, splitter: 15, charger: 10 } } },
+  { atS: 360, set: { targetAlive: 320, refillRate: 34, mix: { swarmer: 36, tank: 26, darter: 12, splitter: 16, charger: 10 } } },
+  { atS: 360, event: { formation: 'ring', kind: 'swarmer', count: 70 } },
+  { atS: 390, set: { targetAlive: 350, refillRate: 36, mix: { swarmer: 34, tank: 26, darter: 14, splitter: 16, charger: 10 } } },
+  { atS: 390, event: { formation: 'pincer', kind: 'charger', count: 10 } },
+  { atS: 410, set: { targetAlive: 230, refillRate: 18, mix: { swarmer: 34, tank: 26, darter: 14, splitter: 16, charger: 10 } } },
+  { atS: 420, set: { targetAlive: 385, refillRate: 38, mix: { swarmer: 32, tank: 28, darter: 14, splitter: 16, charger: 10 } } },
+  { atS: 420, event: { formation: 'elite', kind: 'elite', count: 2 } },
+  { atS: 450, set: { targetAlive: 420, refillRate: 42, mix: { swarmer: 30, tank: 28, darter: 16, splitter: 16, charger: 10 } } },
+  { atS: 450, event: { formation: 'ring', kind: 'swarmer', count: 90 } },
+  { atS: 450, event: { formation: 'surge', kind: 'darter', count: 20 } },
+  { atS: 470, event: { formation: 'pincer', kind: 'charger', count: 12 } },
+  { atS: 470, event: { formation: 'surge', kind: 'splitter', count: 12 } },
 ];
 
 export interface WeaponConf {
@@ -317,10 +258,10 @@ export interface WeaponConf {
 export const WEAPONS: Record<Role, WeaponConf[]> = {
   // Downbeat aura pulse around the player.
   kick: [
-    { damage: 8, radius: 130 },
-    { damage: 9, radius: 150 },
-    { damage: 9, radius: 165 },
-    { damage: 10, radius: 180 },
+    { damage: 6, radius: 112 },
+    { damage: 8, radius: 128 },
+    { damage: 10, radius: 144 },
+    { damage: 12, radius: 162 },
   ],
   // Backbeat directional shot: few, fast, hard-hitting, pierces a line.
   snare: [
@@ -331,42 +272,42 @@ export const WEAPONS: Record<Role, WeaponConf[]> = {
   ],
   // Dense stream of weak fast chip hits, short range, wide scatter.
   hat: [
-    { damage: 3, speed: 430, radius: 3, lifetimeS: 0.8, pierce: 1 },
-    { damage: 3, speed: 430, radius: 3, lifetimeS: 0.85, pierce: 1 },
-    { damage: 3, speed: 450, radius: 3, lifetimeS: 0.9, pierce: 1 },
-    { damage: 4, speed: 460, radius: 3, lifetimeS: 0.95, pierce: 1 },
+    { damage: 5, speed: 430, radius: 3, lifetimeS: 0.8, pierce: 1 },
+    { damage: 6, speed: 430, radius: 3, lifetimeS: 0.85, pierce: 1 },
+    { damage: 7, speed: 450, radius: 3, lifetimeS: 0.9, pierce: 2 },
+    { damage: 8, speed: 460, radius: 3, lifetimeS: 0.95, pierce: 2 },
   ],
   // Slow wide low wave that rolls through everything. The weight ladder:
   // per-trigger damage climbs harder than any other kit.
   bass: [
-    { damage: 16, speed: 140, radius: 42, lifetimeS: 2.6, pierce: Infinity },
-    { damage: 18, speed: 140, radius: 46, lifetimeS: 2.6, pierce: Infinity },
-    { damage: 26, speed: 145, radius: 52, lifetimeS: 2.6, pierce: Infinity },
-    { damage: 34, speed: 150, radius: 60, lifetimeS: 2.8, pierce: Infinity },
+    { damage: 10, speed: 150, radius: 34, lifetimeS: 2.4, pierce: 6 },
+    { damage: 12, speed: 155, radius: 38, lifetimeS: 2.4, pierce: 8 },
+    { damage: 15, speed: 160, radius: 43, lifetimeS: 2.5, pierce: 12 },
+    { damage: 18, speed: 165, radius: 48, lifetimeS: 2.6, pierce: 16 },
   ],
   // Zone thrown onto the nearest pack: ticks damage and slows enemies
   // inside (gate B rework: zones under the player's own feet were dead
   // weight — the horde is never standing where you are).
   chord: [
-    { damage: 3, radius: 95, lifetimeS: 2.0 },
-    { damage: 4, radius: 105, lifetimeS: 2.2 },
-    { damage: 5, radius: 120, lifetimeS: 2.4 },
-    { damage: 6, radius: 135, lifetimeS: 2.6 },
+    { damage: 2, radius: 90, lifetimeS: 1.8 },
+    { damage: 3, radius: 100, lifetimeS: 2.0 },
+    { damage: 4, radius: 112, lifetimeS: 2.2 },
+    { damage: 5, radius: 126, lifetimeS: 2.4 },
   ],
   // Homing seeker per melody note.
   lead: [
-    { damage: 8, speed: 340, radius: 6, lifetimeS: 2.2, pierce: 1 },
-    { damage: 8, speed: 340, radius: 6, lifetimeS: 2.2, pierce: 1 },
-    { damage: 9, speed: 350, radius: 6, lifetimeS: 2.3, pierce: 1 },
-    { damage: 10, speed: 360, radius: 6, lifetimeS: 2.4, pierce: 2 },
+    { damage: 12, speed: 340, radius: 6, lifetimeS: 2.2, pierce: 1 },
+    { damage: 15, speed: 345, radius: 6, lifetimeS: 2.2, pierce: 1 },
+    { damage: 19, speed: 350, radius: 6, lifetimeS: 2.3, pierce: 1 },
+    { damage: 24, speed: 360, radius: 7, lifetimeS: 2.4, pierce: 2 },
   ],
   // Whip: a wide forward slash that hits everything in a close cone. Melee
   // crowd control — no travel, instant, safest when the wall is on top of you.
   clap: [
-    { damage: 14, radius: 140, arc: 1.0 },
-    { damage: 16, radius: 155, arc: 1.1 },
-    { damage: 18, radius: 170, arc: 1.25 },
-    { damage: 22, radius: 190, arc: 1.5 },
+    { damage: 16, radius: 135, arc: 1.0 },
+    { damage: 20, radius: 150, arc: 1.1 },
+    { damage: 25, radius: 170, arc: 1.25 },
+    { damage: 32, radius: 190, arc: 1.45 },
   ],
   // Cross: a boomerang lobbed outward that curves back to the player, hitting
   // on the way out and the way home. Deep pierce, both legs.
@@ -403,19 +344,19 @@ export const WEAPONS: Record<Role, WeaponConf[]> = {
   // Shockwave: an expanding ring from the player that damages and knocks back
   // enemies its front passes. Rare and heavy — charts fire it on the accents.
   crash: [
-    { damage: 18, speed: 520, radius: 260, knockback: 50 },
-    { damage: 20, speed: 540, radius: 300, knockback: 55 },
-    { damage: 24, speed: 560, radius: 340, knockback: 65 },
-    { damage: 30, speed: 600, radius: 380, knockback: 80 },
+    { damage: 12, speed: 500, radius: 190, knockback: 36 },
+    { damage: 15, speed: 520, radius: 225, knockback: 44 },
+    { damage: 18, speed: 545, radius: 260, knockback: 54 },
+    { damage: 22, speed: 570, radius: 300, knockback: 66 },
   ],
   // Rimshot (band, Backbeat): a dry crack that leaps enemy-to-enemy through a
   // cluster. Single-target per link, but the chain grows tier to tier. radius
   // is only the hit-spark size.
   rimshot: [
-    { damage: 10, radius: 22, chains: 2 },
-    { damage: 11, radius: 24, chains: 3 },
-    { damage: 13, radius: 26, chains: 4 },
-    { damage: 16, radius: 28, chains: 5 },
+    { damage: 9, radius: 22, chains: 2 },
+    { damage: 10, radius: 24, chains: 3 },
+    { damage: 12, radius: 26, chains: 4 },
+    { damage: 14, radius: 28, chains: 5 },
   ],
   // Heartbeat (band, Pulse): a breathing field — shoves close enemies out
   // (knockback) and drags the outer ring in (pull), with a soft tick of damage.
@@ -428,18 +369,18 @@ export const WEAPONS: Record<Role, WeaponConf[]> = {
   // Shaker (band, Hats): drops a short-lived damaging blob at your feet on each
   // hit, so moving strings a trail of them behind you.
   shaker: [
-    { damage: 3, radius: 34, lifetimeS: 0.9 },
-    { damage: 3, radius: 38, lifetimeS: 1.0 },
-    { damage: 4, radius: 42, lifetimeS: 1.1 },
-    { damage: 5, radius: 48, lifetimeS: 1.2 },
+    { damage: 6, radius: 52, lifetimeS: 1.4 },
+    { damage: 8, radius: 60, lifetimeS: 1.6 },
+    { damage: 10, radius: 68, lifetimeS: 1.8 },
+    { damage: 12, radius: 78, lifetimeS: 2.0 },
   ],
   // Acid (band, Motion): a placed gravity well that pulls enemies toward its
   // center and ticks damage while they are caught.
   acid: [
-    { damage: 4, radius: 100, lifetimeS: 2.2, pull: 90 },
-    { damage: 5, radius: 112, lifetimeS: 2.4, pull: 100 },
-    { damage: 6, radius: 126, lifetimeS: 2.6, pull: 115 },
-    { damage: 8, radius: 142, lifetimeS: 2.8, pull: 135 },
+    { damage: 2, radius: 86, lifetimeS: 1.5, pull: 76 },
+    { damage: 3, radius: 96, lifetimeS: 1.7, pull: 86 },
+    { damage: 4, radius: 108, lifetimeS: 1.9, pull: 98 },
+    { damage: 5, radius: 120, lifetimeS: 2.1, pull: 110 },
   ],
   // Pluck bass (band, Bass): a note lobbed on an arc to the nearest pack that
   // explodes on landing. Heavy, like the bass wave, but placed.
@@ -452,10 +393,10 @@ export const WEAPONS: Record<Role, WeaponConf[]> = {
   // Rhodes (band, Harmony): chord pools placed as mines that sit armed and
   // bloom into a damage burst when an enemy steps in.
   rhodes: [
-    { damage: 10, radius: 70, lifetimeS: 4.0 },
-    { damage: 12, radius: 78, lifetimeS: 4.5 },
-    { damage: 15, radius: 88, lifetimeS: 5.0 },
-    { damage: 20, radius: 100, lifetimeS: 5.5 },
+    { damage: 12, radius: 66, lifetimeS: 3.2 },
+    { damage: 15, radius: 76, lifetimeS: 3.6 },
+    { damage: 19, radius: 88, lifetimeS: 4.0 },
+    { damage: 24, radius: 100, lifetimeS: 4.4 },
   ],
   // Ride (band, Hats — THE FREEZE WEAPON): a radar beam that sweeps a wedge of
   // the surrounding circle each trigger, freezing what it crosses. Token damage
@@ -503,50 +444,11 @@ export const WEAPONS: Record<Role, WeaponConf[]> = {
   // Whistle (band, Melody): tags the nearest enemy; the tag pops a beat later
   // for a hard delayed burst (see WHISTLE). Hits heavy because it is delayed.
   whistle: [
-    { damage: 16, radius: 60 },
-    { damage: 19, radius: 66 },
-    { damage: 23, radius: 74 },
-    { damage: 30, radius: 84 },
+    { damage: 18, radius: 58 },
+    { damage: 22, radius: 64 },
+    { damage: 28, radius: 72 },
+    { damage: 36, radius: 82 },
   ],
-};
-
-/** Weapon capability tags: the single source of truth for which modifiers a
- *  weapon can legally take (D10). Effects declare the tags they require and
- *  eligibility is DERIVED against this (see effects.ts), so a modifier never
- *  lands where it makes no gameplay sense. `area` = a radius that can grow;
- *  `pierce` = passes through enemies; `projectile` = a travelling shot;
- *  `count` = can add another instance; `aimedfan` = aimed shots that fan out
- *  on multishot. */
-export type WeaponTag = 'area' | 'pierce' | 'projectile' | 'count' | 'aimedfan';
-export const WEAPON_TAGS: Record<Role, ReadonlySet<WeaponTag>> = {
-  kick: new Set(['area']),
-  snare: new Set(['projectile', 'pierce', 'count', 'aimedfan']),
-  hat: new Set(['projectile', 'count', 'aimedfan']),
-  bass: new Set(['projectile', 'pierce', 'area']), // area but NOT count -> never multishots
-  chord: new Set(['area']),
-  lead: new Set(['projectile', 'pierce', 'count', 'aimedfan']),
-  clap: new Set(['area']),
-  tom: new Set(['projectile', 'pierce', 'count']),
-  cowbell: new Set(['projectile', 'pierce']),
-  arp: new Set(['count', 'area']),
-  zap: new Set(['count', 'area']),
-  crash: new Set(['area']),
-  rimshot: new Set(['count']),
-  heartbeat: new Set(['area']),
-  shaker: new Set(['area', 'count']),
-  acid: new Set(['area']),
-  pluck: new Set(['projectile', 'area']),
-  rhodes: new Set(['area']),
-  ride: new Set(['area']),
-  riser: new Set(['area']),
-  reese: new Set(['area']),
-  choir: new Set(['area']),
-  // Bell shatters on its first hit; it is not in the multishot/split spawn
-  // paths, so 'count'/'aimedfan' would make Split/Layer legal no-op picks (D10:
-  // a modifier never lands where it does nothing). Only 'projectile' — Drive
-  // and Echo (which re-fires the whole note) are its meaningful modifiers.
-  bell: new Set(['projectile']),
-  whistle: new Set(['area']),
 };
 
 /** The one honest gameplay-effect line on each pick card ([tier-1]). Terse
@@ -555,10 +457,10 @@ export const WEAPON_TAGS: Record<Role, ReadonlySet<WeaponTag>> = {
  *  actually does. */
 export const TIER_LINES: Record<Role, string[]> = {
   kick: [
-    'aura pulse around you, on the beat',
-    'pulse reaches further',
-    'pulses on every beat',
-    'bigger pulse, double slam every 4th bar',
+    'steady close pulse around you',
+    'harder, wider pulse with a soft turnaround',
+    'stronger coverage and phrase pickup',
+    'largest pulse with a heavy turnaround fill',
   ],
   snare: [
     'piercing shot on the backbeat',
@@ -567,34 +469,34 @@ export const TIER_LINES: Record<Role, string[]> = {
     'burst of shots every 4th bar',
   ],
   hat: [
-    'thin spray of fast chips',
-    'twice the chips',
-    'denser spray',
-    'a wall of chips',
+    'fast aimed chips in the spaces between beats',
+    'adds short closed-hit answers',
+    'harder chips with stronger accents',
+    'dense but controlled close-hit pattern',
   ],
   bass: [
-    'slow piercing wave',
-    'waves twice as often',
-    'heavier, wider waves',
-    'massive wave every 4th bar',
+    'slow wide wave that pierces a lane',
+    'adds an offbeat wave',
+    'heavier, wider two-bar movement',
+    'largest waves with a phrase-turnaround drop',
   ],
   chord: [
-    'zone on the nearest pack: damage + slow',
-    'zones twice as often',
-    'bigger, longer zones',
-    'adds huge lingering zones every 4th bar',
+    'throws a slowing field onto the nearest pack',
+    'adds a second offbeat field',
+    'bigger, longer fields with chord movement',
+    'largest fields with a phrase-turnaround stab',
   ],
   lead: [
-    'a few homing seekers',
-    'more seekers',
-    'the full melody of seekers',
-    'denser seekers that pierce',
+    'sparse homing shots trace a short hook',
+    'the hook answers itself',
+    'harder shots extend the phrase',
+    'full hook; final shots pierce',
   ],
   clap: [
-    'a wide slash close to you',
-    'wider, harder slash',
-    'sweeps a bigger arc',
-    'a huge slash all around you',
+    'wide forward hit on the backbeat',
+    'harder hit with a quiet pickup',
+    'wider arc and stronger turnaround',
+    'huge backbeat sweep with a short fill',
   ],
   tom: [
     'a boomerang that flies out and back',
@@ -621,16 +523,16 @@ export const TIER_LINES: Record<Role, string[]> = {
     'strikes four, bigger blasts',
   ],
   crash: [
-    'a shockwave knocks enemies back',
-    'a bigger, faster wave',
-    'a wider wave, harder knock',
-    'a massive wave, huge knockback',
+    'rare shockwave knocks the horde back',
+    'adds a mid-phrase impact',
+    'wider wave with a quiet turnaround hit',
+    'massive phrase accents and heavy knockback',
   ],
   rimshot: [
-    'a crack that chains through a cluster',
-    'jumps to one more enemy',
-    'a longer chain, harder hits',
-    'rips through the whole pack',
+    'dry crack chains through a small cluster',
+    'adds a syncopated answer and one chain hop',
+    'harder hits reach deeper into the pack',
+    'turnaround fill rips through a large cluster',
   ],
   heartbeat: [
     'a pulse that shoves near and gathers far',
@@ -639,16 +541,16 @@ export const TIER_LINES: Record<Role, string[]> = {
     'a huge breathing field',
   ],
   shaker: [
-    'leaves a damaging trail as you move',
-    'a longer-lasting trail',
-    'a wider, hotter trail',
-    'a blazing trail',
+    'quiet hits leave a short trail as you move',
+    'longer trail on every other step',
+    'continuous soft trail with stronger accents',
+    'widest trail with a phrase-end flourish',
   ],
   acid: [
-    'a well that pulls enemies in',
-    'pulls harder, wider',
-    'a stronger, bigger well',
-    'a massive crushing well',
+    'offbeat acid note throws a pulling well',
+    'adds one syncopated well',
+    'larger wells move across a two-bar phrase',
+    'strongest pull with a phrase-end accent',
   ],
   pluck: [
     'a note lobbed that bursts on landing',
@@ -657,10 +559,10 @@ export const TIER_LINES: Record<Role, string[]> = {
     'a huge crushing burst',
   ],
   rhodes: [
-    'a mine that blooms when stepped in',
-    'a wider bloom',
-    'a bigger, harder bloom',
-    'a huge bloom',
+    'warm offbeat note plants an armed mine',
+    'adds a syncopated mine',
+    'harder mines spread across two bars',
+    'largest blooms with a phrase-end flourish',
   ],
   ride: [
     'a sweep that freezes what it crosses',
@@ -693,10 +595,10 @@ export const TIER_LINES: Record<Role, string[]> = {
     'a burst of shards, pierces',
   ],
   whistle: [
-    'tags a foe; it pops a beat later',
-    'a bigger delayed pop',
-    'a harder pop',
-    'a huge delayed pop',
+    'vocal chop tags a foe; it bursts one beat later',
+    'adds a second call-and-answer tag',
+    'harder delayed bursts extend the phrase',
+    'full vocal phrase with the largest bursts',
   ],
 };
 
@@ -743,7 +645,7 @@ export const ZAP_RANGE = 640;
 export const CHAIN_SEEK = 360;
 export const CHAIN_HOP = 150;
 
-// ---- weapon feel & modifier constants (Features 3, 4, 5) ----
+// ---- weapon feel constants ----
 
 /** How long an enemy rides a weapon shove before resuming its chase (shares
  *  the crash knock channel). */
@@ -766,9 +668,6 @@ export const FLASH = {
   crash: { alpha: 0.16, dur: 0.18 },
   bassSub: { alpha: 0.12, dur: 0.16 },
 } as const;
-
-/** Fan spacing (rad) between multishot/echo-split aimed projectiles. */
-export const ECHO_FAN = 0.14;
 
 // ---- sub-phase C: the two utility systems + the shatter/tag weapons ----
 

@@ -1,8 +1,64 @@
 # Project Status
 
-Last updated: July 9, 2026
+Last updated: July 10, 2026
 
-## Latest change (July 9, 2026)
+## Latest change (July 10, 2026)
+
+**House foundation refactor implemented and engineering-verified.** The locked
+execution spec is `docs/phases/house-foundation-refactor.md`; the earlier Band
+B+C gate is superseded. The developer's final ear-and-hands gate is still
+required.
+
+- **Weapons/music:** the available catalog is exactly twelve House-focused
+  weapons across eight slots. The soundset runs at 120 BPM with restrained
+  four-tier patterns, explicit House sounds for every role, one tempo source,
+  exact catalog/kit/chart coverage guards, and distinct muted silhouettes.
+  Runtime boot renders only these twelve voices; dormant prototypes are not
+  offered, voiced, or pre-rendered.
+- **Progression:** level-ups contain weapon hires and authored tier-ups only.
+  Passive items, detachable weapon enhancements, their Web Audio nodes, and
+  all related UI/sandbox code were deleted. A full build caps at level 32; old
+  surplus-XP healing was removed after it made stationary play self-sustaining.
+- **Enemies/stage:** six active kinds remain (Swarmer, Tank, Darter, Splitter,
+  Charger, Elite). HP ends at 5x rather than 16x; steady spawns refill authored
+  live-population targets under 450/600 caps. Close, visibly telegraphed Darter
+  pincers make movement matter, while breathers and timed elites preserve an
+  eight-minute arc.
+- **UI/dev controls:** the wide scrolling chart overlay is gone. A fixed 4x2
+  track deck shows eight stable slots, tiers, trigger pulses, and pending/off
+  state. Keys/cells 1-8 queue coalesced audio-only monitor mutes on the next
+  bar; attacks continue. Debug and workroom controls sit behind disclosures;
+  pause has a touch Resume action.
+- **Balance evidence:** the final AFK gate was 0/10 wins with a 1:25 median
+  death. The final paired 60-run Kiter comparison landed at 15% random, 15%
+  deep, and 20% wide, with median failure times from 6:25 to 7:05; a
+  kill-forward wide winner reached 14 picks while evasive outliers remained
+  visibly under-built. Paired focus and targeted follow-ups exercised all
+  twelve weapons, fixed same-slot focus starvation, cut Acid/Chord's unbounded
+  field damage, and restored useful Hi-hat/Shaker/Lead floors. Bot numbers
+  remain filters, never the final gate.
+- **Browser evidence:** desktop and 390x844 start/run/pause layouts, weapon-only
+  offers, sandbox rosters, full-band deck, number-key pending/cancel behavior,
+  and deterministic late-run visuals were exercised in the in-app browser.
+  No new console errors appeared. That browser kept Web Audio suspended, so
+  audible mix judgment remains explicitly with the developer.
+- **Independent QoL audit:** fixed truly paired policy seeds and worker-temp
+  cleanup in the bot, restored all eight slots to the rehearsal wide mix,
+  made the active sample-health workflow safe and current, made debug kill
+  bypass Darter's brief brace, filtered sample-set hints to the active catalog,
+  corrected the shipped-kit label, and made toast feedback screen-reader live.
+  Parked rather than smuggled into this phase: an `ActiveRole` type/prototype
+  purge, swing-exact virtual-clock parity, trigger-pulse reflow optimization,
+  a standalone invariant command, and a designed startup-render error screen.
+
+Context note: the three linked AI conversations could not be read because the
+installed ChatGPT Chrome Extension did not expose a controllable Chrome session.
+Its supported recovery route required permission to open a new Chrome window;
+the developer had explicitly required no questions, so implementation continued
+from the repository history, live game inspection, specialist audits, and cited
+House/Vampire Survivors research instead.
+
+## Previous change (July 9, 2026)
 
 **The genre system was removed.** There is no genre selection or genre logic
 anymore: the game boots straight to a start screen and plays one
@@ -14,7 +70,14 @@ ladders, samples) is kept. See the History entry below for the full teardown.
 
 ## Current phase
 
-**The band — sub-phases B AND C implemented, awaiting a combined gate B+C (the developer's ear/hands).** A grilling session locked the band slot system (`docs/phases/the-band.md`): eight typed band-position slots (Pulse, Backbeat, Hats, Motion, FX, Bass, Harmony, Melody), one instrument per slot, permanent picks, a 24-instrument catalog. Sub-phase A (the system on today's twelve instruments) is built and **passed**. Sub-phase B added the first six damage hires — rimshot, heartbeat, shaker, acid, pluck bass, Rhodes — committed on `main` (`affe831`, `124cc99`, `023c30e`). **Sub-phase C is now built (uncommitted on `main`)**: the last six instruments — ride (Hats, the **freeze weapon**), riser (FX, the **auto-dash**), reese (Bass, a grinding wall), choir pad (Harmony, a pulsing orb), bell (Melody, shatters into shards), whistle (Melody, tags an enemy that pops a beat later) — plus the two new gameplay systems (a freeze status and an auto-dash hook). Per the developer's instruction, sub-phase B's gate was skipped and C built on top so both are judged together at one gate. The catalog is now complete at 24 instruments (8 slots × 3).
+**House foundation refactor — engineering complete, awaiting developer gate.**
+All requested implementation, independent QoL review, and engineering
+verification are complete.
+
+## Next action
+
+The developer judges the delivered draft by ear and the run by hand, including
+one muted run.
 
 ## What was built (July 6)
 
@@ -30,7 +93,7 @@ ladders, samples) is kept. See the History entry below for the full teardown.
 - Chrome: genre-select and weapon-select screens render; a live Hip-Hop run confirms bpm 140 / swing 0.1 / powerMul 0.8 applied; all twelve weapons' render paths (clap arc, zap bolt, crash shockwave, arp orbiters, tom boomerangs, cowbell diamonds) draw with zero console errors; rehearsal room loads all twelve voices; the Experimentation room (`#tracklab`) plays.
 - **Gate: the developer's ear and hands** — does each genre sound like itself and good, do the twelve weapons feel distinct muted, is a genre worth replaying as a character.
 
-## Gate ledger (the band)
+## Historical gate ledger (the band, superseded July 10)
 
 | Gate | Status |
 |---|---|
@@ -41,7 +104,7 @@ ladders, samples) is kept. See the History entry below for the full teardown.
 
 Gate A also implicitly co-judged the July 6 genres-and-weapons material it stacked on (six genres as characters, twelve weapons, items, effects, VS enemies, UI redesign); that work is now **passed** by the same playtest.
 
-## Next action
+## Historical next action (superseded July 10)
 
 **Combined developer gate B+C** on all twelve new hires (dev server: `npm run dev`; the sandbox loadout lists all 24 instruments so any hire can be force-assembled at any tier, and the weapon-select screen offers the full catalog with slot badges). Judge by ear/hands:
 - **Sub-phase B (six damage hires):** heartbeat's soft low lub-dub, shaker's sizzle, acid's squelch, pluck's round bomp, Rhodes' warm keys, rimshot's woody tock. Does each starving slot's choice feel like a real fork.

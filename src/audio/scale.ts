@@ -5,8 +5,6 @@
 export const MINOR_PENTATONIC = [0, 3, 5, 7, 10] as const;
 
 export interface Skeleton {
-  /** Beats per minute. A live variable: the scheduler reads it every step. */
-  bpm: number;
   /** Root note as a frequency label only; samples are rendered at the root. */
   rootName: string;
   /** Root frequency in Hz at the octave each pitched kit treats as "0". */
@@ -18,7 +16,6 @@ export interface Skeleton {
 }
 
 export const SKELETON: Skeleton = {
-  bpm: 110,
   rootName: 'A',
   rootHz: 220, // A3; kits render their sample relative to their own octave
   noteSet: MINOR_PENTATONIC,

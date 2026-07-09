@@ -11,7 +11,9 @@ import { TIER_COUNT, validateChart, type Chart } from './charts';
 import { SOUNDSET, supportedRoles } from './soundset';
 import { type Role } from './kits';
 
-const storageKey = (role: Role, tier: number) => `loop.chart.${role}.${tier}`;
+// Bumped for the clean-slate House ladders so old playground edits cannot
+// silently replace the new shipped patterns on a developer machine.
+const storageKey = (role: Role, tier: number) => `loop.chart.v2.${role}.${tier}`;
 
 // The autoplay bot imports this store under Node, where localStorage does not
 // exist: headless runs always play the shipped charts, never local edits.
@@ -93,7 +95,7 @@ export function exportEdits(): string {
   const out: Record<string, { bars: number; events: Chart['events'] }> = {};
   for (const key of edited) {
     const chart = working.get(key)!;
-    out[key.replace('loop.chart.', '')] = { bars: chart.bars, events: chart.events };
+    out[key.replace('loop.chart.v2.', '')] = { bars: chart.bars, events: chart.events };
   }
   return JSON.stringify(out, null, 2);
 }

@@ -1,18 +1,31 @@
-// House kit — the 124 BPM four-on-the-floor voicing of the soundset.
+// House kit — the 120 BPM four-on-the-floor voicing of the soundset.
 //
 // Identity: a punchy 909-lineage drum machine (tight clicky kick on every beat,
 // the wide "clay" 909 clap on 2 & 4, crisp offbeat open hats) locked to a warm
 // rolling sub-bass that plays only in the kick gaps, bright stabby detuned-saw
-// chords, a mellow deep-house Rhodes comp, and a singing lead over the top. FX
-// are a bright phrase-top crash and a noise riser for the auto-dash.
+// chords, a mellow deep-house Rhodes comp, a rubbery acid bass alternative,
+// and sparse synth/vocal hooks over the top. FX is a bright phrase-top crash.
 //
-// The kit DROPS whole slots to stay idiomatic: no Motion voice (no acid/arp),
-// no snare (the clap owns the backbeat), and none of the ambient/topline extras
-// (tom, heartbeat, cowbell, bell, choir, whistle, pluck, reese, ride, zap). The
-// supported set is exactly the roles this file renders, which must equal the
-// roles the ladder file charts.
+// This builder explicitly covers every active role. Dormant prototype roles are
+// not returned, so the engine cannot silently fall back to a generic sound for
+// something advertised as part of the House catalog.
 
 import { makeKit, noiseBuffer, offline, softClipCurve, type Kit, type Role } from '../kits';
+
+export const HOUSE_KIT_ROLES = [
+  'kick',
+  'clap',
+  'hat',
+  'rimshot',
+  'shaker',
+  'crash',
+  'bass',
+  'acid',
+  'chord',
+  'rhodes',
+  'lead',
+  'whistle',
+] as const satisfies readonly Role[];
 
 // --- Pulse: the 909-lineage kick ------------------------------------------
 // A tight, punchy four-on-the-floor kick. Short pitch sweep into a defined
@@ -221,28 +234,6 @@ async function crash(): Promise<AudioBuffer> {
   return ctx.startRendering();
 }
 
-// --- FX: riser ------------------------------------------------------------
-// A reversed-cymbal swell: filtered noise whose gain ramps UP into a cut while
-// its bandpass sweeps up, anticipating the downbeat — the auto-dash wind-up.
-async function riser(): Promise<AudioBuffer> {
-  const dur = 0.85;
-  const ctx = offline(dur + 0.05);
-  const n = ctx.createBufferSource();
-  n.buffer = noiseBuffer(ctx, dur);
-  const bp = ctx.createBiquadFilter();
-  bp.type = 'bandpass';
-  bp.Q.value = 0.8;
-  bp.frequency.setValueAtTime(600, 0);
-  bp.frequency.exponentialRampToValueAtTime(9000, dur);
-  const g = ctx.createGain();
-  g.gain.setValueAtTime(0.0001, 0);
-  g.gain.exponentialRampToValueAtTime(0.48, dur * 0.92);
-  g.gain.exponentialRampToValueAtTime(0.001, dur);
-  n.connect(bp).connect(g).connect(ctx.destination);
-  n.start(0);
-  return ctx.startRendering();
-}
-
 // --- Bass: the rolling house sub ------------------------------------------
 // Two octaves under the root (~55 Hz), warm and round. A saw for harmonic body
 // over a clean sine sub, through a resonant lowpass that closes over the note,
@@ -305,6 +296,48 @@ async function bass(rootHz: number, flavor: 'bass' | 'fat' | 'sub'): Promise<Aud
   sub.start(0);
   osc.stop(0.45);
   sub.stop(0.45);
+  return ctx.startRendering();
+}
+
+// --- Bass: the acid alternative -------------------------------------------
+// A compact 303-style note: low saw body, a quiet sub octave, and a resonant
+// filter sweep that makes the hit say “wow” without turning into a continuous
+// alarm. The chart supplies the sliding conversation; this sample stays short
+// enough to clear before the next kick.
+async function acid(rootHz: number): Promise<AudioBuffer> {
+  const ctx = offline(0.38);
+  const base = rootHz / 2;
+  const body = ctx.createOscillator();
+  body.type = 'sawtooth';
+  body.frequency.setValueAtTime(base * 1.025, 0);
+  body.frequency.exponentialRampToValueAtTime(base, 0.065);
+  const sub = ctx.createOscillator();
+  sub.type = 'square';
+  sub.frequency.setValueAtTime(base / 2, 0);
+
+  const bodyGain = ctx.createGain();
+  bodyGain.gain.value = 0.72;
+  const subGain = ctx.createGain();
+  subGain.gain.value = 0.16;
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.Q.value = 11;
+  lp.frequency.setValueAtTime(1550, 0);
+  lp.frequency.exponentialRampToValueAtTime(190, 0.24);
+  const drive = ctx.createWaveShaper();
+  drive.curve = softClipCurve(2.4);
+  const env = ctx.createGain();
+  env.gain.setValueAtTime(0.0001, 0);
+  env.gain.exponentialRampToValueAtTime(0.62, 0.006);
+  env.gain.exponentialRampToValueAtTime(0.001, 0.31);
+
+  body.connect(bodyGain).connect(lp);
+  sub.connect(subGain).connect(lp);
+  lp.connect(drive).connect(env).connect(ctx.destination);
+  body.start(0);
+  sub.start(0);
+  body.stop(0.34);
+  sub.stop(0.34);
   return ctx.startRendering();
 }
 
@@ -439,7 +472,87 @@ async function lead(rootHz: number): Promise<AudioBuffer> {
   return ctx.startRendering();
 }
 
+// --- Melody: a short human-like vocal chop -------------------------------
+// A voiced “ah” syllable synthesized from a buzzy vocal-cord source through
+// three vowel formants (focused frequency bands shaped like a mouth). A tiny
+// breath transient and late vibrato keep it human-like while the short envelope
+// lets sparse repetitions read as a chop, not a held whistle.
+async function vocalChop(rootHz: number): Promise<AudioBuffer> {
+  const ctx = offline(0.48);
+  const base = rootHz * 2;
+  const sourceBus = ctx.createGain();
+  sourceBus.gain.value = 0.55;
+
+  const vibrato = ctx.createOscillator();
+  vibrato.type = 'sine';
+  vibrato.frequency.value = 5.2;
+  const vibratoDepth = ctx.createGain();
+  vibratoDepth.gain.setValueAtTime(0.001, 0);
+  vibratoDepth.gain.setValueAtTime(0.001, 0.12);
+  vibratoDepth.gain.linearRampToValueAtTime(7, 0.24);
+  vibrato.connect(vibratoDepth);
+
+  for (const [type, level, detune] of [
+    ['sawtooth', 0.7, -4],
+    ['triangle', 0.35, 4],
+  ] as const) {
+    const osc = ctx.createOscillator();
+    osc.type = type;
+    osc.frequency.setValueAtTime(base * 1.025, 0);
+    osc.frequency.exponentialRampToValueAtTime(base, 0.07);
+    osc.detune.value = detune;
+    vibratoDepth.connect(osc.detune);
+    const gain = ctx.createGain();
+    gain.gain.value = level;
+    osc.connect(gain).connect(sourceBus);
+    osc.start(0);
+    osc.stop(0.43);
+  }
+
+  const envelope = ctx.createGain();
+  envelope.gain.setValueAtTime(0.0001, 0);
+  envelope.gain.linearRampToValueAtTime(0.58, 0.012);
+  envelope.gain.setValueAtTime(0.58, 0.12);
+  envelope.gain.exponentialRampToValueAtTime(0.001, 0.4);
+  envelope.connect(ctx.destination);
+
+  for (const [frequency, level, q] of [
+    [780, 1, 7],
+    [1150, 0.55, 9],
+    [2700, 0.28, 11],
+  ] as const) {
+    const formant = ctx.createBiquadFilter();
+    formant.type = 'bandpass';
+    formant.frequency.value = frequency;
+    formant.Q.value = q;
+    const gain = ctx.createGain();
+    gain.gain.value = level;
+    sourceBus.connect(formant).connect(gain).connect(envelope);
+  }
+
+  const breath = ctx.createBufferSource();
+  breath.buffer = noiseBuffer(ctx, 0.09);
+  const breathBand = ctx.createBiquadFilter();
+  breathBand.type = 'bandpass';
+  breathBand.frequency.value = 3600;
+  breathBand.Q.value = 1.4;
+  const breathGain = ctx.createGain();
+  breathGain.gain.setValueAtTime(0.1, 0);
+  breathGain.gain.exponentialRampToValueAtTime(0.001, 0.075);
+  breath.connect(breathBand).connect(breathGain).connect(envelope);
+
+  vibrato.start(0);
+  vibrato.stop(0.43);
+  breath.start(0);
+  return ctx.startRendering();
+}
+
 export async function buildHouseKit(rootHz: number): Promise<Map<Role, Kit>> {
+  // The chosen bass samples were recorded at C (+3 semitones above the engine's
+  // A reference). Render the synth fallbacks at the same root and stamp the
+  // whole bass kit with -3 tuning, so sampled bass/fat and synthesized sub stay
+  // in tune even if sample loading fails.
+  const bassRootHz = rootHz * Math.pow(2, 3 / 12);
   const [
     kickHard,
     kickSoft,
@@ -449,14 +562,15 @@ export async function buildHouseKit(rootHz: number): Promise<Map<Role, Kit>> {
     hatOpen,
     shakerBuf,
     crashBuf,
-    riserBuf,
     bassBuf,
     bassFat,
     bassSub,
+    acidBuf,
     stab,
     pad,
     rhodesBuf,
     leadBuf,
+    vocalBuf,
   ] = await Promise.all([
     kick(true),
     kick(false),
@@ -466,14 +580,15 @@ export async function buildHouseKit(rootHz: number): Promise<Map<Role, Kit>> {
     hat(true),
     shaker(),
     crash(),
-    riser(),
-    bass(rootHz, 'bass'),
-    bass(rootHz, 'fat'),
-    bass(rootHz, 'sub'),
+    bass(bassRootHz, 'bass'),
+    bass(bassRootHz, 'fat'),
+    bass(bassRootHz, 'sub'),
+    acid(rootHz),
     chord(rootHz, false),
     chord(rootHz, true),
     rhodes(rootHz),
     lead(rootHz),
+    vocalChop(rootHz),
   ]);
 
   const kits = new Map<Role, Kit>();
@@ -483,13 +598,14 @@ export async function buildHouseKit(rootHz: number): Promise<Map<Role, Kit>> {
   kits.set('hat', makeKit('hat', new Map([['closed', hatClosed], ['open', hatOpen]])));
   kits.set('shaker', makeKit('shaker', new Map([['shaker', shakerBuf]])));
   kits.set('crash', makeKit('crash', new Map([['crash', crashBuf]])));
-  kits.set('riser', makeKit('riser', new Map([['riser', riserBuf]])));
   kits.set(
     'bass',
-    makeKit('bass', new Map([['bass', bassBuf], ['fat', bassFat], ['sub', bassSub]])),
+    makeKit('bass', new Map([['bass', bassBuf], ['fat', bassFat], ['sub', bassSub]]), -3),
   );
+  kits.set('acid', makeKit('acid', new Map([['acid', acidBuf]])));
   kits.set('chord', makeKit('chord', new Map([['stab', stab], ['pad', pad]])));
   kits.set('rhodes', makeKit('rhodes', new Map([['rhodes', rhodesBuf]])));
   kits.set('lead', makeKit('lead', new Map([['lead', leadBuf]])));
+  kits.set('whistle', makeKit('whistle', new Map([['whistle', vocalBuf]])));
   return kits;
 }

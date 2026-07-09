@@ -10,11 +10,11 @@
 //   ?replay=<seed>&mover=<mover>&policy=<policy>
 
 import { spawn, execSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { cpus, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ROLES } from '../src/audio/kits';
+import { supportedRoles } from '../src/audio/soundset';
 import type { RunRecord } from '../src/bot/sim';
 import type { MoverName } from '../src/bot/movers';
 import { RUN } from '../src/game/config';
@@ -36,7 +36,7 @@ function parseArgs(argv: string[]): Args {
   const policyArg = get('policy') ?? 'random';
   const policies = policyArg
     .split(',')
-    .flatMap((p) => (p === 'focus:each' ? ROLES.map((r) => `focus:${r}`) : [p]));
+    .flatMap((p) => (p === 'focus:each' ? supportedRoles().map((r) => `focus:${r}`) : [p]));
   return {
     runs: Number(get('runs') ?? 20),
     mover: (get('mover') ?? 'kiter') as MoverName,
@@ -148,9 +148,12 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const config = gitFingerprint();
 
-  const jobs = args.policies.flatMap((policy, ai) =>
+  // Every policy arm starts from the same seeds, so comparisons are paired at
+  // baseline. Runs may then diverge naturally as different weapons consume
+  // gameplay RNG and change which enemies survive.
+  const jobs = args.policies.flatMap((policy) =>
     Array.from({ length: args.runs }, (_, i) => ({
-      seed: args.seedBase + ai * args.runs + i,
+      seed: args.seedBase + i,
       mover: args.mover,
       policy,
     })),
@@ -196,8 +199,17 @@ async function main(): Promise<void> {
             process.stdout.write(`\r${done}/${jobs.length} runs  (~${eta}s left)   `);
           }
         });
+        let settled = false;
+        const finish = (error?: Error): void => {
+          if (settled) return;
+          settled = true;
+          rmSync(jobFile, { force: true });
+          if (error) reject(error);
+          else resolve();
+        };
+        child.on('error', (error) => finish(error));
         child.on('close', (code) =>
-          code === 0 ? resolve() : reject(new Error(`worker ${wi} exited ${code}`)),
+          finish(code === 0 ? undefined : new Error(`worker ${wi} exited ${code}`)),
         );
       });
     }),

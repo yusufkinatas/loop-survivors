@@ -7,7 +7,8 @@
 // github.com/sonic-pi-net/sonic-pi), each licensed CC0 1.0 Universal.
 // See public/samples/sonicpi/LICENSE.md.
 
-import { ROLES, type Role } from './kits';
+import { type Role } from './kits';
+import { supportedRoles } from './soundset';
 import type { MusicEngine } from './engine';
 
 export interface SampleSetDef {
@@ -26,8 +27,8 @@ const BASE = '/samples/sonicpi/';
 export const SAMPLE_SETS: SampleSetDef[] = [
   {
     id: 'synth',
-    name: 'Synth',
-    source: 'builtin placeholders',
+    name: 'Shipped House',
+    source: 'active House kit',
     files: {},
   },
   {
@@ -72,7 +73,7 @@ export const SAMPLE_SETS: SampleSetDef[] = [
 
 /** Which roles a set covers, for UI hints. */
 export function coveredRoles(def: SampleSetDef): Role[] {
-  return ROLES.filter((r) => def.files[r] !== undefined);
+  return supportedRoles().filter((r) => def.files[r] !== undefined);
 }
 
 const decodedCache = new Map<string, Map<Role, Map<string, AudioBuffer>>>();
@@ -103,10 +104,10 @@ async function loadSet(
 }
 
 /** Fetch, decode (cached), and apply a set to every voice. Roles the set
- *  does not cover are restored to the builtin synth kit. */
+ *  does not cover are restored to the shipped House kit. */
 export async function applySampleSet(engine: MusicEngine, def: SampleSetDef): Promise<void> {
   const decoded = await loadSet(engine.ctx, def);
-  for (const role of ROLES) {
+  for (const role of supportedRoles()) {
     const samples = decoded.get(role) ?? null;
     engine.setVoiceSamples(role, samples, def.tune?.[role] ?? 0);
   }

@@ -25,8 +25,8 @@ npm run bot -- --runs 15 --policy focus:each --label per-instrument
 |---|---|---|
 | `--runs N` | 20 | Runs **per arm** (each policy spec is one arm) |
 | `--mover` | kiter | `afk` \| `kiter` \| `harvester` |
-| `--policy` | random | Comma list of `random`, `deep`, `wide`, `focus:<role>`; `focus:each` expands to all six roles |
-| `--seed-base N` | 1 | First seed; arms get consecutive blocks. **Reuse the same base to pair batches run-for-run** |
+| `--policy` | random | Comma list of `random`, `deep`, `wide`, `focus:<role>`; `focus:each` expands to all 12 active roles |
+| `--seed-base N` | 1 | First seed; every policy arm reuses the same block for paired starting conditions |
 | `--workers N` | cores−2 | Parallel worker processes |
 | `--label` | batch | Names the output folder |
 
@@ -39,6 +39,8 @@ better than the kiter — see the July 4 STATUS entry for why).
 Policies (who picks at level-ups, always from the real three-card offers):
 `deep` always tiers up something owned, `wide` always takes a new weapon,
 `focus:<role>` takes its role when offered else random, `random` is random.
+Every policy obeys the real opening rule and starts with Kick; a focus policy
+leans toward its requested weapon only after that weapon appears in an offer.
 Offer starvation is part of what focus policies measure; there are no
 forced build orders by design.
 
@@ -114,12 +116,11 @@ share as the stable signals.
 collapses (early median death AND low focused damage share AND starved
 levels). Verdict on whether it is a trap belongs to the developer.
 
-**How does a future item/passive/genre interact with weapons?** When items
-exist, give the sim a way to force a loadout element (an `items` field on
-`SimSpec`, mirroring how tiers work), then run `focus:each` twice — item
-on, item off, same seeds — and read the damage-share deltas per weapon.
-The infrastructure (paired seeding, arms, reports) already supports this;
-only the `SimSpec` hook is new work.
+**How does a future build system interact with weapons?** First give the sim
+an explicit hook for that system, then run `focus:each` twice—system on and
+off, same seeds—and read the per-weapon damage-share deltas. Do not smuggle a
+future passive/enhancement model back through ad-hoc config mutation; define
+its real runtime seam before using the bot to judge it.
 
 **What does a config knob do?** Mutate `RUN`/`ENEMIES`/`WEAPONS` at the
 top of a script before simulating (see the July 4 magnet experiment:
@@ -145,7 +146,7 @@ STATUS-linked investigations rather than adding permanent counters.
   queue first, then chart events via the shared `chartEventsAtStep`. If the
   engine's scheduling semantics change, change the conductor the same way —
   they must never disagree about what a build fires. Tempo is read live
-  from `SKELETON.bpm` each tick, so BPM experiments need only a way to set
+  from `SOUNDSET.bpm` each tick, so BPM experiments need only a way to set
   it (plus recording it for replay).
 
 ## Costs

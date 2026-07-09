@@ -1,5 +1,10 @@
 # The Band Spec
 
+> **Superseded July 10, 2026.** The developer's autonomous clean-slate
+> direction replaces this phase's 24-role catalog, item/effect economy, and
+> pending B+C gate with `house-foundation-refactor.md`. The eight-slot ownership
+> idea survives there; this file remains unchanged below as design history.
+
 Phase: the band (interstitial, before M4). Locked July 6, 2026, after a
 grilling session. Parent plan: `docs/plan.md`. Everything from M1, M2, and
 `genres-and-weapons.md` carries forward unchanged unless amended here.

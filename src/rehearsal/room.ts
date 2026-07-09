@@ -6,10 +6,14 @@
 // builtin placeholder sample.
 
 import { MusicEngine } from '../audio/engine';
-import { ROLES, type Role } from '../audio/kits';
+import { type Role } from '../audio/kits';
+import { supportedRoles } from '../audio/soundset';
 import { SKELETON, STEPS_PER_BAR, STEPS_PER_PHRASE, BARS_PER_PHRASE } from '../audio/scale';
 import { SAMPLE_SETS, applySampleSet, coveredRoles } from '../audio/samplesets';
 import { mountPlayground, type Playground } from './playground';
+
+const REHEARSAL_ROLES = supportedRoles();
+const AUDITION_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '='];
 
 /** The progression scrub walks a scripted run of picks (M2: a pick is a new
  *  weapon or a tier-up). Two arcs, one per end-of-run archetype: wide-shallow
@@ -25,13 +29,17 @@ const ARCS: Record<string, { label: string; picks: ArcPick[] }> = {
     picks: [
       { role: 'kick', tier: 1 },
       { role: 'hat', tier: 1 },
-      { role: 'snare', tier: 1 },
+      { role: 'clap', tier: 1 },
+      { role: 'rimshot', tier: 1 },
+      { role: 'crash', tier: 1 },
       { role: 'bass', tier: 1 },
       { role: 'chord', tier: 1 },
       { role: 'lead', tier: 1 },
       { role: 'kick', tier: 2 },
       { role: 'hat', tier: 2 },
-      { role: 'snare', tier: 2 },
+      { role: 'clap', tier: 2 },
+      { role: 'rimshot', tier: 2 },
+      { role: 'crash', tier: 2 },
       { role: 'bass', tier: 2 },
       { role: 'chord', tier: 2 },
       { role: 'lead', tier: 2 },
@@ -182,7 +190,7 @@ export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void
     for (const pick of arc.picks.slice(0, count)) {
       tiers.set(pick.role, Math.max(pick.tier, tiers.get(pick.role) ?? 0));
     }
-    for (const role of ROLES) {
+    for (const role of REHEARSAL_ROLES) {
       const tier = tiers.get(role);
       if (tier) engine.setVoiceTier(role, tier);
       setVoice(role, tier !== undefined);
@@ -196,7 +204,7 @@ export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void
 
   // ---- voice cards ----
   const grid = el('div', 'voices', root);
-  for (const role of ROLES) {
+  for (const role of REHEARSAL_ROLES) {
     const voice = engine.voices.get(role)!;
     const card = el('div', 'voice', grid);
     card.style.setProperty('--voice-color', voice.kit.color);
@@ -204,7 +212,7 @@ export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void
     const head = el('div', 'voice-head', card);
     const light = el('span', 'light', head);
     el('span', 'voice-name', head, voice.kit.name);
-    el('span', 'voice-key', head, String(ROLES.indexOf(role) + 1));
+    el('span', 'voice-key', head, AUDITION_KEYS[REHEARSAL_ROLES.indexOf(role)] ?? '');
 
     const toggleWrap = el('label', 'row', card, 'in the mix');
     const toggle = el('input', '', toggleWrap) as HTMLInputElement;
@@ -286,9 +294,9 @@ export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void
       e.preventDefault();
       setPlaying(!engine.clock.running);
     }
-    const idx = Number(e.key) - 1;
-    if (idx >= 0 && idx < ROLES.length) {
-      const role = ROLES[idx];
+    const idx = AUDITION_KEYS.indexOf(e.key);
+    if (idx >= 0 && idx < REHEARSAL_ROLES.length) {
+      const role = REHEARSAL_ROLES[idx];
       setVoice(role, !engine.voices.get(role)!.enabled);
       playground.refresh();
     }

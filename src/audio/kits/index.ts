@@ -8,8 +8,9 @@
 // headless bot never imports this file and must stay importable under Node.
 // Only browser code (engine.ts) imports here.
 
-import { loadSample, makeKit, type Kit, type Role } from '../kits';
-import { buildHouseKit } from './house';
+import { loadSample, makeKit, ROLE_META, type Kit, type Role } from '../kits';
+import { ACTIVE_ROLES } from '../soundset';
+import { buildHouseKit, HOUSE_KIT_ROLES } from './house';
 
 // Real signature-drum samples that override the synthesized drums, plus the
 // sampled sub-bass. Each entry: role -> [variantId, fileBase]. Files live at
@@ -26,7 +27,6 @@ const SAMPLE_OVERLAY: Partial<Record<Role, SampleSpec[]>> = {
   hat: [['closed', 'hat_closed'], ['open', 'hat_open']],
   shaker: [['shaker', 'shaker']],
   crash: [['crash', 'crash']],
-  riser: [['riser', 'riser']],
   bass: [['bass', 'bass'], ['fat', 'bass_fat']], // pitched — see SAMPLE_TUNE
 };
 
@@ -43,9 +43,10 @@ export function sampledRoles(): Set<Role> {
   return new Set(Object.keys(SAMPLE_OVERLAY) as Role[]);
 }
 
-/** Overlay the real drum/bass samples onto the synth kit. A role whose every
- *  variant loads is replaced by the sampled kit; if any file fails to load
- *  (offline, 404), that role keeps its synthesized voice (never silent). */
+/** Overlay real drum/bass samples onto the explicit House kit. Loaded variants
+ *  replace their synthesized counterparts while un-sampled variants stay in
+ *  place (notably Bass's tier-four `sub`). If a file fails, the complete synth
+ *  voice remains available, so no active weapon can become silent. */
 async function overlaySamples(kit: Map<Role, Kit>): Promise<void> {
   await Promise.all(
     (Object.entries(SAMPLE_OVERLAY) as [Role, SampleSpec[]][]).map(async ([role, specs]) => {
@@ -55,12 +56,53 @@ async function overlaySamples(kit: Map<Role, Kit>): Promise<void> {
             [variant, await loadSample(`/samples/${DIR}/${file}.wav`)] as const,
           ),
         );
-        kit.set(role, makeKit(role, new Map(entries), SAMPLE_TUNE[role] ?? 0));
+        const base = kit.get(role);
+        if (!base) throw new Error(`sample overlay targets inactive House role ${role}`);
+        const merged = new Map(base.samples);
+        for (const [variant, buffer] of entries) merged.set(variant, buffer);
+        kit.set(role, makeKit(role, merged, SAMPLE_TUNE[role] ?? 0));
       } catch (e) {
         console.warn(`[kits] ${role} sample load failed, keeping synth voice:`, e);
       }
     }),
   );
+}
+
+/** Fail loudly if the active catalog, declared House builder, returned kit, or
+ *  required variants drift apart. This runs on the first soundset build before
+ *  playback, turning the old silent generic-fallback failure into a startup
+ *  error with an exact missing/extra list. */
+function assertExactCoverage(kit: ReadonlyMap<Role, Kit>): void {
+  const active = new Set<Role>(ACTIVE_ROLES);
+  const declared = new Set<Role>(HOUSE_KIT_ROLES);
+  const actual = new Set<Role>(kit.keys());
+  const missingDeclaration = ACTIVE_ROLES.filter((role) => !declared.has(role));
+  const extraDeclaration = HOUSE_KIT_ROLES.filter((role) => !active.has(role));
+  const missingKit = ACTIVE_ROLES.filter((role) => !actual.has(role));
+  const extraKit = [...actual].filter((role) => !active.has(role));
+  if (
+    missingDeclaration.length > 0 ||
+    extraDeclaration.length > 0 ||
+    missingKit.length > 0 ||
+    extraKit.length > 0
+  ) {
+    throw new Error(
+      '[kits] House coverage mismatch ' +
+        `(declared missing: ${missingDeclaration.join(', ') || 'none'}; ` +
+        `declared extra: ${extraDeclaration.join(', ') || 'none'}; ` +
+        `kit missing: ${missingKit.join(', ') || 'none'}; ` +
+        `kit extra: ${extraKit.join(', ') || 'none'})`,
+    );
+  }
+  for (const role of ACTIVE_ROLES) {
+    const roleKit = kit.get(role)!;
+    const missingVariants = ROLE_META[role].variants.filter(
+      (variant) => !roleKit.samples.has(variant),
+    );
+    if (missingVariants.length > 0) {
+      throw new Error(`[kits] ${role} is missing variants: ${missingVariants.join(', ')}`);
+    }
+  }
 }
 
 // The soundset kit is rendered once, on first use, then reused. The promise is
@@ -73,6 +115,7 @@ export function buildSoundsetKit(rootHz: number): Promise<Map<Role, Kit>> {
   if (!cache) {
     cache = buildHouseKit(rootHz).then(async (kit) => {
       await overlaySamples(kit);
+      assertExactCoverage(kit);
       return kit;
     });
   }

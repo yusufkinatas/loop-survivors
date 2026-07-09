@@ -1,10 +1,11 @@
-// The band: eight typed position-slots that cap a build into a group.
+// The House band: eight typed position-slots that cap a build into a group.
 //
 // Each slot holds at most ONE instrument, drawn from that slot's roster. A full
 // build is a complete band — eight voices, each in its own frequency lane and
-// rhythmic job. Slots cap OWNERSHIP (filling one permanently retires its other
-// roster members from the pick pool), which is what keeps a full build sounding
-// like a track instead of a pile of voices. See docs/phases/the-band.md.
+// rhythmic job. The active roster is deliberately small: one fixed House
+// skeleton plus meaningful two-way forks. Dormant prototype roles remain in the
+// Role union but have no slot and cannot be offered. See
+// docs/phases/house-foundation-refactor.md.
 //
 // NOTE: `role` (from kits.ts) is the atomic weapon id. A `Slot` is the band
 // position several weapons can compete for. Do not conflate the two.
@@ -59,23 +60,24 @@ export const SLOT_LABEL: Record<Slot, string> = {
   melody: 'Hook',
 };
 
-// The roster for each slot — the full 24-instrument catalog. The soundset
-// supports only a subset (supportedRoster filters to it); the rest stay dormant
-// code, never offered and never voiced.
+// The complete active House catalog. Alternatives exist only where the choice
+// changes both the combat shape and the musical part; the fixed skeleton does
+// not grow filler substitutes merely to make every roster the same size.
 export const SLOT_ROSTER: Record<Slot, Role[]> = {
-  pulse: ['kick', 'tom', 'heartbeat'],
-  backbeat: ['snare', 'clap', 'rimshot'],
-  hats: ['hat', 'shaker', 'ride'],
-  motion: ['arp', 'cowbell', 'acid'],
-  fx: ['crash', 'zap', 'riser'],
-  bass: ['bass', 'pluck', 'reese'],
-  harmony: ['chord', 'rhodes', 'choir'],
-  melody: ['lead', 'bell', 'whistle'],
+  pulse: ['kick'],
+  backbeat: ['clap'],
+  hats: ['hat'],
+  motion: ['rimshot', 'shaker'],
+  fx: ['crash'],
+  bass: ['bass', 'acid'],
+  harmony: ['chord', 'rhodes'],
+  melody: ['lead', 'whistle'],
 };
 
-/** Inverse of SLOT_ROSTER, built once so the two can never drift. */
-export const ROLE_SLOT: Record<Role, Slot> = (() => {
-  const map = {} as Record<Role, Slot>;
+/** Inverse of SLOT_ROSTER, built once so the two can never drift. Dormant
+ * prototype roles are intentionally absent. */
+export const ROLE_SLOT: Readonly<Partial<Record<Role, Slot>>> = (() => {
+  const map: Partial<Record<Role, Slot>> = {};
   for (const slot of SLOTS) {
     for (const role of SLOT_ROSTER[slot]) map[role] = slot;
   }
@@ -84,7 +86,9 @@ export const ROLE_SLOT: Record<Role, Slot> = (() => {
 
 /** The band position a weapon belongs to. */
 export function slotOf(role: Role): Slot {
-  return ROLE_SLOT[role];
+  const slot = ROLE_SLOT[role];
+  if (!slot) throw new Error(`inactive weapon has no band slot: ${role}`);
+  return slot;
 }
 
 /** A slot's roster restricted to the instruments the soundset supports.
@@ -115,17 +119,16 @@ export function slotFilled(slot: Slot, tiers: ReadonlyMap<Role, number>): boolea
 // --- Offer-weighting knobs (design rules 5 & 6, and the early drum nudge) ----
 
 /**
- * Design rule 5: the FX slot is barred from the STARTING-weapon offer — a
- * tier-1 FX voice is near silent for minutes, a musically dead first pick. It
- * stays fully available on level-up.
+ * The House foundation has one starting weapon: Kick. Everything else enters
+ * through level-up, while dormant prototypes stay unavailable everywhere.
  */
 export function barredFromStart(role: Role): boolean {
-  return slotOf(role) === 'fx';
+  return role !== 'kick' || !soundsetSupports(role);
 }
 
 /** Roles eligible as a starting instrument, in a stable order. */
 export function startableRoles(roles: readonly Role[]): Role[] {
-  return roles.filter((r) => !barredFromStart(r));
+  return roles.filter((role) => !barredFromStart(role));
 }
 
 /**

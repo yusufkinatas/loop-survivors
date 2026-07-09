@@ -8,19 +8,19 @@ pitch correction in game code).
 
 ## Where it runs
 
-Two build-time scripts, run by hand, never during `vite build` or at runtime:
+The active build-time script is run by hand, never during `vite build` or at
+runtime:
 
-- `scripts/build-samples.mjs` — the shipped per-genre drum kits (downloads from
-  the TidalCycles Dirt-Samples set, corrects, writes to `public/samples/<genre>/`).
 - `scripts/build-house-kit.mjs` — the House kit (the "Tight Tech" voicing chosen
   from the local Wave Point pack), written to `public/samples/house/`.
 
-Both apply the **same correction chain** and the **same health analyzer**. Re-run
-after any manifest / PROC change:
+`scripts/build-samples.mjs` is a dormant generic downloader for a possible
+future kit. Its manifest is empty and it exits without touching reports. Re-run
+the House builder after any `KIT` / `PROC` change, passing a pack root when it is
+not in the script's default Downloads location:
 
 ```
-node scripts/build-samples.mjs
-node scripts/build-house-kit.mjs
+node scripts/build-house-kit.mjs "/path/to/Wave Point - Sample Packs"
 ```
 
 ## The correction chain (the fixes ffmpeg applies)
@@ -85,14 +85,14 @@ and peak. It flags — it never auto-fixes — the following:
 | `sampleRate <n>` | not 44.1 kHz | format force didn't apply |
 | `PARSE-FAIL` | couldn't read the output WAV | ffmpeg produced something unexpected |
 
-The counts land in `public/samples/health-report.md` and
-`public/samples/house/health-report.md`. **A green report means "not broken",
+The active counts land in `public/samples/house/health-report.md`;
+`public/samples/health-report.md` is only a pointer. **A green report means "not broken",
 not "sounds good"** — the developer's ear is the real judge. The analyzer
 only points at files worth listening to first.
 
 ## Raw vs corrected (the A/B)
 
-Both scripts keep the untouched source next to the corrected file as
+The House builder keeps the untouched source next to the corrected file as
 `<role>.raw.wav` (also the ffmpeg input), so you can hear exactly what the
 correction did before approving it.
 Raw files are audition-only and should be deleted once corrections are signed off

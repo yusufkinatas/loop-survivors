@@ -11,7 +11,8 @@
 
 import type { Role } from '../audio/kits';
 import type { ScheduledTrigger } from '../audio/engine';
-import type { EffectId } from '../audio/voicefx';
+import { TIER_COUNT } from '../audio/charts';
+import { supportedSlots } from './band';
 import {
   AIM_RANGE,
   ARP_OMEGA,
@@ -21,9 +22,7 @@ import {
   CHAIN_SEEK,
   CHARGER,
   DASH,
-  CIRCLER,
   DARTER,
-  ECHO_FAN,
   ENEMIES,
   ENEMY_BANDS,
   enemyScaling,
@@ -34,14 +33,12 @@ import {
   RIDE,
   RUN,
   SHAKE,
-  SHIELDED,
   SHOCK_BAND,
   SHOVE_S,
   SPAWN_DIRECTOR,
   SPLITTER,
   VARIANT_EFFECTS,
   WEAPON_SHOVE,
-  WEAPON_TAGS,
   WEAPONS,
   WHISTLE,
   ZAP_RANGE,
@@ -53,25 +50,25 @@ import {
   type WeaponConf,
 } from './config';
 import { dcos, dsin } from './dmath';
-import {
-  applyEffectConf,
-  BLOOM_RESIDUAL_DMG_MUL,
-  BLOOM_RESIDUAL_LIFES,
-  ECHO_DAMAGE_MUL,
-  ECHO_DELAY_S,
-  SPLIT_SPREAD,
-} from './effects';
-import { BASE_MODS, ITEMS, type ItemId, type Mods } from './items';
 import type { Rng } from './rng';
 import { SpatialHash, circlesOverlap } from './spatial';
 
-/** Weapons whose projectiles pierce: crush grants +pierce on these, +radius
- *  on the rest, and the multishot fan targets them + hat. */
-const PIERCE_ROLES = new Set<Role>(['snare', 'hat', 'lead']);
-
 /** Roles that emit a per-hit spark on impact. Bounded to low-count roles so
- *  the 2400-enemy frame never floods the fx queue (Feature 3). */
-const SPARK_HIT_ROLES = new Set<Role>(['snare', 'lead', 'tom']);
+ *  a full late horde never floods the fx queue. */
+const SPARK_HIT_ROLES = new Set<Role>(['lead']);
+
+/** Bound persistent emitters so chart density cannot multiply into unbounded
+ *  overlapping damage. Values are per authored tier. */
+const ZONE_CAPS: Partial<Record<Role, readonly number[]>> = {
+  shaker: [8, 10, 12, 14],
+  acid: [1, 1, 1, 1],
+  chord: [1, 1, 1, 1],
+  rhodes: [2, 3, 4, 5],
+};
+
+/** Eight occupied slots at four tiers is the complete weapon-only build. XP
+ *  stops there: catalog exhaustion is not a hidden repeatable healing item. */
+const MAX_BUILD_LEVEL = supportedSlots().length * TIER_COUNT;
 
 export interface Enemy {
   kind: EnemyKind;
@@ -87,12 +84,14 @@ export interface Enemy {
   band: number;
   flashT: number;
   dead: boolean;
-  /** Darter burst state: time left in the current dash/pause, and the
-   *  locked dash direction (darters do not steer mid-dash). */
+  /** Dash state shared by darters and chargers. Both visibly aim, lock their
+   *  direction, dash without steering, then observe a recovery window. */
   dashT: number;
   dashX: number;
   dashY: number;
   dashing: boolean;
+  windupT: number;
+  recoveryT: number;
   /** Time left under a chord zone's slow. */
   slowT: number;
   /** Time left frozen solid by ride's sweep (no movement while > 0). */
@@ -102,12 +101,6 @@ export interface Enemy {
   knockX: number;
   knockY: number;
   knockT: number;
-  /** shielded: absorbs damage before hp; 0 for others. */
-  shieldHp: number;
-  /** circler: +1/-1 orbit direction; 0 for others. */
-  spin: number;
-  /** charger: telegraph countdown; 0 otherwise. */
-  windupT: number;
 }
 
 export interface Projectile {
@@ -300,18 +293,6 @@ export class RunWorld {
    *  factor as every weapon fires. Set once from the soundset at run start. */
   powerMul = 1;
 
-  /** Per-weapon effect slot (Feature 4): the sound + gameplay modifier on a
-   *  role. Composes after the global mods, per weapon, in applyBuild. */
-  readonly effects = new Map<Role, EffectId>();
-  /** Owned items and their level (Feature 5). */
-  readonly items = new Map<ItemId, number>();
-  /** The global multiplier bag items own; recomputed on every item change. */
-  mods: Mods = { ...BASE_MODS };
-  /** Echo re-fires queued for a later tick (deterministic, timeS-gated). */
-  private echoQueue: { t: ScheduledTrigger; fireAtS: number }[] = [];
-  /** Reactive Drop nova cooldown timer (Feature 5). */
-  private dropCdT = 0;
-
   /** Visual-effect requests for the view; null when running headless. */
   readonly fx: FxEvent[] | null;
 
@@ -334,10 +315,11 @@ export class RunWorld {
   private hash = new SpatialHash<Enemy>();
   private queryBuf: Enemy[] = [];
 
-  /** Spawn Director state: index into SPAWN_DIRECTOR, the current steady rate
-   *  and weighted kind mix, and the fractional spawn accumulator. */
+  /** Spawn Director state: regular-enemy population target, maximum refill
+   *  rate while below it, weighted roster, and fractional spawn accumulator. */
   private dirIdx = 0;
-  private curRate = 0;
+  private curTargetAlive = 0;
+  private curRefillRate = 0;
   private curMix: Array<[EnemyKind, number]> = [];
   private curMixTotal = 0;
   private spawnCarry = 0;
@@ -354,7 +336,6 @@ export class RunWorld {
     this.rng = opts.rng ?? Math.random;
     this.control = opts.control ?? (() => ({ x: 0, y: 0 }));
     this.fx = (opts.fx ?? true) ? [] : null;
-    this.recomputeMods();
   }
 
   get enemyCount(): number {
@@ -385,10 +366,10 @@ export class RunWorld {
   /** The coupling point: a scheduled trigger fires this kit's weapon at the
    *  owned tier. Variant peaks (bass sub, chord pad) scale the same weapon. */
   fireTrigger(t: ScheduledTrigger): void {
-    this.fireWeapon(t, this.effects.get(t.role) ?? null, 1);
+    this.fireWeapon(t);
   }
 
-  private fireWeapon(t: ScheduledTrigger, effect: EffectId | null, damageMul: number): void {
+  private fireWeapon(t: ScheduledTrigger): void {
     const tier = this.tiers.get(t.role);
     if (!tier) return;
     let conf: WeaponConf = WEAPONS[t.role][tier - 1];
@@ -409,13 +390,7 @@ export class RunWorld {
         damage: conf.damage * fx.damageMul,
       };
     }
-    // Single build-transform pipeline (D1): tempo compensation + global
-    // item mods + this weapon's effect, folded in one place.
-    conf = this.applyBuild(conf, effect, PIERCE_ROLES.has(t.role));
-    // Echo re-fire pass attenuates damage; the base fire leaves this at 1.
-    if (damageMul !== 1) conf = { ...conf, damage: conf.damage * damageMul };
-    // Echo schedules a weaker second fire; the re-fire itself passes effect=null.
-    if (effect === 'echo') this.echoQueue.push({ t, fireAtS: this.timeS + ECHO_DELAY_S });
+    conf = this.applyBuild(conf);
 
     switch (t.role) {
       case 'kick': {
@@ -636,44 +611,10 @@ export class RunWorld {
       case 'snare':
       case 'hat':
       case 'lead': {
-        // Multishot (Layer item) fans only weapons tagged 'aimedfan' (D10);
-        // these three qualify. With mods.multishot===0 the gate yields n===1
-        // and the single-shot path is bit-identical to the base game.
         const aim = this.aimDir(t.role === 'hat' ? 0.35 : 0.08);
-        const n = 1 + (WEAPON_TAGS[t.role].has('aimedfan') ? this.mods.multishot : 0);
-        if (n === 1) {
-          this.spawnProjectile(t.role, aim, conf, color, v);
-        } else {
-          const base = Math.atan2(aim.y, aim.x);
-          for (let i = 0; i < n; i++) {
-            const off = (i - (n - 1) / 2) * ECHO_FAN;
-            this.spawnProjectile(t.role, { x: dcos(base + off), y: dsin(base + off) }, conf, color, v);
-          }
-        }
+        this.spawnProjectile(t.role, aim, conf, color, v);
         break;
       }
-    }
-
-    // ---- split: one extra emission for spawn-style weapons ----
-    if (effect === 'split') {
-      if (t.role === 'snare' || t.role === 'hat' || t.role === 'bass' || t.role === 'lead')
-        this.spawnProjectile(t.role, this.aimDir(SPLIT_SPREAD), conf, color, v);
-      else if (t.role === 'cowbell') this.spawnRicochet(this.aimDir(SPLIT_SPREAD), conf, color, v);
-      else if (t.role === 'arp') this.spawnOrbiter(conf, color, v);
-      // tom/zap already boosted via conf.count/strikes; other roles ineligible.
-    }
-
-    // ---- bloom: instant AoE weapons leave a residual damaging zone ----
-    if (effect === 'bloom' && (t.role === 'kick' || t.role === 'clap' || t.role === 'crash')) {
-      const cx = t.role === 'clap' ? p.x + this.aimDir(0).x * (conf.radius! * 0.5) : p.x;
-      const cy = t.role === 'clap' ? p.y + this.aimDir(0).y * (conf.radius! * 0.5) : p.y;
-      this.spawnZone(
-        cx,
-        cy,
-        { damage: conf.damage * BLOOM_RESIDUAL_DMG_MUL, radius: conf.radius, lifetimeS: BLOOM_RESIDUAL_LIFES },
-        color,
-        t.role,
-      );
     }
   }
 
@@ -689,45 +630,9 @@ export class RunWorld {
     this.tiers.delete(role);
   }
 
-  /** Slot an effect onto a weapon (Feature 4). The audio chain is wired by
-   *  the engine on the live path; the gameplay twin reads this map. */
-  attachEffect(role: Role, effect: EffectId): void {
-    this.effects.set(role, effect);
-    this.spawnRing(this.player.x, this.player.y, 200, KIT_COLORS[role], 0.5);
-  }
-
-  /** Add or raise an item (Feature 5), recomputing the global mod bag. */
-  addItem(id: ItemId, level: number): void {
-    this.items.set(id, level);
-    this.recomputeMods();
-    this.spawnRing(this.player.x, this.player.y, 220, 0xffffff, 0.6);
-  }
-
-  /** Sandbox parity: drop an item entirely. */
-  removeItem(id: ItemId): void {
-    this.items.delete(id);
-    this.recomputeMods();
-  }
-
-  /** Rebuild the global multiplier bag from owned items — order-independent,
-   *  pure, headless-safe (no rng, no fx). */
-  private recomputeMods(): void {
-    const m: Mods = { ...BASE_MODS };
-    for (const [id, lvl] of this.items) ITEMS[id].contribute(m, lvl);
-    this.mods = m;
-  }
-
-  /** The single build-transform pipeline (D1): tempo power, then global item
-   *  mods, then this weapon's effect. Nothing else multiplies weapon numbers. */
-  private applyBuild(conf: WeaponConf, effect: EffectId | null, usesPierce: boolean): WeaponConf {
-    const m = this.mods;
-    const out: WeaponConf = { ...conf, damage: conf.damage * this.powerMul * m.damageMul };
-    if (out.radius !== undefined) out.radius *= m.areaMul;
-    if (out.lifetimeS !== undefined) out.lifetimeS *= m.durMul;
-    if (out.speed !== undefined) out.speed *= m.projSpeedMul;
-    if (out.orbitRadius !== undefined) out.orbitRadius *= m.areaMul;
-    if (effect) return applyEffectConf(out, effect, usesPierce);
-    return out;
+  /** The only global weapon transform: fixed-tempo power compensation. */
+  private applyBuild(conf: WeaponConf): WeaponConf {
+    return { ...conf, damage: conf.damage * this.powerMul };
   }
 
   /** Push an enemy away from a point (Feature 3), sharing the crash knock
@@ -739,18 +644,6 @@ export class RunWorld {
     e.knockX = (dx / d) * (dist / SHOVE_S);
     e.knockY = (dy / d) * (dist / SHOVE_S);
     e.knockT = Math.max(e.knockT, SHOVE_S);
-  }
-
-  /** Fire due echo re-fires (Feature 4). Drained in queue order, gated by
-   *  timeS (fixed-step in bot/replay), so it stays deterministic. */
-  private drainEchoes(): void {
-    if (this.echoQueue.length === 0) return;
-    const still: typeof this.echoQueue = [];
-    for (const e of this.echoQueue) {
-      if (this.timeS >= e.fireAtS) this.fireWeapon(e.t, null, ECHO_DAMAGE_MUL);
-      else still.push(e);
-    }
-    this.echoQueue = still;
   }
 
   update(dt: number): void {
@@ -769,9 +662,6 @@ export class RunWorld {
     this.hash.clear();
     for (const e of this.enemies) this.hash.insert(e);
 
-    // Echo re-fires run against the fresh hash, before enemies move.
-    this.drainEchoes();
-
     this.moveEnemies(dt);
     this.recycleEnemies();
     this.updateProjectiles(dt);
@@ -781,36 +671,6 @@ export class RunWorld {
     this.updateGems(dt);
     this.contactDamage(dt);
 
-    // Item passives: regen and the reactive Drop nova (Feature 5). Inert until
-    // items are owned (regenPerS 0, dropEnabled false). No rng — deterministic.
-    if (this.mods.regenPerS > 0 && this.player.hp > 0)
-      this.player.hp = Math.min(RUN.playerHp, this.player.hp + this.mods.regenPerS * dt);
-
-    this.dropCdT -= dt;
-    if (
-      this.mods.dropEnabled &&
-      this.dropCdT <= 0 &&
-      this.player.hp > 0 &&
-      this.player.hp <= RUN.playerHp * this.mods.dropThreshold
-    ) {
-      this.dropCdT = this.mods.dropCooldownS;
-      const p = this.player;
-      this.shocks.push({
-        x: p.x,
-        y: p.y,
-        radius: 12,
-        maxRadius: this.mods.dropRadius,
-        speed: 640,
-        damage: this.mods.dropDamage,
-        knockback: this.mods.dropKnockback,
-        color: 0xffffff,
-        hit: new Set(),
-      });
-      this.spawnRing(p.x, p.y, this.mods.dropRadius, 0xffffff, 0.5);
-      const near = this.hash.query(p.x, p.y, this.mods.dropRadius, this.queryBuf);
-      for (const e of near) if (!e.dead) e.slowT = Math.max(e.slowT, 0.8);
-    }
-
     this.reapEnemies();
   }
 
@@ -818,8 +678,8 @@ export class RunWorld {
 
   private movePlayer(dt: number): void {
     const a = this.control();
-    this.player.x += a.x * RUN.playerSpeed * this.mods.moveMul * dt;
-    this.player.y += a.y * RUN.playerSpeed * this.mods.moveMul * dt;
+    this.player.x += a.x * RUN.playerSpeed * dt;
+    this.player.y += a.y * RUN.playerSpeed * dt;
     // Riser's auto-dash surge: a short extra velocity along the locked dash
     // direction, on top of normal input. Deterministic (timeS-stepped), so the
     // bot rides it too.
@@ -838,9 +698,7 @@ export class RunWorld {
     const near = this.hash.query(p.x, p.y, p.radius + 40, this.queryBuf);
     for (const e of near) {
       if (e.dead || !circlesOverlap(p, e)) continue;
-      // Limiter mitigates but never immunizes: floor 1 keeps the AFK-death
-      // pillar. contactTakenMul===1 and integer e.damage>=10 -> identical.
-      const dmg = Math.max(1, Math.round(e.damage * this.mods.contactTakenMul));
+      const dmg = Math.max(1, Math.round(e.damage));
       p.hp = Math.max(0, p.hp - dmg);
       p.iframesT = RUN.iframesS;
       this.events.onHit();
@@ -853,25 +711,42 @@ export class RunWorld {
 
   // ---- enemies ----
 
-  /** The spawn Director (replaces the ramp + WAVES): drain every due beat,
-   *  then trickle steady spawns from the current rate + weighted mix. */
+  /** Drain every due Director beat, then refill regular enemies only while
+   *  their authored target is undersupplied. A lower target is a real
+   *  breather: fractional carry is discarded rather than banked for later. */
   private runDirector(dt: number): void {
     while (this.dirIdx < SPAWN_DIRECTOR.length && this.timeS >= SPAWN_DIRECTOR[this.dirIdx].atS) {
       const b = SPAWN_DIRECTOR[this.dirIdx++];
       if ('set' in b) {
-        this.curRate = b.set.rate;
+        this.curTargetAlive = b.set.targetAlive;
+        this.curRefillRate = b.set.refillRate;
         this.curMix = Object.entries(b.set.mix) as Array<[EnemyKind, number]>;
         this.curMixTotal = this.curMix.reduce((s, [, w]) => s + w, 0);
+        this.spawnCarry = 0;
       } else {
         this.fireFormation(b.event.formation, b.event.kind, b.event.count);
       }
     }
-    if (this.curMixTotal > 0 && this.enemies.length < ENEMIES.maxAlive) {
-      this.spawnCarry += this.curRate * dt;
-      while (this.spawnCarry >= 1) {
+
+    let regularAlive = 0;
+    for (const e of this.enemies) if (!e.dead && e.kind !== 'elite') regularAlive++;
+    if (
+      this.curMixTotal > 0 &&
+      regularAlive < this.curTargetAlive &&
+      this.enemies.length < ENEMIES.maxAlive
+    ) {
+      this.spawnCarry += this.curRefillRate * dt;
+      while (
+        this.spawnCarry >= 1 &&
+        regularAlive < this.curTargetAlive &&
+        this.enemies.length < ENEMIES.maxAlive
+      ) {
         this.spawnCarry -= 1;
         this.spawnEnemy(this.rollMixKind());
+        regularAlive++;
       }
+    } else {
+      this.spawnCarry = 0;
     }
   }
 
@@ -886,18 +761,29 @@ export class RunWorld {
     return this.curMix[0][0];
   }
 
-  /** Fire a formation once: ring (all sides), surge (one arc), pincer (two
-   *  opposite arcs), elite (bounded count from random angles). */
+  /** Fire a formation once: ring (all sides), surge (one distant arc), pincer
+   *  (two close, high-stakes telegraphed arcs), elite (bounded random angles).
+   *  Pincer Darters hit harder because their authored tell is the dodge test. */
   private fireFormation(f: Formation, kind: EnemyKind, count: number): void {
     if (f === 'ring') this.spawnRingOf(kind, count);
     else if (f === 'surge') this.spawnSurgeOf(kind, count);
     else if (f === 'pincer') {
       const base = this.rng() * Math.PI * 2;
       const half = Math.ceil(count / 2);
-      for (let i = 0; i < half; i++)
-        this.spawnEnemy(kind, base + (this.rng() * 2 - 1) * 0.45, 1 + this.rng() * 0.5, true);
-      for (let i = 0; i < count - half; i++)
-        this.spawnEnemy(kind, base + Math.PI + (this.rng() * 2 - 1) * 0.45, 1 + this.rng() * 0.5, true);
+      for (let i = 0; i < half; i++) {
+        const e = this.spawnEnemy(kind, base + (this.rng() * 2 - 1) * 0.45, 0.2 + this.rng() * 0.02, true);
+        if (e?.kind === 'darter') {
+          e.recoveryT = 0;
+          e.damage = Math.round(e.damage * 1.5);
+        }
+      }
+      for (let i = 0; i < count - half; i++) {
+        const e = this.spawnEnemy(kind, base + Math.PI + (this.rng() * 2 - 1) * 0.45, 0.2 + this.rng() * 0.02, true);
+        if (e?.kind === 'darter') {
+          e.recoveryT = 0;
+          e.damage = Math.round(e.damage * 1.5);
+        }
+      }
     } else {
       // elite
       for (let i = 0; i < count; i++) this.spawnEnemy(kind, this.rng() * Math.PI * 2, 1, true);
@@ -925,17 +811,17 @@ export class RunWorld {
     }
   }
 
-  spawnEnemy(kind: EnemyKind, angle?: number, distMul = 1, wave = false): void {
-    if (this.enemies.length >= (wave ? MAX_ALIVE_HARD : ENEMIES.maxAlive)) return;
+  spawnEnemy(kind: EnemyKind, angle?: number, distMul = 1, wave = false): Enemy | null {
+    if (this.enemies.length >= (wave ? MAX_ALIVE_HARD : ENEMIES.maxAlive)) return null;
     const a = angle ?? this.rng() * Math.PI * 2;
     const dist = this.spawnDist(ENEMIES[kind].radius) * distMul;
-    this.pushEnemy(kind, this.player.x + dcos(a) * dist, this.player.y + dsin(a) * dist);
+    return this.pushEnemy(kind, this.player.x + dcos(a) * dist, this.player.y + dsin(a) * dist);
   }
 
   /** Construct one enemy at (x,y) with per-kind state, guarded by the hard
    *  cap so splitter cascades never run away. Children reuse this directly. */
-  private pushEnemy(kind: EnemyKind, x: number, y: number): void {
-    if (this.enemies.length >= MAX_ALIVE_HARD) return;
+  private pushEnemy(kind: EnemyKind, x: number, y: number): Enemy | null {
+    if (this.enemies.length >= MAX_ALIVE_HARD) return null;
     const conf = ENEMIES[kind];
     // Scaling over the run: HP opposes the build's growth curve, contact
     // damage creeps so late hits stay scary, and the visual band says how
@@ -945,7 +831,7 @@ export class RunWorld {
     const s = enemyScaling(t / RUN.durationS, kind);
     const radius = conf.radius * ENEMY_BANDS.sizeMul[s.band];
     const color = ENEMY_BANDS.colors[kind][s.band];
-    this.enemies.push({
+    const enemy: Enemy = {
       kind,
       x,
       y,
@@ -964,16 +850,16 @@ export class RunWorld {
       dashX: 0,
       dashY: 0,
       dashing: false,
+      windupT: 0,
+      recoveryT: kind === 'darter' ? DARTER.pauseS : 0,
       slowT: 0,
       frozenT: 0,
       knockX: 0,
       knockY: 0,
       knockT: 0,
-      // shield pool scales with hp; circler picks an orbit direction.
-      shieldHp: kind === 'shielded' ? conf.hp * s.hpMul * SHIELDED.shieldMul : 0,
-      spin: kind === 'circler' ? (this.rng() < 0.5 ? 1 : -1) : 0,
-      windupT: 0,
-    });
+    };
+    this.enemies.push(enemy);
+    return enemy;
   }
 
   /** Splitter death: burst into a knot of children around the corpse. */
@@ -1019,24 +905,35 @@ export class RunWorld {
       }
 
       if (e.kind === 'darter') {
-        // Straight bursts: lock onto the player's position, dash flat out,
-        // stop dead, re-aim, dash again. Threat is the dodge, not the chase.
-        e.dashT -= dt;
-        if (e.dashT <= 0) {
-          e.dashing = !e.dashing;
-          if (e.dashing) {
-            const dd = Math.hypot(p.x - e.x, p.y - e.y) || 1;
-            e.dashX = (p.x - e.x) / dd;
-            e.dashY = (p.y - e.y) / dd;
-            e.dashT = DARTER.dashS;
-          } else {
-            e.dashT = DARTER.pauseS;
-          }
-        }
+        // Rest -> visible locked-direction tell -> straight dash. The tell is
+        // gameplay state (the view swells/tints it), so muted play stays fair.
         if (e.dashing) {
+          e.dashT -= dt;
           e.x += e.dashX * speed * dt;
           e.y += e.dashY * speed * dt;
+          if (e.dashT <= 0) {
+            e.dashing = false;
+            e.recoveryT = DARTER.pauseS;
+          }
+          continue;
         }
+        if (e.windupT > 0) {
+          e.windupT -= dt;
+          if (e.windupT <= 0) {
+            e.dashing = true;
+            e.dashT = DARTER.dashS;
+          }
+          continue;
+        }
+        if (e.recoveryT > 0) {
+          e.recoveryT -= dt;
+          continue;
+        }
+        const dd = Math.hypot(p.x - e.x, p.y - e.y) || 1;
+        e.dashX = (p.x - e.x) / dd;
+        e.dashY = (p.y - e.y) / dd;
+        e.windupT = DARTER.tellS;
+        this.spawnRing(e.x, e.y, e.radius * 2, e.color, DARTER.tellS, true);
         continue;
       }
 
@@ -1048,46 +945,36 @@ export class RunWorld {
           e.dashT -= dt;
           e.x += e.dashX * CHARGER.dashSpeed * dt;
           e.y += e.dashY * CHARGER.dashSpeed * dt;
-          if (e.dashT <= 0) e.dashing = false; // recover -> approach
+          if (e.dashT <= 0) {
+            e.dashing = false;
+            e.recoveryT = CHARGER.recoveryS;
+          }
           continue;
         }
         if (e.windupT > 0) {
           e.windupT -= dt;
           if (e.windupT <= 0) {
-            const dd = Math.hypot(p.x - e.x, p.y - e.y) || 1;
-            e.dashX = (p.x - e.x) / dd;
-            e.dashY = (p.y - e.y) / dd;
             e.dashing = true;
             e.dashT = CHARGER.dashS;
           }
           continue;
         }
+        if (e.recoveryT > 0) {
+          e.recoveryT -= dt;
+          continue;
+        }
         const cd = Math.hypot(p.x - e.x, p.y - e.y);
         if (cd < CHARGER.triggerRange) {
+          // Lock the lane at tell start, so the silhouette points down the
+          // exact path the player needs to dodge.
+          const dd = cd || 1;
+          e.dashX = (p.x - e.x) / dd;
+          e.dashY = (p.y - e.y) / dd;
           e.windupT = CHARGER.windupS;
-          this.spawnRing(e.x, e.y, e.radius * 2.4, e.color, 0.4); // cosmetic telegraph
+          this.spawnRing(e.x, e.y, e.radius * 2.4, e.color, CHARGER.windupS);
           continue;
         }
         // else fall through to default chase at e.speed
-      }
-
-      if (e.kind === 'circler') {
-        // Orbit-and-harass: blend a radial pull toward the orbit radius with a
-        // tangent sweep (spin ±1). Contact damage is handled when it brushes.
-        const dx = p.x - e.x;
-        const dy = p.y - e.y;
-        const d = Math.hypot(dx, dy) || 1;
-        const ux = dx / d;
-        const uy = dy / d;
-        const radial = Math.max(-1, Math.min(1, (d - CIRCLER.orbitR) / CIRCLER.orbitR));
-        const tx = -uy * e.spin;
-        const ty = ux * e.spin;
-        const mx = ux * radial + tx * (1 - Math.abs(radial) * 0.5);
-        const my = uy * radial + ty * (1 - Math.abs(radial) * 0.5);
-        const m = Math.hypot(mx, my) || 1;
-        e.x += (mx / m) * speed * dt;
-        e.y += (my / m) * speed * dt;
-        continue;
       }
 
       let dx = p.x - e.x;
@@ -1119,11 +1006,13 @@ export class RunWorld {
     }
   }
 
-  private damageEnemy(e: Enemy, amount: number, source?: Role): void {
+  private damageEnemy(e: Enemy, amount: number, source?: Role, bypassBrace = false): void {
     if (e.dead) return;
-    // Distortion crit (Feature 5). Guarded: with critChance 0 no rng is
-    // consumed, so pre-item replays stay bit-identical.
-    if (this.mods.critChance > 0 && this.rng() < this.mods.critChance) amount *= this.mods.critMul;
+    // A Darter's warm swell is a real commitment window: once it starts its
+    // very short tell it braces through the dash, then becomes vulnerable
+    // during the long recovery. This prevents close pincer waves from being
+    // erased by passive aura damage before a stationary player has to dodge.
+    if (!bypassBrace && e.kind === 'darter' && (e.windupT > 0 || e.dashing)) return;
     // Floating damage number (view-only; fx is null headless). Weapon-colored,
     // rounded; sub-1 ticks and instakills (Infinity) don't get a number.
     if (this.fx && Number.isFinite(amount)) {
@@ -1137,19 +1026,8 @@ export class RunWorld {
           color: source ? KIT_COLORS[source] : 0xcfd2e0,
         });
     }
-    // Shielded: a shield pool absorbs damage before hp. Attribution stays
-    // honest — absorbed damage is counted once here, hp damage once below.
-    if (e.shieldHp > 0) {
-      const before = e.shieldHp;
-      e.shieldHp = Math.max(0, before - amount);
-      const absorbed = before - e.shieldHp;
-      if (source) this.damageByRole[source] = (this.damageByRole[source] ?? 0) + absorbed;
-      e.flashT = 0.08;
-      amount -= absorbed;
-      if (amount <= 0) return; // shield held
-    }
-    // Effective damage only: overkill on a 3hp swarmer must not count as a
-    // 34-damage contribution, or AoE sweeps inflate their share.
+    // Effective damage only: overkill on a small swarmer must not count as a
+    // full heavy hit, or AoE sweeps inflate their share.
     const dealt = Math.min(e.hp, amount);
     e.hp -= amount;
     e.flashT = 0.08;
@@ -1206,7 +1084,7 @@ export class RunWorld {
         Math.abs(e.x - this.player.x) < this.worldW / 2 &&
         Math.abs(e.y - this.player.y) < this.worldH / 2
       ) {
-        this.damageEnemy(e, Infinity);
+        this.damageEnemy(e, Infinity, undefined, true);
       }
     }
   }
@@ -1692,6 +1570,16 @@ export class RunWorld {
     source: Role,
     opts: { slow?: boolean; pull?: number; mine?: boolean } = {},
   ): void {
+    const capByTier = ZONE_CAPS[source];
+    if (capByTier) {
+      const tier = this.tiers.get(source) ?? 1;
+      const cap = capByTier[Math.max(0, Math.min(capByTier.length - 1, tier - 1))];
+      const owned = this.zones.filter((zone) => zone.source === source).length;
+      if (owned >= cap) {
+        const oldest = this.zones.findIndex((zone) => zone.source === source);
+        if (oldest >= 0) this.zones.splice(oldest, 1);
+      }
+    }
     this.zones.push({
       x,
       y,
@@ -1849,13 +1737,13 @@ export class RunWorld {
       const dx = p.x - g.x;
       const dy = p.y - g.y;
       const d = Math.hypot(dx, dy);
-      if (d < RUN.magnetRadius * this.mods.magnetMul) {
+      if (d < RUN.magnetRadius) {
         const pull = 420 * dt;
         g.x += (dx / (d || 1)) * pull;
         g.y += (dy / (d || 1)) * pull;
       }
       if (d < RUN.pickupRadius) {
-        this.xp += Math.round(g.xp * this.mods.xpMul);
+        this.xp += g.xp;
         this.gems.splice(i, 1);
         this.checkLevel();
       }
@@ -1863,6 +1751,10 @@ export class RunWorld {
   }
 
   private checkLevel(): void {
+    if (this.level >= MAX_BUILD_LEVEL) {
+      this.xp = 0;
+      return;
+    }
     const threshold = RUN.xpCurve[Math.min(this.level - 1, RUN.xpCurve.length - 1)];
     if (this.xp >= threshold) {
       this.xp -= threshold;
@@ -1873,6 +1765,7 @@ export class RunWorld {
 
   /** XP progress toward the next level, 0..1, for the HUD bar. */
   xpProgress(): number {
+    if (this.level >= MAX_BUILD_LEVEL) return 0;
     const threshold = RUN.xpCurve[Math.min(this.level - 1, RUN.xpCurve.length - 1)];
     return Math.min(1, this.xp / threshold);
   }

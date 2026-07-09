@@ -1,7 +1,7 @@
 // Entry. The game is the default; the rehearsal room lives at #rehearsal.
 // Both are driven by the same engine.
 
-import { buildKits } from './audio/kits';
+import { buildSoundsetKit } from './audio/kits/index';
 import { MusicEngine } from './audio/engine';
 import * as charts from './audio/chartstore';
 import { SKELETON } from './audio/scale';
@@ -15,10 +15,14 @@ async function boot(): Promise<void> {
   const root = document.getElementById('app')!;
   root.textContent = 'rendering kits…';
 
-  const kits = await buildKits(SKELETON.rootHz);
+  // Build only the twelve voices in the active House catalog. The larger
+  // legacy synthesis library remains an offline prototype toolbox, but it no
+  // longer delays every game boot by rendering unavailable instruments.
+  const kits = await buildSoundsetKit(SKELETON.rootHz);
   // Created suspended until a user gesture; the first click resumes it.
   const ctx = new AudioContext({ latencyHint: 'interactive' });
   const engine = new MusicEngine(ctx, kits);
+  await engine.ready;
 
   // Mobile browsers suspend or interrupt the context on tab switches and
   // ring-switch events; any touch afterwards brings the sound back.

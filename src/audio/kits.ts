@@ -1139,7 +1139,7 @@ export const ROLE_META: Record<Role, RoleMeta> = {
   rimshot: { name: 'Rimshot', color: '#ff8f5e', pitched: false, choke: false, variants: ['rimshot'] },
   heartbeat: { name: 'Heartbeat', color: '#ff7a9c', pitched: false, choke: true, variants: ['heartbeat'] },
   shaker: { name: 'Shaker', color: '#7be0d0', pitched: false, choke: false, variants: ['shaker'] },
-  acid: { name: 'Acid', color: '#b6ff5a', pitched: true, choke: false, variants: ['acid'] },
+  acid: { name: 'Acid Bass', color: '#b6ff5a', pitched: true, choke: false, variants: ['acid'] },
   pluck: { name: 'Pluck Bass', color: '#8f7bff', pitched: true, choke: true, variants: ['pluck'] },
   rhodes: { name: 'Rhodes', color: '#5ad1ff', pitched: true, choke: false, variants: ['rhodes'] },
   ride: { name: 'Ride', color: '#9fe8ff', pitched: false, choke: true, variants: ['ride'] },
@@ -1147,7 +1147,7 @@ export const ROLE_META: Record<Role, RoleMeta> = {
   reese: { name: 'Reese', color: '#6a4fd0', pitched: true, choke: true, variants: ['reese'] },
   choir: { name: 'Choir Pad', color: '#c7f0d8', pitched: true, choke: true, variants: ['choir'] },
   bell: { name: 'Bell', color: '#ffd76b', pitched: true, choke: false, variants: ['bell'] },
-  whistle: { name: 'Whistle', color: '#ff9ecb', pitched: true, choke: false, variants: ['whistle'] },
+  whistle: { name: 'Vocal Chop', color: '#ff9ecb', pitched: true, choke: false, variants: ['whistle'] },
 };
 
 /** Load a real sample file and decode it. The files are pre-corrected at build

@@ -13,7 +13,7 @@
 // chord roots 0/5/7) owns the theory so nothing can clash.
 
 import { TIER_COUNT, validateChart } from './charts';
-import { ROLES, type Role } from './kits';
+import { ROLE_META, type Role } from './kits';
 import { SOUNDSET_LADDERS } from './ladders/house';
 import type { Chart } from './charts';
 
@@ -31,9 +31,9 @@ export interface Soundset {
 }
 
 export const SOUNDSET: Soundset = {
-  bpm: 122,
-  swing: 0.06,
-  powerMul: 0.9,
+  bpm: 120,
+  swing: 0.04,
+  powerMul: 1,
   ladders: SOUNDSET_LADDERS,
 };
 
@@ -44,14 +44,33 @@ export const SOUNDSET: Soundset = {
 // enable).
 // ---------------------------------------------------------------------------
 
-/** The roles the soundset is built around, in canonical ROLES order. */
+/** The complete active catalog. Old Role values stay available to dormant
+ * prototypes, but only these twelve can be offered, voiced, or charted. */
+export const ACTIVE_ROLES = [
+  'kick',
+  'clap',
+  'hat',
+  'rimshot',
+  'shaker',
+  'crash',
+  'bass',
+  'acid',
+  'chord',
+  'rhodes',
+  'lead',
+  'whistle',
+] as const satisfies readonly Role[];
+
+const ACTIVE_ROLE_SET: ReadonlySet<Role> = new Set<Role>(ACTIVE_ROLES);
+
+/** The roles the soundset is built around, in stable catalog order. */
 export function supportedRoles(): Role[] {
-  return ROLES.filter((r) => SOUNDSET.ladders[r] !== undefined);
+  return [...ACTIVE_ROLES];
 }
 
 /** Whether the soundset voices/offers a given role. */
 export function soundsetSupports(role: Role): boolean {
-  return SOUNDSET.ladders[role] !== undefined;
+  return ACTIVE_ROLE_SET.has(role);
 }
 
 // Playability floor (Pillar 3: the game must be a good survivors-like muted).
@@ -61,10 +80,10 @@ export function soundsetSupports(role: Role): boolean {
 // SLOT_ROSTER); this file stays free of a runtime import of band.ts to avoid a
 // cycle.
 const FLOOR_GROUPS: { label: string; anyOf: Role[] }[] = [
-  { label: 'a beat (Pulse)', anyOf: ['kick', 'tom', 'heartbeat'] },
-  { label: 'a low end (Bass)', anyOf: ['bass', 'pluck', 'reese'] },
-  { label: 'a tick (Hats)', anyOf: ['hat', 'shaker', 'ride'] },
-  { label: 'a melodic voice (Harmony/Melody)', anyOf: ['chord', 'rhodes', 'choir', 'lead', 'bell', 'whistle'] },
+  { label: 'a beat (Pulse)', anyOf: ['kick'] },
+  { label: 'a low end (Bass)', anyOf: ['bass', 'acid'] },
+  { label: 'a tick (Hats)', anyOf: ['hat'] },
+  { label: 'a melodic voice (Harmony/Melody)', anyOf: ['chord', 'rhodes', 'lead', 'whistle'] },
 ];
 
 // Guard the soundset's track at build time: a bad shipped chart is a build
@@ -73,8 +92,14 @@ const FLOOR_GROUPS: { label: string; anyOf: Role[] }[] = [
 // clear.
 {
   const supported = new Set(supportedRoles());
-  if (supported.size === 0) {
-    throw new Error('soundset: supports no instruments');
+  const charted = Object.keys(SOUNDSET.ladders) as Role[];
+  const missing = ACTIVE_ROLES.filter((role) => SOUNDSET.ladders[role] === undefined);
+  const extra = charted.filter((role) => !supported.has(role));
+  if (missing.length > 0 || extra.length > 0) {
+    throw new Error(
+      `soundset: catalog/ladder mismatch (missing: ${missing.join(', ') || 'none'}; ` +
+        `extra: ${extra.join(', ') || 'none'})`,
+    );
   }
   for (const role of supported) {
     const ladder = SOUNDSET.ladders[role]!;
@@ -86,6 +111,11 @@ const FLOOR_GROUPS: { label: string; anyOf: Role[] }[] = [
         throw new Error(`soundset: ${role} ladder holds a ${chart.role} chart`);
       }
       validateChart(chart);
+      for (const event of chart.events) {
+        if (event.variant && !ROLE_META[role].variants.includes(event.variant)) {
+          throw new Error(`soundset: ${role} chart references unknown variant ${event.variant}`);
+        }
+      }
     }
   }
   for (const group of FLOOR_GROUPS) {

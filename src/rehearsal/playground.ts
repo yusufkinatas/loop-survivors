@@ -11,7 +11,8 @@
 import { MusicEngine } from '../audio/engine';
 import type { Chart, ChartEvent } from '../audio/charts';
 import { getChart, isEdited, resetChart, saveChart } from '../audio/chartstore';
-import { ROLES, type Role, type Kit } from '../audio/kits';
+import { type Role, type Kit } from '../audio/kits';
+import { supportedRoles } from '../audio/soundset';
 import { STEPS_PER_BAR, STEPS_PER_PHRASE } from '../audio/scale';
 
 export interface PlaygroundOptions {
@@ -98,7 +99,7 @@ export function mountPlayground(
     return node;
   };
 
-  for (const role of ROLES) {
+  for (const role of supportedRoles()) {
     const voice = engine.voices.get(role)!;
     const sec = el('div', 'pg-section', root);
     sec.style.setProperty('--voice-color', voice.kit.color);

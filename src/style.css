@@ -546,7 +546,7 @@ input[type='range'] {
   position: absolute;
   top: max(12px, env(safe-area-inset-top));
   left: max(12px, env(safe-area-inset-left));
-  width: 264px;
+  width: 200px;
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
@@ -795,8 +795,62 @@ input[type='range'] {
   color: var(--signal);
 }
 
-/* The one shared card: a raised panel with a top accent stripe. Used by the
-   start/genre/pick/effect/item screens; --voice-color is the per-card accent. */
+.start-secondary {
+  display: flex;
+  justify-content: center;
+  margin-top: calc(var(--sp-2) * -1);
+}
+
+.start-dev-tools {
+  width: min(540px, 92vw);
+  color: var(--ink-dim);
+}
+
+.start-dev-summary {
+  width: max-content;
+  margin: 0 auto;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  color: var(--ink-faint);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  list-style: none;
+}
+
+.start-dev-summary::-webkit-details-marker,
+.debug-summary::-webkit-details-marker {
+  display: none;
+}
+
+.start-dev-tools[open] .start-dev-summary {
+  color: var(--signal);
+  border-color: var(--signal-dim);
+}
+
+.start-dev-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-top: var(--sp-3);
+  padding: var(--sp-3);
+  background: rgba(16, 18, 24, 0.78);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.start-dev-links {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+/* The shared weapon-pick card: a raised panel with a top accent stripe;
+   --voice-color is the weapon accent. */
 .kit-card {
   position: relative;
   display: flex;
@@ -902,7 +956,7 @@ button.big {
    fades out. Purely informational: clicks pass through. */
 .toast-stack {
   position: absolute;
-  top: 70px;
+  top: max(126px, calc(env(safe-area-inset-top) + 112px));
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -951,14 +1005,46 @@ button.big {
   pointer-events: none;
 }
 
-.debug-row {
+.debug-panel {
   position: absolute;
   bottom: max(10px, env(safe-area-inset-bottom));
   right: max(12px, env(safe-area-inset-right));
+  z-index: 6;
+}
+
+.debug-summary {
+  list-style: none;
+  padding: 4px 9px;
+  color: var(--ink-faint);
+  background: rgba(16, 18, 24, 0.88);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+
+.debug-panel[open] .debug-summary {
+  color: var(--signal);
+  border-color: var(--signal-dim);
+}
+
+.debug-actions {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  width: max-content;
+  max-width: min(420px, 92vw);
   display: flex;
-  gap: 6px;
+  gap: 5px;
   flex-wrap: wrap;
   justify-content: flex-end;
+  padding: 7px;
+  background: rgba(16, 18, 24, 0.94);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
 /* Replay speed buttons: top-right, same look as the debug buttons. */
@@ -1047,6 +1133,14 @@ button.big {
   margin: 0;
   color: var(--ink-faint);
   font-size: var(--fs-body);
+}
+
+.pause-resume {
+  min-width: 140px;
+  border-color: var(--signal-dim);
+  color: var(--signal);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
 }
 
 .debug-btn {
@@ -1178,7 +1272,7 @@ button.big {
   padding: 1px 6px;
 }
 
-/* Slot group header in the loadout list — matches the band-rack order/naming. */
+/* Slot group header in the loadout list — matches the track-deck order/naming. */
 .sb-slot-head {
   color: var(--ink);
   font-size: 10px;
@@ -1192,23 +1286,6 @@ button.big {
   color: var(--ink-faint);
   font-size: 11px;
   margin-top: 6px;
-}
-
-/* the read-only chart overlay over the arena */
-/* Compact dock (gate B note: the old full-screen overlay hid the game).
- *  Bottom-left corner, capped height, translucent; the arena stays visible. */
-.chart-overlay {
-  position: absolute;
-  left: 12px;
-  bottom: 52px;
-  width: min(480px, 45vw);
-  max-height: 38vh;
-  overflow: auto;
-  background: rgba(16, 16, 20, 0.72);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 8px;
-  font-size: 11px;
 }
 
 .kill-row {
@@ -1256,7 +1333,8 @@ button.big {
 
 @media (max-width: 600px) {
   .hud {
-    width: 46vw;
+    left: max(6px, env(safe-area-inset-left));
+    width: 44vw;
     padding: var(--sp-2);
   }
 
@@ -1288,7 +1366,7 @@ button.big {
     font-size: 11px;
   }
 
-  .debug-row .small {
+  .debug-actions .small {
     font-size: 10px;
     padding: 2px 6px;
   }
@@ -1299,10 +1377,6 @@ button.big {
     font-size: 11px;
   }
 
-  .chart-overlay {
-    width: calc(100vw - 24px);
-    max-height: 34vh;
-  }
 }
 
 /* ---- track lab (M3 proof of concept) ---- */
@@ -1503,117 +1577,195 @@ button.big {
   }
 }
 
-/* ---- pick cards: effect + item kinds (Features 4, 5) ---- */
-/* Effect cards read as modifiers: dashed border + a ✦ after the name. Item
-   cards use "Lv N" text (set in hud.ts). Both reuse .kit-card + --voice-color;
-   the full Neon Rack reskin lands in a later stage. */
-.kit-card--effect {
-  border-style: dashed;
-}
-.kit-card--effect .kit-name::after {
-  content: ' ✦';
-  opacity: 0.7;
-}
-
-/* Owned-item strip, bottom-left. Inherits the Neon Rack glass tokens and
-   sits above the arena vignette. */
-.item-strip {
-  position: absolute;
-  left: max(8px, env(safe-area-inset-left));
-  bottom: max(8px, env(safe-area-inset-bottom));
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-1);
-  max-width: 40vw;
-  pointer-events: none;
-  z-index: 2;
-}
-.item-chip {
-  font: 11px/1 var(--font-mono);
-  letter-spacing: 0.04em;
-  padding: 4px 8px;
-  border-radius: var(--r-sm);
-  color: var(--voice-color);
-  border: 1px solid var(--line);
-  border-left: 2px solid var(--voice-color);
-  background: rgba(10, 11, 15, 0.82);
-  box-shadow: 0 0 12px -6px var(--voice-color);
-}
-
-/* The band rack (docs/phases/the-band.md): the VS-style build row of eight
-   typed sockets, top-center. Empty sockets ask to be filled; filled ones carry
-   the hired instrument's color, name, and tier as pips. */
-.band-rack {
+/* Compact live track deck (house-foundation-refactor): a fixed 4x2, never a
+   horizontally scrolling pattern editor. Each slot is stable on keys 1-8. */
+.track-deck {
   position: absolute;
   top: max(12px, env(safe-area-inset-top));
   left: 50%;
   transform: translateX(-50%);
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: var(--sp-1);
-  max-width: min(94vw, 720px);
+  width: min(344px, calc(100vw - 440px));
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
   pointer-events: none;
   z-index: 2;
 }
-.band-socket {
+
+.track-cell {
   --voice-color: var(--ink-faint);
+  min-width: 0;
+  min-height: 50px;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  width: 76px;
-  padding: 5px 4px 6px;
-  border: 1px solid var(--line);
-  border-top: 2px solid var(--voice-color);
-  border-radius: var(--r-sm);
-  background: rgba(10, 11, 15, 0.82);
-}
-.band-socket.empty {
-  border-style: dashed;
-  border-top-color: var(--line-2);
-  opacity: 0.6;
-}
-.band-socket.filled {
-  box-shadow: 0 0 12px -6px var(--voice-color);
-}
-/* A slot the active genre drops: dimmed, no fill affordance. */
-.band-socket.unavailable {
-  border-style: dashed;
-  border-top-color: var(--line);
-  opacity: 0.28;
-}
-.socket-slot {
-  font: 700 9px/1 var(--font-mono);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--ink-faint);
-}
-.band-socket.filled .socket-slot {
+  gap: 4px;
+  padding: 5px 6px;
+  overflow: hidden;
   color: var(--ink-dim);
+  background: rgba(10, 11, 15, 0.86);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--voice-color);
+  border-radius: var(--r-sm);
+  text-align: left;
+  pointer-events: none;
+  transition:
+    opacity var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease);
 }
-.socket-name {
-  max-width: 68px;
+
+.track-cell.interactive {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.track-cell.interactive:hover {
+  background: rgba(23, 26, 34, 0.94);
+  border-color: var(--voice-color);
+}
+
+.track-cell.empty,
+.track-cell.unavailable {
+  border-style: dashed;
+  border-left-color: var(--line-2);
+  opacity: 0.42;
+}
+
+.track-cell.unavailable {
+  opacity: 0.24;
+}
+
+.track-head,
+.track-foot {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.track-head {
+  gap: 5px;
+}
+
+.track-key {
+  flex: 0 0 auto;
+  min-width: 15px;
+  padding: 1px 3px;
+  border: 1px solid var(--line-2);
+  border-radius: 3px;
+  color: var(--ink);
+  font: 700 9px/1 var(--font-mono);
+  text-align: center;
+}
+
+.track-slot {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font: 700 11px/1 var(--font-mono);
-  letter-spacing: 0.02em;
-  color: var(--voice-color);
+  color: var(--ink-faint);
+  font: 700 8px/1 var(--font-mono);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
 }
-.socket-pips {
+
+.track-trigger {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  margin-left: auto;
+  border-radius: 50%;
+  background: var(--line-2);
+}
+
+.track-name {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--voice-color);
+  font: 700 10px/1 var(--font-mono);
+}
+
+.track-cell.empty .track-name,
+.track-cell.unavailable .track-name {
+  color: var(--ink-faint);
+  font-weight: 400;
+}
+
+.track-foot {
+  min-height: 7px;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.track-pips {
   display: flex;
   gap: 3px;
 }
-.socket-pips .pip {
-  width: 5px;
-  height: 5px;
+
+.track-pips .pip {
+  width: 4px;
+  height: 4px;
   border-radius: 50%;
-  border: 1px solid color-mix(in srgb, var(--voice-color) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--voice-color) 48%, transparent);
 }
-.socket-pips .pip.on {
+
+.track-pips .pip.on {
   background: var(--voice-color);
-  box-shadow: 0 0 6px -1px var(--voice-color);
+  box-shadow: 0 0 5px -1px var(--voice-color);
+}
+
+.track-state {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-faint);
+  font: 700 7px/1 var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.track-cell.muted {
+  opacity: 0.42;
+  border-left-color: var(--ink-faint);
+}
+
+.track-cell.muted .track-name {
+  color: var(--ink-faint);
+  text-decoration: line-through;
+}
+
+.track-cell.mixed .track-state {
+  color: var(--warn);
+}
+
+.track-cell.pending {
+  outline: 1px dashed var(--warn);
+  outline-offset: -2px;
+}
+
+.track-cell.pending .track-state {
+  color: var(--warn);
+}
+
+.track-cell.firing .track-trigger {
+  animation: trackfire 0.28s ease-out;
+}
+
+@keyframes trackfire {
+  0% {
+    background: #fff;
+    box-shadow: 0 0 8px 2px var(--voice-color);
+    transform: scale(1.45);
+  }
+  100% {
+    background: var(--line-2);
+    box-shadow: none;
+    transform: scale(1);
+  }
 }
 
 /* Slot badge on a pick card: the plain player-facing band position this hire
@@ -1631,57 +1783,75 @@ button.big {
   background: rgba(10, 11, 15, 0.5);
 }
 
-/* Dev-only marker on a starting-instrument card whose voice is sample-backed
- *  for the genre — mirrors the sandbox loadout ★ custom badge. Bottom-right so
- *  it clears the top-left slot badge and top-right tier chip. */
-.kit-custom-badge {
-  position: absolute;
-  bottom: 8px;
-  right: 10px;
-  font: 700 9px/1 var(--font-mono);
-  letter-spacing: 0.08em;
-  color: var(--signal);
-  border: 1px solid color-mix(in srgb, var(--signal) 55%, transparent);
-  border-radius: var(--r-sm);
-  padding: 2px 5px;
-  background: rgba(10, 11, 15, 0.5);
-}
-
-/* The same rack, shown roomier while paused. */
-.pause-rack {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: var(--sp-2);
-  max-width: min(90vw, 760px);
+/* The pause copy stays 4x2 but is roomier and touch-friendly. */
+.pause-track-deck {
+  position: static;
+  width: min(520px, 92vw);
+  transform: none;
+  gap: 7px;
   margin: var(--sp-2) 0 var(--sp-3);
-}
-.pause-rack .band-socket {
-  width: 92px;
-  padding: 8px 6px 9px;
-}
-.pause-rack .socket-name {
-  max-width: 84px;
-  font-size: 12px;
+  z-index: auto;
 }
 
-/* Phones: shrink the rack to a compact slot+pip strip so it never covers the
-   arena or the HUD panel. */
-@media (max-width: 640px) {
-  .band-rack {
-    max-width: 96vw;
+.pause-track-deck .track-cell {
+  min-height: 58px;
+  padding: 7px 8px;
+}
+
+@media (max-width: 820px) {
+  .track-deck:not(.pause-track-deck) {
+    left: auto;
+    right: max(12px, env(safe-area-inset-right));
+    transform: none;
+    width: min(344px, 52vw);
+  }
+
+  .sandbox-panel {
+    top: 128px;
+    max-height: calc(100vh - 140px);
+  }
+
+  .replay-speed {
+    top: max(126px, calc(env(safe-area-inset-top) + 112px));
+  }
+}
+
+@media (max-width: 600px) {
+  .track-deck:not(.pause-track-deck) {
+    right: max(6px, env(safe-area-inset-right));
+    width: 50vw;
+    gap: 3px;
+  }
+
+  .track-cell {
+    min-height: 45px;
+    gap: 3px;
+    padding: 4px;
+  }
+
+  .track-key {
+    min-width: 13px;
+    font-size: 8px;
+  }
+
+  .track-slot {
+    font-size: 7px;
+    letter-spacing: 0.04em;
+  }
+
+  .track-name {
+    font-size: 9px;
+  }
+
+  .track-state {
+    font-size: 6px;
+  }
+
+  .track-pips {
     gap: 2px;
   }
-  .band-rack .band-socket {
-    width: 34px;
-    padding: 3px 2px 4px;
-  }
-  .band-rack .socket-name {
-    display: none;
-  }
-  .band-rack .socket-slot {
-    font-size: 8px;
-    letter-spacing: 0.06em;
+
+  .pause-track-deck {
+    width: 94vw;
   }
 }
-

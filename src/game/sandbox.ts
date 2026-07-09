@@ -5,18 +5,16 @@
 
 import type { MusicEngine } from '../audio/engine';
 import { supportedRoles } from '../audio/soundset';
-import { ROLES, ROLE_META, type Role } from '../audio/kits';
+import { ROLE_META, type Role } from '../audio/kits';
 import { sampledRoles } from '../audio/kits/index';
 import {
   supportedRoster,
   supportedSlots,
   SLOTS,
-  SLOT_ROSTER,
   SLOT_LABEL,
 } from './band';
 import { TIER_NUMERALS } from './hud';
 import { ENEMIES, enemyScaling, RUN, type EnemyKind } from './config';
-import { ITEM_IDS, ITEMS } from './items';
 import type { RunWorld } from './run';
 
 const ENEMY_KINDS: EnemyKind[] = [
@@ -25,8 +23,6 @@ const ENEMY_KINDS: EnemyKind[] = [
   'darter',
   'splitter',
   'charger',
-  'circler',
-  'shielded',
   'elite',
 ];
 
@@ -80,7 +76,7 @@ export function mountSandboxPanel(
     supportedRoster(slot)[0];
   bandBtn.onclick = () => {
     bandOn = !bandOn;
-    for (const role of ROLES) {
+    for (const role of supportedRoles()) {
       engine.setVoiceEnabled(role, false);
       world.removeWeapon(role);
     }
@@ -167,7 +163,7 @@ export function mountSandboxPanel(
   const customMarks: { role: Role; el: HTMLElement }[] = [];
   for (const slot of SLOTS) {
     el('div', 'sb-slot-head', panel, SLOT_LABEL[slot]);
-    for (const role of SLOT_ROSTER[slot]) {
+    for (const role of supportedRoster(slot)) {
       const voice = engine.voices.get(role)!;
       const row = el('div', 'sb-loadout', panel);
       row.style.setProperty('--voice-color', voice.kit.color);
@@ -215,38 +211,11 @@ export function mountSandboxPanel(
   }
   refreshCustom();
 
-  // ---- items editor: dial any passive to any level, applied instantly ----
-  el('div', 'sb-section', panel, 'items');
-  for (const id of ITEM_IDS) {
-    const def = ITEMS[id];
-    const row = el('div', 'sb-loadout', panel);
-    row.style.setProperty('--voice-color', def.color);
-    el('span', 'sb-loadout-name', row, def.name);
-    const btns = el('div', 'sb-btns', row);
-    const options: HTMLButtonElement[] = [];
-    const set = (level: number | null): void => {
-      if (level === null) world.removeItem(id);
-      else world.addItem(id, level);
-      options.forEach((b, i) => b.classList.toggle('on', level === null ? i === 0 : i === level));
-    };
-    const off = el('button', 'small off-btn', btns, '⏻') as HTMLButtonElement;
-    off.title = 'off';
-    off.onclick = () => set(null);
-    options.push(off);
-    for (let lvl = 1; lvl <= def.maxLevel; lvl++) {
-      const b = el('button', 'small', btns, String(lvl)) as HTMLButtonElement;
-      b.onclick = () => set(lvl);
-      options.push(b);
-    }
-    const current = world.items.get(id);
-    options.forEach((b, i) => b.classList.toggle('on', current === undefined ? i === 0 : i === current));
-  }
-
   el(
     'div',
     'sb-hint',
     panel,
-    'stage script off: nothing spawns by itself. O = perf overlay, C = chart overlay.',
+    'stage script off: nothing spawns by itself. O = performance overlay.',
   );
 
   return {

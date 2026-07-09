@@ -40,6 +40,14 @@ const PROC = {
 // empty; it stays as the generic download+correct pipeline for future kits.
 const MANIFEST = {};
 
+// The generic downloader is intentionally dormant. Do not replace the active
+// House health report with an empty file just because somebody followed an old
+// command from shell history.
+if (Object.keys(MANIFEST).length === 0) {
+  console.log('No generic sample manifest is active; run scripts/build-house-kit.mjs for the shipped House kit.');
+  globalThis.process.exit(0);
+}
+
 const ONSET_MAX_MS = 15;
 
 // Shared trim/silence filter (leading + trailing silence, hard length cap).
@@ -117,7 +125,7 @@ for (const [genre, roles] of Object.entries(MANIFEST)) {
   for (const [local, repoPath] of Object.entries(roles)) {
     const url = RAW + repoPath.split('/').map(encodeURIComponent).join('/');
     const res = await fetch(url);
-    if (!res.ok) { console.error(`FAIL ${genre}/${local}: ${res.status}`); process.exitCode = 1; continue; }
+    if (!res.ok) { console.error(`FAIL ${genre}/${local}: ${res.status}`); globalThis.process.exitCode = 1; continue; }
     // Keep the raw download ON DISK next to the corrected file (<role>.raw.wav)
     // as the ffmpeg input and a verbatim reference. These .raw.wav files are
     // audition-only; delete them once the developer signs off on the

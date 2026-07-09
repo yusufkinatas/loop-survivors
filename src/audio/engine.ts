@@ -11,7 +11,6 @@ import { SOUNDSET } from './soundset';
 import { SKELETON, STEPS_PER_BAR, STEPS_PER_PHRASE, semitonesToRate } from './scale';
 import type { Kit, Role } from './kits';
 import { buildSoundsetKit } from './kits/index';
-import { makeEffectNodes, type EffectId } from './voicefx';
 
 export interface Voice {
   role: Role;
@@ -24,6 +23,10 @@ export interface Voice {
   /** Sidechain node between gain and the output chain: the kick dips it on the
    *  bass voice so the two subs never stack (design rule 1). Unity otherwise. */
   duck: GainNode;
+  /** Development monitor mute. This silences a track without stopping its
+   *  scheduled gameplay triggers, so mix auditions do not alter a run. */
+  monitor: GainNode;
+  monitorMuted: boolean;
   /** Buffers actually triggered: the kit's own, or a sample set's applied
    *  over them. The kit stays pristine as the restore point. */
   activeSamples: Map<string, AudioBuffer>;
@@ -34,10 +37,6 @@ export interface Voice {
   override: AudioBuffer | null;
   /** The most recent trigger's nodes, so choked kits can cut it. */
   lastHit: { src: AudioBufferSourceNode; gain: GainNode } | null;
-  /** Per-voice sound effect (Feature 4), inserted between gain and master. */
-  effect: EffectId | null;
-  /** Current inserted effect nodes, kept for teardown. */
-  fxNodes: AudioNode[];
 }
 
 /** A trigger that has been scheduled. Dispatched to listeners by update()
@@ -67,11 +66,13 @@ const DUCK_ATTACK = 0.008;
 const DUCK_RELEASE = 0.14;
 // The Bass-slot sub-bass instruments the kick ducks. A build owns at most one
 // (they share the Bass slot), so this ducks whichever is present.
-const SUB_BASS_ROLES: readonly Role[] = ['bass', 'reese', 'pluck'];
+const SUB_BASS_ROLES: readonly Role[] = ['bass', 'acid'];
 
 export class MusicEngine {
   readonly ctx: AudioContext;
   readonly clock: Clock;
+  /** Resolves only after every active House voice has its final explicit kit. */
+  readonly ready: Promise<void>;
   /** Post-limiter tap: output metering for debug tools and, later, visuals. */
   readonly analyser: AnalyserNode;
   readonly voices = new Map<Role, Voice>();
@@ -101,13 +102,14 @@ export class MusicEngine {
     for (const [role, kit] of kits) {
       const gain = ctx.createGain();
       gain.gain.value = 1;
-      // gain -> duck -> master: the persistent duck node is unity except when
-      // the kick sidechains the bass (design rule 1). buildVoiceChain rewires
-      // duck's downstream when an effect is inserted; gain -> duck stays fixed.
+      // gain -> duck -> monitor -> master. Duck protects the low end; monitor
+      // is a dev-only audio mute that never suppresses gameplay triggers.
       const duck = ctx.createGain();
       duck.gain.value = 1;
+      const monitor = ctx.createGain();
+      monitor.gain.value = 1;
       gain.connect(duck);
-      duck.connect(this.master);
+      duck.connect(monitor).connect(this.master);
       // Voices start disabled at tier 1; the run enables and tiers them as the
       // player picks. The soundset decides what they play.
       this.voices.set(role, {
@@ -118,16 +120,16 @@ export class MusicEngine {
         enabled: false,
         gain,
         duck,
+        monitor,
+        monitorMuted: false,
         activeSamples: kit.samples,
         tune: 0,
         override: null,
         lastHit: null,
-        effect: null,
-        fxNodes: [],
       });
     }
 
-    this.clock = new Clock(ctx, SKELETON.bpm, SKELETON.stepsPerBeat, (step, time) =>
+    this.clock = new Clock(ctx, SOUNDSET.bpm, SKELETON.stepsPerBeat, (step, time) =>
       this.onStep(step, time),
     );
     // The soundset sets the tempo and swing, and its own voicing (real drum /
@@ -135,21 +137,21 @@ export class MusicEngine {
     // because nothing is playing yet.
     this.clock.bpm = SOUNDSET.bpm;
     this.clock.swing = SOUNDSET.swing;
-    void this.applySoundsetKit();
+    this.ready = this.applySoundsetKit();
   }
 
-  /** Swap every voice's active buffers to the soundset's own kit
-   *  (kits/index.ts), rendered once and cached. Async: the kit renders on first
-   *  use and the swap takes effect on each voice's next trigger. A role the
-   *  soundset kit does not cover keeps the default builtin buffers. */
+  /** Confirm every runtime voice against the exact active soundset kit. The
+   *  builder is cached, so main's startup render and this defensive check share
+   *  one promise and one set of buffers. */
   private async applySoundsetKit(): Promise<void> {
     const kit = await buildSoundsetKit(SKELETON.rootHz);
     for (const voice of this.voices.values()) {
       const k = kit.get(voice.role);
-      voice.activeSamples = k?.samples ?? voice.kit.samples;
+      if (!k) throw new Error(`[engine] runtime voice is outside the active catalog: ${voice.role}`);
+      voice.activeSamples = k.samples;
       // A sampled pitched voice carries a tune to align its recorded root to
       // the A reference; synth kits and drums are 0.
-      voice.tune = k?.tune ?? 0;
+      voice.tune = k.tune ?? 0;
     }
   }
 
@@ -185,59 +187,20 @@ export class MusicEngine {
     if (voice) voice.gain.gain.setTargetAtTime(value, this.ctx.currentTime, 0.02);
   }
 
-  /** Rewire a voice's output chain for its current effect: tear the old
-   *  effect nodes down and re-insert (or bypass) between gain and master.
-   *  The insertion point is strictly gain -> [effect] -> master; global
-   *  processing belongs on the master bus, not here. */
-  private buildVoiceChain(voice: Voice): void {
-    // The chain source is the duck node (gain -> duck is fixed); only duck's
-    // downstream is rewired here so the sidechain survives an effect swap.
-    voice.duck.disconnect();
-    for (const n of voice.fxNodes) {
-      try {
-        (n as OscillatorNode).stop?.();
-      } catch {
-        /* not an oscillator */
-      }
-      try {
-        n.disconnect();
-      } catch {
-        /* already disconnected */
-      }
-    }
-    voice.fxNodes = [];
-    if (!voice.effect) {
-      voice.duck.connect(this.master);
-      return;
-    }
-    const fx = makeEffectNodes(this.ctx, voice.effect);
-    voice.duck.connect(fx.input);
-    fx.output.connect(this.master);
-    voice.fxNodes = fx.nodes;
-  }
-
-  /** Assign/clear a voice's effect, click-free: dip the voice gain to ~0 over
-   *  12ms, swap the chain, ramp back. Rare (per level-up, at a bar boundary). */
-  setVoiceEffect(role: Role, effect: EffectId | null): void {
+  /** Dev-only track monitor. Call at a bar boundary for a musical transition. */
+  setVoiceMuted(role: Role, muted: boolean): void {
     const voice = this.voices.get(role);
-    if (!voice || voice.effect === effect) return;
-    const now = this.ctx.currentTime;
-    const cur = voice.gain.gain.value;
-    voice.gain.gain.cancelScheduledValues(now);
-    voice.gain.gain.setValueAtTime(cur, now);
-    voice.gain.gain.linearRampToValueAtTime(0.0001, now + 0.012);
-    setTimeout(() => {
-      voice.effect = effect;
-      this.buildVoiceChain(voice);
-      const t = this.ctx.currentTime;
-      voice.gain.gain.setValueAtTime(0.0001, t);
-      voice.gain.gain.linearRampToValueAtTime(cur, t + 0.012);
-    }, 20);
+    if (!voice || voice.monitorMuted === muted) return;
+    voice.monitorMuted = muted;
+    voice.monitor.gain.setTargetAtTime(muted ? 0.0001 : 1, this.ctx.currentTime, 0.012);
   }
 
-  /** Run reset: strip every voice back to the dry path (no effect leak). */
-  clearVoiceEffects(): void {
-    for (const r of this.voices.keys()) this.setVoiceEffect(r, null);
+  voiceMuted(role: Role): boolean {
+    return this.voices.get(role)?.monitorMuted ?? false;
+  }
+
+  clearVoiceMutes(): void {
+    for (const role of this.voices.keys()) this.setVoiceMuted(role, false);
   }
 
   /** Swap a voice's samples for a sample set's buffers (null restores the

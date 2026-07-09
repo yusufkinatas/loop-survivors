@@ -4,18 +4,16 @@
 
 import { Application } from 'pixi.js';
 import type { MusicEngine } from '../audio/engine';
-import { SOUNDSET } from '../audio/soundset';
-import { ROLES, type Kit, type Role } from '../audio/kits';
+import { SOUNDSET, supportedRoles } from '../audio/soundset';
+import { type Kit, type Role } from '../audio/kits';
 import { SIM_DT, VirtualConductor } from '../bot/conductor';
 import { MOVERS, type Mover, type MoverName } from '../bot/movers';
 import { makePolicy } from '../bot/policies';
 import { SIM_VIEW } from '../bot/sim';
-import { mountPlayground, type Playground } from '../rehearsal/playground';
+import { SLOTS, SLOT_LABEL, SLOT_ROSTER, type Slot } from './band';
 import { RUN } from './config';
-import { EFFECT_META } from './effects';
 import { Hud, TIER_NUMERALS } from './hud';
 import { autoMove, Input, type AutoMoveMode } from './input';
-import { ITEMS } from './items';
 import { mountJoystick } from './joystick';
 import { rollOffers, type PickOption } from './picks';
 import { mulberry32 } from './rng';
@@ -57,6 +55,8 @@ export async function bootGame(
   let view: RunView | null = null;
   let muted = false;
   let paused = false;
+  const pendingTrackMutes = new Map<Slot, boolean>();
+  const queuedTrackMutes = new Set<Slot>();
 
   // Auto-move (developer request): a mover can drive the player instead of the
   // keyboard/joystick. The mode is chosen on the start screen AND can be
@@ -87,19 +87,94 @@ export async function bootGame(
   pauseOverlay.className = 'pause-overlay';
   pauseOverlay.style.display = 'none';
   pauseOverlay.innerHTML =
-    '<h1>Paused</h1><div class="pause-rack"></div><p class="hint">Hit ESC again to continue.</p>';
+    '<h1>Paused</h1><div class="track-deck pause-track-deck"></div>' +
+    '<button class="pause-resume">resume</button><p class="hint">Press ESC or tap resume.</p>';
   root.appendChild(pauseOverlay);
-  const pauseRack = pauseOverlay.querySelector('.pause-rack') as HTMLElement;
+  const pauseDeck = pauseOverlay.querySelector('.pause-track-deck') as HTMLElement;
+  const pauseResume = pauseOverlay.querySelector('.pause-resume') as HTMLButtonElement;
+
+  /** Every active role in one stable band slot. Normal runs have one; the
+   *  sandbox may force several and the number/cell toggle treats them as a bus. */
+  function activeTrackRoles(slot: Slot): Role[] {
+    if (!world) return [];
+    return SLOT_ROSTER[slot].filter(
+      (role) => world!.tiers.has(role) && (engine.voices.get(role)?.enabled ?? false),
+    );
+  }
+
+  function renderTrackDeck(): void {
+    if (!world) return;
+    hud.renderBand(world.tiers);
+    if (paused) hud.renderBand(world.tiers, pauseDeck);
+  }
+
+  /** Queue an audio-monitor change on the next bar. The world and its attacks
+   *  continue untouched; repeated presses before the boundary update or cancel
+   *  the one pending state instead of stacking callbacks. */
+  function toggleTrack(slotIndex: number): boolean {
+    if ((state !== 'run' && state !== 'sandbox') || !world) return false;
+    const slot = SLOTS[slotIndex];
+    if (!slot) return false;
+    const roles = activeTrackRoles(slot);
+    if (roles.length === 0) return false;
+
+    const currentlyMuted = roles.every((role) => engine.voiceMuted(role));
+    const desired = !(pendingTrackMutes.get(slot) ?? currentlyMuted);
+    const cancelled = desired === currentlyMuted;
+    if (cancelled) pendingTrackMutes.delete(slot);
+    else pendingTrackMutes.set(slot, desired);
+
+    if (!queuedTrackMutes.has(slot)) {
+      queuedTrackMutes.add(slot);
+      const queuedWorld = world;
+      engine.atNextBar(() => {
+        queuedTrackMutes.delete(slot);
+        const target = pendingTrackMutes.get(slot);
+        pendingTrackMutes.delete(slot);
+        if (
+          target === undefined ||
+          world !== queuedWorld ||
+          (state !== 'run' && state !== 'sandbox')
+        ) {
+          renderTrackDeck();
+          return;
+        }
+        for (const role of activeTrackRoles(slot)) engine.setVoiceMuted(role, target);
+        renderTrackDeck();
+      });
+    }
+
+    renderTrackDeck();
+    hud.showToast(
+      cancelled
+        ? `${slotIndex + 1} · ${SLOT_LABEL[slot]} · change cancelled`
+        : `${slotIndex + 1} · ${SLOT_LABEL[slot]} · audio ${desired ? 'off' : 'on'} next bar`,
+    );
+    return true;
+  }
+
+  hud.configureTrackDeck({
+    isMuted: (role) => engine.voiceMuted(role),
+    pendingMute: (slot) => pendingTrackMutes.get(slot),
+    canToggle: () => state === 'run' || state === 'sandbox',
+    onToggle: (slotIndex) => {
+      toggleTrack(slotIndex);
+    },
+  });
+
   function togglePause(): void {
     if (state !== 'run') return;
     paused = !paused;
     pauseOverlay.style.display = paused ? '' : 'none';
     if (paused) {
       engine.clock.pause();
-      // Show the current band while paused (the same rack the HUD draws).
-      if (world) hud.renderBand(world.tiers, pauseRack);
+      renderTrackDeck();
     } else engine.clock.resume();
   }
+  pauseResume.onclick = () => {
+    if (paused) togglePause();
+    pauseResume.blur();
+  };
 
   // debug overlay
   const overlay = document.createElement('div');
@@ -113,40 +188,24 @@ export async function bootGame(
       if (state !== 'run') return;
       // The offer roll (docs/phases/m2-the-arc.md) is shared with the autoplay
       // bot via picks.ts, so the bot faces the exact offers a player does.
-      const options = rollOffers(
-        world!.tiers,
-        world!.items,
-        world!.effects,
-        Math.random,
-        world!.timeS,
-      );
+      const options = rollOffers(world!.tiers, Math.random, world!.timeS);
       if (options.length === 0) {
-        world!.player.hp = Math.min(RUN.playerHp, world!.player.hp + 15);
-        hud.showToast('+15 hp — the track is complete');
+        hud.showToast('the track is complete');
         return;
       }
       state = 'pick';
       engine.clock.pause();
       hud.showPick(options, (option) => {
         state = 'run';
-        // Musical entry rule: the clock resumes, the old chart finishes its
-        // bar, and the new voice / tier / item / effect enters on the next "1".
+        // Musical entry rule: the old chart finishes its bar and the new voice
+        // or tier enters on the following "1".
         const w = world;
         engine.atNextBar(() => {
           if (state !== 'run' || world !== w) return;
-          if (option.kind === 'weapon') {
-            engine.setVoiceTier(option.role, option.tier);
-            engine.setVoiceEnabled(option.role, true);
-            w!.addWeapon(option.role, option.tier);
-          } else if (option.kind === 'item') {
-            w!.addItem(option.item, option.level);
-          } else {
-            w!.attachEffect(option.role, option.effect);
-            engine.setVoiceEffect(option.role, option.effect);
-          }
-          hud.renderItems(w!.items);
-          hud.renderBand(w!.tiers);
-          chartOverlay?.refresh();
+          engine.setVoiceTier(option.role, option.tier);
+          engine.setVoiceEnabled(option.role, true);
+          w!.addWeapon(option.role, option.tier);
+          renderTrackDeck();
           // Cosmetic affirmation the pick landed (view-only, muted-safe).
           view?.flourish(w!.player.x, w!.player.y);
           hud.levelPulse();
@@ -324,8 +383,10 @@ export async function bootGame(
     probe = null;
     seekOverlay.style.display = 'none';
     engine.clearBarQueue();
-    engine.clearVoiceEffects();
-    for (const role of ROLES) engine.setVoiceEnabled(role, false);
+    pendingTrackMutes.clear();
+    queuedTrackMutes.clear();
+    engine.clearVoiceMutes();
+    for (const role of supportedRoles()) engine.setVoiceEnabled(role, false);
   }
 
   function startRun(startingKit: Role, mode: AutoMoveMode = 'off'): void {
@@ -344,10 +405,9 @@ export async function bootGame(
     engine.setVoiceTier(startingKit, 1);
     engine.setVoiceEnabled(startingKit, true);
     w.addWeapon(startingKit, 1);
-    hud.showHud(true);
-    hud.renderItems(w.items);
-    hud.renderBand(w.tiers);
     state = 'run';
+    hud.showHud(true);
+    renderTrackDeck();
     void engine.ctx.resume();
     engine.clock.start();
   }
@@ -364,7 +424,7 @@ export async function bootGame(
     view = new RunView(w, app.screen);
     app.stage.addChild(view.stage);
     sandboxPanel = mountSandboxPanel(root, engine, w, {
-      onLoadout: () => hud.renderBand(w.tiers),
+      onLoadout: renderTrackDeck,
       onExit: () => {
         resetWorld();
         engine.clock.stop();
@@ -373,9 +433,9 @@ export async function bootGame(
         state = 'start';
       },
     });
-    hud.showHud(true);
-    hud.renderBand(w.tiers);
     state = 'sandbox';
+    hud.showHud(true);
+    renderTrackDeck();
     void engine.ctx.resume();
     engine.clock.start();
   }
@@ -418,28 +478,21 @@ export async function bootGame(
         hud.showToast(`bot picks ${pickLabel(option)}`);
       },
       onApply(option) {
-        // the sound mirrors the sim's build; gameplay is driven by the
-        // virtual clock, the engine only plays along. Items touch no voice
-        // tier; an effect swaps the voice's audio fx chain.
-        if (option.kind === 'weapon') {
-          engine.setVoiceTier(option.role, option.tier);
-          engine.setVoiceEnabled(option.role, true);
-        } else if (option.kind === 'effect') {
-          engine.setVoiceEffect(option.role, option.effect);
-        }
-        hud.renderItems(w.items);
-        hud.renderBand(w.tiers);
-        chartOverlay?.refresh();
+        // The sound mirrors the sim's weapon-only build; gameplay is driven
+        // by the virtual clock and the Web Audio engine only plays along.
+        engine.setVoiceTier(option.role, option.tier);
+        engine.setVoiceEnabled(option.role, true);
+        renderTrackDeck();
       },
       onHeal() {
-        hud.showToast('+15 hp — the track is complete');
+        hud.showToast('the track is complete');
       },
     });
     view = new RunView(w, app.screen);
     app.stage.addChild(view.stage);
+    state = 'replay';
     hud.showHud(true);
-    hud.renderItems(w.items);
-    hud.renderBand(w.tiers);
+    renderTrackDeck();
     hud.showToast(`replaying seed ${seed} (${moverName}/${policySpec})`);
     speedRow.style.display = '';
     seekRow.style.display = '';
@@ -448,7 +501,6 @@ export async function bootGame(
     seekLabel.textContent = '0:00';
     setReplaySpeed(1);
     startProbe(seed, moverName, policySpec);
-    state = 'replay';
     void engine.ctx.resume();
     engine.clock.start();
     replayConductor.start(policy.startingKit(rng));
@@ -483,25 +535,10 @@ export async function bootGame(
     );
   }
 
-  // The read-only chart overlay (M2 dev tools): the playground component
-  // mounted over the arena, showing the live engine state of the build.
-  const chartOverlayEl = document.createElement('div');
-  chartOverlayEl.className = 'chart-overlay';
-  chartOverlayEl.style.display = 'none';
-  root.appendChild(chartOverlayEl);
-  let chartOverlay: Playground | null = null;
-  function toggleChartOverlay(): void {
-    const show = chartOverlayEl.style.display === 'none';
-    chartOverlayEl.style.display = show ? '' : 'none';
-    if (show) {
-      chartOverlay ??= mountPlayground(chartOverlayEl, engine, { editable: false });
-      chartOverlay.refresh();
-    }
-  }
-
   // one trigger, two outputs: the engine already made the sound; this makes
   // the damage.
   engine.addTriggerListener((t) => {
+    hud.pulseTrack(t.role);
     if ((state === 'run' || state === 'sandbox') && world) world.fireTrigger(t);
   });
 
@@ -649,18 +686,22 @@ export async function bootGame(
         overlay.style.display = overlay.style.display === 'none' ? '' : 'none';
       },
     },
-    charts: {
-      label: 'charts',
-      hotkey: 'C',
-      isOn: () => chartOverlayEl.style.display !== 'none',
-      onClick: toggleChartOverlay,
-    },
   };
   hud.mountDebug(Object.values(debugActions));
 
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Escape') {
       togglePause();
+      return;
+    }
+    const digit = /^(?:Digit|Numpad)([1-8])$/.exec(e.code);
+    if (digit) {
+      const target = e.target;
+      const fromControl =
+        target instanceof HTMLElement &&
+        (target.isContentEditable || Boolean(target.closest('button, input, select, textarea, summary, a')));
+      if (e.repeat || fromControl) return;
+      if (toggleTrack(Number(digit[1]) - 1)) e.preventDefault();
       return;
     }
     const byKey: Record<string, { onClick(): void }> = {
@@ -670,7 +711,6 @@ export async function bootGame(
       KeyX: debugActions.xp,
       KeyK: debugActions.kill,
       KeyO: debugActions.overlay,
-      KeyC: debugActions.charts,
     };
     const action = byKey[e.code];
     if (action) {
@@ -684,9 +724,7 @@ export async function bootGame(
   }
 
   function pickLabel(option: PickOption): string {
-    if (option.kind === 'item') return `${ITEMS[option.item].name} Lv ${option.level}`;
     const kit = kits.get(option.role)!;
-    if (option.kind === 'effect') return `${kit.name} · ${EFFECT_META[option.effect].name}`;
     return option.tier > 1 ? `${kit.name} ${TIER_NUMERALS[option.tier - 1]}` : kit.name;
   }
 
@@ -717,4 +755,3 @@ export async function bootGame(
     },
   });
 }
-
