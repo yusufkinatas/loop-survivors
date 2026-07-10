@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "bot": "tsx scripts/bot.ts"
+    "bot": "tsx scripts/bot.ts",
+    "validate:tracklab": "tsx scripts/validate-tracklab.ts"
   },
   "devDependencies": {
     "@types/node": "^26.1.0",

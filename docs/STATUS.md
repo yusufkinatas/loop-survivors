@@ -2,7 +2,25 @@
 
 Last updated: July 10, 2026
 
-## Latest change (July 10, 2026)
+## Latest changes (July 10, 2026)
+
+**The development-only Experimentation room now includes six additional
+instrumental reference studies:** Swedish House Mafia's “One,” Martin Garrix's
+“Animals,” Disclosure's “Latch,” Daft Punk's “Around the World,” Robin S's
+“Show Me Love,” and Eric Prydz's “Pjanoo.” Each has its own tempo, an eight-bar
+phrase, four switchable arrangement sections, and seven or eight independently
+auditionable instrument lanes. All new audio is rendered locally from Track Lab
+synthesis; no master audio, stems, downloaded MIDI, original vocals, vocal
+imitations, or other human recordings were added. Shared generated piano and
+classic-organ-style notes were added for the keyboard-led tracks. The six
+studies are deliberately ear-built adaptations for the game, not extracted
+transcriptions. The live game soundset and current phase implementation are
+untouched. Verification: `npm run validate:tracklab` passes across all 11 lab
+tracks (46 sections, 81 instrument lanes); `tsc --noEmit` and the Vite production
+build pass; the in-app browser built every new instrument set, exposed all four
+sections per study, switched each to its final section, and reported no console
+errors. Its Web Audio clock remained suspended, as in the previous browser
+pass, so audible quality still requires the developer's ear in a normal browser.
 
 **House foundation refactor implemented and engineering-verified.** The locked
 execution spec is `docs/phases/house-foundation-refactor.md`; the earlier Band

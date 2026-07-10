@@ -453,6 +453,126 @@ function reverbIR(ctx: BaseAudioContext, seconds: number, highcutHz: number): Au
   return buf;
 }
 
+/** Bright sampled-keyboard-style house piano. Each render is one note; track
+ *  charts can stack note events for exact chord shapes without baking one
+ *  harmony into every hit. A short hammer click and quickly fading upper
+ *  partials keep dense offbeat chords readable, while the quiet baked room
+ *  tail stops solo notes from sounding like raw oscillators. */
+export async function housePiano(opts: {
+  rootHz: number;
+  decay?: number;
+  brightness?: number;
+  wet?: number;
+}): Promise<AudioBuffer> {
+  const { rootHz, decay = 1.25, brightness = 1, wet = 0.14 } = opts;
+  const roomSeconds = 0.7;
+  const ctx = offline(decay + roomSeconds + 0.12);
+
+  const dry = ctx.createGain();
+  dry.gain.value = 0.9;
+  dry.connect(ctx.destination);
+  const conv = ctx.createConvolver();
+  conv.buffer = reverbIR(ctx, roomSeconds, 6200);
+  const wetGain = ctx.createGain();
+  wetGain.gain.value = wet;
+  conv.connect(wetGain).connect(ctx.destination);
+
+  const body = ctx.createBiquadFilter();
+  body.type = 'lowpass';
+  body.frequency.value = 2400 + 2600 * Math.max(0, Math.min(1.5, brightness));
+  body.Q.value = 0.35;
+  body.connect(dry);
+  body.connect(conv);
+
+  const partials = [
+    [1, 0.62, 1],
+    [2, 0.34, 0.72],
+    [3, 0.16, 0.46],
+    [4, 0.1, 0.32],
+    [6, 0.05, 0.2],
+  ] as const;
+  for (const [ratio, level, length] of partials) {
+    const osc = ctx.createOscillator();
+    osc.type = ratio === 1 ? 'triangle' : 'sine';
+    osc.frequency.value = rootHz * ratio;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.001, 0);
+    gain.gain.exponentialRampToValueAtTime(level, 0.004 + ratio * 0.0007);
+    gain.gain.exponentialRampToValueAtTime(0.001, Math.max(0.08, decay * length));
+    osc.connect(gain).connect(body);
+    osc.start(0);
+  }
+
+  const hammer = ctx.createBufferSource();
+  hammer.buffer = noiseBuffer(ctx, 0.018);
+  const hammerBp = ctx.createBiquadFilter();
+  hammerBp.type = 'bandpass';
+  hammerBp.frequency.value = Math.min(7200, 1800 + rootHz * 7);
+  hammerBp.Q.value = 1.2;
+  const hammerGain = ctx.createGain();
+  hammerGain.gain.setValueAtTime(0.12 + 0.12 * brightness, 0);
+  hammerGain.gain.exponentialRampToValueAtTime(0.001, 0.018);
+  hammer.connect(hammerBp).connect(hammerGain).connect(dry);
+  hammer.start(0);
+
+  return ctx.startRendering();
+}
+
+/** Punchy M1-era organ-style note for classic organ house. Additive drawbar
+ *  harmonics provide the hollow, nasal body; a tiny key click gives the riff
+ *  an edge without needing any copied keyboard sample. */
+export async function houseOrgan(opts: {
+  rootHz: number;
+  seconds?: number;
+  drive?: number;
+  brightness?: number;
+}): Promise<AudioBuffer> {
+  const { rootHz, seconds = 0.52, drive = 1.8, brightness = 1 } = opts;
+  const ctx = offline(seconds + 0.12);
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 2600 + 1900 * Math.max(0, Math.min(1.5, brightness));
+  const hp = ctx.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = 75;
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.001, 0);
+  gain.gain.exponentialRampToValueAtTime(0.62, 0.006);
+  gain.gain.setValueAtTime(0.62, Math.max(0.04, seconds * 0.56));
+  gain.gain.exponentialRampToValueAtTime(0.001, seconds);
+  const shaper = driveNode(ctx, drive);
+  lp.connect(hp).connect(gain).connect(shaper).connect(ctx.destination);
+
+  for (const [ratio, level, type] of [
+    [0.5, 0.16, 'sine'],
+    [1, 0.48, 'square'],
+    [2, 0.22, 'sine'],
+    [3, 0.1, 'sine'],
+    [4, 0.06, 'square'],
+  ] as const) {
+    const osc = ctx.createOscillator();
+    osc.type = type;
+    osc.frequency.value = rootHz * ratio;
+    const oscGain = ctx.createGain();
+    oscGain.gain.value = level;
+    osc.connect(oscGain).connect(lp);
+    osc.start(0);
+  }
+
+  const click = ctx.createBufferSource();
+  click.buffer = noiseBuffer(ctx, 0.009);
+  const clickHp = ctx.createBiquadFilter();
+  clickHp.type = 'highpass';
+  clickHp.frequency.value = 2400;
+  const clickGain = ctx.createGain();
+  clickGain.gain.setValueAtTime(0.16, 0);
+  clickGain.gain.exponentialRampToValueAtTime(0.001, 0.009);
+  click.connect(clickHp).connect(clickGain).connect(shaper);
+  click.start(0);
+
+  return ctx.startRendering();
+}
+
 /** Dark phonk bell (the Sahara hook sound). Additive partials at ratios
  *  1 / 1.185 / 1.5 / 2 — the 1.185 is the flat minor-third "tierce" that
  *  makes single bell notes sound haunted — drenched in baked dark reverb,
