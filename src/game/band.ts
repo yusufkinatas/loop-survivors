@@ -99,17 +99,17 @@ export function supportedSlots(): Slot[] {
   return SLOTS.filter((s) => supportedRoster(s).length > 0);
 }
 
-/** The instrument currently filling a slot, if any, given the owned tiers. */
-export function ownerOfSlot(slot: Slot, tiers: ReadonlyMap<Role, number>): Role | undefined {
+/** The instrument currently filling a slot, if any, given the Arsenal. */
+export function ownerOfSlot(slot: Slot, arsenal: ReadonlyMap<Role, unknown>): Role | undefined {
   for (const role of SLOT_ROSTER[slot]) {
-    if (tiers.has(role)) return role;
+    if (arsenal.has(role)) return role;
   }
   return undefined;
 }
 
 /** True once any roster member of the slot is owned (audition over). */
-export function slotFilled(slot: Slot, tiers: ReadonlyMap<Role, number>): boolean {
-  return ownerOfSlot(slot, tiers) !== undefined;
+export function slotFilled(slot: Slot, arsenal: ReadonlyMap<Role, unknown>): boolean {
+  return ownerOfSlot(slot, arsenal) !== undefined;
 }
 
 // --- Offer-weighting knobs (design rules 5 & 6, and the early drum nudge) ----

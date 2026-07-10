@@ -4,17 +4,16 @@
 
 import { type Kit, type Role } from '../audio/kits';
 import { SLOTS, SLOT_LABEL, ownerOfSlot, slotOf, supportedRoster } from './band';
-import { TIER_LINES } from './config';
 import { type AutoMoveMode } from './input';
 import type { PickOption } from './picks';
+import { complexityCap, complexityRedline } from '../audio/complexity';
+import {
+  MAX_POWER,
+  type Arsenal,
+  type MixBudgets,
+} from './progression';
 
-import { TIER_COUNT } from '../audio/charts';
-
-/** Cards are terse by spec: name, tier numeral, one honest gameplay line,
- *  zero music description (docs/phases/m2-the-arc.md). */
 export type { PickOption };
-
-export const TIER_NUMERALS = ['I', 'II', 'III', 'IV'];
 
 export interface DebugAction {
   label: string;
@@ -43,6 +42,7 @@ export class Hud {
   private kits: Map<Role, Kit>;
   private debugRow: HTMLElement | null = null;
   private debugButtons: { btn: HTMLElement; action: DebugAction }[] = [];
+  private bandToggle: ((role: Role) => void) | null = null;
 
   constructor(root: HTMLElement, kits: Map<Role, Kit>) {
     this.root = root;
@@ -74,20 +74,19 @@ export class Hud {
     this.rack.style.display = show ? '' : 'none';
   }
 
-  /** The band rack (docs/phases/the-band.md): eight typed sockets in rack
-   *  order, empty ones asking to be filled, filled ones showing the hired
-   *  instrument (its color + name) and its tier as pips. Rebuilt on every pick
+  /** The band rack: eight typed sockets in rack order, with exact Complexity,
+   *  Power pips, and arrangement state. Rebuilt whenever the Mix changes
    *  (cheap: 8 sockets). Renders into the HUD rack by default, or any supplied
    *  container so the pause menu can show the same band. An audio-muted owner
    *  (the dev number-key toggles) renders its socket dimmed. */
   renderBand(
-    tiers: ReadonlyMap<Role, number>,
+    arsenal: Arsenal,
     into: HTMLElement = this.rack,
     muted?: ReadonlySet<Role>,
   ): void {
     into.replaceChildren();
     for (const slot of SLOTS) {
-      const owner = ownerOfSlot(slot, tiers);
+      const owner = ownerOfSlot(slot, arsenal);
       // A slot the soundset supports no instrument for is dropped: shown dimmed
       // and unavailable, never asking to be filled.
       const dropped = supportedRoster(slot).length === 0;
@@ -99,13 +98,30 @@ export class Hud {
         const kit = this.kits.get(owner)!;
         socket.style.setProperty('--voice-color', kit.color);
         el('span', 'socket-name', socket, kit.name);
-        const tier = tiers.get(owner) ?? 1;
+        const state = arsenal.get(owner)!;
+        el('span', 'socket-complexity', socket, `C${state.complexity}`);
         const pips = el('span', 'socket-pips', socket);
-        for (let i = 1; i <= TIER_COUNT; i++) {
-          el('span', `pip ${i <= tier ? 'on' : ''}`, pips);
+        for (let i = 1; i <= MAX_POWER; i++) {
+          el('span', `pip ${i <= state.power ? 'on' : ''}`, pips);
         }
+        const status = !state.active
+          ? state.restPhrases >= 2 ? 'READY' : `REST ${Math.min(2, state.restPhrases)}/2`
+          : state.overplayed
+            ? 'OVERPLAYED'
+            : state.comebackPhrases > 0
+              ? `RE-ENTRY ${state.comebackPhrases}/2`
+              : state.complexity >= complexityRedline(owner)
+                ? `PUSH ${Math.min(2, state.strain + 1)}/2`
+                : '';
+        if (status) el('span', 'socket-status', socket, status);
+        socket.title = 'Click to queue Rest / Play at the next four-bar phrase';
+        socket.onclick = () => this.bandToggle?.(owner);
       }
     }
+  }
+
+  setBandToggle(onToggle: (role: Role) => void): void {
+    this.bandToggle = onToggle;
   }
 
   setStatus(hp01: number, xp01: number, level: number, timeS: number): void {
@@ -175,7 +191,7 @@ export class Hud {
     }
   }
 
-  /** Start screen: every run opens on the kick at tier 1 (non-negotiable for
+  /** Start screen: every run opens on Kick at C16 / P1 (non-negotiable for
    *  now) — pick a movement mode and go. */
   showStart(
     onStart: (role: Role, mode: AutoMoveMode) => void,
@@ -260,11 +276,11 @@ export class Hud {
     paint();
   }
 
-  /** Level-up pick: up to three options from the pool of new weapons and
-   *  tier-ups of owned ones. */
+  /** A newly opened Arsenal slot auditions up to three instruments. */
   showPick(options: PickOption[], onPick: (option: PickOption) => void): void {
     const s = this.newScreen();
-    el('h2', '', s, 'Level up');
+    el('h2', '', s, 'Arsenal slot opened');
+    el('p', 'sub', s, 'Choose one new instrument. Its slot rival retires for this run.');
     const grid = el('div', 'pick-grid', s);
     const cards: HTMLElement[] = [];
     for (const option of options) {
@@ -275,6 +291,86 @@ export class Hud {
       cards.push(card);
     }
     this.armKeys(cards);
+  }
+
+  /** Redistribute the run's complete Complexity and Power budgets. */
+  showMix(
+    arsenal: Arsenal,
+    budgets: MixBudgets,
+    onConfirm: (allocations: Map<Role, { complexity: number; power: number }>) => void,
+  ): void {
+    const allocations = new Map<Role, { complexity: number; power: number }>();
+    for (const [role, state] of arsenal) {
+      allocations.set(role, { complexity: state.complexity, power: state.power });
+    }
+    const s = this.newScreen();
+    s.classList.add('mix-screen');
+    el('h2', '', s, 'Shape the mix');
+    el('p', 'sub', s, 'Complexity is the exact number of hits every 4 bars. Power makes each hit fuller and stronger.');
+    const totals = el('div', 'mix-totals', s);
+    const rows = el('div', 'mix-rows', s);
+    const rowPaint = new Map<Role, () => void>();
+
+    const usedC = () => [...allocations.values()].reduce((n, a) => n + a.complexity, 0);
+    const usedP = () => [...allocations.values()].reduce((n, a) => n + a.power, 0);
+    const paintTotals = () => {
+      totals.textContent = `Complexity ${usedC()} / ${budgets.complexity}   ·   Power ${usedP()} / ${budgets.power}`;
+    };
+    for (const [role] of arsenal) {
+      const kit = this.kits.get(role)!;
+      const row = el('div', 'mix-row', rows);
+      row.style.setProperty('--voice-color', kit.color);
+      el('span', 'mix-name', row, kit.name);
+      const c = el('span', 'mix-value', row);
+      const cDown = el('button', 'small', row, '− C') as HTMLButtonElement;
+      const cUp = el('button', 'small', row, '+ C') as HTMLButtonElement;
+      const p = el('span', 'mix-value', row);
+      const pDown = el('button', 'small', row, '− P') as HTMLButtonElement;
+      const pUp = el('button', 'small', row, '+ P') as HTMLButtonElement;
+      const paint = () => {
+        const a = allocations.get(role)!;
+        c.textContent = `${a.complexity} hits / 4 bars`;
+        p.textContent = `Power ${a.power}`;
+        row.classList.toggle('redline', a.complexity >= complexityRedline(role));
+        cDown.disabled = a.complexity === 0;
+        cUp.disabled = a.complexity >= complexityCap(role) || usedC() >= budgets.complexity;
+        pDown.disabled = a.power === 0;
+        pUp.disabled = a.power >= MAX_POWER || usedP() >= budgets.power;
+      };
+      const repaint = () => {
+        paintTotals();
+        for (const fn of rowPaint.values()) fn();
+      };
+      cDown.onclick = (event) => {
+        const a = allocations.get(role)!;
+        a.complexity = Math.max(0, a.complexity - ((event as MouseEvent).shiftKey ? 4 : 1));
+        repaint();
+      };
+      cUp.onclick = (event) => {
+        const a = allocations.get(role)!;
+        const step = (event as MouseEvent).shiftKey ? 4 : 1;
+        a.complexity = Math.min(complexityCap(role), a.complexity + Math.min(step, budgets.complexity - usedC()));
+        repaint();
+      };
+      pDown.onclick = () => {
+        allocations.get(role)!.power -= 1;
+        repaint();
+      };
+      pUp.onclick = () => {
+        allocations.get(role)!.power += 1;
+        repaint();
+      };
+      rowPaint.set(role, paint);
+    }
+    paintTotals();
+    for (const fn of rowPaint.values()) fn();
+    const hint = el('p', 'hint', s, 'Shift-click Complexity to move 4 at once. Unspent points stay banked. Changes begin on the next four-bar phrase.');
+    void hint;
+    const confirm = el('button', 'big', s, 'confirm mix') as HTMLButtonElement;
+    confirm.onclick = () => {
+      this.closeScreen();
+      onConfirm(allocations);
+    };
   }
 
   /** Arrow keys walk the cards, enter picks the highlighted one (gate B
@@ -359,9 +455,7 @@ export class Hud {
     // answers "what does taking this cost me?" at a glance (the band).
     el('span', 'kit-slot-badge', card, SLOT_LABEL[slotOf(option.role)]);
     el('span', 'kit-name', card, kit.name);
-    el('span', 'kit-desc', card, TIER_LINES[option.role][option.tier - 1]);
-    // Tier > 1 shows its numeral in the corner chip (the name stays plain).
-    if (option.tier > 1) el('span', 'kit-tier', card, TIER_NUMERALS[option.tier - 1]);
+    el('span', 'kit-desc', card, 'adds a new sound and weapon to your mix');
     card.onclick = onClick;
     return card;
   }

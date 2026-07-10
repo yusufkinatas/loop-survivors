@@ -694,6 +694,11 @@ input[type='range'] {
   padding: var(--sp-5);
   z-index: 2;
 }
+.screen.mix-screen {
+  justify-content: flex-start;
+  gap: var(--sp-3);
+  overflow-y: auto;
+}
 
 .screen h1 {
   font-family: var(--font-disp);
@@ -1540,6 +1545,13 @@ button.big {
   border-radius: var(--r-sm);
   background: rgba(10, 11, 15, 0.82);
 }
+.band-socket.filled {
+  pointer-events: auto;
+  cursor: pointer;
+}
+.band-socket.filled:hover {
+  border-color: var(--voice-color);
+}
 .band-socket.empty {
   border-style: dashed;
   border-top-color: var(--line-2);
@@ -1585,6 +1597,62 @@ button.big {
 }
 .socket-pips .pip.on {
   background: var(--voice-color);
+}
+.socket-complexity {
+  font: 700 10px/1 var(--font-mono);
+  color: var(--ink);
+}
+.socket-status {
+  font: 700 8px/1 var(--font-mono);
+  color: var(--warn);
+  letter-spacing: 0.04em;
+}
+
+/* Level-up Mix board: compact rows make the global budgets and the trade
+   between exact trigger count and per-hit fullness readable at a glance. */
+.mix-totals {
+  font: 700 var(--fs-body)/1 var(--font-mono);
+  color: var(--signal);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+}
+.mix-rows {
+  width: min(92vw, 760px);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.mix-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 1fr) 120px 44px 44px 64px 44px 44px;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--voice-color);
+  border-radius: var(--r-sm);
+  background: rgba(10, 11, 15, 0.86);
+}
+.mix-row.redline {
+  border-color: color-mix(in srgb, var(--warn) 55%, var(--line));
+}
+.mix-name {
+  color: var(--voice-color);
+  font-weight: 700;
+}
+.mix-value {
+  font: 600 var(--fs-xs)/1 var(--font-mono);
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+@media (max-width: 680px) {
+  .mix-row {
+    grid-template-columns: minmax(72px, 1fr) 92px 38px 38px 54px 38px 38px;
+    gap: 3px;
+    padding: 5px;
+  }
+  .mix-row .small { padding-inline: 5px; }
 }
 
 /* Slot badge on a pick card: the plain player-facing band position this hire
@@ -1669,4 +1737,3 @@ button.big {
     letter-spacing: 0.06em;
   }
 }
-

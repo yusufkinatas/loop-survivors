@@ -2,7 +2,20 @@
 
 Last updated: July 10, 2026
 
-## Latest change (July 10, 2026) — the overhaul (branch `overhaul-weapons-enemies-ui`, PR open)
+## Branch-local current state — Complexity / Power alternative
+
+On `codex/complexity-power-arsenal`, the tier progression has been replaced by
+the developer-requested **Arsenal + Complexity + Power** alternative. The run
+starts with Kick at C16 / P1; levels grow both global budgets; new Arsenal slots
+open from lifetime Power; the Mix board redistributes both axes; high-density
+parts move through Push → Overplayed and can be Rested for a Re-entry boost.
+Exact rules and gate: `docs/phases/alternative-complexity-power.md`.
+
+**Branch-local next action:** developer ear/hands gate after engineering and
+single-path Chrome verification. Compare this branch against `main`; it does
+not silently amend the locked overhaul spec.
+
+## Mainline latest change (July 10, 2026) — the overhaul
 
 A four-part overhaul at the developer's direction, decisions logged in
 `docs/phases/overhaul-2026-07.md`, fully autonomous (never gated mid-build).

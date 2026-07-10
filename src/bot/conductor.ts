@@ -10,12 +10,12 @@
 // the batch run that produced it.
 
 import { chartEventsAtStep } from '../audio/arranger';
-import { getChart } from '../audio/chartstore';
+import { complexityCap, getComplexityChart } from '../audio/complexity';
 import { SOUNDSET } from '../audio/soundset';
 import type { Role } from '../audio/kits';
 import { SKELETON, STEPS_PER_BAR, STEPS_PER_PHRASE } from '../audio/scale';
-import { RUN } from '../game/config';
 import { rollOffers, type PickOption } from '../game/picks';
+import { allocatedComplexity, allocatedPower } from '../game/progression';
 import type { Rng } from '../game/rng';
 import type { RunWorld } from '../game/run';
 
@@ -34,7 +34,7 @@ export const SIM_DT = 1 / 60;
 
 export class VirtualConductor {
   /** The build as it unfolded: every pick with the time it was chosen. */
-  readonly picks: { t: number; role: Role; tier: number }[] = [];
+  readonly picks: { t: number; role: Role; complexity: number; power: number }[] = [];
 
   private world: RunWorld;
   private choose: PickChooser;
@@ -55,24 +55,24 @@ export class VirtualConductor {
 
   /** The starting instrument enters immediately, like the game's startRun. */
   start(role: Role): void {
-    this.world.addWeapon(role, 1);
-    this.picks.push({ t: 0, role, tier: 1 });
-    this.hooks.onApply?.({ kind: 'weapon', role, tier: 1 });
+    const complexity = Math.min(16, complexityCap(role));
+    this.world.addWeapon(role, 1, complexity);
+    this.picks.push({ t: 0, role, complexity, power: 1 });
+    this.hooks.onApply?.({ kind: 'arsenal', role });
   }
 
   /** Wire this to RunEvents.onLevelUp. Rolls the real three-card offer and
    *  lets the policy choose; the choice lands at the next bar. */
   onLevelUp(): void {
-    const options = rollOffers(this.effectiveTiers(), this.rng, this.world.timeS);
-    if (options.length === 0) {
-      this.world.player.hp = Math.min(RUN.playerHp, this.world.player.hp + 15);
-      this.hooks.onHeal?.();
-      return;
+    this.world.grantLevelRewards();
+    const options = rollOffers(this.world.weapons, this.world.lifetimePower, this.rng, this.world.timeS);
+    if (options.length > 0) {
+      const option = this.choose(options, this.world, this.rng);
+      this.world.addWeapon(option.role);
+      this.pending.push(option);
+      this.hooks.onPick?.(option);
     }
-    const option = this.choose(options, this.world, this.rng);
-    this.pending.push(option);
-    this.picks.push({ t: this.world.timeS, role: option.role, tier: option.tier });
-    this.hooks.onPick?.(option);
+    this.autoAllocate();
   }
 
   /** Advance the virtual clock by dt and fire every due grid step. Call
@@ -87,12 +87,21 @@ export class VirtualConductor {
     }
   }
 
-  /** Owned tiers plus picks still waiting for their bar: the pool must not
-   *  offer what is already on its way in. */
-  private effectiveTiers(): Map<Role, number> {
-    const tiers = new Map(this.world.tiers);
-    for (const p of this.pending) tiers.set(p.role, p.tier);
-    return tiers;
+  private autoAllocate(): void {
+    const roles = [...this.world.weapons.keys()];
+    while (allocatedPower(this.world.weapons) < this.world.powerBudget) {
+      const eligible = roles.filter((r) => this.world.weapons.get(r)!.power < 5);
+      if (eligible.length === 0) break;
+      this.world.weapons.get(eligible[Math.floor(this.rng() * eligible.length)])!.power += 1;
+    }
+    while (allocatedComplexity(this.world.weapons) < this.world.complexityBudget) {
+      const eligible = roles.filter((r) => this.world.weapons.get(r)!.complexity < complexityCap(r));
+      if (eligible.length === 0) break;
+      this.world.weapons.get(eligible[Math.floor(this.rng() * eligible.length)])!.complexity += 1;
+    }
+    for (const state of this.world.weapons.values()) {
+      state.active = state.power > 0 && state.complexity > 0;
+    }
   }
 
   private onStep(step: number, time: number): void {
@@ -102,12 +111,14 @@ export class VirtualConductor {
       const queue = this.pending;
       this.pending = [];
       for (const option of queue) {
-        this.world.addWeapon(option.role, option.tier);
         this.hooks.onApply?.(option);
+        const state = this.world.weapons.get(option.role)!;
+        this.picks.push({ t: this.world.timeS, role: option.role, complexity: state.complexity, power: state.power });
       }
     }
-    for (const [role, tier] of this.world.tiers) {
-      for (const ev of chartEventsAtStep(getChart(role, tier), phraseStep)) {
+    for (const [role, state] of this.world.weapons) {
+      if (!state.active || state.power === 0 || state.complexity === 0) continue;
+      for (const ev of chartEventsAtStep(getComplexityChart(role, state.complexity), phraseStep)) {
         this.world.fireTrigger({
           role,
           time,

@@ -13,7 +13,7 @@ import { SIM_VIEW } from '../bot/sim';
 import { RUN } from './config';
 import { SLOTS, ownerOfSlot } from './band';
 import { mountTrackOverlay } from './trackoverlay';
-import { Hud, TIER_NUMERALS } from './hud';
+import { Hud } from './hud';
 import { autoMove, Input, type AutoMoveMode } from './input';
 import { mountJoystick } from './joystick';
 import { rollOffers, type PickOption } from './picks';
@@ -96,7 +96,7 @@ export async function bootGame(
     if (paused) {
       engine.clock.pause();
       // Show the current band while paused (the same rack the HUD draws).
-      if (world) hud.renderBand(world.tiers, pauseRack, mutedRoles);
+      if (world) hud.renderBand(world.weapons, pauseRack, mutedRoles);
     } else engine.clock.resume();
   }
 
@@ -110,34 +110,34 @@ export async function bootGame(
     onLevelUp(level: number): void {
       void level;
       if (state !== 'run') return;
-      // The offer roll (docs/phases/m2-the-arc.md) is shared with the autoplay
-      // bot via picks.ts, so the bot faces the exact offers a player does.
-      const options = rollOffers(world!.tiers, Math.random, world!.timeS);
-      if (options.length === 0) {
-        world!.player.hp = Math.min(RUN.playerHp, world!.player.hp + 15);
-        hud.showToast('+15 hp — the track is complete');
-        return;
-      }
+      world!.grantLevelRewards();
       state = 'pick';
       engine.clock.pause();
-      hud.showPick(options, (option) => {
-        state = 'run';
-        // Musical entry rule: the clock resumes, the old chart finishes its
-        // bar, and the new voice / tier / item / effect enters on the next "1".
-        const w = world;
-        engine.atNextBar(() => {
-          if (state !== 'run' || world !== w) return;
-          engine.setVoiceTier(option.role, option.tier);
-          engine.setVoiceEnabled(option.role, true);
-          w!.addWeapon(option.role, option.tier);
-          hud.renderBand(w!.tiers, undefined, mutedRoles);
-          refreshTrackOverlay();
-          // Cosmetic affirmation the pick landed (view-only, muted-safe).
-          view?.flourish(w!.player.x, w!.player.y);
-          hud.levelPulse();
+      const w = world!;
+      const openMix = () => hud.showMix(
+        w.weapons,
+        { complexity: w.complexityBudget, power: w.powerBudget, lifetimePower: w.lifetimePower },
+        (allocations) => {
+          state = 'run';
+          engine.atNextPhrase(() => {
+            if (state !== 'run' || world !== w) return;
+            w.applyMix(allocations);
+            syncEngineToMix(w);
+            hud.renderBand(w.weapons, undefined, mutedRoles);
+            refreshTrackOverlay();
+            view?.flourish(w.player.x, w.player.y);
+            hud.levelPulse();
+          });
+          engine.clock.resume();
+        },
+      );
+      const options = rollOffers(w.weapons, w.lifetimePower, Math.random, w.timeS);
+      if (options.length > 0) {
+        hud.showPick(options, (option) => {
+          w.addWeapon(option.role);
+          openMix();
         });
-        engine.clock.resume();
-      });
+      } else openMix();
     },
     onDeath(): void {
       endRun(false);
@@ -308,10 +308,44 @@ export async function bootGame(
     replayConductor = null;
     replayAcc = 0;
     probe = null;
+    lastHudPhrase = -1;
     seekOverlay.style.display = 'none';
     engine.clearBarQueue();
     for (const role of ROLES) engine.setVoiceEnabled(role, false);
   }
+
+  function syncEngineToMix(w: RunWorld): void {
+    for (const role of ROLES) {
+      const weapon = w.weapons.get(role);
+      if (!weapon) {
+        engine.setVoiceEnabled(role, false);
+        continue;
+      }
+      engine.setVoiceComplexity(role, weapon.complexity);
+      const audiblePower = weapon.overplayed
+        ? Math.max(1, weapon.power - 1)
+        : weapon.comebackPhrases > 0
+          ? Math.min(5, weapon.power + 1)
+          : Math.max(1, weapon.power);
+      engine.setVoicePower(role, audiblePower);
+      engine.setVoiceEnabled(role, weapon.active && weapon.complexity > 0 && weapon.power > 0);
+    }
+  }
+
+  hud.setBandToggle((role) => {
+    if (!world || (state !== 'run' && state !== 'sandbox')) return;
+    const w = world;
+    const weapon = w.weapons.get(role);
+    if (!weapon) return;
+    hud.showToast(`${weapon.active ? 'resting' : 'bringing back'} ${kits.get(role)!.name} next phrase`);
+    engine.atNextPhrase(() => {
+      if (world !== w) return;
+      w.setWeaponActive(role, !weapon.active);
+      syncEngineToMix(w);
+      hud.renderBand(w.weapons, undefined, mutedRoles);
+      refreshTrackOverlay();
+    });
+  });
 
   function startRun(startingKit: Role, mode: AutoMoveMode = 'off'): void {
     resetWorld();
@@ -326,11 +360,12 @@ export async function bootGame(
     w.powerMul = SOUNDSET.powerMul;
     view = new RunView(w, app.screen);
     app.stage.addChild(view.stage);
-    engine.setVoiceTier(startingKit, 1);
+    engine.setVoiceComplexity(startingKit, 16);
+    engine.setVoicePower(startingKit, 1);
     engine.setVoiceEnabled(startingKit, true);
-    w.addWeapon(startingKit, 1);
+    w.addWeapon(startingKit, 1, 16);
     hud.showHud(true);
-    hud.renderBand(w.tiers);
+    hud.renderBand(w.weapons);
     state = 'run';
     void engine.ctx.resume();
     engine.clock.start();
@@ -349,7 +384,7 @@ export async function bootGame(
     app.stage.addChild(view.stage);
     sandboxPanel = mountSandboxPanel(root, engine, w, {
       onLoadout: () => {
-        hud.renderBand(w.tiers, undefined, mutedRoles);
+        hud.renderBand(w.weapons, undefined, mutedRoles);
         refreshTrackOverlay();
       },
       onExit: () => {
@@ -361,7 +396,7 @@ export async function bootGame(
       },
     });
     hud.showHud(true);
-    hud.renderBand(w.tiers);
+    hud.renderBand(w.weapons);
     state = 'sandbox';
     void engine.ctx.resume();
     engine.clock.start();
@@ -404,12 +439,11 @@ export async function bootGame(
       onPick(option) {
         hud.showToast(`bot picks ${pickLabel(option)}`);
       },
-      onApply(option) {
+      onApply(_option) {
         // the sound mirrors the sim's build; gameplay is driven by the
         // virtual clock, the engine only plays along.
-        engine.setVoiceTier(option.role, option.tier);
-        engine.setVoiceEnabled(option.role, true);
-        hud.renderBand(w.tiers, undefined, mutedRoles);
+        syncEngineToMix(w);
+        hud.renderBand(w.weapons, undefined, mutedRoles);
         refreshTrackOverlay();
       },
       onHeal() {
@@ -419,7 +453,7 @@ export async function bootGame(
     view = new RunView(w, app.screen);
     app.stage.addChild(view.stage);
     hud.showHud(true);
-    hud.renderBand(w.tiers);
+    hud.renderBand(w.weapons);
     hud.showToast(`replaying seed ${seed} (${moverName}/${policySpec})`);
     speedRow.style.display = '';
     seekRow.style.display = '';
@@ -474,7 +508,7 @@ export async function bootGame(
   const trackOverlay = mountTrackOverlay(trackOverlayEl, engine, kits);
   function refreshTrackOverlay(): void {
     if (trackOverlayEl.style.display === 'none') return;
-    trackOverlay.refresh(world?.tiers ?? new Map(), mutedRoles);
+    trackOverlay.refresh(world?.weapons ?? new Map(), mutedRoles);
   }
   function toggleChartOverlay(): void {
     const show = trackOverlayEl.style.display === 'none';
@@ -496,9 +530,9 @@ export async function bootGame(
       engine.setVoiceGain(role, 0);
     }
     if (world) {
-      hud.renderBand(world.tiers, undefined, mutedRoles);
+      hud.renderBand(world.weapons, undefined, mutedRoles);
       // The pause menu mirrors the same rack; keep it truthful if it's open.
-      if (paused) hud.renderBand(world.tiers, pauseRack, mutedRoles);
+      if (paused) hud.renderBand(world.weapons, pauseRack, mutedRoles);
     }
     refreshTrackOverlay();
   }
@@ -513,6 +547,7 @@ export async function bootGame(
     if ((state === 'run' || state === 'sandbox') && world) world.fireTrigger(t);
   });
 
+  let lastHudPhrase = -1;
   app.ticker.add((ticker) => {
     engine.update();
     if (paused) return;
@@ -526,6 +561,13 @@ export async function bootGame(
         world.level,
         world.timeS,
       );
+      const phrase = Math.floor(world.timeS / ((16 * 60) / SOUNDSET.bpm));
+      if (phrase !== lastHudPhrase) {
+        lastHudPhrase = phrase;
+        syncEngineToMix(world);
+        hud.renderBand(world.weapons, undefined, mutedRoles);
+        refreshTrackOverlay();
+      }
     } else if (state === 'replay' && world && replayConductor) {
       pumpProbe();
       if (replayTarget !== null) {
@@ -677,7 +719,7 @@ export async function bootGame(
     if (/^Digit[1-8]$/.test(e.code) && !e.ctrlKey && !e.metaKey && !e.altKey) {
       if ((state === 'run' || state === 'sandbox' || state === 'replay') && world) {
         const slot = SLOTS[Number(e.code.slice(5)) - 1];
-        const role = ownerOfSlot(slot, world.tiers);
+        const role = ownerOfSlot(slot, world.weapons);
         if (role) toggleRoleMute(role); // empty slot: the key does nothing
       }
       return;
@@ -704,7 +746,7 @@ export async function bootGame(
 
   function pickLabel(option: PickOption): string {
     const kit = kits.get(option.role)!;
-    return option.tier > 1 ? `${kit.name} ${TIER_NUMERALS[option.tier - 1]}` : kit.name;
+    return `hire ${kit.name}`;
   }
 
   // ?replay=<seed>&mover=<mover>&policy=<policy> boots straight into a bot
@@ -734,4 +776,3 @@ export async function bootGame(
     },
   });
 }
-

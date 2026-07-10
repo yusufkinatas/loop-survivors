@@ -14,7 +14,7 @@ import {
   SLOT_ROSTER,
   SLOT_LABEL,
 } from './band';
-import { TIER_NUMERALS } from './hud';
+import { complexityCap } from '../audio/complexity';
 import { ENEMIES, enemyScaling, RUN, type EnemyKind } from './config';
 import type { RunWorld } from './run';
 
@@ -71,7 +71,7 @@ export function mountSandboxPanel(
   optimizedFor.textContent = `${names.length} instruments: ${names.join(', ')}`;
 
   // Assemble a representative full band so the whole track can be heard at once:
-  // one instrument in each SUPPORTED slot, all at tier 4. Toggles off (silences
+  // one instrument in each SUPPORTED slot, all at maximum C/P. Toggles off (silences
   // every voice) when pressed again.
   let bandOn = false;
   const bandBtn = el('button', 'small sb-controls', panel, '▶ play full band') as HTMLButtonElement;
@@ -86,9 +86,11 @@ export function mountSandboxPanel(
     if (bandOn) {
       for (const slot of supportedSlots()) {
         const role = firstForSlot(slot);
-        engine.setVoiceTier(role, 4);
+        const complexity = complexityCap(role);
+        engine.setVoiceComplexity(role, complexity);
+        engine.setVoicePower(role, 5);
         engine.setVoiceEnabled(role, true);
-        world.addWeapon(role, 4);
+        world.addWeapon(role, 5, complexity);
       }
     }
     bandBtn.classList.toggle('on', bandOn);
@@ -155,7 +157,7 @@ export function mountSandboxPanel(
   };
   syncInvuln();
 
-  // ---- loadout editor: any weapon at any tier, applied instantly ----
+  // ---- loadout editor: any weapon at any Complexity / Power, applied instantly ----
   // Grouped by band slot (Beat / Snap / Tick / … , the rack order at the top of
   // the screen) instead of a flat list, so a voice is easy to find by its job.
   // A ★ custom badge marks the roles that are sample-backed (their own real
@@ -174,32 +176,41 @@ export function mountSandboxPanel(
       const label = el('span', 'sb-loadout-label', name, voice.kit.name);
       customMarks.push({ role, el: label });
       const btns = el('div', 'sb-btns', row);
-      const options: HTMLButtonElement[] = [];
-      const set = (tier: number | null) => {
-        if (tier === null) {
+      const readout = el('span', 'sb-enemy-stats', btns);
+      const paint = () => {
+        const state = world.weapons.get(role);
+        readout.textContent = state ? `C${state.complexity} · P${state.power}` : 'off';
+      };
+      const setOff = () => {
           engine.setVoiceEnabled(role, false);
           world.removeWeapon(role);
-        } else {
-          engine.setVoiceTier(role, tier);
+          paint();
+          opts.onLoadout?.();
+      };
+      const ensure = () => {
+        if (!world.weapons.has(role)) world.addWeapon(role, 1, 1);
+        return world.weapons.get(role)!;
+      };
+      const sync = () => {
+          const state = ensure();
+          engine.setVoiceComplexity(role, state.complexity);
+          engine.setVoicePower(role, state.power);
           engine.setVoiceEnabled(role, true);
-          world.addWeapon(role, tier);
-        }
-        options.forEach((b, i) =>
-          b.classList.toggle('on', tier === null ? i === 0 : i === tier),
-        );
-        opts.onLoadout?.();
+          paint();
+          opts.onLoadout?.();
       };
       const off = el('button', 'small off-btn', btns, '⏻') as HTMLButtonElement;
       off.title = 'off';
-      off.onclick = () => set(null);
-      options.push(off);
-      TIER_NUMERALS.forEach((numeral, i) => {
-        const b = el('button', 'small', btns, numeral) as HTMLButtonElement;
-        b.onclick = () => set(i + 1);
-        options.push(b);
-      });
-      const current = world.tiers.get(role);
-      options.forEach((b, i) => b.classList.toggle('on', current === undefined ? i === 0 : i === current));
+      off.onclick = setOff;
+      const cDown = el('button', 'small', btns, 'C−') as HTMLButtonElement;
+      cDown.onclick = () => { const s = ensure(); s.complexity = Math.max(1, s.complexity - 1); sync(); };
+      const cUp = el('button', 'small', btns, 'C+') as HTMLButtonElement;
+      cUp.onclick = () => { const s = ensure(); s.complexity = Math.min(complexityCap(role), s.complexity + 1); sync(); };
+      const pDown = el('button', 'small', btns, 'P−') as HTMLButtonElement;
+      pDown.onclick = () => { const s = ensure(); s.power = Math.max(1, s.power - 1); sync(); };
+      const pUp = el('button', 'small', btns, 'P+') as HTMLButtonElement;
+      pUp.onclick = () => { const s = ensure(); s.power = Math.min(5, s.power + 1); sync(); };
+      paint();
     }
   }
   // Mark (with a bordered name) the roles that are sample-backed — their own
@@ -218,7 +229,7 @@ export function mountSandboxPanel(
     'div',
     'sb-hint',
     panel,
-    'stage script off: nothing spawns by itself. O = perf overlay, C = track overlay, 1-8 = mute a slot.',
+    'stage script off: nothing spawns by itself. C/P edit the two axes independently. Click a rack slot to Rest / Play it.',
   );
 
   return {

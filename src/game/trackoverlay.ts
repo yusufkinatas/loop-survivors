@@ -1,14 +1,14 @@
 // The minimal "now playing" readout (dev surface, hotkey C): one slim row per
-// active voice — color dot, name, tier pips, and a 16-step single-bar mini
+// active voice — color dot, name, Power pips, and a 16-step single-bar mini
 // grid with a moving playhead. Built for the game; the rehearsal room keeps
 // the full editable playground.
 
-import { TIER_COUNT } from '../audio/charts';
-import { getChart } from '../audio/chartstore';
+import { getComplexityChart } from '../audio/complexity';
 import type { MusicEngine } from '../audio/engine';
 import type { Kit, Role } from '../audio/kits';
 import { STEPS_PER_BAR, STEPS_PER_PHRASE } from '../audio/scale';
 import { SLOTS, ownerOfSlot } from './band';
+import { MAX_POWER, type Arsenal } from './progression';
 
 interface Row {
   /** Phrase steps (0..63) on which this voice's chart fires. */
@@ -20,7 +20,7 @@ interface Row {
 
 export interface TrackOverlay {
   /** Rebuild the rows from the current build (call on picks / mute toggles). */
-  refresh(tiers: ReadonlyMap<Role, number>, muted: ReadonlySet<Role>): void;
+  refresh(arsenal: Arsenal, muted: ReadonlySet<Role>): void;
   /** Per-frame: move the playhead and repaint on bar changes. Cheap. */
   tick(): void;
 }
@@ -32,15 +32,15 @@ export function mountTrackOverlay(
 ): TrackOverlay {
   let rows: Row[] = [];
 
-  function refresh(tiers: ReadonlyMap<Role, number>, muted: ReadonlySet<Role>): void {
+  function refresh(arsenal: Arsenal, muted: ReadonlySet<Role>): void {
     root.replaceChildren();
     rows = [];
     for (const slot of SLOTS) {
-      const role = ownerOfSlot(slot, tiers);
+      const role = ownerOfSlot(slot, arsenal);
       if (!role) continue;
       const kit = kits.get(role)!;
-      const tier = tiers.get(role) ?? 1;
-      const isMuted = muted.has(role);
+      const state = arsenal.get(role)!;
+      const isMuted = muted.has(role) || !state.active;
 
       const rowEl = document.createElement('div');
       rowEl.className = `tr-row${isMuted ? ' muted' : ''}`;
@@ -53,9 +53,9 @@ export function mountTrackOverlay(
       name.textContent = kit.name;
       const pips = document.createElement('span');
       pips.className = 'tr-pips';
-      for (let i = 1; i <= TIER_COUNT; i++) {
+      for (let i = 1; i <= MAX_POWER; i++) {
         const pip = document.createElement('span');
-        pip.className = `pip${i <= tier ? ' on' : ''}`;
+        pip.className = `pip${i <= state.power ? ' on' : ''}`;
         pips.appendChild(pip);
       }
       const mark = document.createElement('span');
@@ -65,7 +65,7 @@ export function mountTrackOverlay(
 
       // Charts loop inside the 4-bar phrase, so precompute which phrase step
       // each event lands on; the per-bar repaint is then a set lookup.
-      const chart = getChart(role, tier);
+      const chart = getComplexityChart(role, state.complexity);
       const chartSteps = chart.bars * STEPS_PER_BAR;
       const hits = new Set<number>();
       for (const ev of chart.events) {

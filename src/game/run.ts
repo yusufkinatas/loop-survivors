@@ -11,6 +11,8 @@
 
 import type { Role } from '../audio/kits';
 import type { ScheduledTrigger } from '../audio/engine';
+import { SOUNDSET } from '../audio/soundset';
+import { complexityRedline } from '../audio/complexity';
 import {
   AIM_RANGE,
   ARP_OMEGA,
@@ -46,11 +48,24 @@ import {
 } from './config';
 import { dcos, dsin } from './dmath';
 import type { Rng } from './rng';
+import {
+  COMPLEXITY_PER_LEVEL,
+  POWER_PER_LEVEL,
+  STARTING_COMPLEXITY,
+  newWeaponState,
+  type WeaponState,
+} from './progression';
 import { SpatialHash, circlesOverlap } from './spatial';
 
 /** Roles that emit a per-hit spark on impact. Bounded to low-count roles so
  *  the 2400-enemy frame never floods the fx queue (Feature 3). */
 const SPARK_HIT_ROLES = new Set<Role>(['snare', 'lead', 'tom']);
+
+// Arrangement pressure: a max-complexity voice can headline for one complete
+// four-bar phrase before it strains. Resting it for two bars clears the strain
+// and arms a one-bar 30% comeback bonus. Lower complexities are sustainable.
+const BAR_S = (4 * 60) / SOUNDSET.bpm;
+const PHRASE_S = BAR_S * 4;
 
 export interface Enemy {
   kind: EnemyKind;
@@ -220,8 +235,12 @@ export interface RunWorldOpts {
 }
 
 export class RunWorld {
-  /** Owned weapons and their ladder tier (1-4). */
-  readonly tiers = new Map<Role, number>();
+  /** The run's Arsenal and each instrument's independent allocations. */
+  readonly weapons = new Map<Role, WeaponState>();
+  complexityBudget = STARTING_COMPLEXITY;
+  powerBudget = 1;
+  lifetimePower = 1;
+  private arrangementPhrase = 0;
 
   // dashT/dashX/dashY: riser's auto-dash surge (a short velocity boost the
   // release grants, on top of normal movement).
@@ -308,12 +327,12 @@ export class RunWorld {
     return this.view.height / this.zoom;
   }
 
-  /** The coupling point: a scheduled trigger fires this kit's weapon at the
-   *  owned tier. Variant peaks (bass sub, chord pad) scale the same weapon. */
+  /** The coupling point: a scheduled trigger fires this kit's weapon at its
+   *  allocated Power. Variant peaks scale the same weapon. */
   fireTrigger(t: ScheduledTrigger): void {
-    const tier = this.tiers.get(t.role);
-    if (!tier) return;
-    let conf: WeaponConf = WEAPONS[t.role][tier - 1];
+    const weapon = this.weapons.get(t.role);
+    if (!weapon || !weapon.active) return;
+    let conf: WeaponConf = WEAPONS[t.role][Math.min(4, weapon.power) - 1];
     const color = KIT_COLORS[t.role];
     const v = t.velocity;
     const p = this.player;
@@ -333,7 +352,7 @@ export class RunWorld {
     }
     // Single build-transform pipeline (D1): tempo compensation, folded in one
     // place — balance code multiplies here.
-    conf = this.applyBuild(conf);
+    conf = this.applyBuild(conf, t.role, weapon);
 
     switch (t.role) {
       case 'kick': {
@@ -473,22 +492,75 @@ export class RunWorld {
     }
   }
 
-  /** Add a weapon or raise its tier. The pulse fires when the change lands
-   *  (next-bar entry), so eye and ear agree on the moment. */
-  addWeapon(role: Role, tier = 1): void {
-    this.tiers.set(role, tier);
+  /** Hire an instrument into the Arsenal. */
+  addWeapon(role: Role, power = 0, complexity = 0): void {
+    const state = newWeaponState(complexity, power);
+    if (complexity > 0 && power > 0) state.comebackPhrases = 3; // boundary tick leaves 2-phrase debut
+    this.weapons.set(role, state);
     this.spawnRing(this.player.x, this.player.y, 220, KIT_COLORS[role], 0.6);
+  }
+
+  grantLevelRewards(): void {
+    this.complexityBudget += COMPLEXITY_PER_LEVEL;
+    this.powerBudget += POWER_PER_LEVEL;
+    this.lifetimePower += POWER_PER_LEVEL;
+  }
+
+  applyMix(allocations: ReadonlyMap<Role, { complexity: number; power: number }>): void {
+    let usedComplexity = 0;
+    let usedPower = 0;
+    for (const allocation of allocations.values()) {
+      usedComplexity += allocation.complexity;
+      usedPower += allocation.power;
+    }
+    if (usedComplexity > this.complexityBudget || usedPower > this.powerBudget) {
+      throw new Error('mix allocation exceeds the run budget');
+    }
+    for (const [role, allocation] of allocations) {
+      const weapon = this.weapons.get(role);
+      if (!weapon) continue;
+      const wasPlayable = weapon.complexity > 0 && weapon.power > 0;
+      weapon.complexity = allocation.complexity;
+      weapon.power = allocation.power;
+      if (allocation.complexity === 0 || allocation.power === 0) weapon.active = false;
+      else if (!wasPlayable) {
+        weapon.active = true;
+        weapon.comebackPhrases = 3; // phrase-boundary tick leaves two full phrases
+      }
+    }
+  }
+
+  setWeaponActive(role: Role, active: boolean): void {
+    const weapon = this.weapons.get(role);
+    if (!weapon || weapon.active === active) return;
+    weapon.active = active;
+    if (!active) {
+      weapon.restPhrases = 0;
+      weapon.comebackPhrases = 0;
+    } else {
+      if (weapon.restPhrases >= 2 && weapon.activePhrases >= 2) weapon.comebackPhrases = 3;
+      weapon.restPhrases = 0;
+    }
   }
 
   /** Sandbox loadout editor: drop a weapon entirely. */
   removeWeapon(role: Role): void {
-    this.tiers.delete(role);
+    this.weapons.delete(role);
   }
 
   /** The single build-transform pipeline (D1): tempo power compensation.
    *  Nothing else multiplies weapon numbers. */
-  private applyBuild(conf: WeaponConf): WeaponConf {
-    return { ...conf, damage: conf.damage * this.powerMul };
+  private applyBuild(conf: WeaponConf, role: Role, weapon: WeaponState): WeaponConf {
+    const atRedline = weapon.complexity >= complexityRedline(role);
+    const arrangementMul = weapon.overplayed
+      ? 0.7
+      : weapon.comebackPhrases > 0
+        ? 1.2
+        : atRedline && weapon.strain <= 2
+          ? 1.15
+          : 1;
+    const p5 = weapon.power === 5 ? 1.22 : 1;
+    return { ...conf, damage: conf.damage * this.powerMul * arrangementMul * p5 };
   }
 
   /** Push an enemy away from a point (Feature 3), sharing the crash knock
@@ -504,6 +576,7 @@ export class RunWorld {
 
   update(dt: number): void {
     this.timeS += dt;
+    this.updateArrangement(dt);
     if (this.scripted && this.timeS >= RUN.durationS) {
       this.events.onVictory();
       return;
@@ -527,6 +600,33 @@ export class RunWorld {
     this.contactDamage(dt);
 
     this.reapEnemies();
+  }
+
+  private updateArrangement(dt: number): void {
+    void dt;
+    const phrase = Math.floor(this.timeS / PHRASE_S);
+    if (phrase <= this.arrangementPhrase) return;
+    while (this.arrangementPhrase < phrase) {
+      this.arrangementPhrase += 1;
+      for (const [role, weapon] of this.weapons) {
+        if (!weapon.active) {
+          weapon.restPhrases += 1;
+          weapon.strain = Math.max(0, weapon.strain - 2);
+          if (weapon.strain === 0) weapon.overplayed = false;
+          continue;
+        }
+        weapon.activePhrases += 1;
+        weapon.restPhrases = 0;
+        if (weapon.comebackPhrases > 0) weapon.comebackPhrases -= 1;
+        if (weapon.complexity >= complexityRedline(role)) {
+          weapon.strain = Math.min(4, weapon.strain + 1);
+          if (weapon.strain >= 2) weapon.overplayed = true;
+        } else {
+          weapon.strain = Math.max(0, weapon.strain - 1);
+          if (weapon.strain === 0) weapon.overplayed = false;
+        }
+      }
+    }
   }
 
   // ---- player ----
@@ -1036,7 +1136,7 @@ export class RunWorld {
   }
 
   /** Bell: a note lobbed straight that shatters into shards on its first hit.
-   *  The shatter count (per tier) rides on the shot; the shard spawn happens in
+   *  The shatter count (per Power level) rides on the shot; the shard spawn happens in
    *  updateProjectiles when it lands its first hit. */
   private spawnBell(
     dir: { x: number; y: number },
@@ -1044,7 +1144,7 @@ export class RunWorld {
     color: number,
     velocity: number,
   ): void {
-    const tier = this.tiers.get('bell') ?? 1;
+    const tier = Math.min(4, this.weapons.get('bell')?.power ?? 1);
     const pr = this.baseProjectile('bell', conf, color, conf.damage * (0.8 + 0.4 * velocity));
     pr.vx = dir.x * conf.speed!;
     pr.vy = dir.y * conf.speed!;

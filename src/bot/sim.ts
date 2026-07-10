@@ -28,7 +28,7 @@ export interface RunRecord {
   timeS: number;
   level: number;
   kills: number;
-  picks: { t: number; role: Role; tier: number }[];
+  picks: { t: number; role: Role; complexity: number; power: number }[];
   damageByRole: Partial<Record<Role, number>>;
   killsByRole: Partial<Record<Role, number>>;
   /** The run's closest call: lowest hp reached and when. */

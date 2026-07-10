@@ -7,6 +7,7 @@ import { Clock } from './clock';
 import { chartEventsAtStep } from './arranger';
 import { TIER_COUNT, type Chart, type ChartEvent } from './charts';
 import { getChart } from './chartstore';
+import { getComplexityChart } from './complexity';
 import { SOUNDSET } from './soundset';
 import { SKELETON, STEPS_PER_BAR, STEPS_PER_PHRASE, semitonesToRate } from './scale';
 import type { Kit, Role } from './kits';
@@ -20,6 +21,9 @@ export interface Voice {
   tier: number;
   enabled: boolean;
   gain: GainNode;
+  /** Power fullness: broad body boost plus loudness-compensating trim. */
+  body: BiquadFilterNode;
+  trim: GainNode;
   /** Sidechain node between gain and the output chain: the kick dips it on the
    *  bass voice so the two subs never stack (design rule 1). Unity otherwise. */
   duck: GainNode;
@@ -74,6 +78,7 @@ export class MusicEngine {
   private pending: ScheduledTrigger[] = [];
   private listeners: TriggerListener[] = [];
   private barQueue: (() => void)[] = [];
+  private phraseQueue: (() => void)[] = [];
   private stepMarkers: { step: number; time: number }[] = [];
   private lastDueStep = 0;
 
@@ -96,11 +101,18 @@ export class MusicEngine {
     for (const [role, kit] of kits) {
       const gain = ctx.createGain();
       gain.gain.value = 1;
+      const body = ctx.createBiquadFilter();
+      body.type = 'peaking';
+      body.frequency.value = kit.pitched ? 220 : 140;
+      body.Q.value = 0.7;
+      body.gain.value = 0;
+      const trim = ctx.createGain();
+      trim.gain.value = 1;
       // gain -> duck -> master: the persistent duck node is unity except when
       // the kick sidechains the bass (design rule 1).
       const duck = ctx.createGain();
       duck.gain.value = 1;
-      gain.connect(duck);
+      gain.connect(body).connect(trim).connect(duck);
       duck.connect(this.master);
       // Voices start disabled at tier 1; the run enables and tiers them as the
       // player picks. The soundset decides what they play.
@@ -111,6 +123,8 @@ export class MusicEngine {
         tier: 1,
         enabled: false,
         gain,
+        body,
+        trim,
         duck,
         activeSamples: kit.samples,
         tune: 0,
@@ -172,6 +186,22 @@ export class MusicEngine {
     voice.chart = getChart(role, voice.tier);
   }
 
+  /** Complexity is a literal trigger count over the complete four-bar phrase. */
+  setVoiceComplexity(role: Role, hits: number): void {
+    const voice = this.voices.get(role);
+    if (voice) voice.chart = getComplexityChart(role, hits);
+  }
+
+  /** Power adds body, with output trim so fullness does not become volume spam. */
+  setVoicePower(role: Role, power: number): void {
+    const voice = this.voices.get(role);
+    if (!voice) return;
+    const p = Math.max(1, Math.min(5, power));
+    const now = this.ctx.currentTime;
+    voice.body.gain.setTargetAtTime((p - 1) * 1.5, now, 0.04);
+    voice.trim.gain.setTargetAtTime(Math.pow(10, (-(p - 1) * 0.5) / 20), now, 0.04);
+  }
+
   setVoiceGain(role: Role, value: number): void {
     const voice = this.voices.get(role);
     if (voice) voice.gain.gain.setTargetAtTime(value, this.ctx.currentTime, 0.02);
@@ -200,9 +230,14 @@ export class MusicEngine {
     this.barQueue.push(fn);
   }
 
+  atNextPhrase(fn: () => void): void {
+    this.phraseQueue.push(fn);
+  }
+
   /** Drop queued next-bar changes (a run ended before they landed). */
   clearBarQueue(): void {
     this.barQueue = [];
+    this.phraseQueue = [];
   }
 
   /** Dispatch every trigger whose scheduled time has arrived. Call once per
@@ -241,6 +276,11 @@ export class MusicEngine {
     // phrase, so a 4-bar chart's bar 4 is always the phrase's bar 4 and
     // once-per-phrase material lands where it was written.
     const phraseStep = step % STEPS_PER_PHRASE;
+    if (phraseStep === 0 && this.phraseQueue.length > 0) {
+      const queue = this.phraseQueue;
+      this.phraseQueue = [];
+      for (const fn of queue) fn();
+    }
     if (phraseStep % STEPS_PER_BAR === 0 && this.barQueue.length > 0) {
       const queue = this.barQueue;
       this.barQueue = [];

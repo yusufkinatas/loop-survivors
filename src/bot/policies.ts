@@ -37,34 +37,17 @@ export function makePolicy(spec: string): Policy {
     };
   }
   if (spec === 'deep') {
-    // always tier up something owned; highest tier first
     return {
       name: spec,
       startingKit: randomStart,
-      choose: (options, _world, rng) => {
-        const ups = options.filter(
-          (o): o is Extract<PickOption, { kind: 'weapon' }> => o.kind === 'weapon' && o.tier > 1,
-        );
-        if (ups.length === 0) return pickRandom(options, rng);
-        const top = Math.max(...ups.map((o) => o.tier));
-        return pickRandom(
-          ups.filter((o) => o.tier === top),
-          rng,
-        );
-      },
+      choose: (options, _world, rng) => pickRandom(options, rng),
     };
   }
   if (spec === 'wide') {
-    // always take a new weapon while one is on offer
     return {
       name: spec,
       startingKit: randomStart,
-      choose: (options, _world, rng) => {
-        const fresh = options.filter(
-          (o): o is Extract<PickOption, { kind: 'weapon' }> => o.kind === 'weapon' && o.tier === 1,
-        );
-        return fresh.length > 0 ? pickRandom(fresh, rng) : pickRandom(options, rng);
-      },
+      choose: (options, _world, rng) => pickRandom(options, rng),
     };
   }
   const focus = /^focus:(\w+)$/.exec(spec);
@@ -76,7 +59,7 @@ export function makePolicy(spec: string): Policy {
       name: spec,
       startingKit: () => role,
       choose: (options, _world, rng) => {
-        const mine = options.find((o) => o.kind === 'weapon' && o.role === role);
+        const mine = options.find((o) => o.role === role);
         return mine ?? pickRandom(options, rng);
       },
     };
