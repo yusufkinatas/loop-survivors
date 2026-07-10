@@ -22,8 +22,9 @@ export const RUN = {
    *  selecting music changes weapons and sound, not progression rules. The
    *  curve covers every level of the largest possible 8x4 weapon build. */
   xpCurve: [
-    1, 11, 15, 16, 18, 19, 21, 22, 24, 26, 27, 29, 31, 33, 35, 37,
-    39, 41, 42, 44, 46, 48, 51, 53, 55, 57, 59, 61, 63, 65, 67,
+    1, 11, 15, 16, 18, 22, 27, 33, 40, 48, 57, 67, 78, 90, 103, 117,
+    132, 148, 165, 183, 202, 222, 243, 265, 288, 312, 337, 363, 390, 418,
+    447,
   ],
 };
 

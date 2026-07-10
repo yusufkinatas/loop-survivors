@@ -2,6 +2,29 @@
 
 Last updated: July 10, 2026
 
+## Latest change (July 10, 2026 — slower late-run XP cadence)
+
+**The developer rejected the shared XP curve because late level-ups arrived so
+quickly that each musical addition was interrupted before it could be heard in
+context.** The opening `1, 11, 15, 16, 18` thresholds remain, but costs now
+bend upward after that opening instead of continuing an almost-flat linear
+climb. The largest-build curve ends at 447 XP per level and 4,858 cumulative
+XP, versus 67 and 1,156 previously.
+
+- In the paired 20-run Harvester/random baseline, the old curve collapsed to
+  roughly 3–10 seconds between many late choices and averaged level 25.8. The
+  revised curve held later gaps around 16–23 seconds—approximately one complete
+  eight-bar phrase—and averaged level 15.7 on the same seeds.
+- A separate 60-run random/deep/wide comparison averaged levels 16.1–16.9;
+  build strategy remained live and all three policies still produced wins.
+- Validation now guards the preserved opening and non-shrinking post-opening
+  cost growth. Shared-curve ownership, immediate pickup feedback, surplus
+  conservation, TypeScript, and the production build all pass.
+
+This is an implemented calibration response, not a passed taste gate. The
+developer must still judge whether one full phrase is enough listening space
+between later choices.
+
 ## Latest change (July 10, 2026 — audio sample pipeline retired)
 
 **The build-time audio sample correction pipeline has been removed at the
@@ -209,8 +232,9 @@ The developer judges the four candidates by ear and by hand:
    something needs diagnosis.
 3. From the normal start screen, build each candidate through a run and judge
    whether its upgrades feel good as weapons as well as music, and whether the
-   immediate XP feedback and shared numerical level costs feel right. Include
-   at least one muted run so music cannot excuse weak survivors-like play.
+   revised curve leaves enough later-run listening space while keeping pickup
+   feedback immediate. Include at least one muted run so music cannot excuse
+   weak survivors-like play.
 
 The developer can reject or request changes per candidate before naming a
 winner. A pass requires his explicit choice of the demo's fixed default track.

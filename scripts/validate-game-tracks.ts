@@ -19,7 +19,7 @@ invariant(
   'game tracks: shared XP curve must cover the largest possible build',
 );
 invariant(
-  [1, 11, 15].every((threshold, index) => RUN.xpCurve[index] === threshold),
+  [1, 11, 15, 16, 18].every((threshold, index) => RUN.xpCurve[index] === threshold),
   'game tracks: shared opening XP thresholds changed',
 );
 RUN.xpCurve.forEach((threshold, index) => {
@@ -34,6 +34,14 @@ RUN.xpCurve.forEach((threshold, index) => {
     );
   }
 });
+for (let index = 6; index < RUN.xpCurve.length; index++) {
+  const increment = RUN.xpCurve[index] - RUN.xpCurve[index - 1];
+  const previousIncrement = RUN.xpCurve[index - 1] - RUN.xpCurve[index - 2];
+  invariant(
+    increment >= previousIncrement,
+    `game tracks: post-opening XP growth shrinks at threshold ${index + 1}`,
+  );
+}
 
 for (const track of GAME_TRACKS) {
   invariant(expected.delete(track.id), `game tracks: unexpected or duplicate ${track.id}`);
