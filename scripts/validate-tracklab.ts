@@ -13,6 +13,8 @@ const REQUIRED_STUDIES = [
   'aroundtheworld',
   'showmelove',
   'pjanoo',
+  'pursuit',
+  'satisfaction',
 ] as const;
 
 function invariant(condition: unknown, message: string): asserts condition {
@@ -67,6 +69,18 @@ function validateTrack(track: LabTrack): void {
 
   for (const voiceId of voiceIds) {
     invariant(usedVoices.has(voiceId), `${at}/${voiceId}: instrument never fires in any section`);
+  }
+
+  if (track.arrangement !== undefined) {
+    invariant(track.arrangement.length > 0, `${at}: arrangement cannot be empty`);
+    for (const [index, entry] of track.arrangement.entries()) {
+      const entryAt = `${at}/arrangement[${index}]`;
+      invariant(sectionIds.has(entry.sectionId), `${entryAt}: unknown section ${entry.sectionId}`);
+      invariant(
+        Number.isInteger(entry.bars) && entry.bars > 0,
+        `${entryAt}: bars must be a positive integer`,
+      );
+    }
   }
 }
 

@@ -8,7 +8,9 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "bot": "tsx scripts/bot.ts",
-    "validate:tracklab": "tsx scripts/validate-tracklab.ts"
+    "validate:tracklab": "tsx scripts/validate-tracklab.ts",
+    "validate:game-tracks": "tsx scripts/validate-game-tracks.ts",
+    "build:featured-samples": "node scripts/build-featured-track-samples.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.1.0",

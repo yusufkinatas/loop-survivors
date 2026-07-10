@@ -13,6 +13,13 @@ runtime:
 
 - `scripts/build-house-kit.mjs` — the House kit (the "Tight Tech" voicing chosen
   from the local Wave Point pack), written to `public/samples/house/`.
+- `scripts/build-featured-track-samples.mjs` — the Show Me Love, Animals,
+  Pursuit, and Satisfaction audition one-shots, written below
+  `public/samples/covers/featured/`. Its remote inputs are pinned to exact
+  source revisions. Verbatim downloads stay in a unique OS-temporary folder;
+  corrected files build in a unique staging folder and replace the public set
+  only after every download, ffmpeg pass, and health check succeeds. The output
+  folder contains both `CREDITS.md` and its own `health-report.md`.
 
 `scripts/build-samples.mjs` is a dormant generic downloader for a possible
 future kit. Its manifest is empty and it exits without touching reports. Re-run
@@ -21,6 +28,7 @@ not in the script's default Downloads location:
 
 ```
 node scripts/build-house-kit.mjs "/path/to/Wave Point - Sample Packs"
+npm run build:featured-samples
 ```
 
 ## The correction chain (the fixes ffmpeg applies)

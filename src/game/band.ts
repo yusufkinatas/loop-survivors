@@ -91,16 +91,18 @@ export function slotOf(role: Role): Slot {
   return slot;
 }
 
-/** A slot's roster restricted to the instruments the soundset supports.
- *  Empty when the soundset drops the whole slot (supports no member of it). */
-export function supportedRoster(slot: Slot): Role[] {
-  return SLOT_ROSTER[slot].filter((r) => soundsetSupports(r));
+/** A slot's roster restricted to the selected track's catalog. Omitting the
+ *  catalog preserves the fixed House soundset used by bots and old replays. */
+export function supportedRoster(slot: Slot, catalog?: readonly Role[]): Role[] {
+  if (!catalog) return SLOT_ROSTER[slot].filter((r) => soundsetSupports(r));
+  const supported = new Set<Role>(catalog);
+  return SLOT_ROSTER[slot].filter((r) => supported.has(r));
 }
 
 /** The band slots the soundset actually fills (drops the ones it supports
  *  nothing in). */
-export function supportedSlots(): Slot[] {
-  return SLOTS.filter((s) => supportedRoster(s).length > 0);
+export function supportedSlots(catalog?: readonly Role[]): Slot[] {
+  return SLOTS.filter((s) => supportedRoster(s, catalog).length > 0);
 }
 
 /** The instrument currently filling a slot, if any, given the owned tiers. */

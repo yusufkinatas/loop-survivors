@@ -66,10 +66,6 @@ const ZONE_CAPS: Partial<Record<Role, readonly number[]>> = {
   rhodes: [2, 3, 4, 5],
 };
 
-/** Eight occupied slots at four tiers is the complete weapon-only build. XP
- *  stops there: catalog exhaustion is not a hidden repeatable healing item. */
-const MAX_BUILD_LEVEL = supportedSlots().length * TIER_COUNT;
-
 export interface Enemy {
   kind: EnemyKind;
   x: number;
@@ -266,6 +262,16 @@ export interface RunWorldOpts {
   control?: () => { x: number; y: number };
   /** False for headless runs: skip the fx queue entirely. */
   fx?: boolean;
+  /** Number of authored weapon states in this run. Track profiles with fewer
+   *  than eight lanes stop XP at their own real catalog cap; omitted keeps the
+   *  legacy House/bot behavior. */
+  maxBuildLevel?: number;
+  /** Optional track-specific pacing seam. Values below 1 make level-ups arrive
+   *  sooner; omitted is exactly the legacy XP curve. */
+  xpThresholdMul?: number;
+  /** Fine-grained balance compensation for a profile lane whose authored riff
+   *  fires much more or less often than the legacy weapon chart. */
+  weaponDamageMul?: Readonly<Partial<Record<Role, number>>>;
 }
 
 export class RunWorld {
@@ -324,6 +330,9 @@ export class RunWorld {
   private curMixTotal = 0;
   private spawnCarry = 0;
   private scripted: boolean;
+  private readonly maxBuildLevel: number;
+  private readonly xpThresholdMul: number;
+  private readonly weaponDamageMul: Readonly<Partial<Record<Role, number>>>;
 
   constructor(
     view: { width: number; height: number },
@@ -336,6 +345,14 @@ export class RunWorld {
     this.rng = opts.rng ?? Math.random;
     this.control = opts.control ?? (() => ({ x: 0, y: 0 }));
     this.fx = (opts.fx ?? true) ? [] : null;
+    this.maxBuildLevel = Math.max(
+      1,
+      Math.floor(opts.maxBuildLevel ?? supportedSlots().length * TIER_COUNT),
+    );
+    const xpMul = opts.xpThresholdMul;
+    this.xpThresholdMul =
+      xpMul !== undefined && Number.isFinite(xpMul) && xpMul > 0 ? xpMul : 1;
+    this.weaponDamageMul = { ...opts.weaponDamageMul };
   }
 
   get enemyCount(): number {
@@ -390,7 +407,7 @@ export class RunWorld {
         damage: conf.damage * fx.damageMul,
       };
     }
-    conf = this.applyBuild(conf);
+    conf = this.applyBuild(t.role, conf);
 
     switch (t.role) {
       case 'kick': {
@@ -631,8 +648,11 @@ export class RunWorld {
   }
 
   /** The only global weapon transform: fixed-tempo power compensation. */
-  private applyBuild(conf: WeaponConf): WeaponConf {
-    return { ...conf, damage: conf.damage * this.powerMul };
+  private applyBuild(role: Role, conf: WeaponConf): WeaponConf {
+    const authored = this.weaponDamageMul[role];
+    const roleMul =
+      authored !== undefined && Number.isFinite(authored) && authored > 0 ? authored : 1;
+    return { ...conf, damage: conf.damage * this.powerMul * roleMul };
   }
 
   /** Push an enemy away from a point (Feature 3), sharing the crash knock
@@ -1073,7 +1093,7 @@ export class RunWorld {
 
   /** Debug helper: jump straight to the next level-up. */
   levelUp(): void {
-    const threshold = RUN.xpCurve[Math.min(this.level - 1, RUN.xpCurve.length - 1)];
+    const threshold = this.xpThreshold();
     this.grantXp(Math.max(0, threshold - this.xp));
   }
 
@@ -1745,17 +1765,23 @@ export class RunWorld {
       if (d < RUN.pickupRadius) {
         this.xp += g.xp;
         this.gems.splice(i, 1);
-        this.checkLevel();
       }
     }
+    // Present at most one level-up per simulation frame. A live player must
+    // choose before the next frame advances, whereas the headless conductor
+    // can queue choices immediately. Checking once after the whole pickup
+    // batch prevents several nearby gems from consuming levels behind a
+    // single visible pick screen. Calling this every frame also drains any XP
+    // surplus into successive choices after play resumes.
+    this.checkLevel();
   }
 
   private checkLevel(): void {
-    if (this.level >= MAX_BUILD_LEVEL) {
+    if (this.level >= this.maxBuildLevel) {
       this.xp = 0;
       return;
     }
-    const threshold = RUN.xpCurve[Math.min(this.level - 1, RUN.xpCurve.length - 1)];
+    const threshold = this.xpThreshold();
     if (this.xp >= threshold) {
       this.xp -= threshold;
       this.level += 1;
@@ -1765,9 +1791,16 @@ export class RunWorld {
 
   /** XP progress toward the next level, 0..1, for the HUD bar. */
   xpProgress(): number {
-    if (this.level >= MAX_BUILD_LEVEL) return 0;
-    const threshold = RUN.xpCurve[Math.min(this.level - 1, RUN.xpCurve.length - 1)];
+    if (this.level >= this.maxBuildLevel) return 0;
+    const threshold = this.xpThreshold();
     return Math.min(1, this.xp / threshold);
+  }
+
+  private xpThreshold(): number {
+    return (
+      RUN.xpCurve[Math.min(this.level - 1, RUN.xpCurve.length - 1)] *
+      this.xpThresholdMul
+    );
   }
 
   private spawnRing(x: number, y: number, radius: number, color: number, dur: number, soft = false): void {

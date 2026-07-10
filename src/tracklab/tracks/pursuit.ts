@@ -12,8 +12,10 @@
 // (A root -> C root), then slams back in. Sections here follow the tab's
 // 8-bar groups: intro → build → drop → drop var → breakdown.
 
-import { clap909, drone, hat808, kick808, metalStab, noteHz, sub808, variants, whistle } from '../labkits';
+import { drone, fetchSample, growingOneShot, metalStab, noteHz, variants, whistle } from '../labkits';
 import { hits, type LabChart, type LabChartEvent, type LabTrack } from './types';
+
+const SAMPLE = '/samples/covers/featured/pursuit/';
 
 // Riff lane, split per the tab: bass = A1 pulses (root 0, turnaround +3 =
 // C2), stab = C3-family hits (0 = C3, +1 = C#3, +3 = D#3, +4 = E3).
@@ -202,12 +204,20 @@ export const PURSUIT: LabTrack = {
   bars: 8,
   swing: 0,
   pump: { amount: 0.55, release: 0.24 },
-  humanizeGain: 0.04,
+  humanizeGain: 0,
   humanizeCents: 0,
   notes:
     'Note-level patterns sourced from a full fan transcription. The signature move is built in: in ' +
     'the drop sections, bar 8 cuts all drums for one bar while the riff climbs a minor third, then ' +
-    'slams back. Sections: intro → build → drop → drop var → breakdown.',
+    'slams back. Real processed machine hits replace the thin synthetic drums, and timing is fully ' +
+    'deterministic. Sections: intro → build → drop → drop var → breakdown.',
+  arrangement: [
+    { sectionId: 'intro', bars: 8 },
+    { sectionId: 'build', bars: 8 },
+    { sectionId: 'drop', bars: 16 },
+    { sectionId: 'dropvar', bars: 16 },
+    { sectionId: 'breakdown', bars: 8 },
+  ],
   voices: [
     {
       id: 'kick',
@@ -215,14 +225,20 @@ export const PURSUIT: LabTrack = {
       color: '#ff5a3c',
       pitched: false,
       ducker: true,
-      build: async () => variants([['kick', await kick808({ from: 130, to: 46, decay: 0.32, drive: 3.2, click: 0.35 })]]),
+      build: (ctx) =>
+        fetchSample(ctx, SAMPLE + 'kick.wav').then((b) =>
+          growingOneShot(b, 'kick', [620, 1900, 5200]),
+        ),
     },
     {
       id: 'clap',
       name: 'Industrial clap',
       color: '#ffc93c',
       pitched: false,
-      build: async () => variants([['clap', await clap909({ decay: 0.34 })]]),
+      build: (ctx) =>
+        fetchSample(ctx, SAMPLE + 'clap.wav').then((b) =>
+          growingOneShot(b, 'clap', [1250, 3600, 8800]),
+        ),
     },
     {
       id: 'tick',
@@ -230,7 +246,8 @@ export const PURSUIT: LabTrack = {
       color: '#8fb7ff',
       pitched: false,
       gain: 0.8,
-      build: async () => variants([['tick', await hat808({ open: false, hpf: 9000 })]]),
+      build: (ctx) =>
+        fetchSample(ctx, SAMPLE + 'hat_closed.wav').then((b) => variants([['tick', b]])),
     },
     {
       id: 'hats',
@@ -239,10 +256,10 @@ export const PURSUIT: LabTrack = {
       pitched: false,
       ducked: true,
       gain: 0.85,
-      build: async () =>
+      build: async (ctx) =>
         variants([
-          ['closed', await hat808({ open: false })],
-          ['splash', await hat808({ open: true })],
+          ['closed', await fetchSample(ctx, SAMPLE + 'hat_closed.wav')],
+          ['splash', await fetchSample(ctx, SAMPLE + 'hat_splash.wav')],
         ]),
     },
     {
@@ -252,8 +269,11 @@ export const PURSUIT: LabTrack = {
       pitched: true,
       choke: true,
       ducked: true,
+      gain: 0.9,
       noteRows: [3, 0],
-      build: async () => variants([['sub', await sub808({ rootHz: noteHz('A1'), decay: 0.19, drive: 1.4 })]]),
+      tune: -3,
+      build: (ctx) =>
+        fetchSample(ctx, SAMPLE + 'bass_c.wav').then((b) => variants([['sub', b]])),
     },
     {
       id: 'stab',
@@ -262,7 +282,19 @@ export const PURSUIT: LabTrack = {
       pitched: true,
       ducked: true,
       noteRows: [4, 3, 1, 0],
-      build: async () => variants([['stab', await metalStab({ rootHz: noteHz('C3'), decay: 0.2, drive: 7, bpHz: 950 })]]),
+      build: async () =>
+        variants([
+          [
+            'stab',
+            await metalStab({
+              rootHz: noteHz('C3'),
+              decay: 0.2,
+              drive: 8.5,
+              bpHz: 860,
+              noise: 0.16,
+            }),
+          ],
+        ]),
     },
     {
       id: 'drone',

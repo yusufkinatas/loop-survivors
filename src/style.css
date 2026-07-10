@@ -558,7 +558,7 @@ input[type='range'] {
   z-index: 2;
 }
 
-/* The active genre (your character), the panel's header, in the genre's color. */
+/* The selected audition track, kept visible above the run meters. */
 .hud-genre {
   color: var(--voice-color, var(--ink));
   font-size: var(--fs-xs);
@@ -784,8 +784,44 @@ input[type='range'] {
   font-size: var(--fs-xs);
 }
 
-/* Primary call-to-action on the start screen: every run opens on the kick,
-   so the one choice left is when to begin. */
+/* Four-track pre-run chooser. A selection is required before the primary
+   action unlocks; the compact cards keep the developer tools secondary. */
+.start-track-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(130px, 1fr));
+  gap: var(--sp-2);
+  width: min(720px, 94vw);
+}
+
+.start-track-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: var(--sp-3);
+  border-left: 3px solid var(--line-2);
+  background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
+  text-align: left;
+}
+
+.start-track-card.on {
+  border-color: var(--signal);
+  box-shadow: 0 0 18px -10px var(--signal);
+}
+
+.start-track-title {
+  color: var(--ink);
+  font-size: var(--fs-body);
+  font-weight: 700;
+}
+
+.start-track-artist {
+  color: var(--ink-dim);
+  font-size: var(--fs-xs);
+}
+
+/* Primary call-to-action on the start screen. */
 .start-btn {
   padding: 12px 40px;
   font-size: var(--fs-h2);
@@ -793,6 +829,14 @@ input[type='range'] {
   text-transform: uppercase;
   border-color: var(--signal);
   color: var(--signal);
+}
+
+.start-btn:disabled {
+  cursor: not-allowed;
+  border-color: var(--line);
+  color: var(--ink-faint);
+  background: var(--bg-2);
+  box-shadow: none;
 }
 
 .start-secondary {
@@ -1189,6 +1233,24 @@ button.big {
   margin-top: 6px;
 }
 
+.sb-track-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.sb-track-options .small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-track-options .small.on {
+  border-color: var(--signal);
+  color: var(--signal);
+}
+
 .sb-enemy,
 .sb-loadout {
   display: flex;
@@ -1262,14 +1324,6 @@ button.big {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-/* A voice with its own sample-backed voicing for the active genre: marked by a
- *  border around the name (no separate badge, so it costs no row width). */
-.sb-loadout-label.custom {
-  border: 1px solid var(--voice-color);
-  border-radius: 4px;
-  padding: 1px 6px;
 }
 
 /* Slot group header in the loadout list — matches the track-deck order/naming. */
@@ -1351,6 +1405,14 @@ button.big {
 
   .screen h1 {
     font-size: 26px;
+  }
+
+  .start-track-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .start-track-card {
+    padding: 9px;
   }
 
   .pick-grid {

@@ -53,6 +53,73 @@ export async function fetchSample(ctx: BaseAudioContext, url: string): Promise<A
 
 export const variants = (entries: [string, AudioBuffer][]) => new Map(entries);
 
+/** Bake several source buffers into one one-shot. This is used when a real
+ * transient supplies the physical attack while a synthesized layer supplies
+ * a stable musical pitch. Keeping the layer in the asset preserves the
+ * engine's one trigger = one sound = one attack contract. */
+export async function layerBuffers(
+  layers: readonly { buffer: AudioBuffer; gain?: number; rate?: number; offset?: number }[],
+): Promise<AudioBuffer> {
+  const seconds = Math.max(
+    0.05,
+    ...layers.map(
+      ({ buffer, rate = 1, offset = 0 }) => offset + buffer.duration / Math.max(0.01, rate),
+    ),
+  );
+  const ctx = offline(seconds + 0.02);
+  for (const { buffer, gain = 1, rate = 1, offset = 0 } of layers) {
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.playbackRate.value = rate;
+    const level = ctx.createGain();
+    level.gain.value = gain;
+    source.connect(level).connect(ctx.destination);
+    source.start(offset);
+  }
+  return ctx.startRendering();
+}
+
+/** Render a darker/lighter copy of an existing one-shot for authored upgrade
+ *  ladders. Track Lab keeps the unfiltered source as its final sound; playable
+ *  Levels I-II use these baked copies so even a one-hit crash or mandatory
+ *  four-on-the-floor kick has an audible growth path without runtime effects. */
+export async function filteredCopy(
+  buffer: AudioBuffer,
+  cutoffHz: number,
+  gain = 1,
+): Promise<AudioBuffer> {
+  const ctx = offline(buffer.duration + 0.02);
+  const source = ctx.createBufferSource();
+  source.buffer = buffer;
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = cutoffHz;
+  filter.Q.value = 0.45;
+  const level = ctx.createGain();
+  level.gain.value = gain;
+  source.connect(filter).connect(level).connect(ctx.destination);
+  source.start(0);
+  return ctx.startRendering();
+}
+
+export async function growingOneShot(
+  buffer: AudioBuffer,
+  finalVariant: string,
+  cutoffs: readonly [number, number, number],
+): Promise<Map<string, AudioBuffer>> {
+  const [muted, body, bright] = await Promise.all([
+    filteredCopy(buffer, cutoffs[0], 0.86),
+    filteredCopy(buffer, cutoffs[1], 0.94),
+    filteredCopy(buffer, cutoffs[2], 0.98),
+  ]);
+  return variants([
+    [finalVariant, buffer],
+    ['muted', muted],
+    ['body', body],
+    ['bright', bright],
+  ]);
+}
+
 // ---------------------------------------------------------------- drums ----
 
 /** 808-family kick: sine pitch-drop. Long and boomy for phonk, short and
@@ -325,6 +392,10 @@ export async function sawStab(opts: {
   q?: number;
   drive?: number;
   saws?: number;
+  /** Start this many semitones away and slide to the written note. The
+   *  Satisfaction riff uses ~130ms glides; zero keeps the old hard retrigger. */
+  glideFromSemitones?: number;
+  glideSeconds?: number;
 }): Promise<AudioBuffer> {
   const {
     rootHz,
@@ -335,6 +406,8 @@ export async function sawStab(opts: {
     q = 4,
     drive = 3,
     saws = 3,
+    glideFromSemitones = 0,
+    glideSeconds = 0,
   } = opts;
   const ctx = offline(decay + 0.1);
   const lp = ctx.createBiquadFilter();
@@ -351,7 +424,12 @@ export async function sawStab(opts: {
   for (let i = 0; i < saws; i++) {
     const osc = ctx.createOscillator();
     osc.type = 'sawtooth';
-    osc.frequency.value = rootHz;
+    if (glideSeconds > 0 && glideFromSemitones !== 0) {
+      osc.frequency.setValueAtTime(rootHz * Math.pow(2, glideFromSemitones / 12), 0);
+      osc.frequency.exponentialRampToValueAtTime(rootHz, Math.min(decay * 0.8, glideSeconds));
+    } else {
+      osc.frequency.value = rootHz;
+    }
     osc.detune.value = (i - (saws - 1) / 2) * detune;
     const og = ctx.createGain();
     og.gain.value = 0.9 / saws;
@@ -368,8 +446,9 @@ export async function metalStab(opts: {
   decay?: number;
   drive?: number;
   bpHz?: number;
+  noise?: number;
 }): Promise<AudioBuffer> {
-  const { rootHz, decay = 0.19, drive = 7, bpHz = 900 } = opts;
+  const { rootHz, decay = 0.19, drive = 7, bpHz = 900, noise = 0 } = opts;
   const ctx = offline(decay + 0.08);
   const bp = ctx.createBiquadFilter();
   bp.type = 'bandpass';
@@ -397,6 +476,73 @@ export async function metalStab(opts: {
   sq.connect(sg).connect(bp);
   saw.start(0);
   sq.start(0);
+  if (noise > 0) {
+    const grit = ctx.createBufferSource();
+    grit.buffer = noiseBuffer(ctx, Math.min(0.08, decay));
+    const gritBand = ctx.createBiquadFilter();
+    gritBand.type = 'bandpass';
+    gritBand.frequency.value = bpHz * 1.5;
+    gritBand.Q.value = 0.5;
+    const gritGain = ctx.createGain();
+    gritGain.gain.setValueAtTime(noise, 0);
+    gritGain.gain.exponentialRampToValueAtTime(0.001, Math.min(0.08, decay));
+    grit.connect(gritBand).connect(gritGain).connect(shaper);
+    grit.start(0);
+  }
+  return ctx.startRendering();
+}
+
+/** Hollow, short wooden-horn hit for the Animals drop. Unlike metalStab this
+ *  avoids a bright saw/square buzz: a rounded fundamental, a breathy fifth,
+ *  and a fast resonant body make the pitch read through a physical knock. */
+export async function woodHorn(opts: {
+  rootHz: number;
+  decay?: number;
+  drive?: number;
+  brightness?: number;
+}): Promise<AudioBuffer> {
+  const { rootHz, decay = 0.26, drive = 1.5, brightness = 1 } = opts;
+  const ctx = offline(decay + 0.1);
+  const body = ctx.createBiquadFilter();
+  body.type = 'bandpass';
+  body.frequency.value = 620 + 310 * brightness;
+  body.Q.value = 1.15;
+  const low = ctx.createBiquadFilter();
+  low.type = 'lowpass';
+  low.frequency.value = 1700 + 900 * brightness;
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.001, 0);
+  gain.gain.exponentialRampToValueAtTime(0.82, 0.004);
+  gain.gain.exponentialRampToValueAtTime(0.001, decay);
+  const shaper = driveNode(ctx, drive);
+  body.connect(low).connect(gain).connect(shaper).connect(ctx.destination);
+
+  for (const [ratio, level, type] of [
+    [1, 0.75, 'triangle'],
+    [1.5, 0.18, 'sine'],
+    [2, 0.1, 'sine'],
+  ] as const) {
+    const oscillator = ctx.createOscillator();
+    oscillator.type = type;
+    oscillator.frequency.setValueAtTime(rootHz * ratio * 1.055, 0);
+    oscillator.frequency.exponentialRampToValueAtTime(rootHz * ratio, 0.035);
+    const levelNode = ctx.createGain();
+    levelNode.gain.value = level;
+    oscillator.connect(levelNode).connect(body);
+    oscillator.start(0);
+  }
+
+  const breath = ctx.createBufferSource();
+  breath.buffer = noiseBuffer(ctx, 0.045);
+  const breathBand = ctx.createBiquadFilter();
+  breathBand.type = 'bandpass';
+  breathBand.frequency.value = 1150 + 500 * brightness;
+  breathBand.Q.value = 0.7;
+  const breathGain = ctx.createGain();
+  breathGain.gain.setValueAtTime(0.13, 0);
+  breathGain.gain.exponentialRampToValueAtTime(0.001, 0.045);
+  breath.connect(breathBand).connect(breathGain).connect(shaper);
+  breath.start(0);
   return ctx.startRendering();
 }
 
@@ -518,9 +664,11 @@ export async function housePiano(opts: {
   return ctx.startRendering();
 }
 
-/** Punchy M1-era organ-style note for classic organ house. Additive drawbar
- *  harmonics provide the hollow, nasal body; a tiny key click gives the riff
- *  an edge without needing any copied keyboard sample. */
+/** Punchy M1-era organ-style bass note for classic organ house. The safe
+ *  custom patch follows the well-documented recipe rather than copying the
+ *  proprietary Korg ROM: a triangle-wave root supplies the low body, a square
+ *  wave one octave plus a fifth above (+19 semitones) supplies the nasal
+ *  identity, and a tiny noise click supplies the percussive attack. */
 export async function houseOrgan(opts: {
   rootHz: number;
   seconds?: number;
@@ -531,7 +679,10 @@ export async function houseOrgan(opts: {
   const ctx = offline(seconds + 0.12);
   const lp = ctx.createBiquadFilter();
   lp.type = 'lowpass';
-  lp.frequency.value = 2600 + 1900 * Math.max(0, Math.min(1.5, brightness));
+  const bright = Math.max(0.35, Math.min(1.5, brightness));
+  lp.frequency.setValueAtTime(2200 + 1800 * bright, 0);
+  lp.frequency.exponentialRampToValueAtTime(330 + 520 * bright, Math.min(0.16, seconds * 0.45));
+  lp.Q.value = 0.35;
   const hp = ctx.createBiquadFilter();
   hp.type = 'highpass';
   hp.frequency.value = 75;
@@ -543,16 +694,16 @@ export async function houseOrgan(opts: {
   const shaper = driveNode(ctx, drive);
   lp.connect(hp).connect(gain).connect(shaper).connect(ctx.destination);
 
-  for (const [ratio, level, type] of [
-    [0.5, 0.16, 'sine'],
-    [1, 0.48, 'square'],
-    [2, 0.22, 'sine'],
-    [3, 0.1, 'sine'],
-    [4, 0.06, 'square'],
+  for (const [ratio, level, type, detune] of [
+    [1, 0.58, 'triangle', 0],
+    [Math.pow(2, 19 / 12), 0.34, 'square', -3],
+    [Math.pow(2, 19 / 12), 0.18, 'square', 4],
+    [2, 0.08, 'sine', 0],
   ] as const) {
     const osc = ctx.createOscillator();
     osc.type = type;
     osc.frequency.value = rootHz * ratio;
+    osc.detune.value = detune;
     const oscGain = ctx.createGain();
     oscGain.gain.value = level;
     osc.connect(oscGain).connect(lp);
@@ -680,8 +831,9 @@ export async function padTriad(opts: {
   rootHz: number;
   seconds?: number;
   attack?: number;
+  semitones?: readonly number[];
 }): Promise<AudioBuffer> {
-  const { rootHz, seconds = 4.4, attack = 0.5 } = opts;
+  const { rootHz, seconds = 4.4, attack = 0.5, semitones = [0, 4, 7] } = opts;
   const ctx = offline(seconds + 0.2);
   const lp = ctx.createBiquadFilter();
   lp.type = 'lowpass';
@@ -692,7 +844,7 @@ export async function padTriad(opts: {
   g.gain.setValueAtTime(0.26, seconds - 0.8);
   g.gain.exponentialRampToValueAtTime(0.001, seconds);
   lp.connect(g).connect(ctx.destination);
-  for (const semis of [0, 4, 7]) {
+  for (const semis of semitones) {
     for (const det of [-6, 6]) {
       const osc = ctx.createOscillator();
       osc.type = 'sawtooth';

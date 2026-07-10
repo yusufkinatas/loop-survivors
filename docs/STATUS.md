@@ -2,7 +2,69 @@
 
 Last updated: July 10, 2026
 
-## Latest changes (July 10, 2026)
+## Latest changes (July 10, 2026 — featured-track audition)
+
+**Show Me Love, Animals, Pursuit, and Satisfaction are now complete audition
+candidates in both the Experimentation room and the playable game.** The locked
+audition spec is `docs/phases/featured-track-audition.md`. This work does not
+choose a winner or pass the developer's ear-and-hands gate.
+
+- **Complete listening:** all four studies have authored 48- or 56-bar
+  arrangements and a one-click **play full arrangement** transport. Exact
+  section changes happen on bar boundaries and playback stops at the authored
+  end. The four candidates are starred at the top of the Experimentation room.
+- **Playable selection:** a normal run now requires choosing one of the four
+  tracks. The selected track supplies its tempo, timing feel, sounds, charts,
+  instrument names, weapon pool, build cap, damage tuning, and XP pacing.
+  Off-track weapons cannot appear. The sandbox has the same four-way selector
+  plus a **play full band** action that equips every available weapon at Level
+  IV.
+- **Four real levels:** every candidate weapon has four non-silent, distinct
+  levels. Levels I-III gradually reveal its phrase; sparse one-hit parts and
+  the mandatory starting kick also open from dark/filtered to full-bandwidth
+  so no tier is only a louder duplicate. Level IV exactly matches that
+  instrument in the candidate's declared maximum section. The profiles
+  intentionally use five to seven instruments rather than padding sparse
+  tracks to eight.
+- **Sound pass:** reusable real one-shots from the CC0 Sample Pi collection
+  replace several thin synthetic drums and percussion sounds.
+  `scripts/build-featured-track-samples.mjs`
+  downloads pinned revisions and uses ffmpeg to trim silence, cap/fade tails,
+  normalize peaks, and render mono 44.1 kHz/16-bit WAVs. Source and licensing
+  notes live in `public/samples/covers/featured/CREDITS.md`. Verbatim downloads
+  stay outside `public/`, so only corrected WAVs enter the web build. No
+  original masters, stems, vocals, downloaded MIDI, or proprietary synth ROMs
+  were added.
+- **Candidate-specific corrections:** Show Me Love uses one organ bassline/hook
+  rather than an invented separate bass and upper chord part; Animals preserves
+  its sparse wooden-horn drop and pre-drop vacuum; Pursuit preserves the silent
+  eighth-bar turnaround and deterministic industrial feel; Satisfaction's riff
+  gains audible pitch slides and progressively opens from muffled to bright.
+- **Progression evidence:** ephemeral five-seed profile-aware simulation smokes
+  using the real `RunWorld`, movement, offers, charts, and next-bar pick path
+  confirm that maximum builds are reachable but generally belong to stronger
+  late runs. This was an inline calibration harness, not the checked-in legacy
+  `npm run bot` validator.
+  Show Me Love reached MAX in 2/5 runs (5:38 and 7:08), Animals in 2/5 (6:06
+  and 6:43), and Satisfaction in 4/5 (5:06-7:27). Pursuit's first tuning was
+  clearly too fast and was corrected from a 0.09 to 0.20 XP multiplier; its
+  calibrated sweep reaches MAX on 3/5 runs at 4:53, 6:39, and 7:14.
+  Live same-frame gem batches now emit one visible choice at a time, while
+  pending next-bar upgrades count as already chosen in later offers; this
+  prevents surplus XP from silently consuming or duplicating weapon levels.
+- **Engineering evidence:** the production build passes; Track Lab validates
+  11 tracks / 46 sections / 81 lanes; all four playable profiles validate their
+  catalogs, caps, eight-bar tiers, distinct upgrades, and exact maximum tiers;
+  the reproducible sample rebuild reports zero health flags. The in-app browser
+  exercised all four sandbox selectors and full Level-IV bands, all four full
+  arrangement transports, a selected normal run, and desktop plus 390x844
+  layouts with no console warnings or errors.
+
+The previous House foundation gate was not silently passed. It is temporarily
+superseded by this explicit four-candidate audition so the developer can choose
+which soundset becomes the fixed demo track.
+
+## Earlier changes (July 10, 2026)
 
 **The development-only Experimentation room now includes six additional
 instrumental reference studies:** Swedish House Mafia's “One,” Martin Garrix's
@@ -95,14 +157,25 @@ ladders, samples) is kept. See the History entry below for the full teardown.
 
 ## Current phase
 
-**House foundation refactor — engineering complete, awaiting developer gate.**
-All requested implementation, independent QoL review, and engineering
-verification are complete.
+**Featured track candidate audition — asset and integration gates complete,
+awaiting the developer gate.** The four candidates are deliberately still
+peers; no default winner has been selected.
 
 ## Next action
 
-The developer judges the delivered draft by ear and the run by hand, including
-one muted run.
+The developer judges the four candidates by ear and by hand:
+
+1. In **Developer tools → experimentation room**, select each starred candidate
+   and use **play full arrangement**.
+2. In **Developer tools → sandbox**, select each candidate and use **play full
+   band**; then isolate or change individual instruments between Levels I-IV if
+   something needs diagnosis.
+3. From the normal start screen, build each candidate through a run and judge
+   whether its upgrades feel good as weapons as well as music. Include at least
+   one muted run so music cannot excuse weak survivors-like play.
+
+The developer can reject or request changes per candidate before naming a
+winner. A pass requires his explicit choice of the demo's fixed default track.
 
 ## What was built (July 6)
 

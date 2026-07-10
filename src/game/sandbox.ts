@@ -4,16 +4,14 @@
 // is for listening; the sandbox is for watching and testing.
 
 import type { MusicEngine } from '../audio/engine';
-import { supportedRoles } from '../audio/soundset';
 import { ROLE_META, type Role } from '../audio/kits';
-import { sampledRoles } from '../audio/kits/index';
 import {
   supportedRoster,
   supportedSlots,
   SLOTS,
   SLOT_LABEL,
 } from './band';
-import { TIER_NUMERALS } from './hud';
+import { TIER_NUMERALS, type TrackChoice } from './hud';
 import { ENEMIES, enemyScaling, RUN, type EnemyKind } from './config';
 import type { RunWorld } from './run';
 
@@ -30,18 +28,21 @@ export interface SandboxPanel {
   destroy(): void;
 }
 
-export interface SandboxOpts {
+export interface SandboxOpts<T extends TrackChoice> {
   onExit: () => void;
+  track: T;
+  tracks: readonly T[];
+  onTrackChange: (track: T) => void;
   /** The loadout changed (force-assembly): keep the band rack in sync. The
    *  sandbox itself ignores slot rules — it lets any combination be built. */
   onLoadout?: () => void;
 }
 
-export function mountSandboxPanel(
+export function mountSandboxPanel<T extends TrackChoice>(
   root: HTMLElement,
   engine: MusicEngine,
   world: RunWorld,
-  opts: SandboxOpts,
+  opts: SandboxOpts<T>,
 ): SandboxPanel {
   const panel = document.createElement('div');
   panel.className = 'sandbox-panel';
@@ -60,36 +61,64 @@ export function mountSandboxPanel(
   const exitBtn = el('button', 'small', head, '← leave') as HTMLButtonElement;
   exitBtn.onclick = opts.onExit;
 
+  // ---- track chooser: switching rebuilds the sandbox world and its audio
+  // profile, so no weapon/tier state can leak between catalogs. ----
+  el('div', 'sb-section', panel, 'track');
+  const trackRow = el('div', 'sb-track-options', panel);
+  for (const track of opts.tracks) {
+    const btn = el('button', 'small', trackRow, track.title) as HTMLButtonElement;
+    const current = track.id === opts.track.id;
+    btn.classList.toggle('on', current);
+    btn.setAttribute('aria-pressed', String(current));
+    btn.disabled = current;
+    btn.onclick = () => opts.onTrackChange(track);
+  }
+
   // ---- instrument readout: which instruments the soundset is built around ----
   // Play-testing reads this to know the set (some slots are dropped).
   el('div', 'sb-section', panel, 'instruments');
   const optimizedFor = el('div', 'sb-hint', panel, '');
-  const names = supportedRoles().map((r) => ROLE_META[r].name);
+  const names = opts.track.roles.map(
+    (role) => engine.voices.get(role)?.kit.name ?? ROLE_META[role].name,
+  );
   optimizedFor.textContent = `${names.length} instruments: ${names.join(', ')}`;
 
   // Assemble a representative full band so the whole track can be heard at once:
   // one instrument in each SUPPORTED slot, all at tier 4. Toggles off (silences
   // every voice) when pressed again.
+  const loadoutButtons = new Map<Role, HTMLButtonElement[]>();
+  const paintLoadout = (role: Role, tier: number | null): void => {
+    const options = loadoutButtons.get(role);
+    if (!options) return;
+    options.forEach((button, index) =>
+      button.classList.toggle('on', tier === null ? index === 0 : index === tier),
+    );
+  };
   let bandOn = false;
   const bandBtn = el('button', 'small sb-controls', panel, '▶ play full band') as HTMLButtonElement;
+  const paintBandButton = (): void => {
+    bandBtn.classList.toggle('on', bandOn);
+    bandBtn.textContent = bandOn ? '■ stop full band' : '▶ play full band';
+  };
   const firstForSlot = (slot: Parameters<typeof supportedRoster>[0]): Role =>
-    supportedRoster(slot)[0];
+    supportedRoster(slot, opts.track.roles)[0];
   bandBtn.onclick = () => {
     bandOn = !bandOn;
-    for (const role of supportedRoles()) {
+    for (const role of opts.track.roles) {
       engine.setVoiceEnabled(role, false);
       world.removeWeapon(role);
+      paintLoadout(role, null);
     }
     if (bandOn) {
-      for (const slot of supportedSlots()) {
+      for (const slot of supportedSlots(opts.track.roles)) {
         const role = firstForSlot(slot);
         engine.setVoiceTier(role, 4);
         engine.setVoiceEnabled(role, true);
         world.addWeapon(role, 4);
+        paintLoadout(role, 4);
       }
     }
-    bandBtn.classList.toggle('on', bandOn);
-    bandBtn.textContent = bandOn ? '■ stop full band' : '▶ play full band';
+    paintBandButton();
     opts.onLoadout?.();
   };
 
@@ -155,21 +184,17 @@ export function mountSandboxPanel(
   // ---- loadout editor: any weapon at any tier, applied instantly ----
   // Grouped by band slot (Beat / Snap / Tick / … , the rack order at the top of
   // the screen) instead of a flat list, so a voice is easy to find by its job.
-  // A ★ custom badge marks the roles that are sample-backed (their own real
-  // voicing, worth focusing testing on).
   el('div', 'sb-section', panel, 'loadout');
-  // Rows carry their name element so refreshCustom can toggle the sample-backed
-  // mark (a border on the name).
-  const customMarks: { role: Role; el: HTMLElement }[] = [];
   for (const slot of SLOTS) {
+    const roster = supportedRoster(slot, opts.track.roles);
+    if (roster.length === 0) continue;
     el('div', 'sb-slot-head', panel, SLOT_LABEL[slot]);
-    for (const role of supportedRoster(slot)) {
+    for (const role of roster) {
       const voice = engine.voices.get(role)!;
       const row = el('div', 'sb-loadout', panel);
       row.style.setProperty('--voice-color', voice.kit.color);
       const name = el('div', 'sb-loadout-name', row);
-      const label = el('span', 'sb-loadout-label', name, voice.kit.name);
-      customMarks.push({ role, el: label });
+      el('span', 'sb-loadout-label', name, voice.kit.name);
       const btns = el('div', 'sb-btns', row);
       const options: HTMLButtonElement[] = [];
       const set = (tier: number | null) => {
@@ -181,9 +206,16 @@ export function mountSandboxPanel(
           engine.setVoiceEnabled(role, true);
           world.addWeapon(role, tier);
         }
-        options.forEach((b, i) =>
-          b.classList.toggle('on', tier === null ? i === 0 : i === tier),
+        paintLoadout(role, tier);
+        // Derive the transport state from the actual loadout. Clicking IV on
+        // the last incomplete row restores the exact full band; changing any
+        // row away from IV clears it without touching the other instruments.
+        bandOn = opts.track.roles.every(
+          (candidate) =>
+            world.tiers.get(candidate) === 4 &&
+            (engine.voices.get(candidate)?.enabled ?? false),
         );
+        paintBandButton();
         opts.onLoadout?.();
       };
       const off = el('button', 'small off-btn', btns, '⏻') as HTMLButtonElement;
@@ -196,20 +228,10 @@ export function mountSandboxPanel(
         options.push(b);
       });
       const current = world.tiers.get(role);
+      loadoutButtons.set(role, options);
       options.forEach((b, i) => b.classList.toggle('on', current === undefined ? i === 0 : i === current));
     }
   }
-  // Mark (with a bordered name) the roles that are sample-backed — their own
-  // real voicing, worth focusing testing on.
-  function refreshCustom(): void {
-    const custom = sampledRoles();
-    for (const { role, el: mark } of customMarks) {
-      const on = custom.has(role);
-      mark.classList.toggle('custom', on);
-      mark.title = on ? 'custom voicing (sample-backed)' : '';
-    }
-  }
-  refreshCustom();
 
   el(
     'div',

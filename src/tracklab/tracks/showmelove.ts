@@ -6,26 +6,19 @@
 // are ear-built approximations adapted to Track Lab's 16-step grid.
 
 import {
-  clap909,
-  cowbell808,
-  crash,
-  hat808,
+  fetchSample,
+  growingOneShot,
   houseOrgan,
-  kick909,
+  layerBuffers,
   noiseRiser,
   noteHz,
+  padTriad,
   variants,
 } from '../labkits';
 import { hits, type LabChart, type LabChartEvent, type LabTrack } from './types';
 
-// Dm7 → C6 → Bbmaj7 → C7, repeated. The four notes are charted separately
-// so the organ sound stays reusable and the visible grid shows the harmony.
-const ORGAN_CHORDS: readonly (readonly number[])[] = [
-  [0, 3, 7, 10],
-  [-2, 2, 5, 7],
-  [-4, 0, 3, 7],
-  [-2, 2, 5, 8],
-];
+const SAMPLE = '/samples/covers/featured/showmelove/';
+const HOUSE = '/samples/house/';
 
 const ORGAN_RHYTHM: readonly (readonly number[])[] = [
   [0, 3, 6, 10, 12],
@@ -37,42 +30,18 @@ const ORGAN_RHYTHM: readonly (readonly number[])[] = [
 function organRiff(variant: 'warm' | 'bright', sparse: boolean): LabChart {
   const events: LabChartEvent[] = [];
   for (let bar = 0; bar < 8; bar++) {
-    const chord = ORGAN_CHORDS[bar % ORGAN_CHORDS.length];
+    const note = BASS_ROOTS[bar % BASS_ROOTS.length];
     const fullSteps = ORGAN_RHYTHM[bar % ORGAN_RHYTHM.length];
     const steps = sparse ? fullSteps.filter((_, index) => index % 2 === 0) : fullSteps;
     for (const [hitIndex, step] of steps.entries()) {
       const accent = hitIndex === 0 ? 0.95 : step >= 14 ? 0.72 : 0.78;
-      chord.forEach((note, noteIndex) => {
-        events.push({
-          step: bar * 16 + step,
-          velocity: accent * (noteIndex === 0 ? 1 : 0.86),
-          note,
-          variant,
-        });
-      });
+      events.push({ step: bar * 16 + step, velocity: accent, note, variant });
     }
   }
   return { bars: 8, events };
 }
 
 const BASS_ROOTS = [0, -2, -4, -2] as const;
-
-function organBass(sparse: boolean): LabChart {
-  const events: LabChartEvent[] = [];
-  for (let bar = 0; bar < 8; bar++) {
-    const root = BASS_ROOTS[bar % BASS_ROOTS.length];
-    const fullSteps = ORGAN_RHYTHM[bar % ORGAN_RHYTHM.length];
-    const steps = sparse ? fullSteps.filter((_, index) => index === 0 || index === 2) : fullSteps;
-    steps.forEach((step, index) => {
-      events.push({
-        step: bar * 16 + step,
-        velocity: index === 0 ? 0.9 : 0.68,
-        note: root,
-      });
-    });
-  }
-  return { bars: 8, events };
-}
 
 function kickChart(): LabChart {
   const events: LabChartEvent[] = [];
@@ -144,8 +113,15 @@ const fullHats = hatsChart(true);
 const warmOrgan = organRiff('warm', false);
 const sparseOrgan = organRiff('warm', true);
 const brightOrgan = organRiff('bright', false);
-const sparseBass = organBass(true);
-const fullBass = organBass(false);
+// The producer described two discreet minor string chords as the only chorus
+// lift. Each sample is already a full minor chord, so one musical hit remains
+// one gameplay event when this lane is used as a weapon.
+const strings = hits(8, [
+  [0, 0, 0.3, 0, 'minor'],
+  [2, 0, 0.27, -5, 'minor'],
+  [4, 0, 0.3, 0, 'minor'],
+  [6, 0, 0.27, -5, 'minor'],
+]);
 const buildFx = hits(8, [[4, 0, 0.72, null, 'rise']]);
 const peakFx = hits(8, [
   [0, 0, 0.78, null, 'crash'],
@@ -157,16 +133,23 @@ export const SHOW_ME_LOVE: LabTrack = {
   title: 'Show Me Love',
   artist: 'Robin S',
   genre: 'classic organ house',
-  bpm: 121,
+  bpm: 120,
   bars: 8,
   swing: 0.035,
   pump: { amount: 0.18, release: 0.16 },
   humanizeGain: 0.035,
   humanizeCents: 0,
   notes:
-    'Instrumental-only, ear-built reference study. The nasal organ-style sound does both jobs: ' +
-    'separately charted low notes provide the bass while several higher notes strike together as ' +
-    'the famous rhythmic hook. Sections: organ intro → simple groove → break / build → club peak.',
+    'Instrumental-only reference study. The nasal organ sound is one monophonic bassline, not a ' +
+    'separate bass plus upper chords; together with the kick it supplies the low end. The peak adds ' +
+    'only a very quiet two-chord string cushion, preserving the record’s restraint. Sections: ' +
+    'organ intro → simple groove → break / build → club peak.',
+  arrangement: [
+    { sectionId: 'intro', bars: 8 },
+    { sectionId: 'groove', bars: 16 },
+    { sectionId: 'build', bars: 8 },
+    { sectionId: 'peak', bars: 16 },
+  ],
   voices: [
     {
       id: 'kick',
@@ -174,15 +157,25 @@ export const SHOW_ME_LOVE: LabTrack = {
       color: '#ff5a3c',
       pitched: false,
       ducker: true,
-      build: async () => variants([['kick', await kick909({ decay: 0.29, drive: 2.05 })]]),
+      build: (ctx) =>
+        fetchSample(ctx, HOUSE + 'kick.wav').then((b) =>
+          growingOneShot(b, 'kick', [680, 2100, 5600]),
+        ),
     },
     {
       id: 'clap',
-      name: 'House clap',
+      name: 'Heavy snare / kick snap',
       color: '#ffc93c',
       pitched: false,
       gain: 0.9,
-      build: async () => variants([['clap', await clap909({ decay: 0.25 })]]),
+      build: async (ctx) => {
+        const [snare, kick] = await Promise.all([
+          fetchSample(ctx, SAMPLE + 'snare.wav'),
+          fetchSample(ctx, HOUSE + 'kick.wav'),
+        ]);
+        const layered = await layerBuffers([{ buffer: snare }, { buffer: kick, gain: 0.2 }]);
+        return growingOneShot(layered, 'clap', [1350, 3900, 9200]);
+      },
     },
     {
       id: 'hats',
@@ -190,10 +183,10 @@ export const SHOW_ME_LOVE: LabTrack = {
       color: '#3ce0ff',
       pitched: false,
       gain: 0.82,
-      build: async () =>
+      build: async (ctx) =>
         variants([
-          ['closed', await hat808({ open: false, hpf: 7600 })],
-          ['open', await hat808({ open: true, hpf: 7000 })],
+          ['closed', await fetchSample(ctx, HOUSE + 'hat_closed.wav')],
+          ['open', await fetchSample(ctx, HOUSE + 'hat_open.wav')],
         ]),
     },
     {
@@ -203,47 +196,54 @@ export const SHOW_ME_LOVE: LabTrack = {
       pitched: false,
       gain: 0.55,
       defaultVariant: 'tick',
-      build: async () =>
+      build: async (ctx) =>
         variants([
-          ['tick', await hat808({ open: false, hpf: 9400 })],
-          ['bell', await cowbell808({ rootHz: 720, decay: 0.13, drive: 1.2 })],
-        ]),
-    },
-    {
-      id: 'organBass',
-      name: 'Low organ notes',
-      color: '#a06bff',
-      pitched: true,
-      choke: true,
-      ducked: true,
-      gain: 0.9,
-      noteRows: [0, -2, -4],
-      build: async () =>
-        variants([
-          [
-            'bass',
-            await houseOrgan({ rootHz: noteHz('D2'), seconds: 0.38, drive: 2.15, brightness: 0.65 }),
-          ],
+          ['tick', await fetchSample(ctx, SAMPLE + 'tick.wav')],
+          ['bell', await fetchSample(ctx, SAMPLE + 'bell.wav')],
         ]),
     },
     {
       id: 'organ',
-      name: 'M1-era organ-style hook',
-      color: '#4dff88',
+      name: 'Organ bassline / hook',
+      color: '#a06bff',
       pitched: true,
+      choke: true,
       ducked: true,
-      gain: 0.8,
+      gain: 1.0,
       defaultVariant: 'warm',
-      noteRows: [10, 8, 7, 5, 3, 2, 0, -2, -4],
+      noteRows: [0, -2, -4],
       build: async () =>
         variants([
           [
             'warm',
-            await houseOrgan({ rootHz: noteHz('D3'), seconds: 0.44, drive: 1.7, brightness: 0.86 }),
+            await houseOrgan({ rootHz: noteHz('D2'), seconds: 0.4, drive: 2.0, brightness: 0.82 }),
           ],
           [
             'bright',
-            await houseOrgan({ rootHz: noteHz('D3'), seconds: 0.48, drive: 2.05, brightness: 1.3 }),
+            await houseOrgan({ rootHz: noteHz('D2'), seconds: 0.44, drive: 2.35, brightness: 1.2 }),
+          ],
+        ]),
+    },
+    {
+      id: 'strings',
+      name: 'Quiet chorus strings',
+      color: '#4dff88',
+      pitched: true,
+      choke: true,
+      ducked: true,
+      gain: 0.42,
+      defaultVariant: 'minor',
+      noteRows: [0, -5],
+      build: async () =>
+        variants([
+          [
+            'minor',
+            await padTriad({
+              rootHz: noteHz('D3'),
+              seconds: 3.75,
+              attack: 0.28,
+              semitones: [0, 3, 7],
+            }),
           ],
         ]),
     },
@@ -254,18 +254,22 @@ export const SHOW_ME_LOVE: LabTrack = {
       pitched: false,
       gain: 0.6,
       defaultVariant: 'crash',
-      build: async () =>
-        variants([
-          ['crash', await crash({ decay: 1.35 })],
-          ['rise', await noiseRiser({ seconds: 7.7, peak: 0.34 })],
-        ]),
+      build: async (ctx) => {
+        const [crash, rise] = await Promise.all([
+          fetchSample(ctx, HOUSE + 'crash.wav'),
+          noiseRiser({ seconds: 7.7, peak: 0.34 }),
+        ]);
+        const samples = await growingOneShot(crash, 'crash', [1100, 4100, 9800]);
+        samples.set('rise', rise);
+        return samples;
+      },
     },
   ],
   sections: [
     {
       id: 'intro',
       name: 'organ intro',
-      charts: { perc: introPerc, organBass: sparseBass, organ: warmOrgan },
+      charts: { perc: introPerc, organ: sparseOrgan },
     },
     {
       id: 'groove',
@@ -275,7 +279,6 @@ export const SHOW_ME_LOVE: LabTrack = {
         clap,
         hats: sparseHats,
         perc: introPerc,
-        organBass: fullBass,
         organ: warmOrgan,
       },
     },
@@ -286,8 +289,8 @@ export const SHOW_ME_LOVE: LabTrack = {
         clap,
         hats: sparseHats,
         perc: fullPerc,
-        organBass: sparseBass,
         organ: sparseOrgan,
+        strings,
         fx: buildFx,
       },
     },
@@ -299,8 +302,8 @@ export const SHOW_ME_LOVE: LabTrack = {
         clap: clapFill,
         hats: fullHats,
         perc: fullPerc,
-        organBass: fullBass,
         organ: brightOrgan,
+        strings,
         fx: peakFx,
       },
     },

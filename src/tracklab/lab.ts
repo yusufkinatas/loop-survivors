@@ -3,7 +3,8 @@
 // M3 proof-of-concept surface; the full-track game direction it explored was
 // dropped, but the room is kept for experimentation. Read-only grids, voice
 // mutes and solos for A/Bing what each layer contributes, section switching
-// for the arrangement, a tempo nudge for taste. (Internal name: Track Lab.)
+// for manual loops, optional full-arrangement playback, and a tempo nudge for
+// taste. (Internal name: Track Lab.)
 
 import { LabEngine } from './labengine';
 import { TRACKS } from './tracks';
@@ -58,6 +59,14 @@ export function mountTrackLab(root: HTMLElement, ctx: AudioContext): void {
   };
   const playBtn = el('button', 'play', bar, '▶ play') as HTMLButtonElement;
   playBtn.disabled = true;
+  const arrangementBtn = el(
+    'button',
+    'small',
+    bar,
+    '▶ play full arrangement',
+  ) as HTMLButtonElement;
+  arrangementBtn.disabled = true;
+  arrangementBtn.style.display = 'none';
   const position = el('span', 'position', bar, 'pick a track');
 
   const tempoWrap = el('label', 'knob', bar, 'tempo —');
@@ -80,27 +89,59 @@ export function mountTrackLab(root: HTMLElement, ctx: AudioContext): void {
   master.value = '80';
   master.oninput = () => engine?.setMasterGain(Number(master.value) / 100);
 
+  const syncTransport = () => {
+    const running = engine?.clock.running ?? false;
+    const arranging = engine?.playingArrangement ?? false;
+    playBtn.textContent = running ? '■ stop' : '▶ play';
+    arrangementBtn.textContent = arranging
+      ? '■ stop full arrangement'
+      : '▶ play full arrangement';
+    arrangementBtn.classList.toggle('current', arranging);
+  };
+
   const setPlaying = (on: boolean) => {
     if (!engine) return;
-    if (on) {
-      engine.start();
-      playBtn.textContent = '■ stop';
-    } else {
+    if (on) engine.start();
+    else {
       engine.stop();
-      playBtn.textContent = '▶ play';
       position.textContent = '—';
     }
+    syncTransport();
   };
   playBtn.onclick = () => engine && setPlaying(!engine.clock.running);
+  arrangementBtn.onclick = () => {
+    if (!engine) return;
+    if (engine.playingArrangement) {
+      engine.stop();
+      position.textContent = '—';
+    } else {
+      engine.startArrangement();
+    }
+    syncTransport();
+  };
 
   // ---- track cards ----
   const tracksRow = el('div', 'sets', root);
   el('span', 'sets-label', tracksRow, 'track');
   const status = el('span', 'sets-status', tracksRow);
   const trackButtons = new Map<string, HTMLButtonElement>();
-  for (const t of TRACKS) {
-    const btn = el('button', 'set-btn', tracksRow, `${t.title} — ${t.artist}`) as HTMLButtonElement;
-    btn.title = `${t.genre} · ${t.bpm} bpm · ${t.bars}-bar loop`;
+  // Full-playthrough studies sort to the front automatically as authors add
+  // arrangement metadata; no second registry or hardcoded featured list.
+  const displayTracks = [...TRACKS].sort(
+    (a, b) => Number(Boolean(b.arrangement?.length)) - Number(Boolean(a.arrangement?.length)),
+  );
+  for (const t of displayTracks) {
+    const hasArrangement = Boolean(t.arrangement?.length);
+    const btn = el(
+      'button',
+      'set-btn',
+      tracksRow,
+      `${hasArrangement ? '★ ' : ''}${t.title} — ${t.artist}`,
+    ) as HTMLButtonElement;
+    const arrangementBars = t.arrangement?.reduce((sum, entry) => sum + entry.bars, 0) ?? 0;
+    btn.title =
+      `${t.genre} · ${t.bpm} bpm · ${t.bars}-bar loop` +
+      (hasArrangement ? ` · ${arrangementBars}-bar full arrangement` : '');
     btn.onclick = () => void loadTrack(t);
     trackButtons.set(t.id, btn);
     tracksRow.insertBefore(btn, status);
@@ -136,6 +177,8 @@ export function mountTrackLab(root: HTMLElement, ctx: AudioContext): void {
 
   async function loadTrack(t: LabTrack): Promise<void> {
     for (const b of trackButtons.values()) b.disabled = true;
+    playBtn.disabled = true;
+    arrangementBtn.disabled = true;
     status.textContent = 'building instruments…';
     try {
       const wasPlaying = engine?.clock.running ?? false;
@@ -152,10 +195,13 @@ export function mountTrackLab(root: HTMLElement, ctx: AudioContext): void {
       tempoWrap.firstChild!.textContent = `tempo ${t.bpm}`;
       engine.setMasterGain(Number(master.value) / 100);
       playBtn.disabled = false;
+      const hasArrangement = Boolean(t.arrangement?.length);
+      arrangementBtn.disabled = !hasArrangement;
+      arrangementBtn.style.display = hasArrangement ? '' : 'none';
       position.textContent = '—';
       status.textContent = '';
       if (wasPlaying) setPlaying(true);
-      else playBtn.textContent = '▶ play';
+      else syncTransport();
     } catch (err) {
       status.textContent = `failed: ${err instanceof Error ? err.message : err}`;
     } finally {
@@ -172,6 +218,7 @@ export function mountTrackLab(root: HTMLElement, ctx: AudioContext): void {
       btn.onclick = () => {
         engine!.setSection(s.id);
         btn.classList.add('pending');
+        syncTransport();
       };
       sectionButtons.set(s.id, btn);
     }
@@ -349,6 +396,7 @@ export function mountTrackLab(root: HTMLElement, ctx: AudioContext): void {
   // ---- frame loop ----
   function frame(): void {
     if (engine) {
+      const wasRunning = engine.clock.running;
       engine.update();
       const running = engine.clock.running;
       const phraseStep = running ? engine.currentStep() : -1;
@@ -357,10 +405,20 @@ export function mountTrackLab(root: HTMLElement, ctx: AudioContext): void {
         if (running) sct.playhead.style.setProperty('--step', String(phraseStep));
       }
       if (running && track) {
-        const barNo = Math.floor(phraseStep / STEPS_PER_BAR) + 1;
         const beatNo = Math.floor((phraseStep % STEPS_PER_BAR) / 4) + 1;
-        position.textContent = `bar ${barNo}/${track.bars} · beat ${beatNo}`;
+        const arrangement = engine.arrangementPosition();
+        if (arrangement) {
+          const sectionName = track.sections.find((s) => s.id === arrangement.sectionId)?.name;
+          position.textContent =
+            `arrangement bar ${arrangement.bar}/${arrangement.totalBars} · beat ${beatNo}` +
+            (sectionName ? ` · ${sectionName}` : '');
+        } else {
+          const barNo = Math.floor(phraseStep / STEPS_PER_BAR) + 1;
+          position.textContent = `bar ${barNo}/${track.bars} · beat ${beatNo}`;
+        }
       }
+      if (wasRunning && !running) position.textContent = '—';
+      syncTransport();
     }
     if (root.isConnected) requestAnimationFrame(frame);
   }
@@ -381,6 +439,6 @@ export function mountTrackLab(root: HTMLElement, ctx: AudioContext): void {
     };
   }
 
-  // Auto-load the first track so the room is one click from sound.
-  if (TRACKS.length > 0) void loadTrack(TRACKS[0]);
+  // Auto-load the first featured/full-arrangement study when one exists.
+  if (displayTracks.length > 0) void loadTrack(displayTracks[0]);
 }

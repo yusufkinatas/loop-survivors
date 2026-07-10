@@ -4,13 +4,17 @@
 
 import { Application } from 'pixi.js';
 import type { MusicEngine } from '../audio/engine';
-import { SOUNDSET, supportedRoles } from '../audio/soundset';
+import {
+  GAME_TRACKS,
+  type GameTrackProfile,
+} from '../audio/gameTracks';
+import { SOUNDSET } from '../audio/soundset';
 import { type Kit, type Role } from '../audio/kits';
 import { SIM_DT, VirtualConductor } from '../bot/conductor';
 import { MOVERS, type Mover, type MoverName } from '../bot/movers';
 import { makePolicy } from '../bot/policies';
 import { SIM_VIEW } from '../bot/sim';
-import { SLOTS, SLOT_LABEL, SLOT_ROSTER, type Slot } from './band';
+import { SLOTS, SLOT_LABEL, supportedRoster, type Slot } from './band';
 import { RUN } from './config';
 import { Hud, TIER_NUMERALS } from './hud';
 import { autoMove, Input, type AutoMoveMode } from './input';
@@ -55,6 +59,12 @@ export async function bootGame(
   let view: RunView | null = null;
   let muted = false;
   let paused = false;
+  let activeTrack: GameTrackProfile | null = null;
+  let trackLoadToken = 0;
+  /** Choices accepted by the player but waiting for their next-bar musical
+   *  entry. Surplus XP can open another pick before that bar, so offer rolls
+   *  must treat these states as already owned just like the bot conductor. */
+  const pendingPickTiers = new Map<Role, number>();
   const pendingTrackMutes = new Map<Slot, boolean>();
   const queuedTrackMutes = new Set<Slot>();
 
@@ -97,7 +107,7 @@ export async function bootGame(
    *  sandbox may force several and the number/cell toggle treats them as a bus. */
   function activeTrackRoles(slot: Slot): Role[] {
     if (!world) return [];
-    return SLOT_ROSTER[slot].filter(
+    return supportedRoster(slot, activeTrack?.roles).filter(
       (role) => world!.tiers.has(role) && (engine.voices.get(role)?.enabled ?? false),
     );
   }
@@ -188,7 +198,14 @@ export async function bootGame(
       if (state !== 'run') return;
       // The offer roll (docs/phases/m2-the-arc.md) is shared with the autoplay
       // bot via picks.ts, so the bot faces the exact offers a player does.
-      const options = rollOffers(world!.tiers, Math.random, world!.timeS);
+      const effectiveTiers = new Map(world!.tiers);
+      for (const [role, tier] of pendingPickTiers) effectiveTiers.set(role, tier);
+      const options = rollOffers(
+        effectiveTiers,
+        Math.random,
+        world!.timeS,
+        activeTrack?.roles,
+      );
       if (options.length === 0) {
         hud.showToast('the track is complete');
         return;
@@ -197,14 +214,20 @@ export async function bootGame(
       engine.clock.pause();
       hud.showPick(options, (option) => {
         state = 'run';
+        pendingPickTiers.set(option.role, option.tier);
         // Musical entry rule: the old chart finishes its bar and the new voice
         // or tier enters on the following "1".
         const w = world;
         engine.atNextBar(() => {
-          if (state !== 'run' || world !== w) return;
+          if ((state !== 'run' && state !== 'pick') || world !== w) return;
           engine.setVoiceTier(option.role, option.tier);
           engine.setVoiceEnabled(option.role, true);
           w!.addWeapon(option.role, option.tier);
+          // A later queued tier of the same weapon supersedes this one in the
+          // effective offer pool until its own next-bar callback lands.
+          if (pendingPickTiers.get(option.role) === option.tier) {
+            pendingPickTiers.delete(option.role);
+          }
           renderTrackDeck();
           // Cosmetic affirmation the pick landed (view-only, muted-safe).
           view?.flourish(w!.player.x, w!.player.y);
@@ -383,23 +406,66 @@ export async function bootGame(
     probe = null;
     seekOverlay.style.display = 'none';
     engine.clearBarQueue();
+    engine.cancelScheduled();
+    pendingPickTiers.clear();
     pendingTrackMutes.clear();
     queuedTrackMutes.clear();
     engine.clearVoiceMutes();
-    for (const role of supportedRoles()) engine.setVoiceEnabled(role, false);
+    for (const role of engine.voices.keys()) engine.setVoiceEnabled(role, false);
   }
 
-  function startRun(startingKit: Role, mode: AutoMoveMode = 'off'): void {
+  /** Load one explicit profile and refresh every UI label from the kit map the
+   *  engine actually applied. A token keeps rapid sandbox switches from
+   *  reviving an older selection after its async sample build completes. */
+  async function applyTrack(profile: GameTrackProfile): Promise<boolean> {
+    const token = ++trackLoadToken;
+    hud.showToast(`building ${profile.title}…`);
+    try {
+      const trackKits = await engine.setGameTrack(profile);
+      if (token !== trackLoadToken || !trackKits) return false;
+      activeTrack = profile;
+      hud.setTrackContext(profile.title, profile.roles, trackKits);
+      return true;
+    } catch (error) {
+      if (token !== trackLoadToken) return false;
+      console.error(`[game] failed to load ${profile.id}:`, error);
+      hud.showToast(`could not load ${profile.title}`);
+      hud.showHud(false);
+      hud.showStart(GAME_TRACKS, startRun, startSandbox);
+      state = 'start';
+      return false;
+    }
+  }
+
+  function weaponDamageMuls(
+    profile: GameTrackProfile,
+  ): Partial<Record<Role, number>> {
+    return Object.fromEntries(
+      profile.weapons.map((weapon) => [weapon.role, weapon.damageMul]),
+    ) as Partial<Record<Role, number>>;
+  }
+
+  async function startRun(
+    profile: GameTrackProfile,
+    startingKit: Role,
+    mode: AutoMoveMode = 'off',
+  ): Promise<void> {
+    engine.clock.stop();
     resetWorld();
+    hud.showHud(false);
+    if (!(await applyTrack(profile))) return;
     // Auto-move hands the player's movement to a bot mover (kiter = survival,
     // greedy = the gem-hungry harvester); manual keeps the keyboard/joystick.
     // The seam reads playerControl live, so the in-game toggle works too.
     setAutoMode(mode);
     const w: RunWorld = new RunWorld(app.screen, events, {
       control: () => playerControl(w),
+      maxBuildLevel: profile.maxBuildLevel,
+      xpThresholdMul: profile.xpMul,
+      weaponDamageMul: weaponDamageMuls(profile),
     });
     world = w;
-    w.powerMul = SOUNDSET.powerMul;
+    w.powerMul = profile.powerMul;
     view = new RunView(w, app.screen);
     app.stage.addChild(view.stage);
     engine.setVoiceTier(startingKit, 1);
@@ -412,24 +478,35 @@ export async function bootGame(
     engine.clock.start();
   }
 
-  function startSandbox(): void {
+  async function startSandbox(profile: GameTrackProfile): Promise<void> {
+    engine.clock.stop();
     resetWorld();
+    hud.showHud(false);
+    if (!(await applyTrack(profile))) return;
     const w: RunWorld = new RunWorld(app.screen, sandboxEvents, {
       scripted: false,
       control: () => playerControl(w),
+      maxBuildLevel: profile.maxBuildLevel,
+      xpThresholdMul: profile.xpMul,
+      weaponDamageMul: weaponDamageMuls(profile),
     });
     world = w;
-    w.powerMul = SOUNDSET.powerMul;
+    w.powerMul = profile.powerMul;
     w.invincible = true;
     view = new RunView(w, app.screen);
     app.stage.addChild(view.stage);
     sandboxPanel = mountSandboxPanel(root, engine, w, {
+      track: profile,
+      tracks: GAME_TRACKS,
+      onTrackChange: (next) => {
+        void startSandbox(next);
+      },
       onLoadout: renderTrackDeck,
       onExit: () => {
         resetWorld();
         engine.clock.stop();
         hud.showHud(false);
-        hud.showStart(startRun, startSandbox);
+        hud.showStart(GAME_TRACKS, startRun, startSandbox);
         state = 'start';
       },
     });
@@ -529,7 +606,7 @@ export async function bootGame(
       },
       () => {
         hud.showHud(false);
-        hud.showStart(startRun, startSandbox);
+        hud.showStart(GAME_TRACKS, startRun, startSandbox);
         state = 'start';
       },
     );
@@ -724,7 +801,7 @@ export async function bootGame(
   }
 
   function pickLabel(option: PickOption): string {
-    const kit = kits.get(option.role)!;
+    const kit = engine.voices.get(option.role)?.kit ?? kits.get(option.role)!;
     return option.tier > 1 ? `${kit.name} ${TIER_NUMERALS[option.tier - 1]}` : kit.name;
   }
 
@@ -739,7 +816,7 @@ export async function bootGame(
       params.get('policy') ?? 'random',
     );
   } else {
-    hud.showStart(startRun, startSandbox);
+    hud.showStart(GAME_TRACKS, startRun, startSandbox);
   }
 
   // extend the dev console handle

@@ -9,6 +9,7 @@
 //   - voices keyed by string id, any number of them
 //   - per-track bpm, phrase length (up to 16 bars), swing
 //   - sections: named sets of charts, switched on a bar boundary
+//   - optional full arrangements: authored section walks with an exact ending
 //   - sidechain pump: kick-tagged voices duck the rest (the "produced" glue)
 
 import { Clock } from '../audio/clock';
@@ -39,6 +40,12 @@ export interface LabTrigger {
 
 export type LabTriggerListener = (t: LabTrigger) => void;
 
+interface ArrangementBlock {
+  sectionId: string;
+  startBar: number;
+  endBar: number;
+}
+
 export class LabEngine {
   readonly ctx: AudioContext;
   readonly track: LabTrack;
@@ -57,8 +64,15 @@ export class LabEngine {
    *  before the audio), which reads as a natural telegraph lead. */
   private stepListeners: ((absStep: number, phraseStep: number, time: number) => void)[] = [];
   private barQueue: (() => void)[] = [];
-  private stepMarkers: { step: number; time: number }[] = [];
+  private stepMarkers: { step: number; absStep: number; time: number }[] = [];
   private lastDueStep = 0;
+  private lastDueAbsStep = 0;
+  private arrangementBlocks: ArrangementBlock[] = [];
+  private arrangementTotalBars = 0;
+  private arrangementActive = false;
+  private arrangementEndTime: number | null = null;
+  private arrangementStopTimer: number | null = null;
+  private scheduledSources = new Set<AudioBufferSourceNode>();
   private disposed = false;
 
   private constructor(ctx: AudioContext, track: LabTrack) {
@@ -66,6 +80,17 @@ export class LabEngine {
     this.track = track;
     this.stepsPerPhrase = track.bars * STEPS_PER_BAR;
     this.sectionId = track.sections[0].id;
+
+    let arrangementBar = 0;
+    for (const entry of track.arrangement ?? []) {
+      this.arrangementBlocks.push({
+        sectionId: entry.sectionId,
+        startBar: arrangementBar,
+        endBar: arrangementBar + entry.bars,
+      });
+      arrangementBar += entry.bars;
+    }
+    this.arrangementTotalBars = arrangementBar;
 
     this.master = ctx.createGain();
     this.master.gain.value = 0.8;
@@ -109,23 +134,63 @@ export class LabEngine {
   }
 
   dispose(): void {
-    this.clock.stop();
+    this.stop();
     this.master.disconnect();
     this.disposed = true;
   }
 
+  /** Start the currently selected section as a manual loop. */
   start(): void {
     if (this.disposed) return;
+    this.cancelArrangement();
     void this.ctx.resume();
     this.clock.bpm = this.track.bpm * this.tempoScale;
     this.clock.start();
   }
 
+  /** Restart at bar 1 and walk the track's authored full arrangement. Returns
+   *  false for legacy studies that intentionally expose manual sections only. */
+  startArrangement(): boolean {
+    if (this.disposed || this.arrangementBlocks.length === 0) return false;
+    this.clock.stop();
+    this.silenceScheduled();
+    this.cancelArrangement();
+    this.resetTimeline();
+    this.arrangementActive = true;
+    this.applySection(this.arrangementBlocks[0].sectionId);
+    void this.ctx.resume();
+    this.clock.bpm = this.track.bpm * this.tempoScale;
+    this.clock.start();
+    return true;
+  }
+
+  get playingArrangement(): boolean {
+    return this.arrangementActive;
+  }
+
+  /** The bar currently sounding in the full playthrough (1-based). The grid
+   *  itself still follows the active section's local phrase. */
+  arrangementPosition(): { bar: number; totalBars: number; sectionId: string } | null {
+    if (!this.arrangementActive || this.arrangementTotalBars === 0) return null;
+    const barIndex = Math.min(
+      this.arrangementTotalBars - 1,
+      Math.floor(this.lastDueAbsStep / STEPS_PER_BAR),
+    );
+    const block = this.arrangementBlocks.find(
+      (candidate) => barIndex >= candidate.startBar && barIndex < candidate.endBar,
+    );
+    return {
+      bar: barIndex + 1,
+      totalBars: this.arrangementTotalBars,
+      sectionId: block?.sectionId ?? this.sectionId,
+    };
+  }
+
   stop(): void {
     this.clock.stop();
-    this.barQueue = [];
-    this.stepMarkers = [];
-    this.lastDueStep = 0;
+    this.silenceScheduled();
+    this.cancelArrangement();
+    this.resetTimeline();
   }
 
   /** Tempo nudge for taste tests, 1 = the track's real bpm. */
@@ -154,12 +219,11 @@ export class LabEngine {
   /** Switch sections cleanly on the next bar (the game's next-bar rule). */
   setSection(id: string): void {
     if (!this.track.sections.some((s) => s.id === id)) return;
-    const apply = () => {
-      this.sectionId = id;
-      for (const cb of this.sectionListeners) cb(id);
-    };
-    if (!this.clock.running) apply();
-    else this.barQueue.push(apply);
+    // A manual section choice exits the authored walk but keeps the clock
+    // running; the requested loop still enters cleanly on the next bar.
+    this.cancelArrangement();
+    if (!this.clock.running) this.applySection(id);
+    else this.barQueue.push(() => this.applySection(id));
   }
 
   onSectionChange(cb: (id: string) => void): void {
@@ -179,6 +243,9 @@ export class LabEngine {
   /** Dispatch due triggers; call once per rAF frame. */
   update(): void {
     const now = this.ctx.currentTime;
+    if (this.arrangementEndTime !== null && now >= this.arrangementEndTime) {
+      this.finishArrangement();
+    }
     const due: LabTrigger[] = [];
     const rest: LabTrigger[] = [];
     for (const t of this.pending) (t.time <= now ? due : rest).push(t);
@@ -189,7 +256,9 @@ export class LabEngine {
   currentStep(): number {
     const now = this.ctx.currentTime;
     while (this.stepMarkers.length > 0 && this.stepMarkers[0].time <= now) {
-      this.lastDueStep = this.stepMarkers.shift()!.step;
+      const marker = this.stepMarkers.shift()!;
+      this.lastDueStep = marker.step;
+      this.lastDueAbsStep = marker.absStep;
     }
     return this.lastDueStep;
   }
@@ -202,15 +271,33 @@ export class LabEngine {
   }
 
   private onStep(step: number, time: number): void {
-    const phraseStep = step % this.stepsPerPhrase;
-    if (step === 0) this.lastDueStep = 0;
-    this.stepMarkers.push({ step: phraseStep, time });
-
-    if (phraseStep % STEPS_PER_BAR === 0 && this.barQueue.length > 0) {
+    let phraseStep = step % this.stepsPerPhrase;
+    if (this.arrangementActive) {
+      if (step >= this.arrangementTotalBars * STEPS_PER_BAR) {
+        this.scheduleArrangementEnd(time);
+        return;
+      }
+      const absoluteBar = Math.floor(step / STEPS_PER_BAR);
+      const block = this.arrangementBlocks.find(
+        (candidate) => absoluteBar >= candidate.startBar && absoluteBar < candidate.endBar,
+      )!;
+      // Each arrangement entry begins on its own chart bar 1 even when the
+      // previous entry held for a non-phrase-multiple number of bars.
+      phraseStep = (step - block.startBar * STEPS_PER_BAR) % this.stepsPerPhrase;
+      if (step % STEPS_PER_BAR === 0 && this.sectionId !== block.sectionId) {
+        this.applySection(block.sectionId);
+      }
+    } else if (step % STEPS_PER_BAR === 0 && this.barQueue.length > 0) {
       const queue = this.barQueue;
       this.barQueue = [];
       for (const fn of queue) fn();
     }
+
+    if (step === 0) {
+      this.lastDueStep = 0;
+      this.lastDueAbsStep = 0;
+    }
+    this.stepMarkers.push({ step: phraseStep, absStep: step, time });
 
     // Swing: delay every off-16th (odd step) by a fraction of a step, the
     // standard drum-machine shuffle. 0 = robot straight.
@@ -233,6 +320,72 @@ export class LabEngine {
     for (const cb of this.stepListeners) cb(step, phraseStep, time);
   }
 
+  private applySection(id: string): void {
+    this.sectionId = id;
+    for (const cb of this.sectionListeners) cb(id);
+  }
+
+  /** The lookahead clock discovers the end shortly before it is heard. Stop at
+   *  the scheduled audio time, while suppressing every later lookahead step. */
+  private scheduleArrangementEnd(time: number): void {
+    if (this.arrangementEndTime !== null) return;
+    this.arrangementEndTime = time;
+    const finishWhenDue = () => {
+      if (this.arrangementEndTime === null) return;
+      const remainingMs = (this.arrangementEndTime - this.ctx.currentTime) * 1000;
+      if (remainingMs > 2) {
+        this.arrangementStopTimer = window.setTimeout(finishWhenDue, remainingMs);
+      } else {
+        this.finishArrangement();
+      }
+    };
+    this.arrangementStopTimer = window.setTimeout(
+      finishWhenDue,
+      Math.max(0, (time - this.ctx.currentTime) * 1000),
+    );
+  }
+
+  private finishArrangement(): void {
+    if (!this.arrangementActive) return;
+    this.clock.stop();
+    this.arrangementActive = false;
+    this.arrangementEndTime = null;
+    if (this.arrangementStopTimer !== null) window.clearTimeout(this.arrangementStopTimer);
+    this.arrangementStopTimer = null;
+    this.barQueue = [];
+  }
+
+  private cancelArrangement(): void {
+    this.arrangementActive = false;
+    this.arrangementEndTime = null;
+    if (this.arrangementStopTimer !== null) window.clearTimeout(this.arrangementStopTimer);
+    this.arrangementStopTimer = null;
+  }
+
+  private resetTimeline(): void {
+    this.barQueue = [];
+    this.pending = [];
+    this.stepMarkers = [];
+    this.lastDueStep = 0;
+    this.lastDueAbsStep = 0;
+  }
+
+  /** Cancel the lookahead tail before a transport restart. Without this, a
+   *  source already scheduled by the old manual loop can bleed into bar 1 of
+   *  a newly started full arrangement. */
+  private silenceScheduled(): void {
+    const now = this.ctx.currentTime;
+    for (const source of this.scheduledSources) {
+      try {
+        source.stop(now);
+      } catch {
+        // Already-ended sources are safe to ignore.
+      }
+    }
+    this.scheduledSources.clear();
+    for (const voice of this.voices.values()) voice.lastHit = null;
+  }
+
   private trigger(voice: LabVoice, ev: LabChartEvent, time: number, phraseStep = -1): void {
     const variant = ev.variant ?? voice.defaultVariant;
     const buffer = voice.samples.get(variant) ?? voice.samples.values().next().value;
@@ -240,6 +393,8 @@ export class LabEngine {
 
     const src = this.ctx.createBufferSource();
     src.buffer = buffer;
+    this.scheduledSources.add(src);
+    src.addEventListener('ended', () => this.scheduledSources.delete(src), { once: true });
     let rate = semitonesToRate((ev.note ?? 0) + (voice.def.tune ?? 0));
     if (!voice.def.pitched) {
       rate *= semitonesToRate(((Math.random() * 2 - 1) * (this.track.humanizeCents ?? 5)) / 100);

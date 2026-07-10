@@ -24,3 +24,11 @@ Measured roots (autocorrelation, for `tune` values):
 - `808/cowbell.wav` ≈ C#4 −10c (275.6 Hz)
 - `misc/808-bass-dist.wav` ≈ G1 (48 Hz, drifts slightly — that's the 808)
 - `misc/808-bass-sub.wav` ≈ A1 (55 Hz)
+
+## Featured candidate tracks
+
+The processed one-shots under `featured/` are rebuilt by
+`npm run build:featured-samples`. Their per-file source, license status, ffmpeg
+targets, and health results live in `featured/CREDITS.md` and
+`featured/health-report.md`. Every featured one-shot source is from the pinned
+Sample Pi/Sonic Pi collection and is CC0 (public domain).

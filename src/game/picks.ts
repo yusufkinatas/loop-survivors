@@ -21,9 +21,12 @@ export interface PickOption {
 }
 
 /** Every legal next weapon state in deterministic catalog order. */
-export function buildPickPool(tiers: ReadonlyMap<Role, number>): PickOption[] {
+export function buildPickPool(
+  tiers: ReadonlyMap<Role, number>,
+  catalog: readonly Role[] = supportedRoles(),
+): PickOption[] {
   const pool: PickOption[] = [];
-  for (const role of supportedRoles()) {
+  for (const role of catalog) {
     const tier = tiers.get(role);
     if (!tier) {
       if (!slotFilled(slotOf(role), tiers)) pool.push({ role, tier: 1 });
@@ -43,8 +46,9 @@ export function rollOffers(
   tiers: ReadonlyMap<Role, number>,
   rng: Rng,
   timeS: number,
+  catalog?: readonly Role[],
 ): PickOption[] {
-  const keyed = buildPickPool(tiers).map((option) => {
+  const keyed = buildPickPool(tiers, catalog).map((option) => {
     const weight = earlyNudgeApplies(slotOf(option.role), timeS) ? EARLY_NUDGE_FACTOR : 1;
     return { option, key: Math.pow(rng(), 1 / weight) };
   });

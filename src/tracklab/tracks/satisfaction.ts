@@ -8,18 +8,20 @@
 // byte-level from a fan MIDI, cross-confirmed by a bass tab (A#2 core, F2,
 // A#1 dip, B2 neighbor; 8-bar phrase A B A B A B A T with a staccato-triple
 // turnaround). Drum grid inferred but genre-canonical.
-// Approximation: the record's ~130ms portamento (pitch glide between riff
-// notes) becomes hard steps in a one-shot engine.
+// The record's ~130ms portamento (pitch glide between riff notes) is baked as
+// transition-specific one-shots so the sample engine can keep the slide.
 //
 // The record's robot vocals (MacinTalk Fred + Victoria) were removed on the
 // developer's ear — he didn't like them. The voice samples were deleted too
 // (public/samples/covers/voice/ is gone).
 
-import { fetchSample, noiseRiser, sawStab, variants } from '../labkits';
+import { fetchSample, growingOneShot, noiseRiser, sawStab, variants } from '../labkits';
 import { noteHz } from '../labkits';
 import { hits, type LabChart, type LabChartEvent, type LabTrack } from './types';
 
-const S = '/samples/covers/';
+const S = '/samples/covers/featured/satisfaction/';
+
+const glideVariant = (tone: string, from: number, to: number) => `${tone}:g${from - to}`;
 
 // The riff, notes relative to the voice's root: 0=A#, -5=F, -12=A# an octave
 // down, +1=B natural (the Phrygian bite).
@@ -48,9 +50,18 @@ function riffChart(variant: string, scale = 1): LabChart {
   ]) as [number, number, number][];
   const shape = [A, B, A, B, A, B, A, T];
   const events: LabChartEvent[] = [];
+  // The loop's final turnaround note is B (+1), so bar 1 also glides across
+  // the phrase boundary instead of restarting as a disconnected hard hit.
+  let previousNote = 1;
   shape.forEach((bar, i) => {
     for (const [step, vel, note] of bar) {
-      events.push({ step: i * 16 + step, velocity: Math.min(1, vel * scale), note, variant });
+      events.push({
+        step: i * 16 + step,
+        velocity: Math.min(1, vel * scale),
+        note,
+        variant: glideVariant(variant, previousNote, note),
+      });
+      previousNote = note;
     }
   });
   return { bars: 8, events };
@@ -85,11 +96,27 @@ const fxRiser = hits(8, [[4, 0, 0.9, null, 'riser']]);
 
 async function riffSamples(rootHz: number, thin: boolean): Promise<Map<string, AudioBuffer>> {
   const c = thin ? 1.35 : 1;
-  return variants([
-    ['muffled', await sawStab({ rootHz, decay: 0.45, cutoff: 420 * c, sweepTo: 300, q: 1.5, drive: 1.6 })],
-    ['mid', await sawStab({ rootHz, decay: 0.42, cutoff: 1400 * c, sweepTo: 620, q: 2.5, drive: 3 })],
-    ['open', await sawStab({ rootHz, decay: 0.4, cutoff: 3600 * c, sweepTo: 1200, q: 4, drive: 5.5 })],
-  ]);
+  const tones = {
+    muffled: { decay: 0.45, cutoff: 420 * c, sweepTo: 300, q: 1.5, drive: 1.6 },
+    mid: { decay: 0.42, cutoff: 1400 * c, sweepTo: 620, q: 2.5, drive: 3 },
+    open: { decay: 0.4, cutoff: 3600 * c, sweepTo: 1200, q: 4, drive: 5.5 },
+  } as const;
+  const transitions = [0, 1, 5, 7, -13, -5, -1] as const;
+  const rendered: [string, AudioBuffer][] = [];
+  for (const [tone, settings] of Object.entries(tones)) {
+    for (const delta of transitions) {
+      rendered.push([
+        `${tone}:g${delta}`,
+        await sawStab({
+          rootHz,
+          ...settings,
+          glideFromSemitones: delta,
+          glideSeconds: delta === 0 ? 0 : 0.13,
+        }),
+      ]);
+    }
+  }
+  return variants(rendered);
 }
 
 export const SATISFACTION: LabTrack = {
@@ -101,12 +128,21 @@ export const SATISFACTION: LabTrack = {
   bars: 8,
   swing: 0,
   pump: { amount: 0.62, release: 0.27 },
-  humanizeGain: 0.03, // mechanical by design
+  humanizeGain: 0, // mechanical by design
   humanizeCents: 0,
   notes:
     'The riff is the bass is the melody; its filter opening across sections IS the arrangement ' +
-    '(muffled → mid → open variants). The record’s pitch-glide between riff notes is approximated ' +
-    'with hard steps. Sections: intro → build → drop → breakdown. (Robot vocals removed per ear.)',
+    '(muffled → mid → open variants). Transition-specific one-shots now preserve the smooth ' +
+    '~130ms pitch slides between riff notes. Sections: intro → build → drop → breakdown. ' +
+    '(Robot vocals removed per ear.)',
+  arrangement: [
+    { sectionId: 'intro', bars: 8 },
+    { sectionId: 'build', bars: 8 },
+    { sectionId: 'drop', bars: 16 },
+    { sectionId: 'breakdown', bars: 8 },
+    { sectionId: 'build', bars: 8 },
+    { sectionId: 'drop', bars: 8 },
+  ],
   voices: [
     {
       id: 'kick',
@@ -114,26 +150,32 @@ export const SATISFACTION: LabTrack = {
       color: '#ff5a3c',
       pitched: false,
       ducker: true,
-      build: (ctx) => fetchSample(ctx, S + '909/kick-short.wav').then((b) => variants([['kick', b]])),
+      build: (ctx) =>
+        fetchSample(ctx, S + 'kick.wav').then((b) =>
+          growingOneShot(b, 'kick', [680, 2100, 5600]),
+        ),
     },
     {
       id: 'clap',
       name: 'Clap',
       color: '#ffc93c',
       pitched: false,
-      build: (ctx) => fetchSample(ctx, S + '909/clap.wav').then((b) => variants([['clap', b]])),
+      build: (ctx) =>
+        fetchSample(ctx, S + 'clap.wav').then((b) =>
+          growingOneShot(b, 'clap', [1400, 4200, 9800]),
+        ),
     },
     {
       id: 'hats',
-      name: 'Hats (909)',
+      name: 'Crisp machine hats',
       color: '#3ce0ff',
       pitched: false,
       ducked: true,
       gain: 0.9,
       build: async (ctx) =>
         variants([
-          ['open', await fetchSample(ctx, S + '909/hat-open.wav')],
-          ['closed', await fetchSample(ctx, S + '909/hat-closed.wav')],
+          ['open', await fetchSample(ctx, S + 'hat_open.wav')],
+          ['closed', await fetchSample(ctx, S + 'hat_closed.wav')],
         ]),
     },
     {
@@ -144,7 +186,7 @@ export const SATISFACTION: LabTrack = {
       choke: true,
       ducked: true,
       noteRows: [1, 0, -5, -12],
-      defaultVariant: 'open',
+      defaultVariant: 'open:g0',
       build: () => riffSamples(noteHz('A#2'), false),
     },
     {
@@ -156,7 +198,7 @@ export const SATISFACTION: LabTrack = {
       ducked: true,
       gain: 0.8,
       noteRows: [1, 0, -5, -12],
-      defaultVariant: 'open',
+      defaultVariant: 'open:g0',
       build: () => riffSamples(noteHz('A#3'), true),
     },
     {
@@ -165,11 +207,15 @@ export const SATISFACTION: LabTrack = {
       color: '#9a9ab0',
       pitched: false,
       gain: 0.8,
-      build: async (ctx) =>
-        variants([
-          ['crash', await fetchSample(ctx, S + '909/crash.wav')],
-          ['riser', await noiseRiser({ seconds: 7.3, peak: 0.5 })],
-        ]),
+      build: async (ctx) => {
+        const [crash, riser] = await Promise.all([
+          fetchSample(ctx, S + 'crash.wav'),
+          noiseRiser({ seconds: 7.3, peak: 0.5 }),
+        ]);
+        const samples = await growingOneShot(crash, 'crash', [1100, 4300, 10000]);
+        samples.set('riser', riser);
+        return samples;
+      },
     },
   ],
   sections: [

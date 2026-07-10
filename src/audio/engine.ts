@@ -11,6 +11,7 @@ import { SOUNDSET } from './soundset';
 import { SKELETON, STEPS_PER_BAR, STEPS_PER_PHRASE, semitonesToRate } from './scale';
 import type { Kit, Role } from './kits';
 import { buildSoundsetKit } from './kits/index';
+import type { GameTrackProfile } from './gameTracks';
 
 export interface Voice {
   role: Role;
@@ -82,9 +83,19 @@ export class MusicEngine {
   private barQueue: (() => void)[] = [];
   private stepMarkers: { step: number; time: number }[] = [];
   private lastDueStep = 0;
+  /** Sources scheduled inside the lookahead window. Keeping the small live set
+   *  lets a run/profile reset stop old audio before the new world is installed. */
+  private scheduledSources = new Set<AudioBufferSourceNode>();
+  /** The immutable startup voicing, kept so the rehearsal room can restore the
+   *  legacy soundset after a game-profile audition without rebuilding audio. */
+  private readonly baseKits: Map<Role, Kit>;
+  private gameTrack: GameTrackProfile | null = null;
+  /** A slow profile render must never overwrite a newer sandbox selection. */
+  private gameTrackToken = 0;
 
   constructor(ctx: AudioContext, kits: Map<Role, Kit>) {
     this.ctx = ctx;
+    this.baseKits = new Map(kits);
     this.master = ctx.createGain();
     this.master.gain.value = 0.8;
     // Soft-knee limiter on the master so any build stays clean (Pillar 2:
@@ -140,6 +151,91 @@ export class MusicEngine {
     this.ready = this.applySoundsetKit();
   }
 
+  /** The profile currently supplying tempo, kits, and tier charts. `null`
+   *  means the legacy fixed soundset used by the rehearsal room. */
+  get activeGameTrack(): GameTrackProfile | null {
+    return this.gameTrack;
+  }
+
+  /**
+   * Apply one playable track profile. Rendering/fetching its one-shots is lazy
+   * and cached by the profile. The token makes rapid sandbox switching safe:
+   * if a later selection wins while this one is loading, this resolves `null`
+   * and changes no engine state.
+   *
+   * The returned map is the exact active kit map and is suitable for updating
+   * HUD names/colors. Existing enabled flags are preserved for roles supported
+   * by both profiles; unsupported roles are always disabled. The game shell
+   * remains responsible for clearing its matching RunWorld loadout.
+   */
+  async setGameTrack(profile: GameTrackProfile): Promise<Map<Role, Kit> | null> {
+    const token = ++this.gameTrackToken;
+    this.cancelScheduled();
+    const [, kits] = await Promise.all([this.ready, profile.buildKits(this.ctx)]);
+    if (token !== this.gameTrackToken) return null;
+
+    for (const weapon of profile.weapons) {
+      if (!this.voices.has(weapon.role)) {
+        throw new Error(
+          `[engine] ${profile.id} maps ${weapon.voiceId} to unavailable role ${weapon.role}`,
+        );
+      }
+      if (!kits.has(weapon.role)) {
+        throw new Error(`[engine] ${profile.id} did not build a kit for ${weapon.role}`);
+      }
+    }
+
+    this.gameTrack = profile;
+    this.clock.bpm = profile.bpm;
+    // Track Lab's authored feel delays odd 16ths itself. Keep Clock straight
+    // and reproduce that exact rule in onStep; legacy House still uses the
+    // Clock's offbeat-8th shuffle.
+    this.clock.swing = 0;
+    const now = this.ctx.currentTime;
+    for (const voice of this.voices.values()) {
+      const weapon = profile.weapons.find((candidate) => candidate.role === voice.role);
+      const kit = kits.get(voice.role);
+      voice.duck.gain.cancelScheduledValues(now);
+      voice.duck.gain.setValueAtTime(1, now);
+      if (!weapon || !kit) {
+        voice.enabled = false;
+        continue;
+      }
+      voice.kit = kit;
+      voice.activeSamples = kit.samples;
+      voice.tune = kit.tune ?? 0;
+      voice.override = null;
+      voice.chart = weapon.ladder[voice.tier - 1];
+      voice.gain.gain.setTargetAtTime(weapon.gain, now, 0.012);
+    }
+    return kits;
+  }
+
+  /** Restore the fixed House development soundset. Route changes normally
+   *  reload the page, but this explicit inverse keeps the engine seam total and
+   *  makes profile switching straightforward to test in isolation. */
+  clearGameTrack(): void {
+    this.gameTrackToken++;
+    this.cancelScheduled();
+    this.gameTrack = null;
+    this.clock.bpm = SOUNDSET.bpm;
+    this.clock.swing = SOUNDSET.swing;
+    const now = this.ctx.currentTime;
+    for (const voice of this.voices.values()) {
+      const kit = this.baseKits.get(voice.role);
+      if (!kit) continue;
+      voice.enabled = false;
+      voice.kit = kit;
+      voice.activeSamples = kit.samples;
+      voice.tune = kit.tune ?? 0;
+      voice.override = null;
+      voice.chart = getChart(voice.role, voice.tier);
+      voice.gain.gain.setTargetAtTime(1, now, 0.012);
+      voice.duck.gain.cancelScheduledValues(now);
+      voice.duck.gain.setValueAtTime(1, now);
+    }
+  }
+
   /** Confirm every runtime voice against the exact active soundset kit. The
    *  builder is cached, so main's startup render and this defensive check share
    *  one promise and one set of buffers. */
@@ -179,7 +275,8 @@ export class MusicEngine {
     const voice = this.voices.get(role);
     if (!voice) return;
     voice.tier = Math.max(1, Math.min(TIER_COUNT, tier));
-    voice.chart = getChart(role, voice.tier);
+    const gameLadder = this.gameTrack?.ladders[role];
+    voice.chart = gameLadder?.[voice.tier - 1] ?? getChart(role, voice.tier);
   }
 
   setVoiceGain(role: Role, value: number): void {
@@ -231,6 +328,25 @@ export class MusicEngine {
     this.barQueue = [];
   }
 
+  /** Stop the tiny lookahead tail and discard its not-yet-dispatched gameplay
+   *  triggers. Profile/run switches call this before installing a new world so
+   *  the previous track cannot produce a stray opening attack. */
+  cancelScheduled(): void {
+    const now = this.ctx.currentTime;
+    for (const source of this.scheduledSources) {
+      try {
+        source.stop(now);
+      } catch {
+        // The node may have ended between iteration and stop(); it is harmless.
+      }
+    }
+    this.scheduledSources.clear();
+    this.pending = [];
+    this.stepMarkers = [];
+    this.lastDueStep = 0;
+    for (const voice of this.voices.values()) voice.lastHit = null;
+  }
+
   /** Dispatch every trigger whose scheduled time has arrived. Call once per
    *  frame from whatever loop is driving visuals (room rAF or game ticker). */
   update(): void {
@@ -263,19 +379,25 @@ export class MusicEngine {
   private onStep(step: number, time: number): void {
     if (step === 0) this.lastDueStep = 0;
     this.stepMarkers.push({ step, time });
-    // The phrase clock: bars 1-4, then roll over. Charts loop inside the
-    // phrase, so a 4-bar chart's bar 4 is always the phrase's bar 4 and
-    // once-per-phrase material lands where it was written.
-    const phraseStep = step % STEPS_PER_PHRASE;
+    // Featured profiles own an explicit (currently eight-bar) phrase length;
+    // legacy charts use the shared phrase constant and repeat inside it.
+    const phraseSteps = this.gameTrack
+      ? this.gameTrack.phraseBars * STEPS_PER_BAR
+      : STEPS_PER_PHRASE;
+    const phraseStep = step % phraseSteps;
     if (phraseStep % STEPS_PER_BAR === 0 && this.barQueue.length > 0) {
       const queue = this.barQueue;
       this.barQueue = [];
       for (const fn of queue) fn();
     }
+    const triggerTime =
+      this.gameTrack && step % 2 === 1
+        ? time + this.gameTrack.swing * this.clock.stepDuration
+        : time;
     for (const voice of this.voices.values()) {
       if (!voice.enabled) continue;
       for (const ev of chartEventsAtStep(voice.chart, phraseStep)) {
-        this.trigger(voice, ev, time, phraseStep);
+        this.trigger(voice, ev, triggerTime, phraseStep);
       }
     }
   }
@@ -290,25 +412,40 @@ export class MusicEngine {
 
     const src = this.ctx.createBufferSource();
     src.buffer = buffer;
+    this.scheduledSources.add(src);
+    src.addEventListener('ended', () => this.scheduledSources.delete(src), { once: true });
 
     let rate = semitonesToRate((ev.note ?? 0) + voice.tune);
     if (!voice.kit.pitched) {
-      rate *= semitonesToRate(((Math.random() * 2 - 1) * HUMANIZE_CENTS) / 100);
+      const cents = this.gameTrack?.humanizeCents ?? HUMANIZE_CENTS;
+      rate *= semitonesToRate(((Math.random() * 2 - 1) * cents) / 100);
     }
     src.playbackRate.value = rate;
 
     const g = this.ctx.createGain();
-    const humanized = ev.velocity * (1 + (Math.random() * 2 - 1) * HUMANIZE_GAIN);
+    const humanizeGain = this.gameTrack?.humanizeGain ?? HUMANIZE_GAIN;
+    const humanized = ev.velocity * (1 + (Math.random() * 2 - 1) * humanizeGain);
     g.gain.value = Math.max(0.01, humanized);
     src.connect(g).connect(voice.gain);
     src.start(time);
 
-    // Kick ducks bass (design rule 1): schedule the dip at the kick's future
-    // audio time (the clock runs ~0.12s ahead), for whichever sub-bass fills
-    // the Bass slot — bass, Reese, or pluck bass all sum with the kick's sub
-    // and must dip (a build only ever owns one of them, so at most one ducks).
-    // cancelScheduledValues from `time` keeps rapid kicks from stacking ramps.
-    if (voice.role === 'kick') {
+    // A featured profile carries the same authored pump routing as its Track
+    // Lab source. The legacy soundset keeps its narrower kick -> low-end rule.
+    const gameTrack = this.gameTrack;
+    const gameWeapon = gameTrack?.weapons.find((weapon) => weapon.role === voice.role);
+    if (gameTrack?.pump && gameWeapon?.ducker) {
+      const depth = Math.max(0.0001, 1 - gameTrack.pump.amount);
+      for (const weapon of gameTrack.weapons) {
+        if (!weapon.ducked) continue;
+        const ducked = this.voices.get(weapon.role);
+        if (!ducked || !ducked.enabled) continue;
+        const p = ducked.duck.gain;
+        p.cancelScheduledValues(time);
+        p.setValueAtTime(1, time);
+        p.linearRampToValueAtTime(depth, time + DUCK_ATTACK);
+        p.linearRampToValueAtTime(1, time + gameTrack.pump.release);
+      }
+    } else if (!gameTrack && voice.role === 'kick') {
       for (const role of SUB_BASS_ROLES) {
         const low = this.voices.get(role);
         if (!low || !low.enabled) continue;

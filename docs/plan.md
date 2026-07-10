@@ -76,6 +76,7 @@ Every milestone ends playable and answers one named question.
   weapons.~~ **Superseded July 10, 2026** by the smaller House foundation; the
   eight-slot ownership structure survives, the 24-role catalog does not.
 - **House foundation refactor (interstitial, before M4).** Replaces the accumulated 24-role/item/effect sandbox with a twelve-weapon House catalog, weapon-only tiers, a kill-forward enemy director, and a compact live track deck. Question: does a deliberately small House band create a stronger survivors-like and a cleaner track? Specced in `docs/phases/house-foundation-refactor.md`.
+- **Featured track candidate audition (interstitial, before M4).** Show Me Love, Animals, Pursuit, and Satisfaction are complete Experimentation-room arrangements and selectable playable profiles with track-only four-level weapon pools. Question: which one feels best both complete and gradually built through combat? No winner or default is chosen without the developer's explicit ear-and-hands verdict. Specced in `docs/phases/featured-track-audition.md`.
 - **M4, vertical slice.** One stage, one boss (duel candidate auditions here), a few recipes, a first-time experience, and the visual style decision. Question: would a stranger play it twice? Content scope freezes at exit, priced with measured cost per sound and per genre.
 - **M5, production.** Content build-out, meta progression, store prep including AI-content disclosure.
 

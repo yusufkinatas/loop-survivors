@@ -47,6 +47,14 @@ export interface LabSection {
   charts: Record<string, LabChart>;
 }
 
+/** One block in the optional full-track transport. The named section starts
+ *  from its own bar 1 and loops for `bars`, then the next block enters exactly
+ *  on the following bar boundary. */
+export interface LabArrangementEntry {
+  sectionId: string;
+  bars: number;
+}
+
 export interface LabTrack {
   id: string;
   title: string;
@@ -65,6 +73,9 @@ export interface LabTrack {
   notes?: string;
   voices: LabVoiceDef[];
   sections: LabSection[];
+  /** Optional authored playthrough for the Experimentation room. Sections
+   *  remain independently loopable when this is absent or not playing. */
+  arrangement?: LabArrangementEntry[];
 }
 
 const N = (bar: number, step: number) => bar * 16 + step;

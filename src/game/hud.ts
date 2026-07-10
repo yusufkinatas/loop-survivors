@@ -16,6 +16,17 @@ export type { PickOption };
 
 export const TIER_NUMERALS = ['I', 'II', 'III', 'IV'];
 
+/** Small structural surface the start screen needs from a playable track.
+ *  The audio layer owns the full profile; keeping this structural lets the HUD
+ *  pass that same object back without importing or mutating the audio registry. */
+export interface TrackChoice {
+  id: string;
+  title: string;
+  artist?: string;
+  roles: readonly Role[];
+  startRole: Role;
+}
+
 export interface DebugAction {
   label: string;
   hotkey: string;
@@ -40,6 +51,7 @@ export interface TrackDeckHooks {
 export class Hud {
   private root: HTMLElement;
   private bar: HTMLElement;
+  private trackTitle: HTMLElement;
   private hpFill: HTMLElement;
   private xpFill: HTMLElement;
   private timer: HTMLElement;
@@ -53,6 +65,7 @@ export class Hud {
   private screen: HTMLElement | null = null;
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
   private kits: Map<Role, Kit>;
+  private catalog: readonly Role[] | undefined;
   private debugRow: HTMLElement | null = null;
   private debugButtons: { btn: HTMLElement; action: DebugAction }[] = [];
 
@@ -63,6 +76,7 @@ export class Hud {
     // Glass transport panel: timer + level chip on top, then the HP and XP
     // meters (each with a fill and a faint cap label).
     this.bar = el('div', 'hud', root);
+    this.trackTitle = el('div', 'hud-genre', this.bar);
     const top = el('div', 'hud-top', this.bar);
     this.timer = el('span', 'hud-timer', top, '0:00');
     this.levelEl = el('span', 'hud-level', top, 'LV 1');
@@ -89,6 +103,15 @@ export class Hud {
     this.rack.style.display = show ? '' : 'none';
   }
 
+  /** Refresh the selected track's visible catalog and voicing. The audio layer
+   *  may replace kit objects while switching tracks, so the HUD takes a fresh
+   *  map instead of retaining the boot-time House labels. */
+  setTrackContext(title: string, catalog: readonly Role[], kits?: Map<Role, Kit>): void {
+    this.trackTitle.textContent = title;
+    this.catalog = [...catalog];
+    if (kits) this.kits = kits;
+  }
+
   configureTrackDeck(hooks: TrackDeckHooks): void {
     this.trackDeckHooks = hooks;
   }
@@ -102,7 +125,7 @@ export class Hud {
     if (isMainDeck) this.trackCells.clear();
 
     for (const [slotIndex, slot] of SLOTS.entries()) {
-      const roster = supportedRoster(slot);
+      const roster = supportedRoster(slot, this.catalog);
       const owners = roster.filter((role) => tiers.has(role));
       const owner = owners[0];
       const dropped = roster.length === 0;
@@ -215,21 +238,47 @@ export class Hud {
     }
   }
 
-  /** Start screen: the normal path is one action. Autoplay and workrooms are
-   *  deliberately nested under Developer tools. */
-  showStart(
-    onStart: (role: Role, mode: AutoMoveMode) => void,
-    onSandbox: () => void,
+  /** Start screen: choose one audition track, then start. Autoplay and
+   *  workrooms remain deliberately nested under Developer tools. */
+  showStart<T extends TrackChoice>(
+    tracks: readonly T[],
+    onStart: (track: T, role: Role, mode: AutoMoveMode) => void,
+    onSandbox: (track: T) => void,
   ): void {
     let moveMode: AutoMoveMode = 'off';
+    let selected: T | null = null;
 
     const s = this.newScreen();
     el('h1', '', s, 'Loop Survivors');
-    el('p', 'sub', s, 'WASD or touch to move. Survive 8 minutes.');
-    const startBtn = el('button', 'start-btn', s, 'start');
+    el('p', 'sub', s, 'Choose the track you want to build. Then survive 8 minutes.');
+
+    const chooser = el('div', 'start-track-grid', s);
+    const trackButtons: HTMLButtonElement[] = [];
+    for (const track of tracks) {
+      const btn = el('button', 'start-track-card', chooser) as HTMLButtonElement;
+      btn.setAttribute('aria-pressed', 'false');
+      el('span', 'start-track-title', btn, track.title);
+      if (track.artist) el('span', 'start-track-artist', btn, track.artist);
+      btn.onclick = () => {
+        selected = track;
+        for (const option of trackButtons) {
+          const on = option === btn;
+          option.classList.toggle('on', on);
+          option.setAttribute('aria-pressed', String(on));
+        }
+        startBtn.disabled = false;
+        startBtn.textContent = `start ${track.title}`;
+        btn.blur();
+      };
+      trackButtons.push(btn);
+    }
+
+    const startBtn = el('button', 'start-btn', s, 'choose a track') as HTMLButtonElement;
+    startBtn.disabled = true;
     startBtn.onclick = () => {
+      if (!selected) return;
       this.closeScreen();
-      onStart('kick', moveMode);
+      onStart(selected, selected.startRole, moveMode);
     };
     const secondary = el('div', 'start-secondary', s);
     const bossBtn = el('button', 'small', secondary, 'boss fights');
@@ -246,8 +295,10 @@ export class Hud {
     const links = el('div', 'start-dev-links', toolsBody);
     const sandboxBtn = el('button', 'small', links, 'sandbox');
     sandboxBtn.onclick = () => {
+      const track = selected ?? tracks[0];
+      if (!track) return;
       this.closeScreen();
-      onSandbox();
+      onSandbox(track);
     };
     const roomBtn = el('button', 'small', links, 'rehearsal room');
     roomBtn.onclick = () => {
