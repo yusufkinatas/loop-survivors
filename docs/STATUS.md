@@ -51,12 +51,17 @@ required.
   purge, swing-exact virtual-clock parity, trigger-pulse reflow optimization,
   a standalone invariant command, and a designed startup-render error screen.
 
-Context note: the three linked AI conversations could not be read because the
-installed ChatGPT Chrome Extension did not expose a controllable Chrome session.
-Its supported recovery route required permission to open a new Chrome window;
-the developer had explicitly required no questions, so implementation continued
-from the repository history, live game inspection, specialist audits, and cited
-House/Vampire Survivors research instead.
+Context note: the linked Gemini and ChatGPT conversations were subsequently
+reviewed through the signed-in Chrome profile. They independently reinforce the
+implemented foundation: House in the 120-124 BPM pocket, Kick as the mandatory
+pulse from run start, an eight-role arrangement that prevents low-end/harmony
+collisions, grid-quantized attacks, and restrained density growth. ChatGPT's
+122 BPM was an advisory suggestion; the later, direct July 9 developer decision
+keeps this build at 120 BPM. The conversations' proposed Drop Meter, overflow
+modifiers, and separate gameplay enhancements remain deliberately excluded by
+this refactor's newer tier-only/base-game brief. The Claude URL redirected to a
+signed-in new-chat page with an authoritative "Conversation not found" notice,
+so no Claude transcript content was available to incorporate.
 
 ## Previous change (July 9, 2026)
 
