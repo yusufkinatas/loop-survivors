@@ -1685,3 +1685,214 @@ button.big {
   }
 }
 
+/* ---- the mixer system (branch mixer-system) ---- */
+
+/* Rack sockets: complexity pips stay round dots; power pips are squares in
+   plain ink so the two axes read apart at a glance. */
+.socket-pips.pips-p .pip {
+  border-radius: 1px;
+  border-color: color-mix(in srgb, var(--ink-dim) 65%, transparent);
+}
+.socket-pips.pips-p .pip.on {
+  background: var(--ink-dim);
+  box-shadow: none;
+}
+/* Freshness states on a socket: hot fills toward stale, warn goes amber,
+   stale greys the voice out, the drop window glows, primed carries a star. */
+.band-socket.muted {
+  opacity: 0.45;
+}
+.band-socket.stale {
+  filter: saturate(0.25) brightness(0.8);
+}
+.band-socket.warn {
+  border-top-color: #e0a83c;
+}
+.band-socket.dropping {
+  box-shadow: 0 0 16px -4px var(--voice-color);
+}
+.socket-heat {
+  font: 700 8px/1 var(--font-mono);
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+}
+.band-socket.warn .socket-heat {
+  color: #e0a83c;
+}
+.band-socket.stale .socket-heat {
+  color: #d9604f;
+}
+.socket-star {
+  position: absolute;
+  top: -7px;
+  right: -5px;
+  font-size: 11px;
+  color: #ffd76b;
+  text-shadow: 0 0 6px rgba(255, 215, 107, 0.8);
+}
+.band-socket {
+  position: relative;
+}
+
+/* The mixer panel: a modal over the arena; the run freezes behind it. */
+.mixer-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 7, 10, 0.72);
+  backdrop-filter: blur(3px);
+}
+.mixer-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  width: min(94vw, 560px);
+  max-height: 86vh;
+  padding: var(--sp-3);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  background: rgba(10, 11, 15, 0.96);
+}
+.mx-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.mx-title {
+  font: 700 13px/1 var(--font-mono);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+.mx-pools {
+  flex: 1;
+  font: 700 12px/1 var(--font-mono);
+  color: var(--signal);
+}
+.mx-done {
+  font: 700 12px/1 var(--font-mono);
+  padding: 7px 14px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--ink);
+  cursor: pointer;
+}
+.mx-done:hover {
+  border-color: var(--signal);
+}
+.mx-strips {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+}
+.mx-strip {
+  --voice-color: var(--ink-faint);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--voice-color);
+  border-radius: var(--r-sm);
+  background: rgba(255, 255, 255, 0.02);
+}
+.mx-strip.muted {
+  opacity: 0.55;
+}
+.mx-name-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-1);
+}
+.mx-name {
+  font: 700 12px/1 var(--font-mono);
+  color: var(--voice-color);
+}
+.mx-slot {
+  font: 700 9px/1 var(--font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.mx-state {
+  margin-left: auto;
+  font: 700 10px/1 var(--font-mono);
+  letter-spacing: 0.06em;
+  color: var(--ink-dim);
+}
+.mx-state.hot { color: #e0a83c; }
+.mx-state.stale { color: #d9604f; }
+.mx-state.primed { color: #ffd76b; }
+.mx-state.dropping { color: #ffd76b; }
+.mx-state.rest { color: #7be0d0; }
+.mx-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mx-row-label {
+  width: 84px;
+  font: 500 10px/1 var(--font-mono);
+  letter-spacing: 0.06em;
+  color: var(--ink-dim);
+}
+.mx-pips {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+}
+.mx-pips .pip {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--voice-color) 55%, transparent);
+}
+.mx-pips .pip.on {
+  background: var(--voice-color);
+  box-shadow: 0 0 6px -1px var(--voice-color);
+}
+.mx-pips.pips-p .pip {
+  border-radius: 2px;
+  border-color: color-mix(in srgb, var(--ink-dim) 65%, transparent);
+}
+.mx-pips.pips-p .pip.on {
+  background: var(--ink);
+  box-shadow: none;
+}
+.mx-btn {
+  min-width: 30px;
+}
+.mx-btn:disabled,
+.mx-mute:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.mx-mute {
+  align-self: flex-end;
+}
+.mx-hint {
+  margin: 0;
+  font: 500 10px/1.5 var(--font-mono);
+  color: var(--ink-faint);
+}
+/* Sandbox: separator between the complexity and power button groups. */
+.sb-pow-sep {
+  margin: 0 2px 0 6px;
+  font: 700 10px/1 var(--font-mono);
+  color: var(--ink-faint);
+}
+@media (max-width: 640px) {
+  .mixer-panel {
+    width: 96vw;
+    max-height: 92vh;
+    padding: var(--sp-2);
+  }
+  .mx-row-label {
+    width: 64px;
+  }
+}

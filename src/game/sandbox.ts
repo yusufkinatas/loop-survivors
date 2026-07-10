@@ -82,18 +82,20 @@ export function mountSandboxPanel(
     bandOn = !bandOn;
     for (const role of ROLES) {
       engine.setVoiceEnabled(role, false);
-      world.removeWeapon(role);
+      world.setLoadout(role, 0, 0);
     }
     if (bandOn) {
       for (const slot of supportedSlots()) {
         const role = firstForSlot(slot);
         engine.setVoiceTier(role, 4);
         engine.setVoiceEnabled(role, true);
-        world.addWeapon(role, 4);
+        engine.setVoiceMix(role, 4, false);
+        world.setLoadout(role, 4, 4);
       }
     }
     bandBtn.classList.toggle('on', bandOn);
     bandBtn.textContent = bandOn ? '■ stop full band' : '▶ play full band';
+    refreshLoadoutButtons();
     opts.onLoadout?.();
   };
 
@@ -156,15 +158,20 @@ export function mountSandboxPanel(
   };
   syncInvuln();
 
-  // ---- loadout editor: any weapon at any tier, applied instantly ----
+  // ---- loadout editor: any weapon at any complexity x power, instantly ----
   // Grouped by band slot (Beat / Snap / Tick / … , the rack order at the top of
   // the screen) instead of a flat list, so a voice is easy to find by its job.
-  // A ★ custom badge marks the roles that are sample-backed (their own real
-  // voicing, worth focusing testing on).
-  el('div', 'sb-section', panel, 'loadout');
+  // Two button rows per voice: ◆ complexity (off + I-IV, which chart plays) and
+  // ■ power (1-4, which stat block / how full the sound). A ★ custom badge
+  // marks the roles that are sample-backed (their own real voicing).
+  el('div', 'sb-section', panel, 'loadout  ·  ◆ complexity  ■ power');
   // Rows carry their name element so refreshCustom can toggle the sample-backed
   // mark (a border on the name).
   const customMarks: { role: Role; el: HTMLElement }[] = [];
+  const rowSyncs: (() => void)[] = [];
+  const refreshLoadoutButtons = (): void => {
+    for (const sync of rowSyncs) sync();
+  };
   for (const slot of SLOTS) {
     el('div', 'sb-slot-head', panel, SLOT_LABEL[slot]);
     for (const role of SLOT_ROSTER[slot]) {
@@ -175,32 +182,51 @@ export function mountSandboxPanel(
       const label = el('span', 'sb-loadout-label', name, voice.kit.name);
       customMarks.push({ role, el: label });
       const btns = el('div', 'sb-btns', row);
-      const options: HTMLButtonElement[] = [];
-      const set = (tier: number | null) => {
-        if (tier === null) {
-          engine.setVoiceEnabled(role, false);
-          world.removeWeapon(role);
-        } else {
-          engine.setVoiceTier(role, tier);
+      const cBtns: HTMLButtonElement[] = [];
+      const pBtns: HTMLButtonElement[] = [];
+      const apply = (c: number, p: number): void => {
+        world.setLoadout(role, c, p);
+        if (c >= 1) {
+          engine.setVoiceTier(role, c);
           engine.setVoiceEnabled(role, true);
-          world.addWeapon(role, tier);
+          engine.setVoiceMix(role, p, false);
+        } else {
+          engine.setVoiceEnabled(role, false);
         }
-        options.forEach((b, i) =>
-          b.classList.toggle('on', tier === null ? i === 0 : i === tier),
-        );
+        sync();
         opts.onLoadout?.();
       };
+      const cur = (): { c: number; p: number } => ({
+        c: world.complexity.get(role) ?? 0,
+        p: world.power.get(role) ?? 0,
+      });
+      const sync = (): void => {
+        const { c, p } = cur();
+        cBtns.forEach((b, i) => b.classList.toggle('on', i === c));
+        pBtns.forEach((b, i) => {
+          b.classList.toggle('on', c >= 1 && i + 1 === p);
+          b.disabled = c === 0;
+        });
+      };
+      rowSyncs.push(sync);
       const off = el('button', 'small off-btn', btns, '⏻') as HTMLButtonElement;
       off.title = 'off';
-      off.onclick = () => set(null);
-      options.push(off);
+      off.onclick = () => apply(0, 0);
+      cBtns.push(off);
       TIER_NUMERALS.forEach((numeral, i) => {
         const b = el('button', 'small', btns, numeral) as HTMLButtonElement;
-        b.onclick = () => set(i + 1);
-        options.push(b);
+        b.title = `complexity ${i + 1}`;
+        b.onclick = () => apply(i + 1, Math.max(1, cur().p));
+        cBtns.push(b);
       });
-      const current = world.tiers.get(role);
-      options.forEach((b, i) => b.classList.toggle('on', current === undefined ? i === 0 : i === current));
+      el('span', 'sb-pow-sep', btns, '■');
+      for (let p = 1; p <= 4; p++) {
+        const b = el('button', 'small', btns, String(p)) as HTMLButtonElement;
+        b.title = `power ${p}`;
+        b.onclick = () => apply(Math.max(1, cur().c), p);
+        pBtns.push(b);
+      }
+      sync();
     }
   }
   // Mark (with a bordered name) the roles that are sample-backed — their own

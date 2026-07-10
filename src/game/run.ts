@@ -62,6 +62,16 @@ import {
   SPLIT_SPREAD,
 } from './effects';
 import { BASE_MODS, ITEMS, type ItemId, type Mods } from './items';
+import {
+  freshInit,
+  freshMul,
+  HOT_C,
+  onGoHot,
+  PHRASE_S,
+  tickPhrase,
+  type Allocation,
+  type FreshState,
+} from './mixer';
 import type { Rng } from './rng';
 import { SpatialHash, circlesOverlap } from './spatial';
 
@@ -276,8 +286,22 @@ export interface RunWorldOpts {
 }
 
 export class RunWorld {
-  /** Owned weapons and their ladder tier (1-4). */
-  readonly tiers = new Map<Role, number>();
+  // ---- the mixer (branch mixer-system): arsenal + complexity + power ----
+  /** Owned instruments, in hire order. Ownership is permanent. */
+  readonly arsenal: Role[] = [];
+  /** Complexity per PLAYING instrument (1-4 = which chart the ladder plays).
+   *  A muted instrument (C0) has no entry here — it fires nothing. */
+  readonly complexity = new Map<Role, number>();
+  /** Power per PLAYING instrument (1-4 = which WEAPONS stat block fires). */
+  readonly power = new Map<Role, number>();
+  /** Freshness state per owned instrument (see mixer.ts). */
+  readonly fresh = new Map<Role, FreshState>();
+  /** Granted point totals; the unspent pools are derived (total - allocated),
+   *  so mute-refunds can never leak or double-count. */
+  totalC = 0;
+  totalP = 0;
+  /** Time into the current 4-bar phrase (the freshness clock). */
+  private phraseT = 0;
 
   // dashT/dashX/dashY: riser's auto-dash surge (a short velocity boost the
   // release grants, on top of normal movement).
@@ -389,9 +413,13 @@ export class RunWorld {
   }
 
   private fireWeapon(t: ScheduledTrigger, effect: EffectId | null, damageMul: number): void {
-    const tier = this.tiers.get(t.role);
-    if (!tier) return;
-    let conf: WeaponConf = WEAPONS[t.role][tier - 1];
+    // Complexity gates firing (a muted voice fires nothing); power picks the
+    // stat block. Freshness scales the note: primed drop x1.5, stale x0.6.
+    const c = this.complexity.get(t.role);
+    if (!c) return;
+    const pw = this.power.get(t.role) ?? 1;
+    let conf: WeaponConf = WEAPONS[t.role][pw - 1];
+    const fMul = freshMul(this.fresh.get(t.role), c);
     const color = KIT_COLORS[t.role];
     const v = t.velocity;
     const p = this.player;
@@ -412,8 +440,9 @@ export class RunWorld {
     // Single build-transform pipeline (D1): tempo compensation + global
     // item mods + this weapon's effect, folded in one place.
     conf = this.applyBuild(conf, effect, PIERCE_ROLES.has(t.role));
-    // Echo re-fire pass attenuates damage; the base fire leaves this at 1.
-    if (damageMul !== 1) conf = { ...conf, damage: conf.damage * damageMul };
+    // Echo re-fire pass attenuates damage; freshness folds in here too so
+    // stale/primed scale every emission path the same way.
+    if (damageMul * fMul !== 1) conf = { ...conf, damage: conf.damage * damageMul * fMul };
     // Echo schedules a weaker second fire; the re-fire itself passes effect=null.
     if (effect === 'echo') this.echoQueue.push({ t, fireAtS: this.timeS + ECHO_DELAY_S });
 
@@ -677,16 +706,83 @@ export class RunWorld {
     }
   }
 
-  /** Add a weapon or raise its tier. The pulse fires when the change lands
-   *  (next-bar entry), so eye and ear agree on the moment. */
-  addWeapon(role: Role, tier = 1): void {
-    this.tiers.set(role, tier);
+  /** Hire an instrument into the arsenal at C1/P1 (the seeded points). The
+   *  pulse fires when the change lands (next-bar entry), so eye and ear agree
+   *  on the moment. */
+  hire(role: Role): void {
+    if (!this.arsenal.includes(role)) this.arsenal.push(role);
+    this.complexity.set(role, 1);
+    this.power.set(role, 1);
+    if (!this.fresh.has(role)) this.fresh.set(role, freshInit());
     this.spawnRing(this.player.x, this.player.y, 220, KIT_COLORS[role], 0.6);
   }
 
-  /** Sandbox loadout editor: drop a weapon entirely. */
-  removeWeapon(role: Role): void {
-    this.tiers.delete(role);
+  /** A level-up's point grant: +1 complexity, +1 power into the totals (the
+   *  unspent pools are derived). Hire levels grant the same totals; the hire
+   *  itself consumes exactly the granted pair at C1/P1. */
+  grantLevelPoints(): void {
+    this.totalC += 1;
+    this.totalP += 1;
+  }
+
+  /** Unspent complexity points (granted minus allocated). */
+  get poolC(): number {
+    let sum = 0;
+    for (const c of this.complexity.values()) sum += c;
+    return this.totalC - sum;
+  }
+
+  /** Unspent power points (granted minus allocated). */
+  get poolP(): number {
+    let sum = 0;
+    for (const p of this.power.values()) sum += p;
+    return this.totalP - sum;
+  }
+
+  /** Commit a validated allocation draft (the mixer panel / bot policy).
+   *  Detects complexity crossing INTO the hot band so a primed instrument's
+   *  drop window starts exactly when its new pattern enters. */
+  applyAllocation(alloc: Allocation): void {
+    for (const [role, a] of alloc) {
+      if (!this.arsenal.includes(role)) continue; // drafts only touch owned voices
+      const oldC = this.complexity.get(role) ?? 0;
+      if (a.c === 0) {
+        this.complexity.delete(role);
+        this.power.delete(role);
+      } else {
+        this.complexity.set(role, a.c);
+        this.power.set(role, a.p);
+      }
+      const f = this.fresh.get(role);
+      if (f && oldC < HOT_C && a.c >= HOT_C) onGoHot(f);
+    }
+    this.spawnRing(this.player.x, this.player.y, 200, 0xffffff, 0.45);
+  }
+
+  /** Sandbox force-assembly: put a role at any (c, p) ignoring the point
+   *  economy. Totals are raised to cover the spend so pools never go negative. */
+  setLoadout(role: Role, c: number, p: number): void {
+    // Switching OFF a voice that was never assembled is a no-op — it must not
+    // enter the arsenal as a phantom muted socket.
+    if (c === 0 && !this.arsenal.includes(role)) return;
+    if (!this.arsenal.includes(role)) this.arsenal.push(role);
+    if (!this.fresh.has(role)) this.fresh.set(role, freshInit());
+    const oldC = this.complexity.get(role) ?? 0;
+    if (c === 0) {
+      this.complexity.delete(role);
+      this.power.delete(role);
+    } else {
+      this.complexity.set(role, c);
+      this.power.set(role, Math.max(1, p));
+    }
+    const f = this.fresh.get(role)!;
+    if (oldC < HOT_C && c >= HOT_C) onGoHot(f);
+    let sumC = 0;
+    for (const v of this.complexity.values()) sumC += v;
+    let sumP = 0;
+    for (const v of this.power.values()) sumP += v;
+    this.totalC = Math.max(this.totalC, sumC);
+    this.totalP = Math.max(this.totalP, sumP);
   }
 
   /** Slot an effect onto a weapon (Feature 4). The audio chain is wired by
@@ -760,6 +856,8 @@ export class RunWorld {
       return;
     }
 
+    this.tickFreshness(dt);
+
     this.movePlayer(dt);
     if (this.scripted) {
       this.runDirector(dt);
@@ -812,6 +910,21 @@ export class RunWorld {
     }
 
     this.reapEnemies();
+  }
+
+  /** The freshness clock (mixer.ts): mark hot time continuously (anti-fiddle),
+   *  advance every instrument's state at each 4-bar phrase boundary. Pure
+   *  timeS-driven, so bot runs and replays tick it identically. */
+  private tickFreshness(dt: number): void {
+    for (const [role, c] of this.complexity) {
+      if (c >= HOT_C) this.fresh.get(role)!.hotThisPhrase = true;
+    }
+    this.phraseT += dt;
+    if (this.phraseT < PHRASE_S) return;
+    this.phraseT -= PHRASE_S;
+    for (const role of this.arsenal) {
+      tickPhrase(this.fresh.get(role)!, this.complexity.get(role) ?? 0);
+    }
   }
 
   // ---- player ----
@@ -1357,11 +1470,11 @@ export class RunWorld {
     color: number,
     velocity: number,
   ): void {
-    const tier = this.tiers.get('bell') ?? 1;
+    const p = this.power.get('bell') ?? 1;
     const pr = this.baseProjectile('bell', conf, color, conf.damage * (0.8 + 0.4 * velocity));
     pr.vx = dir.x * conf.speed!;
     pr.vy = dir.y * conf.speed!;
-    pr.shatter = BELL.shards[tier - 1] ?? BELL.shards[0];
+    pr.shatter = BELL.shards[p - 1] ?? BELL.shards[0];
     this.projectiles.push(pr);
   }
 

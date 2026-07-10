@@ -1,6 +1,25 @@
 # Project Status
 
-Last updated: July 9, 2026
+Last updated: July 10, 2026
+
+## Side branch: the mixer system (`mixer-system`, July 10, 2026)
+
+An alternative version of the main weapon-growth system, built at the developer's
+direction on branch `mixer-system` (uncommitted at time of writing). Tier-up cards
+are gone; instead the player owns an **arsenal** and distributes two redistributable
+point pools across it live: **complexity** (0-4, which chart ladder tier plays =
+how many hits per 4-bar phrase) and **power** (1-4, which stat block fires + how
+full the sound is — a per-voice tone filter opens with power). Level-ups grant
++1/+1; milestone levels (2,3,5,7,9,11,13) hire a new instrument instead (3-card
+offer, one per unopened band slot). A **freshness system** makes arrangements
+rotate: patterns at complexity 3+ go stale after 8 phrases (×0.6 damage, dulled
+voicing), resting 2 phrases primes them, and re-entering hot "drops" at ×1.5 for
+4 phrases. Tab opens the mixer panel mid-run; changes land on the next bar. Items
+and weapon effects left the level-up flow (code kept, sandbox still dials items).
+Full spec + open questions: `docs/phases/mixer-system.md`. Verified: `tsc` +
+`vite build` clean; headless bot full runs on random/deep/wide/focus policies with
+survival medians inside the old system's band; Chrome main-path check.
+**Gate: the developer's ear/hands on this branch.**
 
 ## Latest change (July 9, 2026)
 

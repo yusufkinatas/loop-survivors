@@ -4,20 +4,30 @@
 
 import { type Kit, type Role } from '../audio/kits';
 import { sampledRoles } from '../audio/kits/index';
-import { SLOTS, SLOT_LABEL, ownerOfSlot, slotOf, supportedRoster } from './band';
+import { SLOTS, SLOT_LABEL, slotOf, supportedRoster } from './band';
 import { TIER_LINES } from './config';
-import { EFFECT_META } from './effects';
 import { type AutoMoveMode } from './input';
 import { ITEMS, type ItemId } from './items';
-import type { PickOption } from './picks';
-
-import { TIER_COUNT } from '../audio/charts';
-
-/** Cards are terse by spec: name, tier numeral, one honest gameplay line,
- *  zero music description (docs/phases/m2-the-arc.md). */
-export type { PickOption };
+import {
+  C_MAX,
+  FRESH_PHRASES,
+  HOT_C,
+  isStale,
+  P_MAX,
+  WARN_PHRASES,
+  type FreshState,
+} from './mixer';
 
 export const TIER_NUMERALS = ['I', 'II', 'III', 'IV'];
+
+/** What the band rack (and the mixer panel) reads off the world: the arsenal
+ *  and its current distribution. RunWorld satisfies this structurally. */
+export interface BandState {
+  arsenal: readonly Role[];
+  complexity: ReadonlyMap<Role, number>;
+  power: ReadonlyMap<Role, number>;
+  fresh: ReadonlyMap<Role, FreshState>;
+}
 
 export interface DebugAction {
   label: string;
@@ -81,15 +91,16 @@ export class Hud {
     this.rack.style.display = show ? '' : 'none';
   }
 
-  /** The band rack (docs/phases/the-band.md): eight typed sockets in rack
-   *  order, empty ones asking to be filled, filled ones showing the hired
-   *  instrument (its color + name) and its tier as pips. Rebuilt on every pick
-   *  (cheap: 8 sockets). Renders into the HUD rack by default, or any supplied
-   *  container so the pause menu can show the same band. */
-  renderBand(tiers: ReadonlyMap<Role, number>, into: HTMLElement = this.rack): void {
+  /** The band rack: eight typed sockets in rack order. A filled socket shows
+   *  the hired instrument, its complexity (diamond pips) and power (square
+   *  pips), and its freshness state — filling toward stale while hot, greyed
+   *  when stale, gold star when primed. Rebuilt on every change (cheap: 8
+   *  sockets). Renders into the HUD rack by default, or any supplied container
+   *  so the pause menu can show the same band. */
+  renderBand(band: BandState, into: HTMLElement = this.rack): void {
     into.replaceChildren();
     for (const slot of SLOTS) {
-      const owner = ownerOfSlot(slot, tiers);
+      const owner = band.arsenal.find((r) => slotOf(r) === slot);
       // A slot the soundset supports no instrument for is dropped: shown dimmed
       // and unavailable, never asking to be filled.
       const dropped = supportedRoster(slot).length === 0;
@@ -100,11 +111,27 @@ export class Hud {
         const kit = this.kits.get(owner)!;
         socket.style.setProperty('--voice-color', kit.color);
         el('span', 'socket-name', socket, kit.name);
-        const tier = tiers.get(owner) ?? 1;
-        const pips = el('span', 'socket-pips', socket);
-        for (let i = 1; i <= TIER_COUNT; i++) {
-          el('span', `pip ${i <= tier ? 'on' : ''}`, pips);
+        const c = band.complexity.get(owner) ?? 0;
+        const p = band.power.get(owner) ?? 0;
+        const cPips = el('span', 'socket-pips pips-c', socket);
+        for (let i = 1; i <= C_MAX; i++) el('span', `pip ${i <= c ? 'on' : ''}`, cPips);
+        const pPips = el('span', 'socket-pips pips-p', socket);
+        for (let i = 1; i <= P_MAX; i++) el('span', `pip ${i <= p ? 'on' : ''}`, pPips);
+        const f = band.fresh.get(owner);
+        if (c === 0) {
+          socket.classList.add('muted');
+        } else if (f && c >= HOT_C) {
+          if (f.primedLeft > 0) socket.classList.add('dropping');
+          else if (isStale(f)) socket.classList.add('stale');
+          else if (f.hotPhrases >= WARN_PHRASES) socket.classList.add('warn');
+          else socket.classList.add('hot');
+          if (!isStale(f) && f.primedLeft === 0) {
+            el('span', 'socket-heat', socket, `${f.hotPhrases}/${FRESH_PHRASES}`);
+          } else if (isStale(f)) {
+            el('span', 'socket-heat', socket, 'stale');
+          }
         }
+        if (f?.primed) el('span', 'socket-star', socket, '★');
       }
     }
   }
@@ -251,23 +278,21 @@ export class Hud {
     paint();
   }
 
-  /** Level-up pick: up to three options from the pool of new weapons and
-   *  tier-ups of owned ones. */
-  showPick(options: PickOption[], onPick: (option: PickOption) => void): void {
+  /** Milestone hire: up to three new instruments, one per unopened band slot.
+   *  The hire joins at complexity 1 / power 1; points move in the mixer. */
+  showHire(offers: Role[], onHire: (role: Role) => void): void {
     const s = this.newScreen();
-    el('h2', '', s, 'Level up');
+    el('h2', '', s, 'New band slot — hire an instrument');
     const grid = el('div', 'pick-grid', s);
     const cards: HTMLElement[] = [];
     // Dev aid: mark offered weapons whose voice is sample-backed.
     const custom = sampledRoles();
-    for (const option of options) {
-      const card = this.kitCard(grid, option, () => {
+    for (const role of offers) {
+      const card = this.kitCard(grid, role, () => {
         this.closeScreen();
-        onPick(option);
+        onHire(role);
       });
-      if (option.kind === 'weapon' && custom.has(option.role)) {
-        el('span', 'kit-custom-badge', card, '★ custom');
-      }
+      if (custom.has(role)) el('span', 'kit-custom-badge', card, '★ custom');
       cards.push(card);
     }
     this.armKeys(cards);
@@ -350,31 +375,15 @@ export class Hud {
     };
   }
 
-  private kitCard(parent: HTMLElement, option: PickOption, onClick: () => void): HTMLElement {
+  private kitCard(parent: HTMLElement, role: Role, onClick: () => void): HTMLElement {
     const card = el('button', 'kit-card', parent);
-    if (option.kind === 'item') {
-      const def = ITEMS[option.item];
-      card.style.setProperty('--voice-color', def.color);
-      el('span', 'kit-name', card, `${def.name} · Lv ${option.level}`);
-      el('span', 'kit-desc', card, def.desc[option.level - 1]);
-    } else if (option.kind === 'effect') {
-      card.classList.add('kit-card--effect');
-      const kit = this.kits.get(option.role)!;
-      card.style.setProperty('--voice-color', kit.color);
-      el('span', 'kit-slot-badge', card, SLOT_LABEL[slotOf(option.role)]);
-      el('span', 'kit-name', card, `${kit.name} · ${EFFECT_META[option.effect].name}`);
-      el('span', 'kit-desc', card, EFFECT_META[option.effect].line);
-    } else {
-      const kit = this.kits.get(option.role)!;
-      card.style.setProperty('--voice-color', kit.color);
-      // The slot badge names the band position this hire plugs, so every card
-      // answers "what does taking this cost me?" at a glance (the band).
-      el('span', 'kit-slot-badge', card, SLOT_LABEL[slotOf(option.role)]);
-      el('span', 'kit-name', card, kit.name);
-      el('span', 'kit-desc', card, TIER_LINES[option.role][option.tier - 1]);
-      // Tier > 1 shows its numeral in the corner chip (the name stays plain).
-      if (option.tier > 1) el('span', 'kit-tier', card, TIER_NUMERALS[option.tier - 1]);
-    }
+    const kit = this.kits.get(role)!;
+    card.style.setProperty('--voice-color', kit.color);
+    // The slot badge names the band position this hire plugs, so every card
+    // answers "what does taking this cost me?" at a glance (the band).
+    el('span', 'kit-slot-badge', card, SLOT_LABEL[slotOf(role)]);
+    el('span', 'kit-name', card, kit.name);
+    el('span', 'kit-desc', card, TIER_LINES[role][0]);
     card.onclick = onClick;
     return card;
   }

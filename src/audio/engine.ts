@@ -17,10 +17,18 @@ export interface Voice {
   role: Role;
   kit: Kit;
   chart: Chart;
-  /** Ladder tier 1-4 the voice is playing. */
+  /** Ladder tier 1-4 the voice is playing (the mixer's COMPLEXITY axis). */
   tier: number;
   enabled: boolean;
   gain: GainNode;
+  /** The mixer's POWER axis on the audio side: a lowpass + level pair between
+   *  gain and duck. Low power = thinner/darker/quieter; full power = the
+   *  voice's whole spectrum plus a small push. Stale dulls the same pair. */
+  tone: BiquadFilterNode;
+  toneGain: GainNode;
+  /** Last applied (power, stale) so per-frame syncs are cheap no-ops. */
+  power: number;
+  stale: boolean;
   /** Sidechain node between gain and the output chain: the kick dips it on the
    *  bass voice so the two subs never stack (design rule 1). Unity otherwise. */
   duck: GainNode;
@@ -58,6 +66,16 @@ export type TriggerListener = (t: ScheduledTrigger) => void;
 // Free per-hit engine nudges: the first of the three variation layers.
 const HUMANIZE_GAIN = 0.12; // +/- proportional
 const HUMANIZE_CENTS = 8; // +/- pitch, applied only to unpitched kits
+
+// The mixer's POWER axis, audio side (branch mixer-system): per power level
+// 1-4, a lowpass cutoff (Hz) and a level. P4 is the voice's full sound plus a
+// small push; lower power thins and darkens it. Values are deliberately gentle
+// at P1 — a starting voice must sound plain, not broken. STALE (the freshness
+// system) additionally dulls the pair: the loop audibly goes flat.
+const POWER_FREQ = [2400, 5000, 10000, 18000];
+const POWER_GAIN = [0.72, 0.86, 1.0, 1.14];
+const STALE_FREQ_MUL = 0.3;
+const STALE_GAIN_MUL = 0.82;
 
 // Kick-ducks-bass sidechain (the band, design rule 1): on each kick the bass
 // voice dips to DUCK_DEPTH (~-6 dB) over DUCK_ATTACK and recovers by
@@ -101,12 +119,23 @@ export class MusicEngine {
     for (const [role, kit] of kits) {
       const gain = ctx.createGain();
       gain.gain.value = 1;
-      // gain -> duck -> master: the persistent duck node is unity except when
-      // the kick sidechains the bass (design rule 1). buildVoiceChain rewires
-      // duck's downstream when an effect is inserted; gain -> duck stays fixed.
+      // gain -> tone -> toneGain -> duck -> master: tone+toneGain carry the
+      // mixer's power/stale voicing (neutral by default, so non-game surfaces
+      // like the rehearsal room hear the full sound); the persistent duck node
+      // is unity except when the kick sidechains the bass (design rule 1).
+      // buildVoiceChain rewires duck's downstream when an effect is inserted;
+      // gain -> tone -> toneGain -> duck stays fixed.
+      const tone = ctx.createBiquadFilter();
+      tone.type = 'lowpass';
+      tone.frequency.value = POWER_FREQ[POWER_FREQ.length - 1];
+      tone.Q.value = 0.5;
+      const toneGain = ctx.createGain();
+      toneGain.gain.value = 1;
       const duck = ctx.createGain();
       duck.gain.value = 1;
-      gain.connect(duck);
+      gain.connect(tone);
+      tone.connect(toneGain);
+      toneGain.connect(duck);
       duck.connect(this.master);
       // Voices start disabled at tier 1; the run enables and tiers them as the
       // player picks. The soundset decides what they play.
@@ -117,6 +146,10 @@ export class MusicEngine {
         tier: 1,
         enabled: false,
         gain,
+        tone,
+        toneGain,
+        power: 0, // 0 = neutral/full (no game mix applied yet)
+        stale: false,
         duck,
         activeSamples: kit.samples,
         tune: 0,
@@ -183,6 +216,28 @@ export class MusicEngine {
   setVoiceGain(role: Role, value: number): void {
     const voice = this.voices.get(role);
     if (voice) voice.gain.gain.setTargetAtTime(value, this.ctx.currentTime, 0.02);
+  }
+
+  /** The mixer's power/stale voicing: power 1-4 opens the voice's tone filter
+   *  and level; stale dulls both (the loop went flat). Deduped against the
+   *  last applied pair, so calling every frame is a cheap no-op; changes glide
+   *  over ~60ms, click-free. Power 0 restores the neutral full-open default
+   *  (non-game surfaces). */
+  setVoiceMix(role: Role, power: number, stale: boolean): void {
+    const voice = this.voices.get(role);
+    if (!voice || (voice.power === power && voice.stale === stale)) return;
+    voice.power = power;
+    voice.stale = stale;
+    const idx = Math.max(1, Math.min(POWER_FREQ.length, power || POWER_FREQ.length)) - 1;
+    let freq = POWER_FREQ[idx];
+    let level = power === 0 ? 1 : POWER_GAIN[idx];
+    if (stale) {
+      freq *= STALE_FREQ_MUL;
+      level *= STALE_GAIN_MUL;
+    }
+    const now = this.ctx.currentTime;
+    voice.tone.frequency.setTargetAtTime(freq, now, 0.06);
+    voice.toneGain.gain.setTargetAtTime(level, now, 0.06);
   }
 
   /** Rewire a voice's output chain for its current effect: tear the old

@@ -12,12 +12,12 @@ import { makePolicy } from '../bot/policies';
 import { SIM_VIEW } from '../bot/sim';
 import { mountPlayground, type Playground } from '../rehearsal/playground';
 import { RUN } from './config';
-import { EFFECT_META } from './effects';
-import { Hud, TIER_NUMERALS } from './hud';
+import { Hud } from './hud';
 import { autoMove, Input, type AutoMoveMode } from './input';
-import { ITEMS } from './items';
 import { mountJoystick } from './joystick';
-import { rollOffers, type PickOption } from './picks';
+import { HOT_C, isHireLevel, isStale, PHRASE_S, validateAllocation } from './mixer';
+import { mountMixerPanel, type MixerPanel } from './mixerui';
+import { rollHireOffers } from './picks';
 import { mulberry32 } from './rng';
 import { RunWorld } from './run';
 import { RunView } from './view';
@@ -91,14 +91,41 @@ export async function bootGame(
   root.appendChild(pauseOverlay);
   const pauseRack = pauseOverlay.querySelector('.pause-rack') as HTMLElement;
   function togglePause(): void {
-    if (state !== 'run') return;
+    if (state !== 'run' || mixerPanel) return;
     paused = !paused;
     pauseOverlay.style.display = paused ? '' : 'none';
     if (paused) {
       engine.clock.pause();
       // Show the current band while paused (the same rack the HUD draws).
-      if (world) hud.renderBand(world.tiers, pauseRack);
+      if (world) hud.renderBand(world, pauseRack);
     } else engine.clock.resume();
+  }
+
+  // The mixer panel: open anytime mid-run (Tab or the debug button). The world
+  // and the clock freeze while it is open; closing commits the draft, which
+  // lands at the start of the next bar (the musical entry rule).
+  let mixerPanel: MixerPanel | null = null;
+  function toggleMixer(): void {
+    if (mixerPanel) {
+      mixerPanel.done(); // Tab again = commit and close
+      return;
+    }
+    if (state !== 'run' || paused || !world) return;
+    const w = world;
+    engine.clock.pause();
+    mixerPanel = mountMixerPanel(root, w, kits, (alloc) => {
+      mixerPanel?.destroy();
+      mixerPanel = null;
+      const err = validateAllocation(alloc, w.totalC, w.totalP);
+      engine.atNextBar(() => {
+        if (world !== w) return;
+        if (!err) w.applyAllocation(alloc);
+        syncEngine(w);
+        hud.renderBand(w);
+        chartOverlay?.refresh();
+      });
+      engine.clock.resume();
+    });
   }
 
   // debug overlay
@@ -107,52 +134,59 @@ export async function bootGame(
   overlay.style.display = 'none';
   root.appendChild(overlay);
 
+  /** Mirror the world's mix onto the music engine: complexity picks the chart
+   *  and enables the voice, power/stale set its voicing. setVoiceMix dedupes,
+   *  so calling this every frame (stale flips on a phrase clock, not on an
+   *  input) is cheap. */
+  function syncEngine(w: RunWorld): void {
+    for (const role of ROLES) {
+      const c = w.complexity.get(role) ?? 0;
+      if (c >= 1) {
+        engine.setVoiceTier(role, c);
+        engine.setVoiceEnabled(role, true);
+        const f = w.fresh.get(role);
+        const dulled = !!f && c >= HOT_C && f.primedLeft === 0 && isStale(f);
+        engine.setVoiceMix(role, w.power.get(role) ?? 1, dulled);
+      } else {
+        engine.setVoiceEnabled(role, false);
+      }
+    }
+  }
+
   const events = {
     onLevelUp(level: number): void {
-      void level;
       if (state !== 'run') return;
-      // The offer roll (docs/phases/m2-the-arc.md) is shared with the autoplay
-      // bot via picks.ts, so the bot faces the exact offers a player does.
-      const options = rollOffers(
-        world!.tiers,
-        world!.items,
-        world!.effects,
-        Math.random,
-        world!.timeS,
-      );
-      if (options.length === 0) {
-        world!.player.hp = Math.min(RUN.playerHp, world!.player.hp + 15);
-        hud.showToast('+15 hp — the track is complete');
-        return;
+      const w = world!;
+      // Every level-up is worth exactly 2 points: +1 complexity, +1 power.
+      w.grantLevelPoints();
+      // Milestone levels hire a new instrument instead (the seeded C1/P1
+      // consumes the granted pair). The offer roll is shared with the bot.
+      if (isHireLevel(level)) {
+        const offers = rollHireOffers(w.arsenal, Math.random, w.timeS);
+        if (offers.length > 0) {
+          state = 'pick';
+          engine.clock.pause();
+          hud.showHire(offers, (role) => {
+            state = 'run';
+            // Musical entry rule: the clock resumes, the old chart finishes
+            // its bar, and the new voice enters on the next "1".
+            engine.atNextBar(() => {
+              if (state !== 'run' || world !== w) return;
+              w.hire(role);
+              syncEngine(w);
+              hud.renderBand(w);
+              chartOverlay?.refresh();
+              // Cosmetic affirmation the hire landed (view-only, muted-safe).
+              view?.flourish(w.player.x, w.player.y);
+              hud.levelPulse();
+            });
+            engine.clock.resume();
+          });
+          return;
+        }
       }
-      state = 'pick';
-      engine.clock.pause();
-      hud.showPick(options, (option) => {
-        state = 'run';
-        // Musical entry rule: the clock resumes, the old chart finishes its
-        // bar, and the new voice / tier / item / effect enters on the next "1".
-        const w = world;
-        engine.atNextBar(() => {
-          if (state !== 'run' || world !== w) return;
-          if (option.kind === 'weapon') {
-            engine.setVoiceTier(option.role, option.tier);
-            engine.setVoiceEnabled(option.role, true);
-            w!.addWeapon(option.role, option.tier);
-          } else if (option.kind === 'item') {
-            w!.addItem(option.item, option.level);
-          } else {
-            w!.attachEffect(option.role, option.effect);
-            engine.setVoiceEffect(option.role, option.effect);
-          }
-          hud.renderItems(w!.items);
-          hud.renderBand(w!.tiers);
-          chartOverlay?.refresh();
-          // Cosmetic affirmation the pick landed (view-only, muted-safe).
-          view?.flourish(w!.player.x, w!.player.y);
-          hud.levelPulse();
-        });
-        engine.clock.resume();
-      });
+      hud.showToast('+1 ◆ complexity  +1 ■ power — TAB opens the mixer');
+      hud.levelPulse();
     },
     onDeath(): void {
       endRun(false);
@@ -267,7 +301,7 @@ export async function bootGame(
       fx: false,
     });
     w.powerMul = SOUNDSET.powerMul;
-    const conductor = new VirtualConductor(w, policy.choose, rng);
+    const conductor = new VirtualConductor(w, policy, rng);
     probe = { world: w, conductor, endT: null };
     conductor.start(policy.startingKit(rng));
   }
@@ -314,6 +348,8 @@ export async function bootGame(
     paused = false;
     setAutoMode('off'); // manual by default; startRun re-arms it if chosen
     pauseOverlay.style.display = 'none';
+    mixerPanel?.destroy();
+    mixerPanel = null;
     sandboxPanel?.destroy();
     sandboxPanel = null;
     view?.destroy();
@@ -341,12 +377,14 @@ export async function bootGame(
     w.powerMul = SOUNDSET.powerMul;
     view = new RunView(w, app.screen);
     app.stage.addChild(view.stage);
-    engine.setVoiceTier(startingKit, 1);
-    engine.setVoiceEnabled(startingKit, true);
-    w.addWeapon(startingKit, 1);
+    // The run opens on one instrument at complexity 1 / power 1; level 1's
+    // point pair is granted and immediately seeded into it.
+    w.grantLevelPoints();
+    w.hire(startingKit);
+    syncEngine(w);
     hud.showHud(true);
     hud.renderItems(w.items);
-    hud.renderBand(w.tiers);
+    hud.renderBand(w);
     state = 'run';
     void engine.ctx.resume();
     engine.clock.start();
@@ -364,7 +402,7 @@ export async function bootGame(
     view = new RunView(w, app.screen);
     app.stage.addChild(view.stage);
     sandboxPanel = mountSandboxPanel(root, engine, w, {
-      onLoadout: () => hud.renderBand(w.tiers),
+      onLoadout: () => hud.renderBand(w),
       onExit: () => {
         resetWorld();
         engine.clock.stop();
@@ -374,7 +412,7 @@ export async function bootGame(
       },
     });
     hud.showHud(true);
-    hud.renderBand(w.tiers);
+    hud.renderBand(w);
     state = 'sandbox';
     void engine.ctx.resume();
     engine.clock.start();
@@ -413,33 +451,23 @@ export async function bootGame(
     const w: RunWorld = new RunWorld(SIM_VIEW, replayEvents, { rng, control: () => mover(w) });
     w.powerMul = SOUNDSET.powerMul;
     world = w;
-    replayConductor = new VirtualConductor(w, policy.choose, rng, {
-      onPick(option) {
-        hud.showToast(`bot picks ${pickLabel(option)}`);
+    replayConductor = new VirtualConductor(w, policy, rng, {
+      onHire(role) {
+        hud.showToast(`bot hires ${kits.get(role)!.name}`);
       },
-      onApply(option) {
-        // the sound mirrors the sim's build; gameplay is driven by the
-        // virtual clock, the engine only plays along. Items touch no voice
-        // tier; an effect swaps the voice's audio fx chain.
-        if (option.kind === 'weapon') {
-          engine.setVoiceTier(option.role, option.tier);
-          engine.setVoiceEnabled(option.role, true);
-        } else if (option.kind === 'effect') {
-          engine.setVoiceEffect(option.role, option.effect);
-        }
-        hud.renderItems(w.items);
-        hud.renderBand(w.tiers);
+      onApply() {
+        // the sound mirrors the sim's mix; gameplay is driven by the virtual
+        // clock, the engine only plays along.
+        syncEngine(w);
+        hud.renderBand(w);
         chartOverlay?.refresh();
-      },
-      onHeal() {
-        hud.showToast('+15 hp — the track is complete');
       },
     });
     view = new RunView(w, app.screen);
     app.stage.addChild(view.stage);
     hud.showHud(true);
     hud.renderItems(w.items);
-    hud.renderBand(w.tiers);
+    hud.renderBand(w);
     hud.showToast(`replaying seed ${seed} (${moverName}/${policySpec})`);
     speedRow.style.display = '';
     seekRow.style.display = '';
@@ -505,13 +533,24 @@ export async function bootGame(
     if ((state === 'run' || state === 'sandbox') && world) world.fireTrigger(t);
   });
 
+  // The band rack re-renders when the phrase clock advances (freshness rings
+  // move ~every 8s), not per frame.
+  let lastPhrase = -1;
   app.ticker.add((ticker) => {
     engine.update();
-    if (paused) return;
+    if (paused || mixerPanel) return;
     if ((state === 'run' || state === 'sandbox') && world) {
       const dt = Math.min(ticker.deltaMS / 1000, 1 / 20); // clamp long frames
       world.update(dt);
       view?.update(dt);
+      // Freshness flips on the world's phrase clock, not on input: mirror it
+      // onto the audio (deduped, cheap) and the rack each phrase.
+      syncEngine(world);
+      const phrase = Math.floor(world.timeS / PHRASE_S);
+      if (phrase !== lastPhrase) {
+        lastPhrase = phrase;
+        hud.renderBand(world);
+      }
       hud.setStatus(
         world.player.hp / RUN.playerHp,
         world.xpProgress(),
@@ -564,6 +603,12 @@ export async function bootGame(
         if (replayAcc > SIM_DT * 12) replayAcc = SIM_DT * 12; // don't bank a backlog
       }
       if (state === 'replay') {
+        syncEngine(world); // stale voicing follows the sim's phrase clock
+        const phrase = Math.floor(world.timeS / PHRASE_S);
+        if (phrase !== lastPhrase) {
+          lastPhrase = phrase;
+          hud.renderBand(world);
+        }
         view?.update((ticker.deltaMS / 1000) * replaySpeed);
         hud.setStatus(
           world.player.hp / RUN.playerHp,
@@ -627,6 +672,12 @@ export async function bootGame(
         );
       },
     },
+    mixer: {
+      label: 'mixer',
+      hotkey: 'TAB',
+      isOn: () => mixerPanel !== null,
+      onClick: toggleMixer,
+    },
     xp: {
       label: 'level up',
       hotkey: 'X',
@@ -663,6 +714,12 @@ export async function bootGame(
       togglePause();
       return;
     }
+    if (e.code === 'Tab') {
+      e.preventDefault(); // keep focus out of the browser chrome mid-run
+      toggleMixer();
+      hud.refreshDebug();
+      return;
+    }
     const byKey: Record<string, { onClick(): void }> = {
       KeyM: debugActions.mute,
       KeyI: debugActions.invincible,
@@ -681,13 +738,6 @@ export async function bootGame(
 
   function fmtTime(s: number): string {
     return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-  }
-
-  function pickLabel(option: PickOption): string {
-    if (option.kind === 'item') return `${ITEMS[option.item].name} Lv ${option.level}`;
-    const kit = kits.get(option.role)!;
-    if (option.kind === 'effect') return `${kit.name} · ${EFFECT_META[option.effect].name}`;
-    return option.tier > 1 ? `${kit.name} ${TIER_NUMERALS[option.tier - 1]}` : kit.name;
   }
 
   // ?replay=<seed>&mover=<mover>&policy=<policy> boots straight into a bot

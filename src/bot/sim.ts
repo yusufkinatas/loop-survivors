@@ -28,6 +28,7 @@ export interface RunRecord {
   timeS: number;
   level: number;
   kills: number;
+  /** Hire log (mixer system: tier is always 1, the seeded C1/P1). */
   picks: { t: number; role: Role; tier: number }[];
   damageByRole: Partial<Record<Role, number>>;
   killsByRole: Partial<Record<Role, number>>;
@@ -66,7 +67,7 @@ export function simulateRun(spec: SimSpec, config: string): RunRecord {
     fx: false,
   });
   world.powerMul = SOUNDSET.powerMul;
-  const conductor = new VirtualConductor(world, policy.choose, rng);
+  const conductor = new VirtualConductor(world, policy, rng);
   conductor.start(policy.startingKit(rng));
 
   let minHp = world.player.hp;

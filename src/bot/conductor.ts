@@ -2,88 +2,86 @@
 // Web Audio clock does for the real game, this does for bot runs — steps the
 // same charts through the same chartEventsAtStep and fires the same triggers
 // into the same world, on a simulated timeline with no audio and no real
-// time. Pick entry keeps the game's musical rule: chosen at level-up,
-// applied at the next bar boundary.
+// time. Entry keeps the game's musical rule: hires chosen at level-up and
+// allocation changes both land at the next bar boundary.
 //
 // Both the headless simulator and the browser replay drive runs through this
 // class with a fixed 60 Hz dt, which is why a replay is tick-identical to
 // the batch run that produced it.
+//
+// The mixer (branch mixer-system): a level-up grants points (or a hire on
+// milestone levels); the policy owns WHERE the points go and how the build
+// rotates its hot patterns. The conductor asks the policy for a fresh
+// allocation whenever the build changed or a phrase rolled over, and applies
+// it at the next bar, exactly like the player's mixer panel.
 
 import { chartEventsAtStep } from '../audio/arranger';
 import { getChart } from '../audio/chartstore';
 import { SOUNDSET } from '../audio/soundset';
 import type { Role } from '../audio/kits';
-import type { EffectId } from '../audio/voicefx';
 import { SKELETON, STEPS_PER_BAR, STEPS_PER_PHRASE } from '../audio/scale';
-import { RUN } from '../game/config';
-import type { ItemId } from '../game/items';
-import { rollOffers, type PickOption } from '../game/picks';
+import { isHireLevel, validateAllocation } from '../game/mixer';
+import { rollHireOffers } from '../game/picks';
 import type { Rng } from '../game/rng';
 import type { RunWorld } from '../game/run';
-
-export type PickChooser = (options: PickOption[], world: RunWorld, rng: Rng) => PickOption;
+import type { Policy } from './policies';
 
 export interface ConductorHooks {
-  /** A pick was chosen (it lands at the next bar). */
-  onPick?(option: PickOption): void;
-  /** A pick landed (next-bar entry). Replay mirrors sound here. */
-  onApply?(option: PickOption): void;
-  /** Pool exhausted: the heal fallback fired. */
-  onHeal?(): void;
+  /** A hire was chosen (it lands at the next bar). */
+  onHire?(role: Role): void;
+  /** A change landed (hire or allocation). Replay mirrors sound here. */
+  onApply?(): void;
 }
 
 export const SIM_DT = 1 / 60;
 
 export class VirtualConductor {
-  /** The build as it unfolded: every pick with the time it was chosen. */
+  /** The build as it unfolded: every hire with the time it was chosen. */
   readonly picks: { t: number; role: Role; tier: number }[] = [];
 
   private world: RunWorld;
-  private choose: PickChooser;
+  private policy: Policy;
   private rng: Rng;
   private hooks: ConductorHooks;
 
   private musicT = 0;
   private nextStepT = 0;
   private step = 0;
-  private pending: PickOption[] = [];
+  private pendingHire: Role | null = null;
+  /** The build changed (points granted / hire landed / phrase rolled): ask
+   *  the policy for a fresh allocation at the next bar. */
+  private mixDirty = false;
 
-  constructor(world: RunWorld, choose: PickChooser, rng: Rng, hooks: ConductorHooks = {}) {
+  constructor(world: RunWorld, policy: Policy, rng: Rng, hooks: ConductorHooks = {}) {
     this.world = world;
-    this.choose = choose;
+    this.policy = policy;
     this.rng = rng;
     this.hooks = hooks;
   }
 
-  /** The starting instrument enters immediately, like the game's startRun. */
+  /** The starting instrument enters immediately, like the game's startRun:
+   *  level 1's point pair granted and seeded into the hire at C1/P1. */
   start(role: Role): void {
-    this.world.addWeapon(role, 1);
+    this.world.grantLevelPoints();
+    this.world.hire(role);
     this.picks.push({ t: 0, role, tier: 1 });
-    this.hooks.onApply?.({ kind: 'weapon', role, tier: 1 });
+    this.hooks.onApply?.();
   }
 
-  /** Wire this to RunEvents.onLevelUp. Rolls the real three-card offer and
-   *  lets the policy choose; the choice lands at the next bar. */
+  /** Wire this to RunEvents.onLevelUp. Grants the level's points; milestone
+   *  levels roll the real hire offer and let the policy choose. Both the hire
+   *  and the re-allocation land at the next bar. */
   onLevelUp(): void {
-    const options = rollOffers(
-      this.effectiveTiers(),
-      this.effectiveItems(),
-      this.effectiveEffects(),
-      this.rng,
-      this.world.timeS,
-    );
-    if (options.length === 0) {
-      this.world.player.hp = Math.min(RUN.playerHp, this.world.player.hp + 15);
-      this.hooks.onHeal?.();
-      return;
+    this.world.grantLevelPoints();
+    if (isHireLevel(this.world.level) && this.pendingHire === null) {
+      const offers = rollHireOffers(this.world.arsenal, this.rng, this.world.timeS);
+      if (offers.length > 0) {
+        this.pendingHire = this.policy.chooseHire(offers, this.world, this.rng);
+        this.picks.push({ t: this.world.timeS, role: this.pendingHire, tier: 1 });
+        this.hooks.onHire?.(this.pendingHire);
+      }
     }
-    const option = this.choose(options, this.world, this.rng);
-    this.pending.push(option);
-    // The build log stays weapon-shaped (attribution report); item/effect
-    // picks aren't logged there.
-    if (option.kind === 'weapon')
-      this.picks.push({ t: this.world.timeS, role: option.role, tier: option.tier });
-    this.hooks.onPick?.(option);
+    this.mixDirty = true;
   }
 
   /** Advance the virtual clock by dt and fire every due grid step. Call
@@ -98,43 +96,30 @@ export class VirtualConductor {
     }
   }
 
-  /** Owned tiers plus picks still waiting for their bar: the pool must not
-   *  offer what is already on its way in. */
-  private effectiveTiers(): Map<Role, number> {
-    const tiers = new Map(this.world.tiers);
-    for (const p of this.pending) if (p.kind === 'weapon') tiers.set(p.role, p.tier);
-    return tiers;
-  }
-
-  /** Owned items plus item picks still waiting for their bar. */
-  private effectiveItems(): Map<ItemId, number> {
-    const items = new Map(this.world.items);
-    for (const p of this.pending) if (p.kind === 'item') items.set(p.item, p.level);
-    return items;
-  }
-
-  /** Owned effects plus effect picks still waiting for their bar. */
-  private effectiveEffects(): Map<Role, EffectId> {
-    const effects = new Map(this.world.effects);
-    for (const p of this.pending) if (p.kind === 'effect') effects.set(p.role, p.effect);
-    return effects;
-  }
-
   private onStep(step: number, time: number): void {
     const phraseStep = step % STEPS_PER_PHRASE;
-    // bar boundary: queued picks land, exactly like engine.atNextBar
-    if (phraseStep % STEPS_PER_BAR === 0 && this.pending.length > 0) {
-      const queue = this.pending;
-      this.pending = [];
-      for (const option of queue) {
-        if (option.kind === 'weapon') this.world.addWeapon(option.role, option.tier);
-        else if (option.kind === 'item') this.world.addItem(option.item, option.level);
-        else this.world.attachEffect(option.role, option.effect);
-        this.hooks.onApply?.(option);
+    // Bar boundary: queued changes land, exactly like engine.atNextBar. A
+    // phrase boundary additionally re-opens the mix (freshness rotation).
+    if (phraseStep % STEPS_PER_BAR === 0) {
+      if (phraseStep === 0) this.mixDirty = true;
+      let changed = false;
+      if (this.pendingHire) {
+        this.world.hire(this.pendingHire);
+        this.pendingHire = null;
+        changed = true;
       }
+      if (this.mixDirty) {
+        this.mixDirty = false;
+        const alloc = this.policy.mix(this.world, this.rng);
+        if (alloc && validateAllocation(alloc, this.world.totalC, this.world.totalP) === null) {
+          this.world.applyAllocation(alloc);
+          changed = true;
+        }
+      }
+      if (changed) this.hooks.onApply?.();
     }
-    for (const [role, tier] of this.world.tiers) {
-      for (const ev of chartEventsAtStep(getChart(role, tier), phraseStep)) {
+    for (const [role, c] of this.world.complexity) {
+      for (const ev of chartEventsAtStep(getChart(role, c), phraseStep)) {
         this.world.fireTrigger({
           role,
           time,
