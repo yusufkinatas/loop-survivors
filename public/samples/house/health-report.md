@@ -1,6 +1,7 @@
 # House kit (Wave Point "Tight Tech") — health report
 
-Source: Wave Point House Essentials (100% free to use). Corrected by scripts/build-house-kit.mjs.
+Source: Wave Point House Essentials (100% free to use). Historical health snapshot;
+the former correction tool has been retired.
 
 - **kick** (kick.wav) <- WavePoint-KickPunchy.wav: dur 367ms, onset 0ms, eff 324ms, peak 0.889  ✓
 - **clap** (clap.wav) <- WavePoint-Clap5.wav: dur 290ms, onset 0ms, eff 201ms, peak 0.631  ✓

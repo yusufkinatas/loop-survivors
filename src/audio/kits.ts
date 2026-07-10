@@ -1150,10 +1150,8 @@ export const ROLE_META: Record<Role, RoleMeta> = {
   whistle: { name: 'Vocal Chop', color: '#ff9ecb', pitched: true, choke: false, variants: ['whistle'] },
 };
 
-/** Load a real sample file and decode it. The files are pre-corrected at build
- *  time (scripts/build-samples.mjs: ffmpeg strips silence, caps length, fades
- *  the tail, and peak-normalizes), so the runtime just plays them — no trimming
- *  or level fixing in code. The fix lives in the asset, not the game. */
+/** Load a checked-in sample file and decode it. Runtime playback deliberately
+ *  performs no trimming, normalization, or other asset correction. */
 export async function loadSample(url: string): Promise<AudioBuffer> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`sample ${url}: ${res.status}`);

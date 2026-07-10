@@ -26,7 +26,6 @@ docs/
     m2-*.md ...      Future phase specs land here, one file per phase,
                      named <phase>-<short-title>.md.
   tools/
-    audio-sample-pipeline.md   Shared sample correction and health workflow.
     reference-sound-lift.md    RSL: isolate a playable one-shot from an approved
                                reference recording when approximation fails.
 src/ etc.            Game code (appears once M1 implementation starts).

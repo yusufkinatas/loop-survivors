@@ -2,6 +2,16 @@
 
 Last updated: July 10, 2026
 
+## Latest change (July 10, 2026 — audio sample pipeline retired)
+
+**The build-time audio sample correction pipeline has been removed at the
+developer's request.** Its documentation, House/featured/generic build scripts,
+and npm entry point are gone. Existing checked-in WAVs remain unchanged and the
+runtime still only fetches and decodes them. Source/license records and old
+health reports remain as provenance snapshots, not an active or reproducible
+workflow. Future sound changes require a newly approved method rather than
+reviving this pipeline ad hoc.
+
 ## Latest change (July 10, 2026 — Pursuit sub-pulse correction)
 
 **Pursuit's twice-rejected A1 approximation has been replaced with a pulse
@@ -64,14 +74,11 @@ choose a winner or pass the developer's ear-and-hands gate.
   intentionally use five to seven instruments rather than padding sparse
   tracks to eight.
 - **Sound pass:** reusable real one-shots from the CC0 Sample Pi collection
-  replace several thin synthetic drums and percussion sounds.
-  `scripts/build-featured-track-samples.mjs`
-  downloads pinned revisions and uses ffmpeg to trim silence, cap/fade tails,
-  normalize peaks, and render mono 44.1 kHz/16-bit WAVs. Source and licensing
-  notes live in `public/samples/covers/featured/CREDITS.md`. Verbatim downloads
-  stay outside `public/`, so only corrected WAVs enter the web build. No
-  original masters, stems, vocals, downloaded MIDI, or proprietary synth ROMs
-  were added.
+  replace several thin synthetic drums and percussion sounds. The checked-in
+  WAVs remain the runtime assets and their source/licensing notes live in
+  `public/samples/covers/featured/CREDITS.md`. The former rebuild/correction
+  tooling has since been retired. No original masters, stems, vocals,
+  downloaded MIDI, or proprietary synth ROMs were added.
 - **Candidate-specific corrections:** Show Me Love uses one organ bassline/hook
   rather than an invented separate bass and upper chord part; Animals preserves
   its sparse wooden-horn drop and pre-drop vacuum; Pursuit preserves the silent
@@ -85,8 +92,8 @@ choose a winner or pass the developer's ear-and-hands gate.
   duplicated or silently consumed.
 - **Engineering evidence:** the production build passes; Track Lab validates
   11 tracks / 46 sections / 81 lanes; all four playable profiles validate their
-  catalogs, caps, eight-bar tiers, distinct upgrades, and exact maximum tiers;
-  the reproducible sample rebuild reports zero health flags. The in-app browser
+  catalogs, caps, eight-bar tiers, distinct upgrades, and exact maximum tiers.
+  The in-app browser
   exercised all four sandbox selectors and full Level-IV bands, all four full
   arrangement transports, a selected normal run, and desktop plus 390x844
   layouts with no console warnings or errors.
@@ -155,8 +162,7 @@ required.
   audible mix judgment remains explicitly with the developer.
 - **Independent QoL audit:** fixed truly paired policy seeds and worker-temp
   cleanup in the bot, restored all eight slots to the rehearsal wide mix,
-  made the active sample-health workflow safe and current, made debug kill
-  bypass Darter's brief brace, filtered sample-set hints to the active catalog,
+  made debug kill bypass Darter's brief brace, filtered sample-set hints to the active catalog,
   corrected the shipped-kit label, and made toast feedback screen-reader live.
   Parked rather than smuggled into this phase: an `ActiveRole` type/prototype
   purge, swing-exact virtual-clock parity, trigger-pulse reflow optimization,
@@ -261,15 +267,18 @@ New model — a genre now has:
 
 **Real drum samples (the identity layer).** Synthesized drums from one engine converge on a shared character (the first pass sounded too alike between genres). Signature UNPITCHED drums are now real one-shots from the freely-distributed TidalCycles Dirt-Samples set — 909 for house/techno, 808 for hiphop, LinnDrum for synthwave, distorted break for dnb, warm for lofi — overlaid onto the synth kit in `kits/index.ts` (`SAMPLE_OVERLAY` + `loadSample`), so a role whose files load is voiced by the sample and everything else stays synthesized (melodic/bass), with graceful fallback to synth if a file fails.
 
-**The fix lives in the asset, not the game (ffmpeg pipeline).** `scripts/build-samples.mjs` downloads each raw sample and runs an **ffmpeg** pass that makes the file correct once: strip leading/trailing silence, cap length per role + fade the tail, peak-normalize to a per-role target (so the kit is balanced ON DISK), force mono/44.1k/16-bit. The per-role numbers live in that script's `PROC` table (build tooling), NOT in game code. Consequently the runtime `loadSample` is dumb — **fetch + decode only, no trimming or leveling in code**. The script also writes `public/samples/<genre>/CREDITS.md` (source+license, verify before ship) and a health report at `public/samples/health-report.md` (currently **0 flags** on the processed assets). Re-run with `node scripts/build-samples.mjs` after any manifest/PROC change.
+**Asset ownership.** The checked-in WAVs are the runtime source of truth and
+`loadSample` only fetches and decodes them. The batch correction workflow that
+originally produced some of these files was retired on July 10; there is no
+supported rebuild or automatic file-fix command.
 
 **Sound health-check screen (`#soundcheck`) — REMOVED July 7, 2026.** This was a developer surface listing every genre × voice with play buttons, health badges, and pass/flag export. It (the `src/soundcheck/` page, its start-screen button, CSS, and the `sampleFilesFor`/`sampleDir` helpers and orphaned `*.raw.wav` assets it alone used) was deleted at the developer's request. The variant A/B system it shared with the sandbox (`variantsFor`/`getGenreVariant`/`setGenreVariant`/`sampledRoles`) stays, driven from the sandbox only.
 
-**Delivery + verification.** Stage 1 (skeleton, behavior-neutral refactor) → Stage 2 (per-genre synth voicings + one authored track each, via an ultracode workflow) → real drum samples + ffmpeg pipeline + health check. Verified at each step: `tsc` + `vite build` clean; headless bot across all six genres (no crashes/NaN); browser render of every genre kit (all voices non-silent, no NaN, no console errors; drums confirmed distinct — lofi kick 257ms vs hiphop 88ms vs techno 108ms, all peak-normalized). Everything is ONE commit on `audio-refresh` (`06b34e9` at time of writing), pushed to origin.
+**Delivery + verification.** Stage 1 (skeleton, behavior-neutral refactor) → Stage 2 (per-genre synth voicings + one authored track each, via an ultracode workflow) → real drum samples. Verified at each step: `tsc` + `vite build` clean; headless bot across all six genres (no crashes/NaN); browser render of every genre kit (all voices non-silent, no NaN, no console errors; drums confirmed distinct — lofi kick 257ms vs hiphop 88ms vs techno 108ms). Everything is ONE commit on `audio-refresh` (`06b34e9` at time of writing), pushed to origin.
 
 ### Every genre now has a chosen sampled kit (July 7, later) — DONE
 
-All six genres are voiced by a real sampled drum/bass kit. House adopted Wave Point "Tight Tech"; the developer then auditioned prototypes for the other five and **picked variant A for every one**, each promoted into its shipped voicing (mirroring House's `build-house-kit.mjs` finalize):
+All six genres are voiced by a real sampled drum/bass kit. House adopted Wave Point "Tight Tech"; the developer then auditioned prototypes for the other five and **picked variant A for every one**, each promoted into its shipped voicing:
 
 - **lofi** → itslucid Tape Kit (kick/kick_soft/snare/rimshot/hat; shaker stays synth)
 - **synthwave** → Clean 808 (TR-808 drums + A1 Jupiter/FM bass, tune 0)
@@ -292,20 +301,20 @@ House's finalize process was generalized to all genres, and the other five got p
 - **Generalized variant plumbing** (`src/audio/kits/index.ts`): `setGenreVariant`/`getGenreVariant`/`variantsFor`/`sampledRoles`/`sampleDir`, localStorage-persisted per genre, cache-invalidating so `engine.setGenre` re-renders the chosen voicing live. Under a prototype ONLY that prototype's roles are sample-backed (loaded from `public/samples/<genre>/<variant>/`); every other role falls back to synth. Each genre declares its prototypes in its own file `src/audio/kits/protos/<genre>.ts` (a `ProtoManifest`, see `protos/types.ts`) gathered by `protos/index.ts` — conflict-free authoring.
 - **Selectors:** a per-genre dropdown in `#soundcheck` (reloads to the chosen voicing) and an in-arena "kit prototype" button row in the sandbox (swaps live, with the `raw` A/B still available).
 - **Sandbox upgrades (developer request):** the loadout list is grouped by band slot in the top-of-screen rack order (Beat/Snap/Tick/Groove/FX/Low/Color/Hook) with slot headers, and a `★ custom` badge marks every voice that is sample-backed for the active genre + prototype (updates on genre/prototype switch).
-- **Prototypes built** (per-genre sub-agents, one per genre, each in its own namespace — `scripts/build-<genre>-protos.mjs` + `public/samples/<genre>/<variant>/` + manifest; ffmpeg pipeline copied from `build-house-kit.mjs`; 0 health flags across all): **lofi** 3 (A itslucid Tape, B MyLofi Bedroom, C LoFi Pads Room — kick/snare/rimshot/hat, shaker stays synth), **synthwave** 2 (A Clean 808, B Reimagined — +pitched bass, tune 0), **hiphop** 2 (A MusicRadar Trap, B TriSamples 808 Trapstep — full drum set +808 bass, tune 0), **dnb** 3 (A 170 Kit A, B 170 Kit B, C 175 Two-Step — +pitched bass, tune −3), **techno** 2 (A MusicRadar Digital, B Analogue Machines — +pitched bass, tune −3). Licensing recorded per genre in `public/samples/<genre>/CREDITS.md` (verify before commercial ship; a couple of lo-fi packs have no explicit license file, flagged there).
+- **Prototypes built** (per-genre sub-agents, one per genre, each in its own namespace, with 0 historical health flags): **lofi** 3 (A itslucid Tape, B MyLofi Bedroom, C LoFi Pads Room — kick/snare/rimshot/hat, shaker stays synth), **synthwave** 2 (A Clean 808, B Reimagined — +pitched bass, tune 0), **hiphop** 2 (A MusicRadar Trap, B TriSamples 808 Trapstep — full drum set +808 bass, tune 0), **dnb** 3 (A 170 Kit A, B 170 Kit B, C 175 Two-Step — +pitched bass, tune −3), **techno** 2 (A MusicRadar Digital, B Analogue Machines — +pitched bass, tune −3). Licensing recorded per genre in `public/samples/<genre>/CREDITS.md` (verify before commercial ship; a couple of lo-fi packs have no explicit license file, flagged there).
 - **Verified:** `tsc --noEmit` + `vite build` clean; every manifest fileBase resolves to a real corrected `.wav`; behavior-neutral for `house` (no prototypes). NOT yet auditioned in-browser (the developer's ear is the gate) and NOT committed.
 - **Next:** developer opens `#soundcheck` / sandbox, A/Bs each genre's prototypes, picks one per genre. Then per genre: promote the pick to the shipped kit (mirror commit `68c0169` — fold the chosen variant into `public/samples/<genre>/` + `SAMPLE_OVERLAY`, delete the losing prototype folders, empty that genre's manifest so its selector disappears). Genres with no clear winner can keep their `original` synth voicing.
 
 ### Current state & how to continue (for the next agent)
 
-**Done and committed/pushed.** The architecture, per-genre voicings, one track each, real ffmpeg-corrected drum samples, the health analyzer, and the `#soundcheck` screen are all in the single `audio-refresh` commit.
+**Done and committed/pushed.** The architecture, per-genre voicings, one track each, real drum samples, and the `#soundcheck` screen are all in the single `audio-refresh` commit. The former correction and health tooling was retired later.
 
 **The next step is the developer's ear pass (the real gate).** The developer auditions every genre × voice (via the sandbox / a live run) and reports what sounds off. Then:
-- **A flagged DRUM** (kick/snare/clap/hat/rimshot/shaker/ride) is a FILE fix: adjust that file's entry in `scripts/build-samples.mjs` (`MANIFEST` source swap, or `PROC` cap/level) or add an ffmpeg EQ op (e.g. `highpass=f=45` for boom), then `node scripts/build-samples.mjs`. No game code changes.
+- **A flagged DRUM** (kick/snare/clap/hat/rimshot/shaker/ride) needs a newly approved replacement or editing method. There is no active batch correction workflow.
 - **A flagged SYNTH voice** (bass/chord/rhodes/lead/bell/reese/acid/…) is a code fix: edit the synthesis params in `src/audio/kits/<genre>.ts`. (If synth voices need frequent fixes, consider "Option 2": pre-render synth voices to WAV assets at build time so every voice is a file — a larger refactor, not yet done. Option 1 = samples-as-files-only is what shipped.)
-- After fixes: re-run health analyzer, `tsc` + `vite build`, browser render check, and **amend** the single commit (force-with-lease to push).
+- After fixes: run `tsc` + `vite build`, browser render checks, and **amend** the single commit (force-with-lease to push).
 
-**Key files:** `src/audio/kits.ts` (primitives, `ROLE_META`, `makeKit`, `loadSample`), `src/audio/kits/index.ts` (registry + `SAMPLE_OVERLAY`), `src/audio/kits/<genre>.ts` (synth voicings), `src/audio/ladders/<genre>.ts` (the one track each) + `ladders/shared.ts`, `src/audio/genres.ts` (thin assembler + `supportedRoles` + guards), `src/audio/engine.ts` (`setGenre` swap), `scripts/build-samples.mjs` (download + ffmpeg + health report).
+**Key files:** `src/audio/kits.ts` (primitives, `ROLE_META`, `makeKit`, `loadSample`), `src/audio/kits/index.ts` (registry + `SAMPLE_OVERLAY`), `src/audio/kits/<genre>.ts` (synth voicings), `src/audio/ladders/<genre>.ts` (the one track each) + `ladders/shared.ts`, `src/audio/genres.ts` (thin assembler + `supportedRoles` + guards), `src/audio/engine.ts` (`setGenre` swap).
 
 ## History
 

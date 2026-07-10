@@ -27,8 +27,8 @@ Measured roots (autocorrelation, for `tune` values):
 
 ## Featured candidate tracks
 
-The processed one-shots under `featured/` are rebuilt by
-`npm run build:featured-samples`. Their per-file source, license status, ffmpeg
-targets, and health results live in `featured/CREDITS.md` and
-`featured/health-report.md`. Every featured one-shot source is from the pinned
-Sample Pi/Sonic Pi collection and is CC0 (public domain).
+The checked-in one-shots under `featured/` retain their per-file source,
+license status, historical processing notes, and health snapshot in
+`featured/CREDITS.md` and `featured/health-report.md`. The former rebuild tool
+has been retired. Every featured one-shot source is from the pinned Sample
+Pi/Sonic Pi collection and is CC0 (public domain).

@@ -23,9 +23,9 @@ their sound or feel.
   full-arrangement transport.
 - Each candidate is an instrumental development study. No original master,
   stem, vocal, vocal imitation, proprietary synth ROM, or downloaded MIDI is a
-  game dependency. Reusable one-shots are downloaded from documented sources,
-  corrected with the project's ffmpeg pipeline, and accompanied by source,
-  license, and health reports.
+  game dependency. Reusable one-shots retain their source and license records;
+  the checked-in WAVs are the owned runtime assets. The retired correction
+  pipeline is not a phase dependency.
 - Before a normal run, the developer explicitly selects one of the four
   candidates. The sandbox exposes the same selector and can force the selected
   track's complete maximum-level band.
@@ -64,10 +64,10 @@ that creates impact by removing parts must stay sparse.
 
 ## Gates
 
-1. **Asset and content gate.** Every downloaded one-shot has a reproducible
-   source, processing entry, and green format/onset/peak report. Every track and
-   arrangement validates; each playable lane has four non-silent tiers and an
-   exact Level-IV match to the declared maximum section.
+1. **Asset and content gate.** Every downloaded one-shot has a recorded source
+   and license status. Every track and arrangement validates; each playable
+   lane has four non-silent tiers and an exact Level-IV match to the declared
+   maximum section.
 2. **Integration gate.** The four choices work from the start screen and
    sandbox; tempo, samples, charts, names, offers, build cap, full-band action,
    reset, and rapid switching all follow the selected profile. Static build,

@@ -1,6 +1,7 @@
 # Featured Track Lab samples
 
-Development/reference-cover assets processed by `scripts/build-featured-track-samples.mjs`.
+Development/reference-cover assets. Processing details below are historical;
+the former rebuild tool has been retired.
 
 - `showmelove/snare.wav` ← [Sample Pi / Sonic Pi samples](https://github.com/alex-esc/sample-pi/tree/f14596be37abf227bf77d198c9b0b60d9eb4dca9) `drums/one-shots/snare/drum_snare_hard.flac`; CC0 1.0 (public domain), per the repository README; ffmpeg cap 0.46s, peak -3dB.
 - `showmelove/tick.wav` ← [Sample Pi / Sonic Pi samples](https://github.com/alex-esc/sample-pi/tree/f14596be37abf227bf77d198c9b0b60d9eb4dca9) `drums/one-shots/electric/elec_tick.flac`; CC0 1.0 (public domain), per the repository README; ffmpeg cap 0.18s, peak -10dB.
