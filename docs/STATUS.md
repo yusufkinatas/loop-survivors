@@ -51,17 +51,19 @@ required.
   purge, swing-exact virtual-clock parity, trigger-pulse reflow optimization,
   a standalone invariant command, and a designed startup-render error screen.
 
-Context note: the linked Gemini and ChatGPT conversations were subsequently
-reviewed through the signed-in Chrome profile. They independently reinforce the
-implemented foundation: House in the 120-124 BPM pocket, Kick as the mandatory
-pulse from run start, an eight-role arrangement that prevents low-end/harmony
-collisions, grid-quantized attacks, and restrained density growth. ChatGPT's
-122 BPM was an advisory suggestion; the later, direct July 9 developer decision
-keeps this build at 120 BPM. The conversations' proposed Drop Meter, overflow
-modifiers, and separate gameplay enhancements remain deliberately excluded by
-this refactor's newer tier-only/base-game brief. The Claude URL redirected to a
-signed-in new-chat page with an authoritative "Conversation not found" notice,
-so no Claude transcript content was available to incorporate.
+Context note: the linked Gemini, ChatGPT, and Claude conversations were all
+reviewed through their signed-in Chrome profiles. They independently reinforce
+the implemented foundation: House in the 120-124 BPM pocket, Kick as the only
+mandatory pulse, an eight-voice role-limited arrangement, one low-end lane, a
+shared key, grid-quantized attacks, and restrained density growth. Claude also
+confirms that Hi-hat and Shaker are a standard interlocking pair; the fixed Hat
+lane and Shaker's separate Groove option allow exactly that build. Kick is
+automatic and costs no player pick while remaining visible as the Beat lane,
+which preserves the eight-voice deck and development mute control. ChatGPT's
+122 BPM was advisory; the later direct July 9 decision keeps this build at 120.
+The older conversations' proposed Drop Meter, passives, evolutions, swapping,
+and overflow modifiers remain deliberately excluded by this refactor's newer
+tier-only/base-game brief.
 
 ## Previous change (July 9, 2026)
 
