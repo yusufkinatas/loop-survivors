@@ -44,8 +44,11 @@ their sound or feel.
   newer choice. The rehearsal room and headless House balance baseline remain
   available.
 - The existing locally supplied commercial `public/boss/pursuit.mp3` is not a
-  source for these playable profiles. It cannot provide per-weapon causality and
-  requires separate copyright cleanup.
+  general source for these playable profiles. **Developer-approved test-app
+  exception (July 10):** Pursuit's rejected A1 sub pulse may use one isolated,
+  tightly trimmed hit derived from that master so its timbre can be judged in
+  context. This exception does not authorize other master-derived lanes and the
+  pulse must be replaced or cleared before any public build.
 
 ## Candidate maximum sections
 
@@ -82,4 +85,3 @@ only then is the audition selector removed or demoted and the winner promoted
 into the normal first-time path. On a fail, rework stays within the named
 candidate or shared progression seam. No implementation or automated metric
 may silently pick the winner.
-

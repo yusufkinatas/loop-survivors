@@ -2,6 +2,23 @@
 
 Last updated: July 10, 2026
 
+## Latest change (July 10, 2026 — Pursuit sub-pulse correction)
+
+**Pursuit's twice-rejected A1 approximation has been replaced with a pulse
+isolated from the supplied reference master and remains at the developer ear
+gate.** Online production research and direct spectral inspection showed the
+sound is not a generic sub: it is a tightly gated 55 Hz pulse with clipped
+metallic harmonics and strong bass-to-kick ducking. With the developer's
+explicit test-app licensing exception, a clean A1 hit was bass-separated from
+the master and trimmed to its original 125ms gate. The authored rhythm,
+eighth-bar turnaround, progression charts, and gameplay mapping are unchanged;
+written turnaround notes still pitch the reference hit up to C. This asset is
+not cleared for a public build. The reusable method is now named **Reference
+Sound Lift (RSL)** and documented at `docs/tools/reference-sound-lift.md`, with
+selection criteria, separation, grid alignment, minimal processing,
+integration, verification, provenance, clearance, and stop conditions for
+future sounds and tracks.
+
 ## Latest changes (July 10, 2026 — leveling curve retune)
 
 **The opening level-up spam in all four playable candidates is fixed;

@@ -31,6 +31,19 @@ node scripts/build-house-kit.mjs "/path/to/Wave Point - Sample Packs"
 npm run build:featured-samples
 ```
 
+## Reference Sound Lift (RSL)
+
+When a supplied reference contains one discrete sound that cannot be matched by
+a generic sample or synthesis, use the **Reference Sound Lift** workflow in
+[`docs/tools/reference-sound-lift.md`](reference-sound-lift.md). RSL separates a
+short source region, locates one exact event on the musical grid, trims it into
+a playable one-shot, preserves the recognizable spectral character, and records
+its provenance and release clearance.
+
+RSL does not replace this correction pipeline. It is a way to obtain a source;
+the resulting one-shot still follows the same asset-first format, onset, tail,
+health, integration, and developer-ear gates described below.
+
 ## The correction chain (the fixes ffmpeg applies)
 
 Applied to every one-shot, in order:

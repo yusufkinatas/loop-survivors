@@ -271,9 +271,12 @@ export const PURSUIT: LabTrack = {
       ducked: true,
       gain: 0.9,
       noteRows: [3, 0],
-      tune: -3,
+      // Developer-approved test-app exception: this is a separated, tightly
+      // trimmed A1 pulse from the locally supplied reference master. Keeping
+      // its stereo metallic harmonics and exact gate gets materially closer
+      // than either the old generic bass sample or a synthesized 808 stand-in.
       build: (ctx) =>
-        fetchSample(ctx, SAMPLE + 'bass_c.wav').then((b) => variants([['sub', b]])),
+        fetchSample(ctx, SAMPLE + 'bass_a1_reference.wav').then((b) => variants([['sub', b]])),
     },
     {
       id: 'stab',
