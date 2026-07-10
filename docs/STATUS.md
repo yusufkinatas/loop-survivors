@@ -1,8 +1,43 @@
 # Project Status
 
-Last updated: July 9, 2026
+Last updated: July 10, 2026
 
-## Latest change (July 9, 2026)
+## Latest change (July 10, 2026) — the overhaul (branch `overhaul-weapons-enemies-ui`, PR open)
+
+A four-part overhaul at the developer's direction, decisions logged in
+`docs/phases/overhaul-2026-07.md`, fully autonomous (never gated mid-build).
+**Awaiting the developer's ear/hands gate on the whole branch.**
+
+1. **Catalog cut 24 → 16 instruments (8 slots × 2)** — cowbell, zap, rimshot,
+   heartbeat, ride (+freeze system), reese, choir, whistle (+tag system)
+   removed entirely. **All passive items and all weapon enhancement effects
+   removed** (items.ts, effects.ts, voicefx.ts, the Mods bag, the item strip):
+   the pick pool is weapons + tier-ups only. A different enhancement system
+   comes later.
+2. **Weapons redesigned from scratch**: house pattern ladders rewritten to
+   researched conventions (four-on-the-floor law, off-beat bass, Chicago
+   backbeat pickups, densifying hats/shaker; swing 0.06 → 0.10), stats retuned
+   to a VS-derived ~10 DPS tier-1 anchor (zone tick math folded in), velocity
+   now scales damage or size on every weapon, distinct zone/hat silhouettes.
+3. **Enemies + spawns rebalanced** around sawtooth pressure: one new kind
+   introduced per minute as a telegraphed spike, breathers after events,
+   near-flat contact damage (danger = density + HP), front-loaded xpCurve
+   (~2 picks/min), finale that overruns any build. Bot-verified: AFK 1:35,
+   kiter random 5:12, deep 6:05 / 8% wins; per-weapon floors clear (riser's
+   collapsed solo floor is a bot artifact — FX is barred from the start offer).
+4. **UI overhaul**: the wide scrollable chart dock replaced by a compact
+   per-voice "now playing" overlay (hotkey C); **keys 1–8 toggle audio mute of
+   the owning band slot** (audio-only, sim/replays untouched); debug row and
+   start-screen lab links behind disclosures; dead CSS deleted; glow calmed.
+
+Engineering verification: `tsc` + `vite build` clean at every commit; bot
+batches healthy; adversarial review passes on patterns, weapon code, and UI.
+**Not browser-verified** (the Chrome extension was down): the developer should
+eyeball start screen, the C overlay, and 1–8 mutes on `npm run dev`.
+Flags for the ear/eye gate: acid remains the strongest carry (pull is the
+knob); the debug row hidden-by-default deviates from an old gate-B note.
+
+## Previous change (July 9, 2026)
 
 **The genre system was removed.** There is no genre selection or genre logic
 anymore: the game boots straight to a start screen and plays one

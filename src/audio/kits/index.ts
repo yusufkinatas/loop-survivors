@@ -22,7 +22,6 @@ const DIR = 'house';
 const SAMPLE_OVERLAY: Partial<Record<Role, SampleSpec[]>> = {
   kick: [['hard', 'kick'], ['soft', 'kick']],
   clap: [['clap', 'clap']],
-  rimshot: [['rimshot', 'rimshot']],
   hat: [['closed', 'hat_closed'], ['open', 'hat_open']],
   shaker: [['shaker', 'shaker']],
   crash: [['crash', 'crash']],

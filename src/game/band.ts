@@ -59,18 +59,18 @@ export const SLOT_LABEL: Record<Slot, string> = {
   melody: 'Hook',
 };
 
-// The roster for each slot — the full 24-instrument catalog. The soundset
+// The roster for each slot — the full instrument catalog. The soundset
 // supports only a subset (supportedRoster filters to it); the rest stay dormant
 // code, never offered and never voiced.
 export const SLOT_ROSTER: Record<Slot, Role[]> = {
-  pulse: ['kick', 'tom', 'heartbeat'],
-  backbeat: ['snare', 'clap', 'rimshot'],
-  hats: ['hat', 'shaker', 'ride'],
-  motion: ['arp', 'cowbell', 'acid'],
-  fx: ['crash', 'zap', 'riser'],
-  bass: ['bass', 'pluck', 'reese'],
-  harmony: ['chord', 'rhodes', 'choir'],
-  melody: ['lead', 'bell', 'whistle'],
+  pulse: ['kick', 'tom'],
+  backbeat: ['snare', 'clap'],
+  hats: ['hat', 'shaker'],
+  motion: ['arp', 'acid'],
+  fx: ['crash', 'riser'],
+  bass: ['bass', 'pluck'],
+  harmony: ['chord', 'rhodes'],
+  melody: ['lead', 'bell'],
 };
 
 /** Inverse of SLOT_ROSTER, built once so the two can never drift. */

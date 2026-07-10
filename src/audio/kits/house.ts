@@ -8,9 +8,8 @@
 //
 // The kit DROPS whole slots to stay idiomatic: no Motion voice (no acid/arp),
 // no snare (the clap owns the backbeat), and none of the ambient/topline extras
-// (tom, heartbeat, cowbell, bell, choir, whistle, pluck, reese, ride, zap). The
-// supported set is exactly the roles this file renders, which must equal the
-// roles the ladder file charts.
+// (tom, bell, pluck). The supported set is exactly the roles this file renders;
+// roles it does not cover keep their synthesized voices.
 
 import { makeKit, noiseBuffer, offline, softClipCurve, type Kit, type Role } from '../kits';
 
@@ -87,35 +86,6 @@ async function clap(): Promise<AudioBuffer> {
     src.connect(g).connect(bp);
     src.start(at);
   }
-  return ctx.startRendering();
-}
-
-// --- Backbeat: a dry woody rimshot ----------------------------------------
-// A tight, bright "tock" for house syncopation — a short square body with a
-// fast pitch drop plus a bandpassed noise click. No tail, so it snaps in the
-// gaps between the clap without smearing the groove.
-async function rim(): Promise<AudioBuffer> {
-  const ctx = offline(0.12);
-  const tone = ctx.createOscillator();
-  tone.type = 'square';
-  tone.frequency.setValueAtTime(470, 0);
-  tone.frequency.exponentialRampToValueAtTime(320, 0.025);
-  const tg = ctx.createGain();
-  tg.gain.setValueAtTime(0.45, 0);
-  tg.gain.exponentialRampToValueAtTime(0.001, 0.055);
-  tone.connect(tg).connect(ctx.destination);
-  const n = ctx.createBufferSource();
-  n.buffer = noiseBuffer(ctx, 0.04);
-  const bp = ctx.createBiquadFilter();
-  bp.type = 'bandpass';
-  bp.frequency.value = 2700;
-  bp.Q.value = 1.8;
-  const ng = ctx.createGain();
-  ng.gain.setValueAtTime(0.5, 0);
-  ng.gain.exponentialRampToValueAtTime(0.001, 0.04);
-  n.connect(bp).connect(ng).connect(ctx.destination);
-  tone.start(0);
-  n.start(0);
   return ctx.startRendering();
 }
 
@@ -444,7 +414,6 @@ export async function buildHouseKit(rootHz: number): Promise<Map<Role, Kit>> {
     kickHard,
     kickSoft,
     clapBuf,
-    rimBuf,
     hatClosed,
     hatOpen,
     shakerBuf,
@@ -461,7 +430,6 @@ export async function buildHouseKit(rootHz: number): Promise<Map<Role, Kit>> {
     kick(true),
     kick(false),
     clap(),
-    rim(),
     hat(false),
     hat(true),
     shaker(),
@@ -479,7 +447,6 @@ export async function buildHouseKit(rootHz: number): Promise<Map<Role, Kit>> {
   const kits = new Map<Role, Kit>();
   kits.set('kick', makeKit('kick', new Map([['hard', kickHard], ['soft', kickSoft]])));
   kits.set('clap', makeKit('clap', new Map([['clap', clapBuf]])));
-  kits.set('rimshot', makeKit('rimshot', new Map([['rimshot', rimBuf]])));
   kits.set('hat', makeKit('hat', new Map([['closed', hatClosed], ['open', hatOpen]])));
   kits.set('shaker', makeKit('shaker', new Map([['shaker', shakerBuf]])));
   kits.set('crash', makeKit('crash', new Map([['crash', crashBuf]])));

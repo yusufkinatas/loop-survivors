@@ -7,7 +7,7 @@
 //
 // The fix lives in the ASSET, not the game: ffmpeg makes each file correct once,
 // so the runtime loader is dumb (fetch + decode, no per-role trimming). Signature
-// UNPITCHED drums only (kick/snare/clap/hat/rimshot/shaker/ride) — these carry a
+// UNPITCHED drums only (kick/snare/clap/hat/shaker) — these carry a
 // genre's identity (909 vs 808 vs LinnDrum vs break) and need no tuning. Melodic +
 // bass voices stay synthesized (src/audio/kits/<genre>.ts).
 
@@ -27,11 +27,9 @@ const PROC = {
   kick:       { maxSec: 0.70, peakDb: -1 },
   snare:      { maxSec: 0.50, peakDb: -3 },
   clap:       { maxSec: 0.55, peakDb: -4 },
-  rimshot:    { maxSec: 0.30, peakDb: -5 },
   hat_closed: { maxSec: 0.22, peakDb: -9 },
   hat_open:   { maxSec: 0.55, peakDb: -9 },
   shaker:     { maxSec: 0.35, peakDb: -9 },
-  ride:       { maxSec: 1.30, peakDb: -6 },
 };
 
 // dir -> local role/variant -> repo path. Two entries (closed/open) for hat.
