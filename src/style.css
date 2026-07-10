@@ -620,6 +620,9 @@ input[type='range'] {
   background: linear-gradient(90deg, var(--signal-dim), var(--signal));
   box-shadow: 0 0 14px -4px var(--signal);
   width: 0;
+  /* XP is game state, not a timed presentation: every collected gem must
+     become visible on the same frame. */
+  transition: none;
 }
 
 .meter-cap {

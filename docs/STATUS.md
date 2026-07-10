@@ -19,36 +19,25 @@ selection criteria, separation, grid alignment, minimal processing,
 integration, verification, provenance, clearance, and stop conditions for
 future sounds and tracks.
 
-## Latest changes (July 10, 2026 — leveling curve retune)
+## Latest changes (July 10, 2026 — unified immediate XP curve)
 
-**The opening level-up spam in all four playable candidates is fixed;
-engineering verification is complete and the feel remains at the developer
-gate.** The previous flat XP multipliers reduced opening costs to 0.72-1.20 XP
-while the weakest enemy drops 1 XP, so nearly every first kill reopened the
-pick screen.
+**XP is game progression, independent of the selected track.** The rejected
+intermediate timer and track-specific costs are both gone. Every normal run,
+sandbox, replay, and headless run now reads one curve from `RUN.xpCurve`; track
+profiles have no XP field or override seam.
 
-- Each candidate now owns a complete integer XP curve with one cost per
-  remaining weapon state. The first kill deliberately gives one onboarding
-  choice; the second costs 3 XP, and costs continue rising through the
-  full catalog instead of flattening at the legacy curve's last entry.
-- Pick screens have a 12-second active-combat gap. Extra XP stays banked and
-  surfaces later; it is never discarded, but a gem pile cannot reopen another
-  overlay on the first frame after the player chooses. While enough XP is
-  banked, the XP meter fills across that breathing interval so the next choice
-  never looks stuck at 100%.
-- The calibrated full-build budgets are Show Me Love 900, Animals 830, Pursuit
-  839, and Satisfaction 782 XP. A 20-seed profile-aware Kiter/random sweep
-  measured exactly one pick at the 10-second median and 90th percentile for
-  every track, versus the old median of two clustered around 6-8.5 seconds.
-  Median second picks land at 34.6, 21.6, 18.6, and 19.1 seconds respectively;
-  every track reaches a median of two picks by 60 seconds and 3-3.5 by 120.
-- Strong-run MAX remains reachable late: Show Me Love 5/20, Animals 5/20,
-  Pursuit 8/20, and Satisfaction 6/20. Their median MAX times
-  are 7:31, 6:40, 6:41, and 6:42 respectively. These are comparative
-  simulation filters, not the developer gate.
-- `validate:game-tracks` now rejects fractional, falling, truncated, or
-  opening-spam curves and verifies that surplus XP remains banked through the
-  overlay gap. TypeScript and production verification pass.
+- A collected gem changes `world.xp` and the visible bar in the same simulation
+  frame. Reaching the threshold levels in that frame. There is no level timer or
+  cooldown; genuinely banked XP can produce the next choice on the first frame
+  after the previous choice closes.
+- The shared starting curve begins `1, 11, 15, 16, 18...` and contains all 31
+  thresholds required by the largest possible 8-weapon, 4-level build. This is
+  deliberately one generic baseline to refine through playtesting, not four
+  hidden balance tables.
+- `validate:game-tracks` now fails if a track profile owns an XP curve. It also
+  rejects fractional, falling, or truncated shared curves and verifies
+  same-frame partial XP, same-frame leveling, a visibly full banked bar, and
+  exact surplus conservation. TypeScript and production verification pass.
 
 ## Earlier changes (July 10, 2026 — featured-track audition)
 
@@ -63,10 +52,10 @@ choose a winner or pass the developer's ear-and-hands gate.
   end. The four candidates are starred at the top of the Experimentation room.
 - **Playable selection:** a normal run now requires choosing one of the four
   tracks. The selected track supplies its tempo, timing feel, sounds, charts,
-  instrument names, weapon pool, build cap, damage tuning, and XP pacing.
-  Off-track weapons cannot appear. The sandbox has the same four-way selector
-  plus a **play full band** action that equips every available weapon at Level
-  IV.
+  instrument names, weapon pool, build cap, and damage tuning—but never XP
+  costs. Off-track weapons cannot appear. The sandbox has the same four-way
+  selector plus a **play full band** action that equips every available weapon
+  at Level IV.
 - **Four real levels:** every candidate weapon has four non-silent, distinct
   levels. Levels I-III gradually reveal its phrase; sparse one-hit parts and
   the mandatory starting kick also open from dark/filtered to full-bandwidth
@@ -90,9 +79,10 @@ choose a winner or pass the developer's ear-and-hands gate.
   gains audible pitch slides and progressively opens from muffled to bright.
 - **Progression evidence (superseded):** the initial flat-multiplier calibration
   made MAX reachable but caused the developer-reported opening overlay spam.
-  The integer curves and presentation gap in the latest change above replace
-  those values. Pending next-bar upgrades still count as chosen in later
-  offers, so levels cannot be duplicated or silently consumed.
+  A follow-up timer and then per-track curves were also rejected. The unified,
+  immediate game curve in the latest change above replaces all of them. Pending
+  next-bar upgrades still count as chosen in later offers, so levels cannot be
+  duplicated or silently consumed.
 - **Engineering evidence:** the production build passes; Track Lab validates
   11 tracks / 46 sections / 81 lanes; all four playable profiles validate their
   catalogs, caps, eight-bar tiers, distinct upgrades, and exact maximum tiers;
@@ -213,8 +203,8 @@ The developer judges the four candidates by ear and by hand:
    something needs diagnosis.
 3. From the normal start screen, build each candidate through a run and judge
    whether its upgrades feel good as weapons as well as music, and whether the
-   new cadence gives enough uninterrupted fighting between choices. Include at
-   least one muted run so music cannot excuse weak survivors-like play.
+   immediate XP feedback and shared numerical level costs feel right. Include
+   at least one muted run so music cannot excuse weak survivors-like play.
 
 The developer can reject or request changes per candidate before naming a
 winner. A pass requires his explicit choice of the demo's fixed default track.

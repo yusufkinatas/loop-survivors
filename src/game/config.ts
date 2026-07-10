@@ -18,10 +18,13 @@ export const RUN = {
   // while moving through the arena turns combat success into build growth.
   magnetRadius: 180,
   pickupRadius: 18,
-  /** XP needed for each next level. Front-loaded growth establishes a band
-   *  before the director's minute-three pressure jump, then the curve opens
-   *  toward the 14-18-pick target without trivially maxing eight slots. */
-  xpCurve: [6, 10, 16, 25, 38, 54, 74, 98, 128, 162, 200, 242, 288, 338, 392, 450, 512, 580],
+  /** Game-wide XP needed for each next level. Tracks never override this:
+   *  selecting music changes weapons and sound, not progression rules. The
+   *  curve covers every level of the largest possible 8x4 weapon build. */
+  xpCurve: [
+    1, 11, 15, 16, 18, 19, 21, 22, 24, 26, 27, 29, 31, 33, 35, 37,
+    39, 41, 42, 44, 46, 48, 51, 53, 55, 57, 59, 61, 63, 65, 67,
+  ],
 };
 
 export type EnemyKind =

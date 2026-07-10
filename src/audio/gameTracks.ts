@@ -37,12 +37,6 @@ export interface GameTrackProfile {
   swing: number;
   phraseBars: number;
   powerMul: number;
-  /** One integer XP cost per remaining weapon state. Unlike the old flat
-   *  multiplier, this preserves a quick first reward without turning every
-   *  opening kill into another level. */
-  xpCurve: readonly number[];
-  /** Minimum active-combat time between pick screens. Earned XP stays banked. */
-  levelGapS: number;
   pump?: { amount: number; release: number };
   humanizeGain: number;
   humanizeCents: number;
@@ -68,52 +62,8 @@ interface WeaponSpec {
 interface ProfileSpec {
   track: LabTrack;
   finalSectionId: string;
-  /** Total collectible XP represented by the full authored curve. */
-  xpBudget: number;
   powerMul: number;
   weapons: readonly WeaponSpec[];
-}
-
-const AUDITION_LEVEL_GAP_S = 12;
-const XP_CURVE_EXPONENT = 1.35;
-
-/** Shape a complete-build XP budget into integer costs. The first kill earns
- *  one onboarding pick; the second costs three, then the curve keeps rising for
- *  the track's entire catalog instead of flattening at the legacy array tail. */
-function auditionXpCurve(upgradeCount: number, budget: number): readonly number[] {
-  if (!Number.isInteger(upgradeCount) || upgradeCount < 3) {
-    throw new Error(`game tracks: invalid upgrade count ${upgradeCount}`);
-  }
-  if (!Number.isInteger(budget) || budget < 1) {
-    throw new Error(`game tracks: invalid XP budget ${budget}`);
-  }
-  const curve = [1];
-  const progressSpan = Math.max(1, upgradeCount - 2);
-  let baseTotal = 1;
-  let curveWeight = 0;
-  for (let index = 1; index < upgradeCount; index++) {
-    baseTotal += index === 1 ? 3 : 6 + 2 * (index - 1);
-    curveWeight += Math.pow((index - 1) / progressSpan, XP_CURVE_EXPONENT);
-  }
-  const amplitude = (budget - baseTotal) / curveWeight;
-  if (!Number.isFinite(amplitude) || amplitude < 0) {
-    throw new Error(`game tracks: XP budget ${budget} is too small for ${upgradeCount} upgrades`);
-  }
-  for (let index = 1; index < upgradeCount; index++) {
-    const progress = (index - 1) / progressSpan;
-    curve.push(
-      Math.round(
-        (index === 1 ? 3 : 6 + 2 * (index - 1)) +
-          amplitude * Math.pow(progress, XP_CURVE_EXPONENT),
-      ),
-    );
-  }
-  // Rounding is deterministic; put its tiny residual at the expensive end.
-  curve[curve.length - 1] += budget - curve.reduce((sum, threshold) => sum + threshold, 0);
-  if (curve.some((threshold, index) => threshold < 1 || (index > 0 && threshold < curve[index - 1]))) {
-    throw new Error(`game tracks: invalid generated XP curve for budget ${budget}`);
-  }
-  return curve;
 }
 
 function cloneEvent(event: ChartEvent): ChartEvent {
@@ -374,7 +324,6 @@ function makeProfile(spec: ProfileSpec): GameTrackProfile {
   };
 
   const maxBuildLevel = roles.length * TIER_COUNT;
-  const xpCurve = auditionXpCurve(maxBuildLevel - 1, spec.xpBudget);
 
   return {
     id: track.id as GameTrackId,
@@ -384,8 +333,6 @@ function makeProfile(spec: ProfileSpec): GameTrackProfile {
     swing: track.swing ?? 0,
     phraseBars: track.bars,
     powerMul: spec.powerMul,
-    xpCurve,
-    levelGapS: AUDITION_LEVEL_GAP_S,
     pump: track.pump,
     humanizeGain: track.humanizeGain ?? 0.06,
     humanizeCents: track.humanizeCents ?? 5,
@@ -402,7 +349,6 @@ function makeProfile(spec: ProfileSpec): GameTrackProfile {
 export const SHOW_ME_LOVE_GAME = makeProfile({
   track: SHOW_ME_LOVE,
   finalSectionId: 'peak',
-  xpBudget: 900,
   powerMul: 0.98,
   weapons: [
     { voiceId: 'kick', role: 'kick', tierVariants: ['muted', 'body', 'bright'] },
@@ -418,7 +364,6 @@ export const SHOW_ME_LOVE_GAME = makeProfile({
 export const ANIMALS_GAME = makeProfile({
   track: ANIMALS,
   finalSectionId: 'peak',
-  xpBudget: 830,
   powerMul: 0.9,
   weapons: [
     { voiceId: 'kick', role: 'kick', tierVariants: ['muted', 'body', 'bright'] },
@@ -433,7 +378,6 @@ export const ANIMALS_GAME = makeProfile({
 export const PURSUIT_GAME = makeProfile({
   track: PURSUIT,
   finalSectionId: 'dropvar',
-  xpBudget: 839,
   powerMul: 1.02,
   weapons: [
     { voiceId: 'kick', role: 'kick', tierVariants: ['muted', 'body', 'bright'] },
@@ -447,7 +391,6 @@ export const PURSUIT_GAME = makeProfile({
 export const SATISFACTION_GAME = makeProfile({
   track: SATISFACTION,
   finalSectionId: 'drop',
-  xpBudget: 782,
   powerMul: 0.88,
   weapons: [
     { voiceId: 'kick', role: 'kick', tierVariants: ['muted', 'body', 'bright'] },

@@ -266,15 +266,6 @@ export interface RunWorldOpts {
    *  than eight lanes stop XP at their own real catalog cap; omitted keeps the
    *  legacy House/bot behavior. */
   maxBuildLevel?: number;
-  /** Legacy House/bot pacing seam. Featured tracks use `xpCurve` instead;
-   *  omitted is exactly the legacy XP curve. */
-  xpThresholdMul?: number;
-  /** Explicit cost of every authored weapon state after the starting one.
-   *  When supplied, this replaces the legacy curve/multiplier entirely. */
-  xpCurve?: readonly number[];
-  /** Active gameplay seconds required between pick screens. Surplus XP is
-   *  banked and checked again after this gap rather than discarded. */
-  minLevelGapS?: number;
   /** Fine-grained balance compensation for a profile lane whose authored riff
    *  fires much more or less often than the legacy weapon chart. */
   weaponDamageMul?: Readonly<Partial<Record<Role, number>>>;
@@ -337,10 +328,6 @@ export class RunWorld {
   private spawnCarry = 0;
   private scripted: boolean;
   private readonly maxBuildLevel: number;
-  private readonly xpThresholdMul: number;
-  private readonly xpCurve: readonly number[] | null;
-  private readonly minLevelGapS: number;
-  private nextLevelAtS = 0;
   private readonly weaponDamageMul: Readonly<Partial<Record<Role, number>>>;
 
   constructor(
@@ -358,22 +345,6 @@ export class RunWorld {
       1,
       Math.floor(opts.maxBuildLevel ?? supportedSlots().length * TIER_COUNT),
     );
-    const xpMul = opts.xpThresholdMul;
-    this.xpThresholdMul =
-      xpMul !== undefined && Number.isFinite(xpMul) && xpMul > 0 ? xpMul : 1;
-    if (
-      opts.xpCurve?.length &&
-      opts.xpCurve.length !== Math.max(0, this.maxBuildLevel - 1)
-    ) {
-      throw new Error('run: XP curve must cover every remaining build level');
-    }
-    if (opts.xpCurve?.some((threshold) => !Number.isInteger(threshold) || threshold < 1)) {
-      throw new Error('run: XP curve thresholds must be positive integers');
-    }
-    this.xpCurve = opts.xpCurve?.length ? [...opts.xpCurve] : null;
-    const levelGap = opts.minLevelGapS;
-    this.minLevelGapS =
-      levelGap !== undefined && Number.isFinite(levelGap) && levelGap > 0 ? levelGap : 0;
     this.weaponDamageMul = { ...opts.weaponDamageMul };
   }
 
@@ -1116,8 +1087,7 @@ export class RunWorld {
   /** Debug helper: jump straight to the next level-up. */
   levelUp(): void {
     const threshold = this.xpThreshold();
-    this.xp += Math.max(0, threshold - this.xp);
-    this.checkLevel(true);
+    this.grantXp(Math.max(0, threshold - this.xp));
   }
 
   /** Debug helper: kill everything on screen. */
@@ -1799,17 +1769,15 @@ export class RunWorld {
     this.checkLevel();
   }
 
-  private checkLevel(ignoreGap = false): void {
+  private checkLevel(): void {
     if (this.level >= this.maxBuildLevel) {
       this.xp = 0;
       return;
     }
-    if (!ignoreGap && this.timeS < this.nextLevelAtS) return;
     const threshold = this.xpThreshold();
     if (this.xp >= threshold) {
       this.xp -= threshold;
       this.level += 1;
-      this.nextLevelAtS = this.timeS + this.minLevelGapS;
       this.events.onLevelUp(this.level);
     }
   }
@@ -1818,28 +1786,11 @@ export class RunWorld {
   xpProgress(): number {
     if (this.level >= this.maxBuildLevel) return 0;
     const threshold = this.xpThreshold();
-    const earned = Math.min(1, this.xp / threshold);
-    if (this.minLevelGapS > 0 && this.timeS < this.nextLevelAtS) {
-      // The meter represents combined readiness: banked XP AND enough
-      // uninterrupted combat time. This makes a funded next pick visibly fill
-      // over the breathing gap instead of looking frozen/broken at 100%.
-      const gapProgress = Math.max(
-        0,
-        Math.min(1, 1 - (this.nextLevelAtS - this.timeS) / this.minLevelGapS),
-      );
-      return Math.min(earned, gapProgress);
-    }
-    return earned;
+    return Math.min(1, this.xp / threshold);
   }
 
   private xpThreshold(): number {
-    if (this.xpCurve) {
-      return this.xpCurve[Math.min(this.level - 1, this.xpCurve.length - 1)];
-    }
-    return (
-      RUN.xpCurve[Math.min(this.level - 1, RUN.xpCurve.length - 1)] *
-      this.xpThresholdMul
-    );
+    return RUN.xpCurve[Math.min(this.level - 1, RUN.xpCurve.length - 1)];
   }
 
   private spawnRing(x: number, y: number, radius: number, color: number, dur: number, soft = false): void {

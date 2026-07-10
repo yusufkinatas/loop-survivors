@@ -461,8 +461,6 @@ export async function bootGame(
     const w: RunWorld = new RunWorld(app.screen, events, {
       control: () => playerControl(w),
       maxBuildLevel: profile.maxBuildLevel,
-      xpCurve: profile.xpCurve,
-      minLevelGapS: profile.levelGapS,
       weaponDamageMul: weaponDamageMuls(profile),
     });
     world = w;
@@ -488,8 +486,6 @@ export async function bootGame(
       scripted: false,
       control: () => playerControl(w),
       maxBuildLevel: profile.maxBuildLevel,
-      xpCurve: profile.xpCurve,
-      minLevelGapS: profile.levelGapS,
       weaponDamageMul: weaponDamageMuls(profile),
     });
     world = w;
