@@ -312,7 +312,7 @@ export class Hud {
 
   /** Movement-mode picker on the start screen. Manual is the default; the two
    *  auto-move modes hand the player's movement to a mover — Kiter flees for
-   *  survival, Greedy survives but chases XP for faster level-ups. The chosen
+   *  survival, while Greedy takes risks to sweep through nearby XP. The chosen
    *  run has no player movement input (no joystick on touch). */
   private moveModeSelector(
     parent: HTMLElement,
@@ -329,7 +329,7 @@ export class Hud {
       {
         mode: 'greedy',
         label: 'Auto · Greedy',
-        hint: 'Auto-pilot. Survives but chases XP for faster level-ups. You can’t move.',
+        hint: 'Auto-pilot. Takes more risks to sweep through nearby XP. You can’t move.',
       },
     ];
     const wrap = el('div', 'move-mode', parent);

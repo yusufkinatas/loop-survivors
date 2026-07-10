@@ -2,7 +2,38 @@
 
 Last updated: July 10, 2026
 
-## Latest changes (July 10, 2026 — featured-track audition)
+## Latest changes (July 10, 2026 — leveling curve retune)
+
+**The opening level-up spam in all four playable candidates is fixed;
+engineering verification is complete and the feel remains at the developer
+gate.** The previous flat XP multipliers reduced opening costs to 0.72-1.20 XP
+while the weakest enemy drops 1 XP, so nearly every first kill reopened the
+pick screen.
+
+- Each candidate now owns a complete integer XP curve with one cost per
+  remaining weapon state. The first kill deliberately gives one onboarding
+  choice; the second costs 3 XP, and costs continue rising through the
+  full catalog instead of flattening at the legacy curve's last entry.
+- Pick screens have a 12-second active-combat gap. Extra XP stays banked and
+  surfaces later; it is never discarded, but a gem pile cannot reopen another
+  overlay on the first frame after the player chooses. While enough XP is
+  banked, the XP meter fills across that breathing interval so the next choice
+  never looks stuck at 100%.
+- The calibrated full-build budgets are Show Me Love 900, Animals 830, Pursuit
+  839, and Satisfaction 782 XP. A 20-seed profile-aware Kiter/random sweep
+  measured exactly one pick at the 10-second median and 90th percentile for
+  every track, versus the old median of two clustered around 6-8.5 seconds.
+  Median second picks land at 34.6, 21.6, 18.6, and 19.1 seconds respectively;
+  every track reaches a median of two picks by 60 seconds and 3-3.5 by 120.
+- Strong-run MAX remains reachable late: Show Me Love 5/20, Animals 5/20,
+  Pursuit 8/20, and Satisfaction 6/20. Their median MAX times
+  are 7:31, 6:40, 6:41, and 6:42 respectively. These are comparative
+  simulation filters, not the developer gate.
+- `validate:game-tracks` now rejects fractional, falling, truncated, or
+  opening-spam curves and verifies that surplus XP remains banked through the
+  overlay gap. TypeScript and production verification pass.
+
+## Earlier changes (July 10, 2026 — featured-track audition)
 
 **Show Me Love, Animals, Pursuit, and Satisfaction are now complete audition
 candidates in both the Experimentation room and the playable game.** The locked
@@ -40,18 +71,11 @@ choose a winner or pass the developer's ear-and-hands gate.
   its sparse wooden-horn drop and pre-drop vacuum; Pursuit preserves the silent
   eighth-bar turnaround and deterministic industrial feel; Satisfaction's riff
   gains audible pitch slides and progressively opens from muffled to bright.
-- **Progression evidence:** ephemeral five-seed profile-aware simulation smokes
-  using the real `RunWorld`, movement, offers, charts, and next-bar pick path
-  confirm that maximum builds are reachable but generally belong to stronger
-  late runs. This was an inline calibration harness, not the checked-in legacy
-  `npm run bot` validator.
-  Show Me Love reached MAX in 2/5 runs (5:38 and 7:08), Animals in 2/5 (6:06
-  and 6:43), and Satisfaction in 4/5 (5:06-7:27). Pursuit's first tuning was
-  clearly too fast and was corrected from a 0.09 to 0.20 XP multiplier; its
-  calibrated sweep reaches MAX on 3/5 runs at 4:53, 6:39, and 7:14.
-  Live same-frame gem batches now emit one visible choice at a time, while
-  pending next-bar upgrades count as already chosen in later offers; this
-  prevents surplus XP from silently consuming or duplicating weapon levels.
+- **Progression evidence (superseded):** the initial flat-multiplier calibration
+  made MAX reachable but caused the developer-reported opening overlay spam.
+  The integer curves and presentation gap in the latest change above replace
+  those values. Pending next-bar upgrades still count as chosen in later
+  offers, so levels cannot be duplicated or silently consumed.
 - **Engineering evidence:** the production build passes; Track Lab validates
   11 tracks / 46 sections / 81 lanes; all four playable profiles validate their
   catalogs, caps, eight-bar tiers, distinct upgrades, and exact maximum tiers;
@@ -171,8 +195,9 @@ The developer judges the four candidates by ear and by hand:
    band**; then isolate or change individual instruments between Levels I-IV if
    something needs diagnosis.
 3. From the normal start screen, build each candidate through a run and judge
-   whether its upgrades feel good as weapons as well as music. Include at least
-   one muted run so music cannot excuse weak survivors-like play.
+   whether its upgrades feel good as weapons as well as music, and whether the
+   new cadence gives enough uninterrupted fighting between choices. Include at
+   least one muted run so music cannot excuse weak survivors-like play.
 
 The developer can reject or request changes per candidate before naming a
 winner. A pass requires his explicit choice of the demo's fixed default track.
