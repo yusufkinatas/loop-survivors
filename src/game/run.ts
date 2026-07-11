@@ -16,24 +16,21 @@ import {
   ARP_OMEGA,
   BELL,
   BOOMERANG_OUT_FRAC,
-  CHARGER,
   DASH,
-  CIRCLER,
-  DARTER,
   ENEMIES,
   ENEMY_BANDS,
   enemyScaling,
   FLASH,
+  KB_RESIST,
   KNOCK_S,
   MAX_ALIVE_HARD,
   ORBIT_REHIT_S,
   RUN,
   SHAKE,
-  SHIELDED,
   SHOCK_BAND,
   SHOVE_S,
   SPAWN_DIRECTOR,
-  SPLITTER,
+  SWEEP,
   VARIANT_EFFECTS,
   WEAPON_SHOVE,
   WEAPONS,
@@ -66,25 +63,19 @@ export interface Enemy {
   band: number;
   flashT: number;
   dead: boolean;
-  /** Darter burst state: time left in the current dash/pause, and the
-   *  locked dash direction (darters do not steer mid-dash). */
-  dashT: number;
-  dashX: number;
-  dashY: number;
-  dashing: boolean;
+  /** Swarm-sweep state: while `sweeping`, the enemy flies the locked
+   *  (sweepX,sweepY) line across the screen at its (boosted) speed and ignores
+   *  the player — VS's bat/ghost swarms. Off for ordinary chasers. */
+  sweeping: boolean;
+  sweepX: number;
+  sweepY: number;
   /** Time left under a chord zone's slow. */
   slowT: number;
-  /** Crash knockback: velocity (px/s) and time left being pushed. While
-   *  knockT > 0 the enemy rides this vector instead of chasing. */
+  /** Crash / weapon knockback: velocity (px/s) and time left being pushed.
+   *  While knockT > 0 the enemy rides this vector instead of chasing. */
   knockX: number;
   knockY: number;
   knockT: number;
-  /** shielded: absorbs damage before hp; 0 for others. */
-  shieldHp: number;
-  /** circler: +1/-1 orbit direction; 0 for others. */
-  spin: number;
-  /** charger: telegraph countdown; 0 otherwise. */
-  windupT: number;
 }
 
 export interface Projectile {
@@ -165,7 +156,7 @@ export interface Gem {
  *  headless runs: the bot pays nothing for juice nobody sees. */
 export type FxEvent =
   | { type: 'ring'; x: number; y: number; radius: number; color: number; dur: number; soft?: boolean }
-  | { type: 'pop'; x: number; y: number; radius: number }
+  | { type: 'pop'; x: number; y: number; radius: number; color: number }
   | {
       type: 'arc';
       x: number;
@@ -173,6 +164,15 @@ export type FxEvent =
       angle: number;
       arc: number;
       radius: number;
+      color: number;
+    }
+  | {
+      type: 'whip';
+      x: number;
+      y: number;
+      angle: number;
+      reach: number;
+      half: number;
       color: number;
     }
   | { type: 'dmg'; x: number; y: number; amount: number; color: number }
@@ -224,8 +224,12 @@ export class RunWorld {
   readonly tiers = new Map<Role, number>();
 
   // dashT/dashX/dashY: riser's auto-dash surge (a short velocity boost the
-  // release grants, on top of normal movement).
-  player = { x: 0, y: 0, hp: RUN.playerHp, radius: RUN.playerRadius, iframesT: 0, dashT: 0, dashX: 0, dashY: 0 };
+  // release grants, on top of normal movement). facingX/facingY: the whip's
+  // aim — the last non-trivial move direction (defaults to right).
+  player = {
+    x: 0, y: 0, hp: RUN.playerHp, radius: RUN.playerRadius, iframesT: 0,
+    dashT: 0, dashX: 0, dashY: 0, facingX: 1, facingY: 0,
+  };
   level = 1;
   xp = 0;
   timeS = 0;
@@ -337,11 +341,28 @@ export class RunWorld {
 
     switch (t.role) {
       case 'kick': {
-        const radius = conf.radius! * (0.85 + 0.3 * v);
-        this.damageArea(p.x, p.y, radius, conf.damage * v, 'kick', WEAPON_SHOVE.kick);
-        // The kick fires every beat, so its pulse must stay quiet: one thin,
-        // faint ring, no slam, no shake — clean ambient feedback, not a punch.
-        this.spawnRing(p.x, p.y, radius, color, 0.3, true);
+        // THE WHIP: a horizontal rectangular slash in the facing direction.
+        // count 1 = forward only; count 2 = forward + back (VS whip "amount 2").
+        // Velocity lengthens the reach and hardens the hit. Fires four-on-the-
+        // floor (its music), so it out-rates a VS whip and clears lanes fast.
+        const reach = conf.radius! * (0.9 + 0.2 * v);
+        const half = conf.halfHeight!;
+        const dmg = conf.damage * (0.85 + 0.3 * v);
+        const lanes = conf.count ?? 1;
+        // Lanes crack around the facing axis: 2 = front + back (so a fleeing
+        // player's back, where the horde chases, is always defended); 4 = all
+        // four directions (the tier-4 "whip everywhere").
+        const offsets = lanes >= 4 ? [0, Math.PI, Math.PI / 2, -Math.PI / 2] : lanes === 2 ? [0, Math.PI] : [0];
+        const baseAng = Math.atan2(p.facingY, p.facingX);
+        // One shared hit set per trigger: the lanes overlap in a strip through
+        // the player, so without this a wall pinned near you would eat 2-4 hits
+        // from a single crack (exactly the enemies the whip must NOT clear).
+        const whipHit = new Set<Enemy>();
+        for (const off of offsets) {
+          const ang = baseAng + off;
+          this.damageWhip(p.x, p.y, ang, reach, half, dmg, 'kick', whipHit, WEAPON_SHOVE.kick);
+          this.fx?.push({ type: 'whip', x: p.x, y: p.y, angle: ang, reach, half, color });
+        }
         break;
       }
       case 'chord': {
@@ -494,6 +515,7 @@ export class RunWorld {
   /** Push an enemy away from a point (Feature 3), sharing the crash knock
    *  channel. Pure arithmetic, so it runs headless untouched. */
   private shove(e: Enemy, fromX: number, fromY: number, dist: number): void {
+    if (KB_RESIST.has(e.kind)) return; // ghosts/mantises/elites plough through
     const dx = e.x - fromX;
     const dy = e.y - fromY;
     const d = Math.hypot(dx, dy) || 1;
@@ -535,6 +557,14 @@ export class RunWorld {
     const a = this.control();
     this.player.x += a.x * RUN.playerSpeed * dt;
     this.player.y += a.y * RUN.playerSpeed * dt;
+    // Whip facing: track the last real move direction (deterministic — the bot
+    // rides the same control seam, so replays stay identical). Standing still
+    // keeps the previous facing.
+    const mag = Math.hypot(a.x, a.y);
+    if (mag > 0.2) {
+      this.player.facingX = a.x / mag;
+      this.player.facingY = a.y / mag;
+    }
     // Riser's auto-dash surge: a short extra velocity along the locked dash
     // direction, on top of normal input. Deterministic (timeS-stepped), so the
     // bot rides it too.
@@ -551,16 +581,19 @@ export class RunWorld {
     if (this.player.iframesT > 0 || this.invincible) return;
     const p = this.player;
     const near = this.hash.query(p.x, p.y, p.radius + 40, this.queryBuf);
+    // One hit per i-frame window (VS: 240ms global invulnerability), taken from
+    // the HIGHEST-power enemy you overlap — a pin against a mantis (20) must
+    // hurt like a mantis even if a bat is also touching you.
+    let worst = 0;
     for (const e of near) {
       if (e.dead || !circlesOverlap(p, e)) continue;
-      p.hp = Math.max(0, p.hp - e.damage);
-      p.iframesT = RUN.iframesS;
-      this.events.onHit();
-      if (p.hp <= 0) {
-        this.events.onDeath();
-      }
-      return;
+      if (e.damage > worst) worst = e.damage;
     }
+    if (worst <= 0) return;
+    p.hp = Math.max(0, p.hp - worst);
+    p.iframesT = RUN.iframesS;
+    this.events.onHit();
+    if (p.hp <= 0) this.events.onDeath();
   }
 
   // ---- enemies ----
@@ -603,6 +636,7 @@ export class RunWorld {
   private fireFormation(f: Formation, kind: EnemyKind, count: number): void {
     if (f === 'ring') this.spawnRingOf(kind, count);
     else if (f === 'surge') this.spawnSurgeOf(kind, count);
+    else if (f === 'sweep') this.spawnSweepOf(kind, count);
     else if (f === 'pincer') {
       const base = this.rng() * Math.PI * 2;
       const half = Math.ceil(count / 2);
@@ -637,6 +671,26 @@ export class RunWorld {
     }
   }
 
+  /** A swarm-sweep (VS's bat/ghost swarm): a line of enemies enters from one
+   *  edge and flies straight across the screen at SWEEP.speed, ignoring the
+   *  player — a wall sweeping through. They recycle once they exit the far side. */
+  spawnSweepOf(kind: EnemyKind, count: number): void {
+    const ang = this.rng() * Math.PI * 2;
+    const dx = dcos(ang);
+    const dy = dsin(ang);
+    const px = -dy; // perpendicular to the sweep direction
+    const py = dx;
+    const dist = this.spawnDist(ENEMIES[kind].radius);
+    const width = Math.max(this.worldW, this.worldH) * 1.15;
+    const denom = Math.max(1, count - 1);
+    for (let i = 0; i < count; i++) {
+      const frac = i / denom - 0.5; // -0.5 .. 0.5 across the entering edge
+      const ox = this.player.x - dx * dist + px * frac * width;
+      const oy = this.player.y - dy * dist + py * frac * width;
+      this.pushEnemy(kind, ox, oy, { x: dx, y: dy });
+    }
+  }
+
   spawnEnemy(kind: EnemyKind, angle?: number, distMul = 1, wave = false): void {
     if (this.enemies.length >= (wave ? MAX_ALIVE_HARD : ENEMIES.maxAlive)) return;
     const a = angle ?? this.rng() * Math.PI * 2;
@@ -644,15 +698,15 @@ export class RunWorld {
     this.pushEnemy(kind, this.player.x + dcos(a) * dist, this.player.y + dsin(a) * dist);
   }
 
-  /** Construct one enemy at (x,y) with per-kind state, guarded by the hard
-   *  cap so splitter cascades never run away. Children reuse this directly. */
-  private pushEnemy(kind: EnemyKind, x: number, y: number): void {
+  /** Construct one enemy at (x,y), guarded by the hard cap. When `sweep` is
+   *  given the enemy is a swarm-sweeper: it flies that locked direction at
+   *  SWEEP.speed instead of chasing. */
+  private pushEnemy(kind: EnemyKind, x: number, y: number, sweep?: { x: number; y: number }): void {
     if (this.enemies.length >= MAX_ALIVE_HARD) return;
     const conf = ENEMIES[kind];
-    // Scaling over the run: HP opposes the build's growth curve, contact
-    // damage creeps so late hits stay scary, and the visual band says how
-    // dangerous this enemy is. The sandbox spawns at its stage-minute
-    // preview (default 0 = the stat-card values).
+    // Mad Forest barely scales base stats (a mild HP creep; flat damage/speed/
+    // XP). The visual band advances by time only, as a subtle readability cue.
+    // The sandbox spawns at its stage-minute preview (default 0 = stat-card).
     const t = this.scripted ? this.timeS : this.stageTimeOverride;
     const s = enemyScaling(t / RUN.durationS, kind);
     const radius = conf.radius * ENEMY_BANDS.sizeMul[s.band];
@@ -663,38 +717,21 @@ export class RunWorld {
       y,
       radius,
       hp: conf.hp * s.hpMul,
-      speed: conf.speed * s.spdMul,
+      speed: sweep ? SWEEP.speed : conf.speed * s.spdMul,
       damage: Math.round(conf.damage * s.dmgMul),
-      // Tougher enemies drop more: keeps the pick cadence steady while the
-      // horde thickens, instead of starving the back half of level-ups.
       xp: Math.round(conf.xp * s.xpMul),
       color,
       band: s.band,
       flashT: 0,
       dead: false,
-      dashT: 0,
-      dashX: 0,
-      dashY: 0,
-      dashing: false,
+      sweeping: !!sweep,
+      sweepX: sweep?.x ?? 0,
+      sweepY: sweep?.y ?? 0,
       slowT: 0,
       knockX: 0,
       knockY: 0,
       knockT: 0,
-      // shield pool scales with hp; circler picks an orbit direction.
-      shieldHp: kind === 'shielded' ? conf.hp * s.hpMul * SHIELDED.shieldMul : 0,
-      spin: kind === 'circler' ? (this.rng() < 0.5 ? 1 : -1) : 0,
-      windupT: 0,
     });
-  }
-
-  /** Splitter death: burst into a knot of children around the corpse. */
-  private spawnChildren(e: Enemy): void {
-    const k = SPLITTER.childKind;
-    const cr = ENEMIES[k].radius;
-    for (let i = 0; i < SPLITTER.childCount; i++) {
-      const a = this.rng() * Math.PI * 2;
-      this.pushEnemy(k, e.x + dcos(a) * (e.radius + cr), e.y + dsin(a) * (e.radius + cr));
-    }
   }
 
   /** Sandbox: remove every enemy without kills, gems, or pops. */
@@ -713,7 +750,7 @@ export class RunWorld {
       }
       if (e.flashT > 0) e.flashT -= dt;
 
-      // Crash knockback overrides everything: ride the push, don't chase.
+      // Knockback overrides everything: ride the push, don't chase.
       if (e.knockT > 0) {
         e.knockT -= dt;
         e.x += e.knockX * dt;
@@ -721,78 +758,17 @@ export class RunWorld {
         continue;
       }
 
-      if (e.kind === 'darter') {
-        // Straight bursts: lock onto the player's position, dash flat out,
-        // stop dead, re-aim, dash again. Threat is the dodge, not the chase.
-        e.dashT -= dt;
-        if (e.dashT <= 0) {
-          e.dashing = !e.dashing;
-          if (e.dashing) {
-            const dd = Math.hypot(p.x - e.x, p.y - e.y) || 1;
-            e.dashX = (p.x - e.x) / dd;
-            e.dashY = (p.y - e.y) / dd;
-            e.dashT = DARTER.dashS;
-          } else {
-            e.dashT = DARTER.pauseS;
-          }
-        }
-        if (e.dashing) {
-          e.x += e.dashX * speed * dt;
-          e.y += e.dashY * speed * dt;
-        }
+      // Swarm-sweep: fly the locked line straight across the screen, ignoring
+      // the player (the off-screen recycle culls it once it exits). Not slowed
+      // by zones — the sweep is a fixed event, not a chase.
+      if (e.sweeping) {
+        e.x += e.sweepX * e.speed * dt;
+        e.y += e.sweepY * e.speed * dt;
         continue;
       }
 
-      if (e.kind === 'charger') {
-        // Telegraphed dash: stand and lock aim during windup, then commit a
-        // fast fixed-direction dash. Fairness (muted) is the wind-up pause +
-        // the rotating silhouette, not the fx ring.
-        if (e.dashing) {
-          e.dashT -= dt;
-          e.x += e.dashX * CHARGER.dashSpeed * dt;
-          e.y += e.dashY * CHARGER.dashSpeed * dt;
-          if (e.dashT <= 0) e.dashing = false; // recover -> approach
-          continue;
-        }
-        if (e.windupT > 0) {
-          e.windupT -= dt;
-          if (e.windupT <= 0) {
-            const dd = Math.hypot(p.x - e.x, p.y - e.y) || 1;
-            e.dashX = (p.x - e.x) / dd;
-            e.dashY = (p.y - e.y) / dd;
-            e.dashing = true;
-            e.dashT = CHARGER.dashS;
-          }
-          continue;
-        }
-        const cd = Math.hypot(p.x - e.x, p.y - e.y);
-        if (cd < CHARGER.triggerRange) {
-          e.windupT = CHARGER.windupS;
-          this.spawnRing(e.x, e.y, e.radius * 2.4, e.color, 0.4); // cosmetic telegraph
-          continue;
-        }
-        // else fall through to default chase at e.speed
-      }
-
-      if (e.kind === 'circler') {
-        // Orbit-and-harass: blend a radial pull toward the orbit radius with a
-        // tangent sweep (spin ±1). Contact damage is handled when it brushes.
-        const dx = p.x - e.x;
-        const dy = p.y - e.y;
-        const d = Math.hypot(dx, dy) || 1;
-        const ux = dx / d;
-        const uy = dy / d;
-        const radial = Math.max(-1, Math.min(1, (d - CIRCLER.orbitR) / CIRCLER.orbitR));
-        const tx = -uy * e.spin;
-        const ty = ux * e.spin;
-        const mx = ux * radial + tx * (1 - Math.abs(radial) * 0.5);
-        const my = uy * radial + ty * (1 - Math.abs(radial) * 0.5);
-        const m = Math.hypot(mx, my) || 1;
-        e.x += (mx / m) * speed * dt;
-        e.y += (my / m) * speed * dt;
-        continue;
-      }
-
+      // Everything else is a straight chaser (VS's model): the only difference
+      // between kinds is speed / HP / size / contact damage.
       let dx = p.x - e.x;
       let dy = p.y - e.y;
       const d = Math.hypot(dx, dy) || 1;
@@ -837,19 +813,8 @@ export class RunWorld {
           color: source ? KIT_COLORS[source] : 0xcfd2e0,
         });
     }
-    // Shielded: a shield pool absorbs damage before hp. Attribution stays
-    // honest — absorbed damage is counted once here, hp damage once below.
-    if (e.shieldHp > 0) {
-      const before = e.shieldHp;
-      e.shieldHp = Math.max(0, before - amount);
-      const absorbed = before - e.shieldHp;
-      if (source) this.damageByRole[source] = (this.damageByRole[source] ?? 0) + absorbed;
-      e.flashT = 0.08;
-      amount -= absorbed;
-      if (amount <= 0) return; // shield held
-    }
-    // Effective damage only: overkill on a 3hp swarmer must not count as a
-    // 34-damage contribution, or AoE sweeps inflate their share.
+    // Effective damage only: overkill on a 4hp bat must not count as a
+    // 38-damage contribution, or AoE sweeps inflate their share.
     const dealt = Math.min(e.hp, amount);
     e.hp -= amount;
     e.flashT = 0.08;
@@ -858,9 +823,8 @@ export class RunWorld {
       e.dead = true;
       this.kills++;
       if (source) this.killsByRole[source] = (this.killsByRole[source] ?? 0) + 1;
-      this.spawnPop(e.x, e.y, e.radius);
+      this.spawnPop(e.x, e.y, e.radius, e.color);
       this.spawnGem(e.x, e.y, e.xp);
-      if (e.kind === 'splitter') this.spawnChildren(e);
     }
   }
 
@@ -1089,6 +1053,39 @@ export class RunWorld {
     });
   }
 
+  /** Whip: damage every enemy inside a rectangular lane extending `reach`
+   *  forward from (x,y) along `angle`, half-thickness `half`. The lane starts
+   *  at the player (a little behind, so point-blank enemies count). */
+  private damageWhip(
+    x: number,
+    y: number,
+    angle: number,
+    reach: number,
+    half: number,
+    damage: number,
+    source: Role,
+    hit: Set<Enemy>,
+    shove = 0,
+  ): void {
+    const ca = dcos(angle);
+    const sa = dsin(angle);
+    // Query a disc covering the lane (centred at its midpoint).
+    const midR = reach * 0.5;
+    const near = this.hash.query(x + ca * midR, y + sa * midR, midR + half + 24, this.queryBuf);
+    for (const e of near) {
+      if (e.dead || hit.has(e)) continue; // already struck by another lane this crack
+      const dx = e.x - x;
+      const dy = e.y - y;
+      const along = dx * ca + dy * sa;
+      const perp = -dx * sa + dy * ca;
+      if (along < -e.radius || along > reach + e.radius) continue;
+      if (Math.abs(perp) > half + e.radius) continue;
+      hit.add(e);
+      this.damageEnemy(e, damage, source);
+      if (shove) this.shove(e, x, y, shove);
+    }
+  }
+
   /** Clap: damage every enemy inside a forward cone (also point-blank). */
   private damageCone(
     x: number,
@@ -1253,10 +1250,12 @@ export class RunWorld {
         if (d <= s.radius + e.radius && d >= s.radius - SHOCK_BAND) {
           s.hit.add(e);
           this.damageEnemy(e, s.damage, 'crash');
-          const nd = d || 1;
-          e.knockX = (dx / nd) * (s.knockback / KNOCK_S);
-          e.knockY = (dy / nd) * (s.knockback / KNOCK_S);
-          e.knockT = KNOCK_S;
+          if (!KB_RESIST.has(e.kind)) {
+            const nd = d || 1;
+            e.knockX = (dx / nd) * (s.knockback / KNOCK_S);
+            e.knockY = (dy / nd) * (s.knockback / KNOCK_S);
+            e.knockT = KNOCK_S;
+          }
         }
       }
       if (s.radius >= s.maxRadius) this.shocks.splice(i, 1);
@@ -1344,6 +1343,7 @@ export class RunWorld {
    *  simulates, so it stays deterministic; re-apply each frame for a steady
    *  pull, or once for a brief yank. */
   private drag(e: Enemy, toX: number, toY: number, speed: number, holdS: number): void {
+    if (KB_RESIST.has(e.kind)) return; // the unstoppable walls can't be pulled either
     const dx = toX - e.x;
     const dy = toY - e.y;
     const d = Math.hypot(dx, dy) || 1;
@@ -1415,7 +1415,7 @@ export class RunWorld {
     this.fx?.push({ type: 'ring', x, y, radius, color, dur, soft });
   }
 
-  private spawnPop(x: number, y: number, radius: number): void {
-    this.fx?.push({ type: 'pop', x, y, radius });
+  private spawnPop(x: number, y: number, radius: number, color: number): void {
+    this.fx?.push({ type: 'pop', x, y, radius, color });
   }
 }

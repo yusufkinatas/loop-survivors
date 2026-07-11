@@ -29,9 +29,12 @@ const kiter: Mover = (world) => {
     const d = Math.hypot(dx, dy);
     if (d > RANGE || d < 0.001) continue;
     let w = (1 - d / RANGE) ** 2;
-    if (e.kind === 'tank' || e.kind === 'elite') w *= 1.5;
-    if (e.kind === 'darter' && e.dashing) w *= 2.0;
-    if (e.kind === 'charger' && (e.dashing || e.windupT > 0)) w *= 2.0;
+    // Weight the enemies that actually threaten a kiter: the big walls you must
+    // route around, and the fast kinds that outrun you (VS speed relationships).
+    if (e.kind === 'mantis' || e.kind === 'elite') w *= 1.7;
+    else if (e.kind === 'ghost') w *= 1.8; // 1.82x player — the real chaser
+    else if (e.kind === 'werewolf') w *= 1.5; // fast and hits hard
+    else if (e.kind === 'bat') w *= 1.2; // fast, catches you
     tx += (dx / d) * w;
     ty += (dy / d) * w;
   }
@@ -87,9 +90,12 @@ function threatVector(world: RunWorld): { tx: number; ty: number; threat: number
     const d = Math.hypot(dx, dy);
     if (d > RANGE || d < 0.001) continue;
     let w = (1 - d / RANGE) ** 2;
-    if (e.kind === 'tank' || e.kind === 'elite') w *= 1.5;
-    if (e.kind === 'darter' && e.dashing) w *= 2.0;
-    if (e.kind === 'charger' && (e.dashing || e.windupT > 0)) w *= 2.0;
+    // Weight the enemies that actually threaten a kiter: the big walls you must
+    // route around, and the fast kinds that outrun you (VS speed relationships).
+    if (e.kind === 'mantis' || e.kind === 'elite') w *= 1.7;
+    else if (e.kind === 'ghost') w *= 1.8; // 1.82x player — the real chaser
+    else if (e.kind === 'werewolf') w *= 1.5; // fast and hits hard
+    else if (e.kind === 'bat') w *= 1.2; // fast, catches you
     tx += (dx / d) * w;
     ty += (dy / d) * w;
   }
