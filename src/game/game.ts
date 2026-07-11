@@ -95,9 +95,13 @@ export async function bootGame(
     pauseOverlay.style.display = paused ? '' : 'none';
     if (paused) {
       engine.clock.pause();
+      engine.holdTransport();
       // Show the current band while paused (the same rack the HUD draws).
       if (world) hud.renderBand(world.tiers, pauseRack, mutedRoles);
-    } else engine.clock.resume();
+    } else {
+      engine.releaseTransport();
+      engine.clock.resume();
+    }
   }
 
   // debug overlay
@@ -124,7 +128,6 @@ export async function bootGame(
   function enqueueUpgrade(level: number): void {
     if (!world || (state !== 'run' && state !== 'pick')) return;
     pendingUpgrades.push(level);
-    presentNextUpgrade();
   }
 
   function presentNextUpgrade(): void {
@@ -146,26 +149,33 @@ export async function bootGame(
 
       state = 'pick';
       engine.clock.pause();
+      engine.holdTransport(true);
       hud.showPick(options, (option) => {
         // Resume the old arrangement long enough to reach the next bar. No
         // later queued pick can open while this choice is still in flight.
         state = 'run';
         pickAwaitingBar = true;
+        engine.releaseTransport();
         engine.atNextBar((barAudioTime) => {
           if (world !== w || state !== 'run') return;
+          // Audio is scheduled ahead, so its chart must change now for the
+          // first note of the new bar. World state waits for the exact heard
+          // timestamp below, preserving old-tier damage on any older trigger.
           engine.setVoiceTier(option.role, option.tier);
           engine.setVoiceEnabled(option.role, true);
-          w.addWeapon(option.role, option.tier);
-          hud.renderBand(w.tiers, undefined, mutedRoles);
-          refreshTrackOverlay();
-          // Cosmetic affirmation the pick landed (view-only, muted-safe).
-          view?.flourish(w.player.x, w.player.y);
-          hud.levelPulse();
-          pickAwaitingBar = false;
-          // The audio scheduler runs ahead. Wait until this bar's due gameplay
-          // triggers have been dispatched and consumed by one fixed world step
-          // before pausing for a stacked reward.
-          presentQueuedPickAtAudioT = barAudioTime;
+          engine.atAudioTime(barAudioTime, () => {
+            if (world !== w || state !== 'run') return;
+            w.addWeapon(option.role, option.tier);
+            hud.renderBand(w.tiers, undefined, mutedRoles);
+            refreshTrackOverlay();
+            // Cosmetic affirmation the pick landed (view-only, muted-safe).
+            view?.flourish(w.player.x, w.player.y);
+            hud.levelPulse();
+            pickAwaitingBar = false;
+            // Wait until this bar's due gameplay triggers have been consumed
+            // by one fixed world step before pausing for a stacked reward.
+            presentQueuedPickAtAudioT = barAudioTime;
+          });
         });
         engine.clock.resume();
       });
@@ -590,6 +600,10 @@ export async function bootGame(
         presentQueuedPickAtAudioT = null;
         presentNextUpgrade();
       }
+      // Level and elite rewards are raised from inside RunWorld.update(). Open
+      // their screen only after the full fixed step has survived, so contact
+      // damage later in that same step cannot end a run with audio held.
+      if (steps > 0 && world === w && state === 'run') presentNextUpgrade();
       // A level-up/death can change state inside a fixed step. Paused gameplay
       // never resumes with fractional time banked from before the screen opened.
       if (state !== steppingState || world !== w) liveAcc = 0;

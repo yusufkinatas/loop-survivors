@@ -46,7 +46,8 @@ export class Clock {
   start(): void {
     if (this.timer !== null) return;
     this.nextStep = 0;
-    this.resume();
+    this.nextStepTime = this.ctx.currentTime + 0.06; // small initial run-in
+    this.startTimer();
   }
 
   stop(): void {
@@ -61,9 +62,26 @@ export class Clock {
     this.stop();
   }
 
+  /** Rewind a not-yet-heard lookahead tail after its WebAudio sources have
+   * been canceled, preserving the first canceled step's original grid time. */
+  rewindToStep(step: number, baseTime: number): void {
+    this.nextStep = step;
+    this.nextStepTime = baseTime;
+  }
+
   resume(): void {
     if (this.timer !== null) return;
-    this.nextStepTime = this.ctx.currentTime + 0.06; // small run-in
+    // A transport hold freezes AudioContext.currentTime and preserves the
+    // already-scheduled lookahead tail. Keep the next unscheduled grid time so
+    // resume cannot duplicate, compress, or reorder steps. If the context was
+    // not frozen and that time genuinely elapsed, start safely in the future.
+    if (this.nextStepTime < this.ctx.currentTime) {
+      this.nextStepTime = this.ctx.currentTime + 0.06;
+    }
+    this.startTimer();
+  }
+
+  private startTimer(): void {
     this.timer = window.setInterval(() => this.tick(), LOOKAHEAD_MS);
     this.tick();
   }

@@ -23,6 +23,7 @@ import {
   ENEMIES,
   FLASH,
   KNOCK_S,
+  MAD_FOREST_FRAMES,
   MAX_ALIVE_HARD,
   ORBIT_REHIT_S,
   RUN,
@@ -74,12 +75,44 @@ export function circleIntersectsRect(
   return dx * dx + dy * dy <= radius * radius;
 }
 
+/** Official-demo Whip geometry converted from its feet-anchored sprite into
+ * this world's player collision-center coordinates. */
+export const KICK_GEOMETRY = {
+  scale: 800 / 456,
+  baseWidth: 147 * (800 / 456),
+  baseHeight: 22 * (800 / 456),
+} as const;
+
+/** Source player sprite uses a feet anchor; the stored player position is its
+ * circle center. This is the source feet offset normalized to H800. */
+export const PLAYER_FOOT_OFFSET = {
+  x: 1 * KICK_GEOMETRY.scale,
+  y: 7 * KICK_GEOMETRY.scale,
+} as const;
+
+export function kickStripCenter(
+  playerX: number,
+  playerY: number,
+  side: 1 | -1,
+  addedIndex: number,
+): { x: number; y: number } {
+  // Source body center is (spriteX-1, spriteY-7); slash center is
+  // (spriteX±64, spriteY-16-16*index).
+  return {
+    x: playerX + (1 + side * 64) * KICK_GEOMETRY.scale,
+    y: playerY + (-9 - 16 * addedIndex) * KICK_GEOMETRY.scale,
+  };
+}
+
 export interface Enemy {
   id: number;
   kind: EnemyKind;
   x: number;
   y: number;
   radius: number;
+  /** Source sprite-feet anchor relative to this stored circle center. */
+  footOffsetX: number;
+  footOffsetY: number;
   hp: number;
   speed: number;
   damage: number;
@@ -102,6 +135,10 @@ export interface Enemy {
   knockX: number;
   knockY: number;
   knockT: number;
+  /** Actual velocity used by the latest movement step, for source-style
+   * hit response that reverses motion instead of pushing radially. */
+  lastMoveX: number;
+  lastMoveY: number;
   /** shielded: absorbs damage before hp; 0 for others. */
   shieldHp: number;
   /** circler: +1/-1 orbit direction; 0 for others. */
@@ -314,6 +351,10 @@ export class RunWorld {
   private nextSpawnT = 0;
   private stageStarted = false;
   private nextEnemyId = 1;
+  /** Deterministic clean-room equivalent of the source's uniform frame pick.
+   * Cycling each kind's published frame list preserves its exact long-run
+   * collider weighting without consuming the separate stage RNG stream. */
+  private enemyFrameCounters: Partial<Record<EnemyKind, number>> = {};
   private overflowGem: Gem | null = null;
   private pendingKick: Array<{
     atS: number;
@@ -324,6 +365,7 @@ export class RunWorld {
     area: number;
     yStep: number;
     started: boolean;
+    startedAt: number;
     expiresAt: number;
     samplePlayer: boolean;
     spawnFollowUp: boolean;
@@ -409,6 +451,7 @@ export class RunWorld {
           area: conf.area ?? 1,
           yStep: 0,
           started: false,
+          startedAt: 0,
           expiresAt: 0,
           samplePlayer: false,
           spawnFollowUp: (conf.amount ?? 1) > 1,
@@ -589,12 +632,6 @@ export class RunWorld {
       this.runDirector(dt);
     }
 
-    // Enemy separation reads the pre-move buckets, then collision and all
-    // weapon/contact queries read a fresh post-move hash. This removes the old
-    // one-frame stale-cell bug for fast enemies.
-    this.hash.clear();
-    for (const e of this.enemies) if (!e.dead) this.hash.insert(e);
-
     this.moveEnemies(dt);
     this.recycleEnemies();
     this.hash.clear();
@@ -733,8 +770,8 @@ export class RunWorld {
     // π/500 radians per bat (~18 degrees across 50), and lock each bat toward
     // the player's position at event time. The result is a converging fan.
     const startAngle = this.rng() * Math.PI * 2;
-    const targetX = this.player.x;
-    const targetY = this.player.y;
+    const targetX = this.player.x + PLAYER_FOOT_OFFSET.x;
+    const targetY = this.player.y + PLAYER_FOOT_OFFSET.y;
     for (let i = 0; i < count && this.enemies.length < MAX_ALIVE_HARD; i++) {
       const a = startAngle + (i * Math.PI) / 500;
       const x = targetX + dcos(a) * this.worldW * 0.72;
@@ -764,8 +801,8 @@ export class RunWorld {
       const a = start + (i / count) * Math.PI * 2;
       this.pushEnemy(
         'flower',
-        this.player.x + dcos(a) * rx,
-        this.player.y + dsin(a) * ry,
+        this.player.x + PLAYER_FOOT_OFFSET.x + dcos(a) * rx,
+        this.player.y + PLAYER_FOOT_OFFSET.y + dsin(a) * ry,
         'event',
         0,
         0,
@@ -797,23 +834,25 @@ export class RunWorld {
 
   spawnEnemy(kind: EnemyKind, angle?: number, distMul = 1, wave = false): void {
     if (this.enemies.length >= (wave ? MAX_ALIVE_HARD : ENEMIES.maxAlive)) return;
+    const playerFootX = this.player.x + PLAYER_FOOT_OFFSET.x;
+    const playerFootY = this.player.y + PLAYER_FOOT_OFFSET.y;
     let x: number;
     let y: number;
     if (angle !== undefined) {
       const dist = this.spawnDist(ENEMIES[kind].radius) * distMul;
-      x = this.player.x + dcos(angle) * dist;
-      y = this.player.y + dsin(angle) * dist;
+      x = playerFootX + dcos(angle) * dist;
+      y = playerFootY + dsin(angle) * dist;
     } else {
       // Four off-screen rectangles, matching the source stage's all-sides
       // approach while avoiding corner-biased polar spawns.
       const edge = Math.floor(this.rng() * 4);
       const margin = (ENEMIES.spawnMargin + ENEMIES[kind].radius) * distMul;
       if (edge < 2) {
-        x = this.player.x + (edge === 0 ? -1 : 1) * (this.worldW / 2 + margin);
-        y = this.player.y + (this.rng() - 0.5) * this.worldH * 1.25;
+        x = playerFootX + (edge === 0 ? -1 : 1) * (this.worldW / 2 + margin);
+        y = playerFootY + (this.rng() - 0.5) * this.worldH * 1.25;
       } else {
-        x = this.player.x + (this.rng() - 0.5) * this.worldW * 1.25;
-        y = this.player.y + (edge === 2 ? -1 : 1) * (this.worldH / 2 + margin);
+        x = playerFootX + (this.rng() - 0.5) * this.worldW * 1.25;
+        y = playerFootY + (edge === 2 ? -1 : 1) * (this.worldH / 2 + margin);
       }
     }
     const spawnClass = ENEMIES[kind].boss ? 'boss' : ENEMIES[kind].fixedDirection || kind === 'flower' ? 'event' : 'regular';
@@ -821,8 +860,8 @@ export class RunWorld {
     let moveY = 0;
     let despawnAt = 0;
     if (ENEMIES[kind].fixedDirection) {
-      const dx = this.player.x - x;
-      const dy = this.player.y - y;
+      const dx = playerFootX - x;
+      const dy = playerFootY - y;
       const d = Math.hypot(dx, dy) || 1;
       moveX = dx / d;
       moveY = dy / d;
@@ -831,8 +870,9 @@ export class RunWorld {
     this.pushEnemy(kind, x, y, spawnClass, moveX, moveY, despawnAt);
   }
 
-  /** Construct one enemy at (x,y) from immutable bestiary values. Mad Forest
-   * has no invented continuous HP/damage/speed ramp. */
+  /** Construct one enemy from a source sprite-feet position. The simulation
+   * stores its exact circle center; old project-native kinds have zero offset.
+   * Mad Forest has no invented continuous HP/damage/speed ramp. */
   private pushEnemy(
     kind: EnemyKind,
     x: number,
@@ -845,12 +885,15 @@ export class RunWorld {
     if (this.enemies.length >= MAX_ALIVE_HARD) return;
     const conf = ENEMIES[kind];
     const stats = madForestEnemyStats(kind, this.level);
+    const body = this.nextEnemyBody(kind, stats.radius);
     this.enemies.push({
       id: this.nextEnemyId++,
       kind,
-      x,
-      y,
-      radius: stats.radius,
+      x: x - body.footOffsetX,
+      y: y - body.footOffsetY,
+      radius: body.radius,
+      footOffsetX: body.footOffsetX,
+      footOffsetY: body.footOffsetY,
       hp: stats.hp,
       speed: stats.speed,
       damage: stats.damage,
@@ -867,6 +910,8 @@ export class RunWorld {
       knockX: 0,
       knockY: 0,
       knockT: 0,
+      lastMoveX: 0,
+      lastMoveY: 0,
       shieldHp: kind === 'shielded' ? conf.hp * SHIELDED.shieldMul : 0,
       spin: kind === 'circler' ? (this.rng() < 0.5 ? 1 : -1) : 0,
       windupT: 0,
@@ -878,6 +923,29 @@ export class RunWorld {
       knockbackMul: stats.knockback,
       upgradeChance: 0,
     });
+  }
+
+  private nextEnemyBody(
+    kind: EnemyKind,
+    fallback: number,
+  ): { radius: number; footOffsetX: number; footOffsetY: number } {
+    const frames = MAD_FOREST_FRAMES[kind];
+    if (!frames || frames.length === 0) {
+      return { radius: fallback, footOffsetX: 0, footOffsetY: 0 };
+    }
+    const counter = this.enemyFrameCounters[kind] ?? 0;
+    this.enemyFrameCounters[kind] = counter + 1;
+    const frame = frames[counter % frames.length];
+    const requestedRadius = frame.width * 0.4;
+    const effectiveRadius = Math.floor(requestedRadius);
+    const scale = KICK_GEOMETRY.scale;
+    // Phaser Body.setCircle(r, r/2, r/2), sprite origin (0.5, 1). Circle
+    // intersection uses floor(r) as halfWidth; reconstruct feet from center.
+    return {
+      radius: effectiveRadius * scale,
+      footOffsetX: (frame.width / 2 - requestedRadius / 2 - effectiveRadius) * scale,
+      footOffsetY: (frame.height - requestedRadius / 2 - effectiveRadius) * scale,
+    };
   }
 
   /** Splitter death: burst into a knot of children around the corpse. */
@@ -899,6 +967,8 @@ export class RunWorld {
     const p = this.player;
     for (const e of this.enemies) {
       if (e.dead) continue;
+      e.lastMoveX = 0;
+      e.lastMoveY = 0;
       let speed = e.speed;
       if (e.slowT > 0) {
         e.slowT -= dt;
@@ -910,12 +980,16 @@ export class RunWorld {
       if (e.knockT > 0) {
         const pushDt = Math.min(dt, e.knockT);
         e.knockT -= dt;
+        e.lastMoveX = e.knockX;
+        e.lastMoveY = e.knockY;
         e.x += e.knockX * pushDt;
         e.y += e.knockY * pushDt;
         continue;
       }
 
       if (e.moveX !== 0 || e.moveY !== 0) {
+        e.lastMoveX = e.moveX * speed;
+        e.lastMoveY = e.moveY * speed;
         e.x += e.moveX * speed * dt;
         e.y += e.moveY * speed * dt;
         continue;
@@ -937,6 +1011,8 @@ export class RunWorld {
           }
         }
         if (e.dashing) {
+          e.lastMoveX = e.dashX * speed;
+          e.lastMoveY = e.dashY * speed;
           e.x += e.dashX * speed * dt;
           e.y += e.dashY * speed * dt;
         }
@@ -949,6 +1025,8 @@ export class RunWorld {
         // the rotating silhouette, not the fx ring.
         if (e.dashing) {
           e.dashT -= dt;
+          e.lastMoveX = e.dashX * CHARGER.dashSpeed;
+          e.lastMoveY = e.dashY * CHARGER.dashSpeed;
           e.x += e.dashX * CHARGER.dashSpeed * dt;
           e.y += e.dashY * CHARGER.dashSpeed * dt;
           if (e.dashT <= 0) e.dashing = false; // recover -> approach
@@ -988,37 +1066,24 @@ export class RunWorld {
         const mx = ux * radial + tx * (1 - Math.abs(radial) * 0.5);
         const my = uy * radial + ty * (1 - Math.abs(radial) * 0.5);
         const m = Math.hypot(mx, my) || 1;
+        e.lastMoveX = (mx / m) * speed;
+        e.lastMoveY = (my / m) * speed;
         e.x += (mx / m) * speed * dt;
         e.y += (my / m) * speed * dt;
         continue;
       }
 
-      let dx = p.x - e.x;
-      let dy = p.y - e.y;
+      let dx = p.x + PLAYER_FOOT_OFFSET.x - (e.x + e.footOffsetX);
+      let dy = p.y + PLAYER_FOOT_OFFSET.y - (e.y + e.footOffsetY);
       const d = Math.hypot(dx, dy) || 1;
       dx /= d;
       dy /= d;
-      // separation steering against overlapping neighbors — kept weak so
-      // the horde packs into a VS-style wall instead of spreading out.
-      // Squared-distance early-out: in the packed wall most candidates
-      // don't overlap, and this loop is the frame's hottest code.
-      const near = this.hash.query(e.x, e.y, e.radius * 2, this.queryBuf);
-      let sx = 0;
-      let sy = 0;
-      for (const o of near) {
-        if (o === e || o.dead) continue;
-        const ox = e.x - o.x;
-        const oy = e.y - o.y;
-        const r = e.radius + o.radius;
-        const d2 = ox * ox + oy * oy;
-        if (d2 >= r * r || d2 < 0.000001) continue;
-        const od = Math.sqrt(d2);
-        const overlap = r - od;
-        sx += (ox / od) * overlap;
-        sy += (oy / od) * overlap;
-      }
-      e.x += (dx * speed + sx * 1.5) * dt;
-      e.y += (dy * speed + sy * 1.5) * dt;
+      // Source enemies home directly. Solid body separation is applied once
+      // below; a second invented steering force would over-spread the pack.
+      e.lastMoveX = dx * speed;
+      e.lastMoveY = dy * speed;
+      e.x += dx * speed * dt;
+      e.y += dy * speed * dt;
     }
   }
 
@@ -1121,6 +1186,8 @@ export class RunWorld {
    *  (they are objectives). Pure geometry, deterministic, fx-free. */
   private recycleEnemies(): void {
     const p = this.player;
+    const playerFootX = p.x + PLAYER_FOOT_OFFSET.x;
+    const playerFootY = p.y + PLAYER_FOOT_OFFSET.y;
     const far = this.spawnDist(9) * ENEMIES.recycleFactor;
     const far2 = far * far;
     for (const e of this.enemies) {
@@ -1130,14 +1197,14 @@ export class RunWorld {
         continue;
       }
       if (e.despawnAt > 0) continue;
-      const dx = e.x - p.x;
-      const dy = e.y - p.y;
+      const dx = e.x + e.footOffsetX - playerFootX;
+      const dy = e.y + e.footOffsetY - playerFootY;
       if (dx * dx + dy * dy <= far2) continue;
       if (e.spawnClass === 'boss') {
         const a = this.rng() * Math.PI * 2;
         const d = this.spawnDist(e.radius);
-        e.x = p.x + dcos(a) * d;
-        e.y = p.y + dsin(a) * d;
+        e.x = playerFootX + dcos(a) * d - e.footOffsetX;
+        e.y = playerFootY + dsin(a) * d - e.footOffsetY;
       } else {
         e.dead = true;
       }
@@ -1353,6 +1420,7 @@ export class RunWorld {
       if (!strike.started) {
         if (strike.atS > this.timeS + 1e-9) continue;
         strike.started = true;
+        strike.startedAt = this.timeS;
         strike.expiresAt = this.timeS + 0.2;
         if (strike.samplePlayer) {
           strike.x = this.player.x;
@@ -1371,15 +1439,17 @@ export class RunWorld {
             area: strike.area,
             yStep: 1,
             started: false,
+            startedAt: 0,
             expiresAt: 0,
             samplePlayer: true,
             spawnFollowUp: false,
           });
         }
+        const visualCenter = kickStripCenter(strike.x, strike.y, strike.side, strike.yStep);
         this.fx?.push({
           type: 'whip',
-          x: strike.x,
-          y: strike.y - 28 - strike.yStep * 28,
+          x: visualCenter.x,
+          y: visualCenter.y,
           side: strike.side,
           area: strike.area,
           color: KIT_COLORS.kick,
@@ -1389,12 +1459,17 @@ export class RunWorld {
         continue;
       }
 
-      // Legacy Whip proxy normalized to the 800-high reference view:
-      // 147x22, center x±64/y-16, then scaled by 800/456.
-      const centerX = strike.x + strike.side * 112;
-      const centerY = strike.y - 28 - strike.yStep * 28;
-      const halfW = 129 * strike.area;
-      const halfH = 19.5 * strike.area;
+      // Legacy Whip body normalized to the 800-high reference view and
+      // converted from sprite-foot coordinates to our collision center.
+      const center = kickStripCenter(strike.x, strike.y, strike.side, strike.yStep);
+      const centerX = center.x;
+      const centerY = center.y;
+      // Phaser scales the legacy Whip sprite and its Arcade body together:
+      // grow linearly from zero to full Area for 100 ms, then hold for 100 ms.
+      const age = Math.max(0, this.timeS - strike.startedAt);
+      const bodyScale = Math.min(1, age / 0.1);
+      const halfW = (KICK_GEOMETRY.baseWidth * strike.area * bodyScale) / 2;
+      const halfH = (KICK_GEOMETRY.baseHeight * strike.area * bodyScale) / 2;
       const reach = Math.hypot(halfW, halfH) + 48;
       const near = this.hash.query(centerX, centerY, reach, this.queryBuf);
       for (const e of near) {
@@ -1416,9 +1491,9 @@ export class RunWorld {
 
   private reverseForKick(e: Enemy, fromX: number, fromY: number): void {
     if (e.knockbackMul <= 0) return;
-    if (e.moveX !== 0 || e.moveY !== 0) {
-      e.knockX = -e.moveX * e.speed * e.knockbackMul;
-      e.knockY = -e.moveY * e.speed * e.knockbackMul;
+    if (e.lastMoveX !== 0 || e.lastMoveY !== 0) {
+      e.knockX = -e.lastMoveX * e.knockbackMul;
+      e.knockY = -e.lastMoveY * e.knockbackMul;
       e.knockT = SHOVE_S;
       return;
     }

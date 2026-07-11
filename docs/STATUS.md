@@ -16,6 +16,12 @@ The rework is being implemented on branch `vs-attempt-codex`. The adopted
 eight-minute slice plays source minutes 0–7 and resolves before the 8:00 wave.
 The Kick keeps an audible/gameplay strip every 122 BPM beat for Model A, with a
 shared 1.35 s per-target re-hit lock to approximate Whip's damage cadence.
+Its converted feet-origin body, 100 ms growth, 200 ms lifetime, and delayed
+opposite strip now follow the legacy slash timing; enemy bodies use the
+legacy frame-width circle formula, including weighted Skeleton/Flower/sweep
+variants, with feet-anchored spawn/pursuit converted to their circle centers.
+Audio lookahead is frozen on pick screens, and bar-boundary upgrades
+apply to the world at heard time so a sound never silently changes damage early.
 Boss any-chest odds are preserved as direct project-native upgrade-pick odds;
 no chest/evolution UI was imported. **Implementation is complete and
 engineering verification is clean. No developer gate has passed; the result

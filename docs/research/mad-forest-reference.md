@@ -45,8 +45,8 @@ across aspect ratios.
 | Mad Forest starting spawns | 10 `BAT3` units | 10 dark red-eyed bats | CURRENT |
 | Mad Forest player MoveSpeed | x1.1 | Apply to the player only | CURRENT |
 | Mad Forest enemy MoveSpeed | x1.1 | Apply the independent enemy x1.1 multiplier | CURRENT |
-| Base physical player speed | 82.5 px/s at `H = 456` | `82.5 x 1.1 / 456 = 0.1990H/s`; `159.2`, rounded to `159`, at `H = 800` | LEGACY + DERIVED |
-| Player collision radius | 9 at `H = 456` | `0.0197H`; `15.8`, rounded to `16`, at `H = 800` | LEGACY + DERIVED |
+| Base physical player speed | 82.5 px/s at `H = 456` | `82.5 x 1.1 / 456 = 0.1990H/s`; `159.2105` at `H = 800` | LEGACY + DERIVED |
+| Player collision radius | 9 at `H = 456` | `0.0197H`; `15.7895` at `H = 800` | LEGACY + DERIVED |
 | Base Magnet | 30 at `H = 456` | `0.0658H`; `52.6`, rounded to `53`, at `H = 800` | CURRENT + DERIVED |
 | Enemy physical speed factor | `raw MSpeed x 0.77 x 0.3`, then stage x1.1 | `raw MSpeed x 0.231 x 1.1 x H/456`; at `H = 800`, multiply raw MSpeed by `0.44579` | LEGACY + CURRENT + DERIVED |
 | Contact-damage lock | 120 ms | 0.12 s | LEGACY + CURRENT-RE |
@@ -60,9 +60,25 @@ That collision is part of the pressure feel: shortening the damage lock to
 0.12 s without overlap resolution would be substantially harsher than the
 reference. **LEGACY**
 
+Loop resolves each solid circle pair once per fixed step with positional
+separation; Phaser Arcade can order and adjust dense piles differently. This
+low-material engine approximation remains reserved for the hands gate.
+**ADOPTED**
+
 Regular spawns originate just offscreen. A practical legacy-derived band is
 about `0.16H` to `0.33H` beyond an edge, with far-offscreen enemies recycled
 rather than allowed to trail forever. **LEGACY + DERIVED**
+
+Scripted event geometry is separate. Sweep bats begin along an ellipse at
+`0.72 x visible width/height`; their angles advance by `pi/500` per unit, so a
+50-bat group spans about 18 degrees and each bat locks a straight vector toward
+the player's event-time position. The flower wall uses the same `0.72W/0.72H`
+ellipse with `pi/50` spacing for 100 units. Sweep and flower bodies are not
+distance-culled; their explicit 10 s / 30 s event timers own removal. **LEGACY**
+
+**ADOPTED camera rule:** runtime world height is fixed to 800 units by camera
+zoom at every resolution, so every H800 conversion in this note stays a visible
+height ratio rather than becoming smaller on high-resolution screens.
 
 ### Antonio baseline
 
@@ -82,19 +98,25 @@ named deviation rather than being hidden in weapon numbers.
 
 ## First-eight-minute wave table
 
-Waves approach from all four sides. “Minimum” is a live population floor, not
-a per-minute quota or maximum. Existing enemies persist across minute changes.
-The legacy spawn director replenishes the enabled roster at the stated
-interval and immediately fills toward the floor when the live count is below
-it. The current wiki publishes the roster/floor/interval; the exact director
-semantics are **LEGACY**, so the combination remains a cross-version
+Waves approach from all four sides. “Minimum” is a live global-enemy population
+floor, not a per-minute quota or maximum: regular units, bosses, sweep bats,
+and flowers all count while alive. Existing enemies persist across minute
+changes. The legacy spawn director waits one full stated interval before its
+first attempt, then replenishes the enabled roster. Below the floor it repeats
+complete pattern sets, which can overshoot the floor by `pattern length - 1`;
+at or above the floor it emits one complete set per attempt, until the common
+300 check blocks it. Scripted events may exceed that check up to the global 500
+body ceiling. The current wiki publishes the roster/floor/interval; these exact
+director semantics are **LEGACY**, so the combination remains a cross-version
 calibration target.
 
 The boss/reward column preserves the wiki's displayed high/mid/ordinary chest
-columns. Because this phase has no chest/evolution vocabulary, the adopted
-runtime uses the ordinary-column probability as its chance of one direct
-weapon-tier choice: 30% at 1:00, 40% at 3:00, 100% at 5:00, and 50% at 7:00.
-That translation is **ADOPTED**, not a Vampire Survivors fact.
+columns. Legacy evaluates those tiers sequentially, only trying the next when
+the prior roll fails. Their union gives any-chest probabilities of 30% at
+1:00, 43% at 3:00, 100% at 5:00, and 56.35% at 7:00. Because this phase has no
+chest/evolution vocabulary, a successful union roll becomes one direct
+project-native build pick. That translation is **ADOPTED**, not a Vampire
+Survivors fact.
 
 | Time | Enabled regular roster | Minimum | Interval | Boss / reward row | Map event | Label |
 |---|---|---:|---:|---|---|---|
@@ -122,7 +144,7 @@ stage items, destructibles, and metagame PowerUps are not introduced by this
 addendum. Their omission means reward economy is not exact even when the combat
 schedule is. **ADOPTED:** a successful any-chest roll becomes one direct
 weapon-tier choice, including the guaranteed 5:00 roll. The implementation
-keeps the published 30%/40%/100%/50% timing probabilities but does not pretend
+keeps the derived 30%/43%/100%/56.35% any-chest probabilities but does not pretend
 that a project pick is identical to a Vampire Survivors chest.
 
 ## Enemy values
@@ -146,6 +168,32 @@ final awarded integer in the legacy gem roll.
 | Flower Wall `FLOWER` | `30 x player level` | 1 | 1 | 20 | 8.9 | 2 | 1.0 | CURRENT + DERIVED |
 | Pipeestrello swarm | 1 | 1 | 1 | 700 | 312.1 | 1 | 1.0 | CURRENT + DERIVED |
 | Giant Bat `XLBAT`, 8:00 boundary only | 270 | 10 | 9 | 140 | 62.4 | 2.5 | 0.1 | CURRENT + DERIVED |
+
+Legacy enemy colliders request a circle radius of `0.4 x selected atlas-frame
+width`. Phaser 3.55.2 collision uses the floored body half-width, so the exact
+effective H800 radius is `floor(0.4 x width) x 800 / 456`. H800 radii are:
+BAT1 12.28, BAT2 17.54, BAT3 21.05, BAT4 17.54, Zombie 21.05, Ghost 19.30,
+each Mudman 22.81, and Mantichana 33.33. Skeleton uniformly selects widths
+`[28, 32, 32, 34, 32, 34]` (radii 19.30–22.81), Flower selects `[26, 32]`
+(17.54 or 21.05), and each sweep bat selects BAT1/BAT2/BAT3. The clean-room
+runtime cycles each published frame list per kind to preserve the exact
+aggregate weighting without consuming the separate stage-event random stream.
+That deterministic selection is **ADOPTED**; the body formula and lists are
+**LEGACY + DERIVED**.
+
+The legacy sprite coordinate is a bottom-center feet anchor, while collision
+uses an offset circle center. Runtime keeps both explicitly: stage/event
+positions and homing vectors are authored feet-to-feet, then collision and
+weapon tests use the reconstructed circle center. For a source frame `W x H`,
+requested radius `r = 0.4W`, and effective radius `R = floor(r)`, the legacy
+circle-center offset from the feet is
+`(r/2 + R - W/2, r/2 + R - H)`, normalized by `800/456`. The player's feet are
+`(+1,+7)` legacy pixels from its circle center. **LEGACY + DERIVED**
+
+BAT1–4 animate through four idle widths, which makes Phaser's live body center
+jitter horizontally around its fixed logical feet by a few pixels. Loop keeps
+the selected `_0` frame's offset stable because its vector enemies do not use
+those sprite frames. This low-materiality omission is **ADOPTED**.
 
 Do not substitute Mantichana Lord (`BOSS_XLMANTIS`: `150 x level`, MSpeed 160,
 XP 50) for the 5:00 Mantichana. Mantichana Lord is the separate 10:00 boss.
@@ -177,19 +225,24 @@ once. Consecutive slashes alternate horizontal sides relative to facing; added
 slashes are progressively higher. Displayed damage numbers may visually vary
 without changing deterministic damage. **CURRENT**
 
-The legacy Area-1 physical body is `147 x 22` at `H = 456`, centered `64`
-pixels to the chosen horizontal side and `16` pixels above the player. The next
-slash is 16 legacy pixels higher. **LEGACY**
+The legacy Area-1 physical body is `147 x 22` at `H = 456`. Its published
+sprite center is `64` pixels to the chosen side and `16` pixels above the
+feet-anchored player sprite. Loop's player coordinate is instead its collision
+center: about `(spriteX-1, spriteY-7)`. Converting origins puts the first slash
+about 114 px right / 111 px left and 16 px above Loop's H800 player center. The
+next slash is 16 legacy pixels (28 H800 pixels) higher. **LEGACY + DERIVED**
 
 | Area | H800 body | H800 center | Approx. forward reach | Portion of 1280x800 view | Label |
 |---:|---:|---:|---:|---:|---|
-| 1.0 | 258 x 39 | 112 to the side, 28 up | 241 | 0.98% | DERIVED |
-| 1.1 | 284 x 43 | same center | 254 | 1.19% | DERIVED |
-| 1.2 | 310 x 46 | same center | 267 | 1.39% | DERIVED |
+| 1.0 | 258 x 39 | right 114 / left 111; 16 up | 240–243 | 0.98% | DERIVED |
+| 1.1 | 284 x 43 | same center | 252–256 | 1.19% | DERIVED |
+| 1.2 | 310 x 46 | same center | 265–269 | 1.39% | DERIVED |
 
 Each additional strip is about 28 H800 pixels higher. Area grows the body,
 not its center offset. These footprints are why a large radial aura is not a
-Whip-like approximation.
+Whip-like approximation. The slash and its collision body scale linearly from
+zero to full Area during the first 0.10 s, then remain at full size while the
+visual fades through 0.20 s total. **LEGACY**
 
 ### Adopted four-tier Kick compression
 
@@ -307,7 +360,7 @@ All web sources below were retrieved July 11, 2026.
 
 | ID | Source | Used for | Confidence |
 |---|---|---|---|
-| DEMO | [Official poncle itch.io demo](https://poncle.itch.io/vampire-survivors) and [hosted v0.2.4 bundle](https://html-classic.itch.zone/html/5185382/main.364c22b224c8899d4d20.bundle.js) | Physical movement/collision, spawn semantics, hit locks, Whip body, legacy gem roll | Primary/high for v0.2.4; version-transfer uncertainty |
+| DEMO | [Official poncle itch.io demo](https://poncle.itch.io/vampire-survivors), [hosted v0.2.4 bundle](https://html-classic.itch.zone/html/5185382/main.364c22b224c8899d4d20.bundle.js), and [official enemy atlas metadata](https://html-classic.itch.zone/html/5185382/assets/img/enemies.json) | Physical movement/collision, source frame bodies/anchors, spawn semantics, hit locks, Whip body, legacy gem roll | Primary/high for v0.2.4; version-transfer uncertainty |
 | UNITY-RE | [Current damage-system analysis](https://github.com/lukeod/vampiresurvivors-modding/blob/main/damage-system.md) and [physics-system analysis](https://github.com/lukeod/vampiresurvivors-modding/blob/main/physics-system.md) | Current 120 ms vulnerability delay and Phaser-style collision-group corroboration | Secondary/medium; community IL2CPP analysis |
 | MF | [Mad Forest revision 89346](https://vampire.survivors.wiki/api.php?action=parse&oldid=89346&prop=wikitext&format=json&formatversion=2) | Normal modifiers (`starting-spawns=10`, player speed x1.1, enemy speed 1.1), first-eight-minute waves, bosses, chests, events | Community/medium; exact revision |
 | ANTONIO | [Antonio Belpaese](https://vampire.survivors.wiki/w/Antonio_Belpaese) rev 85608, [Armor](https://vampire.survivors.wiki/w/Armor_(stat)) rev 85634, [Player stats](https://vampire.survivors.wiki/w/Player_stats) rev 87190 | HP, Armor, Might progression, base stats | Community/medium; revision-pinned here |

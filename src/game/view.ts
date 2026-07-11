@@ -7,7 +7,16 @@
 import { Container, Graphics, GraphicsContext, Text, TextStyle } from 'pixi.js';
 import type { Role } from '../audio/kits';
 import { RUN } from './config';
-import type { Enemy, FxEvent, Gem, Projectile, RunWorld, Shock, Zone } from './run';
+import {
+  PLAYER_FOOT_OFFSET,
+  type Enemy,
+  type FxEvent,
+  type Gem,
+  type Projectile,
+  type RunWorld,
+  type Shock,
+  type Zone,
+} from './run';
 
 // Projectile trails (pure view): only these low-count roles trail, so the
 // per-frame work stays independent of the capped horde. Hat (can be
@@ -54,6 +63,8 @@ interface Pop {
   death?: DeathBurst;
   /** Whip holds at full opacity for 100 ms, then fades for 100 ms. */
   holdHalf?: boolean;
+  /** Whip grows from zero to full body scale during its first 100 ms. */
+  expandHalf?: boolean;
 }
 
 interface DeathFragment {
@@ -271,6 +282,8 @@ export class RunView {
     });
     this.syncShocks();
     const p = this.world.player;
+    const cameraX = p.x + PLAYER_FOOT_OFFSET.x;
+    const cameraY = p.y + PLAYER_FOOT_OFFSET.y;
     const cullW = this.world.worldW / 2 + 40;
     const cullH = this.world.worldH / 2 + 40;
     this.sync(this.world.gems, this.gemGfx, makeGemGfx, (g, gfx) => {
@@ -284,7 +297,7 @@ export class RunView {
         this.stage.addChild(fresh);
         gfx = fresh;
       }
-      const visible = Math.abs(g.x - p.x) < cullW && Math.abs(g.y - p.y) < cullH;
+      const visible = Math.abs(g.x - cameraX) < cullW && Math.abs(g.y - cameraY) < cullH;
       gfx.renderable = visible;
       if (visible) gfx.position.set(g.x, g.y);
     });
@@ -314,8 +327,8 @@ export class RunView {
     const zoom = this.world.zoom;
     this.stage.scale.set(zoom);
     this.stage.position.set(
-      this.view.width / 2 - p.x * zoom + sx,
-      this.view.height / 2 - p.y * zoom + sy,
+      this.view.width / 2 - cameraX * zoom + sx,
+      this.view.height / 2 - cameraY * zoom + sy,
     );
     this.playerGfx.position.set(p.x, p.y);
     this.playerGfx.alpha = p.iframesT > 0 ? 0.5 : 1;
@@ -341,6 +354,8 @@ export class RunView {
     // culling: event rows can push the 300-enemy periodic cap toward the 500
     // hard cap; off-screen units stay simulated but skip draw updates.
     const p = this.world.player;
+    const cameraX = p.x + PLAYER_FOOT_OFFSET.x;
+    const cameraY = p.y + PLAYER_FOOT_OFFSET.y;
     const cullW = this.world.worldW / 2 + 80;
     const cullH = this.world.worldH / 2 + 80;
     this.live.clear();
@@ -352,7 +367,7 @@ export class RunView {
         this.stage.addChild(gfx);
       }
       this.live.add(e);
-      const visible = Math.abs(e.x - p.x) < cullW && Math.abs(e.y - p.y) < cullH;
+      const visible = Math.abs(e.x - cameraX) < cullW && Math.abs(e.y - cameraY) < cullH;
       gfx.renderable = visible;
       if (!visible) continue;
       gfx.position.set(e.x, e.y);
@@ -472,9 +487,8 @@ export class RunView {
         // Kick's Whip-style hit: a short horizontal strip, with the translucent
         // body showing the real damage footprint and three bright vector rails
         // selling the snap without introducing a sprite asset.
-        const { width, height, offset } = whipDimensions(fx.area);
-        const centerX = fx.side * offset;
-        const left = centerX - width / 2;
+        const { width, height } = whipDimensions(fx.area);
+        const left = -width / 2;
         const innerX = fx.side === 1 ? left : left + width;
         const outerX = fx.side === 1 ? left + width : left;
         const gfx = new Graphics()
@@ -489,8 +503,9 @@ export class RunView {
         gfx.rect(outerX - 3, -3, 6, 6).fill({ color: 0xffffff, alpha: 0.9 });
         gfx.tint = fx.color;
         gfx.position.set(fx.x, fx.y);
+        gfx.scale.set(0);
         this.stage.addChild(gfx);
-        this.pops.push({ gfx, t: 0, dur: 0.2, grow: 0, holdHalf: true });
+        this.pops.push({ gfx, t: 0, dur: 0.2, grow: 0, holdHalf: true, expandHalf: true });
         break;
       }
       case 'shake':
@@ -531,8 +546,10 @@ export class RunView {
         // the horde's hits never become a wall of text.
         if (this.floaters.length >= DMG_CAP) break;
         const p = this.world.player;
-        if (Math.abs(fx.x - p.x) > this.world.worldW / 2 + 40) break;
-        if (Math.abs(fx.y - p.y) > this.world.worldH / 2 + 40) break;
+        const cameraX = p.x + PLAYER_FOOT_OFFSET.x;
+        const cameraY = p.y + PLAYER_FOOT_OFFSET.y;
+        if (Math.abs(fx.x - cameraX) > this.world.worldW / 2 + 40) break;
+        if (Math.abs(fx.y - cameraY) > this.world.worldH / 2 + 40) break;
         const txt = new Text({ text: String(fx.amount), style: DMG_STYLE });
         txt.anchor.set(0.5);
         txt.tint = fx.color;
@@ -548,9 +565,11 @@ export class RunView {
         // Deaths outside the camera do not need particles. Elites get a little
         // extra padding so their larger burst can begin just beyond an edge.
         const p = this.world.player;
+        const cameraX = p.x + PLAYER_FOOT_OFFSET.x;
+        const cameraY = p.y + PLAYER_FOOT_OFFSET.y;
         const pad = fx.elite ? fx.radius * 3 : fx.radius * 2;
-        if (Math.abs(fx.x - p.x) > this.world.worldW / 2 + pad) break;
-        if (Math.abs(fx.y - p.y) > this.world.worldH / 2 + pad) break;
+        if (Math.abs(fx.x - cameraX) > this.world.worldW / 2 + pad) break;
+        if (Math.abs(fx.y - cameraY) > this.world.worldH / 2 + pad) break;
 
         const { gfx, burst } = makeDeathBurst(fx.radius, fx.color, fx.elite);
         gfx.position.set(fx.x, fx.y);
@@ -601,7 +620,8 @@ export class RunView {
         p.gfx.alpha = Math.pow(1 - k, 0.7);
       } else {
         p.gfx.alpha = p.holdHalf ? (k < 0.5 ? 1 : (1 - k) * 2) : 1 - k;
-        if (p.grow > 0) p.gfx.scale.set(0.2 + (p.grow - 0.2) * k);
+        if (p.expandHalf) p.gfx.scale.set(Math.min(1, k * 2));
+        else if (p.grow > 0) p.gfx.scale.set(0.2 + (p.grow - 0.2) * k);
       }
     }
   }
@@ -653,9 +673,11 @@ export class RunView {
     }
     if (fa > 0) {
       const p = this.world.player;
+      const cameraX = p.x + PLAYER_FOOT_OFFSET.x;
+      const cameraY = p.y + PLAYER_FOOT_OFFSET.y;
       const w = this.world.worldW;
       const h = this.world.worldH;
-      this.flashGfx.rect(p.x - w / 2, p.y - h / 2, w, h).fill(0xffffff);
+      this.flashGfx.rect(cameraX - w / 2, cameraY - h / 2, w, h).fill(0xffffff);
       this.flashGfx.tint = fc;
       this.flashGfx.alpha = fa;
       this.stage.setChildIndex(this.flashGfx, this.stage.children.length - 1);
@@ -672,8 +694,8 @@ export class RunView {
     const major = 320; // a bar: every 4 cells; aligns to floor(x/major)*major
     const w = this.world.worldW;
     const h = this.world.worldH;
-    const left = this.world.player.x - w / 2;
-    const top = this.world.player.y - h / 2;
+    const left = this.world.player.x + PLAYER_FOOT_OFFSET.x - w / 2;
+    const top = this.world.player.y + PLAYER_FOOT_OFFSET.y - h / 2;
     g.clear();
     for (let x = Math.floor(left / cell) * cell; x < left + w + cell; x += cell) {
       g.moveTo(x, top - cell).lineTo(x, top + h + cell);

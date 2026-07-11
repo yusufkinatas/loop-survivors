@@ -21,9 +21,10 @@ async function boot(): Promise<void> {
   const engine = new MusicEngine(ctx, kits);
 
   // Mobile browsers suspend or interrupt the context on tab switches and
-  // ring-switch events; any touch afterwards brings the sound back.
+  // ring-switch events; any touch afterwards brings the sound back. An
+  // intentional game/pick pause owns the context and ignores generic taps.
   document.addEventListener('pointerdown', () => {
-    if (ctx.state !== 'running') void ctx.resume();
+    engine.resumeContextIfAllowed();
   });
 
   // Developer console handle (docs/phases/m1-demo.md, developer tools):

@@ -13,8 +13,8 @@ export const RUN = {
   playerArmor: 1,
   /** Legacy engine speed, normalized from its 456-high world to our 800-high
    * reference viewport, then multiplied by Mad Forest's normal x1.1. */
-  playerSpeed: 159,
-  playerRadius: 16,
+  playerSpeed: 82.5 * 1.1 * (800 / 456),
+  playerRadius: 9 * (800 / 456),
   /** The reference damage lock is about 120 ms. */
   iframesS: 0.12,
   /** Vampire Survivors' unmodified Magnet stat. */
@@ -86,6 +86,56 @@ export interface EnemyConf {
  * enemy MoveSpeed x1.1 modifier (official wiki revision 89346). */
 export const ENEMY_SPEED_UNIT = 0.231 * (800 / 456) * 1.1;
 
+/** Phaser 3.55 floors the half-width used by circle intersection after the
+ * source requests a radius of 40% of the active atlas-frame width. */
+export function legacyEnemyRadius(spriteWidth: number): number {
+  return Math.floor(spriteWidth * 0.4) * (800 / 456);
+}
+
+export interface LegacyEnemyFrame {
+  width: number;
+  height: number;
+}
+
+/** Source frame sizes. Repeated sizes preserve uniform frame-list weighting
+ * even when different animation frames share the same dimensions. */
+export const MAD_FOREST_FRAMES: Partial<Record<EnemyKind, readonly LegacyEnemyFrame[]>> = {
+  bat: [{ width: 19, height: 21 }],
+  redBat: [{ width: 25, height: 24 }],
+  redBat2: [{ width: 30, height: 27 }],
+  zombie: [
+    { width: 31, height: 33 },
+    { width: 31, height: 33 },
+    { width: 31, height: 33 },
+  ],
+  skeleton: [
+    { width: 28, height: 33 },
+    { width: 32, height: 33 },
+    { width: 32, height: 33 },
+    { width: 34, height: 33 },
+    { width: 32, height: 33 },
+    { width: 34, height: 33 },
+  ],
+  ghost: [{ width: 29, height: 32 }],
+  greenMudman: [{ width: 34, height: 34 }],
+  grayMudman: [{ width: 34, height: 34 }],
+  flower: [
+    { width: 26, height: 26 },
+    { width: 32, height: 32 },
+  ],
+  glowingBat: [{ width: 27, height: 25 }],
+  mantis: [{ width: 48, height: 47 }],
+  batSwarm: [
+    { width: 19, height: 21 },
+    { width: 25, height: 24 },
+    { width: 30, height: 27 },
+  ],
+};
+
+export const BAT_SWARM_RADII = MAD_FOREST_FRAMES.batSwarm!.map(
+  (frame) => legacyEnemyRadius(frame.width),
+) as readonly number[];
+
 // The first eight entries and the legacy scaling fields remain only for old
 // replay/sandbox comparisons. RunWorld's active parity path reads the Mad
 // Forest entries below and never applies those continuous scaling fields.
@@ -136,16 +186,16 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
   elite: { radius: 34, speed: 48, hp: 420, damage: 25, xp: 80, color: 0xd94f8a },
   // Mad Forest normal-mode bestiary values. `damage` is what Antonio actually
   // loses after his +1 Armor; `power` retains the source number for audits/UI.
-  bat: { radius: 9, speed: 140 * ENEMY_SPEED_UNIT, hp: 1, power: 5, damage: 4, xp: 1, color: 0x8d92b8, knockback: 1 },
-  redBat: { radius: 12, speed: 140 * ENEMY_SPEED_UNIT, hp: 5, power: 5, damage: 4, xp: 1, color: 0xd15b68, knockback: 1 },
-  redBat2: { radius: 12, speed: 140 * ENEMY_SPEED_UNIT, hp: 5, power: 5, damage: 4, xp: 1, color: 0xb94364, knockback: 1 },
-  zombie: { radius: 16, speed: 100 * ENEMY_SPEED_UNIT, hp: 10, power: 10, damage: 9, xp: 1, color: 0x77906f, knockback: 0.8 },
-  skeleton: { radius: 13, speed: 100 * ENEMY_SPEED_UNIT, hp: 15, power: 10, damage: 9, xp: 2, color: 0xd7d0b3, knockback: 1 },
-  ghost: { radius: 13, speed: 200 * ENEMY_SPEED_UNIT, hp: 10, power: 5, damage: 4, xp: 1.5, color: 0x72c5d8, knockback: 0 },
-  greenMudman: { radius: 25, speed: 100 * ENEMY_SPEED_UNIT, hp: 150, power: 10, damage: 9, xp: 2.5, color: 0x6f9d62, knockback: 0.3 },
-  grayMudman: { radius: 22, speed: 100 * ENEMY_SPEED_UNIT, hp: 70, power: 10, damage: 9, xp: 2.5, color: 0x7f8390, knockback: 0.3 },
+  bat: { radius: legacyEnemyRadius(19), speed: 140 * ENEMY_SPEED_UNIT, hp: 1, power: 5, damage: 4, xp: 1, color: 0x8d92b8, knockback: 1 },
+  redBat: { radius: legacyEnemyRadius(25), speed: 140 * ENEMY_SPEED_UNIT, hp: 5, power: 5, damage: 4, xp: 1, color: 0xd15b68, knockback: 1 },
+  redBat2: { radius: legacyEnemyRadius(30), speed: 140 * ENEMY_SPEED_UNIT, hp: 5, power: 5, damage: 4, xp: 1, color: 0xb94364, knockback: 1 },
+  zombie: { radius: legacyEnemyRadius(31), speed: 100 * ENEMY_SPEED_UNIT, hp: 10, power: 10, damage: 9, xp: 1, color: 0x77906f, knockback: 0.8 },
+  skeleton: { radius: legacyEnemyRadius(28), speed: 100 * ENEMY_SPEED_UNIT, hp: 15, power: 10, damage: 9, xp: 2, color: 0xd7d0b3, knockback: 1 },
+  ghost: { radius: legacyEnemyRadius(29), speed: 200 * ENEMY_SPEED_UNIT, hp: 10, power: 5, damage: 4, xp: 1.5, color: 0x72c5d8, knockback: 0 },
+  greenMudman: { radius: legacyEnemyRadius(34), speed: 100 * ENEMY_SPEED_UNIT, hp: 150, power: 10, damage: 9, xp: 2.5, color: 0x6f9d62, knockback: 0.3 },
+  grayMudman: { radius: legacyEnemyRadius(34), speed: 100 * ENEMY_SPEED_UNIT, hp: 70, power: 10, damage: 9, xp: 2.5, color: 0x7f8390, knockback: 0.3 },
   flower: {
-    radius: 15,
+    radius: legacyEnemyRadius(26),
     speed: 20 * ENEMY_SPEED_UNIT,
     hp: 30,
     power: 1,
@@ -156,7 +206,7 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
     knockback: 1,
   },
   glowingBat: {
-    radius: 33,
+    radius: legacyEnemyRadius(27),
     speed: 140 * ENEMY_SPEED_UNIT,
     hp: 50,
     power: 10,
@@ -168,7 +218,7 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
     knockback: 1,
   },
   mantis: {
-    radius: 43,
+    radius: legacyEnemyRadius(48),
     speed: 80 * ENEMY_SPEED_UNIT,
     hp: 500,
     power: 20,
@@ -179,7 +229,8 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
     knockback: 0,
   },
   batSwarm: {
-    radius: 8,
+    // pushEnemy selects the source's BAT1/BAT2/BAT3 frame-specific radius.
+    radius: BAT_SWARM_RADII[0],
     speed: 700 * ENEMY_SPEED_UNIT,
     hp: 1,
     power: 1,
