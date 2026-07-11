@@ -19,13 +19,13 @@ import { ENEMIES, enemyScaling, RUN, type EnemyKind } from './config';
 import type { RunWorld } from './run';
 
 const ENEMY_KINDS: EnemyKind[] = [
-  'swarmer',
-  'tank',
-  'darter',
-  'splitter',
-  'charger',
-  'circler',
-  'shielded',
+  'bat',
+  'zombie',
+  'skeleton',
+  'ghost',
+  'mudman',
+  'werewolf',
+  'mantis',
   'elite',
 ];
 
