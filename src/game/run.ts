@@ -108,8 +108,8 @@ export interface Enemy {
   spin: number;
   /** charger: telegraph countdown; 0 otherwise. */
   windupT: number;
-  /** Regular wave units count toward the periodic cap; bosses and scripted
-   * event formations are allowed to exceed it. */
+  /** Spawn origin. All classes count toward the periodic 300 check; scripted
+   * bosses/events may themselves spawn beyond it up to the 500 hard cap. */
   spawnClass: 'regular' | 'boss' | 'event';
   /** Scripted sweep motion. Zeroes mean normal direct homing. */
   moveX: number;
@@ -351,12 +351,11 @@ export class RunWorld {
     return this.projectiles.length;
   }
 
-  /** Camera zoom: phones render fewer pixels, so the stage scales down to
-   *  keep the visible slice of world (and the spawn ring, and reaction
-   *  time) comparable across screen sizes. 1 on desktop, down to 0.5. */
+  /** Height-normalized parity camera: the visible world is always 800 units
+   * tall, so movement, colliders, Whip geometry, and spawn/event ellipses keep
+   * the researched proportions at every desktop resolution. */
   get zoom(): number {
-    const z = Math.min(this.view.width / 1280, this.view.height / 800);
-    return Math.min(1, Math.max(0.5, z));
+    return Math.max(0.01, this.view.height / 800);
   }
 
   /** Visible world extent (screen pixels divided by zoom). */
@@ -758,8 +757,8 @@ export class RunWorld {
   /** The minute-five enclosure is a slowly closing 100-unit ellipse which
    * disappears after 30 seconds if the player does not break through it. */
   private spawnFlowerWall(count: number, durationS: number): void {
-    const rx = this.worldW * 0.56;
-    const ry = this.worldH * 0.56;
+    const rx = this.worldW * 0.72;
+    const ry = this.worldH * 0.72;
     const start = this.rng() * Math.PI * 2;
     for (let i = 0; i < count && this.enemies.length < MAX_ALIVE_HARD; i++) {
       const a = start + (i / count) * Math.PI * 2;
@@ -818,7 +817,18 @@ export class RunWorld {
       }
     }
     const spawnClass = ENEMIES[kind].boss ? 'boss' : ENEMIES[kind].fixedDirection || kind === 'flower' ? 'event' : 'regular';
-    this.pushEnemy(kind, x, y, spawnClass);
+    let moveX = 0;
+    let moveY = 0;
+    let despawnAt = 0;
+    if (ENEMIES[kind].fixedDirection) {
+      const dx = this.player.x - x;
+      const dy = this.player.y - y;
+      const d = Math.hypot(dx, dy) || 1;
+      moveX = dx / d;
+      moveY = dy / d;
+      despawnAt = this.timeS + 10;
+    }
+    this.pushEnemy(kind, x, y, spawnClass, moveX, moveY, despawnAt);
   }
 
   /** Construct one enemy at (x,y) from immutable bestiary values. Mad Forest
@@ -898,9 +908,10 @@ export class RunWorld {
 
       // Crash knockback overrides everything: ride the push, don't chase.
       if (e.knockT > 0) {
+        const pushDt = Math.min(dt, e.knockT);
         e.knockT -= dt;
-        e.x += e.knockX * dt;
-        e.y += e.knockY * dt;
+        e.x += e.knockX * pushDt;
+        e.y += e.knockY * pushDt;
         continue;
       }
 
@@ -1338,8 +1349,44 @@ export class RunWorld {
   private updateKickStrikes(): void {
     for (let i = this.pendingKick.length - 1; i >= 0; i--) {
       const strike = this.pendingKick[i];
-      if (strike.atS > this.timeS + 1e-9) continue;
-      this.pendingKick.splice(i, 1);
+      if (!strike.started) {
+        if (strike.atS > this.timeS + 1e-9) continue;
+        strike.started = true;
+        strike.expiresAt = this.timeS + 0.2;
+        if (strike.samplePlayer) {
+          strike.x = this.player.x;
+          strike.y = this.player.y;
+          strike.side = this.player.facingX === 1 ? -1 : 1;
+        }
+        if (strike.spawnFollowUp) {
+          // Schedule from the main strip's actual simulation start so fixed
+          // 60 Hz stepping preserves the full 100 ms interval.
+          this.pendingKick.push({
+            atS: this.timeS + 0.1,
+            x: 0,
+            y: 0,
+            side: 1,
+            damage: strike.damage,
+            area: strike.area,
+            yStep: 1,
+            started: false,
+            expiresAt: 0,
+            samplePlayer: true,
+            spawnFollowUp: false,
+          });
+        }
+        this.fx?.push({
+          type: 'whip',
+          x: strike.x,
+          y: strike.y - 28 - strike.yStep * 17.5,
+          side: strike.side,
+          area: strike.area,
+          color: KIT_COLORS.kick,
+        });
+      } else if (this.timeS > strike.expiresAt + 1e-9) {
+        this.pendingKick.splice(i, 1);
+        continue;
+      }
 
       // Legacy Whip proxy normalized to the 800-high reference view:
       // 147x22, center x±64/y-16, then scaled by 800/456.
@@ -1352,26 +1399,29 @@ export class RunWorld {
       for (const e of near) {
         if (
           e.dead ||
-          e.kickReadyAt > strike.atS + 1e-9 ||
+          e.kickReadyAt > this.timeS + 1e-9 ||
           !circleIntersectsRect(e.x, e.y, e.radius, centerX, centerY, halfW, halfH)
         ) {
           continue;
         }
         this.damageEnemy(e, strike.damage, 'kick');
-        e.kickReadyAt = strike.atS + 1.35;
+        e.kickReadyAt = this.timeS + 1.35;
         // Enemy hit response reverses pursuit for the same 120 ms flash,
         // scaled by the source bestiary's knockback multiplier.
-        this.shove(e, strike.x, strike.y, e.speed * 0.12);
+        this.reverseForKick(e, strike.x, strike.y);
       }
-      this.fx?.push({
-        type: 'whip',
-        x: strike.x,
-        y: centerY,
-        side: strike.side,
-        area: strike.area,
-        color: KIT_COLORS.kick,
-      });
     }
+  }
+
+  private reverseForKick(e: Enemy, fromX: number, fromY: number): void {
+    if (e.knockbackMul <= 0) return;
+    if (e.moveX !== 0 || e.moveY !== 0) {
+      e.knockX = -e.moveX * e.speed * e.knockbackMul;
+      e.knockY = -e.moveY * e.speed * e.knockbackMul;
+      e.knockT = SHOVE_S;
+      return;
+    }
+    this.shove(e, fromX, fromY, e.speed * SHOVE_S);
   }
 
   /** Clap: damage every enemy inside a forward cone (also point-blank). */

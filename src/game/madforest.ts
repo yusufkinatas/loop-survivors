@@ -8,7 +8,7 @@ export interface StageWave {
   atS: number;
   /** One spawn attempt creates one of every entry; duplicates are meaningful. */
   pattern: readonly EnemyKind[];
-  /** Live regular-enemy floor. A spawn attempt backfills to this number. */
+  /** Live common-enemy-group floor. Event and boss bodies count while active. */
   minimum: number;
   intervalS: number;
 }
