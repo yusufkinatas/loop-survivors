@@ -17,20 +17,14 @@ import { B, d, m } from '../groove';
 import { CRASH, RISER } from './shared';
 
 export const SOUNDSET_LADDERS: Partial<Record<Role, Chart[]>> = {
-  // Pulse: four-on-the-floor, dead on every beat at EVERY tier. Growth is
-  // soft ghost pickups (the '-' soft-kick variant) only in the last bar of
-  // the phrase, pulling the loop around — never syncopation off the four.
+  // Pulse: four-on-the-floor, dead on every beat at EVERY tier. Kick growth
+  // now comes from Whip-mapped damage/Amount/Area; extra ghost triggers would
+  // also create extra gameplay strips and violate the four-beat contract.
   kick: [
     d('kick', 'X...X...X...X...'),
-    d('kick',
-      'X...X...X...X...', 'X...X...X...X...',
-      'X...X...X...X...', 'X...X...X...X..-'),
-    d('kick',
-      'X...X...X...X...', 'X...X...X...X...',
-      'X...X...X...X...', 'X...X...X...X.--'),
-    d('kick',
-      'X...X...X...X...', 'X...X...X...X..-',
-      'X...X...X...X...', 'X...X...X..-X.--'),
+    d('kick', 'X...X...X...X...'),
+    d('kick', 'X...X...X...X...'),
+    d('kick', 'X...X...X...X...'),
   ],
   // Backbeat: the wide clap locked to steps 4 and 12 (beats 2 & 4) at every
   // tier. Growth is the classic Chicago extra clap on step 15 pulling into

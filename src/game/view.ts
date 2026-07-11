@@ -10,7 +10,7 @@ import { RUN } from './config';
 import type { Enemy, FxEvent, Gem, Projectile, RunWorld, Shock, Zone } from './run';
 
 // Projectile trails (pure view): only these low-count roles trail, so the
-// per-frame work stays independent of the 2400-enemy horde. Hat (can be
+// per-frame work stays independent of the capped horde. Hat (can be
 // hundreds) and arp/bass are deliberately excluded.
 const TRAIL_ROLES = new Set<Role>(['snare', 'lead', 'tom']);
 const TRAIL_LEN = 6; // points kept per trail
@@ -34,7 +34,7 @@ function cachedShape(key: string, draw: (ctx: GraphicsContext) => void): Graphic
 
 // Shared glow language (D4): an entity's solid fill (batched by cachedShape)
 // plus an optional additive glow child. Only bounded-count entities (player,
-// gems, elites, low-count roles, fx) take a glow — the 2400-strong horde stays
+// gems, elites, low-count roles, fx) take a glow — the horde stays
 // flat to preserve GPU batching.
 export const GLOW = { alpha: 0.28, scale: 1.8, blend: 'add' as const };
 export function makeGlow(radius: number, color: number): Graphics {
@@ -50,6 +50,114 @@ interface Pop {
   t: number;
   dur: number;
   grow: number;
+  /** Deaths redraw one bounded, batched square-fragment burst as it disperses. */
+  death?: DeathBurst;
+  /** Whip holds at full opacity for 100 ms, then fades for 100 ms. */
+  holdHalf?: boolean;
+}
+
+interface DeathFragment {
+  x: number;
+  y: number;
+  dx: number;
+  dy: number;
+  size: number;
+}
+
+interface DeathBurst {
+  radius: number;
+  elite: boolean;
+  fragments: DeathFragment[];
+}
+
+/** A mass clear can kill hundreds in one frame. Keep death juice satisfying
+ * near the player without turning it into the new horde-sized render cost. */
+const DEATH_BURST_CAP = 80;
+const REGULAR_DEATH_BURST_CAP = 72; // reserve a few slots for rare elite finishes
+
+/** The sim sends Whip's VS-style Area multiplier (1 = 258 x 39 in this
+ * reference view). Object forms remain accepted for sandbox visual probes. */
+function whipDimensions(area: unknown): { width: number; height: number; offset: number } {
+  if (typeof area === 'number' && Number.isFinite(area)) {
+    const scale = Math.max(0.1, area);
+    return { width: 258 * scale, height: 39 * scale, offset: 112 };
+  }
+  const a = area && typeof area === 'object' ? (area as Record<string, unknown>) : {};
+  const num = (...keys: string[]): number | undefined => {
+    for (const key of keys) {
+      const value = a[key];
+      if (typeof value === 'number' && Number.isFinite(value)) return value;
+    }
+    return undefined;
+  };
+  const width = Math.max(24, num('width', 'w', 'reach') ?? 150);
+  const height = Math.max(12, num('height', 'h', 'thickness') ?? width * 0.28);
+  const offset = Math.max(0, num('offset', 'offsetX', 'start') ?? 12);
+  return { width, height, offset };
+}
+
+function makeDeathBurst(
+  radius: number,
+  color: number,
+  elite: boolean,
+): { gfx: Graphics; burst: DeathBurst } {
+  const fragments: DeathFragment[] = [];
+  const count = elite
+    ? Math.min(38, Math.max(26, Math.round(radius)))
+    : Math.min(20, Math.max(11, Math.round(radius * 0.9)));
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const startR = radius * (0.12 + Math.random() * 0.62);
+    const travel = radius * (elite ? 2 + Math.random() * 1.7 : 1.5 + Math.random() * 1.5);
+    fragments.push({
+      x: Math.cos(angle) * startR,
+      y: Math.sin(angle) * startR,
+      dx: Math.cos(angle) * travel,
+      dy: Math.sin(angle) * travel,
+      size: Math.max(2.5, Math.min(elite ? 8 : 6, radius * (0.18 + Math.random() * 0.14))),
+    });
+  }
+  const burst = { radius, elite, fragments };
+  const gfx = new Graphics();
+  gfx.tint = color;
+  if (elite) gfx.blendMode = 'add';
+  redrawDeathBurst(gfx, burst, 0);
+  return { gfx, burst };
+}
+
+/** Redraw a whole vanish into one Graphics: the center collapses into square
+ * cells while its fragments move outward and shrink. */
+function redrawDeathBurst(gfx: Graphics, burst: DeathBurst, k: number): void {
+  gfx.clear();
+  const coreK = Math.max(0, 1 - k * 1.7);
+  if (coreK > 0) {
+    const r = burst.radius * coreK;
+    const cell = Math.max(1.5, r * 0.48);
+    for (const [x, y] of [
+      [0, 0],
+      [-0.52, 0],
+      [0.52, 0],
+      [0, -0.52],
+      [0, 0.52],
+    ] as const) {
+      gfx.rect(x * r - cell / 2, y * r - cell / 2, cell, cell);
+    }
+    gfx.fill({ color: 0xffffff, alpha: 0.9 });
+    gfx.rect(-r * 0.85, -r * 0.85, r * 1.7, r * 1.7)
+      .stroke({ width: burst.elite ? 3 : 1.5, color: 0xffffff, alpha: 0.65 });
+    if (burst.elite) {
+      gfx.rect(-r, -r, r * 2, r * 2).stroke({ width: 2.5, color: 0xffffff, alpha: 0.8 });
+    }
+  }
+
+  const travelK = 1 - (1 - k) * (1 - k);
+  for (const f of burst.fragments) {
+    const size = Math.max(0.8, f.size * (1 - k * 0.72));
+    const x = f.x + f.dx * travelK;
+    const y = f.y + f.dy * travelK;
+    gfx.rect(x - size / 2, y - size / 2, size, size);
+  }
+  gfx.fill({ color: 0xffffff, alpha: burst.elite ? 1 : 0.9 });
 }
 
 /** A floating damage number: rises and fades where a hit landed. */
@@ -60,6 +168,10 @@ interface Floater {
   t: number;
   dur: number;
   vy: number;
+}
+
+interface GemGfx extends Container {
+  __tier: Gem['tier'];
 }
 
 // Damage numbers stay a quiet layer of feedback, not a wall of text: a hard cap
@@ -91,8 +203,9 @@ export class RunView {
   private projectileGfx = new Map<Projectile, Graphics>();
   private zoneGfx = new Map<Zone, Graphics>();
   private shockGfx = new Map<Shock, Graphics>();
-  private gemGfx = new Map<Gem, Container>();
+  private gemGfx = new Map<Gem, GemGfx>();
   private pops: Pop[] = [];
+  private deathBurstCount = 0;
   private floaters: Floater[] = [];
   private live = new Set<object>();
 
@@ -161,6 +274,16 @@ export class RunView {
     const cullW = this.world.worldW / 2 + 40;
     const cullH = this.world.worldH / 2 + 40;
     this.sync(this.world.gems, this.gemGfx, makeGemGfx, (g, gfx) => {
+      // Once the 400-ground-gem cap is reached, one existing pickup becomes
+      // the red overflow gem. Rebuild its tiny cached visual when that tier
+      // mutation happens; position-only syncing would leave it blue forever.
+      if (gfx.__tier !== g.tier) {
+        const fresh = makeGemGfx(g);
+        gfx.destroy({ children: true });
+        this.gemGfx.set(g, fresh);
+        this.stage.addChild(fresh);
+        gfx = fresh;
+      }
       const visible = Math.abs(g.x - p.x) < cullW && Math.abs(g.y - p.y) < cullH;
       gfx.renderable = visible;
       if (visible) gfx.position.set(g.x, g.y);
@@ -206,6 +329,7 @@ export class RunView {
     this.shockGfx.clear();
     this.gemGfx.clear();
     this.pops.length = 0;
+    this.deathBurstCount = 0;
     for (const f of this.floaters) f.txt.destroy();
     this.floaters.length = 0;
     this.trails.clear();
@@ -214,8 +338,8 @@ export class RunView {
   }
 
   private syncEnemies(): void {
-    // culling: the horde can be 2400 strong while ~300 fit on screen; the
-    // rest skip rendering entirely (the sim is untouched, they still chase)
+    // culling: event rows can push the 300-enemy periodic cap toward the 500
+    // hard cap; off-screen units stay simulated but skip draw updates.
     const p = this.world.player;
     const cullW = this.world.worldW / 2 + 80;
     const cullH = this.world.worldH / 2 + 80;
@@ -233,7 +357,12 @@ export class RunView {
       if (!visible) continue;
       gfx.position.set(e.x, e.y);
       gfx.tint = e.flashT > 0 ? 0xffffff : e.color;
-      if ((e.kind === 'darter' || e.kind === 'charger') && (e.dashX !== 0 || e.dashY !== 0)) {
+      if (e.kind === 'batSwarm' && (e.moveX !== 0 || e.moveY !== 0)) {
+        gfx.rotation = Math.atan2(e.moveY, e.moveX);
+      } else if (
+        (e.kind === 'darter' || e.kind === 'charger') &&
+        (e.dashX !== 0 || e.dashY !== 0)
+      ) {
         gfx.rotation = Math.atan2(e.dashY, e.dashX);
       }
       // Shield break: a Graphics's shape is fixed at creation, so swap the
@@ -339,6 +468,31 @@ export class RunView {
         this.pops.push({ gfx, t: 0, dur: 0.16, grow: 0 });
         break;
       }
+      case 'whip': {
+        // Kick's Whip-style hit: a short horizontal strip, with the translucent
+        // body showing the real damage footprint and three bright vector rails
+        // selling the snap without introducing a sprite asset.
+        const { width, height, offset } = whipDimensions(fx.area);
+        const centerX = fx.side * offset;
+        const left = centerX - width / 2;
+        const innerX = fx.side === 1 ? left : left + width;
+        const outerX = fx.side === 1 ? left + width : left;
+        const gfx = new Graphics()
+          .roundRect(left, -height / 2, width, height, Math.min(6, height / 3))
+          .fill({ color: 0xffffff, alpha: 0.16 });
+        for (const y of [-0.3, 0, 0.3]) {
+          gfx.moveTo(innerX, height * y).lineTo(outerX, height * y - fx.side * height * 0.08);
+        }
+        gfx.stroke({ width: 2.5, color: 0xffffff, alpha: 0.9 });
+        // A square cap makes the strike read as the same clean vector language
+        // as projectiles and the new enemy silhouettes.
+        gfx.rect(outerX - 3, -3, 6, 6).fill({ color: 0xffffff, alpha: 0.9 });
+        gfx.tint = fx.color;
+        gfx.position.set(fx.x, fx.y);
+        this.stage.addChild(gfx);
+        this.pops.push({ gfx, t: 0, dur: 0.2, grow: 0, holdHalf: true });
+        break;
+      }
       case 'shake':
         // Firing is deterministic (a sim event); the decay reads world.timeS.
         this.shakes.push({ start: this.world.timeS, mag: fx.mag, dur: fx.dur });
@@ -388,16 +542,28 @@ export class RunView {
         this.floaters.push({ txt, x, y: fx.y, t: 0, dur: DMG_DUR, vy: DMG_RISE });
         break;
       }
-      default: {
-        // pop: a fading disc where something died
-        const gfx = new Graphics().circle(0, 0, fx.radius).fill(0xffffff);
-        gfx.tint = 0xcfd2e0;
+      case 'death': {
+        if (this.deathBurstCount >= DEATH_BURST_CAP) break;
+        if (!fx.elite && this.deathBurstCount >= REGULAR_DEATH_BURST_CAP) break;
+        // Deaths outside the camera do not need particles. Elites get a little
+        // extra padding so their larger burst can begin just beyond an edge.
+        const p = this.world.player;
+        const pad = fx.elite ? fx.radius * 3 : fx.radius * 2;
+        if (Math.abs(fx.x - p.x) > this.world.worldW / 2 + pad) break;
+        if (Math.abs(fx.y - p.y) > this.world.worldH / 2 + pad) break;
+
+        const { gfx, burst } = makeDeathBurst(fx.radius, fx.color, fx.elite);
         gfx.position.set(fx.x, fx.y);
         this.stage.addChild(gfx);
-        this.pops.push({ gfx, t: 0, dur: 0.22, grow: 1.8 });
-        // Bigger deaths (tanks, elites) throw a small spark burst.
-        if (fx.radius > 16)
-          this.spawnFx({ type: 'spark', x: fx.x, y: fx.y, color: 0xcfd2e0, n: 4, spread: 14 });
+        this.pops.push({
+          gfx,
+          t: 0,
+          dur: fx.elite ? 0.62 : 0.42,
+          grow: 0,
+          death: burst,
+        });
+        this.deathBurstCount++;
+        break;
       }
     }
   }
@@ -425,12 +591,18 @@ export class RunView {
       p.t += dt;
       const k = p.t / p.dur;
       if (k >= 1) {
+        if (p.death) this.deathBurstCount--;
         p.gfx.destroy();
         this.pops.splice(i, 1);
         continue;
       }
-      p.gfx.alpha = 1 - k;
-      if (p.grow > 0) p.gfx.scale.set(0.2 + (p.grow - 0.2) * k);
+      if (p.death) {
+        redrawDeathBurst(p.gfx, p.death, k);
+        p.gfx.alpha = Math.pow(1 - k, 0.7);
+      } else {
+        p.gfx.alpha = p.holdHalf ? (k < 0.5 ? 1 : (1 - k) * 2) : 1 - k;
+        if (p.grow > 0) p.gfx.scale.set(0.2 + (p.grow - 0.2) * k);
+      }
     }
   }
 
@@ -543,6 +715,217 @@ function enemyContext(e: Enemy, shieldOn: boolean): GraphicsContext {
   const shieldKey = e.kind === 'shielded' ? (shieldOn ? ':1' : ':0') : '';
   return cachedShape(`enemy:${e.kind}:${e.band}:${radius}${shieldKey}`, (g) => {
     switch (e.kind) {
+      case 'bat':
+        // Two soft angular wings around a narrow body: readable even in a
+        // dense flock, without needing to animate individual wing nodes.
+        g.poly([
+          -radius * 0.12, -radius * 0.2,
+          -radius * 1.35, -radius * 0.82,
+          -radius * 0.9, radius * 0.08,
+          -radius * 1.15, radius * 0.78,
+          -radius * 0.12, radius * 0.35,
+        ]).fill(0xffffff);
+        g.poly([
+          radius * 0.12, -radius * 0.2,
+          radius * 1.35, -radius * 0.82,
+          radius * 0.9, radius * 0.08,
+          radius * 1.15, radius * 0.78,
+          radius * 0.12, radius * 0.35,
+        ]).fill(0xffffff);
+        g.ellipse(0, radius * 0.08, radius * 0.28, radius * 0.72).fill(0xffffff);
+        break;
+      case 'redBat':
+      case 'redBat2':
+        // Jagged wings and pointed ears distinguish the tougher red bat by
+        // silhouette as well as tint.
+        g.poly([
+          0, -radius * 0.1,
+          -radius * 0.7, -radius * 0.95,
+          -radius * 1.5, -radius * 0.45,
+          -radius * 1.02, radius * 0.05,
+          -radius * 1.42, radius * 0.72,
+          -radius * 0.35, radius * 0.45,
+          0, radius * 0.75,
+          radius * 0.35, radius * 0.45,
+          radius * 1.42, radius * 0.72,
+          radius * 1.02, radius * 0.05,
+          radius * 1.5, -radius * 0.45,
+          radius * 0.7, -radius * 0.95,
+        ]).fill(0xffffff);
+        g.poly([
+          -radius * 0.34, -radius * 0.52,
+          -radius * 0.18, -radius * 1.05,
+          0, -radius * 0.58,
+          radius * 0.18, -radius * 1.05,
+          radius * 0.34, -radius * 0.52,
+        ]).fill(0xffffff);
+        g.circle(-radius * 0.16, -radius * 0.35, radius * 0.08).fill(0x101014);
+        g.circle(radius * 0.16, -radius * 0.35, radius * 0.08).fill(0x101014);
+        if (e.kind === 'redBat2') {
+          g.moveTo(-radius * 1.05, radius * 0.05)
+            .lineTo(-radius * 0.55, radius * 0.2)
+            .moveTo(radius * 1.05, radius * 0.05)
+            .lineTo(radius * 0.55, radius * 0.2)
+            .stroke({ width: 2, color: 0x101014, alpha: 0.8 });
+        }
+        break;
+      case 'zombie':
+        // Blocky leaning humanoid: square shoulders, uneven arms and legs.
+        g.circle(0, -radius * 0.58, radius * 0.36).fill(0xffffff);
+        g.roundRect(-radius * 0.48, -radius * 0.3, radius * 0.96, radius * 1.15, radius * 0.18)
+          .fill(0xffffff);
+        g.poly([
+          -radius * 0.35, -radius * 0.15,
+          -radius * 1.05, radius * 0.18,
+          -radius * 0.92, radius * 0.42,
+          -radius * 0.22, radius * 0.18,
+        ]).fill(0xffffff);
+        g.poly([
+          radius * 0.35, -radius * 0.12,
+          radius * 1.08, radius * 0.42,
+          radius * 0.9, radius * 0.62,
+          radius * 0.2, radius * 0.2,
+        ]).fill(0xffffff);
+        g.rect(-radius * 0.43, radius * 0.55, radius * 0.3, radius * 0.62).fill(0xffffff);
+        g.rect(radius * 0.12, radius * 0.55, radius * 0.3, radius * 0.62).fill(0xffffff);
+        break;
+      case 'skeleton':
+        // Hollow skull plus explicit ribs/limbs stays legible against the
+        // zombie's solid body, even when both are near-white.
+        g.circle(0, -radius * 0.62, radius * 0.38).stroke({ width: 2.5, color: 0xffffff });
+        g.circle(-radius * 0.13, -radius * 0.66, radius * 0.07).fill(0xffffff);
+        g.circle(radius * 0.13, -radius * 0.66, radius * 0.07).fill(0xffffff);
+        g.moveTo(0, -radius * 0.25).lineTo(0, radius * 0.62);
+        for (const y of [-0.12, 0.1, 0.32]) {
+          g.moveTo(-radius * 0.38, radius * y).lineTo(radius * 0.38, radius * y);
+        }
+        g.moveTo(-radius * 0.12, -radius * 0.05).lineTo(-radius * 0.8, radius * 0.42);
+        g.moveTo(radius * 0.12, -radius * 0.05).lineTo(radius * 0.8, radius * 0.42);
+        g.moveTo(0, radius * 0.55).lineTo(-radius * 0.48, radius * 1.05);
+        g.moveTo(0, radius * 0.55).lineTo(radius * 0.48, radius * 1.05);
+        g.stroke({ width: 2.5, color: 0xffffff });
+        break;
+      case 'ghost':
+        // Rounded head and a three-point floating tail, with empty eyes.
+        g.circle(0, -radius * 0.18, radius * 0.78).fill(0xffffff);
+        g.poly([
+          -radius * 0.78, -radius * 0.1,
+          -radius * 0.72, radius * 0.85,
+          -radius * 0.32, radius * 0.55,
+          0, radius * 0.94,
+          radius * 0.32, radius * 0.55,
+          radius * 0.72, radius * 0.85,
+          radius * 0.78, -radius * 0.1,
+        ]).fill(0xffffff);
+        g.ellipse(-radius * 0.24, -radius * 0.28, radius * 0.1, radius * 0.18).fill(0x101014);
+        g.ellipse(radius * 0.24, -radius * 0.28, radius * 0.1, radius * 0.18).fill(0x101014);
+        break;
+      case 'greenMudman':
+        // A tall mound assembled from overlapping blobs, with a heavy base.
+        g.circle(-radius * 0.32, -radius * 0.12, radius * 0.56).fill(0xffffff);
+        g.circle(radius * 0.32, -radius * 0.22, radius * 0.62).fill(0xffffff);
+        g.circle(0, -radius * 0.55, radius * 0.48).fill(0xffffff);
+        g.ellipse(0, radius * 0.38, radius * 0.88, radius * 0.58).fill(0xffffff);
+        g.circle(-radius * 0.18, -radius * 0.52, radius * 0.08).fill(0x101014);
+        g.circle(radius * 0.18, -radius * 0.52, radius * 0.08).fill(0x101014);
+        break;
+      case 'grayMudman':
+        // Squatter, angular mud mass; fracture lines separate it from green's
+        // round stacked silhouette.
+        g.poly([
+          -radius * 0.95, radius * 0.62,
+          -radius * 0.82, -radius * 0.2,
+          -radius * 0.42, -radius * 0.74,
+          0, -radius * 0.52,
+          radius * 0.38, -radius * 0.82,
+          radius * 0.88, -radius * 0.12,
+          radius, radius * 0.62,
+        ]).fill(0xffffff);
+        g.moveTo(-radius * 0.45, -radius * 0.18)
+          .lineTo(-radius * 0.08, radius * 0.1)
+          .lineTo(-radius * 0.28, radius * 0.5);
+        g.moveTo(radius * 0.48, -radius * 0.34)
+          .lineTo(radius * 0.12, radius * 0.02)
+          .lineTo(radius * 0.35, radius * 0.4);
+        g.stroke({ width: 2, color: 0x101014, alpha: 0.75 });
+        break;
+      case 'flower': {
+        // Six petals around a dark seed: unmistakable in the enclosing wall.
+        for (let i = 0; i < 6; i++) {
+          const a = (i / 6) * Math.PI * 2;
+          g.circle(Math.cos(a) * radius * 0.57, Math.sin(a) * radius * 0.57, radius * 0.43)
+            .fill(0xffffff);
+        }
+        g.circle(0, 0, radius * 0.4).fill(0x101014);
+        g.circle(0, 0, radius * 0.17).fill(0xffffff);
+        break;
+      }
+      case 'glowingBat':
+        // Elite bat: broad crown-like wings inside a bright objective ring.
+        g.circle(0, 0, radius * 1.08).stroke({ width: 3.5, color: 0xffffff, alpha: 0.75 });
+        g.poly([
+          0, -radius * 0.25,
+          -radius * 0.5, -radius * 0.82,
+          -radius * 1.25, -radius * 0.65,
+          -radius * 0.88, 0,
+          -radius * 1.18, radius * 0.68,
+          -radius * 0.28, radius * 0.42,
+          0, radius * 0.82,
+          radius * 0.28, radius * 0.42,
+          radius * 1.18, radius * 0.68,
+          radius * 0.88, 0,
+          radius * 1.25, -radius * 0.65,
+          radius * 0.5, -radius * 0.82,
+        ]).fill(0xffffff);
+        g.circle(0, 0, radius * 0.25).fill(0x101014);
+        g.circle(0, 0, radius * 0.1).fill(0xffffff);
+        break;
+      case 'mantis':
+        // Tall segmented body and two oversized hooked forearms communicate
+        // boss danger without relying on color alone.
+        g.poly([
+          0, -radius,
+          -radius * 0.38, -radius * 0.58,
+          -radius * 0.2, -radius * 0.26,
+          radius * 0.2, -radius * 0.26,
+          radius * 0.38, -radius * 0.58,
+        ]).fill(0xffffff);
+        g.ellipse(0, radius * 0.22, radius * 0.24, radius * 0.72).fill(0xffffff);
+        g.poly([
+          -radius * 0.15, -radius * 0.3,
+          -radius * 1.1, -radius * 0.72,
+          -radius * 0.72, radius * 0.05,
+          -radius * 1.22, radius * 0.52,
+          -radius * 0.52, radius * 0.18,
+        ]).fill(0xffffff);
+        g.poly([
+          radius * 0.15, -radius * 0.3,
+          radius * 1.1, -radius * 0.72,
+          radius * 0.72, radius * 0.05,
+          radius * 1.22, radius * 0.52,
+          radius * 0.52, radius * 0.18,
+        ]).fill(0xffffff);
+        g.moveTo(-radius * 0.12, radius * 0.4).lineTo(-radius * 0.75, radius * 0.95);
+        g.moveTo(radius * 0.12, radius * 0.4).lineTo(radius * 0.75, radius * 0.95);
+        g.stroke({ width: 3, color: 0xffffff });
+        g.circle(0, radius * 0.08, radius * 0.12).fill(0x101014);
+        break;
+      case 'batSwarm':
+        // A flattened arrow-bat with rear speed marks; the view rotates it to
+        // its fixed sweep direction in syncEnemies.
+        g.poly([
+          radius * 1.45, 0,
+          radius * 0.2, -radius * 0.38,
+          -radius * 0.4, -radius * 0.88,
+          -radius * 0.2, 0,
+          -radius * 0.4, radius * 0.88,
+          radius * 0.2, radius * 0.38,
+        ]).fill(0xffffff);
+        for (const y of [-0.42, 0, 0.42]) {
+          g.moveTo(-radius * 0.42, radius * y).lineTo(-radius * 1.25, radius * y);
+        }
+        g.stroke({ width: 1.5, color: 0xffffff, alpha: 0.65 });
+        break;
       case 'tank':
         g.rect(-radius, -radius, radius * 2, radius * 2).fill(0xffffff);
         break;
@@ -601,9 +984,10 @@ function makeEnemyGfx(e: Enemy): Graphics {
   const shieldOn = e.shieldHp > 0;
   const gfx = new Graphics(enemyContext(e, shieldOn)) as ShieldGfx;
   gfx.tint = e.color;
+  if (e.kind === 'ghost') gfx.alpha = 0.78;
   if (e.kind === 'shielded') gfx.__shield = shieldOn;
   // Enemies stay flat cachedShape Graphics (no child nodes) to keep GPU
-  // batching intact across the 2400-strong horde and to preserve the per-frame
+  // batching intact across the capped horde and to preserve the per-frame
   // hit-flash tint. Elites read as elite through size, the hottest band color,
   // and the dark core — no glow child (which Pixi v8 disallows on a Graphics).
   return gfx;
@@ -714,20 +1098,31 @@ function makeZoneGfx(z: Zone): Graphics {
   return gfx;
 }
 
-function makeGemGfx(g: Gem): Container {
-  // Signal-tinted diamond with a dark core, plus a faint additive glow bead so
-  // XP reads as "energy". A Container holds the (tinted, shared-context) body
-  // and the glow — Pixi v8 only allows children on Containers, and gems are
-  // bounded/culled so the extra node is cheap.
-  const ctx = cachedShape('gem', (c) => {
-    c.rect(-4, -4, 8, 8).fill(0xffffff).rect(-1.5, -1.5, 3, 3).fill(0x0a0b0f);
+function makeGemGfx(g: Gem): GemGfx {
+  // VS-value tiers at a glance: blue is the small common drop, green is the
+  // mid-value gem, red is the large prize. Geometry remains the game's clean
+  // vector diamond and each tier shares one cached context.
+  const style =
+    g.tier === 'red'
+      ? { size: 7, color: 0xff596f, glow: 11, glowAlpha: 0.45 }
+      : g.tier === 'green'
+        ? { size: 5.5, color: 0x69e786, glow: 8.5, glowAlpha: 0.38 }
+        : { size: 4.25, color: 0x62a8ff, glow: 6.5, glowAlpha: 0.32 };
+  const ctx = cachedShape(`gem:${g.tier}`, (c) => {
+    const s = style.size;
+    c.poly([0, -s, s, 0, 0, s, -s, 0]).fill(0xffffff);
+    c.poly([0, -s * 0.34, s * 0.34, 0, 0, s * 0.34, -s * 0.34, 0]).fill(0x0a0b0f);
+    if (g.tier === 'red') {
+      c.poly([0, -s * 1.25, s * 1.25, 0, 0, s * 1.25, -s * 1.25, 0])
+        .stroke({ width: 1.5, color: 0xffffff, alpha: 0.55 });
+    }
   });
   const body = new Graphics(ctx);
-  body.tint = 0x59ffd1;
-  body.rotation = Math.PI / 4;
-  const glow = makeGlow(6, 0x59ffd1);
-  glow.alpha = 0.35;
-  const c = new Container();
+  body.tint = style.color;
+  const glow = makeGlow(style.glow, style.color);
+  glow.alpha = style.glowAlpha;
+  const c = new Container() as GemGfx;
+  c.__tier = g.tier;
   c.addChild(glow, body);
   c.position.set(g.x, g.y);
   return c;

@@ -1,8 +1,27 @@
 # Project Status
 
-Last updated: July 10, 2026
+Last updated: July 11, 2026
 
-## Latest change (July 10, 2026) — the overhaul (branch `overhaul-weapons-enemies-ui`, PR open)
+## Latest change (July 11, 2026) — Mad Forest parity rework in progress
+
+The developer explicitly authorized a mechanical parity pass focused on
+Vampire Survivors' Mad Forest: movement weight, enemy roster/stats/contact,
+the first eight minutes of wave events, XP/gems, tighter AoE, a Whip-like Kick,
+and a satisfying original enemy vanish. The game's own weapons, audio identity,
+and vector visual style remain. The dated spec amendment is in
+`docs/phases/overhaul-2026-07.md`; the version-pinned evidence and all
+exact-vs-inference labels are in `docs/research/mad-forest-reference.md`.
+
+The rework is being implemented on branch `vs-attempt-codex`. The adopted
+eight-minute slice plays source minutes 0–7 and resolves before the 8:00 wave.
+The Kick keeps an audible/gameplay strip every 122 BPM beat for Model A, with a
+shared 1.35 s per-target re-hit lock to approximate Whip's damage cadence.
+Boss any-chest odds are preserved as direct project-native upgrade-pick odds;
+no chest/evolution UI was imported. **Implementation is complete and
+engineering verification is clean. No developer gate has passed; the result
+is awaiting the developer's ear/eye/hands.**
+
+## Previous change (July 10, 2026) — the overhaul (branch `overhaul-weapons-enemies-ui`, PR open)
 
 A four-part overhaul at the developer's direction, decisions logged in
 `docs/phases/overhaul-2026-07.md`, fully autonomous (never gated mid-build).
@@ -49,7 +68,11 @@ ladders, samples) is kept. See the History entry below for the full teardown.
 
 ## Current phase
 
-**The band — sub-phases B AND C implemented, awaiting a combined gate B+C (the developer's ear/hands).** A grilling session locked the band slot system (`docs/phases/the-band.md`): eight typed band-position slots (Pulse, Backbeat, Hats, Motion, FX, Bass, Harmony, Melody), one instrument per slot, permanent picks, a 24-instrument catalog. Sub-phase A (the system on today's twelve instruments) is built and **passed**. Sub-phase B added the first six damage hires — rimshot, heartbeat, shaker, acid, pluck bass, Rhodes — committed on `main` (`affe831`, `124cc99`, `023c30e`). **Sub-phase C is now built (uncommitted on `main`)**: the last six instruments — ride (Hats, the **freeze weapon**), riser (FX, the **auto-dash**), reese (Bass, a grinding wall), choir pad (Harmony, a pulsing orb), bell (Melody, shatters into shards), whistle (Melody, tags an enemy that pops a beat later) — plus the two new gameplay systems (a freeze status and an auto-dash hook). Per the developer's instruction, sub-phase B's gate was skipped and C built on top so both are judged together at one gate. The catalog is now complete at 24 instruments (8 slots × 3).
+**July 11 parity rework — explicitly authorized, implementation complete,
+awaiting a dedicated developer hands gate.** This is an addendum to the July 10
+overhaul, not a claim that the older band B+C gate passed. The historical band
+work and ledger below are retained for context, but they are not the current
+next action after the catalog cut and parity directive.
 
 ## What was built (July 6)
 
@@ -65,7 +88,10 @@ ladders, samples) is kept. See the History entry below for the full teardown.
 - Chrome: genre-select and weapon-select screens render; a live Hip-Hop run confirms bpm 140 / swing 0.1 / powerMul 0.8 applied; all twelve weapons' render paths (clap arc, zap bolt, crash shockwave, arp orbiters, tom boomerangs, cowbell diamonds) draw with zero console errors; rehearsal room loads all twelve voices; the Experimentation room (`#tracklab`) plays.
 - **Gate: the developer's ear and hands** — does each genre sound like itself and good, do the twelve weapons feel distinct muted, is a genre worth replaying as a character.
 
-## Gate ledger (the band)
+## Historical gate ledger (the band)
+
+This ledger records the pre-overhaul band phase. It does not supersede the
+current July 11 parity gate.
 
 | Gate | Status |
 |---|---|
@@ -78,19 +104,22 @@ Gate A also implicitly co-judged the July 6 genres-and-weapons material it stack
 
 ## Next action
 
-**Combined developer gate B+C** on all twelve new hires (dev server: `npm run dev`; the sandbox loadout lists all 24 instruments so any hire can be force-assembled at any tier, and the weapon-select screen offers the full catalog with slot badges). Judge by ear/hands:
-- **Sub-phase B (six damage hires):** heartbeat's soft low lub-dub, shaker's sizzle, acid's squelch, pluck's round bomp, Rhodes' warm keys, rimshot's woody tock. Does each starving slot's choice feel like a real fork.
-- **Sub-phase C (six last hires + two systems):** ride's bright metallic ring (**does the freeze feel good and fair**), riser's reversed-cymbal swell (**does the auto-dash feel like the sound moving you**), reese's growl, choir pad's airy "aah", bell's music-box shatter, whistle's sung tag-and-pop. Do the two utility weapons (ride, riser) feel worth a band slot. Does anything sound cheap (ride and choir are the flagged synthesis risks — swap to CC0 if the ear rejects them).
+Run the manual eight-minute playtest and sandbox for the actual gate. TypeScript,
+the production build, deterministic parity assertions, bot smoke/batches, and
+browser visual checks are clean. The developer now judges:
 
-Flags surfaced (not auto-tuned, per the no-equalization doctrine — the developer's call):
-1. **acid reads strong** (63–72% focus damage share, from sub-phase B).
-2. **reese and choir read strong** as focus builds (61–68% share) — they concentrate/hold packs; watch the mix.
-3. **Ride and riser cannot bootstrap a solo build** (avg level 1.0 in the bot: token damage can't earn XP to ever get a second weapon). Riser is safe — it's barred from the starting offer (FX rule 5). **Ride is NOT barred and can be chosen as a starting weapon**, where it stalls the whole run. Consider barring ride from the start offer too (a one-line change, but a spec deviation needing your sign-off), or leave it as a "support-only" trap the player owns.
-4. A **pre-existing** same-class bug the review found in sub-phase B: rimshot and shaker carry a `'count'` capability tag that makes the Split modifier an offered-but-no-op pick (it does nothing for them). Left untouched (B scope); flag for a cheap follow-up fix if you want. Bell had the same issue in C and was fixed here.
+- whether manual movement, collision, and contact danger have the first-level
+  Vampire Survivors weight;
+- whether minutes 0–7 produce the right density, breathers, sweeps, flower
+  enclosure, elites, XP, and pick cadence;
+- whether Kick's facing strips, opposite-side follow-up, damage, per-target
+  lock, and small footprint feel like the Whip despite the Model A compromise;
+- whether every other AoE is disciplined on the new scale; and
+- whether enemy/elite reads and the original vanish effect make kills clear
+  and satisfying.
 
-On a pass, the phase verdict protocol runs (M4 grilling next). On a fail, rework loops within the sub-phase the failure points to.
-
-**Note:** sub-phase C is engineering-verified but **uncommitted on `main`** (per the harness rule of committing only when asked). Say the word and it will be committed alongside sub-phase B.
+A pass or fail must be recorded here explicitly. Until then, this rework is
+**awaiting developer**, regardless of bot or browser results.
 
 ## Side branch: per-genre sound (`audio-refresh`)
 

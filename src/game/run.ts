@@ -21,8 +21,6 @@ import {
   CIRCLER,
   DARTER,
   ENEMIES,
-  ENEMY_BANDS,
-  enemyScaling,
   FLASH,
   KNOCK_S,
   MAX_ALIVE_HARD,
@@ -32,7 +30,6 @@ import {
   SHIELDED,
   SHOCK_BAND,
   SHOVE_S,
-  SPAWN_DIRECTOR,
   SPLITTER,
   VARIANT_EFFECTS,
   WEAPON_SHOVE,
@@ -40,19 +37,45 @@ import {
   ZONE_SLOW_MUL,
   ZONE_THROW_RANGE,
   ZONE_TICK_S,
+  madForestEnemyStats,
+  xpPickupMultiplier,
+  xpForNextLevel,
   type EnemyKind,
-  type Formation,
   type WeaponConf,
 } from './config';
 import { dcos, dsin } from './dmath';
+import {
+  STAGE_EVENTS,
+  STAGE_STARTING_SPAWNS,
+  STAGE_WAVES,
+  type StageWave,
+} from './madforest';
 import type { Rng } from './rng';
 import { SpatialHash, circlesOverlap } from './spatial';
 
 /** Roles that emit a per-hit spark on impact. Bounded to low-count roles so
- *  the 2400-enemy frame never floods the fx queue (Feature 3). */
+ *  a 500-enemy event frame never floods the fx queue. */
 const SPARK_HIT_ROLES = new Set<Role>(['snare', 'lead', 'tom']);
 
+/** Circle versus axis-aligned rectangle, exported for parity regression tests. */
+export function circleIntersectsRect(
+  cx: number,
+  cy: number,
+  radius: number,
+  rx: number,
+  ry: number,
+  halfW: number,
+  halfH: number,
+): boolean {
+  const qx = Math.max(rx - halfW, Math.min(cx, rx + halfW));
+  const qy = Math.max(ry - halfH, Math.min(cy, ry + halfH));
+  const dx = cx - qx;
+  const dy = cy - qy;
+  return dx * dx + dy * dy <= radius * radius;
+}
+
 export interface Enemy {
+  id: number;
   kind: EnemyKind;
   x: number;
   y: number;
@@ -85,6 +108,19 @@ export interface Enemy {
   spin: number;
   /** charger: telegraph countdown; 0 otherwise. */
   windupT: number;
+  /** Regular wave units count toward the periodic cap; bosses and scripted
+   * event formations are allowed to exceed it. */
+  spawnClass: 'regular' | 'boss' | 'event';
+  /** Scripted sweep motion. Zeroes mean normal direct homing. */
+  moveX: number;
+  moveY: number;
+  /** Scripted event expiry; 0 means normal lifetime/recycling. */
+  despawnAt: number;
+  /** Kick's 1.35 s per-target cadence lock. */
+  kickReadyAt: number;
+  knockbackMul: number;
+  /** Project-native chest substitute chance assigned by the stage row. */
+  upgradeChance: number;
 }
 
 export interface Projectile {
@@ -96,6 +132,7 @@ export interface Projectile {
   radius: number;
   damage: number;
   pierce: number;
+  maxPierce: number;
   lifeS: number;
   homing: boolean;
   speed: number;
@@ -159,13 +196,15 @@ export interface Gem {
   x: number;
   y: number;
   xp: number;
+  tier: 'blue' | 'green' | 'red';
 }
 
 /** Fire-and-forget visuals the world requests and the view renders. Null in
  *  headless runs: the bot pays nothing for juice nobody sees. */
 export type FxEvent =
   | { type: 'ring'; x: number; y: number; radius: number; color: number; dur: number; soft?: boolean }
-  | { type: 'pop'; x: number; y: number; radius: number }
+  | { type: 'death'; x: number; y: number; radius: number; color: number; elite: boolean }
+  | { type: 'whip'; x: number; y: number; side: 1 | -1; area: number; color: number }
   | {
       type: 'arc';
       x: number;
@@ -225,7 +264,17 @@ export class RunWorld {
 
   // dashT/dashX/dashY: riser's auto-dash surge (a short velocity boost the
   // release grants, on top of normal movement).
-  player = { x: 0, y: 0, hp: RUN.playerHp, radius: RUN.playerRadius, iframesT: 0, dashT: 0, dashX: 0, dashY: 0 };
+  player = {
+    x: 0,
+    y: 0,
+    hp: RUN.playerHp,
+    radius: RUN.playerRadius,
+    iframesT: 0,
+    dashT: 0,
+    dashX: 0,
+    dashY: 0,
+    facingX: 1 as 1 | -1,
+  };
   level = 1;
   xp = 0;
   timeS = 0;
@@ -236,9 +285,6 @@ export class RunWorld {
    *  single-target work on tanks (docs/tools/autoplay-bot.md). */
   damageByRole: Partial<Record<Role, number>> = {};
   invincible = false;
-  /** Sandbox only: spawns scale as if the run were at this many seconds
-   *  (the panel's stage-minute preview). Scripted runs use timeS. */
-  stageTimeOverride = 0;
   /** Tempo damage compensation (docs/plan.md, tempo and damage): more triggers
    *  per second means each hits softer, so per-trigger damage is scaled by this
    *  factor as every weapon fires. Set once from the soundset at run start. */
@@ -261,13 +307,27 @@ export class RunWorld {
   private hash = new SpatialHash<Enemy>();
   private queryBuf: Enemy[] = [];
 
-  /** Spawn Director state: index into SPAWN_DIRECTOR, the current steady rate
-   *  and weighted kind mix, and the fractional spawn accumulator. */
-  private dirIdx = 0;
-  private curRate = 0;
-  private curMix: Array<[EnemyKind, number]> = [];
-  private curMixTotal = 0;
-  private spawnCarry = 0;
+  /** Mad Forest table state. */
+  private waveIdx = -1;
+  private eventIdx = 0;
+  private currentWave: StageWave | null = null;
+  private nextSpawnT = 0;
+  private stageStarted = false;
+  private nextEnemyId = 1;
+  private overflowGem: Gem | null = null;
+  private pendingKick: Array<{
+    atS: number;
+    x: number;
+    y: number;
+    side: 1 | -1;
+    damage: number;
+    area: number;
+    yStep: number;
+    started: boolean;
+    expiresAt: number;
+    samplePlayer: boolean;
+    spawnFollowUp: boolean;
+  }> = [];
   private scripted: boolean;
 
   constructor(
@@ -337,11 +397,23 @@ export class RunWorld {
 
     switch (t.role) {
       case 'kick': {
-        const radius = conf.radius! * (0.85 + 0.3 * v);
-        this.damageArea(p.x, p.y, radius, conf.damage * v, 'kick', WEAPON_SHOVE.kick);
-        // The kick fires every beat, so its pulse must stay quiet: one thin,
-        // faint ring, no slam, no shake — clean ambient feedback, not a punch.
-        this.spawnRing(p.x, p.y, radius, color, 0.3, true);
+        // Whip geometry and damage, while retaining Model A's audible Kick on
+        // every gameplay trigger. A per-enemy 1.35 s lock below preserves the
+        // reference weapon's target cadence despite the 122 BPM beat grid.
+        const side = p.facingX;
+        this.pendingKick.push({
+          atS: this.timeS,
+          x: p.x,
+          y: p.y,
+          side,
+          damage: conf.damage,
+          area: conf.area ?? 1,
+          yStep: 0,
+          started: false,
+          expiresAt: 0,
+          samplePlayer: false,
+          spawnFollowUp: (conf.amount ?? 1) > 1,
+        });
         break;
       }
       case 'chord': {
@@ -485,15 +557,19 @@ export class RunWorld {
     this.tiers.delete(role);
   }
 
-  /** The single build-transform pipeline (D1): tempo power compensation.
-   *  Nothing else multiplies weapon numbers. */
+  /** The single build-transform pipeline: soundset multiplier plus Antonio's
+   * documented level-based Might. */
   private applyBuild(conf: WeaponConf): WeaponConf {
-    return { ...conf, damage: conf.damage * this.powerMul };
+    // Antonio's passive adds 10% Might every ten levels, capped at +50%.
+    const antonioMight = 1 + Math.min(5, Math.floor(this.level / 10)) * 0.1;
+    return { ...conf, damage: conf.damage * this.powerMul * antonioMight };
   }
 
   /** Push an enemy away from a point (Feature 3), sharing the crash knock
    *  channel. Pure arithmetic, so it runs headless untouched. */
   private shove(e: Enemy, fromX: number, fromY: number, dist: number): void {
+    dist *= e.knockbackMul;
+    if (dist <= 0) return;
     const dx = e.x - fromX;
     const dy = e.y - fromY;
     const d = Math.hypot(dx, dy) || 1;
@@ -514,12 +590,20 @@ export class RunWorld {
       this.runDirector(dt);
     }
 
-    // rebuild the hash, then everything queries it
+    // Enemy separation reads the pre-move buckets, then collision and all
+    // weapon/contact queries read a fresh post-move hash. This removes the old
+    // one-frame stale-cell bug for fast enemies.
     this.hash.clear();
-    for (const e of this.enemies) this.hash.insert(e);
+    for (const e of this.enemies) if (!e.dead) this.hash.insert(e);
 
     this.moveEnemies(dt);
     this.recycleEnemies();
+    this.hash.clear();
+    for (const e of this.enemies) if (!e.dead) this.hash.insert(e);
+    this.resolveEnemyCollisions();
+    this.hash.clear();
+    for (const e of this.enemies) if (!e.dead) this.hash.insert(e);
+    this.updateKickStrikes();
     this.updateProjectiles(dt);
     this.updateZones(dt);
     this.updateShocks(dt);
@@ -533,6 +617,8 @@ export class RunWorld {
 
   private movePlayer(dt: number): void {
     const a = this.control();
+    if (a.x > 0.001) this.player.facingX = 1;
+    else if (a.x < -0.001) this.player.facingX = -1;
     this.player.x += a.x * RUN.playerSpeed * dt;
     this.player.y += a.y * RUN.playerSpeed * dt;
     // Riser's auto-dash surge: a short extra velocity along the locked dash
@@ -548,71 +634,144 @@ export class RunWorld {
 
   private contactDamage(dt: number): void {
     void dt;
-    if (this.player.iframesT > 0 || this.invincible) return;
     const p = this.player;
-    const near = this.hash.query(p.x, p.y, p.radius + 40, this.queryBuf);
+    const near = this.hash.query(p.x, p.y, p.radius + 48, this.queryBuf);
+    let hitter: Enemy | null = null;
     for (const e of near) {
       if (e.dead || !circlesOverlap(p, e)) continue;
-      p.hp = Math.max(0, p.hp - e.damage);
-      p.iframesT = RUN.iframesS;
-      this.events.onHit();
-      if (p.hp <= 0) {
-        this.events.onDeath();
+      // Solid player/enemy circles. The reference player body is immovable,
+      // so resolution pushes the enemy to the nearest legal edge while input
+      // retains its immediate, unsmoothed feel.
+      let dx = p.x - e.x;
+      let dy = p.y - e.y;
+      let d = Math.hypot(dx, dy);
+      if (d < 0.0001) {
+        dx = e.id % 2 ? 1 : -1;
+        dy = 0;
+        d = 1;
       }
-      return;
+      const overlap = p.radius + e.radius - d;
+      if (overlap > 0) {
+        e.x -= (dx / d) * overlap;
+        e.y -= (dy / d) * overlap;
+      }
+      hitter ??= e;
     }
+    if (!hitter || p.iframesT > 0 || this.invincible) return;
+    p.hp = Math.max(0, p.hp - hitter.damage);
+    p.iframesT = RUN.iframesS;
+    this.events.onHit();
+    if (p.hp <= 0) this.events.onDeath();
   }
 
   // ---- enemies ----
 
-  /** The spawn Director (replaces the ramp + WAVES): drain every due beat,
-   *  then trickle steady spawns from the current rate + weighted mix. */
-  private runDirector(dt: number): void {
-    while (this.dirIdx < SPAWN_DIRECTOR.length && this.timeS >= SPAWN_DIRECTOR[this.dirIdx].atS) {
-      const b = SPAWN_DIRECTOR[this.dirIdx++];
-      if ('set' in b) {
-        this.curRate = b.set.rate;
-        this.curMix = Object.entries(b.set.mix) as Array<[EnemyKind, number]>;
-        this.curMixTotal = this.curMix.reduce((s, [, w]) => s + w, 0);
+  /** Mad Forest's quota/interval semantics. `minimum` is a live population
+   * floor, not a spawn rate: a due attempt fills the deficit immediately;
+   * otherwise it emits the row's complete pattern. */
+  private runDirector(_dt: number): void {
+    if (!this.stageStarted) {
+      this.stageStarted = true;
+      for (let i = 0; i < STAGE_STARTING_SPAWNS; i++) this.spawnEnemy('redBat2');
+    }
+
+    while (this.waveIdx + 1 < STAGE_WAVES.length && this.timeS >= STAGE_WAVES[this.waveIdx + 1].atS) {
+      this.currentWave = STAGE_WAVES[++this.waveIdx];
+      // Source timers wait one full interval before their first callback. The
+      // ten starting bats therefore remain ten until 0:01, and each new
+      // minute's regular roster begins after that row's stated interval.
+      this.nextSpawnT = this.currentWave.atS + this.currentWave.intervalS;
+    }
+
+    while (this.eventIdx < STAGE_EVENTS.length && this.timeS >= STAGE_EVENTS[this.eventIdx].atS) {
+      const event = STAGE_EVENTS[this.eventIdx++];
+      if (event.type === 'boss') {
+        const before = this.enemies.length;
+        this.spawnEnemy(event.kind, undefined, 1, true);
+        const spawned = this.enemies.length > before ? this.enemies[this.enemies.length - 1] : null;
+        if (spawned) spawned.upgradeChance = event.rewardChance;
+      } else if (event.type === 'batSweep') {
+        if (this.rng() < event.chance) this.spawnBatSweep(event.count);
       } else {
-        this.fireFormation(b.event.formation, b.event.kind, b.event.count);
+        this.spawnFlowerWall(event.count, event.durationS);
       }
     }
-    if (this.curMixTotal > 0 && this.enemies.length < ENEMIES.maxAlive) {
-      this.spawnCarry += this.curRate * dt;
-      while (this.spawnCarry >= 1) {
-        this.spawnCarry -= 1;
-        this.spawnEnemy(this.rollMixKind());
-      }
+
+    const wave = this.currentWave;
+    if (!wave) return;
+    // A large frame or replay seek must drain every scheduled attempt in the
+    // same deterministic order rather than silently dropping spawns.
+    while (this.timeS + 1e-9 >= this.nextSpawnT) {
+      this.spawnWaveAttempt(wave);
+      this.nextSpawnT += wave.intervalS;
     }
   }
 
-  /** One this.rng() call per steady spawn: pick a kind by the current weights.
-   *  curMix keeps stable insertion order, so the rng→kind mapping is fixed. */
-  private rollMixKind(): EnemyKind {
-    let r = this.rng() * this.curMixTotal;
-    for (const [kind, w] of this.curMix) {
-      r -= w;
-      if (r <= 0) return kind;
-    }
-    return this.curMix[0][0];
+  private aliveCount(): number {
+    let n = 0;
+    for (const e of this.enemies) if (!e.dead) n++;
+    return n;
   }
 
-  /** Fire a formation once: ring (all sides), surge (one arc), pincer (two
-   *  opposite arcs), elite (bounded count from random angles). */
-  private fireFormation(f: Formation, kind: EnemyKind, count: number): void {
-    if (f === 'ring') this.spawnRingOf(kind, count);
-    else if (f === 'surge') this.spawnSurgeOf(kind, count);
-    else if (f === 'pincer') {
-      const base = this.rng() * Math.PI * 2;
-      const half = Math.ceil(count / 2);
-      for (let i = 0; i < half; i++)
-        this.spawnEnemy(kind, base + (this.rng() * 2 - 1) * 0.45, 1 + this.rng() * 0.5, true);
-      for (let i = 0; i < count - half; i++)
-        this.spawnEnemy(kind, base + Math.PI + (this.rng() * 2 - 1) * 0.45, 1 + this.rng() * 0.5, true);
-    } else {
-      // elite
-      for (let i = 0; i < count; i++) this.spawnEnemy(kind, this.rng() * Math.PI * 2, 1, true);
+  private spawnWaveAttempt(wave: StageWave): void {
+    let alive = this.aliveCount();
+    if (alive >= ENEMIES.maxAlive) return;
+    // Backfill repeats complete enabled sets and can therefore overshoot the
+    // floor by pattern.length-1. Once the floor is met, an attempt emits one
+    // complete set. This preserves duplicated roster entries as real spawns.
+    do {
+      for (const kind of wave.pattern) {
+        if (alive >= ENEMIES.maxAlive) return;
+        this.spawnEnemy(kind);
+        alive++;
+      }
+    } while (alive < wave.minimum);
+  }
+
+  /** A 50-enemy event fan crosses the screen without homing. */
+  private spawnBatSweep(count: number): void {
+    // Official-demo geometry: start on an elliptical 0.72W/0.72H arc, advance
+    // π/500 radians per bat (~18 degrees across 50), and lock each bat toward
+    // the player's position at event time. The result is a converging fan.
+    const startAngle = this.rng() * Math.PI * 2;
+    const targetX = this.player.x;
+    const targetY = this.player.y;
+    for (let i = 0; i < count && this.enemies.length < MAX_ALIVE_HARD; i++) {
+      const a = startAngle + (i * Math.PI) / 500;
+      const x = targetX + dcos(a) * this.worldW * 0.72;
+      const y = targetY + dsin(a) * this.worldH * 0.72;
+      const dx = targetX - x;
+      const dy = targetY - y;
+      const d = Math.hypot(dx, dy) || 1;
+      this.pushEnemy(
+        'batSwarm',
+        x,
+        y,
+        'event',
+        dx / d,
+        dy / d,
+        this.timeS + 10,
+      );
+    }
+  }
+
+  /** The minute-five enclosure is a slowly closing 100-unit ellipse which
+   * disappears after 30 seconds if the player does not break through it. */
+  private spawnFlowerWall(count: number, durationS: number): void {
+    const rx = this.worldW * 0.56;
+    const ry = this.worldH * 0.56;
+    const start = this.rng() * Math.PI * 2;
+    for (let i = 0; i < count && this.enemies.length < MAX_ALIVE_HARD; i++) {
+      const a = start + (i / count) * Math.PI * 2;
+      this.pushEnemy(
+        'flower',
+        this.player.x + dcos(a) * rx,
+        this.player.y + dsin(a) * ry,
+        'event',
+        0,
+        0,
+        this.timeS + durationS,
+      );
     }
   }
 
@@ -639,37 +798,55 @@ export class RunWorld {
 
   spawnEnemy(kind: EnemyKind, angle?: number, distMul = 1, wave = false): void {
     if (this.enemies.length >= (wave ? MAX_ALIVE_HARD : ENEMIES.maxAlive)) return;
-    const a = angle ?? this.rng() * Math.PI * 2;
-    const dist = this.spawnDist(ENEMIES[kind].radius) * distMul;
-    this.pushEnemy(kind, this.player.x + dcos(a) * dist, this.player.y + dsin(a) * dist);
+    let x: number;
+    let y: number;
+    if (angle !== undefined) {
+      const dist = this.spawnDist(ENEMIES[kind].radius) * distMul;
+      x = this.player.x + dcos(angle) * dist;
+      y = this.player.y + dsin(angle) * dist;
+    } else {
+      // Four off-screen rectangles, matching the source stage's all-sides
+      // approach while avoiding corner-biased polar spawns.
+      const edge = Math.floor(this.rng() * 4);
+      const margin = (ENEMIES.spawnMargin + ENEMIES[kind].radius) * distMul;
+      if (edge < 2) {
+        x = this.player.x + (edge === 0 ? -1 : 1) * (this.worldW / 2 + margin);
+        y = this.player.y + (this.rng() - 0.5) * this.worldH * 1.25;
+      } else {
+        x = this.player.x + (this.rng() - 0.5) * this.worldW * 1.25;
+        y = this.player.y + (edge === 2 ? -1 : 1) * (this.worldH / 2 + margin);
+      }
+    }
+    const spawnClass = ENEMIES[kind].boss ? 'boss' : ENEMIES[kind].fixedDirection || kind === 'flower' ? 'event' : 'regular';
+    this.pushEnemy(kind, x, y, spawnClass);
   }
 
-  /** Construct one enemy at (x,y) with per-kind state, guarded by the hard
-   *  cap so splitter cascades never run away. Children reuse this directly. */
-  private pushEnemy(kind: EnemyKind, x: number, y: number): void {
+  /** Construct one enemy at (x,y) from immutable bestiary values. Mad Forest
+   * has no invented continuous HP/damage/speed ramp. */
+  private pushEnemy(
+    kind: EnemyKind,
+    x: number,
+    y: number,
+    spawnClass: 'regular' | 'boss' | 'event' = 'regular',
+    moveX = 0,
+    moveY = 0,
+    despawnAt = 0,
+  ): void {
     if (this.enemies.length >= MAX_ALIVE_HARD) return;
     const conf = ENEMIES[kind];
-    // Scaling over the run: HP opposes the build's growth curve, contact
-    // damage creeps so late hits stay scary, and the visual band says how
-    // dangerous this enemy is. The sandbox spawns at its stage-minute
-    // preview (default 0 = the stat-card values).
-    const t = this.scripted ? this.timeS : this.stageTimeOverride;
-    const s = enemyScaling(t / RUN.durationS, kind);
-    const radius = conf.radius * ENEMY_BANDS.sizeMul[s.band];
-    const color = ENEMY_BANDS.colors[kind][s.band];
+    const stats = madForestEnemyStats(kind, this.level);
     this.enemies.push({
+      id: this.nextEnemyId++,
       kind,
       x,
       y,
-      radius,
-      hp: conf.hp * s.hpMul,
-      speed: conf.speed * s.spdMul,
-      damage: Math.round(conf.damage * s.dmgMul),
-      // Tougher enemies drop more: keeps the pick cadence steady while the
-      // horde thickens, instead of starving the back half of level-ups.
-      xp: Math.round(conf.xp * s.xpMul),
-      color,
-      band: s.band,
+      radius: stats.radius,
+      hp: stats.hp,
+      speed: stats.speed,
+      damage: stats.damage,
+      xp: stats.xp,
+      color: stats.color,
+      band: conf.boss ? 3 : 0,
       flashT: 0,
       dead: false,
       dashT: 0,
@@ -680,10 +857,16 @@ export class RunWorld {
       knockX: 0,
       knockY: 0,
       knockT: 0,
-      // shield pool scales with hp; circler picks an orbit direction.
-      shieldHp: kind === 'shielded' ? conf.hp * s.hpMul * SHIELDED.shieldMul : 0,
+      shieldHp: kind === 'shielded' ? conf.hp * SHIELDED.shieldMul : 0,
       spin: kind === 'circler' ? (this.rng() < 0.5 ? 1 : -1) : 0,
       windupT: 0,
+      spawnClass,
+      moveX,
+      moveY,
+      despawnAt,
+      kickReadyAt: 0,
+      knockbackMul: stats.knockback,
+      upgradeChance: 0,
     });
   }
 
@@ -718,6 +901,12 @@ export class RunWorld {
         e.knockT -= dt;
         e.x += e.knockX * dt;
         e.y += e.knockY * dt;
+        continue;
+      }
+
+      if (e.moveX !== 0 || e.moveY !== 0) {
+        e.x += e.moveX * speed * dt;
+        e.y += e.moveY * speed * dt;
         continue;
       }
 
@@ -822,6 +1011,37 @@ export class RunWorld {
     }
   }
 
+  /** Source-style solid enemy circles. One bounded relaxation pass is enough
+   * to keep a dense wall from collapsing into a single damaging point while
+   * preserving the characteristic packed horde. Scripted sweep lines retain
+   * their authored lanes. */
+  private resolveEnemyCollisions(): void {
+    for (const e of this.enemies) {
+      if (e.dead) continue;
+      const near = this.hash.query(e.x, e.y, e.radius * 2 + 48, this.queryBuf);
+      for (const o of near) {
+        if (o.dead || o.id <= e.id) continue;
+        let dx = e.x - o.x;
+        let dy = e.y - o.y;
+        let d = Math.hypot(dx, dy);
+        const target = e.radius + o.radius;
+        if (d >= target) continue;
+        if (d < 0.0001) {
+          dx = e.id % 2 ? 1 : -1;
+          dy = 0;
+          d = 1;
+        }
+        const push = (target - d) * 0.5;
+        const nx = dx / d;
+        const ny = dy / d;
+        e.x += nx * push;
+        e.y += ny * push;
+        o.x -= nx * push;
+        o.y -= ny * push;
+      }
+    }
+  }
+
   private damageEnemy(e: Enemy, amount: number, source?: Role): void {
     if (e.dead) return;
     // Floating damage number (view-only; fx is null headless). Weapon-colored,
@@ -858,8 +1078,21 @@ export class RunWorld {
       e.dead = true;
       this.kills++;
       if (source) this.killsByRole[source] = (this.killsByRole[source] ?? 0) + 1;
-      this.spawnPop(e.x, e.y, e.radius);
+      this.fx?.push({
+        type: 'death',
+        x: e.x,
+        y: e.y,
+        radius: e.radius,
+        color: e.color,
+        elite: ENEMIES[e.kind].boss === true,
+      });
       this.spawnGem(e.x, e.y, e.xp);
+      // Chests are outside this game's item vocabulary. Preserve each stage
+      // row's any-chest chance, but translate a successful roll directly into
+      // one project-native weapon upgrade pick.
+      if (e.upgradeChance > 0 && this.rng() < e.upgradeChance) {
+        this.events.onLevelUp(this.level);
+      }
       if (e.kind === 'splitter') this.spawnChildren(e);
     }
   }
@@ -880,10 +1113,22 @@ export class RunWorld {
     const far = this.spawnDist(9) * ENEMIES.recycleFactor;
     const far2 = far * far;
     for (const e of this.enemies) {
-      if (e.dead || e.kind === 'elite') continue;
+      if (e.dead) continue;
+      if (e.despawnAt > 0 && this.timeS >= e.despawnAt) {
+        e.dead = true;
+        continue;
+      }
       const dx = e.x - p.x;
       const dy = e.y - p.y;
-      if (dx * dx + dy * dy > far2) e.dead = true;
+      if (dx * dx + dy * dy <= far2) continue;
+      if (e.spawnClass === 'boss') {
+        const a = this.rng() * Math.PI * 2;
+        const d = this.spawnDist(e.radius);
+        e.x = p.x + dcos(a) * d;
+        e.y = p.y + dsin(a) * d;
+      } else {
+        e.dead = true;
+      }
     }
   }
 
@@ -895,7 +1140,7 @@ export class RunWorld {
 
   /** Debug helper: jump straight to the next level-up. */
   levelUp(): void {
-    const threshold = RUN.xpCurve[Math.min(this.level - 1, RUN.xpCurve.length - 1)];
+    const threshold = xpForNextLevel(this.level);
     this.grantXp(Math.max(0, threshold - this.xp));
   }
 
@@ -955,6 +1200,7 @@ export class RunWorld {
       radius: conf.radius!,
       damage,
       pierce: conf.pierce ?? 1,
+      maxPierce: conf.pierce ?? 1,
       lifeS: conf.lifetimeS!,
       homing: role === 'lead',
       speed: conf.speed ?? 0,
@@ -1089,6 +1335,45 @@ export class RunWorld {
     });
   }
 
+  private updateKickStrikes(): void {
+    for (let i = this.pendingKick.length - 1; i >= 0; i--) {
+      const strike = this.pendingKick[i];
+      if (strike.atS > this.timeS + 1e-9) continue;
+      this.pendingKick.splice(i, 1);
+
+      // Legacy Whip proxy normalized to the 800-high reference view:
+      // 147x22, center x±64/y-16, then scaled by 800/456.
+      const centerX = strike.x + strike.side * 112;
+      const centerY = strike.y - 28 - strike.yStep * 17.5;
+      const halfW = 129 * strike.area;
+      const halfH = 19.5 * strike.area;
+      const reach = Math.hypot(halfW, halfH) + 48;
+      const near = this.hash.query(centerX, centerY, reach, this.queryBuf);
+      for (const e of near) {
+        if (
+          e.dead ||
+          e.kickReadyAt > strike.atS + 1e-9 ||
+          !circleIntersectsRect(e.x, e.y, e.radius, centerX, centerY, halfW, halfH)
+        ) {
+          continue;
+        }
+        this.damageEnemy(e, strike.damage, 'kick');
+        e.kickReadyAt = strike.atS + 1.35;
+        // Enemy hit response reverses pursuit for the same 120 ms flash,
+        // scaled by the source bestiary's knockback multiplier.
+        this.shove(e, strike.x, strike.y, e.speed * 0.12);
+      }
+      this.fx?.push({
+        type: 'whip',
+        x: strike.x,
+        y: centerY,
+        side: strike.side,
+        area: strike.area,
+        color: KIT_COLORS.kick,
+      });
+    }
+  }
+
   /** Clap: damage every enemy inside a forward cone (also point-blank). */
   private damageCone(
     x: number,
@@ -1159,6 +1444,7 @@ export class RunWorld {
         if (!pr.returned && pr.age >= pr.outS) {
           pr.returned = true;
           pr.hit.clear();
+          pr.pierce = pr.maxPierce;
         }
         if (pr.returned) {
           const dx = p.x - pr.x;
@@ -1223,9 +1509,9 @@ export class RunWorld {
         // Per-hit spark (view-only, bounded to low-count roles).
         if (SPARK_HIT_ROLES.has(pr.role) && !pr.shard)
           this.fx?.push({ type: 'spark', x: e.x, y: e.y, color: pr.color, n: 4, spread: 12 });
-        // Sweep weapons (orbit, boomerang) gate re-hits with their own hit
-        // set instead of spending pierce.
-        if (pr.role === 'arp' || pr.role === 'tom') continue;
+        // Orbiters gate re-hits by time. Boomerangs spend their configured
+        // pierce separately on the outbound and return legs.
+        if (pr.role === 'arp') continue;
         pr.pierce -= 1;
         if (pr.pierce <= 0) {
           pr.lifeS = 0;
@@ -1254,9 +1540,12 @@ export class RunWorld {
           s.hit.add(e);
           this.damageEnemy(e, s.damage, 'crash');
           const nd = d || 1;
-          e.knockX = (dx / nd) * (s.knockback / KNOCK_S);
-          e.knockY = (dy / nd) * (s.knockback / KNOCK_S);
-          e.knockT = KNOCK_S;
+          const kb = s.knockback * e.knockbackMul;
+          if (kb > 0) {
+            e.knockX = (dx / nd) * (kb / KNOCK_S);
+            e.knockY = (dy / nd) * (kb / KNOCK_S);
+            e.knockT = KNOCK_S;
+          }
         }
       }
       if (s.radius >= s.maxRadius) this.shocks.splice(i, 1);
@@ -1312,8 +1601,8 @@ export class RunWorld {
           }
         }
         if (tripped) {
-          this.damageArea(z.x, z.y, z.radius * 1.35, z.damage, z.source, 24);
-          this.spawnRing(z.x, z.y, z.radius * 1.35, z.color, 0.3);
+          this.damageArea(z.x, z.y, z.radius * 1.15, z.damage, z.source, 18);
+          this.spawnRing(z.x, z.y, z.radius * 1.15, z.color, 0.3);
           this.fx?.push({ type: 'slam', x: z.x, y: z.y, radius: z.radius, color: z.color });
           z.lifeS = 0;
         }
@@ -1373,7 +1662,33 @@ export class RunWorld {
   // ---- pickups and juice ----
 
   private spawnGem(x: number, y: number, xp: number): void {
-    this.gems.push({ x, y, xp });
+    // The published legacy implementation randomizes the listed XP value.
+    // Current Unity internals are unpublished, so this is the version-pinned
+    // observable reference used by our parity model.
+    const dropped = Math.floor((this.rng() + 0.5) * xp);
+    if (dropped <= 0) return;
+    const tier: Gem['tier'] = dropped <= 2 ? 'blue' : dropped <= 9 ? 'green' : 'red';
+    if (this.gems.length < RUN.maxGems) {
+      this.gems.push({ x, y, xp: dropped, tier });
+      return;
+    }
+    if (!this.overflowGem || !this.gems.includes(this.overflowGem)) {
+      let farthest = this.gems[0];
+      let farthestD = -1;
+      for (const gem of this.gems) {
+        const dx = gem.x - this.player.x;
+        const dy = gem.y - this.player.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 > farthestD) {
+          farthestD = d2;
+          farthest = gem;
+        }
+      }
+      this.overflowGem = farthest;
+      farthest.tier = 'red';
+    }
+    this.overflowGem.xp += dropped;
+    this.overflowGem.tier = 'red';
   }
 
   private updateGems(dt: number): void {
@@ -1384,30 +1699,32 @@ export class RunWorld {
       const dy = p.y - g.y;
       const d = Math.hypot(dx, dy);
       if (d < RUN.magnetRadius) {
-        const pull = 420 * dt;
+        const pull = RUN.gemPullSpeed * dt;
         g.x += (dx / (d || 1)) * pull;
         g.y += (dy / (d || 1)) * pull;
       }
       if (d < RUN.pickupRadius) {
-        this.xp += g.xp;
+        this.xp += g.xp * xpPickupMultiplier(this.level);
         this.gems.splice(i, 1);
+        if (g === this.overflowGem) this.overflowGem = null;
         this.checkLevel();
       }
     }
   }
 
   private checkLevel(): void {
-    const threshold = RUN.xpCurve[Math.min(this.level - 1, RUN.xpCurve.length - 1)];
-    if (this.xp >= threshold) {
+    let threshold = xpForNextLevel(this.level);
+    while (this.xp >= threshold) {
       this.xp -= threshold;
       this.level += 1;
       this.events.onLevelUp(this.level);
+      threshold = xpForNextLevel(this.level);
     }
   }
 
   /** XP progress toward the next level, 0..1, for the HUD bar. */
   xpProgress(): number {
-    const threshold = RUN.xpCurve[Math.min(this.level - 1, RUN.xpCurve.length - 1)];
+    const threshold = xpForNextLevel(this.level);
     return Math.min(1, this.xp / threshold);
   }
 
@@ -1415,7 +1732,4 @@ export class RunWorld {
     this.fx?.push({ type: 'ring', x, y, radius, color, dur, soft });
   }
 
-  private spawnPop(x: number, y: number, radius: number): void {
-    this.fx?.push({ type: 'pop', x, y, radius });
-  }
 }

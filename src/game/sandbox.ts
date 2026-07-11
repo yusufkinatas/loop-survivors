@@ -15,18 +15,22 @@ import {
   SLOT_LABEL,
 } from './band';
 import { TIER_NUMERALS } from './hud';
-import { ENEMIES, enemyScaling, RUN, type EnemyKind } from './config';
+import { ENEMY_LABELS, madForestEnemyStats, type EnemyKind } from './config';
 import type { RunWorld } from './run';
 
 const ENEMY_KINDS: EnemyKind[] = [
-  'swarmer',
-  'tank',
-  'darter',
-  'splitter',
-  'charger',
-  'circler',
-  'shielded',
-  'elite',
+  'bat',
+  'redBat',
+  'redBat2',
+  'zombie',
+  'skeleton',
+  'ghost',
+  'greenMudman',
+  'grayMudman',
+  'flower',
+  'glowingBat',
+  'mantis',
+  'batSwarm',
 ];
 
 export interface SandboxPanel {
@@ -99,38 +103,39 @@ export function mountSandboxPanel(
   // ---- enemy roster: stats and spawn buttons ----
   el('div', 'sb-section', panel, 'enemies');
 
-  // Stage-minute preview: spawns come out scaled (hp, damage, speed, xp,
-  // visual band) exactly as they would at that point of a real run.
+  // Spawn-time preview: Mad Forest stats are static except for the
+  // HP-by-player-level enemies, so level is the useful sandbox axis.
   const statEls = new Map<EnemyKind, HTMLElement>();
+  const formatStat = (value: number): string =>
+    Number.isInteger(value) ? String(value) : value.toFixed(1);
   const refreshStats = () => {
-    const t01 = world.stageTimeOverride / RUN.durationS;
     for (const [kind, node] of statEls) {
-      const conf = ENEMIES[kind];
-      const s = enemyScaling(t01, kind);
+      const s = madForestEnemyStats(kind, world.level);
       node.textContent =
-        `hp ${Math.round(conf.hp * s.hpMul)} · dmg ${Math.round(conf.damage * s.dmgMul)}` +
-        ` · spd ${Math.round(conf.speed * s.spdMul)} · xp ${Math.round(conf.xp * s.xpMul)}`;
+        `hp ${formatStat(s.hp)} · dmg ${formatStat(s.damage)}` +
+        ` · spd ${formatStat(s.speed)} · xp ${formatStat(s.xp)}`;
     }
   };
-  const minuteRow = el('div', 'sb-enemy', panel);
-  el('span', 'sb-enemy-name', el('div', 'sb-enemy-info', minuteRow), 'stage minute');
-  const minuteBtns = el('div', 'sb-btns', minuteRow);
-  const minuteOpts: HTMLButtonElement[] = [];
-  for (const min of [0, 2, 4, 6, 8]) {
-    const b = el('button', 'small', minuteBtns, String(min)) as HTMLButtonElement;
+  const levelRow = el('div', 'sb-enemy', panel);
+  el('span', 'sb-enemy-name', el('div', 'sb-enemy-info', levelRow), 'player level');
+  const levelBtns = el('div', 'sb-btns', levelRow);
+  const levelChoices = [1, 5, 10, 20, 40] as const;
+  const levelOpts: HTMLButtonElement[] = [];
+  for (const level of levelChoices) {
+    const b = el('button', 'small', levelBtns, String(level)) as HTMLButtonElement;
     b.onclick = () => {
-      world.stageTimeOverride = min * 60;
-      minuteOpts.forEach((o) => o.classList.toggle('on', o === b));
+      world.level = level;
+      levelOpts.forEach((o) => o.classList.toggle('on', o === b));
       refreshStats();
     };
-    minuteOpts.push(b);
+    levelOpts.push(b);
   }
-  minuteOpts[0].classList.add('on');
+  levelOpts.forEach((b, i) => b.classList.toggle('on', world.level === levelChoices[i]));
 
   for (const kind of ENEMY_KINDS) {
     const row = el('div', 'sb-enemy', panel);
     const info = el('div', 'sb-enemy-info', row);
-    el('span', 'sb-enemy-name', info, kind);
+    el('span', 'sb-enemy-name', info, ENEMY_LABELS[kind] ?? kind);
     statEls.set(kind, el('span', 'sb-enemy-stats', info));
     const btns = el('div', 'sb-btns', row);
     const one = el('button', 'small', btns, '+1') as HTMLButtonElement;

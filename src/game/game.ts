@@ -106,38 +106,71 @@ export async function bootGame(
   overlay.style.display = 'none';
   root.appendChild(overlay);
 
-  const events = {
-    onLevelUp(level: number): void {
-      void level;
-      if (state !== 'run') return;
+  // Every XP threshold and every elite kill grants one upgrade. Several can
+  // arrive in the same simulation tick, including while the first pick screen
+  // is already open, so callbacks enqueue instead of being discarded by the
+  // state guard. A queued pick is not presented until the previous choice has
+  // actually entered on its next bar.
+  const pendingUpgrades: number[] = [];
+  let pickAwaitingBar = false;
+
+  function resetUpgradeQueue(): void {
+    pendingUpgrades.length = 0;
+    pickAwaitingBar = false;
+  }
+
+  function enqueueUpgrade(level: number): void {
+    if (!world || (state !== 'run' && state !== 'pick')) return;
+    pendingUpgrades.push(level);
+    presentNextUpgrade();
+  }
+
+  function presentNextUpgrade(): void {
+    if (!world || state !== 'run' || pickAwaitingBar) return;
+
+    // Once the build is complete, each queued reward resolves to the existing
+    // heal fallback immediately; otherwise exactly one screen is active.
+    while (pendingUpgrades.length > 0) {
+      pendingUpgrades.shift();
+      const w = world;
       // The offer roll (docs/phases/m2-the-arc.md) is shared with the autoplay
       // bot via picks.ts, so the bot faces the exact offers a player does.
-      const options = rollOffers(world!.tiers, Math.random, world!.timeS);
+      const options = rollOffers(w.tiers, Math.random, w.timeS);
       if (options.length === 0) {
-        world!.player.hp = Math.min(RUN.playerHp, world!.player.hp + 15);
+        w.player.hp = Math.min(RUN.playerHp, w.player.hp + 15);
         hud.showToast('+15 hp — the track is complete');
-        return;
+        continue;
       }
+
       state = 'pick';
       engine.clock.pause();
       hud.showPick(options, (option) => {
+        // Resume the old arrangement long enough to reach the next bar. No
+        // later queued pick can open while this choice is still in flight.
         state = 'run';
-        // Musical entry rule: the clock resumes, the old chart finishes its
-        // bar, and the new voice / tier / item / effect enters on the next "1".
-        const w = world;
+        pickAwaitingBar = true;
         engine.atNextBar(() => {
-          if (state !== 'run' || world !== w) return;
+          if (world !== w || state !== 'run') return;
           engine.setVoiceTier(option.role, option.tier);
           engine.setVoiceEnabled(option.role, true);
-          w!.addWeapon(option.role, option.tier);
-          hud.renderBand(w!.tiers, undefined, mutedRoles);
+          w.addWeapon(option.role, option.tier);
+          hud.renderBand(w.tiers, undefined, mutedRoles);
           refreshTrackOverlay();
           // Cosmetic affirmation the pick landed (view-only, muted-safe).
-          view?.flourish(w!.player.x, w!.player.y);
+          view?.flourish(w.player.x, w.player.y);
           hud.levelPulse();
+          pickAwaitingBar = false;
+          presentNextUpgrade();
         });
         engine.clock.resume();
       });
+      return;
+    }
+  }
+
+  const events = {
+    onLevelUp(level: number): void {
+      enqueueUpgrade(level);
     },
     onDeath(): void {
       endRun(false);
@@ -167,8 +200,10 @@ export async function bootGame(
   };
   let sandboxPanel: SandboxPanel | null = null;
   let replayConductor: VirtualConductor | null = null;
+  let liveAcc = 0;
   let replayAcc = 0;
   let replaySpeed = 1;
+  const LIVE_MAX_STEPS = 6;
 
   // Replay speed control: multiplies how much simulated time each frame
   // pays out. The fixed-dt step sequence is untouched, so speed never
@@ -297,6 +332,8 @@ export async function bootGame(
 
   function resetWorld(): void {
     paused = false;
+    resetUpgradeQueue();
+    liveAcc = 0;
     setAutoMode('off'); // manual by default; startRun re-arms it if chosen
     pauseOverlay.style.display = 'none';
     sandboxPanel?.destroy();
@@ -437,6 +474,8 @@ export async function bootGame(
   function endRun(victory: boolean): void {
     if (!world || state === 'end') return;
     state = 'end';
+    resetUpgradeQueue();
+    liveAcc = 0;
     speedRow.style.display = 'none';
     seekRow.style.display = 'none';
     seekOverlay.style.display = 'none';
@@ -517,14 +556,34 @@ export async function bootGame(
     engine.update();
     if (paused) return;
     if ((state === 'run' || state === 'sandbox') && world) {
-      const dt = Math.min(ticker.deltaMS / 1000, 1 / 20); // clamp long frames
-      world.update(dt);
-      view?.update(dt);
+      const frameS = ticker.deltaMS / 1000;
+      const visualDt = Math.min(frameS, 1 / 20);
+      const steppingState = state;
+      const w = world;
+      // The live world now advances through the exact same 60 Hz steps as the
+      // bot and replay. At most 100 ms is recovered after a slow frame; larger
+      // stalls are dropped instead of freezing the page with runaway catch-up.
+      liveAcc = Math.min(liveAcc + Math.min(frameS, SIM_DT * LIVE_MAX_STEPS), SIM_DT * LIVE_MAX_STEPS);
+      let steps = 0;
+      while (
+        liveAcc >= SIM_DT &&
+        steps < LIVE_MAX_STEPS &&
+        world === w &&
+        state === steppingState
+      ) {
+        liveAcc -= SIM_DT;
+        steps++;
+        w.update(SIM_DT);
+      }
+      // A level-up/death can change state inside a fixed step. Paused gameplay
+      // never resumes with fractional time banked from before the screen opened.
+      if (state !== steppingState || world !== w) liveAcc = 0;
+      view?.update(visualDt);
       hud.setStatus(
-        world.player.hp / RUN.playerHp,
-        world.xpProgress(),
-        world.level,
-        world.timeS,
+        w.player.hp / RUN.playerHp,
+        w.xpProgress(),
+        w.level,
+        w.timeS,
       );
     } else if (state === 'replay' && world && replayConductor) {
       pumpProbe();
@@ -734,4 +793,3 @@ export async function bootGame(
     },
   });
 }
-

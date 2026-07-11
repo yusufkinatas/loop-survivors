@@ -8,17 +8,37 @@ import type { Role } from '../audio/kits';
 export const RUN = {
   /** M2: the 8-minute arc. */
   durationS: 480,
-  playerHp: 100,
-  playerSpeed: 230,
-  playerRadius: 12,
-  /** Global invulnerability window after taking a hit. */
-  iframesS: 0.5,
-  magnetRadius: 140,
-  pickupRadius: 18,
-  /** XP needed to reach each next level. Front-loaded for ~13-15 level-ups
-   *  over 8 minutes: level 3-4 by minute 1, then a widening pick gap. */
-  xpCurve: [6, 10, 16, 26, 40, 58, 82, 112, 148, 190, 240, 300, 370, 450, 540, 640],
+  /** Antonio baseline: 100 base HP +20 character bonus, +1 Armor. */
+  playerHp: 120,
+  playerArmor: 1,
+  /** Legacy engine speed, normalized from its 456-high world to our 800-high
+   * reference viewport, then multiplied by Mad Forest's normal x1.1. */
+  playerSpeed: 159,
+  playerRadius: 16,
+  /** The reference damage lock is about 120 ms. */
+  iframesS: 0.12,
+  /** Vampire Survivors' unmodified Magnet stat. */
+  magnetRadius: 53,
+  pickupRadius: 16,
+  gemPullSpeed: 420,
+  maxGems: 400,
 };
+
+/** Exact Vampire Survivors XP requirement for the next level. `level` is the
+ * player's current level (1 means the 5 XP step from level 1 -> 2). */
+export function xpForNextLevel(level: number): number {
+  if (level <= 19) return 5 + (level - 1) * 10;
+  if (level === 20) return 795; // regular 195 step + the level-20 600 XP wall
+  if (level <= 39) return 208 + (level - 21) * 13;
+  if (level === 40) return 2855; // regular 455 step + the level-40 2400 XP wall
+  return 471 + (level - 41) * 16;
+}
+
+/** The two documented XP-wall levels temporarily grant +100% Growth until
+ * the wall is crossed. Growth multiplies picked-up experience. */
+export function xpPickupMultiplier(level: number): number {
+  return level === 20 || level === 40 ? 2 : 1;
+}
 
 export type EnemyKind =
   | 'swarmer'
@@ -28,7 +48,21 @@ export type EnemyKind =
   | 'charger'
   | 'circler'
   | 'shielded'
-  | 'elite';
+  | 'elite'
+  // Mad Forest parity roster. The legacy kinds above remain only so old
+  // replay URLs and the dormant pre-parity director can still deserialize.
+  | 'bat'
+  | 'redBat'
+  | 'redBat2'
+  | 'zombie'
+  | 'skeleton'
+  | 'ghost'
+  | 'greenMudman'
+  | 'grayMudman'
+  | 'flower'
+  | 'glowingBat'
+  | 'mantis'
+  | 'batSwarm';
 
 export interface EnemyConf {
   radius: number;
@@ -37,12 +71,24 @@ export interface EnemyConf {
   damage: number;
   xp: number;
   color: number;
+  /** Bestiary Power before Antonio's one point of Armor. */
+  power?: number;
+  /** HP is multiplied by the player's level when the enemy spawns. */
+  hpPerLevel?: boolean;
+  boss?: boolean;
+  fixedDirection?: boolean;
+  /** Source knockback multiplier: 0 ignores pushes, 1 receives them fully. */
+  knockback?: number;
 }
 
-// Gate B (M2) verdict carried forward: flat enemy HP against a build that
-// grows every pick made the back half trivial. Enemies now scale HP and
-// contact damage over the run, and the spawn ramp is superlinear so the
-// late game reads as a horde being carved through, not stragglers.
+/** Official-demo coordinate conversion, normalized from a 456-high legacy
+ * world to the 800-high reference view, with current normal Mad Forest's
+ * enemy MoveSpeed x1.1 modifier (official wiki revision 89346). */
+export const ENEMY_SPEED_UNIT = 0.231 * (800 / 456) * 1.1;
+
+// The first eight entries and the legacy scaling fields remain only for old
+// replay/sandbox comparisons. RunWorld's active parity path reads the Mad
+// Forest entries below and never applies those continuous scaling fields.
 export const ENEMIES: Record<EnemyKind, EnemyConf> & {
   spawnMargin: number;
   maxAlive: number;
@@ -88,11 +134,66 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
   shielded: { radius: 16, speed: 55, hp: 40, damage: 16, xp: 7, color: 0x9a86c0 },
   /** Slow, huge, tanky objective; drops one large gem (xp=big drop). */
   elite: { radius: 34, speed: 48, hp: 420, damage: 25, xp: 80, color: 0xd94f8a },
+  // Mad Forest normal-mode bestiary values. `damage` is what Antonio actually
+  // loses after his +1 Armor; `power` retains the source number for audits/UI.
+  bat: { radius: 9, speed: 140 * ENEMY_SPEED_UNIT, hp: 1, power: 5, damage: 4, xp: 1, color: 0x8d92b8, knockback: 1 },
+  redBat: { radius: 12, speed: 140 * ENEMY_SPEED_UNIT, hp: 5, power: 5, damage: 4, xp: 1, color: 0xd15b68, knockback: 1 },
+  redBat2: { radius: 12, speed: 140 * ENEMY_SPEED_UNIT, hp: 5, power: 5, damage: 4, xp: 1, color: 0xb94364, knockback: 1 },
+  zombie: { radius: 16, speed: 100 * ENEMY_SPEED_UNIT, hp: 10, power: 10, damage: 9, xp: 1, color: 0x77906f, knockback: 0.8 },
+  skeleton: { radius: 13, speed: 100 * ENEMY_SPEED_UNIT, hp: 15, power: 10, damage: 9, xp: 2, color: 0xd7d0b3, knockback: 1 },
+  ghost: { radius: 13, speed: 200 * ENEMY_SPEED_UNIT, hp: 10, power: 5, damage: 4, xp: 1.5, color: 0x72c5d8, knockback: 0 },
+  greenMudman: { radius: 25, speed: 100 * ENEMY_SPEED_UNIT, hp: 150, power: 10, damage: 9, xp: 2.5, color: 0x6f9d62, knockback: 0.3 },
+  grayMudman: { radius: 22, speed: 100 * ENEMY_SPEED_UNIT, hp: 70, power: 10, damage: 9, xp: 2.5, color: 0x7f8390, knockback: 0.3 },
+  flower: {
+    radius: 15,
+    speed: 20 * ENEMY_SPEED_UNIT,
+    hp: 30,
+    power: 1,
+    damage: 1,
+    xp: 2,
+    color: 0xe26b9a,
+    hpPerLevel: true,
+    knockback: 1,
+  },
+  glowingBat: {
+    radius: 33,
+    speed: 140 * ENEMY_SPEED_UNIT,
+    hp: 50,
+    power: 10,
+    damage: 9,
+    xp: 30,
+    color: 0xffc857,
+    hpPerLevel: true,
+    boss: true,
+    knockback: 1,
+  },
+  mantis: {
+    radius: 43,
+    speed: 80 * ENEMY_SPEED_UNIT,
+    hp: 500,
+    power: 20,
+    damage: 19,
+    xp: 3,
+    color: 0xb46cff,
+    boss: true,
+    knockback: 0,
+  },
+  batSwarm: {
+    radius: 8,
+    speed: 700 * ENEMY_SPEED_UNIT,
+    hp: 1,
+    power: 1,
+    damage: 1,
+    xp: 1,
+    color: 0xb9b6d8,
+    fixedDirection: true,
+    knockback: 1,
+  },
   /** Spawn ring distance beyond the larger screen half-extent. */
-  spawnMargin: 80,
+  spawnMargin: 128,
   /** Soft cap on the steady-state horde (VS-density target, see gate B
    *  round 2: the screen must crowd, not trickle). */
-  maxAlive: 2400,
+  maxAlive: 300,
   /** Enemy HP multiplier reached at minute 8 (curved by rampExp). Gate B
    *  round 2 calibration: any build's damage grows multiplicatively, so
    *  enemies must eventually win the scaling race — the player's damage
@@ -112,14 +213,45 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
   rampExp: 1.8,
   /** Enemies farther than spawnDist*recycleFactor behind the moving player are
    *  silently recycled (no gem/kill). >1 so fresh spawns aren't culled. */
-  recycleFactor: 1.7,
+  recycleFactor: 1.45,
 };
 
 /** Wave spawns may exceed maxAlive up to this absolute ceiling: a pinned
  *  cap must not silently swallow the designed spikes. */
-export const MAX_ALIVE_HARD = 3000;
+export const MAX_ALIVE_HARD = 500;
 
-/** Visual toughness bands (gate B round 3: a minute-7 swarmer is 16x a
+export const ENEMY_LABELS: Partial<Record<EnemyKind, string>> = {
+  bat: 'small bat',
+  redBat: 'red-eyed bat',
+  redBat2: 'red-eyed bat (dark)',
+  zombie: 'zombie',
+  skeleton: 'skeleton',
+  ghost: 'ghost',
+  greenMudman: 'green mudman',
+  grayMudman: 'gray mudman',
+  flower: 'closing flower',
+  glowingBat: 'glowing bat (elite)',
+  mantis: 'mantis (elite)',
+  batSwarm: 'sweeping bat',
+};
+
+/** Spawn-time stats. Mad Forest has no invented global time ramp: only the
+ * documented HP x Level units multiply health by player level. */
+export function madForestEnemyStats(kind: EnemyKind, playerLevel: number) {
+  const conf = ENEMIES[kind];
+  return {
+    radius: conf.radius,
+    hp: conf.hp * (conf.hpPerLevel ? Math.max(1, playerLevel) : 1),
+    speed: conf.speed,
+    damage: conf.power === undefined ? conf.damage : Math.max(1, conf.power - RUN.playerArmor),
+    xp: conf.xp,
+    color: conf.color,
+    knockback: conf.knockback ?? 1,
+  };
+}
+
+/** @deprecated Archival pre-parity visual scaling; RunWorld does not call it.
+ * Visual toughness bands (gate B round 3: a minute-7 swarmer is 16x a
  *  minute-1 swarmer and looked identical). The shape stays the kind's
  *  read; the band carries the danger read: color runs cool to hot, size
  *  creeps up, and the top band gets a dark core. */
@@ -139,8 +271,7 @@ export const ENEMY_BANDS = {
   } as Record<EnemyKind, number[]>,
 };
 
-/** The one scaling formula, shared by the run and the sandbox's stage-
- *  minute preview so both always agree on what "minute N" means. */
+/** @deprecated Archival pre-parity scaling. */
 export function enemyScaling(
   t01: number,
   kind: EnemyKind,
@@ -178,7 +309,8 @@ export const CIRCLER = { orbitR: 150 };
 /** Shielded: shield pool = hp*shieldMul, scaled by hpMul. */
 export const SHIELDED = { shieldMul: 1.0 };
 
-/** Data-driven spawn Director (replaces the ramp + WAVES). `set` beats change
+/** @deprecated Archival pre-parity director. Active stage data lives in
+ * madforest.ts and this table is never read by RunWorld. `set` beats change
  *  the steady pressure (rate + weighted kind mix) from that time on; `event`
  *  beats fire a formation once. Breathers = low-rate `set` beats after event
  *  clusters. The steady rate must overrun an AFK player by the finale. */
@@ -413,6 +545,10 @@ export interface WeaponConf {
   knockback?: number;
   /** acid gravity-well pull speed (px/s inward). */
   pull?: number;
+  /** kick: Whip-style hitbox scale (1 = 258 x 39 at the reference view). */
+  area?: number;
+  /** kick: slashes per trigger; the second lands on the opposite side. */
+  amount?: number;
 }
 
 /** Per-trigger gameplay effect of each kit, one block per tier ([tier-1]).
@@ -425,13 +561,13 @@ export interface WeaponConf {
 // (chart density adds its own 2-3x on top → ~5-8x total). Aura/zone/AoE
 // weapons pay for coverage with roughly half the single-target rate.
 export const WEAPONS: Record<Role, WeaponConf[]> = {
-  // Downbeat aura pulse around the player. AoE: half-rate damage, the
-  // radius is the growth story.
+  // The starting Kick uses Whip's horizontal pass-through strip instead of a
+  // radial aura. Damage/area/amount map to Whip levels 1, 3, 5 and 8.
   kick: [
-    { damage: 6, radius: 120 },
-    { damage: 8, radius: 140 },
-    { damage: 10, radius: 160 },
-    { damage: 14, radius: 185 },
+    { damage: 10, area: 1, amount: 1 },
+    { damage: 15, area: 1, amount: 2 },
+    { damage: 25, area: 1.1, amount: 2 },
+    { damage: 40, area: 1.2, amount: 2 },
   ],
   // Backbeat sniper: few, fast, hard-hitting, drills a line. The premium
   // single-target trigger — sparse chart, so each hit is a statement.
@@ -452,10 +588,10 @@ export const WEAPONS: Record<Role, WeaponConf[]> = {
   // Slow wide low wave that rolls through everything. The weight ladder:
   // per-trigger damage climbs harder than any other kit.
   bass: [
-    { damage: 15, speed: 135, radius: 42, lifetimeS: 2.6, pierce: Infinity },
-    { damage: 20, speed: 140, radius: 48, lifetimeS: 2.6, pierce: Infinity },
-    { damage: 28, speed: 145, radius: 55, lifetimeS: 2.7, pierce: Infinity },
-    { damage: 40, speed: 150, radius: 64, lifetimeS: 2.8, pierce: Infinity },
+    { damage: 10, speed: 135, radius: 22, lifetimeS: 2.3, pierce: Infinity },
+    { damage: 16, speed: 140, radius: 28, lifetimeS: 2.4, pierce: Infinity },
+    { damage: 24, speed: 145, radius: 34, lifetimeS: 2.5, pierce: Infinity },
+    { damage: 40, speed: 150, radius: 42, lifetimeS: 2.6, pierce: Infinity },
   ],
   // Zone thrown onto the nearest pack: ticks damage and slows enemies
   // inside. Chip damage + control; the slow is the identity. NOTE: zone
@@ -463,10 +599,10 @@ export const WEAPONS: Record<Role, WeaponConf[]> = {
   // effective DPS = trigger rate x damage x (lifetimeS / ZONE_TICK_S). Keep
   // per-tick numbers tiny; chart density and lifetime multiply them.
   chord: [
-    { damage: 2, radius: 95, lifetimeS: 2.0 },
-    { damage: 2, radius: 110, lifetimeS: 2.2 },
-    { damage: 3, radius: 125, lifetimeS: 2.4 },
-    { damage: 3, radius: 140, lifetimeS: 2.6 },
+    { damage: 2, radius: 48, lifetimeS: 1.5 },
+    { damage: 3, radius: 56, lifetimeS: 1.7 },
+    { damage: 4, radius: 64, lifetimeS: 1.9 },
+    { damage: 5, radius: 76, lifetimeS: 2.1 },
   ],
   // Homing seeker per melody note: mid damage, never misses.
   lead: [
@@ -478,10 +614,10 @@ export const WEAPONS: Record<Role, WeaponConf[]> = {
   // Whip: a wide forward slash that hits everything in a close cone. Melee
   // crowd control — no travel, instant, safest when the wall is on top of you.
   clap: [
-    { damage: 12, radius: 130, arc: 0.9 },
-    { damage: 15, radius: 150, arc: 1.05 },
-    { damage: 19, radius: 172, arc: 1.25 },
-    { damage: 26, radius: 200, arc: 1.55 },
+    { damage: 6, radius: 80, arc: 0.65 },
+    { damage: 9, radius: 88, arc: 0.72 },
+    { damage: 13, radius: 98, arc: 0.8 },
+    { damage: 18, radius: 108, arc: 0.9 },
   ],
   // Cross: a boomerang lobbed outward that curves back to the player, hitting
   // on the way out and the way home. Deep pierce, both legs.
@@ -502,55 +638,55 @@ export const WEAPONS: Record<Role, WeaponConf[]> = {
   // Shockwave: an expanding ring from the player that damages and knocks back
   // enemies its front passes. Rare and heavy — charts fire it on the accents.
   crash: [
-    { damage: 16, speed: 520, radius: 260, knockback: 60 },
-    { damage: 20, speed: 550, radius: 300, knockback: 70 },
-    { damage: 26, speed: 580, radius: 345, knockback: 85 },
-    { damage: 36, speed: 620, radius: 400, knockback: 110 },
+    { damage: 15, speed: 520, radius: 150, knockback: 30 },
+    { damage: 20, speed: 550, radius: 175, knockback: 38 },
+    { damage: 28, speed: 580, radius: 200, knockback: 48 },
+    { damage: 40, speed: 620, radius: 230, knockback: 62 },
   ],
   // Shaker (band, Hats): drops a short-lived damaging blob at your feet on each
   // hit, so moving strings a trail of them behind you. Per-tick zone damage
   // (see the chord note): the trail's high trigger rate at max tier means the
   // per-tick number must stay small.
   shaker: [
-    { damage: 3, radius: 38, lifetimeS: 1.2 },
-    { damage: 3, radius: 42, lifetimeS: 1.3 },
-    { damage: 4, radius: 48, lifetimeS: 1.4 },
-    { damage: 5, radius: 54, lifetimeS: 1.5 },
+    { damage: 2, radius: 22, lifetimeS: 0.8 },
+    { damage: 2, radius: 25, lifetimeS: 0.9 },
+    { damage: 3, radius: 28, lifetimeS: 1.05 },
+    { damage: 4, radius: 32, lifetimeS: 1.2 },
   ],
   // Acid (band, Motion): a placed gravity well that pulls enemies toward its
   // center and ticks damage while they are caught. Control first, chip second.
   // Per-tick zone damage (see the chord note): the pull is the payoff, so the
   // chip stays near-flat and the control stats (pull, radius) carry the ladder.
   acid: [
-    { damage: 1, radius: 100, lifetimeS: 2.2, pull: 100 },
-    { damage: 1, radius: 112, lifetimeS: 2.4, pull: 115 },
-    { damage: 2, radius: 128, lifetimeS: 2.6, pull: 135 },
-    { damage: 2, radius: 145, lifetimeS: 2.8, pull: 160 },
+    { damage: 1, radius: 48, lifetimeS: 1.8, pull: 30 },
+    { damage: 1, radius: 56, lifetimeS: 2, pull: 36 },
+    { damage: 2, radius: 64, lifetimeS: 2.2, pull: 43 },
+    { damage: 2, radius: 72, lifetimeS: 2.4, pull: 50 },
   ],
   // Pluck bass (band, Bass): a note lobbed on an arc to the nearest pack that
   // explodes on landing. Heavy, like the bass wave, but placed.
   pluck: [
-    { damage: 14, speed: 300, lifetimeS: 0.7, radius: 70 },
-    { damage: 18, speed: 315, lifetimeS: 0.72, radius: 78 },
-    { damage: 24, speed: 330, lifetimeS: 0.74, radius: 88 },
-    { damage: 34, speed: 350, lifetimeS: 0.78, radius: 100 },
+    { damage: 10, speed: 300, lifetimeS: 0.7, radius: 40 },
+    { damage: 15, speed: 315, lifetimeS: 0.72, radius: 48 },
+    { damage: 22, speed: 330, lifetimeS: 0.74, radius: 56 },
+    { damage: 30, speed: 350, lifetimeS: 0.78, radius: 64 },
   ],
   // Rhodes (band, Harmony): chord pools placed as mines that sit armed and
   // bloom into a damage burst when an enemy steps in.
   rhodes: [
-    { damage: 10, radius: 70, lifetimeS: 4.0 },
-    { damage: 13, radius: 80, lifetimeS: 4.5 },
-    { damage: 17, radius: 90, lifetimeS: 5.0 },
-    { damage: 24, radius: 104, lifetimeS: 5.5 },
+    { damage: 8, radius: 38, lifetimeS: 3.2 },
+    { damage: 11, radius: 44, lifetimeS: 3.6 },
+    { damage: 15, radius: 51, lifetimeS: 4 },
+    { damage: 22, radius: 58, lifetimeS: 4.5 },
   ],
   // Riser (band, FX — THE AUTO-DASH): its build-and-release grants a short
   // movement surge (see DASH) and a whoosh of damage around the player on
   // release. Radius is the whoosh reach.
   riser: [
-    { damage: 9, radius: 110 },
-    { damage: 11, radius: 122 },
-    { damage: 14, radius: 136 },
-    { damage: 18, radius: 155 },
+    { damage: 7, radius: 60 },
+    { damage: 9, radius: 70 },
+    { damage: 12, radius: 80 },
+    { damage: 16, radius: 90 },
   ],
   // Bell (band, Melody): a note lobbed straight that shatters into shards on
   // its first hit (shard count per tier in BELL). radius = the shot's own size.
@@ -568,10 +704,10 @@ export const WEAPONS: Record<Role, WeaponConf[]> = {
  *  actually does. */
 export const TIER_LINES: Record<Role, string[]> = {
   kick: [
-    'aura pulse around you, on the beat',
-    'pulse reaches further',
-    'pulses on every beat',
-    'bigger pulse, double slam every 4th bar',
+    'a facing-side strip, on the beat',
+    'adds an opposite-side follow-up',
+    'harder, wider double strike',
+    'maximum damage and reach',
   ],
   snare: [
     'piercing shot on the backbeat',
@@ -706,7 +842,7 @@ export const KNOCK_S = 0.18;
 export const SHOVE_S = 0.12;
 
 /** Per-weapon knock distance applied on hit (Feature 3). Absent = no shove. */
-export const WEAPON_SHOVE: Partial<Record<Role, number>> = { kick: 14, snare: 20, clap: 40, bass: 10 };
+export const WEAPON_SHOVE: Partial<Record<Role, number>> = { snare: 8, clap: 12, bass: 6 };
 
 /** Screenshake magnitudes/durations (Feature 3, cosmetic). Shake is reserved
  *  for the rare, heavy moments only — the crash shockwave and the once-per-
@@ -742,4 +878,3 @@ export const BELL = {
   shardRadius: 4,
   shardPierce: 1,
 };
-

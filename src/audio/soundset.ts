@@ -21,8 +21,8 @@ export interface Soundset {
   bpm: number;
   /** Fraction of a 16th the offbeat 8ths are pushed late (the shuffle). */
   swing: number;
-  /** Per-trigger damage compensation for tempo (docs/plan.md, tempo & damage):
-   *  more triggers per second means each hits softer. */
+  /** Per-trigger damage multiplier. Parity balance now stores final source-
+   *  anchored damage directly, so normal play uses an identity multiplier. */
   powerMul: number;
   /** The one track: a four-tier ladder for each supported role. A role absent
    *  here is an instrument the soundset is not built around — it is never
@@ -33,7 +33,7 @@ export interface Soundset {
 export const SOUNDSET: Soundset = {
   bpm: 122,
   swing: 0.1,
-  powerMul: 0.9,
+  powerMul: 1,
   ladders: SOUNDSET_LADDERS,
 };
 
