@@ -52,26 +52,6 @@ interface Pop {
   grow: number;
 }
 
-/** A death-scatter fragment: a small square of the enemy's colour that bursts
- *  outward, decelerates, and fades. The VS "vanish into pixels" feel. All
- *  fragments share one Graphics (redrawn per frame) so a crash killing dozens
- *  at once is still one draw call. View-only; never constructed headless. */
-interface Pixel {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  size: number;
-  color: number;
-  t: number;
-  dur: number;
-}
-
-// Bounded so a bass wave shredding a packed wall can't flood the frame: over
-// the cap, deaths simply scatter fewer fragments.
-const PIXEL_CAP = 1100;
-const PIXEL_DRAG = 7; // per-second velocity ease-out (burst, then settle)
-
 /** A floating damage number: rises and fades where a hit landed. */
 interface Floater {
   txt: Text;
@@ -114,8 +94,6 @@ export class RunView {
   private gemGfx = new Map<Gem, Container>();
   private pops: Pop[] = [];
   private floaters: Floater[] = [];
-  private pixels: Pixel[] = [];
-  private pixelGfx = new Graphics(); // all death fragments, one batched draw
   private live = new Set<object>();
 
   // Shared view-only feel systems (Feature 3). All decay off world.timeS,
@@ -139,7 +117,6 @@ export class RunView {
     body.circle(0, 0, RUN.playerRadius + 3).stroke({ width: 2, color: 0x59ffd1, alpha: 0.9 });
     this.playerGfx.addChild(glow, body);
     this.stage.addChild(this.playerGfx);
-    this.stage.addChild(this.pixelGfx); // death fragments; re-topped each frame
     this.stage.addChild(this.flashGfx); // re-topped each active frame
   }
 
@@ -190,7 +167,6 @@ export class RunView {
     });
     this.updatePops(dt);
     this.updateFloaters(dt);
-    this.updatePixels(dt);
     this.drawGrid();
     this.drawFlash();
 
@@ -232,7 +208,6 @@ export class RunView {
     this.pops.length = 0;
     for (const f of this.floaters) f.txt.destroy();
     this.floaters.length = 0;
-    this.pixels.length = 0;
     this.trails.clear();
     this.shakes.length = 0;
     this.flashes.length = 0;
@@ -258,12 +233,18 @@ export class RunView {
       if (!visible) continue;
       gfx.position.set(e.x, e.y);
       gfx.tint = e.flashT > 0 ? 0xffffff : e.color;
-      // Face the direction of travel so the pointed kinds (bat/werewolf) read
-      // as moving; sweep enemies point along their locked line.
-      if (e.sweeping) {
-        gfx.rotation = Math.atan2(e.sweepY, e.sweepX);
-      } else if (e.kind === 'bat' || e.kind === 'werewolf') {
-        gfx.rotation = Math.atan2(p.y - e.y, p.x - e.x);
+      if ((e.kind === 'darter' || e.kind === 'charger') && (e.dashX !== 0 || e.dashY !== 0)) {
+        gfx.rotation = Math.atan2(e.dashY, e.dashX);
+      }
+      // Shield break: a Graphics's shape is fixed at creation, so swap the
+      // shared context when the ring should appear/disappear (bounded count).
+      if (e.kind === 'shielded') {
+        const sg = gfx as ShieldGfx;
+        const want = e.shieldHp > 0;
+        if (sg.__shield !== want) {
+          gfx.context = enemyContext(e, want);
+          sg.__shield = want;
+        }
       }
     }
     for (const [e, gfx] of this.enemyGfx) {
@@ -358,22 +339,6 @@ export class RunView {
         this.pops.push({ gfx, t: 0, dur: 0.16, grow: 0 });
         break;
       }
-      case 'whip': {
-        // kick(whip): a quick rounded slash lane from the player along `angle`,
-        // with a brighter leading tip. Drawn at the origin, then rotated into
-        // place, so the roundRect maths stays simple. Fades fast.
-        const r = fx.reach;
-        const h = fx.half;
-        const gfx = new Graphics();
-        gfx.roundRect(0, -h, r, h * 2, h).fill({ color: 0xffffff, alpha: 0.28 });
-        gfx.roundRect(r * 0.72, -h * 0.8, r * 0.28, h * 1.6, h * 0.8).fill({ color: 0xffffff, alpha: 0.5 });
-        gfx.tint = fx.color;
-        gfx.position.set(fx.x, fx.y);
-        gfx.rotation = fx.angle;
-        this.stage.addChild(gfx);
-        this.pops.push({ gfx, t: 0, dur: 0.13, grow: 0 });
-        break;
-      }
       case 'shake':
         // Firing is deterministic (a sim event); the decay reads world.timeS.
         this.shakes.push({ start: this.world.timeS, mag: fx.mag, dur: fx.dur });
@@ -423,21 +388,17 @@ export class RunView {
         this.floaters.push({ txt, x, y: fx.y, t: 0, dur: DMG_DUR, vy: DMG_RISE });
         break;
       }
-      case 'pop': {
-        // Death: the enemy vanishes into a scatter of small coloured pixels
-        // (the satisfying VS "break apart" feel), fronted by one quick bright
-        // core flash so the kill still reads as a punch, not just confetti.
-        this.spawnPixels(fx.x, fx.y, fx.radius, fx.color);
-        const core = new Graphics().circle(0, 0, fx.radius * 0.85).fill(0xffffff);
-        core.tint = lighten(fx.color, 0.5);
-        core.position.set(fx.x, fx.y);
-        core.blendMode = 'add';
-        this.stage.addChild(core);
-        this.pops.push({ gfx: core, t: 0, dur: 0.14, grow: 1.5 });
-        break;
+      default: {
+        // pop: a fading disc where something died
+        const gfx = new Graphics().circle(0, 0, fx.radius).fill(0xffffff);
+        gfx.tint = 0xcfd2e0;
+        gfx.position.set(fx.x, fx.y);
+        this.stage.addChild(gfx);
+        this.pops.push({ gfx, t: 0, dur: 0.22, grow: 1.8 });
+        // Bigger deaths (tanks, elites) throw a small spark burst.
+        if (fx.radius > 16)
+          this.spawnFx({ type: 'spark', x: fx.x, y: fx.y, color: 0xcfd2e0, n: 4, spread: 14 });
       }
-      default:
-        break;
     }
   }
 
@@ -471,58 +432,6 @@ export class RunView {
       p.gfx.alpha = 1 - k;
       if (p.grow > 0) p.gfx.scale.set(0.2 + (p.grow - 0.2) * k);
     }
-  }
-
-  /** Scatter a burst of colour fragments where an enemy died. Count and spread
-   *  scale with the enemy's size; a global cap keeps a wall-clearing hit from
-   *  flooding the frame (over the cap, deaths just scatter less). */
-  private spawnPixels(x: number, y: number, radius: number, color: number): void {
-    const budget = PIXEL_CAP - this.pixels.length;
-    if (budget <= 0) return;
-    const want = Math.max(5, Math.round(radius * 0.7));
-    const n = Math.min(want, budget);
-    const big = radius > 16;
-    for (let i = 0; i < n; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const spd = (0.35 + Math.random() * 0.95) * (70 + radius * 4);
-      this.pixels.push({
-        x: x + (Math.random() * 2 - 1) * radius * 0.4,
-        y: y + (Math.random() * 2 - 1) * radius * 0.4,
-        vx: Math.cos(a) * spd,
-        vy: Math.sin(a) * spd,
-        size: (big ? 3 : 2) + Math.random() * (big ? 3 : 2),
-        // A third of the shards sparkle brighter so the burst reads as "energy"
-        // scattering rather than a flat spray of one colour.
-        color: Math.random() < 0.34 ? lighten(color, 0.55) : color,
-        t: 0,
-        dur: 0.32 + Math.random() * (big ? 0.28 : 0.16),
-      });
-    }
-  }
-
-  /** Advance and redraw every live death fragment in one batched Graphics. */
-  private updatePixels(dt: number): void {
-    const g = this.pixelGfx;
-    g.clear();
-    const drag = Math.max(0, 1 - PIXEL_DRAG * dt);
-    for (let i = this.pixels.length - 1; i >= 0; i--) {
-      const px = this.pixels[i];
-      px.t += dt;
-      const k = px.t / px.dur;
-      if (k >= 1) {
-        this.pixels.splice(i, 1);
-        continue;
-      }
-      px.x += px.vx * dt;
-      px.y += px.vy * dt;
-      px.vx *= drag;
-      px.vy *= drag;
-      const alpha = k < 0.15 ? 1 : 1 - (k - 0.15) / 0.85;
-      const s = px.size * (1 - k * 0.45);
-      g.rect(px.x - s / 2, px.y - s / 2, s, s).fill({ color: px.color, alpha });
-    }
-    // Keep fragments above the horde; drawFlash re-tops the flash above these.
-    if (this.pixels.length) this.stage.setChildIndex(g, this.stage.children.length - 1);
   }
 
   /** Redraw every projectile trail in one Graphics (below entities). Bounded
@@ -611,16 +520,10 @@ export class RunView {
   }
 }
 
-
-/** Blend a packed 0xRRGGBB colour toward white by `amt` (0..1). View-only. */
-function lighten(color: number, amt: number): number {
-  const r = (color >> 16) & 0xff;
-  const g = (color >> 8) & 0xff;
-  const b = color & 0xff;
-  const lr = Math.round(r + (255 - r) * amt);
-  const lg = Math.round(g + (255 - g) * amt);
-  const lb = Math.round(b + (255 - b) * amt);
-  return (lr << 16) | (lg << 8) | lb;
+/** A Graphics tagged with the last-rendered shield state, so syncEnemies can
+ *  detect a shield break and swap the shared context. */
+interface ShieldGfx extends Graphics {
+  __shield?: boolean;
 }
 
 /** Regular n-gon vertices as a flat [x,y,...] list (view-only geometry). */
@@ -633,57 +536,59 @@ function regularPoly(sides: number, r: number, rot = 0): number[] {
   return pts;
 }
 
-/** The shared GraphicsContext for an enemy's (kind, band, radius). One distinct
- *  silhouette per VS-Mad-Forest kind, so a type is read by shape + colour. */
-function enemyContext(e: Enemy): GraphicsContext {
+/** The shared GraphicsContext for an enemy's (kind, band, radius[, shield]).
+ *  Shielded's context depends on shieldOn so the ring can be swapped away. */
+function enemyContext(e: Enemy, shieldOn: boolean): GraphicsContext {
   const radius = e.radius;
-  return cachedShape(`enemy:${e.kind}:${e.band}:${radius}`, (g) => {
+  const shieldKey = e.kind === 'shielded' ? (shieldOn ? ':1' : ':0') : '';
+  return cachedShape(`enemy:${e.kind}:${e.band}:${radius}${shieldKey}`, (g) => {
     switch (e.kind) {
-      case 'bat':
-        // pointed sliver, points along travel: reads as "fast" at a glance
+      case 'tank':
+        g.rect(-radius, -radius, radius * 2, radius * 2).fill(0xffffff);
+        break;
+      case 'darter':
+        // pointed sliver: reads as "fast" at a glance
+        g.poly([radius * 1.6, 0, -radius, radius * 0.9, -radius, -radius * 0.9]).fill(0xffffff);
+        break;
+      case 'splitter':
+        // hexagon: reads as "will burst"
+        g.poly(regularPoly(6, radius, -Math.PI / 2)).fill(0xffffff);
+        break;
+      case 'charger':
+        // fat forward chevron/bull, wider than the darter's sliver
         g.poly([
-          radius * 1.7, 0, -radius, radius * 0.85, -radius * 0.5, 0, -radius, -radius * 0.85,
+          radius * 1.4,
+          0,
+          -radius * 0.8,
+          radius * 1.1,
+          -radius * 0.3,
+          0,
+          -radius * 0.8,
+          -radius * 1.1,
         ]).fill(0xffffff);
         break;
-      case 'zombie':
-        // plain disc: the basic kiteable fodder
-        g.circle(0, 0, radius).fill(0xffffff);
-        break;
-      case 'skeleton':
-        // diamond: wall fodder, distinct from the zombie disc
-        g.poly([0, -radius, radius, 0, 0, radius, -radius, 0]).fill(0xffffff);
-        break;
-      case 'ghost':
-        // hollow ring with a centre dot — a wispy, very fast flanker
+      case 'circler':
+        // hollow ring with a center dot
         g.circle(0, 0, radius).stroke({ width: 3, color: 0xffffff });
         g.circle(0, 0, radius * 0.4).fill(0xffffff);
         break;
-      case 'mudman':
-        // heavy hexagon: a slow mid-tank
-        g.poly(regularPoly(6, radius, -Math.PI / 2)).fill(0xffffff);
-        break;
-      case 'werewolf':
-        // aggressive forward chevron (points along travel), wider than a bat
-        g.poly([
-          radius * 1.4, 0, -radius * 0.8, radius * 1.1, -radius * 0.3, 0, -radius * 0.8, -radius * 1.1,
-        ]).fill(0xffffff);
-        break;
-      case 'mantis':
-        // big square: the heavy wall
-        g.rect(-radius, -radius, radius * 2, radius * 2).fill(0xffffff);
+      case 'shielded':
+        // octagon body; the shield ring shows only while shieldHp > 0
+        g.poly(regularPoly(8, radius, Math.PI / 8)).fill(0xffffff);
+        if (shieldOn) g.circle(0, 0, radius * 1.35).stroke({ width: 3, color: 0xffffff });
         break;
       case 'elite':
-        // large octagon inside a halo ring: the objective, unmistakable
+        // large octagon: the objective, unmistakable by size and shape
         g.poly(regularPoly(8, radius, Math.PI / 8)).fill(0xffffff);
-        g.circle(0, 0, radius * 1.18).stroke({ width: 3, color: 0xffffff });
         break;
       default:
         g.circle(0, 0, radius).fill(0xffffff);
     }
-    // Top band / elite: a dark core, readable even mid hit-flash.
+    // top band: a dark core marks the elites even mid hit-flash; the elite
+    // kind carries the core at every band (using the new arena black).
     if (e.band === 3 || e.kind === 'elite') {
       const core = e.kind === 'elite' ? 0x0a0b0f : 0x101014;
-      if (e.kind === 'mantis') {
+      if (e.kind === 'tank') {
         g.rect(-radius * 0.4, -radius * 0.4, radius * 0.8, radius * 0.8).fill(core);
       } else {
         g.circle(0, 0, radius * 0.38).fill(core);
@@ -693,11 +598,14 @@ function enemyContext(e: Enemy): GraphicsContext {
 }
 
 function makeEnemyGfx(e: Enemy): Graphics {
-  const gfx = new Graphics(enemyContext(e));
+  const shieldOn = e.shieldHp > 0;
+  const gfx = new Graphics(enemyContext(e, shieldOn)) as ShieldGfx;
   gfx.tint = e.color;
-  // Flat cachedShape Graphics (no child nodes) to keep GPU batching intact
-  // across the horde and to preserve the per-frame hit-flash tint. Kinds read
-  // by shape + colour + size; the dark core / halo ring marks elites.
+  if (e.kind === 'shielded') gfx.__shield = shieldOn;
+  // Enemies stay flat cachedShape Graphics (no child nodes) to keep GPU
+  // batching intact across the 2400-strong horde and to preserve the per-frame
+  // hit-flash tint. Elites read as elite through size, the hottest band color,
+  // and the dark core — no glow child (which Pixi v8 disallows on a Graphics).
   return gfx;
 }
 

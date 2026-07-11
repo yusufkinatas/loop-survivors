@@ -1,46 +1,6 @@
 # Project Status
 
-Last updated: July 11, 2026
-
-## Latest change (July 11, 2026) — VS fidelity pass (branch `vs-attempt-claude`, uncommitted)
-
-A developer-directed pass to make movement and the enemy feeling match Vampire
-Survivors' first level (Mad Forest). Fully specced in
-`docs/phases/vs-fidelity.md`; VS numbers researched + adversarially verified in
-`docs/phases/vs-fidelity-research.md`. **Awaiting the developer's ear/hands/eye
-gate.** Two forks answered by the developer: kick becomes a directional Whip;
-Mad Forest's escalation is compressed into a complete 8-minute arc.
-
-1. **Enemies re-derived from Mad Forest.** Eight straight-chaser kinds
-   (bat/zombie/skeleton/ghost/mudman/werewolf/mantis/elite) differentiated by
-   speed/HP/size/contact-damage, VS-style — the old dash/charge/orbit/split/
-   shield AIs are gone. VS-accurate stats and contact model: i-frames 0.5→**0.24s**
-   (VS's 240ms), contact takes the highest-power overlapping enemy, ~2.4s to die
-   pinned. **No per-minute stat scaling** (VS-authentic) beyond a mild HP creep;
-   difficulty is tankier TYPES + density + events.
-2. **Spawn arc = Mad Forest compressed to 8 min.** One tougher type per minute,
-   the three VS event types reproduced — **SWEEP** (a wall of fast enemies
-   crossing the screen), **RING** (a closing flower-wall), recurring **ELITE**
-   objectives — climbing to a no-breather horde finale. On-screen counts in VS's
-   band (~15-30 early → ~300-500 finale).
-3. **Kick = the Whip.** A rectangular slash in the facing direction, per-hit
-   damage matched to the VS whip (~11/15/24/34 shown); tiers 1-3 crack front+back,
-   tier 4 all four directions; deduped per crack. One-shots minute-1 fodder,
-   can't clear the mid walls single-target (the crossover that forces growth).
-4. **All weapon AoE shrunk + damage pulled toward VS** (crash 400→280, bass
-   64→54, chord 140→105, the kick's 360° aura replaced by a narrow whip lane,
-   etc.); archetypes unchanged; knockback-immune kinds (ghost/mantis/elite)
-   resist shove/shock/acid-pull.
-5. **VS-style pixel vanish:** enemies scatter into coloured pixel fragments on
-   death (view-only, batched, capped, headless-safe); a quick bright core flash
-   keeps the kill punchy. Enemy kinds get one stable distinct colour+shape;
-   elites are unmistakable (big magenta octagon + halo ring + dark core).
-
-Engineering-verified: `tsc` + `vite build` clean; bot batches healthy (AFK dies
-~0:20-0:26, kiter spread ~3:30-5:20, every weapon carries real share, finale
-overwhelms); Chrome live run shows the whip / dissolve / distinct enemies / VS-
-scale damage numbers with zero console errors; a 4-dimension adversarial code
-review's 4 findings were all fixed. Not committed (harness rule).
+Last updated: July 10, 2026
 
 ## Latest change (July 10, 2026) — the overhaul (branch `overhaul-weapons-enemies-ui`, PR open)
 

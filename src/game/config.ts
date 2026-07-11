@@ -1,59 +1,34 @@
-// Every tuning number in one place. Weapon numbers are per-trigger: charts
-// decide rate, so a kit's DPS = chart density x per-trigger damage (docs/plan.md,
-// tempo and damage). One stat block per tier, indexed [tier - 1].
-//
-// VS-FIDELITY PASS (2026-07): the enemy roster, contact model, scaling, spawn
-// arc, and every weapon's damage/area were re-derived from a deep dive on
-// Vampire Survivors' first stage, Mad Forest (numbers spec in
-// docs/phases/vs-fidelity.md). Headline facts that shaped this file:
-//   - Player 100 HP; contact damage is applied repeatedly, gated by a 240ms
-//     global i-frame (RUN.iframesS). A single Power-10 enemy pinned on you is
-//     ~42 dmg/s => ~2.4s to die. That "don't get surrounded" budget IS the game.
-//   - Mad Forest has NO per-minute stat scaling. Difficulty is tankier TYPES on
-//     a schedule + rising density + scripted events. So enemyScaling is a mild
-//     HP creep only; the arc lives in SPAWN_DIRECTOR.
-//   - Speed relationships are the soul. VS ratios (fodder 0.91x, bats 1.27x,
-//     ghosts 1.82x) were tuned toward playability for a fleeing player: fodder
-//     stays kiteable (~0.85-0.96x), the low-HP GHOST is the one enemy that
-//     truly outruns you (1.30x), and swarm-sweeps blitz across (6.3x).
-//   - The Whip (our kick): 10 dmg / amount 1->2 / +area, one-shots minute-1
-//     fodder but can't clear the mid walls single-target — that crossover is
-//     what forces build growth.
+// Every tuning number in one place. Sub-phase C's rough balance pass edits
+// this file, not the systems. Weapon numbers are per-trigger: charts decide
+// rate, so a kit's DPS = chart density x per-trigger damage (docs/plan.md,
+// tempo and damage). M2: one stat block per tier, indexed [tier - 1].
 
 import type { Role } from '../audio/kits';
 
 export const RUN = {
-  /** The 8-minute arc. */
+  /** M2: the 8-minute arc. */
   durationS: 480,
   playerHp: 100,
   playerSpeed: 230,
   playerRadius: 12,
-  /** Global invulnerability after taking a hit. VS's Mad-Forest tension comes
-   *  from the 240ms i-frame: a single overlapping enemy hits ~4.17x/s, so a
-   *  Power-10 enemy is ~42 dmg/s and pins you dead in ~2.4s. (Was 0.5s, which
-   *  made being surrounded far too survivable.) */
-  iframesS: 0.24,
+  /** Global invulnerability window after taking a hit. */
+  iframesS: 0.5,
   magnetRadius: 140,
   pickupRadius: 18,
-  /** XP to reach each next level. Modeled on VS's curve (L1->2 = 5, then a
-   *  widening gap) but a touch gentler early so a fresh build fills its band
-   *  over the 8-minute arc (~14-20 level-ups; bot-tuned). */
-  xpCurve: [5, 10, 16, 24, 34, 46, 60, 76, 94, 114, 138, 165, 195, 230, 270, 315],
+  /** XP needed to reach each next level. Front-loaded for ~13-15 level-ups
+   *  over 8 minutes: level 3-4 by minute 1, then a widening pick gap. */
+  xpCurve: [6, 10, 16, 26, 40, 58, 82, 112, 148, 190, 240, 300, 370, 450, 540, 640],
 };
 
-// VS Mad Forest early roster, ported to straight-chaser archetypes. The kinds
-// differ by SPEED, HP, SIZE, and contact damage — not by fancy AI — exactly as
-// VS's first stage does. Two exceptions to the pure chase: swarm-event enemies
-// fly a locked line across the screen (SWEEP), and nothing else.
 export type EnemyKind =
-  | 'bat' // quick, weak opener fodder (0.96x player) — you plow through it
-  | 'zombie' // basic kiteable fodder (0.85x) — the bread-and-butter horde
-  | 'skeleton' // wall fodder, a touch tankier (0.85x) — density
-  | 'ghost' // very fast flanker (1.30x), knockback-immune — the pressure
-  | 'mudman' // slow-ish mid-tank (0.85x) — soaks a few seconds
-  | 'werewolf' // near-player-speed (0.98x) and hits hard — kite AND focus it
-  | 'mantis' // slow heavy wall (0.65x), knockback-immune — you can't clear it
-  | 'elite'; // slow huge objective — big HP, drops a fat gem
+  | 'swarmer'
+  | 'tank'
+  | 'darter'
+  | 'splitter'
+  | 'charger'
+  | 'circler'
+  | 'shielded'
+  | 'elite';
 
 export interface EnemyConf {
   radius: number;
@@ -64,11 +39,10 @@ export interface EnemyConf {
   color: number;
 }
 
-// Base bestiary stats (VS-derived), unmodified by minute (see enemyScaling).
-// Speeds are px/s: VS internal speeds x (230/1.1)/100, so our 230px/s player is
-// the "Mad-Forest player" (VS boosts the player 1.1x on this stage). Contact
-// damage = VS "Power" (as a % of the 100 HP player). Colours are ONE distinct
-// hue per kind so a type is read by colour + shape, never by a time-band.
+// Gate B (M2) verdict carried forward: flat enemy HP against a build that
+// grows every pick made the back half trivial. Enemies now scale HP and
+// contact damage over the run, and the spawn ramp is superlinear so the
+// late game reads as a horde being carved through, not stragglers.
 export const ENEMIES: Record<EnemyKind, EnemyConf> & {
   spawnMargin: number;
   maxAlive: number;
@@ -78,91 +52,98 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
   rampExp: number;
   recycleFactor: number;
 } = {
-  // Quick fodder: ~player speed, so it presses you but a moving player still
-  // creates space to whip it. 4 HP => a tier-1 whip (~11 shown) one-shots it.
-  // (VS bats are 1.27x, which glues onto anything that flees and kills in ~4s;
-  // we keep the "quick" read without the unfun glue-death, and let the low-HP
-  // GHOST be the enemy that truly outruns you.)
-  bat: { radius: 7, speed: 220, hp: 4, damage: 6, xp: 1, color: 0xd85a5a },
-  // The kiteable horde: clearly under player speed, dies to one whip crack.
-  zombie: { radius: 9, speed: 195, hp: 10, damage: 10, xp: 1, color: 0x8fae6a },
-  // Slightly tankier wall fodder; arrives in rings/waves.
-  skeleton: { radius: 9, speed: 195, hp: 16, damage: 10, xp: 2, color: 0xd8d2c0 },
-  // Genuinely faster than you (1.4x) and knockback-immune — the harasser you
-  // can't outrun. But only 12 HP, so a grown build deletes it; it's introduced
-  // at 2:00 once you have tools. Being caught briefly costs a little, not a run.
-  ghost: { radius: 10, speed: 300, hp: 12, damage: 6, xp: 2, color: 0x8fd8ff },
-  // Mid-tank: fodder speed but 7x the HP — soaks a few seconds of a lone whip.
-  mudman: { radius: 15, speed: 195, hp: 70, damage: 10, xp: 3, color: 0xa9814f },
-  // Fast AND tanky AND hits hard (14 = 14%/hit). The first genuine "oh no".
-  werewolf: { radius: 13, speed: 225, hp: 180, damage: 14, xp: 3, color: 0xd98a4a },
-  // The heavy wall: slow, huge HP, 20 power (a pin against one is ~1.7s dead),
-  // knockback-immune. Closing rings of these are the flower-wall events.
-  mantis: { radius: 22, speed: 150, hp: 400, damage: 20, xp: 4, color: 0x6abf5a },
-  // Slow huge objective; drops one fat gem (xp big). Knockback-immune.
-  elite: { radius: 34, speed: 160, hp: 800, damage: 24, xp: 40, color: 0xe24fa0 },
+  swarmer: {
+    radius: 9,
+    speed: 95,
+    hp: 5,
+    damage: 10,
+    xp: 1,
+    color: 0x9aa0b4,
+  },
+  /** The late-game wall: slow, fat, soaks a build for 5-10s. */
+  tank: {
+    radius: 22,
+    speed: 45,
+    hp: 110,
+    damage: 22,
+    xp: 10,
+    color: 0x6a7086,
+  },
+  /** Fast, fragile, rushes the player in straight bursts. */
+  darter: {
+    radius: 8,
+    speed: 360, // dash speed; it pauses between bursts (see run.ts)
+    hp: 6,
+    damage: 10,
+    xp: 2,
+    color: 0xe08a5a,
+  },
+  /** Bursts into a knot of swarmers on death. The early-mid wall. */
+  splitter: { radius: 14, speed: 70, hp: 40, damage: 14, xp: 5, color: 0x8fb46a },
+  /** Telegraphs, then commits a fast fixed-direction dash. Dodge check. */
+  charger: { radius: 12, speed: 60, hp: 35, damage: 18, xp: 5, color: 0xd06a5a },
+  /** Fast, fragile, orbits the player at range and harasses. */
+  circler: { radius: 10, speed: 170, hp: 10, damage: 12, xp: 2, color: 0x6ac2d0 },
+  /** A shield pool absorbs damage before its hp; the mid-game wall. */
+  shielded: { radius: 16, speed: 55, hp: 40, damage: 16, xp: 7, color: 0x9a86c0 },
+  /** Slow, huge, tanky objective; drops one large gem (xp=big drop). */
+  elite: { radius: 34, speed: 48, hp: 420, damage: 25, xp: 80, color: 0xd94f8a },
   /** Spawn ring distance beyond the larger screen half-extent. */
   spawnMargin: 80,
-  /** Soft cap on the steady-state horde. VS caps periodic spawns at 300; we sit
-   *  in that band (events push past it to MAX_ALIVE_HARD). */
-  maxAlive: 420,
-  /** Enemy HP multiplier reached at minute 8 (curved by rampExp). Mad Forest
-   *  does NOT scale base stats — difficulty is tankier TYPES + density. This is
-   *  a MILD creep only, so the compressed 8-minute finale's walls stay a step
-   *  ahead of a grown build without a VS-untrue x8 curve. */
-  hpScaleEnd: 1.6,
-  /** Contact damage multiplier at minute 8. FLAT (1.0), VS-authentic: a bat
-   *  hits for the same 6% at 7:00 as at 0:00. Danger scales via which TYPES
-   *  spawn, never via inflating a bat's sting. */
-  damageScaleEnd: 1.0,
-  /** Speed multiplier at minute 8. FLAT (1.0), VS-authentic. */
-  speedScaleEnd: 1.0,
-  /** Exponent shaping the (mild) HP creep: >1 keeps the early game at base. */
-  rampExp: 1.5,
+  /** Soft cap on the steady-state horde (VS-density target, see gate B
+   *  round 2: the screen must crowd, not trickle). */
+  maxAlive: 2400,
+  /** Enemy HP multiplier reached at minute 8 (curved by rampExp). Gate B
+   *  round 2 calibration: any build's damage grows multiplicatively, so
+   *  enemies must eventually win the scaling race — the player's damage
+   *  carves a bubble in the horde, it never clears the screen, and an AFK
+   *  player gets overrun no matter the build. */
+  hpScaleEnd: 8,
+  /** Contact damage multiplier reached at minute 8, linear. Kept shallow:
+   *  danger scales via density + HP (time-to-kill), never burst damage —
+   *  a minute-8 swarmer still hits for ~13% of player HP, not 20%. */
+  damageScaleEnd: 1.3,
+  /** Speed multiplier reached at minute 8, linear, darters excluded (their
+   *  dash is tuned to stay dodgeable): open-field kiting stops being free
+   *  once the pack can close during any hesitation. */
+  speedScaleEnd: 1.3,
+  /** Exponent shaping the spawn-rate and HP ramps: >1 keeps the early game
+   *  close to M1 and piles the growth into the back half (the horde). */
+  rampExp: 1.8,
   /** Enemies farther than spawnDist*recycleFactor behind the moving player are
    *  silently recycled (no gem/kill). >1 so fresh spawns aren't culled. */
   recycleFactor: 1.7,
 };
 
-/** Wave spawns may exceed maxAlive up to this ceiling (VS's 500 absolute cap):
- *  a pinned cap must not swallow the designed event spikes. */
-export const MAX_ALIVE_HARD = 640;
+/** Wave spawns may exceed maxAlive up to this absolute ceiling: a pinned
+ *  cap must not silently swallow the designed spikes. */
+export const MAX_ALIVE_HARD = 3000;
 
-/** Swarm-sweep enemies (bat/ghost swarms) fly a LOCKED line across the screen
- *  at this speed instead of chasing — VS's 700-internal-speed sweeps (~6.4x
- *  player). They damage anything on the line, then recycle off-screen. */
-export const SWEEP = { speed: 1460 };
-
-/** Knockback-immune kinds (VS: ghosts, mantises, bosses resist knockback). Our
- *  shove/shock channels skip these, so no weapon can create space against them
- *  — they just keep coming. */
-export const KB_RESIST = new Set<EnemyKind>(['ghost', 'mantis', 'elite']);
-
-/** Visual toughness bands. With near-flat stats these are a light touch: each
- *  kind keeps its own colour (so a type is identified by colour + shape), the
- *  band only nudges size and, at the top band, stamps a dark core. */
+/** Visual toughness bands (gate B round 3: a minute-7 swarmer is 16x a
+ *  minute-1 swarmer and looked identical). The shape stays the kind's
+ *  read; the band carries the danger read: color runs cool to hot, size
+ *  creeps up, and the top band gets a dark core. */
 export const ENEMY_BANDS = {
   /** Run progress (0..1) at which the next band starts. */
-  t01: [0.35, 0.62, 0.85],
-  sizeMul: [1, 1.06, 1.12, 1.18],
+  t01: [0.28, 0.55, 0.78],
+  sizeMul: [1, 1.12, 1.22, 1.34],
   colors: {
-    bat: [0xd85a5a, 0xdf6a5a, 0xe6604f, 0xef5a4f],
-    zombie: [0x8fae6a, 0x9bb46a, 0xa8ba63, 0xb4bd5c],
-    skeleton: [0xd8d2c0, 0xdcd6c4, 0xe0dac8, 0xe6e0cf],
-    ghost: [0x8fd8ff, 0x9bd6ff, 0xa8d2ff, 0xb4ceff],
-    mudman: [0xa9814f, 0xb0844c, 0xb98748, 0xc28a44],
-    werewolf: [0xd98a4a, 0xe08847, 0xe88043, 0xf07840],
-    mantis: [0x6abf5a, 0x6ec257, 0x74c653, 0x7aca4f],
-    elite: [0xe24fa0, 0xe6509a, 0xea5090, 0xef5086],
+    swarmer: [0x9aa0b4, 0xc9b478, 0xd98a56, 0xd94f5a],
+    tank: [0x6a7086, 0x94805e, 0xb06a46, 0xc04858],
+    darter: [0xe08a5a, 0xe8a04a, 0xff7a3c, 0xff4658],
+    splitter: [0x8fb46a, 0xa8b45e, 0xc09a4e, 0xc85a52],
+    charger: [0xd06a5a, 0xdc7a4a, 0xe85a3c, 0xff4046],
+    circler: [0x6ac2d0, 0x6ab0c8, 0x7a9ad0, 0x9a6ad0],
+    shielded: [0x9a86c0, 0xa07ab0, 0xb06a90, 0xc04858],
+    elite: [0xd94f8a, 0xe0507a, 0xe85068, 0xff4050],
   } as Record<EnemyKind, number[]>,
 };
 
-/** The one scaling formula, shared by the run and the sandbox's stage-minute
- *  preview so both always agree on what "minute N" means. Mad Forest scales
- *  almost nothing — a mild HP creep, flat damage/speed/XP. */
+/** The one scaling formula, shared by the run and the sandbox's stage-
+ *  minute preview so both always agree on what "minute N" means. */
 export function enemyScaling(
   t01: number,
-  _kind: EnemyKind,
+  kind: EnemyKind,
 ): { hpMul: number; dmgMul: number; spdMul: number; xpMul: number; band: number } {
   const t = Math.min(1, Math.max(0, t01));
   let band = 0;
@@ -170,21 +151,38 @@ export function enemyScaling(
   return {
     hpMul: 1 + (ENEMIES.hpScaleEnd - 1) * Math.pow(t, ENEMIES.rampExp),
     dmgMul: 1 + (ENEMIES.damageScaleEnd - 1) * t,
-    spdMul: 1 + (ENEMIES.speedScaleEnd - 1) * t,
-    xpMul: 1, // flat: VS enemies drop fixed XP per type; density carries cadence
+    spdMul: kind === 'darter' ? 1 : 1 + (ENEMIES.speedScaleEnd - 1) * t,
+    xpMul: 1 + 3 * Math.pow(t, 1.3),
     band,
   };
 }
 
-/** Splitter is gone (not a Mad Forest behaviour); SHIELDED/DARTER/CHARGER/
- *  CIRCLER AI removed too. Every enemy is now a straight chaser (VS's model)
- *  except swarm-sweep enemies (SWEEP above). */
+/** Darter burst cycle: dash flat-out, stop, re-aim, dash again. */
+export const DARTER = {
+  dashS: 0.55,
+  pauseS: 0.7,
+};
 
-/** Data-driven spawn Director. `set` beats change the steady pressure (rate +
- *  weighted kind mix); `event` beats fire a formation once. Breathers = low-rate
- *  `set` beats after event clusters. The steady rate must overrun an AFK player
- *  by the finale. */
-export type Formation = 'ring' | 'surge' | 'pincer' | 'sweep' | 'elite';
+/** Splitter: bursts into this many children of childKind on death. Children
+ *  are swarmers (never split → no recursion). */
+export const SPLITTER = { childKind: 'swarmer' as EnemyKind, childCount: 4 };
+
+/** Charger: within triggerRange it stands still (windup), then commits a fast
+ *  fixed-direction dash. dashSpeed is NOT run through speedScaleEnd (stays
+ *  dodgeable, same rule as darter). */
+export const CHARGER = { triggerRange: 240, windupS: 0.7, dashS: 0.5, dashSpeed: 640 };
+
+/** Circler: orbits the player at this radius. */
+export const CIRCLER = { orbitR: 150 };
+
+/** Shielded: shield pool = hp*shieldMul, scaled by hpMul. */
+export const SHIELDED = { shieldMul: 1.0 };
+
+/** Data-driven spawn Director (replaces the ramp + WAVES). `set` beats change
+ *  the steady pressure (rate + weighted kind mix) from that time on; `event`
+ *  beats fire a formation once. Breathers = low-rate `set` beats after event
+ *  clusters. The steady rate must overrun an AFK player by the finale. */
+export type Formation = 'ring' | 'surge' | 'pincer' | 'elite';
 export type KindWeights = Partial<Record<EnemyKind, number>>;
 
 export type DirectorBeat =
@@ -193,165 +191,210 @@ export type DirectorBeat =
 
 /** Time-sorted. Beats at equal `atS` fire in array order in the same frame.
  *
- *  Mad Forest, compressed from 30 minutes into a complete 8-minute arc (the
- *  developer's call). Each ~minute introduces a tougher TYPE, pressure climbs
- *  to an event cluster, a short breather resets tension, then the finale (7:00
- *  on) drops the breathers and overruns any build. The three VS event types are
- *  reproduced: SWEEP (a wall of speed-1460 bats/ghosts sweeping across), RING (a
- *  closing wall — the flower-wall), and the ELITE objective. Introduction order:
- *  bat 0:00, zombie 0:20, skeleton 1:30, ghost 2:00, mudman 2:40, werewolf 3:30,
- *  mantis 4:00; elite recurs from 1:00. */
+ *  Sawtooth structure (VS compressed to 8 min): each minute introduces one
+ *  new kind as a telegraphed spike (its intro event), pressure climbs to a
+ *  minute-end event cluster, then a short low-rate breather resets tension.
+ *  Introduction order: swarmer 0:00, darter 0:40, circler 1:30, splitter
+ *  2:30, charger 3:30, shielded 4:30, tank 5:30; elite recurs as an
+ *  objective event from 1:15. Danger scales via density + HP; the finale
+ *  (7:00 on) drops the breathers and overruns any build. */
 export const SPAWN_DIRECTOR: DirectorBeat[] = [
-  // -- 0:00 the on-ramp: a light trickle of quick bats. The whip one-shots
-  //    them, so the opening is gentle (VS minute-0 floor ~15). You build up.
-  { atS: 0, set: { rate: 2.5, mix: { bat: 1 } } },
-  { atS: 20, set: { rate: 3.5, mix: { bat: 0.65, zombie: 0.35 } } },
-  // -- 0:40 first teaching sweep (a small bat line crossing the screen).
-  { atS: 40, event: { formation: 'sweep', kind: 'bat', count: 12 } },
-  { atS: 45, set: { rate: 4, mix: { bat: 0.55, zombie: 0.45 } } },
-  // -- 1:00 first elite objective (drops a fat gem).
-  { atS: 60, event: { formation: 'elite', kind: 'elite', count: 1 } },
-  { atS: 62, set: { rate: 5, mix: { bat: 0.5, zombie: 0.42, skeleton: 0.08 } } },
-  { atS: 80, event: { formation: 'sweep', kind: 'bat', count: 14 } },
-  // -- 1:30 skeleton intro (wall fodder), first closing ring.
-  { atS: 90, set: { rate: 6.5, mix: { bat: 0.42, zombie: 0.38, skeleton: 0.2 } } },
-  { atS: 110, event: { formation: 'ring', kind: 'zombie', count: 22 } },
-  // -- 2:00 ghost intro (the fast flankers you cannot outrun) as a surge, then
-  //    a breather.
-  { atS: 120, event: { formation: 'surge', kind: 'ghost', count: 6 } },
-  { atS: 122, set: { rate: 6, mix: { bat: 0.36, zombie: 0.34, skeleton: 0.2, ghost: 0.1 } } }, // breather
-  { atS: 140, set: { rate: 8, mix: { bat: 0.34, zombie: 0.34, skeleton: 0.2, ghost: 0.12 } } },
-  { atS: 150, event: { formation: 'sweep', kind: 'bat', count: 18 } },
-  // -- 2:40 mudman intro (the first HP wall you cannot just delete).
-  { atS: 160, event: { formation: 'surge', kind: 'mudman', count: 4 } },
+  // -- minute 0: swarmers only, hot enough that standing still already hurts.
+  { atS: 0, set: { rate: 6, mix: { swarmer: 1 } } },
+  { atS: 20, set: { rate: 9, mix: { swarmer: 1 } } },
+  // -- 0:40 darter intro spike, then darters join the steady mix.
+  { atS: 40, event: { formation: 'surge', kind: 'darter', count: 16 } },
+  { atS: 45, set: { rate: 10, mix: { swarmer: 0.86, darter: 0.14 } } },
+  // -- minute 1: first ring, breather, then the first elite objective.
+  { atS: 60, event: { formation: 'ring', kind: 'swarmer', count: 30 } },
+  { atS: 62, set: { rate: 5, mix: { swarmer: 0.86, darter: 0.14 } } }, // breather
+  { atS: 72, set: { rate: 11, mix: { swarmer: 0.86, darter: 0.14 } } },
+  { atS: 75, event: { formation: 'elite', kind: 'elite', count: 1 } },
+  // -- 1:30 circler intro: a harassing orbit forces movement.
+  { atS: 90, event: { formation: 'surge', kind: 'circler', count: 8 } },
+  { atS: 92, set: { rate: 12, mix: { swarmer: 0.8, darter: 0.12, circler: 0.08 } } },
+  { atS: 105, event: { formation: 'pincer', kind: 'darter', count: 10 } },
+  // -- minute 2 spike: bigger ring, breather after.
+  { atS: 120, event: { formation: 'ring', kind: 'swarmer', count: 50 } },
+  { atS: 122, set: { rate: 6, mix: { swarmer: 0.84, darter: 0.08, circler: 0.08 } } }, // breather
+  { atS: 135, set: { rate: 13, mix: { swarmer: 0.84, darter: 0.08, circler: 0.08 } } },
+  // -- 2:30 splitter intro: the early-mid wall (5-10s of focused fire).
+  { atS: 150, event: { formation: 'surge', kind: 'splitter', count: 5 } },
   {
-    atS: 162,
-    set: { rate: 8.5, mix: { bat: 0.3, zombie: 0.3, skeleton: 0.2, ghost: 0.12, mudman: 0.08 } },
+    atS: 152,
+    set: { rate: 14, mix: { swarmer: 0.78, darter: 0.08, circler: 0.08, splitter: 0.06 } },
   },
-  // -- 3:00 inflection: elite + a closing ring of mudmen, then a breather.
+  // -- minute 3 spike: elite + darter pincer, breather after.
   { atS: 180, event: { formation: 'elite', kind: 'elite', count: 1 } },
-  { atS: 182, event: { formation: 'ring', kind: 'mudman', count: 6 } },
+  { atS: 190, event: { formation: 'pincer', kind: 'darter', count: 12 } },
   {
-    atS: 185,
-    set: { rate: 7, mix: { bat: 0.3, zombie: 0.3, skeleton: 0.2, ghost: 0.12, mudman: 0.08 } },
+    atS: 192,
+    set: { rate: 7, mix: { swarmer: 0.78, darter: 0.08, circler: 0.08, splitter: 0.06 } },
   }, // breather
   {
-    atS: 200,
-    set: { rate: 10, mix: { bat: 0.28, zombie: 0.28, skeleton: 0.2, ghost: 0.14, mudman: 0.1 } },
+    atS: 205,
+    set: { rate: 14, mix: { swarmer: 0.78, darter: 0.08, circler: 0.08, splitter: 0.06 } },
   },
-  // -- 3:30 werewolf intro (fast + strong): a surge from one side.
-  { atS: 210, event: { formation: 'surge', kind: 'werewolf', count: 4 } },
+  // -- 3:30 charger intro: the dodge check arrives from two sides.
+  { atS: 210, event: { formation: 'pincer', kind: 'charger', count: 8 } },
   {
     atS: 212,
     set: {
-      rate: 11,
-      mix: { bat: 0.26, zombie: 0.26, skeleton: 0.18, ghost: 0.14, mudman: 0.1, werewolf: 0.06 },
+      rate: 15,
+      mix: { swarmer: 0.72, darter: 0.08, circler: 0.08, splitter: 0.06, charger: 0.06 },
     },
   },
-  // -- 3:50 ghost swarm (a very fast line-sweep).
-  { atS: 230, event: { formation: 'sweep', kind: 'ghost', count: 14 } },
-  // -- 4:00 mantis intro (the heavy wall) + a big closing ring, breather after.
-  { atS: 240, event: { formation: 'surge', kind: 'mantis', count: 3 } },
+  // -- minute 4 spike: the biggest ring yet, breather after.
+  { atS: 240, event: { formation: 'ring', kind: 'swarmer', count: 90 } },
   {
-    atS: 244,
+    atS: 242,
     set: {
-      rate: 12,
-      mix: {
-        bat: 0.26, zombie: 0.24, skeleton: 0.16, ghost: 0.14, mudman: 0.1, werewolf: 0.06, mantis: 0.04,
-      },
+      rate: 8,
+      mix: { swarmer: 0.72, darter: 0.08, circler: 0.08, splitter: 0.06, charger: 0.06 },
+    },
+  }, // breather
+  {
+    atS: 256,
+    set: {
+      rate: 17,
+      mix: { swarmer: 0.72, darter: 0.08, circler: 0.08, splitter: 0.06, charger: 0.06 },
     },
   },
-  { atS: 260, event: { formation: 'ring', kind: 'zombie', count: 32 } },
-  // -- 4:30 double elite, mid-game crunch.
-  { atS: 270, event: { formation: 'elite', kind: 'elite', count: 2 } },
+  // -- 4:30 shielded intro: the mid-game wall closes in from all sides.
+  { atS: 270, event: { formation: 'ring', kind: 'shielded', count: 8 } },
   {
     atS: 272,
     set: {
-      rate: 10,
+      rate: 18,
       mix: {
-        bat: 0.26, zombie: 0.24, skeleton: 0.16, ghost: 0.14, mudman: 0.1, werewolf: 0.06, mantis: 0.04,
+        swarmer: 0.68,
+        darter: 0.08,
+        circler: 0.08,
+        splitter: 0.06,
+        charger: 0.05,
+        shielded: 0.05,
+      },
+    },
+  },
+  // -- minute 5 spike: double elite + splitter surge, breather after.
+  { atS: 300, event: { formation: 'elite', kind: 'elite', count: 2 } },
+  { atS: 308, event: { formation: 'surge', kind: 'splitter', count: 10 } },
+  {
+    atS: 312,
+    set: {
+      rate: 9,
+      mix: {
+        swarmer: 0.68,
+        darter: 0.08,
+        circler: 0.08,
+        splitter: 0.06,
+        charger: 0.05,
+        shielded: 0.05,
       },
     },
   }, // breather
   {
-    atS: 290,
+    atS: 326,
     set: {
-      rate: 14,
+      rate: 21,
       mix: {
-        bat: 0.24, zombie: 0.22, skeleton: 0.16, ghost: 0.16, mudman: 0.1, werewolf: 0.07, mantis: 0.05,
+        swarmer: 0.68,
+        darter: 0.08,
+        circler: 0.08,
+        splitter: 0.06,
+        charger: 0.05,
+        shielded: 0.05,
       },
     },
   },
-  // -- 5:00 the flower wall: a closing ring of mantises + a bat sweep at once.
-  { atS: 300, event: { formation: 'ring', kind: 'mantis', count: 7 } },
-  { atS: 302, event: { formation: 'sweep', kind: 'bat', count: 22 } },
-  {
-    atS: 305,
-    set: {
-      rate: 15,
-      mix: {
-        bat: 0.24, zombie: 0.22, skeleton: 0.16, ghost: 0.16, mudman: 0.1, werewolf: 0.07, mantis: 0.05,
-      },
-    },
-  },
-  { atS: 330, event: { formation: 'pincer', kind: 'werewolf', count: 8 } },
+  // -- 5:30 tank intro: the late wall lumbers in.
+  { atS: 330, event: { formation: 'surge', kind: 'tank', count: 4 } },
   {
     atS: 332,
     set: {
-      rate: 17,
+      rate: 22,
       mix: {
-        bat: 0.24, zombie: 0.2, skeleton: 0.16, ghost: 0.16, mudman: 0.1, werewolf: 0.08, mantis: 0.06,
+        swarmer: 0.64,
+        darter: 0.08,
+        circler: 0.07,
+        splitter: 0.06,
+        charger: 0.05,
+        shielded: 0.05,
+        tank: 0.05,
       },
     },
   },
-  // -- 6:00 elites + a closing mudman ring, the last real breather.
-  { atS: 360, event: { formation: 'elite', kind: 'elite', count: 2 } },
-  { atS: 362, event: { formation: 'ring', kind: 'mudman', count: 10 } },
+  // -- minute 6 spike: huge ring + darter surge, the last real breather.
+  { atS: 360, event: { formation: 'ring', kind: 'swarmer', count: 140 } },
+  { atS: 365, event: { formation: 'surge', kind: 'darter', count: 20 } },
   {
-    atS: 366,
+    atS: 367,
     set: {
-      rate: 13,
+      rate: 10,
       mix: {
-        bat: 0.24, zombie: 0.2, skeleton: 0.16, ghost: 0.16, mudman: 0.1, werewolf: 0.08, mantis: 0.06,
+        swarmer: 0.64,
+        darter: 0.08,
+        circler: 0.07,
+        splitter: 0.06,
+        charger: 0.05,
+        shielded: 0.05,
+        tank: 0.05,
       },
     },
-  }, // last breather
-  { atS: 380, event: { formation: 'sweep', kind: 'bat', count: 28 } },
+  }, // breather
   {
     atS: 382,
     set: {
-      rate: 20,
+      rate: 26,
       mix: {
-        bat: 0.24, zombie: 0.18, skeleton: 0.14, ghost: 0.18, mudman: 0.1, werewolf: 0.09, mantis: 0.07,
+        swarmer: 0.64,
+        darter: 0.08,
+        circler: 0.07,
+        splitter: 0.06,
+        charger: 0.05,
+        shielded: 0.05,
+        tank: 0.05,
       },
     },
   },
-  { atS: 400, event: { formation: 'pincer', kind: 'werewolf', count: 10 } },
-  // -- 7:00 FINALE: no more breathers, density + walls climb until overrun.
+  // -- 6:40 charger pincer: the last dodge check before the finale.
+  { atS: 400, event: { formation: 'pincer', kind: 'charger', count: 12 } },
+  // -- 7:00 finale: no more breathers, everything escalates until overrun.
   {
     atS: 420,
     set: {
-      rate: 26,
+      rate: 34,
       mix: {
-        bat: 0.26, zombie: 0.16, skeleton: 0.12, ghost: 0.19, mudman: 0.08, werewolf: 0.1, mantis: 0.09,
+        swarmer: 0.6,
+        darter: 0.09,
+        circler: 0.07,
+        splitter: 0.07,
+        charger: 0.06,
+        shielded: 0.06,
+        tank: 0.05,
       },
     },
   },
   { atS: 420, event: { formation: 'elite', kind: 'elite', count: 3 } },
-  { atS: 428, event: { formation: 'ring', kind: 'mantis', count: 10 } },
-  { atS: 438, event: { formation: 'sweep', kind: 'ghost', count: 22 } },
+  { atS: 435, event: { formation: 'ring', kind: 'swarmer', count: 200 } },
   {
-    atS: 448,
+    atS: 450,
     set: {
-      rate: 34,
+      rate: 42,
       mix: {
-        bat: 0.28, zombie: 0.14, skeleton: 0.1, ghost: 0.2, mudman: 0.08, werewolf: 0.1, mantis: 0.1,
+        swarmer: 0.58,
+        darter: 0.1,
+        circler: 0.07,
+        splitter: 0.07,
+        charger: 0.06,
+        shielded: 0.06,
+        tank: 0.06,
       },
     },
   },
-  { atS: 450, event: { formation: 'ring', kind: 'zombie', count: 90 } },
-  { atS: 460, event: { formation: 'sweep', kind: 'bat', count: 40 } },
-  { atS: 470, event: { formation: 'surge', kind: 'werewolf', count: 14 } },
+  { atS: 450, event: { formation: 'ring', kind: 'shielded', count: 12 } },
+  { atS: 460, event: { formation: 'surge', kind: 'splitter', count: 14 } },
+  { atS: 470, event: { formation: 'surge', kind: 'darter', count: 40 } },
 ];
 
 export interface WeaponConf {
@@ -362,10 +405,7 @@ export interface WeaponConf {
   pierce?: number;
   /** clap: half-angle of the forward damage cone (radians). */
   arc?: number;
-  /** kick(whip): half-thickness of the rectangular slash lane (px). */
-  halfHeight?: number;
-  /** kick(whip): lanes per trigger (1 = forward only; 2 = forward + back).
-   *  tom: boomerangs thrown per trigger. */
+  /** tom: boomerangs thrown per trigger. */
   count?: number;
   /** arp: radius of the orbit around the player. */
   orbitRadius?: number;
@@ -377,145 +417,143 @@ export interface WeaponConf {
 
 /** Per-trigger gameplay effect of each kit, one block per tier ([tier-1]).
  *  Charts carry most of the growth (density = rate); stats bump where the
- *  ladder's character says so.
- *
- *  VS-anchored: the kick (the Whip) matches VS whip damage per hit (~10 -> ~35),
- *  and every other weapon's damage/area was pulled DOWN toward VS references
- *  (Magic Wand 10 @1.2s, Knife 6.5 @1.0s, Axe 20 @4s, King Bible 10 @3s, etc.),
- *  scaled by our own trigger rate and the 0.9 powerMul. AoE radii were shrunk
- *  hard — the old auras/waves/shockwaves covered far more of the arena than any
- *  VS weapon. Enemy HP is VS-low (bat 4, zombie 10, mudman 70, mantis 400), so
- *  these smaller numbers still kill fast; the challenge is density + not getting
- *  pinned, exactly as in VS. */
+ *  ladder's character says so — bass per-trigger damage climbs hard (weight),
+ *  hat barely moves (density is its whole story). */
+// Balance anchor (VS-derived): a tier-1 weapon's chart fires ~2-4 triggers
+// per 2s bar at 122bpm (~1.5/s), so a tier-1 single-target weapon lands
+// ~10 DPS at ~7 damage per trigger. Tier 4 per-trigger sits at 2-3x tier 1
+// (chart density adds its own 2-3x on top → ~5-8x total). Aura/zone/AoE
+// weapons pay for coverage with roughly half the single-target rate.
 export const WEAPONS: Record<Role, WeaponConf[]> = {
-  // THE WHIP (kick). Rectangular slash lanes around the facing axis: tiers 1-3
-  // crack FRONT + BACK (count 2) so a fleeing player's back, where the horde
-  // chases, is always covered; tier 4 cracks all four directions (count 4).
-  // Reach/thickness/damage grow with tier; one hit per enemy per crack (the
-  // overlapping lanes are deduped). Fires four-on-the-floor (its music), so it
-  // out-rates a VS whip and clears its lanes fast — the per-hit number stays
-  // VS-honest (~11/15/24/34 shown after powerMul).
+  // Downbeat aura pulse around the player. AoE: half-rate damage, the
+  // radius is the growth story.
   kick: [
-    { damage: 12, radius: 160, halfHeight: 50, count: 2 },
-    { damage: 17, radius: 175, halfHeight: 54, count: 2 },
-    { damage: 27, radius: 205, halfHeight: 62, count: 2 },
-    { damage: 38, radius: 235, halfHeight: 72, count: 4 },
+    { damage: 6, radius: 120 },
+    { damage: 8, radius: 140 },
+    { damage: 10, radius: 160 },
+    { damage: 14, radius: 185 },
   ],
-  // Backbeat sniper: few, fast, hard-hitting, drills a line. Like a Magic Wand
-  // that pierces. Sparse chart, so each hit is a statement (but VS-scaled down
-  // from the old 16-40).
+  // Backbeat sniper: few, fast, hard-hitting, drills a line. The premium
+  // single-target trigger — sparse chart, so each hit is a statement.
   snare: [
-    { damage: 12, speed: 650, radius: 7, lifetimeS: 1.4, pierce: 2 },
-    { damage: 16, speed: 650, radius: 7, lifetimeS: 1.4, pierce: 3 },
-    { damage: 22, speed: 680, radius: 8, lifetimeS: 1.5, pierce: 4 },
-    { damage: 30, speed: 720, radius: 8, lifetimeS: 1.5, pierce: 6 },
+    { damage: 16, speed: 650, radius: 7, lifetimeS: 1.4, pierce: 2 },
+    { damage: 22, speed: 650, radius: 7, lifetimeS: 1.4, pierce: 3 },
+    { damage: 28, speed: 680, radius: 8, lifetimeS: 1.5, pierce: 4 },
+    { damage: 40, speed: 720, radius: 8, lifetimeS: 1.5, pierce: 6 },
   ],
-  // Dense stream of weak fast chips, wide scatter. Density IS the ladder.
+  // Dense stream of weak fast chips, wide scatter. Density IS the ladder;
+  // per-trigger damage barely moves.
   hat: [
     { damage: 3, speed: 440, radius: 3, lifetimeS: 0.8, pierce: 1 },
-    { damage: 4, speed: 450, radius: 3, lifetimeS: 0.85, pierce: 1 },
-    { damage: 5, speed: 460, radius: 3, lifetimeS: 0.9, pierce: 1 },
-    { damage: 6, speed: 480, radius: 3, lifetimeS: 0.95, pierce: 2 },
+    { damage: 3, speed: 450, radius: 3, lifetimeS: 0.85, pierce: 1 },
+    { damage: 4, speed: 460, radius: 3, lifetimeS: 0.9, pierce: 1 },
+    { damage: 5, speed: 480, radius: 3, lifetimeS: 0.95, pierce: 2 },
   ],
-  // Slow rolling low wave that pierces everything. The weight ladder. Radius
-  // shrunk from 42-64: a VS wave is a band, not a screen-wide blanket.
+  // Slow wide low wave that rolls through everything. The weight ladder:
+  // per-trigger damage climbs harder than any other kit.
   bass: [
-    { damage: 12, speed: 135, radius: 34, lifetimeS: 2.6, pierce: Infinity },
-    { damage: 17, speed: 140, radius: 40, lifetimeS: 2.6, pierce: Infinity },
-    { damage: 24, speed: 145, radius: 46, lifetimeS: 2.7, pierce: Infinity },
-    { damage: 34, speed: 150, radius: 54, lifetimeS: 2.8, pierce: Infinity },
+    { damage: 15, speed: 135, radius: 42, lifetimeS: 2.6, pierce: Infinity },
+    { damage: 20, speed: 140, radius: 48, lifetimeS: 2.6, pierce: Infinity },
+    { damage: 28, speed: 145, radius: 55, lifetimeS: 2.7, pierce: Infinity },
+    { damage: 40, speed: 150, radius: 64, lifetimeS: 2.8, pierce: Infinity },
   ],
-  // Zone thrown onto the nearest pack: ticks damage and slows enemies inside.
-  // Chip + control; the slow is the identity. `damage` is PER TICK (every
-  // ZONE_TICK_S). Radius shrunk from 95-140.
+  // Zone thrown onto the nearest pack: ticks damage and slows enemies
+  // inside. Chip damage + control; the slow is the identity. NOTE: zone
+  // `damage` is PER TICK (every ZONE_TICK_S) for the zone's whole life, so
+  // effective DPS = trigger rate x damage x (lifetimeS / ZONE_TICK_S). Keep
+  // per-tick numbers tiny; chart density and lifetime multiply them.
   chord: [
-    { damage: 2, radius: 70, lifetimeS: 2.0 },
-    { damage: 2, radius: 80, lifetimeS: 2.2 },
-    { damage: 3, radius: 92, lifetimeS: 2.4 },
-    { damage: 3, radius: 105, lifetimeS: 2.6 },
+    { damage: 2, radius: 95, lifetimeS: 2.0 },
+    { damage: 2, radius: 110, lifetimeS: 2.2 },
+    { damage: 3, radius: 125, lifetimeS: 2.4 },
+    { damage: 3, radius: 140, lifetimeS: 2.6 },
   ],
   // Homing seeker per melody note: mid damage, never misses.
   lead: [
     { damage: 7, speed: 340, radius: 6, lifetimeS: 2.2, pierce: 1 },
-    { damage: 9, speed: 350, radius: 6, lifetimeS: 2.2, pierce: 1 },
-    { damage: 11, speed: 360, radius: 6, lifetimeS: 2.3, pierce: 1 },
-    { damage: 14, speed: 380, radius: 7, lifetimeS: 2.4, pierce: 2 },
+    { damage: 8, speed: 350, radius: 6, lifetimeS: 2.2, pierce: 1 },
+    { damage: 9, speed: 360, radius: 6, lifetimeS: 2.3, pierce: 1 },
+    { damage: 11, speed: 380, radius: 7, lifetimeS: 2.4, pierce: 2 },
   ],
-  // Backbeat melee: a wide forward slash cone (a bigger, slower sibling of the
-  // whip on 2 & 4). Reach/arc/damage pulled down from the old 130-200 / 0.9-1.55.
+  // Whip: a wide forward slash that hits everything in a close cone. Melee
+  // crowd control — no travel, instant, safest when the wall is on top of you.
   clap: [
-    { damage: 10, radius: 110, arc: 0.8 },
-    { damage: 13, radius: 125, arc: 0.9 },
-    { damage: 17, radius: 145, arc: 1.05 },
-    { damage: 24, radius: 170, arc: 1.3 },
+    { damage: 12, radius: 130, arc: 0.9 },
+    { damage: 15, radius: 150, arc: 1.05 },
+    { damage: 19, radius: 172, arc: 1.25 },
+    { damage: 26, radius: 200, arc: 1.55 },
   ],
-  // Cross: a boomerang lobbed out that curves back, hitting both legs. Like VS
-  // Cross (low damage, AoE pierce, out-and-back). Trimmed from 11-22.
+  // Cross: a boomerang lobbed outward that curves back to the player, hitting
+  // on the way out and the way home. Deep pierce, both legs.
   tom: [
-    { damage: 9, speed: 360, radius: 9, lifetimeS: 2.0, pierce: 4, count: 1 },
-    { damage: 12, speed: 375, radius: 9, lifetimeS: 2.1, pierce: 5, count: 1 },
+    { damage: 11, speed: 360, radius: 9, lifetimeS: 2.0, pierce: 4, count: 1 },
+    { damage: 13, speed: 375, radius: 9, lifetimeS: 2.1, pierce: 5, count: 1 },
     { damage: 16, speed: 390, radius: 10, lifetimeS: 2.2, pierce: 6, count: 2 },
     { damage: 22, speed: 410, radius: 11, lifetimeS: 2.4, pierce: 8, count: 2 },
   ],
-  // King Bible: notes orbiting the player, a rotating shield of damage. Orbit
-  // radius shrunk from 80-122.
+  // King Bible: notes that orbit the player, a rotating shield of damage.
+  // Each trigger adds one orbiter; a melody makes a ring.
   arp: [
-    { damage: 5, radius: 8, lifetimeS: 2.0, orbitRadius: 72 },
-    { damage: 6, radius: 8, lifetimeS: 2.4, orbitRadius: 84 },
-    { damage: 8, radius: 9, lifetimeS: 2.8, orbitRadius: 96 },
-    { damage: 10, radius: 10, lifetimeS: 3.2, orbitRadius: 110 },
+    { damage: 5, radius: 8, lifetimeS: 2.0, orbitRadius: 80 },
+    { damage: 6, radius: 8, lifetimeS: 2.4, orbitRadius: 92 },
+    { damage: 7, radius: 9, lifetimeS: 2.8, orbitRadius: 106 },
+    { damage: 9, radius: 10, lifetimeS: 3.2, orbitRadius: 122 },
   ],
-  // Shockwave: an expanding ring that damages + knocks back. The marquee heavy.
-  // Radius shrunk HARD (was 260-400 — that covered most of the arena): a VS
-  // heavy is powerful, not omnipresent.
+  // Shockwave: an expanding ring from the player that damages and knocks back
+  // enemies its front passes. Rare and heavy — charts fire it on the accents.
   crash: [
-    { damage: 16, speed: 520, radius: 180, knockback: 55 },
-    { damage: 20, speed: 550, radius: 210, knockback: 65 },
-    { damage: 26, speed: 580, radius: 240, knockback: 80 },
-    { damage: 36, speed: 620, radius: 280, knockback: 100 },
+    { damage: 16, speed: 520, radius: 260, knockback: 60 },
+    { damage: 20, speed: 550, radius: 300, knockback: 70 },
+    { damage: 26, speed: 580, radius: 345, knockback: 85 },
+    { damage: 36, speed: 620, radius: 400, knockback: 110 },
   ],
-  // Shaker (Hats): drops a short-lived damaging blob at your feet each hit, so
-  // moving strings a trail. Per-tick zone. Radius shrunk from 38-54.
+  // Shaker (band, Hats): drops a short-lived damaging blob at your feet on each
+  // hit, so moving strings a trail of them behind you. Per-tick zone damage
+  // (see the chord note): the trail's high trigger rate at max tier means the
+  // per-tick number must stay small.
   shaker: [
-    { damage: 3, radius: 30, lifetimeS: 1.2 },
-    { damage: 3, radius: 34, lifetimeS: 1.3 },
-    { damage: 4, radius: 40, lifetimeS: 1.4 },
-    { damage: 5, radius: 46, lifetimeS: 1.5 },
+    { damage: 3, radius: 38, lifetimeS: 1.2 },
+    { damage: 3, radius: 42, lifetimeS: 1.3 },
+    { damage: 4, radius: 48, lifetimeS: 1.4 },
+    { damage: 5, radius: 54, lifetimeS: 1.5 },
   ],
-  // Acid (Motion): a placed gravity well — pulls enemies in and ticks. Control
-  // first. Radius shrunk from 100-145; pull kept (it's the identity).
+  // Acid (band, Motion): a placed gravity well that pulls enemies toward its
+  // center and ticks damage while they are caught. Control first, chip second.
+  // Per-tick zone damage (see the chord note): the pull is the payoff, so the
+  // chip stays near-flat and the control stats (pull, radius) carry the ladder.
   acid: [
-    { damage: 1, radius: 80, lifetimeS: 2.2, pull: 100 },
-    { damage: 1, radius: 90, lifetimeS: 2.4, pull: 115 },
-    { damage: 2, radius: 102, lifetimeS: 2.6, pull: 135 },
-    { damage: 2, radius: 116, lifetimeS: 2.8, pull: 160 },
+    { damage: 1, radius: 100, lifetimeS: 2.2, pull: 100 },
+    { damage: 1, radius: 112, lifetimeS: 2.4, pull: 115 },
+    { damage: 2, radius: 128, lifetimeS: 2.6, pull: 135 },
+    { damage: 2, radius: 145, lifetimeS: 2.8, pull: 160 },
   ],
-  // Pluck bass (Bass): a note lobbed on an arc to the nearest pack, bursts on
-  // landing. Heavy, placed. Blast radius shrunk from 70-100.
+  // Pluck bass (band, Bass): a note lobbed on an arc to the nearest pack that
+  // explodes on landing. Heavy, like the bass wave, but placed.
   pluck: [
-    { damage: 12, speed: 300, lifetimeS: 0.7, radius: 50 },
-    { damage: 16, speed: 315, lifetimeS: 0.72, radius: 56 },
-    { damage: 22, speed: 330, lifetimeS: 0.74, radius: 64 },
-    { damage: 30, speed: 350, lifetimeS: 0.78, radius: 74 },
+    { damage: 14, speed: 300, lifetimeS: 0.7, radius: 70 },
+    { damage: 18, speed: 315, lifetimeS: 0.72, radius: 78 },
+    { damage: 24, speed: 330, lifetimeS: 0.74, radius: 88 },
+    { damage: 34, speed: 350, lifetimeS: 0.78, radius: 100 },
   ],
-  // Rhodes (Harmony): chord pools laid as mines that bloom on contact. Radius
-  // shrunk from 70-104.
+  // Rhodes (band, Harmony): chord pools placed as mines that sit armed and
+  // bloom into a damage burst when an enemy steps in.
   rhodes: [
-    { damage: 9, radius: 48, lifetimeS: 4.0 },
-    { damage: 12, radius: 56, lifetimeS: 4.5 },
-    { damage: 16, radius: 64, lifetimeS: 5.0 },
-    { damage: 22, radius: 74, lifetimeS: 5.5 },
+    { damage: 10, radius: 70, lifetimeS: 4.0 },
+    { damage: 13, radius: 80, lifetimeS: 4.5 },
+    { damage: 17, radius: 90, lifetimeS: 5.0 },
+    { damage: 24, radius: 104, lifetimeS: 5.5 },
   ],
-  // Riser (FX — THE AUTO-DASH): its release grants a movement surge (see DASH)
-  // plus a token whoosh of damage. Radius shrunk from 110-155.
+  // Riser (band, FX — THE AUTO-DASH): its build-and-release grants a short
+  // movement surge (see DASH) and a whoosh of damage around the player on
+  // release. Radius is the whoosh reach.
   riser: [
-    { damage: 8, radius: 80 },
-    { damage: 10, radius: 90 },
-    { damage: 13, radius: 102 },
-    { damage: 17, radius: 116 },
+    { damage: 9, radius: 110 },
+    { damage: 11, radius: 122 },
+    { damage: 14, radius: 136 },
+    { damage: 18, radius: 155 },
   ],
-  // Bell (Melody): a note lobbed straight that shatters into shards on first hit
-  // (shard count per tier in BELL). radius = the shot's own size.
+  // Bell (band, Melody): a note lobbed straight that shatters into shards on
+  // its first hit (shard count per tier in BELL). radius = the shot's own size.
   bell: [
     { damage: 7, speed: 360, radius: 6, lifetimeS: 1.8, pierce: 1 },
     { damage: 9, speed: 370, radius: 6, lifetimeS: 1.9, pierce: 1 },
@@ -525,13 +563,15 @@ export const WEAPONS: Record<Role, WeaponConf[]> = {
 };
 
 /** The one honest gameplay-effect line on each pick card ([tier-1]). Terse
- *  VS-style, zero music description: the sound change is discovered by ear. */
+ *  VS-style, zero music description (docs/phases/m2-the-arc.md): the sound
+ *  change is discovered by ear. Lines state what the chart + stat change
+ *  actually does. */
 export const TIER_LINES: Record<Role, string[]> = {
   kick: [
-    'a whip crack to your front and back',
-    'a wider, harder crack',
-    'a longer, wider crack',
-    'cracks in all four directions',
+    'aura pulse around you, on the beat',
+    'pulse reaches further',
+    'pulses on every beat',
+    'bigger pulse, double slam every 4th bar',
   ],
   snare: [
     'piercing shot on the backbeat',
@@ -539,7 +579,12 @@ export const TIER_LINES: Record<Role, string[]> = {
     'adds weak ghost shots, pierces 1 more',
     'burst of shots every 4th bar',
   ],
-  hat: ['thin spray of fast chips', 'twice the chips', 'denser spray', 'a wall of chips'],
+  hat: [
+    'thin spray of fast chips',
+    'twice the chips',
+    'denser spray',
+    'a wall of chips',
+  ],
   bass: [
     'slow piercing wave',
     'waves twice as often',
@@ -558,21 +603,66 @@ export const TIER_LINES: Record<Role, string[]> = {
     'the full melody of seekers',
     'denser seekers that pierce',
   ],
-  clap: ['a wide slash close to you', 'wider, harder slash', 'sweeps a bigger arc', 'a huge slash all around you'],
+  clap: [
+    'a wide slash close to you',
+    'wider, harder slash',
+    'sweeps a bigger arc',
+    'a huge slash all around you',
+  ],
   tom: [
     'a boomerang that flies out and back',
     'flies further, pierces more',
     'throws two boomerangs',
     'two heavy boomerangs, deep pierce',
   ],
-  arp: ['orbiting notes circle you', 'the orbit lasts longer', 'a wider, longer orbit', 'a dense ring of orbiters'],
-  crash: ['a shockwave knocks enemies back', 'a bigger, faster wave', 'a wider wave, harder knock', 'a massive wave, huge knockback'],
-  shaker: ['leaves a damaging trail as you move', 'a longer-lasting trail', 'a wider, hotter trail', 'a blazing trail'],
-  acid: ['a well that pulls enemies in', 'pulls harder, wider', 'a stronger, bigger well', 'a massive crushing well'],
-  pluck: ['a note lobbed that bursts on landing', 'a bigger burst', 'a heavier, wider burst', 'a huge crushing burst'],
-  rhodes: ['a mine that blooms when stepped in', 'a wider bloom', 'a bigger, harder bloom', 'a huge bloom'],
-  riser: ['a surge that dashes you forward', 'a longer dash', 'a faster, harder dash', 'a huge dash surge'],
-  bell: ['a note that shatters into shards', 'more shards on the shatter', 'sharper shards, further', 'a burst of shards, pierces'],
+  arp: [
+    'orbiting notes circle you',
+    'the orbit lasts longer',
+    'a wider, longer orbit',
+    'a dense ring of orbiters',
+  ],
+  crash: [
+    'a shockwave knocks enemies back',
+    'a bigger, faster wave',
+    'a wider wave, harder knock',
+    'a massive wave, huge knockback',
+  ],
+  shaker: [
+    'leaves a damaging trail as you move',
+    'a longer-lasting trail',
+    'a wider, hotter trail',
+    'a blazing trail',
+  ],
+  acid: [
+    'a well that pulls enemies in',
+    'pulls harder, wider',
+    'a stronger, bigger well',
+    'a massive crushing well',
+  ],
+  pluck: [
+    'a note lobbed that bursts on landing',
+    'a bigger burst',
+    'a heavier, wider burst',
+    'a huge crushing burst',
+  ],
+  rhodes: [
+    'a mine that blooms when stepped in',
+    'a wider bloom',
+    'a bigger, harder bloom',
+    'a huge bloom',
+  ],
+  riser: [
+    'a surge that dashes you forward',
+    'a longer dash',
+    'a faster, harder dash',
+    'a huge dash surge',
+  ],
+  bell: [
+    'a note that shatters into shards',
+    'more shards on the shatter',
+    'sharper shards, further',
+    'a burst of shards, pierces',
+  ],
 };
 
 /** Bass tier 4's once-per-phrase sub drop and chord tier 4's pads get a
@@ -585,16 +675,18 @@ export const VARIANT_EFFECTS = {
 /** How far weapons look for a target. */
 export const AIM_RANGE = 750;
 
-/** Zone damage tick interval (chord/shaker/acid). */
+/** Zone damage tick interval (chord). Slower than M1's 0.3: the zone now
+ *  lands on the pack, so its per-tick reach is the whole horde — the slow
+ *  is the identity, the damage is chip. */
 export const ZONE_TICK_S = 0.45;
 
-/** Chord zones: enemy speed multiplier while inside, and how far a zone can be
- *  thrown toward the nearest pack. */
+/** Chord zones: enemy speed multiplier while inside, and how far a zone
+ *  can be thrown toward the nearest pack. */
 export const ZONE_SLOW_MUL = 0.55;
-export const ZONE_THROW_RANGE = 400;
+export const ZONE_THROW_RANGE = 420;
 
-/** Arp orbiters sweep at this angular speed (rad/s) and can re-hit an enemy
- *  every ORBIT_REHIT_S. */
+/** Arp orbiters sweep around the player at this angular speed (rad/s) and
+ *  can re-hit an enemy every ORBIT_REHIT_S, so a slow sweep keeps chipping. */
 export const ARP_OMEGA = 3.4;
 export const ORBIT_REHIT_S = 0.35;
 
@@ -607,31 +699,41 @@ export const BOOMERANG_OUT_FRAC = 0.45;
 export const SHOCK_BAND = 46;
 export const KNOCK_S = 0.18;
 
-/** How long an enemy rides a weapon shove before resuming its chase (shares the
- *  crash knock channel). */
+// ---- weapon feel constants (Feature 3) ----
+
+/** How long an enemy rides a weapon shove before resuming its chase (shares
+ *  the crash knock channel). */
 export const SHOVE_S = 0.12;
 
-/** Per-weapon knock distance applied on hit. Absent = no shove. Knockback-immune
- *  kinds (KB_RESIST) ignore all of it. */
-export const WEAPON_SHOVE: Partial<Record<Role, number>> = { kick: 12, snare: 16, clap: 34, bass: 10 };
+/** Per-weapon knock distance applied on hit (Feature 3). Absent = no shove. */
+export const WEAPON_SHOVE: Partial<Record<Role, number>> = { kick: 14, snare: 20, clap: 40, bass: 10 };
 
-/** Screenshake magnitudes/durations (cosmetic). Reserved for the rare heavy
- *  moments only — the crash shockwave and the once-per-phrase bass sub-drop. */
+/** Screenshake magnitudes/durations (Feature 3, cosmetic). Shake is reserved
+ *  for the rare, heavy moments only — the crash shockwave and the once-per-
+ *  phrase bass sub-drop. Frequent triggers (kick, snare, clap) deliberately
+ *  do NOT shake the camera; they punch through local fx (slam/spark/trails). */
 export const SHAKE = {
   crash: { mag: 10, dur: 0.35 },
   bassSub: { mag: 8, dur: 0.3 },
 } as const;
 
-/** Full-screen colored flash per source (cosmetic). */
+/** Full-screen colored flash per source (Feature 3, cosmetic). */
 export const FLASH = {
   crash: { alpha: 0.16, dur: 0.18 },
   bassSub: { alpha: 0.12, dur: 0.16 },
 } as const;
 
-/** Riser, the auto-dash: the release grants a short movement surge. */
+// ---- sub-phase C: the auto-dash utility + the shatter weapon ----
+
+/** Riser, the auto-dash: the release grants a short movement surge. `speed` is
+ *  added (px/s) along the dash direction for `surgeS` seconds (≈ a 180px dash),
+ *  on top of normal movement. Direction is the player's current move input, or
+ *  a fallback when standing still. */
 export const DASH = { surgeS: 0.2, speed: 900 };
 
-/** Bell shatter: per-tier shard count, and the shard projectiles' stats. */
+/** Bell shatter: per-tier shard count, and the shard projectiles' stats. Shards
+ *  fly out radially from the first hit; each is a small, short-lived bell shot
+ *  that does not itself re-shatter. */
 export const BELL = {
   shards: [4, 5, 6, 8],
   shardSpeed: 320,
@@ -640,3 +742,4 @@ export const BELL = {
   shardRadius: 4,
   shardPierce: 1,
 };
+
