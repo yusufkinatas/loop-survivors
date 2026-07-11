@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { chartEventsAtStep } from '../src/audio/arranger';
+import { SOUNDSET_LADDERS } from '../src/audio/ladders/house';
+import { STEPS_PER_PHRASE } from '../src/audio/scale';
 import {
   ENEMIES,
   MAX_ALIVE_HARD,
@@ -9,7 +12,7 @@ import {
   xpForNextLevel,
 } from '../src/game/config';
 import { STAGE_EVENTS, STAGE_STARTING_SPAWNS, STAGE_WAVES } from '../src/game/madforest';
-import { circleIntersectsRect } from '../src/game/run';
+import { RunWorld, circleIntersectsRect } from '../src/game/run';
 
 const close = (actual: number, expected: number, epsilon = 1e-9): void => {
   assert.ok(Math.abs(actual - expected) <= epsilon, `${actual} != ${expected}`);
@@ -92,5 +95,55 @@ assert.equal(circleIntersectsRect(241, -28, 0, 112, -28, 129, 19.5), true);
 assert.equal(circleIntersectsRect(241.01, -28, 0, 112, -28, 129, 19.5), false);
 assert.equal(circleIntersectsRect(-17, -28, 0, 112, -28, 129, 19.5), true);
 assert.equal(circleIntersectsRect(0, 0, 16, 112, -28, 129, 19.5), true);
+
+// Every Kick tier is exactly four-on-the-floor: 16 attacks per four-bar
+// phrase, never hidden ghost triggers between the beats.
+for (const chart of SOUNDSET_LADDERS.kick!) {
+  const fired: number[] = [];
+  for (let step = 0; step < STEPS_PER_PHRASE; step++) {
+    if (chartEventsAtStep(chart, step).length > 0) fired.push(step);
+  }
+  assert.deepEqual(fired, [0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60]);
+}
+
+const noEvents = { onLevelUp() {}, onDeath() {}, onVictory() {}, onHit() {} };
+const trigger = { role: 'kick' as const, time: 0, velocity: 1, step: 0 };
+
+// Source timer semantics: ten starting bats exist through the first second;
+// only the first 1.0s callback backfills the opening floor to fifteen.
+const opening = new RunWorld({ width: 1920, height: 1080 }, noEvents, {
+  control: () => ({ x: 0, y: 0 }),
+  fx: false,
+});
+opening.invincible = true;
+opening.update(1 / 60);
+assert.equal(opening.enemies.length, 10);
+assert.equal(opening.worldH, 800);
+for (let i = 1; i < 60; i++) opening.update(1 / 60);
+assert.equal(opening.enemies.length, 15);
+
+// A Whip body remains damaging for 200ms, so an enemy entering after the
+// activation frame is still hit. The Amount-2 follow-up starts a true 100ms
+// later and is 28 H800 pixels above the first strip.
+const active = new RunWorld({ width: 1280, height: 800 }, noEvents, { scripted: false, fx: true });
+active.addWeapon('kick', 2);
+active.spawnEnemy('bat');
+const entrant = active.enemies[0];
+entrant.x = 500;
+entrant.y = -28;
+active.fireTrigger(trigger);
+active.update(1 / 60);
+assert.equal(entrant.dead, false);
+entrant.x = 100;
+active.update(1 / 60);
+assert.equal(entrant.dead, true);
+const mainFx = active.fx!.filter((fx) => fx.type === 'whip');
+assert.equal(mainFx.length, 1);
+for (let i = 0; i < 4; i++) active.update(1 / 60);
+assert.equal(active.fx!.filter((fx) => fx.type === 'whip').length, 1);
+active.update(1 / 60);
+const whipFx = active.fx!.filter((fx) => fx.type === 'whip');
+assert.equal(whipFx.length, 2);
+assert.equal(whipFx[1].y, -56);
 
 console.log('Mad Forest parity checks passed.');

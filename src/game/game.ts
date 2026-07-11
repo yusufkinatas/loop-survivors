@@ -113,10 +113,12 @@ export async function bootGame(
   // actually entered on its next bar.
   const pendingUpgrades: number[] = [];
   let pickAwaitingBar = false;
+  let presentQueuedPickAtAudioT: number | null = null;
 
   function resetUpgradeQueue(): void {
     pendingUpgrades.length = 0;
     pickAwaitingBar = false;
+    presentQueuedPickAtAudioT = null;
   }
 
   function enqueueUpgrade(level: number): void {
@@ -126,7 +128,7 @@ export async function bootGame(
   }
 
   function presentNextUpgrade(): void {
-    if (!world || state !== 'run' || pickAwaitingBar) return;
+    if (!world || state !== 'run' || pickAwaitingBar || presentQueuedPickAtAudioT !== null) return;
 
     // Once the build is complete, each queued reward resolves to the existing
     // heal fallback immediately; otherwise exactly one screen is active.
@@ -149,7 +151,7 @@ export async function bootGame(
         // later queued pick can open while this choice is still in flight.
         state = 'run';
         pickAwaitingBar = true;
-        engine.atNextBar(() => {
+        engine.atNextBar((barAudioTime) => {
           if (world !== w || state !== 'run') return;
           engine.setVoiceTier(option.role, option.tier);
           engine.setVoiceEnabled(option.role, true);
@@ -160,7 +162,10 @@ export async function bootGame(
           view?.flourish(w.player.x, w.player.y);
           hud.levelPulse();
           pickAwaitingBar = false;
-          presentNextUpgrade();
+          // The audio scheduler runs ahead. Wait until this bar's due gameplay
+          // triggers have been dispatched and consumed by one fixed world step
+          // before pausing for a stacked reward.
+          presentQueuedPickAtAudioT = barAudioTime;
         });
         engine.clock.resume();
       });
@@ -574,6 +579,16 @@ export async function bootGame(
         liveAcc -= SIM_DT;
         steps++;
         w.update(SIM_DT);
+      }
+      if (
+        presentQueuedPickAtAudioT !== null &&
+        engine.ctx.currentTime >= presentQueuedPickAtAudioT &&
+        steps > 0 &&
+        world === w &&
+        state === 'run'
+      ) {
+        presentQueuedPickAtAudioT = null;
+        presentNextUpgrade();
       }
       // A level-up/death can change state inside a fixed step. Paused gameplay
       // never resumes with fractional time banked from before the screen opened.

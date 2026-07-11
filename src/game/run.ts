@@ -1129,6 +1129,7 @@ export class RunWorld {
         e.dead = true;
         continue;
       }
+      if (e.despawnAt > 0) continue;
       const dx = e.x - p.x;
       const dy = e.y - p.y;
       if (dx * dx + dy * dy <= far2) continue;
@@ -1378,12 +1379,12 @@ export class RunWorld {
         this.fx?.push({
           type: 'whip',
           x: strike.x,
-          y: strike.y - 28 - strike.yStep * 17.5,
+          y: strike.y - 28 - strike.yStep * 28,
           side: strike.side,
           area: strike.area,
           color: KIT_COLORS.kick,
         });
-      } else if (this.timeS > strike.expiresAt + 1e-9) {
+      } else if (this.timeS + 1e-9 >= strike.expiresAt) {
         this.pendingKick.splice(i, 1);
         continue;
       }
@@ -1391,7 +1392,7 @@ export class RunWorld {
       // Legacy Whip proxy normalized to the 800-high reference view:
       // 147x22, center x±64/y-16, then scaled by 800/456.
       const centerX = strike.x + strike.side * 112;
-      const centerY = strike.y - 28 - strike.yStep * 17.5;
+      const centerY = strike.y - 28 - strike.yStep * 28;
       const halfW = 129 * strike.area;
       const halfH = 19.5 * strike.area;
       const reach = Math.hypot(halfW, halfH) + 48;

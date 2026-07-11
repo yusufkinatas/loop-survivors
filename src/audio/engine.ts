@@ -73,7 +73,7 @@ export class MusicEngine {
   private master: GainNode;
   private pending: ScheduledTrigger[] = [];
   private listeners: TriggerListener[] = [];
-  private barQueue: (() => void)[] = [];
+  private barQueue: ((audioTime: number) => void)[] = [];
   private stepMarkers: { step: number; time: number }[] = [];
   private lastDueStep = 0;
 
@@ -196,7 +196,7 @@ export class MusicEngine {
    *  old chart finishes its bar and the change enters on the following "1".
    *  Executes at schedule time (~0.1s before it is heard) — close enough
    *  for the visuals that ride on it. */
-  atNextBar(fn: () => void): void {
+  atNextBar(fn: (audioTime: number) => void): void {
     this.barQueue.push(fn);
   }
 
@@ -244,7 +244,7 @@ export class MusicEngine {
     if (phraseStep % STEPS_PER_BAR === 0 && this.barQueue.length > 0) {
       const queue = this.barQueue;
       this.barQueue = [];
-      for (const fn of queue) fn();
+      for (const fn of queue) fn(time);
     }
     for (const voice of this.voices.values()) {
       if (!voice.enabled) continue;

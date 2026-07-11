@@ -179,7 +179,7 @@ without changing deterministic damage. **CURRENT**
 
 The legacy Area-1 physical body is `147 x 22` at `H = 456`, centered `64`
 pixels to the chosen horizontal side and `16` pixels above the player. The next
-slash is 10 legacy pixels higher. **LEGACY**
+slash is 16 legacy pixels higher. **LEGACY**
 
 | Area | H800 body | H800 center | Approx. forward reach | Portion of 1280x800 view | Label |
 |---:|---:|---:|---:|---:|---|
@@ -187,7 +187,7 @@ slash is 10 legacy pixels higher. **LEGACY**
 | 1.1 | 284 x 43 | same center | 254 | 1.19% | DERIVED |
 | 1.2 | 310 x 46 | same center | 267 | 1.39% | DERIVED |
 
-Each additional strip is about 17.5 H800 pixels higher. Area grows the body,
+Each additional strip is about 28 H800 pixels higher. Area grows the body,
 not its center offset. These footprints are why a large radial aura is not a
 Whip-like approximation.
 
