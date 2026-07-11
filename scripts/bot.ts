@@ -118,6 +118,35 @@ function report(records: RunRecord[], args: Args, config: string): string {
     );
   }
 
+  // Swarm density (docs/phases/vs-swarm-review.md), two curves per arm:
+  //   near  = mean enemies ON SCREEN per minute (quantity; VS ~15-30 early,
+  //           ~100 by 8:00).
+  //   tight = mean enemies in the CLOSE BUBBLE per minute (packing; the wall).
+  // A fleeing player shows high near / low tight (a spread tail, no wall); a
+  // circling player packs the wall (near ≈ tight, both high).
+  const nMinCols = Math.max(0, ...armList.map((a) => a.records[0]?.nearByMin.length ?? 0));
+  const minHdr = Array.from({ length: nMinCols }, (_, m) => `m${m}`.padStart(4)).join(' ');
+  const meanCol = (rs: RunRecord[], pick: (r: RunRecord) => number[], m: number): string => {
+    const vals = rs.map((r) => pick(r)[m] ?? 0);
+    return String(Math.round(vals.reduce((s, v) => s + v, 0) / vals.length)).padStart(4);
+  };
+  lines.push('');
+  lines.push('swarm density (mean enemies per minute; near = on screen, tight = close bubble):');
+  lines.push(`${''.padEnd(18)}  ${minHdr}   peak`);
+  for (const arm of armList) {
+    const nearCols = Array.from({ length: nMinCols }, (_, m) =>
+      meanCol(arm.records, (r) => r.nearByMin, m),
+    ).join(' ');
+    const tightCols = Array.from({ length: nMinCols }, (_, m) =>
+      meanCol(arm.records, (r) => r.tightByMin, m),
+    ).join(' ');
+    const peakN = Math.max(0, ...arm.records.map((r) => r.peakNear));
+    const peakT = Math.max(0, ...arm.records.map((r) => r.peakTight));
+    lines.push(`${arm.key.padEnd(18)}`);
+    lines.push(`  near             ${nearCols}   ${String(peakN).padStart(4)}`);
+    lines.push(`  tight            ${tightCols}   ${String(peakT).padStart(4)}`);
+  }
+
   // outliers: the strangest runs — wins in losing arms, early deaths in
   // winning arms — each replayable in the browser from its seed
   const outliers: { r: RunRecord; surprise: number }[] = [];

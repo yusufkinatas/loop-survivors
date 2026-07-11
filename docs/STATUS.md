@@ -2,7 +2,42 @@
 
 Last updated: July 11, 2026
 
-## Latest change (July 11, 2026) — VS fidelity pass (branch `vs-attempt-claude`, uncommitted)
+## Latest change (July 11, 2026) — swarm-feel pass (branch `vs-attempt-claude`, uncommitted)
+
+The VS-fidelity pass (below) shipped but **did not feel like Vampire Survivors** —
+the horde never packed into a wall. A review (brief: `docs/phases/vs-swarm-review.md`,
+which now also holds the full findings + dials) diagnosed and fixed it. **Awaiting
+the developer's re-test.**
+
+**Corrected diagnosis: the problem was PACKING, not quantity.** A new dual density
+probe in the bot (on-screen count vs close-bubble count, in `src/bot/sim.ts` +
+`scripts/bot.ts`) showed on-screen counts already sat in VS's band (~50–95) but
+only ~4 enemies were ever in the close bubble — a moving player strung the horde
+into a thin trailing tail instead of a dense wall.
+
+Changes (`src/game/config.ts`, `src/game/run.ts`):
+1. **Density FLOOR (new mechanic).** Each spawn-director phase has a `floor`
+   (VS wave-minimum); the director refills toward it at `FLOOR_REFILL_RATE`/s so
+   you stay surrounded no matter how fast you clear. The core "always swarmed" fix.
+2. **VS-faithful fodder speed** (195→209 = 0.91×, bat 220→210): a circling player
+   no longer outruns the pack (shed rate 35→21 px/s).
+3. **Denser, slower sweep**: a compact multi-rank block (verified ~15px gaps) at
+   860 px/s, not a 1460 px/s screen-wide sparse line — the "chunky group of bats."
+4. **Packing knobs**: separation weight 1.5→0.7 (enemies stack into a wall),
+   recycle 1.7→2.6 (trailing horde persists), caps 420/640→480/700, fodder radii
+   bumped (bat 7→8, zombie/skel 9→10).
+5. **Honest bot proxy added**: an `orbiter` circle-strafe mover (`src/bot/movers.ts`).
+   The old `kiter` *flees*, which is the anti-pattern that removes the swarm; the
+   orbiter circles the pack like real VS play. The developer's hands stay the gate.
+
+Verified: `tsc` + `vite build` clean; Chrome load clean (no console errors, sweep
+confirmed a dense block); bot guardrails — AFK 0:20 (canary healthy), fleeing kiter
+now punished (random 3:33→2:08), mandatory kick build still viable (focus:kick
+~4:00–5:30, occasional win), orbiter peak close-bubble count 44–69 (the wall
+forms). Determinism preserved (rng + dcos/dsin only; orbiter is trig-free).
+**Primary feel-dial: the FLOOR values in `SPAWN_DIRECTOR`.** Not committed.
+
+## Previous change (July 11, 2026) — VS fidelity pass (branch `vs-attempt-claude`, uncommitted)
 
 A developer-directed pass to make movement and the enemy feeling match Vampire
 Survivors' first level (Mad Forest). Fully specced in

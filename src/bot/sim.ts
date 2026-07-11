@@ -35,7 +35,21 @@ export interface RunRecord {
   minHp: number;
   minHpAtS: number;
   peakAlive: number;
+  /** Swarm-density probe (docs/phases/vs-swarm-review.md). Two numbers, because
+   *  "am I being swarmed" is quantity AND packing:
+   *   - nearByMin[m]: mean enemies ON SCREEN (visible rectangle) during minute m.
+   *     Quantity. Compare to VS floors ~15-30 early, ~100 by 8:00.
+   *   - tightByMin[m]: mean enemies inside the CLOSE BUBBLE (TIGHT_R px) during
+   *     minute m. Packing — the dense wall you carve. A fleeing player can have a
+   *     high on-screen count (a spread tail) but a low tight count (no wall). */
+  nearByMin: number[];
+  tightByMin: number[];
+  peakNear: number;
+  peakTight: number;
 }
+
+/** Radius of the "close bubble" whose fill reads as the packed wall. */
+const TIGHT_R = 260;
 
 /** The headless view size: desktop dimensions, so spawn distances match
  *  what a desktop player experiences. The browser replay uses the same
@@ -72,6 +86,13 @@ export function simulateRun(spec: SimSpec, config: string): RunRecord {
   let minHp = world.player.hp;
   let minHpAtS = 0;
   let peakAlive = 0;
+  let peakNear = 0;
+  let peakTight = 0;
+  // Per-minute density accumulators (sum + tick count → mean).
+  const nMin = Math.ceil(RUN.durationS / 60);
+  const nearSum = new Array(nMin).fill(0);
+  const tightSum = new Array(nMin).fill(0);
+  const nearCnt = new Array(nMin).fill(0);
 
   // Fixed 60 Hz ticks: fidelity over speed, parallelism is the speed lever.
   const maxTicks = Math.ceil((RUN.durationS + 2) / SIM_DT);
@@ -83,7 +104,18 @@ export function simulateRun(spec: SimSpec, config: string): RunRecord {
       minHpAtS = world.timeS;
     }
     if (world.enemyCount > peakAlive) peakAlive = world.enemyCount;
+    // Density probe: enemies on screen (quantity) and inside the close bubble
+    // (packing). Read-only, so determinism is untouched.
+    const { near, tight } = densityCounts(world);
+    if (near > peakNear) peakNear = near;
+    if (tight > peakTight) peakTight = tight;
+    const m = Math.min(nMin - 1, Math.floor(world.timeS / 60));
+    nearSum[m] += near;
+    tightSum[m] += tight;
+    nearCnt[m] += 1;
   }
+  const nearByMin = nearSum.map((s, m) => (nearCnt[m] > 0 ? Math.round(s / nearCnt[m]) : 0));
+  const tightByMin = tightSum.map((s, m) => (nearCnt[m] > 0 ? Math.round(s / nearCnt[m]) : 0));
 
   return {
     seed: spec.seed,
@@ -100,7 +132,31 @@ export function simulateRun(spec: SimSpec, config: string): RunRecord {
     minHp: Math.round(minHp),
     minHpAtS: Math.round(minHpAtS * 10) / 10,
     peakAlive,
+    nearByMin,
+    tightByMin,
+    peakNear,
+    peakTight,
   };
+}
+
+/** Enemies on screen (visible rectangle) and inside the close bubble (TIGHT_R),
+ *  centred on the player. On-screen = quantity; close = packing. Read-only;
+ *  never touches the sim. */
+function densityCounts(world: RunWorld): { near: number; tight: number } {
+  const p = world.player;
+  const hw = world.worldW / 2;
+  const hh = world.worldH / 2;
+  const tr2 = TIGHT_R * TIGHT_R;
+  let near = 0;
+  let tight = 0;
+  for (const e of world.enemies) {
+    if (e.dead) continue;
+    const dx = e.x - p.x;
+    const dy = e.y - p.y;
+    if (Math.abs(dx) <= hw && Math.abs(dy) <= hh) near++;
+    if (dx * dx + dy * dy <= tr2) tight++;
+  }
+  return { near, tight };
 }
 
 function roundValues(

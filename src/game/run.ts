@@ -21,11 +21,13 @@ import {
   ENEMY_BANDS,
   enemyScaling,
   FLASH,
+  FLOOR_REFILL_RATE,
   KB_RESIST,
   KNOCK_S,
   MAX_ALIVE_HARD,
   ORBIT_REHIT_S,
   RUN,
+  SEPARATION_WEIGHT,
   SHAKE,
   SHOCK_BAND,
   SHOVE_S,
@@ -272,6 +274,12 @@ export class RunWorld {
   private curMix: Array<[EnemyKind, number]> = [];
   private curMixTotal = 0;
   private spawnCarry = 0;
+  /** Current phase's density floor (VS wave minimum) and its refill accumulator:
+   *  when alive < curFloor the director tops the field back up at
+   *  FLOOR_REFILL_RATE/s, so a strong build can thin the horde but never empty
+   *  the screen. */
+  private curFloor = 0;
+  private floorCarry = 0;
   private scripted: boolean;
 
   constructor(
@@ -605,18 +613,36 @@ export class RunWorld {
       const b = SPAWN_DIRECTOR[this.dirIdx++];
       if ('set' in b) {
         this.curRate = b.set.rate;
+        this.curFloor = b.set.floor ?? 0;
         this.curMix = Object.entries(b.set.mix) as Array<[EnemyKind, number]>;
         this.curMixTotal = this.curMix.reduce((s, [, w]) => s + w, 0);
       } else {
         this.fireFormation(b.event.formation, b.event.kind, b.event.count);
       }
     }
-    if (this.curMixTotal > 0 && this.enemies.length < ENEMIES.maxAlive) {
+    if (this.curMixTotal <= 0) return;
+    // Steady pressure (rate), capped by the soft cap.
+    if (this.enemies.length < ENEMIES.maxAlive) {
       this.spawnCarry += this.curRate * dt;
       while (this.spawnCarry >= 1) {
         this.spawnCarry -= 1;
         this.spawnEnemy(this.rollMixKind());
       }
+    } else {
+      this.spawnCarry = 0;
+    }
+    // Density floor (VS wave minimum): if the build has cleared below the floor,
+    // refill toward it smoothly so you stay surrounded. Refill spawns are extra
+    // — they run even when the steady rate is throttled by the cap, but never
+    // past the soft cap.
+    if (this.curFloor > 0 && this.enemies.length < Math.min(this.curFloor, ENEMIES.maxAlive)) {
+      this.floorCarry += FLOOR_REFILL_RATE * dt;
+      while (this.floorCarry >= 1 && this.enemies.length < this.curFloor) {
+        this.floorCarry -= 1;
+        this.spawnEnemy(this.rollMixKind());
+      }
+    } else {
+      this.floorCarry = 0;
     }
   }
 
@@ -671,22 +697,32 @@ export class RunWorld {
     }
   }
 
-  /** A swarm-sweep (VS's bat/ghost swarm): a line of enemies enters from one
-   *  edge and flies straight across the screen at SWEEP.speed, ignoring the
-   *  player — a wall sweeping through. They recycle once they exit the far side. */
+  /** A swarm-sweep (VS's bat/ghost swarm): a dense BLOCK of enemies enters from
+   *  one edge and flies straight across the screen at SWEEP.speed, ignoring the
+   *  player — a chunky flock you must dodge. Packed shoulder-to-shoulder in a
+   *  narrow band and stacked into ranks that trail behind the leading edge, so
+   *  it reads as one moving mass, not a sparse line strobing past. They recycle
+   *  once they exit the far side. */
   spawnSweepOf(kind: EnemyKind, count: number): void {
     const ang = this.rng() * Math.PI * 2;
     const dx = dcos(ang);
     const dy = dsin(ang);
     const px = -dy; // perpendicular to the sweep direction
     const py = dx;
-    const dist = this.spawnDist(ENEMIES[kind].radius);
-    const width = Math.max(this.worldW, this.worldH) * 1.15;
-    const denom = Math.max(1, count - 1);
+    const radius = ENEMIES[kind].radius;
+    const dist = this.spawnDist(radius);
+    const bandWidth = Math.max(this.worldW, this.worldH) * SWEEP.bandFrac;
+    const spacing = Math.max(1, radius * SWEEP.spacingMul);
+    const cols = Math.max(1, Math.floor(bandWidth / spacing));
     for (let i = 0; i < count; i++) {
-      const frac = i / denom - 0.5; // -0.5 .. 0.5 across the entering edge
-      const ox = this.player.x - dx * dist + px * frac * width;
-      const oy = this.player.y - dy * dist + py * frac * width;
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const lateral = (col - (cols - 1) / 2) * spacing; // centred across the band
+      const depth = row * spacing; // each rank trails one spacing further back
+      const jx = (this.rng() * 2 - 1) * SWEEP.jitter;
+      const jy = (this.rng() * 2 - 1) * SWEEP.jitter;
+      const ox = this.player.x - dx * (dist + depth) + px * lateral + jx;
+      const oy = this.player.y - dy * (dist + depth) + py * lateral + jy;
       this.pushEnemy(kind, ox, oy, { x: dx, y: dy });
     }
   }
@@ -793,8 +829,8 @@ export class RunWorld {
         sx += (ox / od) * overlap;
         sy += (oy / od) * overlap;
       }
-      e.x += (dx * speed + sx * 1.5) * dt;
-      e.y += (dy * speed + sy * 1.5) * dt;
+      e.x += (dx * speed + sx * SEPARATION_WEIGHT) * dt;
+      e.y += (dy * speed + sy * SEPARATION_WEIGHT) * dt;
     }
   }
 

@@ -78,22 +78,26 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
   rampExp: number;
   recycleFactor: number;
 } = {
-  // Quick fodder: ~player speed, so it presses you but a moving player still
-  // creates space to whip it. 4 HP => a tier-1 whip (~11 shown) one-shots it.
-  // (VS bats are 1.27x, which glues onto anything that flees and kills in ~4s;
-  // we keep the "quick" read without the unfun glue-death, and let the low-HP
-  // GHOST be the enemy that truly outruns you.)
-  bat: { radius: 7, speed: 220, hp: 4, damage: 6, xp: 1, color: 0xd85a5a },
-  // The kiteable horde: clearly under player speed, dies to one whip crack.
-  zombie: { radius: 9, speed: 195, hp: 10, damage: 10, xp: 1, color: 0x8fae6a },
+  // Quick weak fodder. Brought to ~fodder speed (0.91x) so a moving player no
+  // longer OUTRUNS the swarm — it stays packed against you, VS's core feel. The
+  // developer's "bats are super fast and don't swarm" was the old 0.96x: fast
+  // enough to streak in as individuals, not clump into a mass. Now they clump.
+  // 4 HP => a tier-1 whip (~11 shown) still one-shots them. (VS bats are 1.27x,
+  // which glues onto a fleeing player and kills in ~4s; the low-HP GHOST stays
+  // our sole true outrunner.)
+  bat: { radius: 8, speed: 210, hp: 4, damage: 6, xp: 1, color: 0xd85a5a },
+  // The kiteable horde at VS's exact fodder ratio (0.91x): a straight-line flee
+  // sheds them at only ~20px/s, so a CIRCLING player keeps the wall packed in
+  // front (was 0.85x = 35px/s shed, which strung them into a thin tail).
+  zombie: { radius: 10, speed: 209, hp: 10, damage: 10, xp: 1, color: 0x8fae6a },
   // Slightly tankier wall fodder; arrives in rings/waves.
-  skeleton: { radius: 9, speed: 195, hp: 16, damage: 10, xp: 2, color: 0xd8d2c0 },
+  skeleton: { radius: 10, speed: 209, hp: 16, damage: 10, xp: 2, color: 0xd8d2c0 },
   // Genuinely faster than you (1.4x) and knockback-immune — the harasser you
   // can't outrun. But only 12 HP, so a grown build deletes it; it's introduced
   // at 2:00 once you have tools. Being caught briefly costs a little, not a run.
   ghost: { radius: 10, speed: 300, hp: 12, damage: 6, xp: 2, color: 0x8fd8ff },
   // Mid-tank: fodder speed but 7x the HP — soaks a few seconds of a lone whip.
-  mudman: { radius: 15, speed: 195, hp: 70, damage: 10, xp: 3, color: 0xa9814f },
+  mudman: { radius: 15, speed: 209, hp: 70, damage: 10, xp: 3, color: 0xa9814f },
   // Fast AND tanky AND hits hard (14 = 14%/hit). The first genuine "oh no".
   werewolf: { radius: 13, speed: 225, hp: 180, damage: 14, xp: 3, color: 0xd98a4a },
   // The heavy wall: slow, huge HP, 20 power (a pin against one is ~1.7s dead),
@@ -104,8 +108,10 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
   /** Spawn ring distance beyond the larger screen half-extent. */
   spawnMargin: 80,
   /** Soft cap on the steady-state horde. VS caps periodic spawns at 300; we sit
-   *  in that band (events push past it to MAX_ALIVE_HARD). */
-  maxAlive: 420,
+   *  in that band (events push past it to MAX_ALIVE_HARD). Our arena reads larger
+   *  relative to enemy size than VS's camera, so we hold a few more bodies to
+   *  fill the same visual density. */
+  maxAlive: 480,
   /** Enemy HP multiplier reached at minute 8 (curved by rampExp). Mad Forest
    *  does NOT scale base stats — difficulty is tankier TYPES + density. This is
    *  a MILD creep only, so the compressed 8-minute finale's walls stay a step
@@ -119,19 +125,46 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
   speedScaleEnd: 1.0,
   /** Exponent shaping the (mild) HP creep: >1 keeps the early game at base. */
   rampExp: 1.5,
-  /** Enemies farther than spawnDist*recycleFactor behind the moving player are
-   *  silently recycled (no gem/kill). >1 so fresh spawns aren't culled. */
-  recycleFactor: 1.7,
+  /** Enemies farther than spawnDist*recycleFactor from the player are silently
+   *  recycled (no gem/kill). Raised 1.7 -> 2.6: the old value deleted the
+   *  trailing horde barely a screen-and-a-half back, so a moving player kept
+   *  MANUFACTURING an empty field — the wall he left behind evaporated before he
+   *  could circle back onto it. At 2.6 (~2.6 screen-widths) the mass persists,
+   *  so turning or circling puts you right back into it. Still bounded, so a
+   *  straight-line runner can't tow an unbounded tail. */
+  recycleFactor: 2.6,
 };
 
 /** Wave spawns may exceed maxAlive up to this ceiling (VS's 500 absolute cap):
  *  a pinned cap must not swallow the designed event spikes. */
-export const MAX_ALIVE_HARD = 640;
+export const MAX_ALIVE_HARD = 700;
+
+/** Density FLOOR refill (VS's wave-minimum mechanic). VS spawns to keep a
+ *  minimum alive each wave, so you are ALWAYS surrounded no matter how fast you
+ *  clear; a pure spawn-RATE (our old model) lets a strong build suppress the
+ *  count and empty the screen. When alive < the phase's `floor`, the director
+ *  spawns extra bodies at up to this many per second until the floor is met.
+ *  Smooth (not a burst) so the wall closes in rather than popping in. */
+export const FLOOR_REFILL_RATE = 14;
+
+/** Enemy-vs-enemy separation weight in moveEnemies. Lowered 1.5 -> 0.7: the old
+ *  push was strong enough to hold the horde apart into spaced dots; VS enemies
+ *  overlap HEAVILY into a solid wall. Weak separation lets them stack (denser
+ *  read) without collapsing to a single point (which 0 would do). */
+export const SEPARATION_WEIGHT = 0.7;
 
 /** Swarm-sweep enemies (bat/ghost swarms) fly a LOCKED line across the screen
- *  at this speed instead of chasing — VS's 700-internal-speed sweeps (~6.4x
- *  player). They damage anything on the line, then recycle off-screen. */
-export const SWEEP = { speed: 1460 };
+ *  instead of chasing — VS's bat/ghost swarm event. The developer's complaint
+ *  ("a group crossing the screen is scattered, not a big chunky group of bats")
+ *  was two things: the old sweep was TOO FAST (1460px/s, 6.4x player — a
+ *  blink-and-miss strobe) and TOO SPREAD (one sparse line across 1.15x the
+ *  screen). Now it is a dense BLOCK — many ranks deep, packed shoulder to
+ *  shoulder in a narrow band — moving at a readable "wall you must dodge" speed.
+ *   - speed: px/s of the block (was 1460; ~3.7x player reads as a fast wall).
+ *   - bandFrac: block width as a fraction of the larger screen dimension.
+ *   - spacingMul: gap between bats as a multiple of their radius (tight = dense).
+ *   - jitter: per-bat position noise (px) so it reads organic, not a grid. */
+export const SWEEP = { speed: 860, bandFrac: 0.36, spacingMul: 2.4, jitter: 9 };
 
 /** Knockback-immune kinds (VS: ghosts, mantises, bosses resist knockback). Our
  *  shove/shock channels skip these, so no weapon can create space against them
@@ -188,7 +221,7 @@ export type Formation = 'ring' | 'surge' | 'pincer' | 'sweep' | 'elite';
 export type KindWeights = Partial<Record<EnemyKind, number>>;
 
 export type DirectorBeat =
-  | { atS: number; set: { rate: number; mix: KindWeights } }
+  | { atS: number; set: { rate: number; mix: KindWeights; floor?: number } }
   | { atS: number; event: { formation: Formation; kind: EnemyKind; count: number } };
 
 /** Time-sorted. Beats at equal `atS` fire in array order in the same frame.
@@ -197,47 +230,54 @@ export type DirectorBeat =
  *  developer's call). Each ~minute introduces a tougher TYPE, pressure climbs
  *  to an event cluster, a short breather resets tension, then the finale (7:00
  *  on) drops the breathers and overruns any build. The three VS event types are
- *  reproduced: SWEEP (a wall of speed-1460 bats/ghosts sweeping across), RING (a
+ *  reproduced: SWEEP (a dense block of bats/ghosts sweeping across), RING (a
  *  closing wall — the flower-wall), and the ELITE objective. Introduction order:
  *  bat 0:00, zombie 0:20, skeleton 1:30, ghost 2:00, mudman 2:40, werewolf 3:30,
- *  mantis 4:00; elite recurs from 1:00. */
+ *  mantis 4:00; elite recurs from 1:00.
+ *
+ *  `floor` on each `set` beat is the density MINIMUM (VS's wave floor): the
+ *  director tops the field back up to it whenever a strong build clears below
+ *  it, so you are always surrounded (the swarm no longer depends on your DPS
+ *  being weak). Floors track VS's Mad Forest curve, compressed: ~12-20 early,
+ *  ~30-50 mid, ~80-110 finale. `rate` is the ongoing pressure ON TOP of the
+ *  floor; the two together shape the horde. */
 export const SPAWN_DIRECTOR: DirectorBeat[] = [
   // -- 0:00 the on-ramp: a light trickle of quick bats. The whip one-shots
   //    them, so the opening is gentle (VS minute-0 floor ~15). You build up.
-  { atS: 0, set: { rate: 2.5, mix: { bat: 1 } } },
-  { atS: 20, set: { rate: 3.5, mix: { bat: 0.65, zombie: 0.35 } } },
-  // -- 0:40 first teaching sweep (a small bat line crossing the screen).
-  { atS: 40, event: { formation: 'sweep', kind: 'bat', count: 12 } },
-  { atS: 45, set: { rate: 4, mix: { bat: 0.55, zombie: 0.45 } } },
+  { atS: 0, set: { rate: 2.5, mix: { bat: 1 }, floor: 12 } },
+  { atS: 20, set: { rate: 3.5, mix: { bat: 0.65, zombie: 0.35 }, floor: 16 } },
+  // -- 0:40 first teaching sweep (a small dense bat block crossing the screen).
+  { atS: 40, event: { formation: 'sweep', kind: 'bat', count: 22 } },
+  { atS: 45, set: { rate: 4, mix: { bat: 0.55, zombie: 0.45 }, floor: 20 } },
   // -- 1:00 first elite objective (drops a fat gem).
   { atS: 60, event: { formation: 'elite', kind: 'elite', count: 1 } },
-  { atS: 62, set: { rate: 5, mix: { bat: 0.5, zombie: 0.42, skeleton: 0.08 } } },
-  { atS: 80, event: { formation: 'sweep', kind: 'bat', count: 14 } },
+  { atS: 62, set: { rate: 5, mix: { bat: 0.5, zombie: 0.42, skeleton: 0.08 }, floor: 24 } },
+  { atS: 80, event: { formation: 'sweep', kind: 'bat', count: 26 } },
   // -- 1:30 skeleton intro (wall fodder), first closing ring.
-  { atS: 90, set: { rate: 6.5, mix: { bat: 0.42, zombie: 0.38, skeleton: 0.2 } } },
-  { atS: 110, event: { formation: 'ring', kind: 'zombie', count: 22 } },
+  { atS: 90, set: { rate: 6.5, mix: { bat: 0.42, zombie: 0.38, skeleton: 0.2 }, floor: 30 } },
+  { atS: 110, event: { formation: 'ring', kind: 'zombie', count: 26 } },
   // -- 2:00 ghost intro (the fast flankers you cannot outrun) as a surge, then
   //    a breather.
   { atS: 120, event: { formation: 'surge', kind: 'ghost', count: 6 } },
-  { atS: 122, set: { rate: 6, mix: { bat: 0.36, zombie: 0.34, skeleton: 0.2, ghost: 0.1 } } }, // breather
-  { atS: 140, set: { rate: 8, mix: { bat: 0.34, zombie: 0.34, skeleton: 0.2, ghost: 0.12 } } },
-  { atS: 150, event: { formation: 'sweep', kind: 'bat', count: 18 } },
+  { atS: 122, set: { rate: 6, mix: { bat: 0.36, zombie: 0.34, skeleton: 0.2, ghost: 0.1 }, floor: 28 } }, // breather
+  { atS: 140, set: { rate: 8, mix: { bat: 0.34, zombie: 0.34, skeleton: 0.2, ghost: 0.12 }, floor: 34 } },
+  { atS: 150, event: { formation: 'sweep', kind: 'bat', count: 30 } },
   // -- 2:40 mudman intro (the first HP wall you cannot just delete).
   { atS: 160, event: { formation: 'surge', kind: 'mudman', count: 4 } },
   {
     atS: 162,
-    set: { rate: 8.5, mix: { bat: 0.3, zombie: 0.3, skeleton: 0.2, ghost: 0.12, mudman: 0.08 } },
+    set: { rate: 8.5, mix: { bat: 0.3, zombie: 0.3, skeleton: 0.2, ghost: 0.12, mudman: 0.08 }, floor: 38 },
   },
   // -- 3:00 inflection: elite + a closing ring of mudmen, then a breather.
   { atS: 180, event: { formation: 'elite', kind: 'elite', count: 1 } },
   { atS: 182, event: { formation: 'ring', kind: 'mudman', count: 6 } },
   {
     atS: 185,
-    set: { rate: 7, mix: { bat: 0.3, zombie: 0.3, skeleton: 0.2, ghost: 0.12, mudman: 0.08 } },
+    set: { rate: 7, mix: { bat: 0.3, zombie: 0.3, skeleton: 0.2, ghost: 0.12, mudman: 0.08 }, floor: 34 },
   }, // breather
   {
     atS: 200,
-    set: { rate: 10, mix: { bat: 0.28, zombie: 0.28, skeleton: 0.2, ghost: 0.14, mudman: 0.1 } },
+    set: { rate: 10, mix: { bat: 0.28, zombie: 0.28, skeleton: 0.2, ghost: 0.14, mudman: 0.1 }, floor: 44 },
   },
   // -- 3:30 werewolf intro (fast + strong): a surge from one side.
   { atS: 210, event: { formation: 'surge', kind: 'werewolf', count: 4 } },
@@ -246,10 +286,11 @@ export const SPAWN_DIRECTOR: DirectorBeat[] = [
     set: {
       rate: 11,
       mix: { bat: 0.26, zombie: 0.26, skeleton: 0.18, ghost: 0.14, mudman: 0.1, werewolf: 0.06 },
+      floor: 48,
     },
   },
-  // -- 3:50 ghost swarm (a very fast line-sweep).
-  { atS: 230, event: { formation: 'sweep', kind: 'ghost', count: 14 } },
+  // -- 3:50 ghost swarm (a dense line-sweep of the fast flankers).
+  { atS: 230, event: { formation: 'sweep', kind: 'ghost', count: 26 } },
   // -- 4:00 mantis intro (the heavy wall) + a big closing ring, breather after.
   { atS: 240, event: { formation: 'surge', kind: 'mantis', count: 3 } },
   {
@@ -259,9 +300,10 @@ export const SPAWN_DIRECTOR: DirectorBeat[] = [
       mix: {
         bat: 0.26, zombie: 0.24, skeleton: 0.16, ghost: 0.14, mudman: 0.1, werewolf: 0.06, mantis: 0.04,
       },
+      floor: 52,
     },
   },
-  { atS: 260, event: { formation: 'ring', kind: 'zombie', count: 32 } },
+  { atS: 260, event: { formation: 'ring', kind: 'zombie', count: 36 } },
   // -- 4:30 double elite, mid-game crunch.
   { atS: 270, event: { formation: 'elite', kind: 'elite', count: 2 } },
   {
@@ -271,6 +313,7 @@ export const SPAWN_DIRECTOR: DirectorBeat[] = [
       mix: {
         bat: 0.26, zombie: 0.24, skeleton: 0.16, ghost: 0.14, mudman: 0.1, werewolf: 0.06, mantis: 0.04,
       },
+      floor: 46,
     },
   }, // breather
   {
@@ -280,11 +323,12 @@ export const SPAWN_DIRECTOR: DirectorBeat[] = [
       mix: {
         bat: 0.24, zombie: 0.22, skeleton: 0.16, ghost: 0.16, mudman: 0.1, werewolf: 0.07, mantis: 0.05,
       },
+      floor: 56,
     },
   },
   // -- 5:00 the flower wall: a closing ring of mantises + a bat sweep at once.
   { atS: 300, event: { formation: 'ring', kind: 'mantis', count: 7 } },
-  { atS: 302, event: { formation: 'sweep', kind: 'bat', count: 22 } },
+  { atS: 302, event: { formation: 'sweep', kind: 'bat', count: 40 } },
   {
     atS: 305,
     set: {
@@ -292,6 +336,7 @@ export const SPAWN_DIRECTOR: DirectorBeat[] = [
       mix: {
         bat: 0.24, zombie: 0.22, skeleton: 0.16, ghost: 0.16, mudman: 0.1, werewolf: 0.07, mantis: 0.05,
       },
+      floor: 60,
     },
   },
   { atS: 330, event: { formation: 'pincer', kind: 'werewolf', count: 8 } },
@@ -302,6 +347,7 @@ export const SPAWN_DIRECTOR: DirectorBeat[] = [
       mix: {
         bat: 0.24, zombie: 0.2, skeleton: 0.16, ghost: 0.16, mudman: 0.1, werewolf: 0.08, mantis: 0.06,
       },
+      floor: 66,
     },
   },
   // -- 6:00 elites + a closing mudman ring, the last real breather.
@@ -314,9 +360,10 @@ export const SPAWN_DIRECTOR: DirectorBeat[] = [
       mix: {
         bat: 0.24, zombie: 0.2, skeleton: 0.16, ghost: 0.16, mudman: 0.1, werewolf: 0.08, mantis: 0.06,
       },
+      floor: 54,
     },
   }, // last breather
-  { atS: 380, event: { formation: 'sweep', kind: 'bat', count: 28 } },
+  { atS: 380, event: { formation: 'sweep', kind: 'bat', count: 48 } },
   {
     atS: 382,
     set: {
@@ -324,6 +371,7 @@ export const SPAWN_DIRECTOR: DirectorBeat[] = [
       mix: {
         bat: 0.24, zombie: 0.18, skeleton: 0.14, ghost: 0.18, mudman: 0.1, werewolf: 0.09, mantis: 0.07,
       },
+      floor: 72,
     },
   },
   { atS: 400, event: { formation: 'pincer', kind: 'werewolf', count: 10 } },
@@ -335,11 +383,12 @@ export const SPAWN_DIRECTOR: DirectorBeat[] = [
       mix: {
         bat: 0.26, zombie: 0.16, skeleton: 0.12, ghost: 0.19, mudman: 0.08, werewolf: 0.1, mantis: 0.09,
       },
+      floor: 84,
     },
   },
   { atS: 420, event: { formation: 'elite', kind: 'elite', count: 3 } },
   { atS: 428, event: { formation: 'ring', kind: 'mantis', count: 10 } },
-  { atS: 438, event: { formation: 'sweep', kind: 'ghost', count: 22 } },
+  { atS: 438, event: { formation: 'sweep', kind: 'ghost', count: 40 } },
   {
     atS: 448,
     set: {
@@ -347,10 +396,11 @@ export const SPAWN_DIRECTOR: DirectorBeat[] = [
       mix: {
         bat: 0.28, zombie: 0.14, skeleton: 0.1, ghost: 0.2, mudman: 0.08, werewolf: 0.1, mantis: 0.1,
       },
+      floor: 100,
     },
   },
   { atS: 450, event: { formation: 'ring', kind: 'zombie', count: 90 } },
-  { atS: 460, event: { formation: 'sweep', kind: 'bat', count: 40 } },
+  { atS: 460, event: { formation: 'sweep', kind: 'bat', count: 64 } },
   { atS: 470, event: { formation: 'surge', kind: 'werewolf', count: 14 } },
 ];
 

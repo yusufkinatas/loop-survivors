@@ -134,3 +134,32 @@ ear/hands/eye remain the real gate.
   reliable mandatory carry (focus:kick ~5:19, kick ~33% share) — intended, but
   the developer decides if it wants trimming.
 - Not committed (per the harness rule of committing only when asked).
+
+## Follow-up: the swarm-feel pass (July 11, 2026)
+
+The developer played this pass and it **did not feel like Vampire Survivors** —
+the horde never packed into a wall. A review diagnosed and fixed the cause; full
+report and dials in `docs/phases/vs-swarm-review.md`. The root cause was **packing,
+not quantity**: on-screen counts were already in VS's band, but a moving player
+strung the horde into a thin trailing tail (only ~4 enemies ever in the close
+bubble). Changes layered on top of this spec (same files):
+
+- **Density FLOOR (new).** Each `SPAWN_DIRECTOR` phase carries a `floor`
+  (VS wave-minimum); the director refills toward it at `FLOOR_REFILL_RATE`/s so
+  you are always surrounded no matter how fast you clear. Rate-only spawning let a
+  strong build empty the screen; the floor is the core "always swarmed" guarantee.
+- **VS-faithful fodder speed.** zombie/skeleton/mudman 195 → **209 (0.91×)**, bat
+  220 → **210**, so a circling player no longer outruns the pack. (Deviation #1 in
+  this spec — fodder deliberately slower-than-VS to keep a *fleeing* bot alive — is
+  partly reversed: the fleeing `kiter` was the wrong proxy. A circle-strafe
+  `orbiter` mover was added as the honest one.)
+- **Denser, slower sweep.** `SWEEP` is now a compact multi-rank block (bandFrac
+  0.36, spacingMul 2.4) at 860 px/s, not a 1460 px/s screen-wide sparse line — the
+  "chunky group of bats" the developer asked for.
+- **Packing knobs.** separation weight 1.5 → **0.7** (enemies stack into a wall,
+  VS overlaps heavily); off-screen recycle 1.7 → **2.6** (the trailing horde
+  persists so circling re-enters it); caps 420/640 → **480/700**.
+- Slightly chunkier fodder radii (bat 7→8, zombie/skel 9→10).
+
+Awaiting the developer's re-test. The **floor values** are the primary "more/less
+swarmed" dial.
