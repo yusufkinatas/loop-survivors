@@ -75,11 +75,11 @@ export function circleIntersectsRect(
   return dx * dx + dy * dy <= radius * radius;
 }
 
-/** Official-demo Whip geometry converted from its feet-anchored sprite into
- * this world's player collision-center coordinates. */
+/** Whip-style facing strip geometry. baseWidth is the reach (kept short so it
+ * stays a close-range crowd tool, not a screen-wide beam). */
 export const KICK_GEOMETRY = {
   scale: 800 / 456,
-  baseWidth: 147 * (800 / 456),
+  baseWidth: 85 * (800 / 456),
   baseHeight: 22 * (800 / 456),
 } as const;
 
@@ -94,13 +94,13 @@ export function kickStripCenter(
   playerX: number,
   playerY: number,
   side: 1 | -1,
-  addedIndex: number,
+  halfWidth: number,
 ): { x: number; y: number } {
-  // Source body center is (spriteX-1, spriteY-7); slash center is
-  // (spriteX±64, spriteY-16-16*index).
+  // Vertically centered on the player, inner edge at the player's center,
+  // reaching out to the facing side.
   return {
-    x: playerX + (1 + side * 64) * KICK_GEOMETRY.scale,
-    y: playerY + (-9 - 16 * addedIndex) * KICK_GEOMETRY.scale,
+    x: playerX + side * halfWidth,
+    y: playerY,
   };
 }
 
@@ -153,8 +153,6 @@ export interface Enemy {
   moveY: number;
   /** Scripted event expiry; 0 means normal lifetime/recycling. */
   despawnAt: number;
-  /** Kick's 1.35 s per-target cadence lock. */
-  kickReadyAt: number;
   knockbackMul: number;
   /** Project-native chest substitute chance assigned by the stage row. */
   upgradeChance: number;
@@ -363,12 +361,14 @@ export class RunWorld {
     side: 1 | -1;
     damage: number;
     area: number;
-    yStep: number;
     started: boolean;
     startedAt: number;
     expiresAt: number;
     samplePlayer: boolean;
     spawnFollowUp: boolean;
+    /** Enemies already damaged by THIS strike, so its 200 ms hitbox lands one
+     *  hit per enemy across its frames while every new trigger hits fresh. */
+    hit: Set<Enemy>;
   }> = [];
   private scripted: boolean;
 
@@ -449,12 +449,12 @@ export class RunWorld {
           side,
           damage: conf.damage,
           area: conf.area ?? 1,
-          yStep: 0,
           started: false,
           startedAt: 0,
           expiresAt: 0,
           samplePlayer: false,
           spawnFollowUp: (conf.amount ?? 1) > 1,
+          hit: new Set(),
         });
         break;
       }
@@ -919,7 +919,6 @@ export class RunWorld {
       moveX,
       moveY,
       despawnAt,
-      kickReadyAt: 0,
       knockbackMul: stats.knockback,
       upgradeChance: 0,
     });
@@ -1437,19 +1436,19 @@ export class RunWorld {
             side: 1,
             damage: strike.damage,
             area: strike.area,
-            yStep: 1,
             started: false,
             startedAt: 0,
             expiresAt: 0,
             samplePlayer: true,
             spawnFollowUp: false,
+            hit: new Set(),
           });
         }
-        const visualCenter = kickStripCenter(strike.x, strike.y, strike.side, strike.yStep);
+        // Anchor at the player; the view bursts the pulse outward from here.
         this.fx?.push({
           type: 'whip',
-          x: visualCenter.x,
-          y: visualCenter.y,
+          x: strike.x,
+          y: strike.y,
           side: strike.side,
           area: strike.area,
           color: KIT_COLORS.kick,
@@ -1459,29 +1458,27 @@ export class RunWorld {
         continue;
       }
 
-      // Legacy Whip body normalized to the 800-high reference view and
-      // converted from sprite-foot coordinates to our collision center.
-      const center = kickStripCenter(strike.x, strike.y, strike.side, strike.yStep);
-      const centerX = center.x;
-      const centerY = center.y;
-      // Phaser scales the legacy Whip sprite and its Arcade body together:
-      // grow linearly from zero to full Area for 100 ms, then hold for 100 ms.
+      // Grow linearly from zero to full Area over 100 ms, then hold 100 ms;
+      // the inner edge stays pinned to the player as the reach extends.
       const age = Math.max(0, this.timeS - strike.startedAt);
       const bodyScale = Math.min(1, age / 0.1);
       const halfW = (KICK_GEOMETRY.baseWidth * strike.area * bodyScale) / 2;
       const halfH = (KICK_GEOMETRY.baseHeight * strike.area * bodyScale) / 2;
+      const center = kickStripCenter(strike.x, strike.y, strike.side, halfW);
+      const centerX = center.x;
+      const centerY = center.y;
       const reach = Math.hypot(halfW, halfH) + 48;
       const near = this.hash.query(centerX, centerY, reach, this.queryBuf);
       for (const e of near) {
         if (
           e.dead ||
-          e.kickReadyAt > this.timeS + 1e-9 ||
+          strike.hit.has(e) ||
           !circleIntersectsRect(e.x, e.y, e.radius, centerX, centerY, halfW, halfH)
         ) {
           continue;
         }
         this.damageEnemy(e, strike.damage, 'kick');
-        e.kickReadyAt = this.timeS + 1.35;
+        strike.hit.add(e);
         // Enemy hit response reverses pursuit for the same 120 ms flash,
         // scaled by the source bestiary's knockback multiplier.
         this.reverseForKick(e, strike.x, strike.y);
