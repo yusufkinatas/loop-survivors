@@ -89,6 +89,13 @@ export class MusicEngine {
   readonly analyser: AnalyserNode;
   readonly voices = new Map<Role, Voice>();
   private master: GainNode;
+  /** The last non-transient master target (set by setMasterGain): the volume
+   *  duckWeapons ramps back to, and the mute check the level cue respects. */
+  private masterTarget = 0.8;
+  /** Weapons sub-bus (every voice sums here before master): lets a level-up
+   *  dip the whole soundtrack for its slow-mo moment while the level cue,
+   *  which rides master directly, rings out over the dip. */
+  private weaponsBus: GainNode;
   /** Independent transport gate: intentional game pauses mute immediately
    * while AudioContext.suspend() crosses the browser control boundary. */
   private transport: GainNode;
@@ -107,6 +114,9 @@ export class MusicEngine {
     this.ctx = ctx;
     this.master = ctx.createGain();
     this.master.gain.value = 0.8;
+    this.weaponsBus = ctx.createGain();
+    this.weaponsBus.gain.value = 1;
+    this.weaponsBus.connect(this.master);
     this.transport = ctx.createGain();
     this.transport.gain.value = 1;
     // Soft-knee limiter on the master so any build stays clean (Pillar 2:
@@ -128,12 +138,13 @@ export class MusicEngine {
     for (const [role, kit] of kits) {
       const gain = ctx.createGain();
       gain.gain.value = 1;
-      // gain -> duck -> master: the persistent duck node is unity except when
-      // the kick sidechains the bass (design rule 1).
+      // gain -> duck -> weaponsBus -> master: the persistent duck node is unity
+      // except when the kick sidechains the bass (design rule 1); the weapons
+      // bus is what a level-up dip acts on.
       const duck = ctx.createGain();
       duck.gain.value = 1;
       gain.connect(duck);
-      duck.connect(this.master);
+      duck.connect(this.weaponsBus);
       // Voices start disabled at tier 1; the run enables and tiers them as the
       // player picks. The soundset decides what they play.
       this.voices.set(role, {
@@ -187,7 +198,53 @@ export class MusicEngine {
   }
 
   setMasterGain(value: number): void {
+    this.masterTarget = value;
     this.master.gain.setTargetAtTime(value, this.ctx.currentTime, 0.02);
+  }
+
+  /** Level-up moment: dip the whole weapons bus to `depth` of unity for
+   *  `holdS` seconds, then ramp back. Acts on the weapons sub-bus, so the
+   *  level cue (on master) rides over the dip. No-op while muted. */
+  duckWeapons(depth: number, holdS: number): void {
+    if (this.masterTarget <= 0) return; // muted: nothing to duck
+    const g = this.weaponsBus.gain;
+    const now = this.ctx.currentTime;
+    const target = Math.max(0, Math.min(1, depth));
+    g.cancelScheduledValues(now);
+    g.setValueAtTime(g.value, now);
+    g.linearRampToValueAtTime(target, now + 0.06);
+    g.setValueAtTime(target, now + Math.max(0.1, holdS - 0.28));
+    g.linearRampToValueAtTime(1, now + holdS);
+  }
+
+  /** A short, bright "level up" chime — a quick ascending major sparkle.
+   *  Rides master (respects mute) on its own gain, bypassing the weapons bus
+   *  so the level-up dip never swallows it. Purely cosmetic, never headless. */
+  playLevelCue(): void {
+    if (this.masterTarget <= 0) return; // muted
+    const now = this.ctx.currentTime;
+    const out = this.ctx.createGain();
+    out.gain.value = 1;
+    const lp = this.ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 5200;
+    out.connect(lp).connect(this.master);
+    // C6 major triad up to C7: a classic pickup sparkle, arpeggiated fast.
+    const notes = [1046.5, 1318.5, 1568.0, 2093.0];
+    for (let i = 0; i < notes.length; i++) {
+      const t0 = now + i * 0.045;
+      const osc = this.ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.value = notes[i];
+      const env = this.ctx.createGain();
+      const peak = 0.16 * (1 - i * 0.12);
+      env.gain.setValueAtTime(0.0001, t0);
+      env.gain.exponentialRampToValueAtTime(peak, t0 + 0.008);
+      env.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.38);
+      osc.connect(env).connect(out);
+      osc.start(t0);
+      osc.stop(t0 + 0.42);
+    }
   }
 
   /** Freeze already-scheduled lookahead audio at an intentional game pause.

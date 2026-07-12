@@ -10,7 +10,7 @@ import { SIM_DT, VirtualConductor } from '../bot/conductor';
 import { MOVERS, type Mover, type MoverName } from '../bot/movers';
 import { makePolicy } from '../bot/policies';
 import { SIM_VIEW } from '../bot/sim';
-import { RUN } from './config';
+import { RUN, LEVELUP } from './config';
 import { SLOTS, ownerOfSlot } from './band';
 import { mountTrackOverlay } from './trackoverlay';
 import { Hud, TIER_NUMERALS } from './hud';
@@ -18,11 +18,11 @@ import { autoMove, Input, type AutoMoveMode } from './input';
 import { mountJoystick } from './joystick';
 import { rollOffers, type PickOption } from './picks';
 import { mulberry32 } from './rng';
-import { RunWorld } from './run';
-import { RunView } from './view';
+import { RunWorld, KIT_COLORS } from './run';
+import { RunView, type GroundPickView } from './view';
 import { mountSandboxPanel, type SandboxPanel } from './sandbox';
 
-type State = 'start' | 'run' | 'pick' | 'end' | 'sandbox' | 'replay';
+type State = 'start' | 'run' | 'end' | 'sandbox' | 'replay';
 
 export async function bootGame(
   root: HTMLElement,
@@ -64,6 +64,12 @@ export async function bootGame(
   // every new run / sandbox entry (reset in resetWorld). Owned here alongside
   // muted / paused / autoMode — the same one-place-per-shell-flag pattern.
   let timeScale = 1;
+  // Level-up slow-mo: a transient scale that COMPOSES with the dev timeScale.
+  // The loop and audio clock use `timeScale * momentScale`; the dev slider
+  // still shows/controls `timeScale` alone. `momentT` is real seconds left in
+  // the current level-up moment (purely cosmetic).
+  let momentScale = 1;
+  let momentT = 0;
   const TS_MIN = 0.25;
   const TS_MAX = 3;
   const TS_STEP = 0.25;
@@ -84,9 +90,22 @@ export async function bootGame(
   function setTimeScale(v: number): void {
     const clamped = Math.max(TS_MIN, Math.min(TS_MAX, v));
     timeScale = Math.round(clamped / TS_STEP) * TS_STEP;
-    engine.clock.rate = timeScale;
+    applyClockRate();
     if (tsSlider) tsSlider.value = String(timeScale);
     if (tsLabel) tsLabel.textContent = `speed ${timeScale.toFixed(2)}x`;
+  }
+  /** Push the effective rate (dev timeScale × the transient level-up moment)
+   *  to the audio clock. */
+  function applyClockRate(): void {
+    engine.clock.rate = timeScale * momentScale;
+  }
+  /** End the level-up slow-mo moment early / restore normal rate. */
+  function endLevelMoment(): void {
+    momentT = 0;
+    if (momentScale !== 1) {
+      momentScale = 1;
+      applyClockRate();
+    }
   }
   function syncTimeScaleControl(): void {
     if (!tsSlider) return;
@@ -156,26 +175,48 @@ export async function bootGame(
   const pendingUpgrades: number[] = [];
   let pickAwaitingBar = false;
   let presentQueuedPickAtAudioT: number | null = null;
+  // The level-up offers currently dropped on the ground as physical items, in
+  // a triangle around the player. Shell-owned (never entities in the
+  // deterministic world), so the autoplay bot and replays are untouched — they
+  // keep resolving each level instantly through VirtualConductor. Empty = none.
+  interface GroundItem {
+    x: number;
+    y: number;
+    option: PickOption;
+  }
+  let groundPicks: GroundItem[] = [];
+
+  function clearGroundPicks(): void {
+    if (groundPicks.length > 0) groundPicks = [];
+    view?.setGroundPicks([]);
+  }
 
   function resetUpgradeQueue(): void {
     pendingUpgrades.length = 0;
     pickAwaitingBar = false;
     presentQueuedPickAtAudioT = null;
+    clearGroundPicks();
+    endLevelMoment();
   }
 
   function enqueueUpgrade(level: number): void {
-    if (!world || (state !== 'run' && state !== 'pick')) return;
+    if (!world || state !== 'run') return;
     pendingUpgrades.push(level);
   }
 
+  // A level-up no longer opens a menu: the three offers drop as items on the
+  // ground and the run keeps playing. Only one triangle is out at a time; a
+  // queued reward waits until the current one is collected and its weapon has
+  // entered on the next bar (pickAwaitingBar / presentQueuedPickAtAudioT).
   function presentNextUpgrade(): void {
     if (!world || state !== 'run' || pickAwaitingBar || presentQueuedPickAtAudioT !== null) return;
+    if (groundPicks.length > 0) return; // one triangle at a time
 
-    // Once the build is complete, each queued reward resolves to the existing
-    // heal fallback immediately; otherwise exactly one screen is active.
-    while (pendingUpgrades.length > 0) {
+    const w = world;
+    // Build-complete rewards have no item to drop and resolve to the heal
+    // fallback immediately; the first real offer drops a triangle and stops.
+    while (pendingUpgrades.length > 0 && groundPicks.length === 0) {
       pendingUpgrades.shift();
-      const w = world;
       // The offer roll (docs/phases/m2-the-arc.md) is shared with the autoplay
       // bot via picks.ts, so the bot faces the exact offers a player does.
       const options = rollOffers(w.tiers, Math.random, w.timeS);
@@ -184,43 +225,81 @@ export async function bootGame(
         hud.showToast('+15 hp — the track is complete');
         continue;
       }
-
-      state = 'pick';
-      syncTimeScaleControl(); // timeScale is not live behind a pick screen
-      engine.clock.pause();
-      engine.holdTransport(true);
-      hud.showPick(options, (option) => {
-        // Resume the old arrangement long enough to reach the next bar. No
-        // later queued pick can open while this choice is still in flight.
-        state = 'run';
-        syncTimeScaleControl(); // re-arm the slider as the run resumes
-        pickAwaitingBar = true;
-        engine.releaseTransport();
-        engine.atNextBar((barAudioTime) => {
-          if (world !== w || state !== 'run') return;
-          // Audio is scheduled ahead, so its chart must change now for the
-          // first note of the new bar. World state waits for the exact heard
-          // timestamp below, preserving old-tier damage on any older trigger.
-          engine.setVoiceTier(option.role, option.tier);
-          engine.setVoiceEnabled(option.role, true);
-          engine.atAudioTime(barAudioTime, () => {
-            if (world !== w || state !== 'run') return;
-            w.addWeapon(option.role, option.tier);
-            hud.renderBand(w.tiers, undefined, mutedRoles);
-            refreshTrackOverlay();
-            // Cosmetic affirmation the pick landed (view-only, muted-safe).
-            view?.flourish(w.player.x, w.player.y);
-            hud.levelPulse();
-            pickAwaitingBar = false;
-            // Wait until this bar's due gameplay triggers have been consumed
-            // by one fixed world step before pausing for a stacked reward.
-            presentQueuedPickAtAudioT = barAudioTime;
-          });
-        });
-        engine.clock.resume();
-      });
-      return;
+      dropGroundPicks(w, options);
     }
+  }
+
+  /** Drop the offered options as items in a triangle around the player, shove
+   *  the horde clear of them, and fire the cosmetic level-up moment. */
+  function dropGroundPicks(w: RunWorld, options: PickOption[]): void {
+    const cx = w.player.x;
+    const cy = w.player.y;
+    const items: GroundItem[] = [];
+    const payload: GroundPickView[] = [];
+    for (let i = 0; i < options.length; i++) {
+      const option = options[i];
+      const deg = LEVELUP.angles[i % LEVELUP.angles.length];
+      const rad = (deg * Math.PI) / 180;
+      const x = cx + Math.cos(rad) * LEVELUP.itemRadius;
+      const y = cy + Math.sin(rad) * LEVELUP.itemRadius;
+      items.push({ x, y, option });
+      const prevTier = w.tiers.get(option.role) ?? 0;
+      payload.push({
+        x,
+        y,
+        role: option.role,
+        color: KIT_COLORS[option.role],
+        name: kits.get(option.role)!.name,
+        // New pick reads "1"; a tier-up reads e.g. "2 → 3".
+        level: prevTier > 0 ? `${prevTier} → ${option.tier}` : '1',
+      });
+    }
+    groundPicks = items;
+    view?.setGroundPicks(payload);
+    w.shoveEnemiesOut(cx, cy, LEVELUP.enemyPushRadius);
+    startLevelMoment(cx, cy);
+  }
+
+  /** The satisfying beat: 0.5× slow-mo + weapon-volume duck for one second,
+   *  plus a bright cue and a screen pulse. Everything snaps back after. */
+  function startLevelMoment(cx: number, cy: number): void {
+    momentT = LEVELUP.momentS;
+    momentScale = LEVELUP.slowScale;
+    applyClockRate();
+    engine.duckWeapons(LEVELUP.duckDepth, LEVELUP.momentS);
+    engine.playLevelCue();
+    hud.levelPulse();
+    view?.levelBurst(cx, cy);
+  }
+
+  /** Walk-onto collection: take one item, clear the rest, and enter the chosen
+   *  weapon on the next bar (audio keeps playing — no transport hold). Mirrors
+   *  the old pick's bar-accurate entry so old-tier damage is preserved. */
+  function collectGroundPick(item: GroundItem): void {
+    const w = world;
+    if (!w) return;
+    const option = item.option;
+    clearGroundPicks();
+    pickAwaitingBar = true;
+    engine.atNextBar((barAudioTime) => {
+      if (world !== w || state !== 'run') return;
+      // Audio is scheduled ahead, so its chart must change now for the first
+      // note of the new bar. World state waits for the exact heard timestamp
+      // below, preserving old-tier damage on any older trigger.
+      engine.setVoiceTier(option.role, option.tier);
+      engine.setVoiceEnabled(option.role, true);
+      engine.atAudioTime(barAudioTime, () => {
+        if (world !== w || state !== 'run') return;
+        w.addWeapon(option.role, option.tier);
+        hud.renderBand(w.tiers, undefined, mutedRoles);
+        refreshTrackOverlay();
+        view?.flourish(w.player.x, w.player.y);
+        pickAwaitingBar = false;
+        // Wait until this bar's due gameplay triggers have been consumed by one
+        // fixed world step before dropping a stacked reward's triangle.
+        presentQueuedPickAtAudioT = barAudioTime;
+      });
+    });
   }
 
   const events = {
@@ -618,7 +697,14 @@ export async function bootGame(
     if (paused) return;
     if ((state === 'run' || state === 'sandbox') && world) {
       const frameS = ticker.deltaMS / 1000;
-      const ts = timeScale;
+      // The level-up moment is a wall-clock slow-mo: tick it down on real time
+      // and fold it into the effective scale (issue #21's dev timeScale stays
+      // independent). When it runs out, the rate snaps back to normal.
+      if (momentT > 0) {
+        momentT = Math.max(0, momentT - frameS);
+        if (momentT === 0) endLevelMoment();
+      }
+      const ts = timeScale * momentScale;
       // timeScale (issue #21) compresses / expands wall-clock. The sim still
       // only ever advances in fixed SIM_DT ticks (determinism intact) — ts
       // scales the COUNT of ticks paid out per frame, never their size, exactly
@@ -655,10 +741,25 @@ export async function bootGame(
         presentQueuedPickAtAudioT = null;
         presentNextUpgrade();
       }
-      // Level and elite rewards are raised from inside RunWorld.update(). Open
-      // their screen only after the full fixed step has survived, so contact
-      // damage later in that same step cannot end a run with audio held.
+      // Level and elite rewards are raised from inside RunWorld.update(). Drop
+      // their triangle only after the full fixed step has survived, so contact
+      // damage later in that same step cannot end a run mid-reward.
       if (steps > 0 && world === w && state === 'run') presentNextUpgrade();
+      // Walk-onto collection of a dropped level-up item — a FIXED range, so a
+      // future pickup-range buff never reaches it. Checked after stepping so
+      // the player's fresh position is used; at most one taken per frame.
+      if (groundPicks.length > 0 && world === w && state === 'run') {
+        const p = w.player;
+        const rr = LEVELUP.itemPickupRadius * LEVELUP.itemPickupRadius;
+        for (const item of groundPicks) {
+          const dx = p.x - item.x;
+          const dy = p.y - item.y;
+          if (dx * dx + dy * dy <= rr) {
+            collectGroundPick(item);
+            break;
+          }
+        }
+      }
       // A level-up/death can change state inside a fixed step. Paused gameplay
       // never resumes with fractional time banked from before the screen opened.
       if (state !== steppingState || world !== w) liveAcc = 0;

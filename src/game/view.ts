@@ -7,6 +7,7 @@
 import { Container, Graphics, GraphicsContext, Text, TextStyle } from 'pixi.js';
 import type { Role } from '../audio/kits';
 import { RUN } from './config';
+import { drawWeaponIcon } from './weaponicons';
 import {
   KICK_GEOMETRY,
   PLAYER_FOOT_OFFSET,
@@ -200,6 +201,35 @@ const DMG_STYLE = new TextStyle({
   fill: 0xffffff,
 });
 
+/** A dropped level-up option on the ground: enough for the view to draw the
+ *  coin (glyph in `color`) and its two text lines. Positions are world units;
+ *  the shell owns these entities, the world simulation does not. */
+export interface GroundPickView {
+  x: number;
+  y: number;
+  role: Role;
+  color: number;
+  /** Instrument name, e.g. "Shaker". */
+  name: string;
+  /** Level line: "1" for a new pick, "2 → 3" for a tier-up. */
+  level: string;
+}
+
+const PICK_NAME_STYLE = new TextStyle({
+  fontFamily: 'system-ui, sans-serif',
+  fontSize: 15,
+  fontWeight: '700',
+  fill: 0xffffff,
+});
+const PICK_LEVEL_STYLE = new TextStyle({
+  fontFamily: 'system-ui, sans-serif',
+  fontSize: 14,
+  fontWeight: '600',
+  fill: 0xdfe4ee,
+});
+const PICK_COIN_R = 27; // coin radius, world units
+const PICK_ICON_S = 15; // glyph half-extent, world units
+
 export class RunView {
   readonly stage: Container;
 
@@ -217,6 +247,11 @@ export class RunView {
   private zoneGfx = new Map<Zone, Graphics>();
   private shockGfx = new Map<Shock, Graphics>();
   private gemGfx = new Map<Gem, GemGfx>();
+  // Level-up ground picks: shell-owned, so they ride a dedicated layer that is
+  // re-topped each frame (entities are added to the stage as they spawn, which
+  // would otherwise draw the horde over the reward).
+  private groundLayer = new Container();
+  private groundPickGfx: Container[] = [];
   private pops: Pop[] = [];
   private deathBurstCount = 0;
   private floaters: Floater[] = [];
@@ -243,6 +278,7 @@ export class RunView {
     body.circle(0, 0, RUN.playerRadius + 3).stroke({ width: 2, color: 0x59ffd1, alpha: 0.9 });
     this.playerGfx.addChild(glow, body);
     this.stage.addChild(this.playerGfx);
+    this.stage.addChild(this.groundLayer); // re-topped each frame while active
     this.stage.addChild(this.flashGfx); // re-topped each active frame
   }
 
@@ -262,6 +298,44 @@ export class RunView {
     g.blendMode = 'add';
     this.stage.addChild(g);
     this.pops.push({ gfx: g, t: 0, dur: 0.7, grow: 9 });
+  }
+
+  /** Bigger level-up burst: a few layered signal-colored rings plus a soft
+   *  screen flash, for the "you levelled" moment. View-only. */
+  levelBurst(x: number, y: number): void {
+    for (const grow of [7, 11, 15]) {
+      const g = new Graphics().circle(0, 0, 26).stroke({ width: 5, color: 0xffffff });
+      g.tint = 0x59ffd1;
+      g.position.set(x, y);
+      g.scale.set(0.15);
+      g.blendMode = 'add';
+      this.stage.addChild(g);
+      this.pops.push({ gfx: g, t: 0, dur: 0.72, grow });
+    }
+    this.flashes.push({ start: this.world.timeS, dur: 0.5, color: 0x59ffd1, alpha: 0.2 });
+  }
+
+  /** Replace the on-ground level-up items (empty array clears them). The shell
+   *  owns these entities and their positions; the world never sees them. */
+  setGroundPicks(picks: GroundPickView[]): void {
+    for (const c of this.groundPickGfx) c.destroy({ children: true });
+    this.groundPickGfx.length = 0;
+    for (const pk of picks) {
+      const c = makeGroundPick(pk);
+      this.groundLayer.addChild(c);
+      this.groundPickGfx.push(c);
+    }
+  }
+
+  /** Gentle idle pulse on the dropped items + keep their layer on top of the
+   *  horde (entities append to the stage as they spawn). */
+  private updateGroundPicks(): void {
+    if (this.groundPickGfx.length === 0) return;
+    const t = this.world.timeS;
+    for (let i = 0; i < this.groundPickGfx.length; i++) {
+      this.groundPickGfx[i].scale.set(1 + 0.05 * Math.sin(t * 4 + i * 2.1));
+    }
+    this.stage.setChildIndex(this.groundLayer, this.stage.children.length - 1);
   }
 
   /** Sync visuals to the world. Call once per frame, after world.update. */
@@ -305,6 +379,7 @@ export class RunView {
     });
     this.updatePops(dt);
     this.updateFloaters(dt);
+    this.updateGroundPicks();
     this.drawGrid();
     this.drawFlash();
 
@@ -343,6 +418,7 @@ export class RunView {
     this.zoneGfx.clear();
     this.shockGfx.clear();
     this.gemGfx.clear();
+    this.groundPickGfx.length = 0; // stage.destroy already freed the graphics
     this.pops.length = 0;
     this.deathBurstCount = 0;
     for (const f of this.floaters) f.txt.destroy();
@@ -1114,6 +1190,35 @@ function makeZoneGfx(z: Zone): Graphics {
   gfx.tint = z.color;
   gfx.position.set(z.x, z.y);
   return gfx;
+}
+
+function makeGroundPick(pk: GroundPickView): Container {
+  const c = new Container();
+  c.position.set(pk.x, pk.y);
+  const glow = makeGlow(Math.round(PICK_COIN_R * 1.5), pk.color);
+  glow.alpha = 0.4;
+  // Cache the coin geometry per color (like makeGemGfx): a shared, non-owned
+  // context so destroy({children:true}) frees the container without leaking an
+  // owned context and without over-freeing the shared glow/glyph contexts.
+  const coin = new Graphics(
+    cachedShape(`coin:${pk.color}`, (cc) => {
+      cc.circle(0, 0, PICK_COIN_R).fill(0x0a0b0f);
+      cc.circle(0, 0, PICK_COIN_R).stroke({ width: 3, color: pk.color, alpha: 0.95 });
+    }),
+  );
+  const icon = new Graphics(
+    cachedShape(`wicon:${pk.role}`, (cc) => drawWeaponIcon(cc, pk.role, PICK_ICON_S)),
+  );
+  icon.tint = pk.color;
+  const name = new Text({ text: pk.name, style: PICK_NAME_STYLE });
+  name.anchor.set(0.5);
+  name.position.set(0, PICK_COIN_R + 15);
+  name.tint = pk.color;
+  const level = new Text({ text: pk.level, style: PICK_LEVEL_STYLE });
+  level.anchor.set(0.5);
+  level.position.set(0, PICK_COIN_R + 34);
+  c.addChild(glow, coin, icon, name, level);
+  return c;
 }
 
 function makeGemGfx(g: Gem): GemGfx {

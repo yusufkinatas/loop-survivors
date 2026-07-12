@@ -1,8 +1,54 @@
 # Project Status
 
-Last updated: July 12, 2026
+Last updated: July 13, 2026
 
-## Latest change (July 12, 2026) — Global timeScale (issue #21), dev/playtest tool
+## Latest change (July 13, 2026) — Diegetic level-up pickup (replaces the pause menu)
+
+At the developer's direction, the full-screen level-up menu was replaced with an
+in-world pickup. On level-up the three rolled offers (`picks.ts`, unchanged) drop
+as physical ground items in a triangle around the player at 0/120/240° (radius
+`LEVELUP.itemRadius`); every enemy inside `LEVELUP.enemyPushRadius` (further out
+than the item ring) is shoved clear; and a one-second cosmetic "moment" fires — a
+0.5× slow-mo (a new `momentScale` that COMPOSES with issue #21's dev `timeScale`:
+effective clock rate = `timeScale × momentScale`), the weapons ducked on a new
+engine `weaponsBus`, a bright level cue, and a screen pulse + ring burst. The
+player keeps moving; after one second speed and weapon volume snap back to normal.
+Collecting an item is walking onto it — a FIXED `LEVELUP.itemPickupRadius`,
+deliberately NOT the gem `pickupRadius`/magnet, so a future pickup-range buff never
+reaches it. On pickup the other two vanish and the chosen weapon enters at the next
+bar (unchanged `atNextBar`/`atAudioTime` entry, old-tier damage preserved; audio is
+never paused now). Each item shows an abstract vector glyph in the weapon's color,
+its name, and its level ("1" for a new pick, "2 → 3" for a tier-up). Stacked
+level-ups queue one triangle at a time; the build-complete +15 heal fallback is
+unchanged.
+
+Seams: `config.ts` `LEVELUP` (all tunables); `run.ts` new `shoveEnemiesOut`
+(live-only, purely additive, never called headless); `engine.ts` `weaponsBus`
+between the per-voice ducks and master, plus `duckWeapons`/`playLevelCue`;
+`weaponicons.ts` (new — 16 glyphs); `view.ts` ground-pick rendering + `levelBurst`;
+`game.ts` owns the flow (`momentScale`/`momentT`, `dropGroundPicks`,
+`startLevelMoment`, `collectGroundPick`, loop pickup detection, cleanup). The old
+`'pick'` state, the DOM pick screen (`hud.ts` `showPick`/`kitCard`/`armKeys`), and
+its now-dead CSS were removed.
+
+Determinism preserved: `run.ts` and `config.ts` (the only sim-graph files touched)
+changed PURELY ADDITIVELY, so the headless bot and replays are byte-identical — the
+entire pickup flow is shell-owned; the bot/replay still resolve every level
+instantly via `VirtualConductor`. Verification: `tsc` + `vite build` clean; bot
+batch runs unchanged. A four-lens adversarial review (state-machine, audio graph,
+rendering, determinism/spec), each finding independently refuted, surfaced **one
+real defect** — `shoveEnemiesOut` left knockback-immune enemies (ghost, some
+elites, knockbackMul 0) glued to the player through the reward moment — now fixed
+by pushing the full deficit regardless of knockback resistance. All other findings
+were refuted (the occasional one-bar-late entry is correct musical quantization
+given the no-pause design; the coin `GraphicsContext` self-reclaims via Pixi's GC;
+the rest unreachable/self-healing). Browser-verified live: the triangle drops with
+correct glyphs/names/levels + burst, no console errors. **The walk-to-collect loop
+and overall feel await the developer's hands/ear gate** — a backgrounded automation
+tab throttles requestAnimationFrame, so sustained live movement could not be driven
+headlessly.
+
+## Previous change (July 12, 2026) — Global timeScale (issue #21), dev/playtest tool
 
 Implemented the locked spec in GitHub issue #21: one global `timeScale` knob that
 speeds up or slows down everything together (simulation, audio tempo, and world

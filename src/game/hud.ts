@@ -1,18 +1,14 @@
 // All game UI is plain DOM overlaid on the canvas, cheap enough to throw
-// away at M4 (docs/phases/m1-demo.md). Start screen, HUD, pick screen,
-// end screens, and the hit flash.
+// away at M4 (docs/phases/m1-demo.md). Start screen, HUD, end screens, and
+// the hit flash. Level-up picks are now dropped in-world (see game.ts /
+// view.ts), not a DOM screen.
 
 import { type Kit, type Role } from '../audio/kits';
-import { SLOTS, SLOT_LABEL, ownerOfSlot, slotOf, supportedRoster } from './band';
-import { TIER_LINES } from './config';
-import type { PickOption } from './picks';
+import { SLOTS, SLOT_LABEL, ownerOfSlot, supportedRoster } from './band';
 
 import { TIER_COUNT } from '../audio/charts';
 
-/** Cards are terse by spec: name, tier numeral, one honest gameplay line,
- *  zero music description (docs/phases/m2-the-arc.md). */
-export type { PickOption };
-
+/** Tier numerals still used by the band rack + the bot-replay pick toast. */
 export const TIER_NUMERALS = ['I', 'II', 'III', 'IV'];
 
 export interface DebugAction {
@@ -224,43 +220,6 @@ export class Hud {
     };
   }
 
-  /** Level-up pick: up to three options from the pool of new weapons and
-   *  tier-ups of owned ones. */
-  showPick(options: PickOption[], onPick: (option: PickOption) => void): void {
-    const s = this.newScreen();
-    el('h2', '', s, 'Level up');
-    const grid = el('div', 'pick-grid', s);
-    const cards: HTMLElement[] = [];
-    for (const option of options) {
-      const card = this.kitCard(grid, option, () => {
-        this.closeScreen();
-        onPick(option);
-      });
-      cards.push(card);
-    }
-    this.armKeys(cards);
-  }
-
-  /** Arrow keys walk the cards, enter picks the highlighted one (gate B
-   *  feedback: picking by mouse alone breaks the flow mid-run). */
-  private armKeys(cards: HTMLElement[]): void {
-    let idx = 0;
-    const select = (i: number): void => {
-      cards[idx].classList.remove('selected');
-      idx = (i + cards.length) % cards.length;
-      cards[idx].classList.add('selected');
-    };
-    select(0);
-    this.keyHandler = (e) => {
-      if (e.code === 'ArrowDown' || e.code === 'ArrowRight') select(idx + 1);
-      else if (e.code === 'ArrowUp' || e.code === 'ArrowLeft') select(idx - 1);
-      else if (e.code === 'Enter' || e.code === 'NumpadEnter') cards[idx].click();
-      else return;
-      e.preventDefault();
-    };
-    window.addEventListener('keydown', this.keyHandler);
-  }
-
   /** Transient notice (heal fallback, bot replay picks). Toasts stack
    *  instead of overlapping, animate in and out, and cap at four. */
   showToast(text: string): void {
@@ -313,21 +272,6 @@ export class Hud {
       this.closeScreen();
       onRetry();
     };
-  }
-
-  private kitCard(parent: HTMLElement, option: PickOption, onClick: () => void): HTMLElement {
-    const card = el('button', 'kit-card', parent);
-    const kit = this.kits.get(option.role)!;
-    card.style.setProperty('--voice-color', kit.color);
-    // The slot badge names the band position this hire plugs, so every card
-    // answers "what does taking this cost me?" at a glance (the band).
-    el('span', 'kit-slot-badge', card, SLOT_LABEL[slotOf(option.role)]);
-    el('span', 'kit-name', card, kit.name);
-    el('span', 'kit-desc', card, TIER_LINES[option.role][option.tier - 1]);
-    // Tier > 1 shows its numeral in the corner chip (the name stays plain).
-    if (option.tier > 1) el('span', 'kit-tier', card, TIER_NUMERALS[option.tier - 1]);
-    card.onclick = onClick;
-    return card;
   }
 
   private newScreen(): HTMLElement {

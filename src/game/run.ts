@@ -620,6 +620,31 @@ export class RunWorld {
     e.knockT = Math.max(e.knockT, SHOVE_S);
   }
 
+  /** Level-up breathing room: shove every enemy currently inside `minRadius`
+   *  of (fromX, fromY) out to that ring, so the dropped-item triangle opens
+   *  into cleared space. Only ever called from the live shell on a human
+   *  level-up — the headless bot and replay never invoke it, so determinism
+   *  is intact. */
+  shoveEnemiesOut(fromX: number, fromY: number, minRadius: number): void {
+    for (const e of this.enemies) {
+      if (e.dead) continue;
+      const dx = e.x - fromX;
+      const dy = e.y - fromY;
+      const d = Math.hypot(dx, dy) || 1;
+      if (d >= minRadius) continue;
+      // A reward-moment clear, NOT a combat knock: push the full deficit
+      // regardless of knockback resistance, so even knockback-immune kinds
+      // (ghost, some elites — knockbackMul 0) still vacate the ring. Writes the
+      // knock channel directly, deliberately bypassing shove()'s knockbackMul
+      // scaling; moveEnemies rides this vector for SHOVE_S with pursuit fully
+      // suppressed, so the displacement is ~= push (small overshoot for margin).
+      const push = (minRadius - d) * 1.1;
+      e.knockX = (dx / d) * (push / SHOVE_S);
+      e.knockY = (dy / d) * (push / SHOVE_S);
+      e.knockT = Math.max(e.knockT, SHOVE_S);
+    }
+  }
+
   update(dt: number): void {
     this.timeS += dt;
     if (this.scripted && this.timeS >= RUN.durationS) {
