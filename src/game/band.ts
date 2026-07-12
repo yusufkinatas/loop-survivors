@@ -1,4 +1,4 @@
-// The band: eight typed position-slots that cap a build into a group.
+// The band: seven typed position-slots that cap a build into a group.
 //
 // Each slot holds at most ONE instrument, drawn from that slot's roster. A full
 // build is a complete band — eight voices, each in its own frequency lane and
@@ -12,13 +12,12 @@
 import type { Role } from '../audio/kits';
 import { soundsetSupports } from '../audio/soundset';
 
-/** The eight band positions, in the on-screen rack order. */
+/** The seven band positions, in the on-screen rack order. */
 export type Slot =
   | 'pulse'
   | 'backbeat'
   | 'hats'
   | 'motion'
-  | 'fx'
   | 'bass'
   | 'harmony'
   | 'melody';
@@ -29,7 +28,6 @@ export const SLOTS: readonly Slot[] = [
   'backbeat',
   'hats',
   'motion',
-  'fx',
   'bass',
   'harmony',
   'melody',
@@ -41,7 +39,6 @@ export const SLOT_DESIGN: Record<Slot, string> = {
   backbeat: 'Backbeat',
   hats: 'Hats',
   motion: 'Motion',
-  fx: 'FX/Transition',
   bass: 'Bass',
   harmony: 'Harmony',
   melody: 'Melody',
@@ -53,7 +50,6 @@ export const SLOT_LABEL: Record<Slot, string> = {
   backbeat: 'Snap',
   hats: 'Tick',
   motion: 'Groove',
-  fx: 'FX',
   bass: 'Low',
   harmony: 'Color',
   melody: 'Hook',
@@ -67,7 +63,6 @@ export const SLOT_ROSTER: Record<Slot, Role[]> = {
   backbeat: ['snare', 'clap'],
   hats: ['hat', 'shaker'],
   motion: ['arp', 'acid'],
-  fx: ['crash', 'riser'],
   bass: ['bass', 'pluck'],
   harmony: ['chord', 'rhodes'],
   melody: ['lead', 'bell'],
@@ -112,21 +107,7 @@ export function slotFilled(slot: Slot, tiers: ReadonlyMap<Role, number>): boolea
   return ownerOfSlot(slot, tiers) !== undefined;
 }
 
-// --- Offer-weighting knobs (design rules 5 & 6, and the early drum nudge) ----
-
-/**
- * Design rule 5: the FX slot is barred from the STARTING-weapon offer — a
- * tier-1 FX voice is near silent for minutes, a musically dead first pick. It
- * stays fully available on level-up.
- */
-export function barredFromStart(role: Role): boolean {
-  return slotOf(role) === 'fx';
-}
-
-/** Roles eligible as a starting instrument, in a stable order. */
-export function startableRoles(roles: readonly Role[]): Role[] {
-  return roles.filter((r) => !barredFromStart(r));
-}
+// --- Offer-weighting knobs (the early drum nudge) ----
 
 /**
  * The gentle early drum nudge: for roughly the first two minutes, empty Pulse

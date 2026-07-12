@@ -17,19 +17,16 @@ import {
   BELL,
   BOOMERANG_OUT_FRAC,
   CHARGER,
-  DASH,
   CIRCLER,
   DARTER,
   ENEMIES,
   FLASH,
-  KNOCK_S,
   MAD_FOREST_FRAMES,
   MAX_ALIVE_HARD,
   ORBIT_REHIT_S,
   RUN,
   SHAKE,
   SHIELDED,
-  SHOCK_BAND,
   SHOVE_S,
   SPLITTER,
   VARIANT_EFFECTS,
@@ -130,7 +127,7 @@ export interface Enemy {
   dashing: boolean;
   /** Time left under a chord zone's slow. */
   slowT: number;
-  /** Crash knockback: velocity (px/s) and time left being pushed. While
+  /** Weapon knockback: velocity (px/s) and time left being pushed. While
    *  knockT > 0 the enemy rides this vector instead of chasing. */
   knockX: number;
   knockY: number;
@@ -193,20 +190,6 @@ export interface Projectile {
   shatter: number;
   /** True for a bell shard (a fragment shot), so its hit path skips shattering. */
   shard: boolean;
-}
-
-/** Crash shockwave: an expanding ring; its front damages and knocks back
- *  enemies it passes, each hit once. */
-export interface Shock {
-  x: number;
-  y: number;
-  radius: number;
-  maxRadius: number;
-  speed: number;
-  damage: number;
-  knockback: number;
-  color: number;
-  hit: Set<Enemy>;
 }
 
 export interface Zone {
@@ -297,17 +280,12 @@ export class RunWorld {
   /** Owned weapons and their ladder tier (1-4). */
   readonly tiers = new Map<Role, number>();
 
-  // dashT/dashX/dashY: riser's auto-dash surge (a short velocity boost the
-  // release grants, on top of normal movement).
   player = {
     x: 0,
     y: 0,
     hp: RUN.playerHp,
     radius: RUN.playerRadius,
     iframesT: 0,
-    dashT: 0,
-    dashX: 0,
-    dashY: 0,
     facingX: 1 as 1 | -1,
   };
   level = 1;
@@ -331,7 +309,6 @@ export class RunWorld {
   readonly enemies: Enemy[] = [];
   readonly projectiles: Projectile[] = [];
   readonly zones: Zone[] = [];
-  readonly shocks: Shock[] = [];
   readonly gems: Gem[] = [];
 
   private rng: Rng;
@@ -414,7 +391,9 @@ export class RunWorld {
   fireTrigger(t: ScheduledTrigger): void {
     const tier = this.tiers.get(t.role);
     if (!tier) return;
-    let conf: WeaponConf = WEAPONS[t.role][tier - 1];
+    // WEAPONS is keyed on the supported catalog; a trigger only ever fires for
+    // an owned (hence supported) role, so the entry is always present.
+    let conf: WeaponConf = WEAPONS[t.role]![tier - 1];
     const color = KIT_COLORS[t.role];
     const v = t.velocity;
     const p = this.player;
@@ -509,50 +488,9 @@ export class RunWorld {
         this.spawnRing(p.x, p.y, mc.radius, color, 0.2, true);
         break;
       }
-      case 'riser': {
-        // The auto-dash: the release grants a short movement surge (direction =
-        // current move input, or a fallback) plus a token whoosh of damage.
-        const a = this.control();
-        let dx = a.x;
-        let dy = a.y;
-        const mag = Math.hypot(dx, dy);
-        if (mag > 0.001) {
-          dx /= mag;
-          dy /= mag;
-        } else {
-          // standing still: dash toward the nearest pack, else a random way
-          const tgt = this.nearestEnemy(AIM_RANGE);
-          const da = tgt ? Math.atan2(tgt.y - p.y, tgt.x - p.x) : this.rng() * Math.PI * 2;
-          dx = dcos(da);
-          dy = dsin(da);
-        }
-        p.dashT = DASH.surgeS;
-        p.dashX = dx;
-        p.dashY = dy;
-        this.damageArea(p.x, p.y, conf.radius!, conf.damage * v, 'riser');
-        this.spawnRing(p.x, p.y, conf.radius!, color, 0.3);
-        this.fx?.push({ type: 'spark', x: p.x, y: p.y, color, n: 8, spread: conf.radius! * 0.5 });
-        break;
-      }
       case 'bell': {
         // A note lobbed straight that shatters into shards on its first hit.
         this.spawnBell(this.aimDir(0.1), conf, color, v);
-        break;
-      }
-      case 'crash': {
-        // Shockwave: an expanding ring that damages and knocks back. The
-        // marquee weapon — ground slam + big shake + a screen flash. A hard
-        // crash hits harder and shoves further (velocity → damage + knock).
-        const cc = {
-          ...conf,
-          damage: conf.damage * (0.8 + 0.4 * v),
-          knockback: (conf.knockback ?? 50) * (0.85 + 0.3 * v),
-        };
-        this.spawnShock(cc, color);
-        this.fx?.push({ type: 'slam', x: p.x, y: p.y, radius: conf.radius! * 0.4, color });
-        this.spawnRing(p.x, p.y, conf.radius!, color, 0.4);
-        this.fx?.push({ type: 'shake', mag: SHAKE.crash.mag, dur: SHAKE.crash.dur });
-        this.fx?.push({ type: 'flash', color, alpha: FLASH.crash.alpha, dur: FLASH.crash.dur });
         break;
       }
       case 'arp': {
@@ -667,7 +605,6 @@ export class RunWorld {
     this.updateKickStrikes();
     this.updateProjectiles(dt);
     this.updateZones(dt);
-    this.updateShocks(dt);
     this.updateGems(dt);
     this.contactDamage(dt);
 
@@ -682,14 +619,6 @@ export class RunWorld {
     else if (a.x < -0.001) this.player.facingX = -1;
     this.player.x += a.x * RUN.playerSpeed * dt;
     this.player.y += a.y * RUN.playerSpeed * dt;
-    // Riser's auto-dash surge: a short extra velocity along the locked dash
-    // direction, on top of normal input. Deterministic (timeS-stepped), so the
-    // bot rides it too.
-    if (this.player.dashT > 0) {
-      this.player.dashT -= dt;
-      this.player.x += this.player.dashX * DASH.speed * dt;
-      this.player.y += this.player.dashY * DASH.speed * dt;
-    }
     if (this.player.iframesT > 0) this.player.iframesT -= dt;
   }
 
@@ -1000,7 +929,7 @@ export class RunWorld {
       }
       if (e.flashT > 0) e.flashT -= dt;
 
-      // Crash knockback overrides everything: ride the push, don't chase.
+      // Weapon knockback overrides everything: ride the push, don't chase.
       if (e.knockT > 0) {
         const pushDt = Math.min(dt, e.knockT);
         e.knockT -= dt;
@@ -1423,21 +1352,6 @@ export class RunWorld {
     }
   }
 
-  /** Crash: an expanding shockwave from the player. */
-  private spawnShock(conf: WeaponConf, color: number): void {
-    this.shocks.push({
-      x: this.player.x,
-      y: this.player.y,
-      radius: 12,
-      maxRadius: conf.radius!,
-      speed: conf.speed!,
-      damage: conf.damage,
-      knockback: conf.knockback ?? 50,
-      color,
-      hit: new Set(),
-    });
-  }
-
   private updateKickStrikes(): void {
     for (let i = this.pendingKick.length - 1; i >= 0; i--) {
       const strike = this.pendingKick[i];
@@ -1670,33 +1584,6 @@ export class RunWorld {
       if (pr.lifeS <= 0) {
         this.projectiles.splice(i, 1);
       }
-    }
-  }
-
-  private updateShocks(dt: number): void {
-    for (let i = this.shocks.length - 1; i >= 0; i--) {
-      const s = this.shocks[i];
-      s.radius += s.speed * dt;
-      const near = this.hash.query(s.x, s.y, s.radius + 24, this.queryBuf);
-      for (const e of near) {
-        if (e.dead || s.hit.has(e)) continue;
-        const dx = e.x - s.x;
-        const dy = e.y - s.y;
-        const d = Math.hypot(dx, dy);
-        // Only the growing front hits, and each enemy only once.
-        if (d <= s.radius + e.radius && d >= s.radius - SHOCK_BAND) {
-          s.hit.add(e);
-          this.damageEnemy(e, s.damage, 'crash');
-          const nd = d || 1;
-          const kb = s.knockback * e.knockbackMul;
-          if (kb > 0) {
-            e.knockX = (dx / nd) * (kb / KNOCK_S);
-            e.knockY = (dy / nd) * (kb / KNOCK_S);
-            e.knockT = KNOCK_S;
-          }
-        }
-      }
-      if (s.radius >= s.maxRadius) this.shocks.splice(i, 1);
     }
   }
 

@@ -59,7 +59,7 @@ export class Hud {
     this.flash = el('div', 'hit-flash', root);
     this.pulse = el('div', 'level-pulse', root);
     this.toastStack = el('div', 'toast-stack', root);
-    // The band rack: eight sockets, one per band position, empty until hired.
+    // The band rack: seven sockets, one per band position, empty until hired.
     this.rack = el('div', 'band-rack', root);
     this.rack.style.display = 'none';
   }
@@ -69,10 +69,10 @@ export class Hud {
     this.rack.style.display = show ? '' : 'none';
   }
 
-  /** The band rack (docs/phases/the-band.md): eight typed sockets in rack
+  /** The band rack (docs/phases/the-band.md): seven typed sockets in rack
    *  order, empty ones asking to be filled, filled ones showing the hired
    *  instrument (its color + name) and its tier as pips. Rebuilt on every pick
-   *  (cheap: 8 sockets). Renders into the HUD rack by default, or any supplied
+   *  (cheap: 7 sockets). Renders into the HUD rack by default, or any supplied
    *  container so the pause menu can show the same band. An audio-muted owner
    *  (the dev number-key toggles) renders its socket dimmed. */
   renderBand(

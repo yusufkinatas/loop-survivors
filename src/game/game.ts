@@ -666,7 +666,7 @@ export async function bootGame(
     if (show) refreshTrackOverlay();
   }
 
-  // Number-key track toggles (dev mechanism): Digit1..Digit8 map to the eight
+  // Number-key track toggles (dev mechanism): Digit1..Digit7 map to the seven
   // band slots in rack order and mute the AUDIO of the instrument owning that
   // slot. Audio-only — engine triggers, damage, determinism, and replays are
   // untouched; only the voice's gain goes to 0.
@@ -957,7 +957,7 @@ export async function bootGame(
     }
     // Number-key track toggles: only while playing (never over the start /
     // pick / end screens, mirroring the state guards the debug actions use).
-    if (/^Digit[1-8]$/.test(e.code) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (/^Digit[1-7]$/.test(e.code) && !e.ctrlKey && !e.metaKey && !e.altKey) {
       if ((state === 'run' || state === 'sandbox' || state === 'replay') && world) {
         const slot = SLOTS[Number(e.code.slice(5)) - 1];
         const role = ownerOfSlot(slot, world.tiers);
