@@ -46,9 +46,9 @@ export const LEVELUP = {
   angles: [0, 120, 240] as const,
   /** Max duration of the cosmetic slow-mo / duck moment, real seconds. Ends
    *  early the instant the player collects a pick (see collectGroundPick). */
-  momentS: 2.0,
+  momentS: 1,
   /** Time scale during the moment (composes with the dev timeScale). */
-  slowScale: 0.5,
+  slowScale: 0.75,
   /** Weapon (master) volume multiplier during the moment. */
   duckDepth: 0.32,
 };
