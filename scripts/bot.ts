@@ -14,7 +14,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { cpus, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ROLES } from '../src/audio/kits';
+import { supportedRoles } from '../src/audio/soundset';
 import type { RunRecord } from '../src/bot/sim';
 import type { MoverName } from '../src/bot/movers';
 import { RUN } from '../src/game/config';
@@ -36,7 +36,7 @@ function parseArgs(argv: string[]): Args {
   const policyArg = get('policy') ?? 'random';
   const policies = policyArg
     .split(',')
-    .flatMap((p) => (p === 'focus:each' ? ROLES.map((r) => `focus:${r}`) : [p]));
+    .flatMap((p) => (p === 'focus:each' ? supportedRoles().map((r) => `focus:${r}`) : [p]));
   return {
     runs: Number(get('runs') ?? 20),
     mover: (get('mover') ?? 'kiter') as MoverName,

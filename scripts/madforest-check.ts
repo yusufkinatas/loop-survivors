@@ -60,7 +60,8 @@ fakeClock.stop();
 Object.defineProperty(globalThis, 'window', { configurable: true, value: originalWindow });
 
 // Current Normal Mad Forest, live official-wiki revision 89346.
-assert.equal(STAGE_STARTING_SPAWNS, 10);
+// The current game deliberately opens at triple the reference population.
+assert.equal(STAGE_STARTING_SPAWNS, 30);
 assert.deepEqual(
   STAGE_WAVES.map((w) => [w.atS, [...w.pattern], w.minimum, w.intervalS]),
   [
@@ -199,18 +200,18 @@ for (const chart of SOUNDSET_LADDERS.kick!) {
 
 const trigger = { role: 'kick' as const, time: 0, velocity: 1, step: 0 };
 
-// Source timer semantics: ten starting bats exist through the first second;
-// only the first 1.0s callback backfills the opening floor to fifteen.
+// The current pressure pass starts at thirty; the first wave callback does not
+// remove enemies merely because its reference minimum is lower.
 const opening = new RunWorld({ width: 1920, height: 1080 }, noEvents, {
   control: () => ({ x: 0, y: 0 }),
   fx: false,
 });
 opening.invincible = true;
 opening.update(1 / 60);
-assert.equal(opening.enemies.length, 10);
+assert.equal(opening.enemies.length, 30);
 assert.equal(opening.worldH, 800);
 for (let i = 1; i < 60; i++) opening.update(1 / 60);
-assert.equal(opening.enemies.length, 15);
+assert.equal(opening.enemies.length, 30);
 
 // A Whip body remains damaging for 200ms, so an enemy entering after the
 // activation frame is still hit. The Amount-2 follow-up starts a true 100ms
