@@ -1,4 +1,5 @@
 import './scratch';
+import './museum-mad-forest-reference-provenance-and-adopted-valu';
 import './museum-stage-director-wave-timeline-events-and-dividing';
 import './museum-enemy-movement-circle-collision-separation-and-s';
 import './museum-xp-reward-queue-physical-choice-and-next-bar-app';
