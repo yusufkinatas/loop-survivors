@@ -1572,4 +1572,7 @@ button.big {
 .dev-main { min-width: 0; } .dev-breadcrumbs { padding: 15px 22px; border-bottom: 1px solid #293040; color: #9da8bf; }
 .dev-breadcrumbs a { color: #9ec5ff; } .dev-room { padding: 24px; } .dev-welcome { max-width: 720px; margin: 10vh auto; }
 .dev-scenario-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 18px; }
+.dev-article { max-width: 920px; } .dev-article section { margin: 28px 0; padding: 18px; background: #111722; border: 1px solid #293040; border-radius: 8px; }
+.dev-article dl { display: grid; grid-template-columns: minmax(140px, 1fr) 2fr; gap: 6px 16px; } .dev-article dt { color: #9da8bf; } .dev-article dd { margin: 0; }
+.dev-world-readout { padding: 20px; background: #07090e; border: 1px solid #293040; min-height: 240px; }
 @media (max-width: 760px) { .dev-shell { grid-template-columns: 1fr; } .dev-sidebar { border-right: 0; border-bottom: 1px solid #293040; max-height: 42vh; } }

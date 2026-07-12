@@ -10,6 +10,7 @@ import { mountTrackLab } from './tracklab/lab';
 import { mountBossFight } from './boss/page';
 import { bootGame } from './game/game';
 import { mountDevCampus } from './dev/shell';
+import './dev/rooms';
 import './style.css';
 
 async function boot(): Promise<void> {
