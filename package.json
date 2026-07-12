@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "bot": "tsx scripts/bot.ts",
     "check": "tsc --noEmit",
+    "check:dev-campus": "tsx scripts/dev-campus-check.ts",
     "check:mad-forest": "tsx scripts/madforest-check.ts"
   },
   "devDependencies": {
