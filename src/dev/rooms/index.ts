@@ -1,4 +1,5 @@
 import './scratch';
+import './museum-world-simulation-pixi-view-cosmetic-fx-and-headl';
 import './museum-audio-asset-provenance-licenses-processing-and-h';
 import './museum-seeded-determinism-virtual-conductor-bot-and-exa';
 import './museum-global-speed-reward-slowdown-fixed-ticks-and-rep';
