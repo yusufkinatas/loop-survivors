@@ -1,4 +1,5 @@
 import './scratch';
+import './zoo-boss-bodies-hazards-telegraphs-and-hud';
 import './zoo-audio-mix-mute-solo-and-low-end-interaction-cata';
 import './zoo-icon-palette-typography-and-readability-tokens';
 import './zoo-complete-ui-state-and-responsive-layout-catalog';
