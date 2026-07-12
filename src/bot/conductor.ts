@@ -45,6 +45,7 @@ export class VirtualConductor {
   private nextStepT = 0;
   private step = 0;
   private pending: PickOption[] = [];
+  private rewardQueue = 0;
 
   constructor(world: RunWorld, choose: PickChooser, rng: Rng, hooks: ConductorHooks = {}) {
     this.world = world;
@@ -63,16 +64,29 @@ export class VirtualConductor {
   /** Wire this to RunEvents.onLevelUp. Rolls the real three-card offer and
    *  lets the policy choose; the choice lands at the next bar. */
   onLevelUp(): void {
-    const options = rollOffers(this.effectiveTiers(), this.rng, this.world.timeS);
-    if (options.length === 0) {
-      this.world.player.hp = Math.min(RUN.playerHp, this.world.player.hp + 15);
-      this.hooks.onHeal?.();
+    this.rewardQueue++;
+    this.queueNextReward();
+  }
+
+  /** Live play presents stacked XP/boss rewards one at a time and waits for
+   * each choice to enter on a bar before showing the next. The bot/replay must
+   * preserve that progression timing instead of applying a burst on one bar. */
+  private queueNextReward(): void {
+    if (this.pending.length > 0) return;
+    while (this.rewardQueue > 0) {
+      this.rewardQueue--;
+      const options = rollOffers(this.effectiveTiers(), this.rng, this.world.timeS);
+      if (options.length === 0) {
+        this.world.player.hp = Math.min(RUN.playerHp, this.world.player.hp + 15);
+        this.hooks.onHeal?.();
+        continue;
+      }
+      const option = this.choose(options, this.world, this.rng);
+      this.pending.push(option);
+      this.picks.push({ t: this.world.timeS, role: option.role, tier: option.tier });
+      this.hooks.onPick?.(option);
       return;
     }
-    const option = this.choose(options, this.world, this.rng);
-    this.pending.push(option);
-    this.picks.push({ t: this.world.timeS, role: option.role, tier: option.tier });
-    this.hooks.onPick?.(option);
   }
 
   /** Advance the virtual clock by dt and fire every due grid step. Call
@@ -105,6 +119,7 @@ export class VirtualConductor {
         this.world.addWeapon(option.role, option.tier);
         this.hooks.onApply?.(option);
       }
+      this.queueNextReward();
     }
     for (const [role, tier] of this.world.tiers) {
       for (const ev of chartEventsAtStep(getChart(role, tier), phraseStep)) {

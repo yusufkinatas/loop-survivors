@@ -69,3 +69,65 @@ document these decisions").
    the review is over hud.ts/game.ts/style.css rather than screenshots):
    debug row hidden behind a single toggle, dev-only badges off player
    screens, corner chrome consolidated.
+
+## Explicit parity addendum (July 11, 2026)
+
+The developer explicitly authorized a rework after the July 10 overhaul: make
+movement and enemy pressure feel as close as practical to Vampire Survivors'
+first stage, especially Mad Forest's first eight minutes; keep this game's own
+weapons and visual language, but bring their damage, footprints, and challenge
+onto the same mathematical scale. This is explicit sign-off to amend decision
+4 above. It is **authorization to build, not a passed developer gate**.
+
+The version-pinned factual and derived calibration record is
+`docs/research/mad-forest-reference.md`. Where that document labels a value
+CURRENT, LEGACY, DERIVED, ADOPTED, or INFERENCE, implementation and review must
+preserve the distinction. In particular, the current commercial game's data
+table and the old official v0.2.4 demo are not to be represented as one
+authoritative source version.
+
+### Locks for this rework
+
+1. **Eight-minute boundary.** Reproduce the `0:00` through `7:00` Mad Forest
+   waves and events at their original minute positions. The run resolves at
+   8:00; the `8:00` Zombie wave and Giant Bat are documented but not moved
+   earlier. No 30-minute schedule compression.
+2. **Movement and contact.** Use the height-normalized Antonio/Mad Forest
+   movement target, normalized diagonals, direct-homing regular enemies,
+   overlap resolution, 120 ms contact lock, 120 HP, and one point of Armor.
+   Pressure comes from the source roster, live floors, intervals, and events,
+   not an invented global time ramp.
+3. **Enemy roster and rewards.** Add project-rendered equivalents of the units
+   required by minutes 0–7, with source HP, Power, speed, XP, knockback, and
+   explicit HP-per-player-level rules. Use original names/shapes/colors in the
+   shipped presentation. Chest/evolution and stage-item systems remain outside
+   this addendum. Preserve each boss row's any-chest probability by translating
+   a successful roll into one project-native weapon-tier choice; this is a
+   documented reward-economy adaptation, not chest/evolution parity.
+4. **Kick becomes the Whip analogue.** The four project tiers map to Whip
+   levels 1/3/5/8 for raw damage, Amount, and Area. Replace the radial aura with
+   facing-relative horizontal pass-through strips. Tier 1 is front-facing;
+   tiers 2–4 add the opposite strip 0.10 s later.
+5. **Model A cadence compromise.** Kick remains an audible **and gameplay**
+   strip on every four-on-the-floor beat at 122 BPM. Either side starts one
+   shared, per-target 1.35 s Kick re-hit lock. This preserves one trigger ->
+   sound plus gameplay while approximating Whip's per-target damage cadence.
+   It deliberately permits fresh enemies to be caught every beat, so the
+   hands gate must judge crowd throughput and feel.
+6. **Other AoE.** Audit the remaining weapons against the new enemy/player
+   scale and reduce generous radii or damage where necessary. Their identities
+   and audio patterns stay this game's own; this is not a request to replace
+   every weapon with a named Vampire Survivors counterpart.
+7. **Original death satisfaction and enemy reads.** Add a bounded procedural
+   vanish/burst effect and make regular/elite archetypes distinguishable using
+   the existing vector style. Do not copy sprites, frames, sounds, map art,
+   code, or UI from the reference game.
+
+### Gate state
+
+Implementation and engineering verification are complete. Nothing in this
+addendum passes the developer's ear/eye/hands gate. That gate must cover a full
+manual eight-minute run: movement weight, crowd collision and contact danger,
+minute-event rhythm, XP/pick cadence, Kick facing/area/damage, the reduced AoE
+budget, elite readability, and kill satisfaction. A failure loops inside this
+rework rather than advancing the roadmap.

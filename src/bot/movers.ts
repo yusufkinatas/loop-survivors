@@ -2,7 +2,7 @@
 // build comparison holds the mover constant — a bot's win rate measures the
 // build under that mover's skill, never the build in the abstract.
 
-import type { RunWorld } from '../game/run';
+import type { Enemy, RunWorld } from '../game/run';
 
 export type MoverName = 'afk' | 'kiter' | 'harvester';
 
@@ -10,6 +10,26 @@ export type Mover = (world: RunWorld) => { x: number; y: number };
 
 /** The difficulty canary: if AFK survives, difficulty is broken. */
 const afk: Mover = () => ({ x: 0, y: 0 });
+
+const HEAVY_THREATS = new Set<Enemy['kind']>([
+  'tank',
+  'elite',
+  'greenMudman',
+  'grayMudman',
+  'glowingBat',
+  'mantis',
+]);
+
+/** Shared kind/state weighting. Legacy threats remain recognized while the
+ *  parity roster adds heavy bodies and a very fast fixed-direction sweep. */
+function weightedThreat(enemy: Enemy, base: number): number {
+  let weight = base;
+  if (HEAVY_THREATS.has(enemy.kind)) weight *= 1.5;
+  if (enemy.kind === 'batSwarm') weight *= 2.5;
+  if (enemy.kind === 'darter' && enemy.dashing) weight *= 2.0;
+  if (enemy.kind === 'charger' && (enemy.dashing || enemy.windupT > 0)) weight *= 2.0;
+  return weight;
+}
 
 /** The competent default: flee the local pack along a curve (orbiting the
  *  horde reads and plays like human kiting; backing straight away walks
@@ -28,10 +48,7 @@ const kiter: Mover = (world) => {
     const dy = p.y - e.y;
     const d = Math.hypot(dx, dy);
     if (d > RANGE || d < 0.001) continue;
-    let w = (1 - d / RANGE) ** 2;
-    if (e.kind === 'tank' || e.kind === 'elite') w *= 1.5;
-    if (e.kind === 'darter' && e.dashing) w *= 2.0;
-    if (e.kind === 'charger' && (e.dashing || e.windupT > 0)) w *= 2.0;
+    const w = weightedThreat(e, (1 - d / RANGE) ** 2);
     tx += (dx / d) * w;
     ty += (dy / d) * w;
   }
@@ -86,10 +103,7 @@ function threatVector(world: RunWorld): { tx: number; ty: number; threat: number
     const dy = p.y - e.y;
     const d = Math.hypot(dx, dy);
     if (d > RANGE || d < 0.001) continue;
-    let w = (1 - d / RANGE) ** 2;
-    if (e.kind === 'tank' || e.kind === 'elite') w *= 1.5;
-    if (e.kind === 'darter' && e.dashing) w *= 2.0;
-    if (e.kind === 'charger' && (e.dashing || e.windupT > 0)) w *= 2.0;
+    const w = weightedThreat(e, (1 - d / RANGE) ** 2);
     tx += (dx / d) * w;
     ty += (dy / d) * w;
   }

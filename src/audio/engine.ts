@@ -12,6 +12,11 @@ import { SKELETON, STEPS_PER_BAR, STEPS_PER_PHRASE, semitonesToRate } from './sc
 import type { Kit, Role } from './kits';
 import { buildSoundsetKit } from './kits/index';
 
+interface VoiceHit {
+  src: AudioBufferSourceNode;
+  gain: GainNode;
+}
+
 export interface Voice {
   role: Role;
   kit: Kit;
@@ -32,7 +37,7 @@ export interface Voice {
    *  buffers for every trigger until reset. */
   override: AudioBuffer | null;
   /** The most recent trigger's nodes, so choked kits can cut it. */
-  lastHit: { src: AudioBufferSourceNode; gain: GainNode } | null;
+  lastHit: VoiceHit | null;
 }
 
 /** A trigger that has been scheduled. Dispatched to listeners by update()
@@ -49,6 +54,19 @@ export interface ScheduledTrigger {
 }
 
 export type TriggerListener = (t: ScheduledTrigger) => void;
+
+interface TimedAction {
+  time: number;
+  fn: () => void;
+  seq: number;
+}
+
+interface PendingTrigger {
+  trigger: ScheduledTrigger;
+  source: AudioBufferSourceNode;
+  voice: Voice;
+  chokedPrevious: VoiceHit | null;
+}
 
 // Free per-hit engine nudges: the first of the three variation layers.
 const HUMANIZE_GAIN = 0.12; // +/- proportional
@@ -71,9 +89,17 @@ export class MusicEngine {
   readonly analyser: AnalyserNode;
   readonly voices = new Map<Role, Voice>();
   private master: GainNode;
-  private pending: ScheduledTrigger[] = [];
+  /** Independent transport gate: intentional game pauses mute immediately
+   * while AudioContext.suspend() crosses the browser control boundary. */
+  private transport: GainNode;
+  private transportHeld = false;
+  private suspendPromise: Promise<void> | null = null;
+  private transportGeneration = 0;
+  private pending: PendingTrigger[] = [];
   private listeners: TriggerListener[] = [];
-  private barQueue: (() => void)[] = [];
+  private barQueue: ((audioTime: number) => void)[] = [];
+  private timedActions: TimedAction[] = [];
+  private nextTimedActionSeq = 0;
   private stepMarkers: { step: number; time: number }[] = [];
   private lastDueStep = 0;
 
@@ -81,6 +107,8 @@ export class MusicEngine {
     this.ctx = ctx;
     this.master = ctx.createGain();
     this.master.gain.value = 0.8;
+    this.transport = ctx.createGain();
+    this.transport.gain.value = 1;
     // Soft-knee limiter on the master so any build stays clean (Pillar 2:
     // the system owns the theory, no combination may sound broken).
     const limiter = ctx.createDynamicsCompressor();
@@ -91,7 +119,11 @@ export class MusicEngine {
     limiter.release.value = 0.12;
     this.analyser = ctx.createAnalyser();
     this.analyser.fftSize = 2048;
-    this.master.connect(limiter).connect(this.analyser).connect(ctx.destination);
+    this.master
+      .connect(this.transport)
+      .connect(limiter)
+      .connect(this.analyser)
+      .connect(ctx.destination);
 
     for (const [role, kit] of kits) {
       const gain = ctx.createGain();
@@ -158,6 +190,90 @@ export class MusicEngine {
     this.master.gain.setTargetAtTime(value, this.ctx.currentTime, 0.02);
   }
 
+  /** Freeze already-scheduled lookahead audio at an intentional game pause.
+   * Suspending the AudioContext also freezes currentTime, so pending gameplay
+   * triggers remain paired with their sounds instead of leaking through a
+   * level-up screen. */
+  holdTransport(rewindLookahead = false): void {
+    if (this.transportHeld) return;
+    this.transportHeld = true;
+    this.transportGeneration++;
+    const now = this.ctx.currentTime;
+    this.transport.gain.cancelScheduledValues(now);
+    this.transport.gain.setValueAtTime(0, now);
+    if (rewindLookahead) this.rewindScheduledTail(now);
+    this.suspendPromise = this.ctx.suspend().catch(() => undefined);
+  }
+
+  /** A reward choice must still catch the next heard downbeat when that bar
+   * was already inside the 120 ms scheduler window. Cancel the unheard tail,
+   * rewind its first grid step, then let resume schedule it with the new pick.
+   * Ordinary ESC pauses do not use this path and preserve their tail. */
+  private rewindScheduledTail(now: number): void {
+    // Only a pre-scheduled downbeat can make a choice miss the next heard bar.
+    // Preserve every old-chart step before it; downbeats are never swung, so
+    // marker.time is also the exact base-grid time Clock must restore.
+    const nextBar = this.stepMarkers.find(
+      (marker) => marker.time > now + 1e-6 && marker.step % STEPS_PER_BAR === 0,
+    );
+    if (!nextBar) return;
+
+    const keep: PendingTrigger[] = [];
+    const canceled = new Map<AudioBufferSourceNode, PendingTrigger>();
+    for (const pending of this.pending) {
+      if (pending.trigger.time + 1e-6 < nextBar.time) {
+        keep.push(pending);
+        continue;
+      }
+      canceled.set(pending.source, pending);
+      try {
+        pending.source.stop(now);
+      } catch {
+        // A browser may report an already-finished source at the boundary; its
+        // gameplay trigger is still removed with the canceled unheard tail.
+      }
+    }
+    this.pending = keep;
+    this.stepMarkers = this.stepMarkers.filter((marker) => marker.time < nextBar.time);
+    this.clock.rewindToStep(nextBar.step, nextBar.time);
+
+    // Choked voices point at their most recently scheduled source. Walk back
+    // through canceled hits and remove the future fade they authored on the
+    // surviving predecessor. (Sources now end naturally; no irreversible
+    // future stop is scheduled by trigger().)
+    for (const voice of this.voices.values()) {
+      let hit = voice.lastHit;
+      while (hit && canceled.has(hit.src)) hit = canceled.get(hit.src)!.chokedPrevious;
+      if (hit !== voice.lastHit) {
+        hit?.gain.gain.cancelScheduledValues(nextBar.time);
+        voice.lastHit = hit;
+      }
+    }
+  }
+
+  /** Resume an intentional pause. The scheduler may restart immediately: it
+   * reads the frozen audio time until this asynchronous resume completes. */
+  releaseTransport(): void {
+    if (!this.transportHeld) return;
+    this.transportHeld = false;
+    const generation = ++this.transportGeneration;
+    const suspended = this.suspendPromise;
+    void (async () => {
+      await suspended;
+      if (this.transportHeld || generation !== this.transportGeneration) return;
+      const now = this.ctx.currentTime;
+      this.transport.gain.cancelScheduledValues(now);
+      this.transport.gain.setValueAtTime(1, now);
+      if (this.ctx.state !== 'running') await this.ctx.resume();
+    })();
+  }
+
+  /** Browser gesture recovery, except while the game deliberately owns the
+   * pause (a generic document pointer must not unfreeze a pick screen). */
+  resumeContextIfAllowed(): void {
+    if (!this.transportHeld && this.ctx.state !== 'running') void this.ctx.resume();
+  }
+
   setVoiceEnabled(role: Role, on: boolean): void {
     const voice = this.voices.get(role);
     if (voice) voice.enabled = on;
@@ -192,28 +308,68 @@ export class MusicEngine {
     this.listeners.push(cb);
   }
 
-  /** Musical entry rule (M2): run fn at the start of the next bar, so the
-   *  old chart finishes its bar and the change enters on the following "1".
-   *  Executes at schedule time (~0.1s before it is heard) — close enough
-   *  for the visuals that ride on it. */
-  atNextBar(fn: () => void): void {
+  /** Musical entry rule (M2): run fn while scheduling the start of the next
+   *  bar, so an audio voice can change before that bar's notes are queued.
+   *  Use atAudioTime() inside fn for world/UI state that must not change until
+   *  the scheduled bar is actually heard. */
+  atNextBar(fn: (audioTime: number) => void): void {
     this.barQueue.push(fn);
+  }
+
+  /** Queue non-audio state for an exact audio-clock instant. update() merges
+   *  these actions with due triggers chronologically; actions run before a
+   *  trigger at the same timestamp, but never before an older trigger. */
+  atAudioTime(time: number, fn: () => void): void {
+    this.timedActions.push({ time, fn, seq: this.nextTimedActionSeq++ });
   }
 
   /** Drop queued next-bar changes (a run ended before they landed). */
   clearBarQueue(): void {
     this.barQueue = [];
+    this.timedActions = [];
   }
 
   /** Dispatch every trigger whose scheduled time has arrived. Call once per
    *  frame from whatever loop is driving visuals (room rAF or game ticker). */
   update(): void {
+    if (this.transportHeld) return;
     const now = this.ctx.currentTime;
-    const due: ScheduledTrigger[] = [];
-    const rest: ScheduledTrigger[] = [];
-    for (const t of this.pending) (t.time <= now ? due : rest).push(t);
-    this.pending = rest;
-    for (const t of due) for (const cb of this.listeners) cb(t);
+    const dueTriggers: PendingTrigger[] = [];
+    const futureTriggers: PendingTrigger[] = [];
+    for (const pending of this.pending) {
+      (pending.trigger.time <= now ? dueTriggers : futureTriggers).push(pending);
+    }
+    this.pending = futureTriggers;
+
+    const dueActions: TimedAction[] = [];
+    const futureActions: TimedAction[] = [];
+    for (const action of this.timedActions) {
+      (action.time <= now ? dueActions : futureActions).push(action);
+    }
+    this.timedActions = futureActions;
+
+    const due: Array<
+      | { time: number; kind: 'action'; action: TimedAction }
+      | { time: number; kind: 'trigger'; trigger: ScheduledTrigger }
+    > = [
+      ...dueActions.map((action) => ({ time: action.time, kind: 'action' as const, action })),
+      ...dueTriggers.map(({ trigger }) => ({
+        time: trigger.time,
+        kind: 'trigger' as const,
+        trigger,
+      })),
+    ];
+    due.sort((a, b) => {
+      const byTime = a.time - b.time;
+      if (byTime !== 0) return byTime;
+      if (a.kind !== b.kind) return a.kind === 'action' ? -1 : 1;
+      if (a.kind === 'action' && b.kind === 'action') return a.action.seq - b.action.seq;
+      return 0;
+    });
+    for (const item of due) {
+      if (item.kind === 'action') item.action.fn();
+      else for (const cb of this.listeners) cb(item.trigger);
+    }
   }
 
   /** The grid step currently sounding, for position readouts. Valid while
@@ -244,7 +400,7 @@ export class MusicEngine {
     if (phraseStep % STEPS_PER_BAR === 0 && this.barQueue.length > 0) {
       const queue = this.barQueue;
       this.barQueue = [];
-      for (const fn of queue) fn();
+      for (const fn of queue) fn(time);
     }
     for (const voice of this.voices.values()) {
       if (!voice.enabled) continue;
@@ -294,30 +450,36 @@ export class MusicEngine {
       }
     }
 
+    let chokedPrevious: VoiceHit | null = null;
     if (voice.kit.choke) {
       const prev = voice.lastHit;
       if (prev) {
         // Fade the ringing hit out right as the new one lands.
         prev.gain.gain.setValueAtTime(prev.gain.gain.value, time);
         prev.gain.gain.exponentialRampToValueAtTime(0.001, time + 0.04);
-        prev.src.stop(time + 0.05);
+        chokedPrevious = prev;
       }
       voice.lastHit = { src, gain: g };
     }
 
     this.pending.push({
-      role: voice.role,
-      time,
-      velocity: ev.velocity,
-      step: phraseStep,
-      variant: ev.variant,
-      note: ev.note,
+      source: src,
+      voice,
+      chokedPrevious,
+      trigger: {
+        role: voice.role,
+        time,
+        velocity: ev.velocity,
+        step: phraseStep,
+        variant: ev.variant,
+        note: ev.note,
+      },
     });
     // If no consumer is draining (hidden tab pauses rAF), drop stale entries
     // so the queue cannot grow unboundedly while audio keeps scheduling.
     if (this.pending.length > 64) {
       const cutoff = this.ctx.currentTime - 1;
-      this.pending = this.pending.filter((t) => t.time > cutoff);
+      this.pending = this.pending.filter((pending) => pending.trigger.time > cutoff);
     }
   }
 }
