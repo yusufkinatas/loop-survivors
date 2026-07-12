@@ -1556,4 +1556,20 @@ button.big {
     letter-spacing: 0.06em;
   }
 }
-
+/* Unified developer campus. Kept visually distinct from the player HUD. */
+.dev-campus { min-height: 100vh; background: #090b11; color: #e8ebf4; }
+.dev-shell { min-height: 100vh; display: grid; grid-template-columns: 280px 1fr; }
+.dev-sidebar { padding: 18px; border-right: 1px solid #293040; background: #10141d; display: flex; flex-direction: column; gap: 12px; }
+.dev-home { color: #fff; font-size: 20px; text-decoration: none; }
+.dev-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.dev-tabs button, .dev-scenario-controls button { background: #20283a; color: #e8ebf4; border: 1px solid #38445d; border-radius: 5px; padding: 6px 8px; }
+.dev-search { background: #090b11; color: inherit; border: 1px solid #38445d; border-radius: 5px; padding: 9px; }
+.dev-room-list { display: flex; flex-direction: column; gap: 4px; overflow: auto; }
+.dev-room-list a { color: #cbd3e8; text-decoration: none; padding: 8px; display: flex; gap: 8px; justify-content: space-between; border-radius: 5px; }
+.dev-room-list a:hover { background: #1a2130; }
+.dev-status { border: 1px solid currentColor; border-radius: 999px; padding: 2px 5px; font-size: 9px; letter-spacing: .05em; white-space: nowrap; }
+.dev-status.current { color: #6ee7a8; } .dev-status.experimental { color: #ffc766; } .dev-status.dormant, .dev-status.parked { color: #9ca4b8; } .dev-status.removed, .dev-status.historical { color: #dd86a1; }
+.dev-main { min-width: 0; } .dev-breadcrumbs { padding: 15px 22px; border-bottom: 1px solid #293040; color: #9da8bf; }
+.dev-breadcrumbs a { color: #9ec5ff; } .dev-room { padding: 24px; } .dev-welcome { max-width: 720px; margin: 10vh auto; }
+.dev-scenario-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 18px; }
+@media (max-width: 760px) { .dev-shell { grid-template-columns: 1fr; } .dev-sidebar { border-right: 0; border-bottom: 1px solid #293040; max-height: 42vh; } }

@@ -9,6 +9,7 @@ import { mountRehearsalRoom } from './rehearsal/room';
 import { mountTrackLab } from './tracklab/lab';
 import { mountBossFight } from './boss/page';
 import { bootGame } from './game/game';
+import { mountDevCampus } from './dev/shell';
 import './style.css';
 
 async function boot(): Promise<void> {
@@ -33,7 +34,9 @@ async function boot(): Promise<void> {
   (window as unknown as { loop: object }).loop = { engine, kits, charts };
 
   root.textContent = '';
-  if (location.hash === '#rehearsal') {
+  if (location.hash.startsWith('#dev')) {
+    await mountDevCampus(root, { engine, kits });
+  } else if (location.hash === '#rehearsal') {
     mountRehearsalRoom(root, engine);
   } else if (location.hash === '#tracklab') {
     // The Experimentation room: kept as a standalone lab for auditioning
@@ -46,8 +49,11 @@ async function boot(): Promise<void> {
   } else {
     await bootGame(root, engine, kits);
   }
-  // switching modes reloads: both mount into the same root
-  window.addEventListener('hashchange', () => location.reload());
+  // The Dev Campus owns in-place hash navigation. Production surfaces still
+  // reload when crossing surface boundaries until each receives a session.
+  window.addEventListener('hashchange', () => {
+    if (!location.hash.startsWith('#dev')) location.reload();
+  });
 }
 
 void boot();
