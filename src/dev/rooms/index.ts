@@ -1,4 +1,5 @@
 import './scratch';
+import './museum-weapon-archetypes-geometry-lifetime-pierce-and-r';
 import './museum-seven-slot-band-offer-eligibility-and-build-comp';
 import './museum-audio-signal-path-volume-groups-mute-and-low-end';
 import './museum-audio-scheduling-lookahead-heard-time-changes-an';
