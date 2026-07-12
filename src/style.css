@@ -726,14 +726,6 @@ input[type='range'] {
   font-size: var(--fs-xs);
 }
 
-.pick-grid {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  justify-content: center;
-  max-width: 720px;
-}
-
 /* Primary call-to-action on the start screen: every run opens on the kick,
    so the one choice left is when to begin. */
 .start-btn {
@@ -743,77 +735,6 @@ input[type='range'] {
   text-transform: uppercase;
   border-color: var(--signal);
   color: var(--signal);
-}
-
-/* The one shared card: a raised panel with a top accent stripe. Used by the
-   pick screens; --voice-color is the per-card accent. */
-.kit-card {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-  width: 210px;
-  padding: var(--sp-4) var(--sp-3) var(--sp-3);
-  background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  overflow: hidden;
-  text-align: left;
-  transition:
-    transform var(--dur) var(--ease),
-    box-shadow var(--dur) var(--ease),
-    border-color var(--dur) var(--ease);
-}
-
-.kit-card::before {
-  content: '';
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 4px;
-  background: var(--voice-color);
-}
-
-.kit-card:hover,
-.kit-card.selected {
-  /* restate the gradient so the generic button:hover fill can't flatten it */
-  background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
-  transform: translateY(-3px);
-  border-color: var(--voice-color);
-  box-shadow: var(--glow-ring);
-}
-
-/* keyboard focus == the same glow, no double ring */
-.kit-card.selected {
-  outline: none;
-}
-
-.kit-name {
-  font-weight: 700;
-  font-size: var(--fs-body);
-  color: var(--voice-color);
-  letter-spacing: 0.03em;
-}
-
-.kit-desc {
-  font-size: var(--fs-sm);
-  color: var(--ink-dim);
-  line-height: 1.4;
-}
-
-/* Tier numeral chip, top-right (hud.ts appends it for tier > 1). Fallback
-   hex on the border in case color-mix is unsupported. */
-.kit-tier {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  font-size: var(--fs-xs);
-  font-weight: 700;
-  color: var(--voice-color);
-  border: 1px solid var(--line-2);
-  border: 1px solid color-mix(in srgb, var(--voice-color) 45%, transparent);
-  border-radius: var(--r-sm);
-  padding: 1px 6px;
-  letter-spacing: 0.08em;
 }
 
 button.big {
@@ -1276,19 +1197,6 @@ button.big {
     font-size: 26px;
   }
 
-  .pick-grid {
-    gap: 8px;
-  }
-
-  .kit-card {
-    width: 150px;
-    padding: 10px;
-  }
-
-  .kit-desc {
-    font-size: var(--fs-xs);
-  }
-
   .debug-row .small {
     font-size: 10px;
     padding: 2px 6px;
@@ -1581,19 +1489,6 @@ button.big {
 
 /* Slot badge on a pick card: the plain player-facing band position this hire
    plugs, so every card answers "what does taking this cost me?" at a glance. */
-.kit-slot-badge {
-  align-self: flex-start;
-  font: 700 9px/1 var(--font-mono);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--ink-dim);
-  border: 1px solid var(--line);
-  border-left: 2px solid var(--voice-color);
-  border-radius: var(--r-sm);
-  padding: 3px 7px;
-  background: rgba(10, 11, 15, 0.5);
-}
-
 /* Start-screen dev entrances: one small disclosure link that reveals the row
    of lab links (boss fights / sandbox / rehearsal / experimentation). */
 .start-dev {

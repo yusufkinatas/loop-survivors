@@ -24,6 +24,35 @@ export const RUN = {
   maxGems: 400,
 };
 
+/** Level-up ground picks (diegetic reward). Instead of a full-screen menu, the
+ * three offers drop as physical items in a triangle around the player, the
+ * horde is shoved clear, and a slow-mo + weapon-volume duck marks the moment
+ * (up to momentS, cut short the instant a pick is collected). Collecting one
+ * means walking onto it.
+ *
+ * `itemPickupRadius` is a FIXED walk-onto range on purpose: it is deliberately
+ * NOT `RUN.pickupRadius`/`magnetRadius`, so a future pickup-range buff grows
+ * the gem magnet without silently making level-up items snap in from afar. */
+export const LEVELUP = {
+  /** World units from the player to each of the three dropped items. */
+  itemRadius: 150,
+  /** Enemies inside this ring at drop time are shoved out to it (> itemRadius,
+   *  so the triangle spawns into cleared space). */
+  enemyPushRadius: 225,
+  /** Fixed proximity to collect a dropped item (independent of pickup buffs). */
+  itemPickupRadius: 34,
+  /** Triangle points, in degrees (placed with Math.cos/sin in the shell — a
+   *  cosmetic, non-simulation position, so the native trig is fine here). */
+  angles: [0, 120, 240] as const,
+  /** Max duration of the cosmetic slow-mo / duck moment, real seconds. Ends
+   *  early the instant the player collects a pick (see collectGroundPick). */
+  momentS: 2.0,
+  /** Time scale during the moment (composes with the dev timeScale). */
+  slowScale: 0.5,
+  /** Weapon (master) volume multiplier during the moment. */
+  duckDepth: 0.32,
+};
+
 /** Exact Vampire Survivors XP requirement for the next level. `level` is the
  * player's current level (1 means the 5 XP step from level 1 -> 2). */
 export function xpForNextLevel(level: number): number {
