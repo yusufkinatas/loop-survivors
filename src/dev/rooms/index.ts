@@ -1,4 +1,5 @@
 import './scratch';
+import './museum-stage-director-wave-timeline-events-and-dividing';
 import './museum-enemy-movement-circle-collision-separation-and-s';
 import './museum-xp-reward-queue-physical-choice-and-next-bar-app';
 import './museum-weapon-archetypes-geometry-lifetime-pierce-and-r';
