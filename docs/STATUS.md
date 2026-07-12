@@ -1,8 +1,45 @@
 # Project Status
 
-Last updated: July 11, 2026
+Last updated: July 12, 2026
 
-## Latest change (July 11, 2026) — Mad Forest parity rework in progress
+## Latest change (July 12, 2026) — Global timeScale (issue #21), dev/playtest tool
+
+Implemented the locked spec in GitHub issue #21: one global `timeScale` knob that
+speeds up or slows down everything together (simulation, audio tempo, and world
+juice), adjustable live mid-run, modeled on Unity's `Time.timeScale`. This is a
+dev/playtest tool (not a player-facing setting), and the reusable speed primitive
+future slow-mo / hit-stop effects will sit on.
+
+Seams (as specced): `Clock` (`src/audio/clock.ts`) gained a neutral `rate` field
+(default 1) dividing `stepDuration`; the game shell (`src/game/game.ts`) owns the
+`timeScale` local (beside `muted`/`paused`/`autoMode`), sets `engine.clock.rate`
+on every change, and in the live loop pays out `frameDt × timeScale` worth of
+fixed `SIM_DT` steps (the step count scales, never the dt — determinism intact)
+with a `timeScale`-scaled-but-bounded per-frame cap; `view.update` is fed
+`frameDt × timeScale` so juice scales. Control surface: a slider in the debug row
+(min 0.25, max 3.0, step 0.25, default 1.0, live `speed X.XXx` readout) plus `[` /
+`]` keys that nudge by 0.25 and drag the handle. Applies to **run + sandbox only**;
+`timeScale` snaps back to 1.0 on every new run/sandbox/replay entry; the slider is
+inert (disabled) outside run/sandbox. **Replay is untouched** (its 1/2/5/10 speed +
+seek use the separate `replaySpeed` mechanism; replay's `clock.rate` is reset to 1).
+The headless bot is untouched (never uses the ticker or `engine.clock`).
+
+Engineering verification: `tsc --noEmit` + `vite build` clean; headless bot batch
+runs unchanged (determinism intact). A four-dimension adversarial review workflow
+(sim-step math, audio seam, control-surface/reset, scope/juice), each finding
+independently verified, returned **no defect in the sim math** and confirmed all
+juice/HUD/replay/determinism coverage; three low-severity UI-affordance findings
+were fixed (slider left enabled after sandbox exit; slider not greyed during a
+level-up pick; `Clock.rate ≤ 0` now freezes the grid in place instead of poisoning
+the scheduler with `Infinity`, hardening the primitive for future hit-stop callers).
+Browser-verified live (dev server): the sim time-compresses/expands exactly
+(2x → 2.0×, 0.25x → 0.25×, 3x → 3.0× via the real ticker callback), keys + slider
+drive the same value with correct 0.25/3.0 clamping, the value resets 2.75x → 1.0x
+across a death→start→new-run flow, the slider greys correctly on start/end/pick/
+sandbox-exit, and no console errors. This is a self-contained tooling change, not a
+milestone gate; it does not affect the pending Mad Forest parity developer gate below.
+
+## Previous change (July 11, 2026) — Mad Forest parity rework in progress
 
 The developer explicitly authorized a mechanical parity pass focused on
 Vampire Survivors' Mad Forest: movement weight, enemy roster/stats/contact,

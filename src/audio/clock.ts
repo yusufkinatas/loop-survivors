@@ -21,6 +21,12 @@ export class Clock {
   /** Live tempo. Read once per scheduled step, so changes glide in. */
   bpm: number;
   stepsPerBeat: number;
+  /** Neutral speed multiplier on top of tempo (default 1, read fresh per step
+   *  like bpm). The live game's global timeScale sets this so the arrangement's
+   *  wall-clock tempo tracks the sim (issue #21): rate 2 halves each step, rate
+   *  0.25 quadruples it. The clock stays ignorant of "game speed" — this is just
+   *  a tempo knob it was already designed to change live. */
+  rate = 1;
   /** Shuffle: the offbeat 8th of each beat is pushed late by this fraction of
    *  a 16th. 0 is straight; a larger value is a heavier shuffle. The grid backbone
    *  stays even, so downbeats never drift — only the "and" lays back. */
@@ -37,9 +43,9 @@ export class Clock {
     return this.timer !== null;
   }
 
-  /** Seconds per grid step at the current tempo. */
+  /** Seconds per grid step at the current tempo and speed multiplier. */
   get stepDuration(): number {
-    return 60 / this.bpm / this.stepsPerBeat;
+    return 60 / this.bpm / this.stepsPerBeat / this.rate;
   }
 
   /** Start from step 0. */
@@ -87,12 +93,18 @@ export class Clock {
   }
 
   private tick(): void {
+    const step = this.stepDuration;
+    // rate <= 0 (a future hit-stop / freeze) or any non-finite tempo freezes
+    // the grid in place — schedule nothing, leave nextStepTime untouched — so
+    // the arrangement resumes cleanly when rate returns, instead of poisoning
+    // nextStepTime with Infinity. Behaviour-neutral for every positive rate.
+    if (!(step > 0) || !Number.isFinite(step)) return;
     while (this.nextStepTime < this.ctx.currentTime + SCHEDULE_AHEAD_S) {
       // Swing delays the offbeat 8th of each beat (steps 2, 6, 10, 14) while
       // leaving the grid backbone even.
-      const swung = this.nextStep % 4 === 2 ? this.swing * this.stepDuration : 0;
+      const swung = this.nextStep % 4 === 2 ? this.swing * step : 0;
       this.onStep(this.nextStep, this.nextStepTime + swung);
-      this.nextStepTime += this.stepDuration;
+      this.nextStepTime += step;
       this.nextStep += 1;
     }
   }
