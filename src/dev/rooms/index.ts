@@ -1,4 +1,5 @@
 import './scratch';
+import './gym-visible-bot-small-batch-balance-and-outlier-repl';
 import './gym-audio-gameplay-synchronization-and-timing-bounda';
 import './gym-horde-pressure-formations-and-population-limits';
 import './gym-dedicated-kick-calibration-facing-strips-and-rep';
