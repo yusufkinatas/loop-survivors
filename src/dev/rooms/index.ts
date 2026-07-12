@@ -1,4 +1,5 @@
 import './scratch';
+import './zoo-production-sound-sample-and-one-shot-catalog';
 import './zoo-projectile-field-and-hit-area-catalog';
 import './zoo-active-mad-forest-enemy-catalog';
 import './zoo-active-weapon-catalog-fourteen-weapons-four-tier';
