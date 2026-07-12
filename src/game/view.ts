@@ -16,7 +16,6 @@ import {
   type Gem,
   type Projectile,
   type RunWorld,
-  type Shock,
   type Zone,
 } from './run';
 
@@ -245,7 +244,6 @@ export class RunView {
   private enemyGfx = new Map<Enemy, Graphics>();
   private projectileGfx = new Map<Projectile, Graphics>();
   private zoneGfx = new Map<Zone, Graphics>();
-  private shockGfx = new Map<Shock, Graphics>();
   private gemGfx = new Map<Gem, GemGfx>();
   // Level-up ground picks: shell-owned, so they ride a dedicated layer that is
   // re-topped each frame (entities are added to the stage as they spawn, which
@@ -356,7 +354,6 @@ export class RunView {
       if (z.pull > 0) gfx.rotation -= 1.6 * dt;
       else if (z.mine) gfx.scale.set(1 + 0.05 * Math.sin(this.world.timeS * 6));
     });
-    this.syncShocks();
     const p = this.world.player;
     const cameraX = p.x + PLAYER_FOOT_OFFSET.x;
     const cameraY = p.y + PLAYER_FOOT_OFFSET.y;
@@ -416,7 +413,6 @@ export class RunView {
     this.enemyGfx.clear();
     this.projectileGfx.clear();
     this.zoneGfx.clear();
-    this.shockGfx.clear();
     this.gemGfx.clear();
     this.groundPickGfx.length = 0; // stage.destroy already freed the graphics
     this.pops.length = 0;
@@ -499,30 +495,6 @@ export class RunView {
       if (!this.live.has(entity)) {
         gfx.destroy({ children: true }); // frees a gem's glow bead; shared context survives
         map.delete(entity);
-      }
-    }
-  }
-
-  /** Shockwaves grow every frame, so they are redrawn rather than diffed. */
-  private syncShocks(): void {
-    this.live.clear();
-    for (const s of this.world.shocks) {
-      let gfx = this.shockGfx.get(s);
-      if (!gfx) {
-        gfx = new Graphics();
-        this.stage.addChild(gfx);
-        this.shockGfx.set(s, gfx);
-      }
-      gfx.clear();
-      gfx.circle(s.x, s.y, s.radius).stroke({ width: 6, color: 0xffffff, alpha: 0.85 });
-      gfx.tint = s.color;
-      gfx.alpha = Math.max(0, 1 - s.radius / s.maxRadius);
-      this.live.add(s);
-    }
-    for (const [s, gfx] of this.shockGfx) {
-      if (!this.live.has(s)) {
-        gfx.destroy();
-        this.shockGfx.delete(s);
       }
     }
   }

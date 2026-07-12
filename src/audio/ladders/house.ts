@@ -9,12 +9,12 @@
 // Grid: 16 steps per bar. Beats on 0/4/8/12, off-beats ("and"s) on 2/6/10/14.
 // Swing comes from the soundset globally; patterns stay on the straight grid.
 //
-// Supported roles = the full instrument catalog. Key A minor pentatonic.
+// Supported roles = the full instrument catalog minus the retired FX slot
+// (crash/riser are no longer weapons). Key A minor pentatonic.
 
 import type { Chart } from '../charts';
 import type { Role } from '../kits';
 import { B, d, m } from '../groove';
-import { CRASH, RISER } from './shared';
 
 export const SOUNDSET_LADDERS: Partial<Record<Role, Chart[]>> = {
   // Pulse: four-on-the-floor, dead on every beat at EVERY tier. Kick growth
@@ -60,9 +60,6 @@ export const SOUNDSET_LADDERS: Partial<Record<Role, Chart[]>> = {
     d('shaker', 'o.xoo.xoo.xoo.xo'),
     d('shaker', 'ooxoooxoooxoooxo'),
   ],
-  // FX: phrase-top crash and the auto-dash riser, shared voicings.
-  crash: CRASH,
-  riser: RISER,
   // Bass: OFF-BEAT bass answering the kick — staccato hits on 2/6/10/14, never
   // on the kick's 0/4/8/12. Root/fifth movement (0/7/12), growth = 16th
   // pickups (13/15) and octave jumps at high tiers on the fat variant.

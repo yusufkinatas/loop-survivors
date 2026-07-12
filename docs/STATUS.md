@@ -2,7 +2,55 @@
 
 Last updated: July 13, 2026
 
-## Latest change (July 13, 2026) — Diegetic level-up pickup (replaces the pause menu)
+## Latest change (July 13, 2026) — FX weapon class removed from the build
+
+At the developer's direction, the **FX band slot and its two weapons (crash =
+shockwave, riser = auto-dash) are removed from the player's build/weapons
+system**. The band is now **seven slots** (Beat/Snap/Tick/Groove/Low/Color/Hook);
+the pick pool offers **14 instruments** (was 16). crash/riser are no longer
+supported by the soundset, so they are never offered, never voiced in a run,
+and never appear on a pick card. (Layered on top of the diegetic-pickup feature
+#25 below; the two changes are orthogonal, `picks.ts` untouched by both.)
+
+Removed: the `fx` slot everywhere in `src/game/band.ts` (type, SLOTS, rosters,
+labels) plus the now-dead `barredFromStart`/`startableRoles` helpers (their only
+job was barring FX from the starting offer; they had no callers since the
+start-weapon-choice system was cut); the crash/riser ladders in
+`src/audio/ladders/house.ts` and the whole `src/audio/ladders/shared.ts` file
+(only house imported it); the crash/riser blocks in `WEAPONS` and `TIER_LINES`
+in `config.ts` (both now `Partial<Record<Role,…>>`, the pattern the soundset
+ladders already use) plus their exclusive feel constants (`SHOCK_BAND`,
+`KNOCK_S`, `DASH`, `SHAKE.crash`, `FLASH.crash`, the `WeaponConf.knockback`
+field); the crash/riser pick-card glyphs in `weaponicons.ts`; and the two
+weapons' exclusive mechanics — the whole game **Shock** system
+(spawnShock/updateShocks/`Shock`/`world.shocks` in run.ts, its
+`shockGfx`/`syncShocks` rendering in view.ts) and the player **auto-dash**
+(`player.dashT/dashX/dashY`, the movePlayer surge, the `Digit8` mute key, now
+`Digit1..Digit7`). The Kick's own Whip-geometry system and the shared
+weapon-shove knockback channel (snare/clap/bass) were verified independent and
+are untouched; the boss module has its own separate shock/dash and is untouched.
+
+**Kept (audio config, used elsewhere):** the crash/riser sound synthesis stays
+whole — `Role` type entries, `ROLE_META`, `ROLES`, `buildKits`,
+`renderCrash`/`renderRiser`, `KIT_COLORS`, and the soundset kit's crash/riser
+buffers (`kits/house.ts`, `kits/index.ts`) — because the rehearsal room iterates
+the full `ROLES` catalog and the Track Lab tracks (`satisfaction.ts`,
+`sahara.ts`) use crash/riser (via Track Lab's own independent `labkits.ts`
+synthesis, not the game kit). They are now dormant catalog voices, like any
+role the soundset does not build a weapon around: the engine still creates their
+(disabled, silent) voices via the total `getChart` stand-in, and they never
+enable.
+
+Verification: `tsc --noEmit` + `vite build` clean; headless bot batches
+(kiter/random, harvester/deep) run full runs with no crashes and no crash/riser
+in the damage share; a direct pick-pool assertion over 5000 rolls across random
+build states confirms crash/riser are never offered and every offered role maps
+to a valid slot. (Pre-existing, unrelated: `scripts/madforest-check.ts` fails
+`STAGE_STARTING_SPAWNS 30 !== 10` on clean HEAD too — a stale assertion after
+the "3× enemy spawn" commit #24, not caused by this change.) No developer gate
+is attached; this is a scope edit, not a milestone.
+
+## Previous change (July 13, 2026) — Diegetic level-up pickup (replaces the pause menu)
 
 At the developer's direction, the full-screen level-up menu was replaced with an
 in-world pickup. On level-up the three rolled offers (`picks.ts`, unchanged) drop

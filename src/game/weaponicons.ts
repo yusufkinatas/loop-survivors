@@ -87,17 +87,6 @@ export function drawWeaponIcon(c: GraphicsContext, role: Role, s: number): void 
       }
       break;
     }
-    case 'crash': {
-      // A cymbal splash: nested arcs opening upward + a center hit.
-      for (let i = 1; i <= 3; i++) {
-        c.arc(0, s * 0.2, s * 0.28 * i, Math.PI * 1.15, Math.PI * 1.85).stroke({
-          width: s * 0.11,
-          color: W,
-        });
-      }
-      c.circle(0, s * 0.2, s * 0.14).fill(W);
-      break;
-    }
     case 'shaker': {
       // A maraca: a hollow bulb with rattle dots and a stubby handle.
       c.ellipse(0, -s * 0.12, s * 0.58, s * 0.72).stroke({ width: s * 0.12, color: W });
@@ -129,11 +118,6 @@ export function drawWeaponIcon(c: GraphicsContext, role: Role, s: number): void 
       for (let i = -1; i <= 1; i++) {
         c.roundRect(i * s * 0.5 - s * 0.18, -s * 0.7, s * 0.36, s * 1.4, s * 0.1).fill(W);
       }
-      break;
-    }
-    case 'riser': {
-      // An unmistakable up-arrow (a sweep rising into the drop).
-      c.poly([0, -s * 0.9, s * 0.55, -s * 0.15, s * 0.2, -s * 0.15, s * 0.2, s * 0.85, -s * 0.2, s * 0.85, -s * 0.2, -s * 0.15, -s * 0.55, -s * 0.15]).fill(W);
       break;
     }
     case 'bell': {

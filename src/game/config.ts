@@ -46,9 +46,9 @@ export const LEVELUP = {
   angles: [0, 120, 240] as const,
   /** Max duration of the cosmetic slow-mo / duck moment, real seconds. Ends
    *  early the instant the player collects a pick (see collectGroundPick). */
-  momentS: 2.0,
+  momentS: 1,
   /** Time scale during the moment (composes with the dev timeScale). */
-  slowScale: 0.5,
+  slowScale: 0.75,
   /** Weapon (master) volume multiplier during the moment. */
   duckDepth: 0.32,
 };
@@ -621,8 +621,6 @@ export interface WeaponConf {
   count?: number;
   /** arp: radius of the orbit around the player. */
   orbitRadius?: number;
-  /** crash: knockback distance pushed onto enemies the wave front passes. */
-  knockback?: number;
   /** acid gravity-well pull speed (px/s inward). */
   pull?: number;
   /** kick: Whip-style hitbox scale (1 = 258 x 39 at the reference view). */
@@ -641,7 +639,7 @@ export interface WeaponConf {
 // preserved (bass climbs hard, hat barely moves). Zone/DoT weapons carry a
 // per-TICK number that floors at 1, so their listed damage can't drop a full
 // third — their real output is damage x ticks x rate; they lean on coverage.
-export const WEAPONS: Record<Role, WeaponConf[]> = {
+export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
   // The starting Kick uses Whip's horizontal pass-through strip instead of a
   // radial aura. Damage/area/amount map to Whip levels 1, 3, 5 and 8.
   kick: [
@@ -719,14 +717,6 @@ export const WEAPONS: Record<Role, WeaponConf[]> = {
     { damage: 2, radius: 9, lifetimeS: 2.8, orbitRadius: 106 },
     { damage: 3, radius: 10, lifetimeS: 3.2, orbitRadius: 122 },
   ],
-  // Shockwave: an expanding ring from the player that damages and knocks back
-  // enemies its front passes. Rare and heavy — charts fire it on the accents.
-  crash: [
-    { damage: 5, speed: 520, radius: 150, knockback: 30 },
-    { damage: 7, speed: 550, radius: 175, knockback: 38 },
-    { damage: 9, speed: 580, radius: 200, knockback: 48 },
-    { damage: 13, speed: 620, radius: 230, knockback: 62 },
-  ],
   // Shaker (band, Hats): drops a short-lived damaging blob at your feet on each
   // hit, so moving strings a trail of them behind you. Per-tick zone damage
   // (see the chord note): the trail's high trigger rate at max tier means the
@@ -766,15 +756,6 @@ export const WEAPONS: Record<Role, WeaponConf[]> = {
     { damage: 5, radius: 51, lifetimeS: 4 },
     { damage: 7, radius: 58, lifetimeS: 4.5 },
   ],
-  // Riser (band, FX — THE AUTO-DASH): its build-and-release grants a short
-  // movement surge (see DASH) and a whoosh of damage around the player on
-  // release. Radius is the whoosh reach.
-  riser: [
-    { damage: 2, radius: 60 },
-    { damage: 3, radius: 70 },
-    { damage: 4, radius: 80 },
-    { damage: 5, radius: 90 },
-  ],
   // Bell (band, Melody): a note lobbed straight that shatters into shards on
   // its first hit (shard count per tier in BELL). radius = the shot's own size.
   bell: [
@@ -789,7 +770,7 @@ export const WEAPONS: Record<Role, WeaponConf[]> = {
  *  VS-style, zero music description (docs/phases/m2-the-arc.md): the sound
  *  change is discovered by ear. Lines state what the chart + stat change
  *  actually does. */
-export const TIER_LINES: Record<Role, string[]> = {
+export const TIER_LINES: Partial<Record<Role, string[]>> = {
   kick: [
     'a facing-side strip, on the beat',
     'adds an opposite-side follow-up',
@@ -844,12 +825,6 @@ export const TIER_LINES: Record<Role, string[]> = {
     'a wider, longer orbit',
     'a dense ring of orbiters',
   ],
-  crash: [
-    'a shockwave knocks enemies back',
-    'a bigger, faster wave',
-    'a wider wave, harder knock',
-    'a massive wave, huge knockback',
-  ],
   shaker: [
     'leaves a damaging trail as you move',
     'a longer-lasting trail',
@@ -873,12 +848,6 @@ export const TIER_LINES: Record<Role, string[]> = {
     'a wider bloom',
     'a bigger, harder bloom',
     'a huge bloom',
-  ],
-  riser: [
-    'a surge that dashes you forward',
-    'a longer dash',
-    'a faster, harder dash',
-    'a huge dash surge',
   ],
   bell: [
     'a note that shatters into shards',
@@ -917,42 +886,28 @@ export const ORBIT_REHIT_S = 0.35;
  *  home; the hit set clears at the turn so both legs land. */
 export const BOOMERANG_OUT_FRAC = 0.45;
 
-/** Crash shockwave: thickness of the damaging front, and how long a knocked
- *  enemy is pushed before it resumes chasing. */
-export const SHOCK_BAND = 46;
-export const KNOCK_S = 0.18;
-
 // ---- weapon feel constants (Feature 3) ----
 
-/** How long an enemy rides a weapon shove before resuming its chase (shares
- *  the crash knock channel). */
+/** How long an enemy rides a weapon shove before resuming its chase. */
 export const SHOVE_S = 0.12;
 
 /** Per-weapon knock distance applied on hit (Feature 3). Absent = no shove. */
 export const WEAPON_SHOVE: Partial<Record<Role, number>> = { snare: 8, clap: 12, bass: 6 };
 
 /** Screenshake magnitudes/durations (Feature 3, cosmetic). Shake is reserved
- *  for the rare, heavy moments only — the crash shockwave and the once-per-
- *  phrase bass sub-drop. Frequent triggers (kick, snare, clap) deliberately
- *  do NOT shake the camera; they punch through local fx (slam/spark/trails). */
+ *  for the rare, heavy moments only — the once-per-phrase bass sub-drop.
+ *  Frequent triggers (kick, snare, clap) deliberately do NOT shake the camera;
+ *  they punch through local fx (slam/spark/trails). */
 export const SHAKE = {
-  crash: { mag: 10, dur: 0.35 },
   bassSub: { mag: 8, dur: 0.3 },
 } as const;
 
 /** Full-screen colored flash per source (Feature 3, cosmetic). */
 export const FLASH = {
-  crash: { alpha: 0.16, dur: 0.18 },
   bassSub: { alpha: 0.12, dur: 0.16 },
 } as const;
 
-// ---- sub-phase C: the auto-dash utility + the shatter weapon ----
-
-/** Riser, the auto-dash: the release grants a short movement surge. `speed` is
- *  added (px/s) along the dash direction for `surgeS` seconds (≈ a 180px dash),
- *  on top of normal movement. Direction is the player's current move input, or
- *  a fallback when standing still. */
-export const DASH = { surgeS: 0.2, speed: 900 };
+// ---- sub-phase C: the shatter weapon ----
 
 /** Bell shatter: per-tier shard count, and the shard projectiles' stats. Shards
  *  fly out radially from the first hit; each is a small, short-lived bell shot
