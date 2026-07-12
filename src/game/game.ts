@@ -57,6 +57,44 @@ export async function bootGame(
   let muted = false;
   let paused = false;
 
+  // Global time scale (issue #21): one knob scaling the sim, audio tempo, and
+  // world juice together, live mid-run, in run + sandbox only. Continuous
+  // underneath (future slow-mo / hit-stop can set any float); the control
+  // surface below clamps to the slider's 0.25–3.0 grid. Snaps back to 1.0 on
+  // every new run / sandbox entry (reset in resetWorld). Owned here alongside
+  // muted / paused / autoMode — the same one-place-per-shell-flag pattern.
+  let timeScale = 1;
+  const TS_MIN = 0.25;
+  const TS_MAX = 3;
+  const TS_STEP = 0.25;
+  // Built after mountDebug (below); setTimeScale drives both, the loop reads
+  // `timeScale`. Declared here so setTimeScale can close over them.
+  let tsSlider: HTMLInputElement;
+  let tsControl: HTMLElement;
+  let tsLabel: HTMLElement;
+  /** timeScale is only live in run + sandbox. Replay keeps its own speed/seek
+   *  controls untouched; menus have no world to scale. */
+  function timeScaleLive(): boolean {
+    return state === 'run' || state === 'sandbox';
+  }
+  // The one place timeScale changes: clamp to the control range, snap to the
+  // step grid (so keyboard nudges and the slider agree exactly), push to the
+  // audio clock (a neutral tempo multiplier), and sync the slider + readout.
+  // The sim + view loop read `timeScale` live.
+  function setTimeScale(v: number): void {
+    const clamped = Math.max(TS_MIN, Math.min(TS_MAX, v));
+    timeScale = Math.round(clamped / TS_STEP) * TS_STEP;
+    engine.clock.rate = timeScale;
+    if (tsSlider) tsSlider.value = String(timeScale);
+    if (tsLabel) tsLabel.textContent = `speed ${timeScale.toFixed(2)}x`;
+  }
+  function syncTimeScaleControl(): void {
+    if (!tsSlider) return;
+    const live = timeScaleLive();
+    tsSlider.disabled = !live;
+    tsControl.classList.toggle('disabled', !live);
+  }
+
   // Auto-move (developer request): a mover can drive the player instead of the
   // keyboard/joystick. The mode is chosen on the start screen AND can be
   // toggled/cycled live in-game (the auto-move debug button + hotkey). The
@@ -148,12 +186,14 @@ export async function bootGame(
       }
 
       state = 'pick';
+      syncTimeScaleControl(); // timeScale is not live behind a pick screen
       engine.clock.pause();
       engine.holdTransport(true);
       hud.showPick(options, (option) => {
         // Resume the old arrangement long enough to reach the next bar. No
         // later queued pick can open while this choice is still in flight.
         state = 'run';
+        syncTimeScaleControl(); // re-arm the slider as the run resumes
         pickAwaitingBar = true;
         engine.releaseTransport();
         engine.atNextBar((barAudioTime) => {
@@ -349,6 +389,8 @@ export async function bootGame(
     paused = false;
     resetUpgradeQueue();
     liveAcc = 0;
+    setTimeScale(1); // every new run / sandbox / replay starts at normal speed
+    syncTimeScaleControl(); // disabled until startRun/startSandbox re-enables it
     setAutoMode('off'); // manual by default; startRun re-arms it if chosen
     pauseOverlay.style.display = 'none';
     sandboxPanel?.destroy();
@@ -384,6 +426,7 @@ export async function bootGame(
     hud.showHud(true);
     hud.renderBand(w.tiers);
     state = 'run';
+    syncTimeScaleControl(); // arm the timeScale slider for the live run
     void engine.ctx.resume();
     engine.clock.start();
   }
@@ -410,11 +453,13 @@ export async function bootGame(
         hud.showHud(false);
         hud.showStart(startRun, startSandbox);
         state = 'start';
+        syncTimeScaleControl(); // resetWorld ran while still 'sandbox'; re-grey now
       },
     });
     hud.showHud(true);
     hud.renderBand(w.tiers);
     state = 'sandbox';
+    syncTimeScaleControl(); // arm the timeScale slider for the sandbox
     void engine.ctx.resume();
     engine.clock.start();
   }
@@ -489,6 +534,7 @@ export async function bootGame(
   function endRun(victory: boolean): void {
     if (!world || state === 'end') return;
     state = 'end';
+    syncTimeScaleControl(); // no live world to scale on the end screen
     resetUpgradeQueue();
     liveAcc = 0;
     speedRow.style.display = 'none';
@@ -572,17 +618,26 @@ export async function bootGame(
     if (paused) return;
     if ((state === 'run' || state === 'sandbox') && world) {
       const frameS = ticker.deltaMS / 1000;
-      const visualDt = Math.min(frameS, 1 / 20);
+      const ts = timeScale;
+      // timeScale (issue #21) compresses / expands wall-clock. The sim still
+      // only ever advances in fixed SIM_DT ticks (determinism intact) — ts
+      // scales the COUNT of ticks paid out per frame, never their size, exactly
+      // like replay speed does. The per-frame step cap scales with ts so a
+      // legitimate fast frame isn't silently throttled, but stays bounded so a
+      // stalled frame or backgrounded tab drops time instead of spiralling.
+      const maxSteps = Math.max(1, Math.ceil(LIVE_MAX_STEPS * ts));
+      const budget = SIM_DT * maxSteps;
+      // Guard the RAW frame delta against a stall first (never recover more than
+      // LIVE_MAX_STEPS of wall time), THEN scale that to simulated time.
+      const simS = Math.min(frameS, SIM_DT * LIVE_MAX_STEPS) * ts;
+      const visualDt = Math.min(frameS, 1 / 20) * ts;
       const steppingState = state;
       const w = world;
-      // The live world now advances through the exact same 60 Hz steps as the
-      // bot and replay. At most 100 ms is recovered after a slow frame; larger
-      // stalls are dropped instead of freezing the page with runaway catch-up.
-      liveAcc = Math.min(liveAcc + Math.min(frameS, SIM_DT * LIVE_MAX_STEPS), SIM_DT * LIVE_MAX_STEPS);
+      liveAcc = Math.min(liveAcc + Math.min(simS, budget), budget);
       let steps = 0;
       while (
         liveAcc >= SIM_DT &&
-        steps < LIVE_MAX_STEPS &&
+        steps < maxSteps &&
         world === w &&
         state === steppingState
       ) {
@@ -755,9 +810,43 @@ export async function bootGame(
   };
   hud.mountDebug(Object.values(debugActions));
 
+  // timeScale slider (issue #21): lives in the debug row beside the buttons and
+  // shares the ⚙ show/hide. A live readout ("speed 1.50x") + a 0.25-step range;
+  // the [ and ] keys drive the same value and drag the handle. Inert outside
+  // run / sandbox (disabled), so replay's own speed controls are never touched.
+  tsControl = document.createElement('label');
+  tsControl.className = 'ts-control';
+  tsLabel = document.createElement('span');
+  tsLabel.className = 'ts-label';
+  tsSlider = document.createElement('input');
+  tsSlider.type = 'range';
+  tsSlider.min = String(TS_MIN);
+  tsSlider.max = String(TS_MAX);
+  tsSlider.step = String(TS_STEP);
+  tsSlider.value = '1';
+  tsControl.append(tsLabel, tsSlider);
+  hud.appendDebug(tsControl);
+  tsSlider.addEventListener('input', () => {
+    if (timeScaleLive()) setTimeScale(Number(tsSlider.value));
+    else tsSlider.value = String(timeScale); // inert outside run/sandbox
+  });
+  tsSlider.addEventListener('change', () => tsSlider.blur()); // keys back to game
+  setTimeScale(1); // paint the initial readout ("speed 1.00x")
+  syncTimeScaleControl(); // start disabled (boot lands on start or replay)
+
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Escape') {
       togglePause();
+      return;
+    }
+    // timeScale nudge (issue #21): [ slower, ] faster, by one 0.25 step. Live
+    // in run + sandbox only; the toast reports it since the slider may be
+    // hidden behind the ⚙. setTimeScale drags the slider handle to match.
+    if ((e.code === 'BracketLeft' || e.code === 'BracketRight') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (timeScaleLive()) {
+        setTimeScale(timeScale + (e.code === 'BracketRight' ? TS_STEP : -TS_STEP));
+        hud.showToast(`speed ${timeScale.toFixed(2)}x`);
+      }
       return;
     }
     // Number-key track toggles: only while playing (never over the start /

@@ -969,6 +969,33 @@ button.big {
   background: rgba(34, 34, 42, 0.85);
 }
 
+/* timeScale slider (issue #21): sits in the debug row, matching the buttons. */
+.ts-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  background: rgba(34, 34, 42, 0.85);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--ink-dim);
+  font-size: var(--fs-sm);
+}
+
+.ts-control .ts-label {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ts-control input[type='range'] {
+  width: 88px;
+  accent-color: var(--signal);
+}
+
+.ts-control.disabled {
+  opacity: 0.4;
+}
+
 .debug-btn.on {
   border-color: var(--signal);
   color: var(--signal);

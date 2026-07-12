@@ -166,6 +166,12 @@ export class Hud {
     this.refreshDebug();
   }
 
+  /** Append an arbitrary control (e.g. the timeScale slider, issue #21) into
+   *  the debug row so it lives beside the buttons and shares the ⚙ show/hide. */
+  appendDebug(node: HTMLElement): void {
+    this.debugRow?.appendChild(node);
+  }
+
   /** Re-read toggle states (hotkeys change them without a click). */
   refreshDebug(): void {
     for (const { btn, action } of this.debugButtons) {
