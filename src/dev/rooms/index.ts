@@ -1,4 +1,5 @@
 import './scratch';
+import './museum-boss-conductor-song-phases-and-attack-timing';
 import './museum-current-dormant-removed-parked-and-experimental-';
 import './museum-horde-performance-architecture-caps-culling-and-';
 import './museum-world-simulation-pixi-view-cosmetic-fx-and-headl';
