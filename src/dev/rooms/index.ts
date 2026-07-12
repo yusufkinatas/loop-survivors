@@ -1,4 +1,5 @@
 import './scratch';
+import './zoo-active-weapon-catalog-fourteen-weapons-four-tier';
 import './zoo-dormant-audio-only-crash-riser-catalog-wing';
 import './gym-register-future-system-gym-placeholders-without-';
 import './gym-first-time-experience-and-onboarding-scenarios';
