@@ -8,6 +8,7 @@ import { Container, Graphics, GraphicsContext, Text, TextStyle } from 'pixi.js';
 import type { Role } from '../audio/kits';
 import { RUN } from './config';
 import {
+  KICK_GEOMETRY,
   PLAYER_FOOT_OFFSET,
   type Enemy,
   type FxEvent,
@@ -91,7 +92,8 @@ const REGULAR_DEATH_BURST_CAP = 72; // reserve a few slots for rare elite finish
 function whipDimensions(area: unknown): { width: number; height: number; offset: number } {
   if (typeof area === 'number' && Number.isFinite(area)) {
     const scale = Math.max(0.1, area);
-    return { width: 258 * scale, height: 39 * scale, offset: 112 };
+    // Match the sim hitbox exactly so the drawn strip is the real footprint.
+    return { width: KICK_GEOMETRY.baseWidth * scale, height: KICK_GEOMETRY.baseHeight * scale, offset: 0 };
   }
   const a = area && typeof area === 'object' ? (area as Record<string, unknown>) : {};
   const num = (...keys: string[]): number | undefined => {
@@ -484,28 +486,22 @@ export class RunView {
         break;
       }
       case 'whip': {
-        // Kick's Whip-style hit: a short horizontal strip, with the translucent
-        // body showing the real damage footprint and three bright vector rails
-        // selling the snap without introducing a sprite asset.
+        // Kick's hit reads as a mini shockwave: a soft, borderless pulse that
+        // bursts from the player out across the strip zone and fades fast. No
+        // outline, no rails. Drawn beneath the player so it never paints over
+        // the character.
         const { width, height } = whipDimensions(fx.area);
-        const left = -width / 2;
-        const innerX = fx.side === 1 ? left : left + width;
-        const outerX = fx.side === 1 ? left + width : left;
-        const gfx = new Graphics()
-          .roundRect(left, -height / 2, width, height, Math.min(6, height / 3))
-          .fill({ color: 0xffffff, alpha: 0.16 });
-        for (const y of [-0.3, 0, 0.3]) {
-          gfx.moveTo(innerX, height * y).lineTo(outerX, height * y - fx.side * height * 0.08);
-        }
-        gfx.stroke({ width: 2.5, color: 0xffffff, alpha: 0.9 });
-        // A square cap makes the strike read as the same clean vector language
-        // as projectiles and the new enemy silhouettes.
-        gfx.rect(outerX - 3, -3, 6, 6).fill({ color: 0xffffff, alpha: 0.9 });
+        const x0 = fx.side === 1 ? 0 : -width;
+        const r = height / 2;
+        const gfx = new Graphics();
+        gfx.roundRect(x0, -height * 0.72, width, height * 1.44, r).fill({ color: 0xffffff, alpha: 0.12 });
+        gfx.roundRect(x0, -height / 2, width, height, r).fill({ color: 0xffffff, alpha: 0.34 });
         gfx.tint = fx.color;
+        gfx.blendMode = 'add';
         gfx.position.set(fx.x, fx.y);
         gfx.scale.set(0);
-        this.stage.addChild(gfx);
-        this.pops.push({ gfx, t: 0, dur: 0.2, grow: 0, holdHalf: true, expandHalf: true });
+        this.stage.addChildAt(gfx, this.stage.getChildIndex(this.playerGfx));
+        this.pops.push({ gfx, t: 0, dur: 0.18, grow: 0, holdHalf: true, expandHalf: true });
         break;
       }
       case 'shake':

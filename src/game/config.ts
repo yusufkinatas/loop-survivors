@@ -606,146 +606,153 @@ export interface WeaponConf {
  *  Charts carry most of the growth (density = rate); stats bump where the
  *  ladder's character says so — bass per-trigger damage climbs hard (weight),
  *  hat barely moves (density is its whole story). */
-// Balance anchor (VS-derived): a tier-1 weapon's chart fires ~2-4 triggers
-// per 2s bar at 122bpm (~1.5/s), so a tier-1 single-target weapon lands
-// ~10 DPS at ~7 damage per trigger. Tier 4 per-trigger sits at 2-3x tier 1
-// (chart density adds its own 2-3x on top → ~5-8x total). Aura/zone/AoE
-// weapons pay for coverage with roughly half the single-target rate.
+// Balance scale: per-trigger damage sits at ~1/3 of the earlier VS-derived
+// anchor so early enemies take a couple of hits instead of vanishing (a
+// tier-1 5-HP bat = 2 kick hits at 3 dmg). Relative weapon character is
+// preserved (bass climbs hard, hat barely moves). Zone/DoT weapons carry a
+// per-TICK number that floors at 1, so their listed damage can't drop a full
+// third — their real output is damage x ticks x rate; they lean on coverage.
 export const WEAPONS: Record<Role, WeaponConf[]> = {
   // The starting Kick uses Whip's horizontal pass-through strip instead of a
   // radial aura. Damage/area/amount map to Whip levels 1, 3, 5 and 8.
   kick: [
-    { damage: 10, area: 1, amount: 1 },
-    { damage: 15, area: 1, amount: 2 },
-    { damage: 25, area: 1.1, amount: 2 },
-    { damage: 40, area: 1.2, amount: 2 },
+    { damage: 3, area: 1, amount: 1 },
+    { damage: 5, area: 1, amount: 2 },
+    { damage: 9, area: 1.1, amount: 2 },
+    { damage: 15, area: 1.2, amount: 2 },
   ],
   // Backbeat sniper: few, fast, hard-hitting, drills a line. The premium
   // single-target trigger — sparse chart, so each hit is a statement.
   snare: [
-    { damage: 16, speed: 650, radius: 7, lifetimeS: 1.4, pierce: 2 },
-    { damage: 22, speed: 650, radius: 7, lifetimeS: 1.4, pierce: 3 },
-    { damage: 28, speed: 680, radius: 8, lifetimeS: 1.5, pierce: 4 },
-    { damage: 40, speed: 720, radius: 8, lifetimeS: 1.5, pierce: 6 },
+    { damage: 5, speed: 650, radius: 7, lifetimeS: 1.4, pierce: 2 },
+    { damage: 7, speed: 650, radius: 7, lifetimeS: 1.4, pierce: 3 },
+    { damage: 9, speed: 680, radius: 8, lifetimeS: 1.5, pierce: 4 },
+    { damage: 13, speed: 720, radius: 8, lifetimeS: 1.5, pierce: 6 },
   ],
   // Dense stream of weak fast chips, wide scatter. Density IS the ladder;
   // per-trigger damage barely moves.
   hat: [
-    { damage: 3, speed: 440, radius: 3, lifetimeS: 0.8, pierce: 1 },
-    { damage: 3, speed: 450, radius: 3, lifetimeS: 0.85, pierce: 1 },
-    { damage: 4, speed: 460, radius: 3, lifetimeS: 0.9, pierce: 1 },
-    { damage: 5, speed: 480, radius: 3, lifetimeS: 0.95, pierce: 2 },
+    { damage: 1, speed: 440, radius: 3, lifetimeS: 0.8, pierce: 1 },
+    { damage: 1, speed: 450, radius: 3, lifetimeS: 0.85, pierce: 1 },
+    { damage: 1, speed: 460, radius: 3, lifetimeS: 0.9, pierce: 1 },
+    { damage: 2, speed: 480, radius: 3, lifetimeS: 0.95, pierce: 2 },
   ],
   // Slow wide low wave that rolls through everything. The weight ladder:
   // per-trigger damage climbs harder than any other kit.
   bass: [
-    { damage: 10, speed: 135, radius: 22, lifetimeS: 2.3, pierce: Infinity },
-    { damage: 16, speed: 140, radius: 28, lifetimeS: 2.4, pierce: Infinity },
-    { damage: 24, speed: 145, radius: 34, lifetimeS: 2.5, pierce: Infinity },
-    { damage: 40, speed: 150, radius: 42, lifetimeS: 2.6, pierce: Infinity },
+    { damage: 3, speed: 135, radius: 22, lifetimeS: 2.3, pierce: Infinity },
+    { damage: 5, speed: 140, radius: 28, lifetimeS: 2.4, pierce: Infinity },
+    { damage: 8, speed: 145, radius: 34, lifetimeS: 2.5, pierce: Infinity },
+    { damage: 13, speed: 150, radius: 42, lifetimeS: 2.6, pierce: Infinity },
   ],
   // Zone thrown onto the nearest pack: ticks damage and slows enemies
   // inside. Chip damage + control; the slow is the identity. NOTE: zone
   // `damage` is PER TICK (every ZONE_TICK_S) for the zone's whole life, so
   // effective DPS = trigger rate x damage x (lifetimeS / ZONE_TICK_S). Keep
   // per-tick numbers tiny; chart density and lifetime multiply them.
+  // Lifetime trimmed alongside the ~1/3 damage pass: per-tick is floored at 1
+  // so it can't drop a full third, so the zone's life is shortened instead to
+  // bring total tick output (and the slow duration) down in line.
   chord: [
-    { damage: 2, radius: 48, lifetimeS: 1.5 },
-    { damage: 3, radius: 56, lifetimeS: 1.7 },
-    { damage: 4, radius: 64, lifetimeS: 1.9 },
-    { damage: 5, radius: 76, lifetimeS: 2.1 },
+    { damage: 1, radius: 48, lifetimeS: 1.0 },
+    { damage: 1, radius: 56, lifetimeS: 1.15 },
+    { damage: 1, radius: 64, lifetimeS: 1.3 },
+    { damage: 2, radius: 76, lifetimeS: 1.45 },
   ],
   // Homing seeker per melody note: mid damage, never misses.
   lead: [
-    { damage: 7, speed: 340, radius: 6, lifetimeS: 2.2, pierce: 1 },
-    { damage: 8, speed: 350, radius: 6, lifetimeS: 2.2, pierce: 1 },
-    { damage: 9, speed: 360, radius: 6, lifetimeS: 2.3, pierce: 1 },
-    { damage: 11, speed: 380, radius: 7, lifetimeS: 2.4, pierce: 2 },
+    { damage: 2, speed: 340, radius: 6, lifetimeS: 2.2, pierce: 1 },
+    { damage: 3, speed: 350, radius: 6, lifetimeS: 2.2, pierce: 1 },
+    { damage: 3, speed: 360, radius: 6, lifetimeS: 2.3, pierce: 1 },
+    { damage: 4, speed: 380, radius: 7, lifetimeS: 2.4, pierce: 2 },
   ],
   // Whip: a wide forward slash that hits everything in a close cone. Melee
   // crowd control — no travel, instant, safest when the wall is on top of you.
   clap: [
-    { damage: 6, radius: 80, arc: 0.65 },
-    { damage: 9, radius: 88, arc: 0.72 },
-    { damage: 13, radius: 98, arc: 0.8 },
-    { damage: 18, radius: 108, arc: 0.9 },
+    { damage: 2, radius: 80, arc: 0.65 },
+    { damage: 3, radius: 88, arc: 0.72 },
+    { damage: 4, radius: 98, arc: 0.8 },
+    { damage: 6, radius: 108, arc: 0.9 },
   ],
   // Cross: a boomerang lobbed outward that curves back to the player, hitting
   // on the way out and the way home. Deep pierce, both legs.
   tom: [
-    { damage: 11, speed: 360, radius: 9, lifetimeS: 2.0, pierce: 4, count: 1 },
-    { damage: 13, speed: 375, radius: 9, lifetimeS: 2.1, pierce: 5, count: 1 },
-    { damage: 16, speed: 390, radius: 10, lifetimeS: 2.2, pierce: 6, count: 2 },
-    { damage: 22, speed: 410, radius: 11, lifetimeS: 2.4, pierce: 8, count: 2 },
+    { damage: 4, speed: 360, radius: 9, lifetimeS: 2.0, pierce: 4, count: 1 },
+    { damage: 4, speed: 375, radius: 9, lifetimeS: 2.1, pierce: 5, count: 1 },
+    { damage: 5, speed: 390, radius: 10, lifetimeS: 2.2, pierce: 6, count: 2 },
+    { damage: 7, speed: 410, radius: 11, lifetimeS: 2.4, pierce: 8, count: 2 },
   ],
   // King Bible: notes that orbit the player, a rotating shield of damage.
   // Each trigger adds one orbiter; a melody makes a ring.
   arp: [
-    { damage: 5, radius: 8, lifetimeS: 2.0, orbitRadius: 80 },
-    { damage: 6, radius: 8, lifetimeS: 2.4, orbitRadius: 92 },
-    { damage: 7, radius: 9, lifetimeS: 2.8, orbitRadius: 106 },
-    { damage: 9, radius: 10, lifetimeS: 3.2, orbitRadius: 122 },
+    { damage: 2, radius: 8, lifetimeS: 2.0, orbitRadius: 80 },
+    { damage: 2, radius: 8, lifetimeS: 2.4, orbitRadius: 92 },
+    { damage: 2, radius: 9, lifetimeS: 2.8, orbitRadius: 106 },
+    { damage: 3, radius: 10, lifetimeS: 3.2, orbitRadius: 122 },
   ],
   // Shockwave: an expanding ring from the player that damages and knocks back
   // enemies its front passes. Rare and heavy — charts fire it on the accents.
   crash: [
-    { damage: 15, speed: 520, radius: 150, knockback: 30 },
-    { damage: 20, speed: 550, radius: 175, knockback: 38 },
-    { damage: 28, speed: 580, radius: 200, knockback: 48 },
-    { damage: 40, speed: 620, radius: 230, knockback: 62 },
+    { damage: 5, speed: 520, radius: 150, knockback: 30 },
+    { damage: 7, speed: 550, radius: 175, knockback: 38 },
+    { damage: 9, speed: 580, radius: 200, knockback: 48 },
+    { damage: 13, speed: 620, radius: 230, knockback: 62 },
   ],
   // Shaker (band, Hats): drops a short-lived damaging blob at your feet on each
   // hit, so moving strings a trail of them behind you. Per-tick zone damage
   // (see the chord note): the trail's high trigger rate at max tier means the
   // per-tick number must stay small.
   shaker: [
-    { damage: 2, radius: 22, lifetimeS: 0.8 },
-    { damage: 2, radius: 25, lifetimeS: 0.9 },
-    { damage: 3, radius: 28, lifetimeS: 1.05 },
-    { damage: 4, radius: 32, lifetimeS: 1.2 },
+    { damage: 1, radius: 22, lifetimeS: 0.8 },
+    { damage: 1, radius: 25, lifetimeS: 0.9 },
+    { damage: 1, radius: 28, lifetimeS: 1.05 },
+    { damage: 1, radius: 32, lifetimeS: 1.2 },
   ],
   // Acid (band, Motion): a placed gravity well that pulls enemies toward its
   // center and ticks damage while they are caught. Control first, chip second.
   // Per-tick zone damage (see the chord note): the pull is the payoff, so the
   // chip stays near-flat and the control stats (pull, radius) carry the ladder.
+  // Per-tick was already at the floor of 1, so the ~1/3 pass took nothing off
+  // it; the well's lifetime is roughly halved instead, which pulls both the
+  // total chip and the pull duration back toward the rest of the arsenal.
   acid: [
-    { damage: 1, radius: 48, lifetimeS: 1.8, pull: 30 },
-    { damage: 1, radius: 56, lifetimeS: 2, pull: 36 },
-    { damage: 2, radius: 64, lifetimeS: 2.2, pull: 43 },
-    { damage: 2, radius: 72, lifetimeS: 2.4, pull: 50 },
+    { damage: 1, radius: 48, lifetimeS: 1.0, pull: 30 },
+    { damage: 1, radius: 56, lifetimeS: 1.1, pull: 36 },
+    { damage: 1, radius: 64, lifetimeS: 1.2, pull: 43 },
+    { damage: 1, radius: 72, lifetimeS: 1.3, pull: 50 },
   ],
   // Pluck bass (band, Bass): a note lobbed on an arc to the nearest pack that
   // explodes on landing. Heavy, like the bass wave, but placed.
   pluck: [
-    { damage: 10, speed: 300, lifetimeS: 0.7, radius: 40 },
-    { damage: 15, speed: 315, lifetimeS: 0.72, radius: 48 },
-    { damage: 22, speed: 330, lifetimeS: 0.74, radius: 56 },
-    { damage: 30, speed: 350, lifetimeS: 0.78, radius: 64 },
+    { damage: 3, speed: 300, lifetimeS: 0.7, radius: 40 },
+    { damage: 5, speed: 315, lifetimeS: 0.72, radius: 48 },
+    { damage: 7, speed: 330, lifetimeS: 0.74, radius: 56 },
+    { damage: 10, speed: 350, lifetimeS: 0.78, radius: 64 },
   ],
   // Rhodes (band, Harmony): chord pools placed as mines that sit armed and
   // bloom into a damage burst when an enemy steps in.
   rhodes: [
-    { damage: 8, radius: 38, lifetimeS: 3.2 },
-    { damage: 11, radius: 44, lifetimeS: 3.6 },
-    { damage: 15, radius: 51, lifetimeS: 4 },
-    { damage: 22, radius: 58, lifetimeS: 4.5 },
+    { damage: 3, radius: 38, lifetimeS: 3.2 },
+    { damage: 4, radius: 44, lifetimeS: 3.6 },
+    { damage: 5, radius: 51, lifetimeS: 4 },
+    { damage: 7, radius: 58, lifetimeS: 4.5 },
   ],
   // Riser (band, FX — THE AUTO-DASH): its build-and-release grants a short
   // movement surge (see DASH) and a whoosh of damage around the player on
   // release. Radius is the whoosh reach.
   riser: [
-    { damage: 7, radius: 60 },
-    { damage: 9, radius: 70 },
-    { damage: 12, radius: 80 },
-    { damage: 16, radius: 90 },
+    { damage: 2, radius: 60 },
+    { damage: 3, radius: 70 },
+    { damage: 4, radius: 80 },
+    { damage: 5, radius: 90 },
   ],
   // Bell (band, Melody): a note lobbed straight that shatters into shards on
   // its first hit (shard count per tier in BELL). radius = the shot's own size.
   bell: [
-    { damage: 7, speed: 360, radius: 6, lifetimeS: 1.8, pierce: 1 },
-    { damage: 9, speed: 370, radius: 6, lifetimeS: 1.9, pierce: 1 },
-    { damage: 11, speed: 380, radius: 7, lifetimeS: 2.0, pierce: 1 },
-    { damage: 14, speed: 400, radius: 7, lifetimeS: 2.1, pierce: 2 },
+    { damage: 2, speed: 360, radius: 6, lifetimeS: 1.8, pierce: 1 },
+    { damage: 3, speed: 370, radius: 6, lifetimeS: 1.9, pierce: 1 },
+    { damage: 4, speed: 380, radius: 7, lifetimeS: 2.0, pierce: 1 },
+    { damage: 5, speed: 400, radius: 7, lifetimeS: 2.1, pierce: 2 },
   ],
 };
 
