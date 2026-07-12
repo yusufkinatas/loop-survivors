@@ -1,4 +1,5 @@
 import './scratch';
+import './gym-accessibility-and-readability-controls';
 import './gym-existing-boss-fights-and-dodge-calibration';
 import './gym-boss-hazard-and-attack-pattern-isolation';
 import './gym-vfx-and-feedback-feel-controls';
