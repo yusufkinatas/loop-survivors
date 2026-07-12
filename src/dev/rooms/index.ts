@@ -1,4 +1,5 @@
 import './scratch';
+import './museum-audio-signal-path-volume-groups-mute-and-low-end';
 import './museum-audio-scheduling-lookahead-heard-time-changes-an';
 import './museum-clock-beats-bars-phrase-tempo-and-swing';
 import './museum-one-trigger-two-outputs-sound-and-gameplay-causa';
