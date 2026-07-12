@@ -1,4 +1,5 @@
 import './scratch';
+import './zoo-icon-palette-typography-and-readability-tokens';
 import './zoo-complete-ui-state-and-responsive-layout-catalog';
 import './zoo-pickups-ground-rewards-and-weapon-glyphs';
 import './zoo-weapon-timing-pattern-catalog-across-tiers';
