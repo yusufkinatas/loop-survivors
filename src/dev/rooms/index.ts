@@ -1,4 +1,5 @@
 import './scratch';
+import './gym-existing-boss-fights-and-dodge-calibration';
 import './gym-boss-hazard-and-attack-pattern-isolation';
 import './gym-vfx-and-feedback-feel-controls';
 import './gym-performance-and-stress-presets-for-hordes-weapon';
