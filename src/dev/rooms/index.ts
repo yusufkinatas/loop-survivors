@@ -1,4 +1,5 @@
 import './scratch';
+import './museum-clock-beats-bars-phrase-tempo-and-swing';
 import './museum-one-trigger-two-outputs-sound-and-gameplay-causa';
 import './archive-track-lab-covers-and-superseded-experiments';
 import './zoo-boss-bodies-hazards-telegraphs-and-hud';
