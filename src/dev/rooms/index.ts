@@ -1,4 +1,5 @@
 import './scratch';
+import './gym-horde-pressure-formations-and-population-limits';
 import './gym-dedicated-kick-calibration-facing-strips-and-rep';
 import './gym-stage-timeline-scrub-and-event-window-runner';
 import './gym-input-viewport-safe-area-and-audio-interruption-';
