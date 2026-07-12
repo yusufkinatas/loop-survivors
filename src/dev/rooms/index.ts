@@ -1,4 +1,5 @@
 import './scratch';
+import './zoo-pickups-ground-rewards-and-weapon-glyphs';
 import './zoo-weapon-timing-pattern-catalog-across-tiers';
 import './zoo-vfx-and-feedback-catalog';
 import './zoo-legacy-enemy-archive-wing';
