@@ -1,4 +1,5 @@
 import './scratch';
+import './zoo-weapon-timing-pattern-catalog-across-tiers';
 import './zoo-vfx-and-feedback-catalog';
 import './zoo-legacy-enemy-archive-wing';
 import './zoo-production-sound-sample-and-one-shot-catalog';
