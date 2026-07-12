@@ -1,4 +1,5 @@
 import './scratch';
+import './museum-enemy-movement-circle-collision-separation-and-s';
 import './museum-xp-reward-queue-physical-choice-and-next-bar-app';
 import './museum-weapon-archetypes-geometry-lifetime-pierce-and-r';
 import './museum-seven-slot-band-offer-eligibility-and-build-comp';
