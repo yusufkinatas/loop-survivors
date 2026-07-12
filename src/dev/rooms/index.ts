@@ -1,4 +1,5 @@
 import './scratch';
+import './gym-vfx-and-feedback-feel-controls';
 import './gym-performance-and-stress-presets-for-hordes-weapon';
 import './gym-visible-bot-small-batch-balance-and-outlier-repl';
 import './gym-audio-gameplay-synchronization-and-timing-bounda';
