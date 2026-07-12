@@ -1,4 +1,5 @@
 import './scratch';
+import './gym-input-viewport-safe-area-and-audio-interruption-';
 import './gym-ui-and-run-state-interaction-matrix';
 import './gym-replay-and-deterministic-simulation-divergence-i';
 import './gym-music-build-rehearsal-for-the-current-fourteen-w';
