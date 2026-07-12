@@ -1,4 +1,5 @@
 import './scratch';
+import './museum-seeded-determinism-virtual-conductor-bot-and-exa';
 import './museum-global-speed-reward-slowdown-fixed-ticks-and-rep';
 import './museum-mad-forest-reference-provenance-and-adopted-valu';
 import './museum-stage-director-wave-timeline-events-and-dividing';
