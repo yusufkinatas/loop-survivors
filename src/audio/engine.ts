@@ -373,8 +373,15 @@ export class MusicEngine {
   }
 
   /** Register for due triggers. Fired from update(), i.e. frame-synced. */
-  addTriggerListener(cb: TriggerListener): void {
+  addTriggerListener(cb: TriggerListener): () => void {
     this.listeners.push(cb);
+    let active = true;
+    return () => {
+      if (!active) return;
+      active = false;
+      const index = this.listeners.indexOf(cb);
+      if (index >= 0) this.listeners.splice(index, 1);
+    };
   }
 
   /** Musical entry rule (M2): run fn while scheduling the start of the next
