@@ -1,4 +1,5 @@
 import './scratch';
+import './gym-register-future-system-gym-placeholders-without-';
 import './gym-first-time-experience-and-onboarding-scenarios';
 import './gym-accessibility-and-readability-controls';
 import './gym-existing-boss-fights-and-dodge-calibration';
