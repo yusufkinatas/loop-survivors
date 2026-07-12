@@ -153,8 +153,6 @@ export interface Enemy {
   moveY: number;
   /** Scripted event expiry; 0 means normal lifetime/recycling. */
   despawnAt: number;
-  /** Kick's 1.35 s per-target cadence lock. */
-  kickReadyAt: number;
   knockbackMul: number;
   /** Project-native chest substitute chance assigned by the stage row. */
   upgradeChance: number;
@@ -368,6 +366,9 @@ export class RunWorld {
     expiresAt: number;
     samplePlayer: boolean;
     spawnFollowUp: boolean;
+    /** Enemies already damaged by THIS strike, so its 200 ms hitbox lands one
+     *  hit per enemy across its frames while every new trigger hits fresh. */
+    hit: Set<Enemy>;
   }> = [];
   private scripted: boolean;
 
@@ -453,6 +454,7 @@ export class RunWorld {
           expiresAt: 0,
           samplePlayer: false,
           spawnFollowUp: (conf.amount ?? 1) > 1,
+          hit: new Set(),
         });
         break;
       }
@@ -917,7 +919,6 @@ export class RunWorld {
       moveX,
       moveY,
       despawnAt,
-      kickReadyAt: 0,
       knockbackMul: stats.knockback,
       upgradeChance: 0,
     });
@@ -1440,6 +1441,7 @@ export class RunWorld {
             expiresAt: 0,
             samplePlayer: true,
             spawnFollowUp: false,
+            hit: new Set(),
           });
         }
         // Anchor at the player; the view bursts the pulse outward from here.
@@ -1470,13 +1472,13 @@ export class RunWorld {
       for (const e of near) {
         if (
           e.dead ||
-          e.kickReadyAt > this.timeS + 1e-9 ||
+          strike.hit.has(e) ||
           !circleIntersectsRect(e.x, e.y, e.radius, centerX, centerY, halfW, halfH)
         ) {
           continue;
         }
         this.damageEnemy(e, strike.damage, 'kick');
-        e.kickReadyAt = this.timeS + 1.35;
+        strike.hit.add(e);
         // Enemy hit response reverses pursuit for the same 120 ms flash,
         // scaled by the source bestiary's knockback multiplier.
         this.reverseForKick(e, strike.x, strike.y);
