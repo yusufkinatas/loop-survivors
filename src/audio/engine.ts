@@ -217,6 +217,18 @@ export class MusicEngine {
     g.linearRampToValueAtTime(1, now + holdS);
   }
 
+  /** Cut a level-up duck short: cancel the scheduled hold/ramp and bring the
+   *  weapons bus back to unity quickly. Called when the moment ends early
+   *  because the player collected a pick before momentS elapsed. No-op muted. */
+  restoreWeapons(rampS = 0.12): void {
+    if (this.masterTarget <= 0) return; // muted: nothing to restore
+    const g = this.weaponsBus.gain;
+    const now = this.ctx.currentTime;
+    g.cancelScheduledValues(now);
+    g.setValueAtTime(g.value, now);
+    g.linearRampToValueAtTime(1, now + Math.max(0.02, rampS));
+  }
+
   /** A short, bright "level up" chime — a quick ascending major sparkle.
    *  Rides master (respects mute) on its own gain, bypassing the weapons bus
    *  so the level-up dip never swallows it. Purely cosmetic, never headless. */

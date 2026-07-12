@@ -105,6 +105,7 @@ export async function bootGame(
     if (momentScale !== 1) {
       momentScale = 1;
       applyClockRate();
+      engine.restoreWeapons();
     }
   }
   function syncTimeScaleControl(): void {
@@ -260,8 +261,9 @@ export async function bootGame(
     startLevelMoment(cx, cy);
   }
 
-  /** The satisfying beat: 0.5× slow-mo + weapon-volume duck for one second,
-   *  plus a bright cue and a screen pulse. Everything snaps back after. */
+  /** The satisfying beat: slowScale slow-mo + weapon-volume duck for up to
+   *  momentS, plus a bright cue and a screen pulse. Everything snaps back when
+   *  the player collects a pick, or when momentS elapses, whichever is first. */
   function startLevelMoment(cx: number, cy: number): void {
     momentT = LEVELUP.momentS;
     momentScale = LEVELUP.slowScale;
@@ -278,6 +280,9 @@ export async function bootGame(
   function collectGroundPick(item: GroundItem): void {
     const w = world;
     if (!w) return;
+    // The player reached a pick before momentS elapsed: snap game speed and
+    // weapon volume back now instead of riding out the full slow-mo.
+    endLevelMoment();
     const option = item.option;
     clearGroundPicks();
     pickAwaitingBar = true;
