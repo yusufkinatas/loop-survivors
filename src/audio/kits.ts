@@ -5,9 +5,8 @@
 // are auditioned in the room by loading files over these slots. Pitched kits
 // hold one sample at the root and get note variants by playback-rate shifting.
 
-// The catalog of instrument types. Six drums/fx (unpitched) and six pitched
-// voices, plus the later hires; the soundset chooses how each is played
-// (tempo, swing, patterns).
+// The complete audio catalog. Fourteen roles are current weapons; crash and
+// riser remain dormant audio-only voices for archived experiments.
 export type Role =
   | 'kick'
   | 'snare'

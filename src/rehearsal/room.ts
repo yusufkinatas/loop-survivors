@@ -7,8 +7,11 @@
 
 import { MusicEngine } from '../audio/engine';
 import { ROLES, type Role } from '../audio/kits';
+import { supportedRoles } from '../audio/soundset';
 import { SKELETON, STEPS_PER_BAR, STEPS_PER_PHRASE, BARS_PER_PHRASE } from '../audio/scale';
 import { SAMPLE_SETS, applySampleSet, coveredRoles } from '../audio/samplesets';
+import { supportedRoster, supportedSlots } from '../game/band';
+import type { DisposableSession } from '../lifecycle';
 import { mountPlayground, type Playground } from './playground';
 
 /** The progression scrub walks a scripted run of picks (M2: a pick is a new
@@ -19,40 +22,21 @@ interface ArcPick {
   role: Role;
   tier: number;
 }
+const representativeBand = supportedSlots().map((slot) => supportedRoster(slot)[0]);
+const deepRoles = representativeBand.filter((role) => ['kick', 'bass', 'lead'].includes(role));
 const ARCS: Record<string, { label: string; picks: ArcPick[] }> = {
   wide: {
     label: 'wide-shallow',
     picks: [
-      { role: 'kick', tier: 1 },
-      { role: 'hat', tier: 1 },
-      { role: 'snare', tier: 1 },
-      { role: 'bass', tier: 1 },
-      { role: 'chord', tier: 1 },
-      { role: 'lead', tier: 1 },
-      { role: 'kick', tier: 2 },
-      { role: 'hat', tier: 2 },
-      { role: 'snare', tier: 2 },
-      { role: 'bass', tier: 2 },
-      { role: 'chord', tier: 2 },
-      { role: 'lead', tier: 2 },
+      ...representativeBand.map((role) => ({ role, tier: 1 }) as ArcPick),
+      ...representativeBand.map((role) => ({ role, tier: 2 }) as ArcPick),
     ],
   },
   deep: {
     label: 'narrow-deep',
-    picks: [
-      { role: 'kick', tier: 1 },
-      { role: 'bass', tier: 1 },
-      { role: 'kick', tier: 2 },
-      { role: 'bass', tier: 2 },
-      { role: 'lead', tier: 1 },
-      { role: 'bass', tier: 3 },
-      { role: 'kick', tier: 3 },
-      { role: 'lead', tier: 2 },
-      { role: 'bass', tier: 4 },
-      { role: 'kick', tier: 4 },
-      { role: 'lead', tier: 3 },
-      { role: 'lead', tier: 4 },
-    ],
+    picks: [1, 2, 3, 4].flatMap((tier) =>
+      deepRoles.map((role) => ({ role, tier }) as ArcPick),
+    ),
   },
 };
 
@@ -62,7 +46,7 @@ interface VoiceUi {
   toggle: HTMLInputElement;
 }
 
-export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void {
+export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): DisposableSession {
   const voiceUis = new Map<Role, VoiceUi>();
 
   root.innerHTML = '';
@@ -182,7 +166,7 @@ export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void
     for (const pick of arc.picks.slice(0, count)) {
       tiers.set(pick.role, Math.max(pick.tier, tiers.get(pick.role) ?? 0));
     }
-    for (const role of ROLES) {
+    for (const role of supportedRoles()) {
       const tier = tiers.get(role);
       if (tier) engine.setVoiceTier(role, tier);
       setVoice(role, tier !== undefined);
@@ -196,7 +180,7 @@ export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void
 
   // ---- voice cards ----
   const grid = el('div', 'voices', root);
-  for (const role of ROLES) {
+  for (const role of supportedRoles()) {
     const voice = engine.voices.get(role)!;
     const card = el('div', 'voice', grid);
     card.style.setProperty('--voice-color', voice.kit.color);
@@ -266,6 +250,7 @@ export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void
   );
   const playground: Playground = mountPlayground(el('div', '', root), engine, {
     editable: true,
+    roles: supportedRoles(),
     onToggleVoice: (role) => {
       setVoice(role, !engine.voices.get(role)!.enabled);
       playground.refresh();
@@ -280,7 +265,7 @@ export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void
   }
 
   // ---- hotkeys ----
-  window.addEventListener('keydown', (e) => {
+  const onKeyDown = (e: KeyboardEvent): void => {
     if (e.target instanceof HTMLInputElement && e.target.type !== 'range') return;
     if (e.code === 'Space') {
       e.preventDefault();
@@ -292,17 +277,22 @@ export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void
       setVoice(role, !engine.voices.get(role)!.enabled);
       playground.refresh();
     }
-  });
+  };
+  window.addEventListener('keydown', onKeyDown);
 
   // ---- frame loop: trigger lights and position readout ----
-  engine.addTriggerListener((t) => {
-    const light = voiceUis.get(t.role)!.light;
+  const removeTriggerListener = engine.addTriggerListener((t) => {
+    const light = voiceUis.get(t.role)?.light;
+    if (!light) return;
     light.classList.remove('lit');
     void light.offsetWidth; // restart the CSS animation
     light.classList.add('lit');
   });
 
+  let raf = 0;
+  let alive = true;
   function frame(): void {
+    if (!alive) return;
     engine.update();
     if (engine.clock.running) {
       const phraseStep = engine.currentStep() % STEPS_PER_PHRASE;
@@ -310,7 +300,20 @@ export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void
       const beatNo = Math.floor((phraseStep % STEPS_PER_BAR) / SKELETON.stepsPerBeat) + 1;
       position.textContent = `bar ${barNo}/${BARS_PER_PHRASE} · beat ${beatNo}`;
     }
-    requestAnimationFrame(frame);
+    raf = requestAnimationFrame(frame);
   }
-  requestAnimationFrame(frame);
+  raf = requestAnimationFrame(frame);
+
+  return {
+    dispose(): void {
+      alive = false;
+      cancelAnimationFrame(raf);
+      window.removeEventListener('keydown', onKeyDown);
+      removeTriggerListener();
+      playground.destroy();
+      engine.clock.stop();
+      for (const role of ROLES) engine.setVoiceEnabled(role, false);
+      root.replaceChildren();
+    },
+  };
 }

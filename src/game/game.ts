@@ -2,7 +2,7 @@
 // engine and the world. The engine stays a pure function of build and grid;
 // the game only listens to its triggers and toggles voices on picks.
 
-import { Application } from 'pixi.js';
+import { Application, type Ticker } from 'pixi.js';
 import type { MusicEngine } from '../audio/engine';
 import { SOUNDSET } from '../audio/soundset';
 import { ROLES, type Kit, type Role } from '../audio/kits';
@@ -21,6 +21,7 @@ import { mulberry32 } from './rng';
 import { RunWorld, KIT_COLORS } from './run';
 import { RunView, type GroundPickView } from './view';
 import { mountSandboxPanel, type SandboxPanel } from './sandbox';
+import { isTypingTarget, type DisposableSession } from '../lifecycle';
 
 type State = 'start' | 'run' | 'end' | 'sandbox' | 'replay';
 
@@ -28,7 +29,7 @@ export async function bootGame(
   root: HTMLElement,
   engine: MusicEngine,
   kits: Map<Role, Kit>,
-): Promise<void> {
+): Promise<DisposableSession> {
   const app = new Application();
   await app.init({
     background: 0x0a0b0f,
@@ -46,8 +47,9 @@ export async function bootGame(
   arenaVignette.className = 'arena-vignette';
   root.appendChild(arenaVignette);
   // touch play: floating joystick on the arena; kill the long-press menu
-  mountJoystick(root);
-  root.addEventListener('contextmenu', (e) => e.preventDefault());
+  const joystick = mountJoystick(root);
+  const onContextMenu = (e: MouseEvent): void => e.preventDefault();
+  root.addEventListener('contextmenu', onContextMenu);
 
   const hud = new Hud(root, kits);
   const input = new Input();
@@ -693,11 +695,11 @@ export async function bootGame(
 
   // one trigger, two outputs: the engine already made the sound; this makes
   // the damage.
-  engine.addTriggerListener((t) => {
+  const removeTriggerListener = engine.addTriggerListener((t) => {
     if ((state === 'run' || state === 'sandbox') && world) world.fireTrigger(t);
   });
 
-  app.ticker.add((ticker) => {
+  const onTick = (ticker: Ticker): void => {
     engine.update();
     if (paused) return;
     if ((state === 'run' || state === 'sandbox') && world) {
@@ -848,7 +850,8 @@ export async function bootGame(
         `shots ${world.projectileCount} · dmg ${attribution || '—'}` +
         `${world.invincible ? ' · INVINCIBLE' : ''}${muted ? ' · MUTED' : ''}`;
     }
-  });
+  };
+  app.ticker.add(onTick);
 
   // debug controls: one set of actions behind both the hotkeys and the
   // on-screen buttons (docs/phases/m1-demo.md, developer tools)
@@ -940,7 +943,8 @@ export async function bootGame(
   setTimeScale(1); // paint the initial readout ("speed 1.00x")
   syncTimeScaleControl(); // start disabled (boot lands on start or replay)
 
-  window.addEventListener('keydown', (e) => {
+  const onKeyDown = (e: KeyboardEvent): void => {
+    if (isTypingTarget(e.target)) return;
     if (e.code === 'Escape') {
       togglePause();
       return;
@@ -979,7 +983,8 @@ export async function bootGame(
       action.onClick();
       hud.refreshDebug();
     }
-  });
+  };
+  window.addEventListener('keydown', onKeyDown);
 
   function fmtTime(s: number): string {
     return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -1016,4 +1021,30 @@ export async function bootGame(
       },
     },
   });
+
+  return {
+    dispose(): void {
+      state = 'end';
+      resetUpgradeQueue();
+      sandboxPanel?.destroy();
+      sandboxPanel = null;
+      removeTriggerListener();
+      window.removeEventListener('keydown', onKeyDown);
+      root.removeEventListener('contextmenu', onContextMenu);
+      joystick.dispose();
+      input.dispose();
+      autoMove.active = false;
+      engine.clock.stop();
+      engine.clearBarQueue();
+      app.ticker.remove(onTick);
+      view?.destroy();
+      view = null;
+      world = null;
+      const handle = (window as unknown as { loop?: Record<string, unknown> }).loop;
+      if (handle) delete handle.game;
+      app.destroy(true, { children: true });
+      root.classList.remove('game-root');
+      root.replaceChildren();
+    },
+  };
 }

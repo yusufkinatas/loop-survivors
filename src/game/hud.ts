@@ -201,6 +201,10 @@ export class Hud {
       devToggle.classList.toggle('on', row.style.display !== 'none');
       (devToggle as HTMLButtonElement).blur();
     };
+    const campusBtn = el('button', 'small', row, 'dev campus');
+    campusBtn.onclick = () => {
+      location.hash = '#dev';
+    };
     const bossBtn = el('button', 'small', row, 'boss fights');
     bossBtn.onclick = () => {
       location.hash = '#boss';

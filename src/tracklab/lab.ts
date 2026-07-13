@@ -8,6 +8,7 @@
 import { LabEngine } from './labengine';
 import { TRACKS } from './tracks';
 import type { LabChart, LabTrack, LabVoiceDef } from './tracks/types';
+import type { DisposableSession } from '../lifecycle';
 
 const STEPS_PER_BAR = 16;
 
@@ -32,7 +33,7 @@ function rowsFor(def: LabVoiceDef, track: LabTrack, samples: Map<string, AudioBu
   return [...notes].sort((a, b) => b - a).map((n) => ({ key: `n${n}`, label: noteLabel(n), note: n }));
 }
 
-export function mountTrackLab(root: HTMLElement, ctx: AudioContext): void {
+export function mountTrackLab(root: HTMLElement, ctx: AudioContext): DisposableSession {
   root.innerHTML = '';
   const el = (tag: string, className: string, parent: HTMLElement, text = ''): HTMLElement => {
     const node = document.createElement(tag);
@@ -44,6 +45,7 @@ export function mountTrackLab(root: HTMLElement, ctx: AudioContext): void {
 
   let engine: LabEngine | null = null;
   let track: LabTrack | null = null;
+  let disposed = false;
 
   // ---- transport ----
   const bar = el('div', 'transport', root);
@@ -135,12 +137,18 @@ export function mountTrackLab(root: HTMLElement, ctx: AudioContext): void {
   let preSolo = new Map<string, boolean>();
 
   async function loadTrack(t: LabTrack): Promise<void> {
+    if (disposed) return;
     for (const b of trackButtons.values()) b.disabled = true;
     status.textContent = 'building instruments…';
     try {
       const wasPlaying = engine?.clock.running ?? false;
       engine?.dispose();
       engine = await LabEngine.load(ctx, t);
+      if (disposed) {
+        engine.dispose();
+        engine = null;
+        return;
+      }
       track = t;
       soloed = null;
       wireEngine();
@@ -331,7 +339,7 @@ export function mountTrackLab(root: HTMLElement, ctx: AudioContext): void {
   }
 
   // ---- hotkeys: space play/stop, digits toggle voices ----
-  window.addEventListener('keydown', (e) => {
+  const onKeyDown = (e: KeyboardEvent): void => {
     if (e.target instanceof HTMLInputElement && e.target.type !== 'range') return;
     if (e.code === 'Space') {
       e.preventDefault();
@@ -344,9 +352,11 @@ export function mountTrackLab(root: HTMLElement, ctx: AudioContext): void {
         setVoice(id, !engine!.voices.get(id)!.enabled);
       }
     }
-  });
+  };
+  window.addEventListener('keydown', onKeyDown);
 
   // ---- frame loop ----
+  let raf = 0;
   function frame(): void {
     if (engine) {
       engine.update();
@@ -362,9 +372,9 @@ export function mountTrackLab(root: HTMLElement, ctx: AudioContext): void {
         position.textContent = `bar ${barNo}/${track.bars} · beat ${beatNo}`;
       }
     }
-    if (root.isConnected) requestAnimationFrame(frame);
+    if (!disposed && root.isConnected) raf = requestAnimationFrame(frame);
   }
-  requestAnimationFrame(frame);
+  raf = requestAnimationFrame(frame);
 
   // Console handle for probing: loop.tracklab.engine, .load('pursuit')
   const w = window as unknown as { loop?: Record<string, unknown> };
@@ -383,4 +393,17 @@ export function mountTrackLab(root: HTMLElement, ctx: AudioContext): void {
 
   // Auto-load the first track so the room is one click from sound.
   if (TRACKS.length > 0) void loadTrack(TRACKS[0]);
+
+  return {
+    dispose(): void {
+      disposed = true;
+      cancelAnimationFrame(raf);
+      window.removeEventListener('keydown', onKeyDown);
+      engine?.dispose();
+      engine = null;
+      const handle = (window as unknown as { loop?: Record<string, unknown> }).loop;
+      if (handle) delete handle.tracklab;
+      root.replaceChildren();
+    },
+  };
 }

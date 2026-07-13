@@ -15,11 +15,11 @@ import { buildHouseKit } from './house';
 // sampled sub-bass. Each entry: role -> [variantId, fileBase]. Files live at
 // public/samples/house/<fileBase>.wav and are pre-corrected at build time
 // (scripts/build-house-kit.mjs), so nothing about them is fixed up here.
-type SampleSpec = [variant: string, file: string];
+export type SampleSpec = [variant: string, file: string];
 
 const DIR = 'house';
 
-const SAMPLE_OVERLAY: Partial<Record<Role, SampleSpec[]>> = {
+export const PRODUCTION_SAMPLE_MANIFEST: Partial<Record<Role, SampleSpec[]>> = {
   kick: [['hard', 'kick'], ['soft', 'kick']],
   clap: [['clap', 'clap']],
   hat: [['closed', 'hat_closed'], ['open', 'hat_open']],
@@ -39,7 +39,7 @@ const SAMPLE_TUNE: Partial<Record<Role, number>> = {
 /** The roles that are sample-backed (their own real voicing). The dev-only
  *  ★ custom badge marks these on offers so they are easy to focus on. */
 export function sampledRoles(): Set<Role> {
-  return new Set(Object.keys(SAMPLE_OVERLAY) as Role[]);
+  return new Set(Object.keys(PRODUCTION_SAMPLE_MANIFEST) as Role[]);
 }
 
 /** Overlay the real drum/bass samples onto the synth kit. A role whose every
@@ -47,7 +47,7 @@ export function sampledRoles(): Set<Role> {
  *  (offline, 404), that role keeps its synthesized voice (never silent). */
 async function overlaySamples(kit: Map<Role, Kit>): Promise<void> {
   await Promise.all(
-    (Object.entries(SAMPLE_OVERLAY) as [Role, SampleSpec[]][]).map(async ([role, specs]) => {
+    (Object.entries(PRODUCTION_SAMPLE_MANIFEST) as [Role, SampleSpec[]][]).map(async ([role, specs]) => {
       try {
         const entries = await Promise.all(
           specs.map(async ([variant, file]) =>

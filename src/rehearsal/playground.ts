@@ -16,6 +16,8 @@ import { STEPS_PER_BAR, STEPS_PER_PHRASE } from '../audio/scale';
 
 export interface PlaygroundOptions {
   editable: boolean;
+  /** Restrict the surface to a canonical catalog subset. */
+  roles?: readonly Role[];
   /** Called when the mix toggle in a section header is clicked. The host
    *  owns voice state so its own UI stays in sync. */
   onToggleVoice?: (role: Role) => void;
@@ -24,6 +26,7 @@ export interface PlaygroundOptions {
 export interface Playground {
   /** Re-read engine state (enabled voices, tiers) and redraw. */
   refresh(): void;
+  destroy(): void;
 }
 
 /** A row is one sound: a sample variant for unpitched kits, a note for
@@ -98,7 +101,7 @@ export function mountPlayground(
     return node;
   };
 
-  for (const role of ROLES) {
+  for (const role of opts.roles ?? ROLES) {
     const voice = engine.voices.get(role)!;
     const sec = el('div', 'pg-section', root);
     sec.style.setProperty('--voice-color', voice.kit.color);
@@ -293,7 +296,7 @@ export function mountPlayground(
   }
 
   // ---- cells light as they fire ----
-  engine.addTriggerListener((t) => {
+  const removeTriggerListener = engine.addTriggerListener((t) => {
     if (t.step < 0) return; // previews are not on the grid
     const sct = sections.get(t.role);
     if (!sct) return;
@@ -330,6 +333,12 @@ export function mountPlayground(
   return {
     refresh(): void {
       for (const role of sections.keys()) renderSection(role);
+    },
+    destroy(): void {
+      cancelAnimationFrame(raf);
+      observer.disconnect();
+      removeTriggerListener();
+      root.replaceChildren();
     },
   };
 }

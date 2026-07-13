@@ -1,7 +1,7 @@
 // The Track Lab engine: plays a reverse-engineered cover of a real track
 // through the same scheduling approach as the game's MusicEngine (lookahead
 // Clock, one-shot buffers on a 16th grid), but freed from the game's fixed
-// six roles, tempo, and 4-bar phrase. This is an M3 proof-of-concept
+// the current role registry, tempo, and 4-bar phrase. This is an M3 proof-of-concept
 // instrument: it exists to answer "can our engine render a track the
 // developer sincerely wants to listen to?" — no gameplay attaches to it.
 //

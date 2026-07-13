@@ -2,7 +2,35 @@
 
 Last updated: July 13, 2026
 
-## Latest change (July 13, 2026) — FX weapon class removed from the build
+## Latest change (July 13, 2026) — unified Dev Campus (issue #27)
+
+The complete in-game developer campus is available at **`#dev`** and from the
+start screen's dev-tools disclosure. Its single searchable shell contains the
+full issue #27 registry: **23 Gyms, 13 Zoos, one Archive room, and 18 Museums**
+(55 rooms, issues #33–#87). Rooms expose stable presets, seed/control state in
+their deep links, CURRENT/DORMANT/HISTORICAL/EXPERIMENTAL/PARKED status before
+entry, shared reset/play/step/speed/audio/overlay controls where applicable,
+and canonical catalogs generated from production registries. The former
+`#rehearsal`, `#tracklab`, and `#boss` links remain compatible redirects into
+the corresponding campus rooms.
+
+The campus uses disposable session ownership for game, Pixi, input, audio,
+Rehearsal, Track Lab, boss, and room resources; serialized navigation prevents
+overlapping async mounts. Live fixtures reuse `RunWorld`, `RunView`,
+`MusicEngine`, the production weapon/enemy/stage/pick registries, and fixed sim
+ticks. Automated drift checks now cover the complete room registry, 14 active
+weapons, 12 current enemies, the seven-slot band, seeded offer legality, and
+deterministic reset. Verification: `npm run check`, `npm run check:campus`,
+`npm run check:mad-forest`, production build, and browser lifecycle/deep-link/
+pause-step/reset/legacy-room checks all pass with no console errors.
+
+Issues #54 and #55 remain deliberately **PARKED** pending their future locked
+specs; standalone boss content remains visibly **EXPERIMENTAL** and Track Lab
+visibly **HISTORICAL**. Tooling and automation have not passed the current Mad
+Forest developer gate; the project still awaits the developer's hands/ear/eye
+verdict below.
+
+## Previous change (July 13, 2026) — FX weapon class removed from the build
 
 At the developer's direction, the **FX band slot and its two weapons (crash =
 shockwave, riser = auto-dash) are removed from the player's build/weapons

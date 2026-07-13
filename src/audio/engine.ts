@@ -373,8 +373,41 @@ export class MusicEngine {
   }
 
   /** Register for due triggers. Fired from update(), i.e. frame-synced. */
-  addTriggerListener(cb: TriggerListener): void {
+  addTriggerListener(cb: TriggerListener): () => void {
     this.listeners.push(cb);
+    return () => {
+      const i = this.listeners.indexOf(cb);
+      if (i >= 0) this.listeners.splice(i, 1);
+    };
+  }
+
+  /** Tear down every mutable per-session resource. Decoded AudioBuffers live
+   * in the shared kit map; clocks, listeners, queued sources, and graph nodes
+   * do not. */
+  dispose(): void {
+    this.clock.stop();
+    this.clearBarQueue();
+    for (const pending of this.pending) {
+      try {
+        pending.source.stop();
+      } catch {
+        // The source may already have ended.
+      }
+      pending.source.disconnect();
+    }
+    this.pending = [];
+    this.listeners = [];
+    this.stepMarkers = [];
+    for (const voice of this.voices.values()) {
+      voice.enabled = false;
+      voice.lastHit = null;
+      voice.gain.disconnect();
+      voice.duck.disconnect();
+    }
+    this.weaponsBus.disconnect();
+    this.master.disconnect();
+    this.transport.disconnect();
+    this.analyser.disconnect();
   }
 
   /** Musical entry rule (M2): run fn while scheduling the start of the next

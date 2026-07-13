@@ -1,53 +1,87 @@
-// Entry. The game is the default; the rehearsal room lives at #rehearsal.
-// Both are driven by the same engine.
+// Application router. Player game and Dev Campus are disposable top-level
+// surfaces; rooms inside the campus switch without hard reloads.
 
 import { buildKits } from './audio/kits';
 import { MusicEngine } from './audio/engine';
 import * as charts from './audio/chartstore';
 import { SKELETON } from './audio/scale';
-import { mountRehearsalRoom } from './rehearsal/room';
-import { mountTrackLab } from './tracklab/lab';
-import { mountBossFight } from './boss/page';
 import { bootGame } from './game/game';
+import { compatibilityRoom } from './dev/content';
+import { mountDevCampus } from './dev/campus';
+import type { DisposableSession } from './lifecycle';
 import './style.css';
+
+type Surface = 'game' | 'dev';
+
+function surfaceFor(hash: string): Surface {
+  return hash.startsWith('#dev') || compatibilityRoom(hash) ? 'dev' : 'game';
+}
 
 async function boot(): Promise<void> {
   const root = document.getElementById('app')!;
   root.textContent = 'rendering kits…';
 
+  // Immutable decoded/rendered buffers are shared. Every MusicEngine, room,
+  // ticker, listener, and world is mutable and belongs to one session.
   const kits = await buildKits(SKELETON.rootHz);
-  // Created suspended until a user gesture; the first click resumes it.
   const ctx = new AudioContext({ latencyHint: 'interactive' });
-  const engine = new MusicEngine(ctx, kits);
+  const loop = { kits, charts } as Record<string, unknown>;
+  (window as unknown as { loop: Record<string, unknown> }).loop = loop;
 
-  // Mobile browsers suspend or interrupt the context on tab switches and
-  // ring-switch events; any touch afterwards brings the sound back. An
-  // intentional game/pick pause owns the context and ignores generic taps.
-  document.addEventListener('pointerdown', () => {
-    engine.resumeContextIfAllowed();
-  });
+  let active: DisposableSession | null = null;
+  let activeSurface: Surface | null = null;
+  let activeEngine: MusicEngine | null = null;
+  let generation = 0;
+  let routeQueue = Promise.resolve();
 
-  // Developer console handle (docs/phases/m1-demo.md, developer tools):
-  // poke the engine from the browser console, e.g. loop.engine.outputLevel(),
-  // or dump playground edits: copy(loop.charts.exportEdits()).
-  (window as unknown as { loop: object }).loop = { engine, kits, charts };
+  const onPointerDown = (): void => {
+    if (activeEngine) activeEngine.resumeContextIfAllowed();
+    else if (ctx.state !== 'running') void ctx.resume();
+  };
+  document.addEventListener('pointerdown', onPointerDown);
 
-  root.textContent = '';
-  if (location.hash === '#rehearsal') {
-    mountRehearsalRoom(root, engine);
-  } else if (location.hash === '#tracklab') {
-    // The Experimentation room: kept as a standalone lab for auditioning
-    // reverse-engineered covers (see src/tracklab/lab.ts).
-    mountTrackLab(root, ctx);
-  } else if (location.hash === '#boss') {
-    // Standalone Boss Fight area (not wired into the run — a separate
-    // playtest surface). See docs/phases/boss-fights.md.
-    await mountBossFight(root, ctx);
-  } else {
-    await bootGame(root, engine, kits);
+  async function route(): Promise<void> {
+    const nextSurface = surfaceFor(location.hash);
+    if (nextSurface === activeSurface) return;
+    const myGeneration = ++generation;
+    if (active) await active.dispose();
+    active = null;
+    activeEngine = null;
+    activeSurface = null;
+    if (myGeneration !== generation) return;
+
+    root.replaceChildren();
+    if (nextSurface === 'dev') {
+      active = await mountDevCampus(root, { ctx, kits });
+    } else {
+      const engine = new MusicEngine(ctx, kits);
+      activeEngine = engine;
+      loop.engine = engine;
+      const game = await bootGame(root, engine, kits);
+      active = {
+        async dispose(): Promise<void> {
+          await game.dispose();
+          engine.dispose();
+          if (loop.engine === engine) delete loop.engine;
+        },
+      };
+    }
+    activeSurface = nextSurface;
   }
-  // switching modes reloads: both mount into the same root
-  window.addEventListener('hashchange', () => location.reload());
+
+  const queueRoute = (): void => {
+    routeQueue = routeQueue.then(route).catch((error) => {
+      root.replaceChildren();
+      const pre = document.createElement('pre');
+      pre.className = 'boot-error';
+      pre.textContent = error instanceof Error ? error.stack ?? error.message : String(error);
+      root.appendChild(pre);
+      console.error(error);
+    });
+  };
+
+  window.addEventListener('hashchange', queueRoute);
+  queueRoute();
 }
 
 void boot();

@@ -60,18 +60,18 @@ fakeClock.stop();
 Object.defineProperty(globalThis, 'window', { configurable: true, value: originalWindow });
 
 // Current Normal Mad Forest, live official-wiki revision 89346.
-assert.equal(STAGE_STARTING_SPAWNS, 10);
+assert.equal(STAGE_STARTING_SPAWNS, 30);
 assert.deepEqual(
   STAGE_WAVES.map((w) => [w.atS, [...w.pattern], w.minimum, w.intervalS]),
   [
-    [0, ['redBat2'], 15, 1],
-    [60, ['zombie', 'bat'], 30, 1],
-    [120, ['bat', 'redBat', 'redBat2'], 50, 0.5],
-    [180, ['skeleton'], 40, 0.25],
-    [240, ['skeleton', 'ghost'], 30, 1],
-    [300, ['greenMudman'], 10, 1],
-    [360, ['zombie', 'greenMudman'], 20, 0.5],
-    [420, ['redBat', 'redBat2', 'grayMudman'], 80, 0.5],
+    [0, ['redBat2'], 45, 1],
+    [60, ['zombie', 'bat'], 90, 1],
+    [120, ['bat', 'redBat', 'redBat2'], 150, 0.5],
+    [180, ['skeleton'], 120, 0.25],
+    [240, ['skeleton', 'ghost'], 90, 1],
+    [300, ['greenMudman'], 30, 1],
+    [360, ['zombie', 'greenMudman'], 60, 0.5],
+    [420, ['redBat', 'redBat2', 'grayMudman'], 240, 0.5],
   ],
 );
 assert.equal(STAGE_EVENTS.filter((e) => e.type === 'boss').length, 4);
@@ -169,17 +169,17 @@ assert.equal(cumulativeTo(40), 8775);
 assert.equal(cumulativeTo(41), 11630);
 assert.deepEqual([19, 20, 21, 39, 40, 41].map(xpPickupMultiplier), [1, 2, 1, 1, 2, 1]);
 
-// Kick tiers map to Whip L1/L3/L5/L8. Geometry is converted from the source
-// feet anchor to this world's collision-center coordinate.
+// Kick tiers retain the Whip-style area/amount ladder after the July 12
+// one-third damage pass. Geometry is player-center anchored.
 assert.deepEqual(
   WEAPONS.kick.map((w) => [w.damage, w.area, w.amount]),
-  [[10, 1, 1], [15, 1, 2], [25, 1.1, 2], [40, 1.2, 2]],
+  [[3, 1, 1], [5, 1, 2], [9, 1.1, 2], [15, 1.2, 2]],
 );
-const kickCenter = kickStripCenter(0, 0, 1, 0);
 const kickHalfW = KICK_GEOMETRY.baseWidth / 2;
 const kickHalfH = KICK_GEOMETRY.baseHeight / 2;
-close(kickCenter.x, (65 * 800) / 456);
-close(kickCenter.y, (-9 * 800) / 456);
+const kickCenter = kickStripCenter(0, 0, 1, kickHalfW);
+close(kickCenter.x, kickHalfW);
+close(kickCenter.y, 0);
 assert.equal(circleIntersectsRect(kickCenter.x + kickHalfW, kickCenter.y, 0, kickCenter.x, kickCenter.y, kickHalfW, kickHalfH), true);
 assert.equal(circleIntersectsRect(kickCenter.x + kickHalfW + 0.01, kickCenter.y, 0, kickCenter.x, kickCenter.y, kickHalfW, kickHalfH), false);
 assert.equal(
@@ -199,22 +199,22 @@ for (const chart of SOUNDSET_LADDERS.kick!) {
 
 const trigger = { role: 'kick' as const, time: 0, velocity: 1, step: 0 };
 
-// Source timer semantics: ten starting bats exist through the first second;
-// only the first 1.0s callback backfills the opening floor to fifteen.
+// Source timer semantics after the explicit 3× density pass: thirty starting
+// bats exist through the first second; the first callback fills to 45.
 const opening = new RunWorld({ width: 1920, height: 1080 }, noEvents, {
   control: () => ({ x: 0, y: 0 }),
   fx: false,
 });
 opening.invincible = true;
 opening.update(1 / 60);
-assert.equal(opening.enemies.length, 10);
+assert.equal(opening.enemies.length, 30);
 assert.equal(opening.worldH, 800);
 for (let i = 1; i < 60; i++) opening.update(1 / 60);
-assert.equal(opening.enemies.length, 15);
+assert.equal(opening.enemies.length, 45);
 
 // A Whip body remains damaging for 200ms, so an enemy entering after the
 // activation frame is still hit. The Amount-2 follow-up starts a true 100ms
-// later and is 28 H800 pixels above the first strip.
+// later and samples the player's current position on the opposite side.
 const active = new RunWorld({ width: 1280, height: 800 }, noEvents, { scripted: false, fx: true });
 active.addWeapon('kick', 2);
 active.spawnEnemy('bat');
@@ -224,17 +224,17 @@ entrant.y = -28;
 active.fireTrigger(trigger);
 active.update(1 / 60);
 assert.equal(entrant.dead, false);
-entrant.x = 100;
-active.update(1 / 60);
-assert.equal(entrant.dead, true);
+entrant.x = 140;
+entrant.y = 0;
 const mainFx = active.fx!.filter((fx) => fx.type === 'whip');
 assert.equal(mainFx.length, 1);
 for (let i = 0; i < 4; i++) active.update(1 / 60);
 assert.equal(active.fx!.filter((fx) => fx.type === 'whip').length, 1);
-active.update(1 / 60);
+for (let i = 0; i < 2; i++) active.update(1 / 60);
+assert.equal(entrant.dead, true);
 const whipFx = active.fx!.filter((fx) => fx.type === 'whip');
 assert.equal(whipFx.length, 2);
-close(whipFx[1].y, (-25 * 800) / 456);
+close(whipFx[1].y, 0);
 
 // The body scales with the slash: an outer-edge target is still outside at
 // 50 ms, then enters when the strip reaches full Area at 100 ms.

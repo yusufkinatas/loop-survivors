@@ -223,7 +223,7 @@ export function mountSandboxPanel(
     'div',
     'sb-hint',
     panel,
-    'stage script off: nothing spawns by itself. O = perf overlay, C = track overlay, 1-8 = mute a slot.',
+    'stage script off: nothing spawns by itself. O = perf overlay, C = track overlay, 1-7 = mute a slot.',
   );
 
   return {

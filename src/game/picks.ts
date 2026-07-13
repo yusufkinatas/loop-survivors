@@ -26,7 +26,7 @@ import type { Rng } from './rng';
 /** A level-up option: a new weapon or a tier-up of an owned one. */
 export type PickOption = { kind: 'weapon'; role: Role; tier: number };
 
-function buildPickPool(tiers: ReadonlyMap<Role, number>): PickOption[] {
+export function buildPickPool(tiers: ReadonlyMap<Role, number>): PickOption[] {
   const pool: PickOption[] = [];
   for (const role of ROLES) {
     // The soundset is built around a subset of the catalog: a role it does not
@@ -50,10 +50,47 @@ const WEAPON_WEIGHT = 3;
 
 /** A weapon option's draw weight: the base weapon weight, tilted by the early
  *  drum nudge. Pure in (role, timeS) — no rng. */
-function weaponWeight(role: Role, timeS: number): number {
+export function weaponWeight(role: Role, timeS: number): number {
   let w = WEAPON_WEIGHT;
   if (earlyNudgeApplies(slotOf(role), timeS)) w *= EARLY_NUDGE_FACTOR;
   return w;
+}
+
+export interface PickPoolDiagnostic {
+  role: Role;
+  tier: number | null;
+  slot: Slot;
+  weight: number;
+  eligible: boolean;
+  reason: string;
+}
+
+/** Explain the exact production pick pool without changing the draw. */
+export function inspectPickPool(
+  tiers: ReadonlyMap<Role, number>,
+  timeS: number,
+): PickPoolDiagnostic[] {
+  return ROLES.map((role) => {
+    const slot = slotOf(role);
+    const tier = tiers.get(role) ?? null;
+    if (!soundsetSupports(role)) {
+      return { role, tier, slot, weight: 0, eligible: false, reason: 'dormant audio only' };
+    }
+    if (tier !== null && tier >= TIER_COUNT) {
+      return { role, tier, slot, weight: 0, eligible: false, reason: 'already tier IV' };
+    }
+    if (tier === null && slotFilled(slot, tiers)) {
+      return { role, tier, slot, weight: 0, eligible: false, reason: 'band position already owned' };
+    }
+    return {
+      role,
+      tier,
+      slot,
+      weight: weaponWeight(role, timeS),
+      eligible: true,
+      reason: tier === null ? 'legal new weapon' : `legal tier ${tier + 1} upgrade`,
+    };
+  });
 }
 
 /** The three cards a level-up offers (fewer once the pool thins out). Weighted

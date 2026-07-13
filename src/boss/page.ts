@@ -13,6 +13,7 @@ import { Mp3Engine } from './mp3engine';
 import { BOSSES, type BossDef } from './bosses';
 import { ARENA, BossWorld } from './world';
 import { BossView } from './view';
+import type { DisposableSession } from '../lifecycle';
 
 type State = 'select' | 'loading' | 'fight' | 'end';
 
@@ -28,10 +29,11 @@ function fmtTime(s: number): string {
   return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 }
 
-export async function mountBossFight(root: HTMLElement, ctx: AudioContext): Promise<void> {
+export async function mountBossFight(root: HTMLElement, ctx: AudioContext): Promise<DisposableSession> {
   root.innerHTML = '';
   root.classList.add('game-root');
-  root.addEventListener('contextmenu', (e) => e.preventDefault());
+  const onContextMenu = (e: MouseEvent): void => e.preventDefault();
+  root.addEventListener('contextmenu', onContextMenu);
 
   const app = new Application();
   await app.init({
@@ -42,7 +44,7 @@ export async function mountBossFight(root: HTMLElement, ctx: AudioContext): Prom
     autoDensity: true,
   });
   root.appendChild(app.canvas);
-  mountJoystick(root);
+  const joystick = mountJoystick(root);
 
   const input = new Input();
   let state: State = 'select';
@@ -307,14 +309,15 @@ export async function mountBossFight(root: HTMLElement, ctx: AudioContext): Prom
   }
 
   // dash on Space / Shift (kept out of screens so buttons still work)
-  window.addEventListener('keydown', (e) => {
+  const onKeyDown = (e: KeyboardEvent): void => {
     if (e.code === 'Space' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
       if (state === 'fight') {
         dashQueued = true;
         e.preventDefault();
       }
     }
-  });
+  };
+  window.addEventListener('keydown', onKeyDown);
 
   app.ticker.add((ticker) => {
     if (state === 'fight' && world && view && transport && conductor) {
@@ -362,4 +365,20 @@ export async function mountBossFight(root: HTMLElement, ctx: AudioContext): Prom
   }
 
   showSelect();
+
+  return {
+    dispose(): void {
+      loadToken++;
+      teardownFight();
+      window.removeEventListener('keydown', onKeyDown);
+      root.removeEventListener('contextmenu', onContextMenu);
+      joystick.dispose();
+      input.dispose();
+      const handle = (window as unknown as { loop?: Record<string, unknown> }).loop;
+      if (handle) delete handle.boss;
+      app.destroy(true, { children: true });
+      root.classList.remove('game-root');
+      root.replaceChildren();
+    },
+  };
 }

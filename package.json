@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "bot": "tsx scripts/bot.ts",
     "check": "tsc --noEmit",
-    "check:mad-forest": "tsx scripts/madforest-check.ts"
+    "check:mad-forest": "tsx scripts/madforest-check.ts",
+    "check:campus": "tsx scripts/dev-campus-check.ts"
   },
   "devDependencies": {
     "@types/node": "^26.1.0",
