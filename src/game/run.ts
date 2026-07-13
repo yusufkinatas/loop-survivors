@@ -44,6 +44,7 @@ import {
 import { dcos, dsin } from './dmath';
 import {
   STAGE_EVENTS,
+  STAGE_STARTING_KIND,
   STAGE_STARTING_SPAWNS,
   STAGE_WAVES,
   type StageWave,
@@ -662,7 +663,7 @@ export class RunWorld {
   private runDirector(_dt: number): void {
     if (!this.stageStarted) {
       this.stageStarted = true;
-      for (let i = 0; i < STAGE_STARTING_SPAWNS; i++) this.spawnEnemy('redBat2');
+      for (let i = 0; i < STAGE_STARTING_SPAWNS; i++) this.spawnEnemy(STAGE_STARTING_KIND);
     }
 
     while (this.waveIdx + 1 < STAGE_WAVES.length && this.timeS >= STAGE_WAVES[this.waveIdx + 1].atS) {
@@ -681,9 +682,9 @@ export class RunWorld {
         const spawned = this.enemies.length > before ? this.enemies[this.enemies.length - 1] : null;
         if (spawned) spawned.upgradeChance = event.rewardChance;
       } else if (event.type === 'batSweep') {
-        if (this.rng() < event.chance) this.spawnBatSweep(event.count);
+        if (this.rng() < event.chance) this.spawnBatSweep(event.kind, event.count);
       } else {
-        this.spawnFlowerWall(event.count, event.durationS);
+        this.spawnFlowerWall(event.kind, event.count, event.durationS);
       }
     }
 
@@ -719,7 +720,7 @@ export class RunWorld {
   }
 
   /** A 50-enemy event fan crosses the screen without homing. */
-  private spawnBatSweep(count: number): void {
+  private spawnBatSweep(kind: EnemyKind, count: number): void {
     // Official-demo geometry: start on an elliptical 0.72W/0.72H arc, advance
     // π/500 radians per bat (~18 degrees across 50), and lock each bat toward
     // the player's position at event time. The result is a converging fan.
@@ -734,7 +735,7 @@ export class RunWorld {
       const dy = targetY - y;
       const d = Math.hypot(dx, dy) || 1;
       this.pushEnemy(
-        'batSwarm',
+        kind,
         x,
         y,
         'event',
@@ -747,14 +748,14 @@ export class RunWorld {
 
   /** The minute-five enclosure is a slowly closing 100-unit ellipse which
    * disappears after 30 seconds if the player does not break through it. */
-  private spawnFlowerWall(count: number, durationS: number): void {
+  private spawnFlowerWall(kind: EnemyKind, count: number, durationS: number): void {
     const rx = this.worldW * 0.72;
     const ry = this.worldH * 0.72;
     const start = this.rng() * Math.PI * 2;
     for (let i = 0; i < count && this.enemies.length < MAX_ALIVE_HARD; i++) {
       const a = start + (i / count) * Math.PI * 2;
       this.pushEnemy(
-        'flower',
+        kind,
         this.player.x + PLAYER_FOOT_OFFSET.x + dcos(a) * rx,
         this.player.y + PLAYER_FOOT_OFFSET.y + dsin(a) * ry,
         'event',
@@ -824,6 +825,28 @@ export class RunWorld {
     this.pushEnemy(kind, x, y, spawnClass, moveX, moveY, despawnAt);
   }
 
+  /** Sandbox/lab helper: construct a real enemy at an explicit world-space
+   *  source-feet position, using the same stats/body path as stage spawns. */
+  spawnEnemyAt(kind: EnemyKind, x: number, y: number): Enemy | null {
+    const spawnClass = ENEMIES[kind].boss
+      ? 'boss'
+      : ENEMIES[kind].fixedDirection || kind === 'flower'
+        ? 'event'
+        : 'regular';
+    let moveX = 0;
+    let moveY = 0;
+    let despawnAt = 0;
+    if (ENEMIES[kind].fixedDirection) {
+      const dx = this.player.x + PLAYER_FOOT_OFFSET.x - x;
+      const dy = this.player.y + PLAYER_FOOT_OFFSET.y - y;
+      const d = Math.hypot(dx, dy) || 1;
+      moveX = dx / d;
+      moveY = dy / d;
+      despawnAt = this.timeS + 10;
+    }
+    return this.pushEnemy(kind, x, y, spawnClass, moveX, moveY, despawnAt);
+  }
+
   /** Construct one enemy from a source sprite-feet position. The simulation
    * stores its exact circle center; old project-native kinds have zero offset.
    * Mad Forest has no invented continuous HP/damage/speed ramp. */
@@ -835,12 +858,12 @@ export class RunWorld {
     moveX = 0,
     moveY = 0,
     despawnAt = 0,
-  ): void {
-    if (this.enemies.length >= MAX_ALIVE_HARD) return;
+  ): Enemy | null {
+    if (this.enemies.length >= MAX_ALIVE_HARD) return null;
     const conf = ENEMIES[kind];
     const stats = madForestEnemyStats(kind, this.level);
     const body = this.nextEnemyBody(kind, stats.radius);
-    this.enemies.push({
+    const enemy: Enemy = {
       id: this.nextEnemyId++,
       kind,
       x: x - body.footOffsetX,
@@ -875,7 +898,9 @@ export class RunWorld {
       despawnAt,
       knockbackMul: stats.knockback,
       upgradeChance: 0,
-    });
+    };
+    this.enemies.push(enemy);
+    return enemy;
   }
 
   private nextEnemyBody(
@@ -914,6 +939,20 @@ export class RunWorld {
   /** Sandbox: remove every enemy without kills, gems, or pops. */
   clearEnemies(): void {
     this.enemies.length = 0;
+  }
+
+  /** Reset every transient sandbox entity without touching the player, loadout,
+   *  clock, level, or stage director. No delayed strike/pickup pointer survives. */
+  clearSandboxEntities(): void {
+    this.enemies.length = 0;
+    this.projectiles.length = 0;
+    this.zones.length = 0;
+    this.gems.length = 0;
+    if (this.fx) this.fx.length = 0;
+    this.pendingKick.length = 0;
+    this.overflowGem = null;
+    this.hash.clear();
+    this.queryBuf.length = 0;
   }
 
   private moveEnemies(dt: number): void {

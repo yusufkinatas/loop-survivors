@@ -1,7 +1,7 @@
 // The band: seven typed position-slots that cap a build into a group.
 //
 // Each slot holds at most ONE instrument, drawn from that slot's roster. A full
-// build is a complete band — eight voices, each in its own frequency lane and
+// build is a complete band — seven voices, each in its own frequency lane and
 // rhythmic job. Slots cap OWNERSHIP (filling one permanently retires its other
 // roster members from the pick pool), which is what keeps a full build sounding
 // like a track instead of a pile of voices. See docs/phases/the-band.md.

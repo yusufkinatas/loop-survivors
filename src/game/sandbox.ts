@@ -16,22 +16,8 @@ import {
 } from './band';
 import { TIER_NUMERALS } from './hud';
 import { ENEMY_LABELS, madForestEnemyStats, type EnemyKind } from './config';
+import { ACTIVE_ENEMY_KINDS } from './madforest';
 import type { RunWorld } from './run';
-
-const ENEMY_KINDS: EnemyKind[] = [
-  'bat',
-  'redBat',
-  'redBat2',
-  'zombie',
-  'skeleton',
-  'ghost',
-  'greenMudman',
-  'grayMudman',
-  'flower',
-  'glowingBat',
-  'mantis',
-  'batSwarm',
-];
 
 export interface SandboxPanel {
   destroy(): void;
@@ -132,7 +118,7 @@ export function mountSandboxPanel(
   }
   levelOpts.forEach((b, i) => b.classList.toggle('on', world.level === levelChoices[i]));
 
-  for (const kind of ENEMY_KINDS) {
+  for (const kind of ACTIVE_ENEMY_KINDS) {
     const row = el('div', 'sb-enemy', panel);
     const info = el('div', 'sb-enemy-info', row);
     el('span', 'sb-enemy-name', info, ENEMY_LABELS[kind] ?? kind);
@@ -223,7 +209,7 @@ export function mountSandboxPanel(
     'div',
     'sb-hint',
     panel,
-    'stage script off: nothing spawns by itself. O = perf overlay, C = track overlay, 1-8 = mute a slot.',
+    'stage script off: nothing spawns by itself. O = perf overlay, C = track overlay, 1-7 = mute a slot.',
   );
 
   return {

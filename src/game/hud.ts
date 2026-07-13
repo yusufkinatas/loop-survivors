@@ -7,7 +7,6 @@ import { type Kit, type Role } from '../audio/kits';
 import { SLOTS, SLOT_LABEL, ownerOfSlot, supportedRoster } from './band';
 
 import { TIER_COUNT } from '../audio/charts';
-
 /** Tier numerals still used by the band rack + the bot-replay pick toast. */
 export const TIER_NUMERALS = ['I', 'II', 'III', 'IV'];
 
@@ -190,8 +189,7 @@ export class Hud {
       this.closeScreen();
       onStart('kick');
     };
-    // Dev lab entrances, tucked behind one small disclosure so the player-
-    // facing start screen stays a single call to action.
+    // Auxiliary entrances share one small, collapsed disclosure.
     const dev = el('div', 'start-dev', s);
     const devToggle = el('button', 'small start-dev-toggle', dev, 'dev tools');
     const row = el('div', 'start-dev-row', dev);
@@ -200,6 +198,13 @@ export class Hud {
       row.style.display = row.style.display === 'none' ? '' : 'none';
       devToggle.classList.toggle('on', row.style.display !== 'none');
       (devToggle as HTMLButtonElement).blur();
+    };
+    const livingLabBtn = el('button', 'small start-lab-btn', row, 'living lab');
+    livingLabBtn.onclick = () => {
+      const url = new URL(location.href);
+      url.hash = '';
+      url.searchParams.set('lab', 'hub');
+      location.assign(`${url.pathname}${url.search}`);
     };
     const bossBtn = el('button', 'small', row, 'boss fights');
     bossBtn.onclick = () => {
