@@ -1,6 +1,7 @@
 // Entry. The game is the default; the rehearsal room lives at #rehearsal.
 // Both are driven by the same engine.
 
+import { inject } from '@vercel/analytics';
 import { buildKits } from './audio/kits';
 import { MusicEngine } from './audio/engine';
 import * as charts from './audio/chartstore';
@@ -10,6 +11,8 @@ import { mountTrackLab } from './tracklab/lab';
 import { mountBossFight } from './boss/page';
 import { bootGame } from './game/game';
 import './style.css';
+
+inject();
 
 async function boot(): Promise<void> {
   const root = document.getElementById('app')!;
