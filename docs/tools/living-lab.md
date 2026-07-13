@@ -1,6 +1,6 @@
 # Living Lab
 
-The Living Lab is the developer-only, in-game documentation suite. It mounts
+The Living Lab is a public, in-game documentation suite. It mounts
 one real `RunWorld`, `RunView`, input stack, and audio engine, then reuses that
 shared arena across four rooms. The labels and rosters are generated from the
 same registries and live objects as the game, so they update with the game or
@@ -10,14 +10,15 @@ This tool is additive. It does not advance or replace a phase's developer gate.
 
 ## Open it
 
-Start the development server:
+The normal main menu always shows **living lab** directly below **start**.
+
+For local development, start the server with:
 
 ```sh
 npm run dev
 ```
 
-On the normal start screen, open **developer tools → living lab**. Direct boots
-are also available in development:
+Direct boots work in development and production:
 
 - `/#lab` — hub
 - `/?lab=movement` — Movement & Space Gym
@@ -27,9 +28,8 @@ are also available in development:
 - `/?lab=auto` — fail-fast automated tour
 
 `VITE_LOOP_LAB_ROOM=<room>` can set a local default boot. `?lab=off` overrides
-that default. A production build does not expose or boot the suite unless
-developer tools are explicitly enabled at build time with
-`VITE_LOOP_DEV_TOOLS=1`.
+that default. The suite is intentionally public for now; there is no hidden or
+build-time access gate.
 
 Escape returns from a room to the hub, then exits to the normal game. The exit
 restores the engine, movement globals, and event listeners before reloading the
@@ -63,11 +63,12 @@ npm run check:lab
 The command uses a locally installed Chrome; set `CHROME_BIN` when it is not at
 the platform's usual path.
 
-The check starts a temporary Vite server, walks every registered room and every
-tagged manual control in headless Chrome, rejects console/runtime errors, checks
-the generated enemy and instrument roster counts, exercises the three museum
-rules, verifies shared-state restoration, then boots a fresh normal game and
-confirms no lab DOM leaked into it.
+The check builds the production app, starts a temporary preview server, walks
+every registered room and every tagged manual control in headless Chrome,
+rejects console/runtime errors, checks the generated enemy and instrument roster
+counts, exercises the three museum rules, and verifies shared-state restoration.
+It then takes the real exit path, requires a clean normal start screen, and
+reopens the hub through the visible **living lab** button.
 
 The stable automation hooks are `data-lab-ready`, `data-lab-room`,
 `data-lab-action`, `data-enemy-kind`, `data-role`, and

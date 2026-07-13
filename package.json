@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "bot": "tsx scripts/bot.ts",
     "check": "tsc --noEmit",
-    "check:lab": "node scripts/lab-check.mjs",
+    "check:lab": "npm run build && node scripts/lab-check.mjs --preview",
     "check:mad-forest": "tsx scripts/madforest-check.ts"
   },
   "devDependencies": {

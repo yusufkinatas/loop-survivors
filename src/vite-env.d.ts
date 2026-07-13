@@ -1,7 +1,6 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  readonly VITE_LOOP_DEV_TOOLS?: string;
   readonly VITE_LOOP_LAB_ROOM?: string;
 }
 

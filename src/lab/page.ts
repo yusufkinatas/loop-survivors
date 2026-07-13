@@ -1,5 +1,5 @@
 // The Living Lab: in-game documentation made from the running game's own
-// registries, simulation, renderer, and audio trigger path. This is one gated
+// registries, simulation, renderer, and audio trigger path. This is one public
 // top-level mount with internal room navigation, so every room shares exactly
 // one heavy sandbox context.
 

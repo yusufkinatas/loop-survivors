@@ -4,8 +4,8 @@ Last updated: July 13, 2026
 
 ## Latest change (July 13, 2026) — Living Lab: in-game documentation suite
 
-Built the developer-only **Living Lab** on branch
-`codex/in-game-lab-suite`, started directly from `main`. It is one gated
+Built the public **Living Lab** on branch
+`codex/in-game-lab-suite`, started directly from `main`. It is one
 `#lab` mount with an internal hub and one shared real `RunWorld` / `RunView` /
 audio context. The four rooms are: **Movement & Space Gym** (real input speed,
 camera, and spawn-boundary measurements), **Enemy Zoo** (the exact active-stage
@@ -15,10 +15,11 @@ active soundset roster, with tier/variation controls and manual
 (one sound event/two outputs, contact damage + invulnerability, and one-owner
 band positions). The practical guide is `docs/tools/living-lab.md`.
 
-The suite is enabled automatically only by Vite development builds, or by an
-explicit `VITE_LOOP_DEV_TOOLS=1` production build; a guessed player URL cannot
-turn it on. Direct development boots use `?lab=<room>` or
-`VITE_LOOP_LAB_ROOM=<room>`. Room rosters and stage reference rows come from
+At the developer's explicit direction after the initial build, the access gate
+was removed **for now**: the normal main menu always shows a **living lab**
+button directly below **start**, and `#lab` / `?lab=<room>` work in production
+as well as development. `VITE_LOOP_LAB_ROOM=<room>` remains the direct local
+boot shortcut. Room rosters and stage reference rows come from
 canonical game data, not parallel lists. Exact-position enemy display is a thin
 adapter over the real constructor, and manual instrument pulses travel through
 the normal audio/gameplay coupling. One suite-level trigger listener, one input
@@ -28,19 +29,22 @@ Global-state isolation is explicit: entry snapshots the AudioContext state,
 clock, every voice's enable/tier/gain, touch input, and auto-move state; room
 changes flush pending audio/gameplay triggers and all transient world entities;
 exit restores the snapshot and disposes the trigger, keyboard, joystick, view,
-and application before the normal game reloads. `npm run check:lab` drives every
-room and manual action in bounded headless Chrome, compares exact generated
-registry IDs, exercises every active instrument/tier/sound variation, fails on
+and application before the normal game reloads. `npm run check:lab` builds the
+production app, then drives every room and manual action in bounded headless
+Chrome, compares exact generated registry IDs, exercises every active
+instrument/tier/sound variation, fails on
 runtime/console errors, verifies the shared snapshot, then takes the real exit
-path and requires a clean normal start screen.
+path, requires a clean normal start screen, and reopens the hub through the
+visible public button.
 
 Verification: `tsc --noEmit` clean; production `vite build` clean (772 modules);
-the expanded browser drive passes; desktop 1440×900 screenshots of all rooms and
-390×844 touch layouts were inspected with no overlap or unreadable controls; a
-normal browser run starts clean; deterministic bot seed 1729 remains byte-for-byte
-on its reference result (death 173.6 s, level 2, 98 kills, Kick damage 306,
-peak alive 449). **No developer phase gate advanced; this is additive tooling and
-the parity hands/ear gate remains pending.**
+the production browser drive passes and reopens the Lab through the visible menu
+button; desktop 1440×900 screenshots of all rooms and 390×844 touch layouts were
+inspected with no overlap or unreadable controls; the final mobile menu button
+has a 44 px touch target; deterministic bot seed 1729 remains byte-for-byte on
+its reference result (death 173.6 s, level 2, 98 kills, Kick damage 306, peak
+alive 449). **No developer phase gate advanced; this is additive tooling and the
+parity hands/ear gate remains pending.**
 
 The architecture audit exposed one pre-existing parity discrepancy: the locked
 spec and comments describe a shared 1.35-second per-target Kick re-hit lock, but

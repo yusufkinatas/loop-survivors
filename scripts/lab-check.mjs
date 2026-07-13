@@ -132,6 +132,7 @@ async function waitFor(label, client, expression, predicate, timeoutMs = 20_000)
 
 const port = await freePort();
 const base = `http://127.0.0.1:${port}`;
+const preview = process.argv.includes('--preview');
 const chromeBinary =
   process.env.CHROME_BIN ??
   (process.platform === 'darwin'
@@ -149,6 +150,7 @@ try {
     process.execPath,
     [
       'node_modules/vite/bin/vite.js',
+      ...(preview ? ['preview'] : []),
       '--host',
       '127.0.0.1',
       '--port',
@@ -248,20 +250,35 @@ try {
     `(() => ({
       heading: document.querySelector('.start-btn')?.closest('.screen')?.querySelector('h1')?.textContent ?? '',
       start: Boolean(document.querySelector('.start-btn')),
+      publicLab: (() => {
+        const button = document.querySelector('.start-lab-btn');
+        return Boolean(button && button.getBoundingClientRect().width > 0 && button.getBoundingClientRect().height > 0);
+      })(),
       lab: Boolean(document.querySelector('[data-lab-ready]')),
       restoreFailed: new URLSearchParams(location.search).has('labRestoreFailed'),
     }))()`,
     (value) => value?.start === true,
   );
-  if (normal.heading !== 'Loop Survivors' || normal.lab || normal.restoreFailed) {
+  if (normal.heading !== 'Loop Survivors' || !normal.publicLab || normal.lab || normal.restoreFailed) {
     throw new Error(`Normal boot regression after lab exit: ${JSON.stringify(normal)}`);
   }
   if (client.errors.length > 0) {
     throw new Error(`Browser errors after normal boot:\n${client.errors.join('\n')}`);
   }
 
+  await client.evaluate("document.querySelector('.start-lab-btn').click(); true");
+  await waitFor(
+    'public Living Lab menu entry',
+    client,
+    `(() => ({
+      ready: Boolean(document.querySelector('[data-lab-ready]')),
+      room: document.querySelector('[data-lab-room]')?.getAttribute('data-lab-room') ?? '',
+    }))()`,
+    (value) => value?.ready === true && value?.room === 'hub',
+  );
+
   console.log('Living Lab: PASS (4 rooms, fail-fast browser drive, globals restored)');
-  console.log('Normal game: PASS (real lab exit, fresh start screen, no lab state)');
+  console.log('Normal game: PASS (real lab exit, fresh start screen, public lab button visible)');
 } finally {
   client?.close();
   await terminate(chrome);

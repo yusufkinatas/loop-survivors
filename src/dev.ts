@@ -1,10 +1,5 @@
-/** Central developer-surface gate.
- *
- * Vite's development server enables the tools automatically. A production
- * build keeps them unreachable unless the build explicitly opts in with
- * VITE_LOOP_DEV_TOOLS=1. The same build-time predicate guards both menu links
- * and direct boots, so a player cannot reveal the suite by guessing a URL.
- */
+/** Living Lab route parsing. The hub is public for now: its main-menu entry is
+ * always visible and these direct routes work in development and production. */
 
 export type LabRoomId = 'hub' | 'movement' | 'enemies' | 'instruments' | 'systems';
 export type LabBootRoom = LabRoomId | 'auto';
@@ -17,10 +12,6 @@ const LAB_ROOMS: ReadonlySet<string> = new Set([
   'systems',
   'auto',
 ]);
-
-export function devToolsEnabled(): boolean {
-  return import.meta.env.DEV || import.meta.env.VITE_LOOP_DEV_TOOLS === '1';
-}
 
 /** Requested lab boot, from either #lab, ?lab=<room>, or the Vite env
  * shortcut VITE_LOOP_LAB_ROOM=<room>. Query wins so `?lab=off` can escape an

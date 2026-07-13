@@ -9,7 +9,7 @@ import { mountRehearsalRoom } from './rehearsal/room';
 import { mountTrackLab } from './tracklab/lab';
 import { mountBossFight } from './boss/page';
 import { bootGame } from './game/game';
-import { devToolsEnabled, requestedLabRoom } from './dev';
+import { requestedLabRoom } from './dev';
 import './style.css';
 
 async function boot(): Promise<void> {
@@ -35,7 +35,7 @@ async function boot(): Promise<void> {
 
   root.textContent = '';
   const labRoom = requestedLabRoom();
-  if (labRoom && devToolsEnabled()) {
+  if (labRoom) {
     const { mountDocumentationLab } = await import('./lab/page');
     await mountDocumentationLab(root, engine, kits, labRoom);
   } else if (location.hash === '#rehearsal') {

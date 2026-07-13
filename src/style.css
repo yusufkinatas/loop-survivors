@@ -737,6 +737,30 @@ input[type='range'] {
   color: var(--signal);
 }
 
+.start-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--sp-2);
+}
+
+.start-lab-btn {
+  min-height: 44px;
+  padding: 8px 22px;
+  color: var(--ink-dim);
+  font-size: var(--fs-body);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-color: var(--line-2);
+  background: var(--bg-2);
+}
+
+.start-lab-btn:hover,
+.start-lab-btn:focus-visible {
+  color: var(--signal);
+  border-color: var(--signal-dim);
+}
+
 button.big {
   font-size: 18px;
   padding: 12px 30px;

@@ -7,8 +7,6 @@ import { type Kit, type Role } from '../audio/kits';
 import { SLOTS, SLOT_LABEL, ownerOfSlot, supportedRoster } from './band';
 
 import { TIER_COUNT } from '../audio/charts';
-import { devToolsEnabled } from '../dev';
-
 /** Tier numerals still used by the band rack + the bot-replay pick toast. */
 export const TIER_NUMERALS = ['I', 'II', 'III', 'IV'];
 
@@ -186,13 +184,20 @@ export class Hud {
     const s = this.newScreen();
     el('h1', '', s, 'Loop Survivors');
     el('p', 'sub', s, 'WASD or touch to move. Survive 8 minutes.');
-    const startBtn = el('button', 'start-btn', s, 'start');
+    const startActions = el('div', 'start-actions', s);
+    const startBtn = el('button', 'start-btn', startActions, 'start');
     startBtn.onclick = () => {
       this.closeScreen();
       onStart('kick');
     };
-    // Dev lab entrances, tucked behind one small disclosure so the player-
-    // facing start screen stays a single call to action.
+    const livingLabBtn = el('button', 'start-lab-btn', startActions, 'living lab');
+    livingLabBtn.onclick = () => {
+      const url = new URL(location.href);
+      url.hash = '';
+      url.searchParams.set('lab', 'hub');
+      location.assign(`${url.pathname}${url.search}`);
+    };
+    // The remaining developer entrances stay behind their small disclosure.
     const dev = el('div', 'start-dev', s);
     const devToggle = el('button', 'small start-dev-toggle', dev, 'dev tools');
     const row = el('div', 'start-dev-row', dev);
@@ -202,15 +207,6 @@ export class Hud {
       devToggle.classList.toggle('on', row.style.display !== 'none');
       (devToggle as HTMLButtonElement).blur();
     };
-    if (devToolsEnabled()) {
-      const livingLabBtn = el('button', 'small', row, 'living lab');
-      livingLabBtn.onclick = () => {
-        const url = new URL(location.href);
-        url.hash = '';
-        url.searchParams.set('lab', 'hub');
-        location.assign(`${url.pathname}${url.search}`);
-      };
-    }
     const bossBtn = el('button', 'small', row, 'boss fights');
     bossBtn.onclick = () => {
       location.hash = '#boss';
