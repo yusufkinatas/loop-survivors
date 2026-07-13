@@ -2,7 +2,45 @@
 
 Last updated: July 13, 2026
 
-## Latest change (July 13, 2026) — Living Lab: in-game documentation suite
+## Latest change (July 13, 2026) — tom weapon removed from the build
+
+At the developer's direction, the **tom weapon (a Cross-style boomerang, the
+second Pulse-slot instrument) is removed from the player's build/weapons
+system**. The Pulse slot now offers only the kick; tom is no longer supported
+by the soundset, so it is never offered, never voiced in a run, and never
+appears on a pick card. Mirrors the FX removal (#26) exactly, including the
+keep/cut split.
+
+Removed: tom from the Pulse roster in `src/game/band.ts` (`kick`/`tom` → `kick`)
+and from the `'a beat (Pulse)'` playability-floor group in
+`src/audio/soundset.ts`; the tom ladder in `src/audio/ladders/house.ts` (which
+is what makes `soundsetSupports('tom')` false, so it is never offered/voiced);
+the tom blocks in `WEAPONS` and `TIER_LINES` in `config.ts` plus its exclusive
+`WeaponConf.count` field and the `BOOMERANG_OUT_FRAC` constant; the tom
+pick-card glyph in `weaponicons.ts`; and tom's exclusive mechanics in `run.ts`
+(the whole `spawnBoomerang` method, the `'tom'` trigger case, the boomerang
+turn-around branch in `updateProjectiles`, the `outS`/`returned` projectile
+fields, and tom's membership in `SPARK_HIT_ROLES`) and `view.ts` (the spinning
+chevron silhouette, the boomerang spin, and tom's membership in `TRAIL_ROLES`).
+
+**Kept (audio config, used elsewhere):** the tom sound synthesis stays whole —
+the `Role` type entry, `ROLES`, `ROLE_META`, its `variants`/`add` render wiring
+in `src/audio/kits.ts`, `KIT_COLORS` (a total `Record<Role,…>`) — because the
+rehearsal room iterates the full `ROLES` catalog. tom is now a dormant catalog
+voice, like crash/riser: the engine never enables it.
+
+Verification: `tsc --noEmit` + `vite build` clean; headless bot batches
+(kiter/random, kiter/deep, 24 runs each) run full runs with no crashes and no
+tom in the damage share. A byte-level diff against clean HEAD on the same seeds
+is **identical** (survival, levels, damage share all unchanged): the kick always
+fills the Pulse slot first, so tom was never actually surfaced in an offer,
+making the removal behaviorally transparent for the sim. Rebased onto the Living
+Lab commit (#91): its Instrument Zoo listed the now-removed `count` stat, so that
+one dead `WeaponConf` label was dropped from `src/lab/page.ts`; the merged tree
+builds clean. No developer gate is attached; this is a scope edit, not a
+milestone.
+
+## Previous change (July 13, 2026) — Living Lab: in-game documentation suite
 
 Built the public **Living Lab** on branch
 `codex/in-game-lab-suite`, started directly from `main`. It is one

@@ -61,7 +61,7 @@ export function soundsetSupports(role: Role): boolean {
 // SLOT_ROSTER); this file stays free of a runtime import of band.ts to avoid a
 // cycle.
 const FLOOR_GROUPS: { label: string; anyOf: Role[] }[] = [
-  { label: 'a beat (Pulse)', anyOf: ['kick', 'tom'] },
+  { label: 'a beat (Pulse)', anyOf: ['kick'] },
   { label: 'a low end (Bass)', anyOf: ['bass', 'pluck'] },
   { label: 'a tick (Hats)', anyOf: ['hat', 'shaker'] },
   { label: 'a melodic voice (Harmony/Melody)', anyOf: ['chord', 'rhodes', 'lead', 'bell'] },

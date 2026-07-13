@@ -10,7 +10,8 @@
 // Swing comes from the soundset globally; patterns stay on the straight grid.
 //
 // Supported roles = the full instrument catalog minus the retired FX slot
-// (crash/riser are no longer weapons). Key A minor pentatonic.
+// (crash/riser) and the retired tom — none are weapons any more. Key A minor
+// pentatonic.
 
 import type { Chart } from '../charts';
 import type { Role } from '../kits';
@@ -150,25 +151,6 @@ export const SOUNDSET_LADDERS: Partial<Record<Role, Chart[]>> = {
       // stuttered chop: the same note repeated on 16ths, resolving down
       [3 * B, 0.7, 12], [3 * B + 1, 0.55, 12], [3 * B + 2, 0.7, 12], [3 * B + 3, 0.55, 12],
       [3 * B + 6, 0.7, 10], [3 * B + 8, 0.7, 7], [3 * B + 12, 0.6, 10],
-    ]),
-  ],
-  // Pulse alternative: low conga-style tom groove, a 2-bar answering pattern
-  // on the off-grid slots (3/10 style), the second bar ending in a double.
-  // NEVER on the kick's 0/4/8/12.
-  tom: [
-    m('tom', 2, [[3, 0.6, 0], [10, 0.55, 0], [B + 3, 0.6, 0], [B + 10, 0.55, 0]]),
-    m('tom', 2, [
-      [3, 0.6, 0], [10, 0.55, 0],
-      [B + 3, 0.6, 0], [B + 10, 0.55, 0], [B + 14, 0.55, 0], [B + 15, 0.65, 0],
-    ]),
-    m('tom', 2, [
-      [3, 0.65, 0], [7, 0.5, 0], [10, 0.6, 0],
-      [B + 3, 0.65, 0], [B + 7, 0.5, 0], [B + 10, 0.6, 0], [B + 14, 0.55, 0], [B + 15, 0.65, 0],
-    ]),
-    m('tom', 2, [
-      [3, 0.65, 0], [7, 0.5, 0], [10, 0.6, 0], [14, 0.5, 0],
-      [B + 3, 0.65, 0], [B + 7, 0.5, 0], [B + 10, 0.6, 0],
-      [B + 13, 0.5, 3], [B + 14, 0.6, 5], [B + 15, 0.7, 7],
     ]),
   ],
   // Motion: the squelchy acid line — a rolling syncopated 16th figure sliding

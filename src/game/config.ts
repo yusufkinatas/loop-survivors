@@ -617,8 +617,6 @@ export interface WeaponConf {
   pierce?: number;
   /** clap: half-angle of the forward damage cone (radians). */
   arc?: number;
-  /** tom: boomerangs thrown per trigger. */
-  count?: number;
   /** arp: radius of the orbit around the player. */
   orbitRadius?: number;
   /** acid gravity-well pull speed (px/s inward). */
@@ -700,14 +698,6 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
     { damage: 3, radius: 88, arc: 0.72 },
     { damage: 4, radius: 98, arc: 0.8 },
     { damage: 6, radius: 108, arc: 0.9 },
-  ],
-  // Cross: a boomerang lobbed outward that curves back to the player, hitting
-  // on the way out and the way home. Deep pierce, both legs.
-  tom: [
-    { damage: 4, speed: 360, radius: 9, lifetimeS: 2.0, pierce: 4, count: 1 },
-    { damage: 4, speed: 375, radius: 9, lifetimeS: 2.1, pierce: 5, count: 1 },
-    { damage: 5, speed: 390, radius: 10, lifetimeS: 2.2, pierce: 6, count: 2 },
-    { damage: 7, speed: 410, radius: 11, lifetimeS: 2.4, pierce: 8, count: 2 },
   ],
   // King Bible: notes that orbit the player, a rotating shield of damage.
   // Each trigger adds one orbiter; a melody makes a ring.
@@ -813,12 +803,6 @@ export const TIER_LINES: Partial<Record<Role, string[]>> = {
     'sweeps a bigger arc',
     'a huge slash all around you',
   ],
-  tom: [
-    'a boomerang that flies out and back',
-    'flies further, pierces more',
-    'throws two boomerangs',
-    'two heavy boomerangs, deep pierce',
-  ],
   arp: [
     'orbiting notes circle you',
     'the orbit lasts longer',
@@ -881,10 +865,6 @@ export const ZONE_THROW_RANGE = 420;
  *  can re-hit an enemy every ORBIT_REHIT_S, so a slow sweep keeps chipping. */
 export const ARP_OMEGA = 3.4;
 export const ORBIT_REHIT_S = 0.35;
-
-/** Tom boomerangs fly outward for this fraction of their lifetime, then curve
- *  home; the hit set clears at the turn so both legs land. */
-export const BOOMERANG_OUT_FRAC = 0.45;
 
 // ---- weapon feel constants (Feature 3) ----
 

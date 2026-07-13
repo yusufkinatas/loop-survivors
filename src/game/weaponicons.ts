@@ -70,14 +70,6 @@ export function drawWeaponIcon(c: GraphicsContext, role: Role, s: number): void 
       c.circle(0, 0, s * 0.2).fill(W);
       break;
     }
-    case 'tom': {
-      // A boomerang: an open ring arc with a return arrowhead.
-      c.arc(0, 0, s * 0.7, Math.PI * 0.15, Math.PI * 1.7).stroke({ width: s * 0.16, color: W });
-      const ax = Math.cos(Math.PI * 0.15) * s * 0.7;
-      const ay = Math.sin(Math.PI * 0.15) * s * 0.7;
-      c.poly([ax + s * 0.02, ay - s * 0.3, ax + s * 0.32, ay + s * 0.02, ax - s * 0.22, ay + s * 0.12]).fill(W);
-      break;
-    }
     case 'arp': {
       // An arpeggio climbing: four dots on a rising diagonal.
       for (let i = 0; i < 4; i++) {

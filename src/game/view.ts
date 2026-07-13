@@ -22,7 +22,7 @@ import {
 // Projectile trails (pure view): only these low-count roles trail, so the
 // per-frame work stays independent of the capped horde. Hat (can be
 // hundreds) and arp/bass are deliberately excluded.
-const TRAIL_ROLES = new Set<Role>(['snare', 'lead', 'tom']);
+const TRAIL_ROLES = new Set<Role>(['snare', 'lead']);
 const TRAIL_LEN = 6; // points kept per trail
 
 // Shared geometry (M2 sub-phase C, frame rate above ~2000 alive): every
@@ -344,8 +344,7 @@ export class RunView {
     this.syncEnemies();
     this.sync(this.world.projectiles, this.projectileGfx, makeProjectileGfx, (pr, gfx) => {
       gfx.position.set(pr.x, pr.y);
-      if (pr.role === 'tom') gfx.rotation += 9 * dt; // spin
-      else if (pr.role !== 'hat') gfx.rotation = Math.atan2(pr.vy, pr.vx);
+      if (pr.role !== 'hat') gfx.rotation = Math.atan2(pr.vy, pr.vx);
     });
     this.drawTrails();
     this.sync(this.world.zones, this.zoneGfx, makeZoneGfx, (z, gfx) => {
@@ -1074,9 +1073,6 @@ function makeProjectileGfx(pr: Projectile): Graphics {
       case 'lead': // homing seeker arrow with a small tail notch
         g.poly([12, 0, -6, 6, -2, 0, -6, -6]).fill(0xffffff);
         g.poly([-6, 3, -10, 0, -6, -3]).fill(0xffffff);
-        break;
-      case 'tom': // boomerang: a fat chevron pointing where it flies
-        g.poly([13, 0, -7, 9, -1, 0, -7, -9]).fill(0xffffff);
         break;
       case 'arp': // orbiter: a bead with a ring
         g.circle(0, 0, pr.radius).stroke({ width: 3, color: 0xffffff });

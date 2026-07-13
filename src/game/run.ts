@@ -15,7 +15,6 @@ import {
   AIM_RANGE,
   ARP_OMEGA,
   BELL,
-  BOOMERANG_OUT_FRAC,
   CHARGER,
   CIRCLER,
   DARTER,
@@ -54,7 +53,7 @@ import { SpatialHash, circlesOverlap } from './spatial';
 
 /** Roles that emit a per-hit spark on impact. Bounded to low-count roles so
  *  a 500-enemy event frame never floods the fx queue. */
-const SPARK_HIT_ROLES = new Set<Role>(['snare', 'lead', 'tom']);
+const SPARK_HIT_ROLES = new Set<Role>(['snare', 'lead']);
 
 /** Circle versus axis-aligned rectangle, exported for parity regression tests. */
 export function circleIntersectsRect(
@@ -171,13 +170,9 @@ export interface Projectile {
   speed: number;
   color: number;
   hit: Set<Enemy>;
-  /** Total time alive; drives the boomerang turnaround. Behavior otherwise
-   *  keys off role: lead homes, tom boomerangs, arp orbits. */
+  /** Total time alive. Behavior otherwise keys off role: lead homes, arp
+   *  orbits. */
   age: number;
-  /** tom: seconds spent flying outward before it curves home. */
-  outS: number;
-  /** tom: has the boomerang turned around yet. */
-  returned: boolean;
   /** arp: orbit geometry around the player, and the re-hit cooldown so a slow
    *  sweep keeps chipping the same enemy. */
   orbitAngle: number;
@@ -497,14 +492,6 @@ export class RunWorld {
       case 'arp': {
         // King Bible: an orbiter per note, circling the player.
         this.spawnOrbiter(conf, color, v);
-        break;
-      }
-      case 'tom': {
-        // Cross: one or more boomerangs, spread when there are several.
-        const count = conf.count ?? 1;
-        for (let i = 0; i < count; i++) {
-          this.spawnBoomerang(this.aimDir(count > 1 ? 0.5 : 0.08), conf, color, v);
-        }
         break;
       }
       case 'bass': {
@@ -1278,8 +1265,6 @@ export class RunWorld {
       color,
       hit: new Set(),
       age: 0,
-      outS: 0,
-      returned: false,
       orbitAngle: 0,
       orbitRadius: 0,
       rehitT: 0,
@@ -1323,20 +1308,6 @@ export class RunWorld {
     pr.radius = conf.radius! * (0.85 + 0.3 * velocity);
     pr.pierce = Infinity; // never consumed en route — it only bursts on landing
     pr.lifeS = Math.min(conf.lifetimeS ?? 0.7, d / speed);
-    this.projectiles.push(pr);
-  }
-
-  /** Tom: a boomerang that flies out then curves back to the player. */
-  private spawnBoomerang(
-    dir: { x: number; y: number },
-    conf: WeaponConf,
-    color: number,
-    velocity: number,
-  ): void {
-    const pr = this.baseProjectile('tom', conf, color, conf.damage * (0.8 + 0.4 * velocity));
-    pr.vx = dir.x * conf.speed!;
-    pr.vy = dir.y * conf.speed!;
-    pr.outS = conf.lifetimeS! * BOOMERANG_OUT_FRAC;
     this.projectiles.push(pr);
   }
 
@@ -1540,26 +1511,6 @@ export class RunWorld {
           pr.hit.clear();
           pr.rehitT = ORBIT_REHIT_S;
         }
-      } else if (pr.role === 'tom') {
-        // Boomerang: fly out, then curve home; both legs land.
-        if (!pr.returned && pr.age >= pr.outS) {
-          pr.returned = true;
-          pr.hit.clear();
-          pr.pierce = pr.maxPierce;
-        }
-        if (pr.returned) {
-          const dx = p.x - pr.x;
-          const dy = p.y - pr.y;
-          const ang = Math.atan2(dy, dx);
-          pr.vx = dcos(ang) * pr.speed;
-          pr.vy = dsin(ang) * pr.speed;
-          if (dx * dx + dy * dy < 24 * 24) {
-            pr.lifeS = 0;
-            this.fx?.push({ type: 'spark', x: p.x, y: p.y, color: pr.color, n: 6, spread: 16 });
-          }
-        }
-        pr.x += pr.vx * dt;
-        pr.y += pr.vy * dt;
       } else {
         if (pr.homing) {
           let best: Enemy | null = null;
@@ -1610,8 +1561,7 @@ export class RunWorld {
         // Per-hit spark (view-only, bounded to low-count roles).
         if (SPARK_HIT_ROLES.has(pr.role) && !pr.shard)
           this.fx?.push({ type: 'spark', x: e.x, y: e.y, color: pr.color, n: 4, spread: 12 });
-        // Orbiters gate re-hits by time. Boomerangs spend their configured
-        // pierce separately on the outbound and return legs.
+        // Orbiters gate re-hits by time, so they never spend pierce on a hit.
         if (pr.role === 'arp') continue;
         pr.pierce -= 1;
         if (pr.pierce <= 0) {

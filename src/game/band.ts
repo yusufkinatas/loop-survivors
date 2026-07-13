@@ -59,7 +59,7 @@ export const SLOT_LABEL: Record<Slot, string> = {
 // supports only a subset (supportedRoster filters to it); the rest stay dormant
 // code, never offered and never voiced.
 export const SLOT_ROSTER: Record<Slot, Role[]> = {
-  pulse: ['kick', 'tom'],
+  pulse: ['kick'],
   backbeat: ['snare', 'clap'],
   hats: ['hat', 'shaker'],
   motion: ['arp', 'acid'],
