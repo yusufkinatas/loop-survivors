@@ -61,10 +61,10 @@ export const SLOT_LABEL: Record<Slot, string> = {
 export const SLOT_ROSTER: Record<Slot, Role[]> = {
   pulse: ['kick'],
   backbeat: ['snare', 'clap'],
-  hats: ['hat', 'shaker'],
-  motion: ['arp', 'acid'],
-  bass: ['bass', 'pluck'],
-  harmony: ['chord', 'rhodes'],
+  hats: ['hat'],
+  motion: ['arp'],
+  bass: ['bass'],
+  harmony: ['chord'],
   melody: ['lead', 'bell'],
 };
 

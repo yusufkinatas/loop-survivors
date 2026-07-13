@@ -122,7 +122,6 @@ function weaponStats(conf: WeaponConf): string {
     ['pierce', 'pierce'],
     ['arc', 'arc'],
     ['orbitRadius', 'orbit'],
-    ['pull', 'pull'],
     ['area', 'area'],
     ['amount', 'amount'],
   ];

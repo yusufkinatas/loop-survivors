@@ -79,39 +79,6 @@ export function drawWeaponIcon(c: GraphicsContext, role: Role, s: number): void 
       }
       break;
     }
-    case 'shaker': {
-      // A maraca: a hollow bulb with rattle dots and a stubby handle.
-      c.ellipse(0, -s * 0.12, s * 0.58, s * 0.72).stroke({ width: s * 0.12, color: W });
-      c.circle(-s * 0.18, -s * 0.2, s * 0.1).fill(W);
-      c.circle(s * 0.16, -s * 0.05, s * 0.1).fill(W);
-      c.circle(-s * 0.02, -s * 0.34, s * 0.1).fill(W);
-      c.moveTo(0, s * 0.56).lineTo(0, s * 0.92).stroke({ width: s * 0.16, color: W, cap: 'round' });
-      break;
-    }
-    case 'acid': {
-      // A squelchy acid drop with a little wiggle tail.
-      c.moveTo(0, -s * 0.85)
-        .quadraticCurveTo(s * 0.62, -s * 0.1, s * 0.42, s * 0.35)
-        .arc(0, s * 0.35, s * 0.42, 0, Math.PI)
-        .quadraticCurveTo(-s * 0.62, -s * 0.1, 0, -s * 0.85)
-        .fill(W);
-      break;
-    }
-    case 'pluck': {
-      // A plucked string: a taut line pinched to one side, plus the pluck point.
-      c.moveTo(-s * 0.1, -s * 0.85)
-        .quadraticCurveTo(s * 0.7, 0, -s * 0.1, s * 0.85)
-        .stroke({ width: s * 0.12, color: W });
-      c.circle(s * 0.42, 0, s * 0.16).fill(W);
-      break;
-    }
-    case 'rhodes': {
-      // Piano keys: three equal-height rounded bars side by side.
-      for (let i = -1; i <= 1; i++) {
-        c.roundRect(i * s * 0.5 - s * 0.18, -s * 0.7, s * 0.36, s * 1.4, s * 0.1).fill(W);
-      }
-      break;
-    }
     case 'bell': {
       // A bell: a domed body with a flared lip and a clapper dot.
       c.moveTo(-s * 0.6, s * 0.45)

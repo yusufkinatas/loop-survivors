@@ -349,9 +349,6 @@ export class RunView {
     this.drawTrails();
     this.sync(this.world.zones, this.zoneGfx, makeZoneGfx, (z, gfx) => {
       gfx.alpha = Math.min(1, z.lifeS * 2);
-      // The acid well visibly swirls; armed mines pulse so they read as live.
-      if (z.pull > 0) gfx.rotation -= 1.6 * dt;
-      else if (z.mine) gfx.scale.set(1 + 0.05 * Math.sin(this.world.timeS * 6));
     });
     const p = this.world.player;
     const cameraX = p.x + PLAYER_FOOT_OFFSET.x;
@@ -1078,10 +1075,6 @@ function makeProjectileGfx(pr: Projectile): Graphics {
         g.circle(0, 0, pr.radius).stroke({ width: 3, color: 0xffffff });
         g.circle(0, 0, pr.radius * 0.45).fill(0xffffff);
         break;
-      case 'pluck': // lobbed note: a small round bead (radius is the blast, not the shot)
-        g.circle(0, 0, 7).fill(0xffffff);
-        g.circle(0, 0, 3.5).fill(0x000000);
-        break;
       case 'bell': {
         // twinkly note: a small four-point sparkle (shards reuse this at their
         // tiny radius, so they read as fragments of the same note)
@@ -1105,8 +1098,7 @@ function makeProjectileGfx(pr: Projectile): Graphics {
 }
 
 function makeZoneGfx(z: Zone): Graphics {
-  // Zones are the easiest weapons to confuse in a crowd (four of them are
-  // "a colored circle on the floor"), so each source gets its own floor mark.
+  // Zones use a distinct floor mark so their damaging area reads in a crowd.
   const gfx = new Graphics();
   const r = z.radius;
   switch (z.source) {
@@ -1116,38 +1108,6 @@ function makeZoneGfx(z: Zone): Graphics {
       gfx.circle(0, 0, r).stroke({ width: 2, color: 0xffffff, alpha: 0.5 });
       for (const f of [0.35, 0.6, 0.82])
         gfx.circle(0, 0, r * f).stroke({ width: 1, color: 0xffffff, alpha: 0.22 });
-      break;
-    }
-    case 'acid': {
-      // Gravity well: inward spokes around a hot core (it also slowly spins).
-      gfx.circle(0, 0, r).stroke({ width: 2, color: 0xffffff, alpha: 0.5 });
-      for (let i = 0; i < 8; i++) {
-        const a = (i / 8) * Math.PI * 2;
-        gfx
-          .moveTo(Math.cos(a) * r * 0.9, Math.sin(a) * r * 0.9)
-          .lineTo(Math.cos(a + 0.35) * r * 0.4, Math.sin(a + 0.35) * r * 0.4);
-      }
-      gfx.stroke({ width: 2, color: 0xffffff, alpha: 0.35 });
-      gfx.circle(0, 0, r * 0.16).fill({ color: 0xffffff, alpha: 0.6 });
-      break;
-    }
-    case 'rhodes': {
-      // Armed mine: a bright core with tick marks inside a faint trip ring.
-      gfx.circle(0, 0, r).stroke({ width: 1.5, color: 0xffffff, alpha: 0.3 });
-      gfx.circle(0, 0, 9).fill(0xffffff);
-      for (let i = 0; i < 4; i++) {
-        const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
-        gfx
-          .moveTo(Math.cos(a) * 14, Math.sin(a) * 14)
-          .lineTo(Math.cos(a) * 24, Math.sin(a) * 24);
-      }
-      gfx.stroke({ width: 3, color: 0xffffff, alpha: 0.9 });
-      break;
-    }
-    case 'shaker': {
-      // Trail blob: soft, edgeless — it should read as residue, not a zone.
-      gfx.circle(0, 0, r).fill({ color: 0xffffff, alpha: 0.16 });
-      gfx.circle(0, 0, r * 0.55).fill({ color: 0xffffff, alpha: 0.14 });
       break;
     }
     default: {

@@ -178,9 +178,6 @@ export interface Projectile {
   orbitAngle: number;
   orbitRadius: number;
   rehitT: number;
-  /** pluck: the point it arcs to; on arrival it explodes (damageArea). */
-  tx: number;
-  ty: number;
   /** bell: shards to spawn on this shot's first hit (0 for a shard itself, so
    *  shards never re-shatter). */
   shatter: number;
@@ -198,12 +195,8 @@ export interface Zone {
   color: number;
   /** Weapon that spawned this zone: its damage is attributed here (D8). */
   source: Role;
-  /** chord/shaker slow enemies inside on each tick; acid/rhodes do not. */
+  /** Whether enemies inside are slowed on each tick. */
   slow: boolean;
-  /** acid: inward pull speed (px/s) applied every frame; 0 for other zones. */
-  pull: number;
-  /** rhodes: an armed mine — no periodic tick; blooms once on enemy contact. */
-  mine: boolean;
 }
 
 export interface Gem {
@@ -449,39 +442,6 @@ export class RunWorld {
         const reach = conf.radius! * (0.9 + 0.2 * v);
         this.damageCone(p.x, p.y, ang, conf.arc!, reach, conf.damage * (0.85 + 0.3 * v), 'clap', WEAPON_SHOVE.clap);
         this.fx?.push({ type: 'arc', x: p.x, y: p.y, angle: ang, arc: conf.arc!, radius: reach, color });
-        break;
-      }
-      case 'shaker': {
-        // Drop a short-lived damaging blob where you stand; moving strings them
-        // into a trail. No slow — the hats own speed, not control. Accented
-        // shakes drop fatter blobs (velocity → size).
-        const sc = { ...conf, radius: conf.radius! * (0.8 + 0.4 * v) };
-        this.spawnZone(p.x, p.y, sc, color, 'shaker', { slow: false });
-        this.spawnRing(p.x, p.y, sc.radius, color, 0.18, true);
-        break;
-      }
-      case 'acid': {
-        // A gravity well thrown at the nearest pack: pulls enemies in and ticks
-        // damage while they are caught.
-        const target = this.nearestEnemy(ZONE_THROW_RANGE);
-        // Accented notes pull harder (velocity → suction, the well's punch).
-        this.spawnZone(target?.x ?? p.x, target?.y ?? p.y, conf, color, 'acid', {
-          slow: false,
-          pull: (conf.pull ?? 100) * (0.85 + 0.3 * v),
-        });
-        break;
-      }
-      case 'pluck': {
-        // A note lobbed on an arc to the nearest pack; it bursts on landing.
-        this.spawnLob(conf, color, v);
-        break;
-      }
-      case 'rhodes': {
-        // Place an armed mine where you stand; it blooms when an enemy steps
-        // in. Loud chords lay bigger, harder mines (velocity → size + damage).
-        const mc = { ...conf, radius: conf.radius! * (0.85 + 0.3 * v), damage: conf.damage * (0.85 + 0.3 * v) };
-        this.spawnZone(p.x, p.y, mc, color, 'rhodes', { mine: true });
-        this.spawnRing(p.x, p.y, mc.radius, color, 0.2, true);
         break;
       }
       case 'bell': {
@@ -1268,8 +1228,6 @@ export class RunWorld {
       orbitAngle: 0,
       orbitRadius: 0,
       rehitT: 0,
-      tx: 0,
-      ty: 0,
       shatter: 0,
       shard: false,
     };
@@ -1285,29 +1243,6 @@ export class RunWorld {
     const pr = this.baseProjectile(role, conf, color, conf.damage * (0.75 + 0.5 * velocity));
     pr.vx = dir.x * conf.speed!;
     pr.vy = dir.y * conf.speed!;
-    this.projectiles.push(pr);
-  }
-
-  /** Pluck bass: a note lobbed toward the nearest pack that explodes on
-   *  landing. lifeS is set to the travel time, so it bursts on arrival. */
-  private spawnLob(conf: WeaponConf, color: number, velocity: number): void {
-    const p = this.player;
-    const target = this.nearestEnemy(AIM_RANGE);
-    const tx = target?.x ?? p.x + (this.rng() * 2 - 1) * 220;
-    const ty = target?.y ?? p.y + (this.rng() * 2 - 1) * 220;
-    const pr = this.baseProjectile('pluck', conf, color, conf.damage * (0.8 + 0.4 * velocity));
-    const dx = tx - p.x;
-    const dy = ty - p.y;
-    const d = Math.hypot(dx, dy) || 1;
-    const speed = conf.speed ?? 300;
-    pr.vx = (dx / d) * speed;
-    pr.vy = (dy / d) * speed;
-    pr.tx = tx;
-    pr.ty = ty;
-    // Accented plucks land a wider burst (velocity → blast size).
-    pr.radius = conf.radius! * (0.85 + 0.3 * velocity);
-    pr.pierce = Infinity; // never consumed en route — it only bursts on landing
-    pr.lifeS = Math.min(conf.lifetimeS ?? 0.7, d / speed);
     this.projectiles.push(pr);
   }
 
@@ -1486,20 +1421,6 @@ export class RunWorld {
       pr.age += dt;
       pr.lifeS -= dt;
 
-      if (pr.role === 'pluck') {
-        // Lobbed note: arcs toward its landing point and bursts there. No
-        // en-route hits — it only explodes where it lands.
-        pr.x += pr.vx * dt;
-        pr.y += pr.vy * dt;
-        if (pr.lifeS <= 0) {
-          this.damageArea(pr.x, pr.y, pr.radius, pr.damage, 'pluck', 18);
-          this.spawnRing(pr.x, pr.y, pr.radius, pr.color, 0.28);
-          this.fx?.push({ type: 'slam', x: pr.x, y: pr.y, radius: pr.radius * 0.5, color: pr.color });
-          this.projectiles.splice(i, 1);
-        }
-        continue;
-      }
-
       if (pr.role === 'arp') {
         // Orbit the player; clear the hit set on a cooldown so a slow sweep
         // keeps chipping the same enemy instead of touching it once.
@@ -1582,7 +1503,6 @@ export class RunWorld {
     conf: { damage: number; radius?: number; lifetimeS?: number },
     color: number,
     source: Role,
-    opts: { slow?: boolean; pull?: number; mine?: boolean } = {},
   ): void {
     this.zones.push({
       x,
@@ -1593,9 +1513,7 @@ export class RunWorld {
       tickT: 0,
       color,
       source,
-      slow: opts.slow ?? true,
-      pull: opts.pull ?? 0,
-      mine: opts.mine ?? false,
+      slow: true,
     });
   }
 
@@ -1603,36 +1521,6 @@ export class RunWorld {
     for (let i = this.zones.length - 1; i >= 0; i--) {
       const z = this.zones[i];
       z.lifeS -= dt;
-
-      // Acid: a gravity well — pull caught enemies toward the center every
-      // frame (the chase resumes the instant the knock channel lapses).
-      if (z.pull > 0) {
-        const inside = this.hash.query(z.x, z.y, z.radius + 24, this.queryBuf);
-        for (const e of inside) {
-          if (!e.dead && circlesOverlap(z, e)) this.drag(e, z.x, z.y, z.pull, 0.05);
-        }
-      }
-
-      // Rhodes: an armed mine — it does not tick; it blooms once when an enemy
-      // steps in, then expires.
-      if (z.mine) {
-        const inside = this.hash.query(z.x, z.y, z.radius + 24, this.queryBuf);
-        let tripped = false;
-        for (const e of inside) {
-          if (!e.dead && circlesOverlap(z, e)) {
-            tripped = true;
-            break;
-          }
-        }
-        if (tripped) {
-          this.damageArea(z.x, z.y, z.radius * 1.15, z.damage, z.source, 18);
-          this.spawnRing(z.x, z.y, z.radius * 1.15, z.color, 0.3);
-          this.fx?.push({ type: 'slam', x: z.x, y: z.y, radius: z.radius, color: z.color });
-          z.lifeS = 0;
-        }
-        if (z.lifeS <= 0) this.zones.splice(i, 1);
-        continue;
-      }
 
       z.tickT -= dt;
       if (z.tickT <= 0) {
@@ -1650,19 +1538,6 @@ export class RunWorld {
         this.zones.splice(i, 1);
       }
     }
-  }
-
-  /** Pull an enemy toward a point at `speed` px/s for `holdS` (acid's well).
-   *  Writes only the knock channel the bot also
-   *  simulates, so it stays deterministic; re-apply each frame for a steady
-   *  pull, or once for a brief yank. */
-  private drag(e: Enemy, toX: number, toY: number, speed: number, holdS: number): void {
-    const dx = toX - e.x;
-    const dy = toY - e.y;
-    const d = Math.hypot(dx, dy) || 1;
-    e.knockX = (dx / d) * speed;
-    e.knockY = (dy / d) * speed;
-    e.knockT = Math.max(e.knockT, holdS);
   }
 
   private damageArea(
