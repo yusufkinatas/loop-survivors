@@ -184,20 +184,12 @@ export class Hud {
     const s = this.newScreen();
     el('h1', '', s, 'Loop Survivors');
     el('p', 'sub', s, 'WASD or touch to move. Survive 8 minutes.');
-    const startActions = el('div', 'start-actions', s);
-    const startBtn = el('button', 'start-btn', startActions, 'start');
+    const startBtn = el('button', 'start-btn', s, 'start');
     startBtn.onclick = () => {
       this.closeScreen();
       onStart('kick');
     };
-    const livingLabBtn = el('button', 'start-lab-btn', startActions, 'living lab');
-    livingLabBtn.onclick = () => {
-      const url = new URL(location.href);
-      url.hash = '';
-      url.searchParams.set('lab', 'hub');
-      location.assign(`${url.pathname}${url.search}`);
-    };
-    // The remaining developer entrances stay behind their small disclosure.
+    // Auxiliary entrances share one small, collapsed disclosure.
     const dev = el('div', 'start-dev', s);
     const devToggle = el('button', 'small start-dev-toggle', dev, 'dev tools');
     const row = el('div', 'start-dev-row', dev);
@@ -206,6 +198,13 @@ export class Hud {
       row.style.display = row.style.display === 'none' ? '' : 'none';
       devToggle.classList.toggle('on', row.style.display !== 'none');
       (devToggle as HTMLButtonElement).blur();
+    };
+    const livingLabBtn = el('button', 'small start-lab-btn', row, 'living lab');
+    livingLabBtn.onclick = () => {
+      const url = new URL(location.href);
+      url.hash = '';
+      url.searchParams.set('lab', 'hub');
+      location.assign(`${url.pathname}${url.search}`);
     };
     const bossBtn = el('button', 'small', row, 'boss fights');
     bossBtn.onclick = () => {

@@ -10,7 +10,8 @@ This tool is additive. It does not advance or replace a phase's developer gate.
 
 ## Open it
 
-The normal main menu always shows **living lab** directly below **start**.
+On the normal main menu, expand **dev tools** below **start**, then choose the
+small **living lab** button alongside the other auxiliary rooms.
 
 For local development, start the server with:
 
@@ -67,8 +68,9 @@ The check builds the production app, starts a temporary preview server, walks
 every registered room and every tagged manual control in headless Chrome,
 rejects console/runtime errors, checks the generated enemy and instrument roster
 counts, exercises the three museum rules, and verifies shared-state restoration.
-It then takes the real exit path, requires a clean normal start screen, and
-reopens the hub through the visible **living lab** button.
+It then takes the real exit path, requires a clean normal start screen, confirms
+the Lab entry is collapsed by default, expands **dev tools**, and reopens the hub
+through the revealed **living lab** button.
 
 The stable automation hooks are `data-lab-ready`, `data-lab-room`,
 `data-lab-action`, `data-enemy-kind`, `data-role`, and

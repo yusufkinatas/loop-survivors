@@ -737,30 +737,6 @@ input[type='range'] {
   color: var(--signal);
 }
 
-.start-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: var(--sp-2);
-}
-
-.start-lab-btn {
-  min-height: 44px;
-  padding: 8px 22px;
-  color: var(--ink-dim);
-  font-size: var(--fs-body);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  border-color: var(--line-2);
-  background: var(--bg-2);
-}
-
-.start-lab-btn:hover,
-.start-lab-btn:focus-visible {
-  color: var(--signal);
-  border-color: var(--signal-dim);
-}
-
 button.big {
   font-size: 18px;
   padding: 12px 30px;
@@ -1513,8 +1489,8 @@ button.big {
 
 /* Slot badge on a pick card: the plain player-facing band position this hire
    plugs, so every card answers "what does taking this cost me?" at a glance. */
-/* Start-screen dev entrances: one small disclosure link that reveals the row
-   of lab links (boss fights / sandbox / rehearsal / experimentation). */
+/* Start-screen auxiliary entrances: one small disclosure link that reveals
+   the Living Lab and the other developer rooms. */
 .start-dev {
   display: flex;
   flex-direction: column;

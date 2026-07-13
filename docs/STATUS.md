@@ -15,11 +15,12 @@ active soundset roster, with tier/variation controls and manual
 (one sound event/two outputs, contact damage + invulnerability, and one-owner
 band positions). The practical guide is `docs/tools/living-lab.md`.
 
-At the developer's explicit direction after the initial build, the access gate
-was removed **for now**: the normal main menu always shows a **living lab**
-button directly below **start**, and `#lab` / `?lab=<room>` work in production
-as well as development. `VITE_LOOP_LAB_ROOM=<room>` remains the direct local
-boot shortcut. Room rosters and stage reference rows come from
+At the developer's explicit direction after the initial build, the route access
+gate was removed **for now**: `#lab` / `?lab=<room>` work in production as well
+as development. At his final UI direction, the homepage's small **living lab**
+button sits alongside the other auxiliary rooms inside the collapsed **dev
+tools** disclosure below **start**. `VITE_LOOP_LAB_ROOM=<room>` remains the
+direct local boot shortcut. Room rosters and stage reference rows come from
 canonical game data, not parallel lists. Exact-position enemy display is a thin
 adapter over the real constructor, and manual instrument pulses travel through
 the normal audio/gameplay coupling. One suite-level trigger listener, one input
@@ -34,17 +35,17 @@ production app, then drives every room and manual action in bounded headless
 Chrome, compares exact generated registry IDs, exercises every active
 instrument/tier/sound variation, fails on
 runtime/console errors, verifies the shared snapshot, then takes the real exit
-path, requires a clean normal start screen, and reopens the hub through the
-visible public button.
+path, requires a clean normal start screen with the Lab entry collapsed, expands
+**dev tools**, and reopens the hub through the revealed button.
 
 Verification: `tsc --noEmit` clean; production `vite build` clean (772 modules);
-the production browser drive passes and reopens the Lab through the visible menu
-button; desktop 1440×900 screenshots of all rooms and 390×844 touch layouts were
-inspected with no overlap or unreadable controls; the final mobile menu button
-has a 44 px touch target; deterministic bot seed 1729 remains byte-for-byte on
-its reference result (death 173.6 s, level 2, 98 kills, Kick damage 306, peak
-alive 449). **No developer phase gate advanced; this is additive tooling and the
-parity hands/ear gate remains pending.**
+the production browser drive passes and reopens the Lab through the collapsed
+homepage disclosure; desktop 1440×900 screenshots of all rooms and 390×844
+touch layouts were inspected with no overlap or unreadable controls;
+deterministic bot seed 1729 remains byte-for-byte on its reference result (death
+173.6 s, level 2, 98 kills, Kick damage 306, peak alive 449). **No developer
+phase gate advanced; this is additive tooling and the parity hands/ear gate
+remains pending.**
 
 The architecture audit exposed one pre-existing parity discrepancy: the locked
 spec and comments describe a shared 1.35-second per-target Kick re-hit lock, but

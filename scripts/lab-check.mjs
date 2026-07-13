@@ -250,7 +250,8 @@ try {
     `(() => ({
       heading: document.querySelector('.start-btn')?.closest('.screen')?.querySelector('h1')?.textContent ?? '',
       start: Boolean(document.querySelector('.start-btn')),
-      publicLab: (() => {
+      labEntryPresent: Boolean(document.querySelector('.start-lab-btn')),
+      labEntryVisible: (() => {
         const button = document.querySelector('.start-lab-btn');
         return Boolean(button && button.getBoundingClientRect().width > 0 && button.getBoundingClientRect().height > 0);
       })(),
@@ -259,13 +260,29 @@ try {
     }))()`,
     (value) => value?.start === true,
   );
-  if (normal.heading !== 'Loop Survivors' || !normal.publicLab || normal.lab || normal.restoreFailed) {
+  if (
+    normal.heading !== 'Loop Survivors' ||
+    !normal.labEntryPresent ||
+    normal.labEntryVisible ||
+    normal.lab ||
+    normal.restoreFailed
+  ) {
     throw new Error(`Normal boot regression after lab exit: ${JSON.stringify(normal)}`);
   }
   if (client.errors.length > 0) {
     throw new Error(`Browser errors after normal boot:\n${client.errors.join('\n')}`);
   }
 
+  await client.evaluate("document.querySelector('.start-dev-toggle').click(); true");
+  await waitFor(
+    'expanded Living Lab menu entry',
+    client,
+    `(() => {
+      const button = document.querySelector('.start-lab-btn');
+      return Boolean(button && button.getBoundingClientRect().width > 0 && button.getBoundingClientRect().height > 0);
+    })()`,
+    (value) => value === true,
+  );
   await client.evaluate("document.querySelector('.start-lab-btn').click(); true");
   await waitFor(
     'public Living Lab menu entry',
@@ -278,7 +295,7 @@ try {
   );
 
   console.log('Living Lab: PASS (4 rooms, fail-fast browser drive, globals restored)');
-  console.log('Normal game: PASS (real lab exit, fresh start screen, public lab button visible)');
+  console.log('Normal game: PASS (fresh start, Lab entry collapsed then opened through dev tools)');
 } finally {
   client?.close();
   await terminate(chrome);
