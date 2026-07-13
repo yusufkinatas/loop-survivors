@@ -9,6 +9,7 @@ import { mountRehearsalRoom } from './rehearsal/room';
 import { mountTrackLab } from './tracklab/lab';
 import { mountBossFight } from './boss/page';
 import { bootGame } from './game/game';
+import { devToolsEnabled, requestedLabRoom } from './dev';
 import './style.css';
 
 async function boot(): Promise<void> {
@@ -33,7 +34,11 @@ async function boot(): Promise<void> {
   (window as unknown as { loop: object }).loop = { engine, kits, charts };
 
   root.textContent = '';
-  if (location.hash === '#rehearsal') {
+  const labRoom = requestedLabRoom();
+  if (labRoom && devToolsEnabled()) {
+    const { mountDocumentationLab } = await import('./lab/page');
+    await mountDocumentationLab(root, engine, kits, labRoom);
+  } else if (location.hash === '#rehearsal') {
     mountRehearsalRoom(root, engine);
   } else if (location.hash === '#tracklab') {
     // The Experimentation room: kept as a standalone lab for auditioning

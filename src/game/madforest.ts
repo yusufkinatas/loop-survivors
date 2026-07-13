@@ -15,12 +15,13 @@ export interface StageWave {
 
 export type StageEvent =
   | { atS: number; type: 'boss'; kind: 'glowingBat' | 'mantis'; rewardChance: number }
-  | { atS: number; type: 'batSweep'; count: number; chance: number }
-  | { atS: number; type: 'flowerWall'; count: number; durationS: number };
+  | { atS: number; type: 'batSweep'; kind: 'batSwarm'; count: number; chance: number }
+  | { atS: number; type: 'flowerWall'; kind: 'flower'; count: number; durationS: number };
 
 /** Current normal Mad Forest starts with ten enemies already in play,
  * tripled here for the 3x-density pass. */
 export const STAGE_STARTING_SPAWNS = 30;
+export const STAGE_STARTING_KIND: EnemyKind = 'redBat2';
 
 /** The user's run remains the locked eight-minute arc, so rows 0:00-7:59
  * are reproduced one-for-one rather than compressing thirty minutes. */
@@ -37,23 +38,44 @@ export const STAGE_WAVES: readonly StageWave[] = [
 
 export const STAGE_EVENTS: readonly StageEvent[] = [
   { atS: 60, type: 'boss', kind: 'glowingBat', rewardChance: 0.3 },
-  { atS: 125, type: 'batSweep', count: 150, chance: 1 },
-  { atS: 130, type: 'batSweep', count: 150, chance: 1 },
-  { atS: 135, type: 'batSweep', count: 150, chance: 1 },
+  { atS: 125, type: 'batSweep', kind: 'batSwarm', count: 150, chance: 1 },
+  { atS: 130, type: 'batSweep', kind: 'batSwarm', count: 150, chance: 1 },
+  { atS: 135, type: 'batSweep', kind: 'batSwarm', count: 150, chance: 1 },
   { atS: 180, type: 'boss', kind: 'glowingBat', rewardChance: 0.43 },
-  { atS: 185, type: 'batSweep', count: 150, chance: 0.1 },
-  { atS: 190, type: 'batSweep', count: 150, chance: 0.1 },
-  { atS: 245, type: 'batSweep', count: 150, chance: 0.1 },
-  { atS: 250, type: 'batSweep', count: 150, chance: 0.1 },
+  { atS: 185, type: 'batSweep', kind: 'batSwarm', count: 150, chance: 0.1 },
+  { atS: 190, type: 'batSweep', kind: 'batSwarm', count: 150, chance: 0.1 },
+  { atS: 245, type: 'batSweep', kind: 'batSwarm', count: 150, chance: 0.1 },
+  { atS: 250, type: 'batSweep', kind: 'batSwarm', count: 150, chance: 0.1 },
   { atS: 300, type: 'boss', kind: 'mantis', rewardChance: 1 },
-  { atS: 300, type: 'flowerWall', count: 300, durationS: 30 },
-  { atS: 365, type: 'batSweep', count: 150, chance: 0.1 },
-  { atS: 370, type: 'batSweep', count: 150, chance: 0.1 },
+  { atS: 300, type: 'flowerWall', kind: 'flower', count: 300, durationS: 30 },
+  { atS: 365, type: 'batSweep', kind: 'batSwarm', count: 150, chance: 0.1 },
+  { atS: 370, type: 'batSweep', kind: 'batSwarm', count: 150, chance: 0.1 },
   { atS: 420, type: 'boss', kind: 'glowingBat', rewardChance: 0.5635 },
-  { atS: 425, type: 'batSweep', count: 150, chance: 0.8 },
-  { atS: 430, type: 'batSweep', count: 150, chance: 0.8 },
-  { atS: 435, type: 'batSweep', count: 150, chance: 0.8 },
-  { atS: 440, type: 'batSweep', count: 150, chance: 0.8 },
-  { atS: 445, type: 'batSweep', count: 150, chance: 0.8 },
-  { atS: 450, type: 'batSweep', count: 150, chance: 0.8 },
+  { atS: 425, type: 'batSweep', kind: 'batSwarm', count: 150, chance: 0.8 },
+  { atS: 430, type: 'batSweep', kind: 'batSwarm', count: 150, chance: 0.8 },
+  { atS: 435, type: 'batSweep', kind: 'batSwarm', count: 150, chance: 0.8 },
+  { atS: 440, type: 'batSweep', kind: 'batSwarm', count: 150, chance: 0.8 },
+  { atS: 445, type: 'batSweep', kind: 'batSwarm', count: 150, chance: 0.8 },
+  { atS: 450, type: 'batSweep', kind: 'batSwarm', count: 150, chance: 0.8 },
 ] as const;
+
+/** Every enemy the active eight-minute stage can produce, ordered by its first
+ *  appearance in the timeline. This is derived from the stage data so adding a
+ *  wave/event enemy automatically exposes it to developer rosters. */
+export const ACTIVE_ENEMY_KINDS: readonly EnemyKind[] = (() => {
+  const rows = [
+    { atS: -1, kinds: [STAGE_STARTING_KIND] as const },
+    ...STAGE_WAVES.map((wave) => ({ atS: wave.atS, kinds: wave.pattern })),
+    ...STAGE_EVENTS.map((event) => ({ atS: event.atS, kinds: [event.kind] as const })),
+  ].sort((a, b) => a.atS - b.atS);
+  const seen = new Set<EnemyKind>();
+  const kinds: EnemyKind[] = [];
+  for (const row of rows) {
+    for (const kind of row.kinds) {
+      if (seen.has(kind)) continue;
+      seen.add(kind);
+      kinds.push(kind);
+    }
+  }
+  return Object.freeze(kinds);
+})();

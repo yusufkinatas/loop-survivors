@@ -7,6 +7,7 @@ import { type Kit, type Role } from '../audio/kits';
 import { SLOTS, SLOT_LABEL, ownerOfSlot, supportedRoster } from './band';
 
 import { TIER_COUNT } from '../audio/charts';
+import { devToolsEnabled } from '../dev';
 
 /** Tier numerals still used by the band rack + the bot-replay pick toast. */
 export const TIER_NUMERALS = ['I', 'II', 'III', 'IV'];
@@ -201,6 +202,15 @@ export class Hud {
       devToggle.classList.toggle('on', row.style.display !== 'none');
       (devToggle as HTMLButtonElement).blur();
     };
+    if (devToolsEnabled()) {
+      const livingLabBtn = el('button', 'small', row, 'living lab');
+      livingLabBtn.onclick = () => {
+        const url = new URL(location.href);
+        url.hash = '';
+        url.searchParams.set('lab', 'hub');
+        location.assign(`${url.pathname}${url.search}`);
+      };
+    }
     const bossBtn = el('button', 'small', row, 'boss fights');
     bossBtn.onclick = () => {
       location.hash = '#boss';

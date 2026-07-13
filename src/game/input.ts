@@ -17,11 +17,20 @@ export const autoMove = { active: false };
 
 export class Input {
   private down = new Set<string>();
+  private readonly onKeyDown = (e: KeyboardEvent): void => {
+    this.down.add(e.code);
+  };
+  private readonly onKeyUp = (e: KeyboardEvent): void => {
+    this.down.delete(e.code);
+  };
+  private readonly onBlur = (): void => {
+    this.down.clear();
+  };
 
   constructor() {
-    window.addEventListener('keydown', (e) => this.down.add(e.code));
-    window.addEventListener('keyup', (e) => this.down.delete(e.code));
-    window.addEventListener('blur', () => this.down.clear());
+    window.addEventListener('keydown', this.onKeyDown);
+    window.addEventListener('keyup', this.onKeyUp);
+    window.addEventListener('blur', this.onBlur);
   }
 
   /** Movement vector, magnitude 0..1. */
@@ -39,5 +48,15 @@ export class Input {
       y *= inv;
     }
     return { x, y };
+  }
+
+  /** Rooms that navigate without a page reload must not accumulate global
+   * keyboard listeners. The normal game lives for the page lifetime and may
+   * ignore this disposer; the living lab calls it on exit. */
+  destroy(): void {
+    window.removeEventListener('keydown', this.onKeyDown);
+    window.removeEventListener('keyup', this.onKeyUp);
+    window.removeEventListener('blur', this.onBlur);
+    this.down.clear();
   }
 }

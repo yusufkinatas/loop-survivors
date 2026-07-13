@@ -103,6 +103,7 @@ export class MusicEngine {
   private suspendPromise: Promise<void> | null = null;
   private transportGeneration = 0;
   private pending: PendingTrigger[] = [];
+  private activeSources = new Set<AudioBufferSourceNode>();
   private listeners: TriggerListener[] = [];
   private barQueue: ((audioTime: number) => void)[] = [];
   private timedActions: TimedAction[] = [];
@@ -372,9 +373,21 @@ export class MusicEngine {
     voice.tune = samples ? tune : 0;
   }
 
-  /** Register for due triggers. Fired from update(), i.e. frame-synced. */
-  addTriggerListener(cb: TriggerListener): void {
-    this.listeners.push(cb);
+  /** Register for due triggers. Fired from update(), i.e. frame-synced. Returns
+   *  an idempotent unsubscribe so temporary developer surfaces cannot leak. */
+  addTriggerListener(cb: TriggerListener): () => void {
+    let active = true;
+    const listener: TriggerListener = (trigger) => {
+      if (active) cb(trigger);
+    };
+    this.listeners.push(listener);
+    return () => {
+      if (!active) return;
+      active = false;
+      // Replace rather than splice: unsubscribing inside a callback cannot make
+      // the current dispatch skip the listener that follows it.
+      this.listeners = this.listeners.filter((candidate) => candidate !== listener);
+    };
   }
 
   /** Musical entry rule (M2): run fn while scheduling the start of the next
@@ -396,6 +409,44 @@ export class MusicEngine {
   clearBarQueue(): void {
     this.barQueue = [];
     this.timedActions = [];
+  }
+
+  /** Stop and forget the scheduler's temporary audio state. Top-level
+   * developer surfaces use this when changing exhibits so a lookahead note,
+   * choke reference, or delayed gameplay trigger cannot cross the boundary.
+   * Normal run flow deliberately keeps using the narrower clearBarQueue(). */
+  clearTransientSchedule(): void {
+    this.clock.stop();
+    const now = this.ctx.currentTime;
+    for (const source of this.activeSources) {
+      try {
+        source.stop(now);
+      } catch {
+        // The source may already have ended between collection and cleanup.
+      }
+    }
+    this.activeSources.clear();
+    this.pending = [];
+    this.barQueue = [];
+    this.timedActions = [];
+    this.stepMarkers = [];
+    this.lastDueStep = 0;
+    this.nextTimedActionSeq = 0;
+    for (const voice of this.voices.values()) {
+      voice.lastHit = null;
+      voice.duck.gain.cancelScheduledValues(now);
+      voice.duck.gain.value = 1;
+    }
+  }
+
+  transientScheduleEmpty(): boolean {
+    return (
+      this.activeSources.size === 0 &&
+      this.pending.length === 0 &&
+      this.barQueue.length === 0 &&
+      this.timedActions.length === 0 &&
+      this.stepMarkers.length === 0
+    );
   }
 
   /** Dispatch every trigger whose scheduled time has arrived. Call once per
@@ -489,6 +540,8 @@ export class MusicEngine {
 
     const src = this.ctx.createBufferSource();
     src.buffer = buffer;
+    this.activeSources.add(src);
+    src.addEventListener('ended', () => this.activeSources.delete(src), { once: true });
 
     let rate = semitonesToRate((ev.note ?? 0) + voice.tune);
     if (!voice.kit.pitched) {

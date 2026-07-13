@@ -2,7 +2,55 @@
 
 Last updated: July 13, 2026
 
-## Latest change (July 13, 2026) — FX weapon class removed from the build
+## Latest change (July 13, 2026) — Living Lab: in-game documentation suite
+
+Built the developer-only **Living Lab** on branch
+`codex/in-game-lab-suite`, started directly from `main`. It is one gated
+`#lab` mount with an internal hub and one shared real `RunWorld` / `RunView` /
+audio context. The four rooms are: **Movement & Space Gym** (real input speed,
+camera, and spawn-boundary measurements), **Enemy Zoo** (the exact active-stage
+roster derived from starting/wave/event data), **Instrument Zoo** (the exact
+active soundset roster, with tier/variation controls and manual
+`MusicEngine.preview()` → due trigger → real weapon fire), and **Systems Museum**
+(one sound event/two outputs, contact damage + invulnerability, and one-owner
+band positions). The practical guide is `docs/tools/living-lab.md`.
+
+The suite is enabled automatically only by Vite development builds, or by an
+explicit `VITE_LOOP_DEV_TOOLS=1` production build; a guessed player URL cannot
+turn it on. Direct development boots use `?lab=<room>` or
+`VITE_LOOP_LAB_ROOM=<room>`. Room rosters and stage reference rows come from
+canonical game data, not parallel lists. Exact-position enemy display is a thin
+adapter over the real constructor, and manual instrument pulses travel through
+the normal audio/gameplay coupling. One suite-level trigger listener, one input
+stack, and one Pixi application are reused across every room.
+
+Global-state isolation is explicit: entry snapshots the AudioContext state,
+clock, every voice's enable/tier/gain, touch input, and auto-move state; room
+changes flush pending audio/gameplay triggers and all transient world entities;
+exit restores the snapshot and disposes the trigger, keyboard, joystick, view,
+and application before the normal game reloads. `npm run check:lab` drives every
+room and manual action in bounded headless Chrome, compares exact generated
+registry IDs, exercises every active instrument/tier/sound variation, fails on
+runtime/console errors, verifies the shared snapshot, then takes the real exit
+path and requires a clean normal start screen.
+
+Verification: `tsc --noEmit` clean; production `vite build` clean (772 modules);
+the expanded browser drive passes; desktop 1440×900 screenshots of all rooms and
+390×844 touch layouts were inspected with no overlap or unreadable controls; a
+normal browser run starts clean; deterministic bot seed 1729 remains byte-for-byte
+on its reference result (death 173.6 s, level 2, 98 kills, Kick damage 306,
+peak alive 449). **No developer phase gate advanced; this is additive tooling and
+the parity hands/ear gate remains pending.**
+
+The architecture audit exposed one pre-existing parity discrepancy: the locked
+spec and comments describe a shared 1.35-second per-target Kick re-hit lock, but
+the live simulation currently remembers hits only within each individual strip;
+a fresh beat can hit the same target again. The Museum deliberately does not
+claim that rule. This gameplay mismatch was not silently changed as part of the
+documentation-suite branch and remains to be resolved before that gate item can
+be judged.
+
+## Previous change (July 13, 2026) — FX weapon class removed from the build
 
 At the developer's direction, the **FX band slot and its two weapons (crash =
 shockwave, riser = auto-dash) are removed from the player's build/weapons
@@ -209,7 +257,9 @@ ladders, samples) is kept. See the History entry below for the full teardown.
 awaiting a dedicated developer hands gate.** This is an addendum to the July 10
 overhaul, not a claim that the older band B+C gate passed. The historical band
 work and ledger below are retained for context, but they are not the current
-next action after the catalog cut and parity directive.
+next action after the catalog cut and parity directive. The Living Lab audit has
+since identified the shared Kick re-hit lock as one known implementation/spec
+mismatch; no gate credit is attached to it.
 
 ## What was built (July 6)
 
@@ -241,16 +291,18 @@ Gate A also implicitly co-judged the July 6 genres-and-weapons material it stack
 
 ## Next action
 
-Run the manual eight-minute playtest and sandbox for the actual gate. TypeScript,
-the production build, deterministic parity assertions, bot smoke/batches, and
-browser visual checks are clean. The developer now judges:
+Resolve or explicitly disposition the shared Kick re-hit-lock mismatch noted
+above, then run the manual eight-minute playtest and sandbox for the actual gate.
+TypeScript, the production build, deterministic bot smoke/batches, and browser
+visual checks are clean. The developer then judges:
 
 - whether manual movement, collision, and contact danger have the first-level
   Vampire Survivors weight;
 - whether minutes 0–7 produce the right density, breathers, sweeps, flower
   enclosure, elites, XP, and pick cadence;
-- whether Kick's facing strips, opposite-side follow-up, damage, per-target
-  lock, and small footprint feel like the Whip despite the Model A compromise;
+- whether Kick's facing strips, opposite-side follow-up, damage, shared
+  per-target lock (after the known mismatch is resolved), and small footprint
+  feel like the Whip despite the Model A compromise;
 - whether every other AoE is disciplined on the new scale; and
 - whether enemy/elite reads and the original vanish effect make kills clear
   and satisfying.
