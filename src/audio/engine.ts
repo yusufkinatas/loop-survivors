@@ -80,7 +80,7 @@ const DUCK_ATTACK = 0.008;
 const DUCK_RELEASE = 0.14;
 // The Bass-slot sub-bass instruments the kick ducks. A build owns at most one
 // (they share the Bass slot), so this ducks whichever is present.
-const SUB_BASS_ROLES: readonly Role[] = ['bass', 'pluck'];
+const SUB_BASS_ROLES: readonly Role[] = ['bass'];
 
 export class MusicEngine {
   readonly ctx: AudioContext;
@@ -556,9 +556,7 @@ export class MusicEngine {
     src.start(time);
 
     // Kick ducks bass (design rule 1): schedule the dip at the kick's future
-    // audio time (the clock runs ~0.12s ahead), for whichever sub-bass fills
-    // the Bass slot — bass, Reese, or pluck bass all sum with the kick's sub
-    // and must dip (a build only ever owns one of them, so at most one ducks).
+    // audio time (the clock runs ~0.12s ahead).
     // cancelScheduledValues from `time` keeps rapid kicks from stacking ramps.
     if (voice.role === 'kick') {
       for (const role of SUB_BASS_ROLES) {

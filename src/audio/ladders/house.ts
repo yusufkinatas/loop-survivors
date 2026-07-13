@@ -3,15 +3,13 @@
 // downbeats, the clap/snare own 2 & 4, the open hats ride the off-beats
 // (steps 2/6/10/14), and the bass answers the kick only in the gaps so the
 // low end stays clean. Chords stab syncopated with an anticipation into the
-// next bar, the Rhodes comps underneath, and the lead sings call-and-response
-// on top in 3-3-2 groupings.
+// next bar, and the lead sings call-and-response on top in 3-3-2 groupings.
 //
 // Grid: 16 steps per bar. Beats on 0/4/8/12, off-beats ("and"s) on 2/6/10/14.
 // Swing comes from the soundset globally; patterns stay on the straight grid.
 //
-// Supported roles = the full instrument catalog minus the retired FX slot
-// (crash/riser) and the retired tom — none are weapons any more. Key A minor
-// pentatonic.
+// Retired catalog voices have no ladder, so they are never weapons. Key A
+// minor pentatonic.
 
 import type { Chart } from '../charts';
 import type { Role } from '../kits';
@@ -53,14 +51,6 @@ export const SOUNDSET_LADDERS: Partial<Record<Role, Chart[]>> = {
     d('hat', 'x.O...O.x.O...O.'),
     d('hat', 'xxO.xxO.xxO.xxO.'),
   ],
-  // Hats: shaker densifies across tiers — on-beats, then 8ths, then 16ths with
-  // accents on the off-beats and ghosts between. Never just louder-everywhere.
-  shaker: [
-    d('shaker', 'o...o...o...o...'),
-    d('shaker', 'o.o.o.o.o.o.o.o.'),
-    d('shaker', 'o.xoo.xoo.xoo.xo'),
-    d('shaker', 'ooxoooxoooxoooxo'),
-  ],
   // Bass: OFF-BEAT bass answering the kick — staccato hits on 2/6/10/14, never
   // on the kick's 0/4/8/12. Root/fifth movement (0/7/12), growth = 16th
   // pickups (13/15) and octave jumps at high tiers on the fat variant.
@@ -74,20 +64,6 @@ export const SOUNDSET_LADDERS: Partial<Record<Role, Chart[]>> = {
     m('bass', 2, [
       [2, 0.9, 0, 'fat'], [6, 0.75, 0, 'fat'], [10, 0.85, 7, 'fat'], [13, 0.55, 0, 'fat'], [14, 0.75, 12, 'fat'],
       [B + 2, 0.9, 0, 'fat'], [B + 6, 0.75, 7, 'fat'], [B + 10, 0.85, 12, 'fat'], [B + 13, 0.55, 7, 'fat'], [B + 14, 0.75, 0, 'fat'], [B + 15, 0.6, 0, 'fat'],
-    ]),
-  ],
-  // Bass alternative: plucked low end, same off-beat law as the bass but a
-  // touch sparser and heavier. Never on 0/4/8/12.
-  pluck: [
-    m('pluck', 1, [[2, 0.9, 0], [10, 0.85, 0]]),
-    m('pluck', 1, [[2, 0.9, 0], [10, 0.85, 7], [14, 0.7, 0]]),
-    m('pluck', 2, [
-      [2, 0.9, 0], [6, 0.7, 0], [10, 0.85, 7], [14, 0.7, 0],
-      [B + 2, 0.9, 0], [B + 10, 0.85, 12], [B + 14, 0.7, 7],
-    ]),
-    m('pluck', 2, [
-      [2, 0.9, 0], [6, 0.7, 0], [10, 0.85, 7], [14, 0.7, 12],
-      [B + 2, 0.9, 0], [B + 6, 0.7, 7], [B + 10, 0.85, 12], [B + 13, 0.55, 7], [B + 14, 0.7, 0],
     ]),
   ],
   // Harmony: syncopated piano stabs. Low tiers avoid the downbeat entirely;
@@ -104,20 +80,6 @@ export const SOUNDSET_LADDERS: Partial<Record<Role, Chart[]>> = {
     m('chord', 2, [
       [0, 0.5, 0, 'pad'], [2, 0.8, 0, 'stab'], [4, 0.6, 0, 'stab'], [7, 0.65, 0, 'stab'], [10, 0.75, 7, 'stab'], [12, 0.6, 7, 'stab'], [15, 0.65, 5, 'stab'],
       [B, 0.5, 5, 'pad'], [B + 2, 0.8, 5, 'stab'], [B + 4, 0.6, 5, 'stab'], [B + 7, 0.65, 7, 'stab'], [B + 10, 0.75, 7, 'stab'], [B + 12, 0.6, 5, 'stab'], [B + 15, 0.65, 0, 'stab'],
-    ]),
-  ],
-  // Harmony: Rhodes comps sparse under the stabs, off-beat placement only,
-  // growing fuller across the two bars.
-  rhodes: [
-    m('rhodes', 1, [[2, 0.55, 3], [10, 0.5, 7]]),
-    m('rhodes', 2, [[2, 0.6, 3], [10, 0.55, 7], [B + 2, 0.6, 5], [B + 10, 0.55, 10]]),
-    m('rhodes', 2, [
-      [2, 0.6, 3], [6, 0.5, 7], [10, 0.55, 10], [14, 0.45, 7],
-      [B + 2, 0.6, 5], [B + 10, 0.55, 10],
-    ]),
-    m('rhodes', 2, [
-      [2, 0.6, 3], [6, 0.5, 7], [10, 0.55, 10], [14, 0.5, 12],
-      [B + 2, 0.6, 5], [B + 6, 0.5, 10], [B + 10, 0.55, 12], [B + 14, 0.5, 7],
     ]),
   ],
   // Melody: call-and-response phrases over the full four bars. Low tiers leave
@@ -151,20 +113,6 @@ export const SOUNDSET_LADDERS: Partial<Record<Role, Chart[]>> = {
       // stuttered chop: the same note repeated on 16ths, resolving down
       [3 * B, 0.7, 12], [3 * B + 1, 0.55, 12], [3 * B + 2, 0.7, 12], [3 * B + 3, 0.55, 12],
       [3 * B + 6, 0.7, 10], [3 * B + 8, 0.7, 7], [3 * B + 12, 0.6, 10],
-    ]),
-  ],
-  // Motion: the squelchy acid line — a rolling syncopated 16th figure sliding
-  // up the pentatonic. Growth = more steps and a wider range.
-  acid: [
-    m('acid', 1, [[2, 0.55, 0], [6, 0.5, 3], [10, 0.55, 7], [14, 0.5, 10]]),
-    m('acid', 1, [[0, 0.55, 0], [3, 0.45, 3], [6, 0.5, 5], [10, 0.55, 7], [11, 0.45, 10], [14, 0.5, 7]]),
-    m('acid', 2, [
-      [0, 0.55, 0], [3, 0.45, 3], [6, 0.5, 5], [8, 0.5, 7], [10, 0.55, 10], [11, 0.45, 7], [14, 0.5, 5],
-      [B, 0.55, 3], [B + 3, 0.45, 5], [B + 6, 0.5, 7], [B + 8, 0.5, 10], [B + 10, 0.55, 12], [B + 11, 0.45, 10], [B + 14, 0.5, 7],
-    ]),
-    m('acid', 2, [
-      [0, 0.55, 0], [2, 0.45, 3], [3, 0.45, 5], [6, 0.5, 7], [8, 0.5, 10], [10, 0.55, 12], [11, 0.45, 10], [13, 0.45, 7], [14, 0.5, 5],
-      [B, 0.55, 3], [B + 2, 0.45, 5], [B + 3, 0.45, 7], [B + 6, 0.5, 10], [B + 8, 0.5, 12], [B + 10, 0.55, 15], [B + 11, 0.45, 12], [B + 13, 0.45, 10], [B + 14, 0.5, 7],
     ]),
   ],
   // Motion: driving pentatonic climb. Grows from a quarter-note outline of the

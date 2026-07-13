@@ -62,9 +62,9 @@ export function soundsetSupports(role: Role): boolean {
 // cycle.
 const FLOOR_GROUPS: { label: string; anyOf: Role[] }[] = [
   { label: 'a beat (Pulse)', anyOf: ['kick'] },
-  { label: 'a low end (Bass)', anyOf: ['bass', 'pluck'] },
-  { label: 'a tick (Hats)', anyOf: ['hat', 'shaker'] },
-  { label: 'a melodic voice (Harmony/Melody)', anyOf: ['chord', 'rhodes', 'lead', 'bell'] },
+  { label: 'a low end (Bass)', anyOf: ['bass'] },
+  { label: 'a tick (Hats)', anyOf: ['hat'] },
+  { label: 'a melodic voice (Harmony/Melody)', anyOf: ['chord', 'lead', 'bell'] },
 ];
 
 // Guard the soundset's track at build time: a bad shipped chart is a build

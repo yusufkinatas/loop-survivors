@@ -2,7 +2,37 @@
 
 Last updated: July 13, 2026
 
-## Latest change (July 13, 2026) — tom weapon removed from the build
+## Latest change (July 13, 2026) — pluck bass, Rhodes, acid, and shaker removed
+
+At the developer's direction, **pluck bass, Rhodes, acid, and shaker are
+removed from the player's build/weapons system**. The playable catalog is now
+nine weapons across seven band slots: Kick; Snare/Clap; Hat; Arp; Bass;
+Chord; and Lead/Bell. The four removed instruments are not offered, voiced in
+a run, shown on pick cards, or available in the Living Lab's active weapon
+roster.
+
+Removed: the four roles from their slot rosters in `src/game/band.ts` and from
+the soundset playability-floor alternatives; their ladders in
+`src/audio/ladders/house.ts` (making `soundsetSupports` false); their weapon
+stats and tier lines in `config.ts`; their pick-card glyphs; pluck bass from
+the Kick sidechain target list; and their exclusive gameplay/rendering paths.
+Those paths were shaker's damaging trail, acid's pulling gravity well, pluck
+bass's lob-and-burst projectile, and Rhodes's armed mine. Their now-unused
+projectile/zone fields, the acid-only `WeaponConf.pull` stat, and the Living
+Lab stat label were removed with them.
+
+**Kept (audio catalog, used elsewhere):** the four `Role` entries, metadata,
+colors, synthesis/sample renderers, and kit wiring remain because the
+rehearsal room iterates the complete `ROLES` catalog. They are dormant catalog
+voices, like tom/crash/riser, and cannot enter a normal run without a soundset
+ladder.
+
+Verification: `tsc --noEmit`, the production Vite build, and the four-room
+Living Lab browser drive pass. A 20-run kiter/random headless batch completed
+without crashes; its output contains no pluck, Rhodes, acid, or shaker damage.
+No developer gate advanced; this is a scope edit.
+
+## Previous change (July 13, 2026) — tom weapon removed from the build
 
 At the developer's direction, the **tom weapon (a Cross-style boomerang, the
 second Pulse-slot instrument) is removed from the player's build/weapons

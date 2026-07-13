@@ -619,8 +619,6 @@ export interface WeaponConf {
   arc?: number;
   /** arp: radius of the orbit around the player. */
   orbitRadius?: number;
-  /** acid gravity-well pull speed (px/s inward). */
-  pull?: number;
   /** kick: Whip-style hitbox scale (1 = 258 x 39 at the reference view). */
   area?: number;
   /** kick: slashes per trigger; the second lands on the opposite side. */
@@ -707,45 +705,6 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
     { damage: 2, radius: 9, lifetimeS: 2.8, orbitRadius: 106 },
     { damage: 3, radius: 10, lifetimeS: 3.2, orbitRadius: 122 },
   ],
-  // Shaker (band, Hats): drops a short-lived damaging blob at your feet on each
-  // hit, so moving strings a trail of them behind you. Per-tick zone damage
-  // (see the chord note): the trail's high trigger rate at max tier means the
-  // per-tick number must stay small.
-  shaker: [
-    { damage: 1, radius: 22, lifetimeS: 0.8 },
-    { damage: 1, radius: 25, lifetimeS: 0.9 },
-    { damage: 1, radius: 28, lifetimeS: 1.05 },
-    { damage: 1, radius: 32, lifetimeS: 1.2 },
-  ],
-  // Acid (band, Motion): a placed gravity well that pulls enemies toward its
-  // center and ticks damage while they are caught. Control first, chip second.
-  // Per-tick zone damage (see the chord note): the pull is the payoff, so the
-  // chip stays near-flat and the control stats (pull, radius) carry the ladder.
-  // Per-tick was already at the floor of 1, so the ~1/3 pass took nothing off
-  // it; the well's lifetime is roughly halved instead, which pulls both the
-  // total chip and the pull duration back toward the rest of the arsenal.
-  acid: [
-    { damage: 1, radius: 48, lifetimeS: 1.0, pull: 30 },
-    { damage: 1, radius: 56, lifetimeS: 1.1, pull: 36 },
-    { damage: 1, radius: 64, lifetimeS: 1.2, pull: 43 },
-    { damage: 1, radius: 72, lifetimeS: 1.3, pull: 50 },
-  ],
-  // Pluck bass (band, Bass): a note lobbed on an arc to the nearest pack that
-  // explodes on landing. Heavy, like the bass wave, but placed.
-  pluck: [
-    { damage: 3, speed: 300, lifetimeS: 0.7, radius: 40 },
-    { damage: 5, speed: 315, lifetimeS: 0.72, radius: 48 },
-    { damage: 7, speed: 330, lifetimeS: 0.74, radius: 56 },
-    { damage: 10, speed: 350, lifetimeS: 0.78, radius: 64 },
-  ],
-  // Rhodes (band, Harmony): chord pools placed as mines that sit armed and
-  // bloom into a damage burst when an enemy steps in.
-  rhodes: [
-    { damage: 3, radius: 38, lifetimeS: 3.2 },
-    { damage: 4, radius: 44, lifetimeS: 3.6 },
-    { damage: 5, radius: 51, lifetimeS: 4 },
-    { damage: 7, radius: 58, lifetimeS: 4.5 },
-  ],
   // Bell (band, Melody): a note lobbed straight that shatters into shards on
   // its first hit (shard count per tier in BELL). radius = the shot's own size.
   bell: [
@@ -808,30 +767,6 @@ export const TIER_LINES: Partial<Record<Role, string[]>> = {
     'the orbit lasts longer',
     'a wider, longer orbit',
     'a dense ring of orbiters',
-  ],
-  shaker: [
-    'leaves a damaging trail as you move',
-    'a longer-lasting trail',
-    'a wider, hotter trail',
-    'a blazing trail',
-  ],
-  acid: [
-    'a well that pulls enemies in',
-    'pulls harder, wider',
-    'a stronger, bigger well',
-    'a massive crushing well',
-  ],
-  pluck: [
-    'a note lobbed that bursts on landing',
-    'a bigger burst',
-    'a heavier, wider burst',
-    'a huge crushing burst',
-  ],
-  rhodes: [
-    'a mine that blooms when stepped in',
-    'a wider bloom',
-    'a bigger, harder bloom',
-    'a huge bloom',
   ],
   bell: [
     'a note that shatters into shards',
