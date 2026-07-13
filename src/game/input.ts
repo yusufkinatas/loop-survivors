@@ -17,11 +17,15 @@ export const autoMove = { active: false };
 
 export class Input {
   private down = new Set<string>();
+  private readonly onKeyDown = (event: KeyboardEvent) => this.down.add(event.code);
+  private readonly onKeyUp = (event: KeyboardEvent) => this.down.delete(event.code);
+  private readonly onBlur = () => this.down.clear();
+  private disposed = false;
 
   constructor() {
-    window.addEventListener('keydown', (e) => this.down.add(e.code));
-    window.addEventListener('keyup', (e) => this.down.delete(e.code));
-    window.addEventListener('blur', () => this.down.clear());
+    window.addEventListener('keydown', this.onKeyDown);
+    window.addEventListener('keyup', this.onKeyUp);
+    window.addEventListener('blur', this.onBlur);
   }
 
   /** Movement vector, magnitude 0..1. */
@@ -39,5 +43,14 @@ export class Input {
       y *= inv;
     }
     return { x, y };
+  }
+
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.down.clear();
+    window.removeEventListener('keydown', this.onKeyDown);
+    window.removeEventListener('keyup', this.onKeyUp);
+    window.removeEventListener('blur', this.onBlur);
   }
 }

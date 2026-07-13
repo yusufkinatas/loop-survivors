@@ -1,5 +1,5 @@
-// Entry. The game is the default; the rehearsal room lives at #rehearsal.
-// Both are driven by the same engine.
+// App entry. Player play remains the default; every developer surface is
+// discoverable through one disposable, deep-linkable #dev campus.
 
 import { buildKits } from './audio/kits';
 import { MusicEngine } from './audio/engine';
@@ -9,45 +9,76 @@ import { mountRehearsalRoom } from './rehearsal/room';
 import { mountTrackLab } from './tracklab/lab';
 import { mountBossFight } from './boss/page';
 import { bootGame } from './game/game';
+import { mountDevCampus } from './dev/campus';
+import { roomByIssue } from './dev/registry';
+import { roomPath } from './dev/types';
 import './style.css';
+
+declare global {
+  interface Window {
+    loop: Record<string, unknown>;
+  }
+}
 
 async function boot(): Promise<void> {
   const root = document.getElementById('app')!;
   root.textContent = 'rendering kits…';
-
   const kits = await buildKits(SKELETON.rootHz);
-  // Created suspended until a user gesture; the first click resumes it.
+  // The AudioContext and decoded kit buffers are app-lifetime immutable
+  // resources. Every Campus room creates and disposes its own MusicEngine.
   const ctx = new AudioContext({ latencyHint: 'interactive' });
-  const engine = new MusicEngine(ctx, kits);
+  window.loop = { kits, charts };
 
-  // Mobile browsers suspend or interrupt the context on tab switches and
-  // ring-switch events; any touch afterwards brings the sound back. An
-  // intentional game/pick pause owns the context and ignores generic taps.
-  document.addEventListener('pointerdown', () => {
-    engine.resumeContextIfAllowed();
-  });
+  const legacy = new URLSearchParams(location.search).get('legacy');
+  if (!legacy) {
+    const redirectIssue =
+      location.hash === '#rehearsal'
+        ? 39
+        : location.hash === '#tracklab'
+          ? 69
+          : location.hash === '#boss'
+            ? 52
+            : null;
+    if (redirectIssue !== null) {
+      const room = roomByIssue(redirectIssue);
+      if (room) history.replaceState(null, '', roomPath(room));
+    }
+  }
 
-  // Developer console handle (docs/phases/m1-demo.md, developer tools):
-  // poke the engine from the browser console, e.g. loop.engine.outputLevel(),
-  // or dump playground edits: copy(loop.charts.exportEdits()).
-  (window as unknown as { loop: object }).loop = { engine, kits, charts };
+  // A generic user gesture recovers mobile audio. Intentional pauses are
+  // engine-owned; campus engines do not suspend the shared context to pause a
+  // simulation, so this cannot accidentally resume a disposed room.
+  const resumeAudio = () => {
+    if (ctx.state !== 'running') void ctx.resume();
+  };
+  document.addEventListener('pointerdown', resumeAudio);
 
   root.textContent = '';
-  if (location.hash === '#rehearsal') {
-    mountRehearsalRoom(root, engine);
-  } else if (location.hash === '#tracklab') {
-    // The Experimentation room: kept as a standalone lab for auditioning
-    // reverse-engineered covers (see src/tracklab/lab.ts).
+  if (legacy === 'tracklab') {
     mountTrackLab(root, ctx);
-  } else if (location.hash === '#boss') {
-    // Standalone Boss Fight area (not wired into the run — a separate
-    // playtest surface). See docs/phases/boss-fights.md.
+  } else if (legacy === 'boss') {
     await mountBossFight(root, ctx);
+  } else if (legacy === 'rehearsal') {
+    const engine = new MusicEngine(ctx, kits);
+    window.loop.engine = engine;
+    mountRehearsalRoom(root, engine);
+  } else if (location.hash.startsWith('#dev')) {
+    const campus = await mountDevCampus(root, ctx, kits);
+    window.loop.devCampus = campus;
   } else {
+    const engine = new MusicEngine(ctx, kits);
+    window.loop.engine = engine;
     await bootGame(root, engine, kits);
   }
-  // switching modes reloads: both mount into the same root
-  window.addEventListener('hashchange', () => location.reload());
+
+  const startedInCampus = location.hash.startsWith('#dev');
+  window.addEventListener('hashchange', () => {
+    // Campus-to-campus navigation is handled in place after awaited disposal.
+    // Crossing the player/legacy boundary still reloads because those older
+    // surfaces do not yet share the Campus host lifecycle.
+    if (startedInCampus && location.hash.startsWith('#dev')) return;
+    location.reload();
+  });
 }
 
 void boot();

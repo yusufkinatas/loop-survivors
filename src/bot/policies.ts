@@ -3,7 +3,8 @@
 // a focused bot that gets starved by offers is a finding about the pick
 // economy, not noise. No forced build orders.
 
-import { ROLES, type Role } from '../audio/kits';
+import type { Role } from '../audio/kits';
+import { supportedRoles } from '../audio/soundset';
 import type { PickOption } from '../game/picks';
 import type { Rng } from '../game/rng';
 import type { PickChooser } from './conductor';
@@ -64,7 +65,7 @@ export function makePolicy(spec: string): Policy {
     };
   }
   const focus = /^focus:(\w+)$/.exec(spec);
-  if (focus && (ROLES as readonly string[]).includes(focus[1])) {
+  if (focus && (supportedRoles() as readonly string[]).includes(focus[1])) {
     const role = focus[1] as Role;
     // take the focus role when offered, else random — starvation by the
     // offer system is part of what this policy measures

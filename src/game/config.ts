@@ -93,6 +93,36 @@ export type EnemyKind =
   | 'mantis'
   | 'batSwarm';
 
+/** Canonical active Mad Forest roster. Developer tools import this rather
+ * than maintaining their own hand-written enemy arrays. */
+export const CURRENT_ENEMY_KINDS = [
+  'bat',
+  'redBat',
+  'redBat2',
+  'zombie',
+  'skeleton',
+  'ghost',
+  'greenMudman',
+  'grayMudman',
+  'flower',
+  'glowingBat',
+  'mantis',
+  'batSwarm',
+] as const satisfies readonly EnemyKind[];
+
+/** Retained pre-parity enemies. They are historical fixtures only and must
+ * never be mixed into a current-stage selector. */
+export const LEGACY_ENEMY_KINDS = [
+  'swarmer',
+  'tank',
+  'darter',
+  'splitter',
+  'charger',
+  'circler',
+  'shielded',
+  'elite',
+] as const satisfies readonly EnemyKind[];
+
 export interface EnemyConf {
   radius: number;
   speed: number;

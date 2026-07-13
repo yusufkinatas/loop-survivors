@@ -10,7 +10,7 @@ const STICK_RADIUS = 56;
 /** Deflections under this fraction are ignored (resting-finger jitter). */
 const DEAD_ZONE = 0.12;
 
-export function mountJoystick(root: HTMLElement): void {
+export function mountJoystick(root: HTMLElement): () => void {
   const base = document.createElement('div');
   base.className = 'joy-base hidden';
   const knob = document.createElement('div');
@@ -30,7 +30,7 @@ export function mountJoystick(root: HTMLElement): void {
     base.classList.add('hidden');
   };
 
-  root.addEventListener('pointerdown', (e) => {
+  const onPointerDown = (e: PointerEvent) => {
     if (pointerId !== null) return;
     if (e.pointerType === 'mouse') return;
     // auto-move runs take the movement verb away: no stick appears
@@ -48,9 +48,9 @@ export function mountJoystick(root: HTMLElement): void {
     touchAxis.active = true;
     touchAxis.x = 0;
     touchAxis.y = 0;
-  });
+  };
 
-  window.addEventListener('pointermove', (e) => {
+  const onPointerMove = (e: PointerEvent) => {
     if (e.pointerId !== pointerId) return;
     let dx = e.clientX - cx;
     let dy = e.clientY - cy;
@@ -69,13 +69,27 @@ export function mountJoystick(root: HTMLElement): void {
       touchAxis.x = dx * inv * deflect;
       touchAxis.y = dy * inv * deflect;
     }
-  });
+  };
 
-  window.addEventListener('pointerup', (e) => {
+  const onPointerUp = (e: PointerEvent) => {
     if (e.pointerId === pointerId) reset();
-  });
-  window.addEventListener('pointercancel', (e) => {
+  };
+  const onPointerCancel = (e: PointerEvent) => {
     if (e.pointerId === pointerId) reset();
-  });
+  };
+  root.addEventListener('pointerdown', onPointerDown);
+  window.addEventListener('pointermove', onPointerMove);
+  window.addEventListener('pointerup', onPointerUp);
+  window.addEventListener('pointercancel', onPointerCancel);
   window.addEventListener('blur', reset);
+
+  return () => {
+    reset();
+    root.removeEventListener('pointerdown', onPointerDown);
+    window.removeEventListener('pointermove', onPointerMove);
+    window.removeEventListener('pointerup', onPointerUp);
+    window.removeEventListener('pointercancel', onPointerCancel);
+    window.removeEventListener('blur', reset);
+    base.remove();
+  };
 }

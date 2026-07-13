@@ -15,23 +15,15 @@ import {
   SLOT_LABEL,
 } from './band';
 import { TIER_NUMERALS } from './hud';
-import { ENEMY_LABELS, madForestEnemyStats, type EnemyKind } from './config';
+import {
+  CURRENT_ENEMY_KINDS,
+  ENEMY_LABELS,
+  madForestEnemyStats,
+  type EnemyKind,
+} from './config';
 import type { RunWorld } from './run';
 
-const ENEMY_KINDS: EnemyKind[] = [
-  'bat',
-  'redBat',
-  'redBat2',
-  'zombie',
-  'skeleton',
-  'ghost',
-  'greenMudman',
-  'grayMudman',
-  'flower',
-  'glowingBat',
-  'mantis',
-  'batSwarm',
-];
+const ENEMY_KINDS: readonly EnemyKind[] = CURRENT_ENEMY_KINDS;
 
 export interface SandboxPanel {
   destroy(): void;
@@ -223,7 +215,7 @@ export function mountSandboxPanel(
     'div',
     'sb-hint',
     panel,
-    'stage script off: nothing spawns by itself. O = perf overlay, C = track overlay, 1-8 = mute a slot.',
+    'stage script off: nothing spawns by itself. O = perf overlay, C = track overlay, 1-7 = mute a slot.',
   );
 
   return {

@@ -238,6 +238,20 @@ export type FxEvent =
   | { type: 'flash'; color: number; alpha: number; dur: number }
   | { type: 'slam'; x: number; y: number; radius: number; color: number };
 
+/** Runtime catalog for tooling. Kept beside FxEvent so adding a new variant
+ * without registering it is caught by the Dev Campus completeness check. */
+export const FX_EVENT_TYPES = [
+  'ring',
+  'death',
+  'whip',
+  'arc',
+  'dmg',
+  'spark',
+  'shake',
+  'flash',
+  'slam',
+] as const satisfies readonly FxEvent['type'][];
+
 export interface RunEvents {
   onLevelUp(level: number): void;
   onDeath(): void;

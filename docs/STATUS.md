@@ -2,7 +2,66 @@
 
 Last updated: July 13, 2026
 
-## Latest change (July 13, 2026) — FX weapon class removed from the build
+## Latest change (July 13, 2026) — Complete Dev Campus (#27)
+
+The in-game **Dev Campus** is implemented at `#dev`, covering the complete
+issue #27 registry (#28–#87) through one searchable, status-aware shell. All
+**58 non-parked** current/dormant/historical/experimental issues have functional
+surfaces; #54 (M4 onboarding) and #55 (future systems) are intentionally
+non-launching **PARKED** entries, as their own acceptance criteria require.
+Nothing in this tooling work passes or changes a developer gate.
+
+Foundation: rooms own an explicit mount/reset/serialize/awaited-dispose
+lifecycle; engine subscriptions are removable; audio sources, input, joystick,
+RAF, Pixi, DOM, and Web Audio resources are disposed. The shared scenario bar
+provides canonical presets, seed, hard reset, reroll, pause, one fixed tick,
+speed, audio, overlays, viewport state, and copyable hash fixtures. Campus room
+switches do not reload the page. Search covers title/system/content/status;
+Gym, Zoo, and Museum are primary tabs with Archive separated; current,
+experimental, dormant, parked, removed, and historical statuses are data.
+`#rehearsal`, `#tracklab`, and `#boss` bookmarks redirect into the Campus, with
+the preserved legacy experiment reachable behind an explicit status boundary.
+
+Production-backed Gyms include the full parity run and simulated minute
+checkpoints, movement/contact, all 14 weapons × 4 tiers, all 12 current enemies,
+the complete physical XP/reward triangle and stacked queue (including heard-bar
+application and full-build heal), seeded picks, current Music rehearsal,
+determinism comparison, production HUD states, disposable Scratch Gym, input /
+safe-area/audio interruption, stage windows, Kick calibration, horde events,
+scheduled-versus-heard audio/gameplay timing, bot batches/outliers, performance
+stress (45–500 enemies plus projectile/field/FX/gem cases), VFX controls,
+experimental boss boundaries, and readability conditions. Music tooling now
+has active/dormant filters, solo/full-band, volume/mute, local sample override,
+and isolated draft pattern edit/audition/export/reset with explicit apply.
+
+Generated Zoos derive from canonical runtime registries: 14 active weapons and
+7 slots, 12 current and 8 historical enemies, dormant crash/riser audio, all 9
+`FxEvent` types, timing ladders, pickups/glyph identities, UI states, visual
+tokens, mix behavior, samples, and experiments. Museums provide live,
+plain-language system demonstrations, production values, source links, and
+cross-room links for causality, the musical clock, lookahead/heard-time, signal
+path, band/picks, weapon geometry, progression, collision/spatial hash, stage,
+reference provenance, time systems, determinism, assets, world/view/headless,
+performance, content status, the boss experiment, and canonical sources.
+
+Drift fixed with the Campus: Sandbox now says keys 1–7; `focus:each` covers only
+the 14 active weapons and explicit crash/riser focus is rejected; current and
+legacy enemy lists are canonical exports; the Mad Forest density/Kick parity
+assertions match production again; stale duplicate sample-health data was
+removed; the plan now has an explicit current-truth supersession header.
+
+Verification: `npm run check`, `npm run check:dev-campus`,
+`npm run check:mad-forest`, and `npm run build` pass. The in-Campus browser
+smoke mounted/reset/stepped/disposed all **60/60** registry entries plus six
+foundation assertions with zero failures and zero console warnings/errors.
+Browser checks also covered in-place navigation, fixed step, hard reset,
+copyable deep-link reconstruction, dormant audio audition, 56 active weapon
+tier specimens with no crash/riser leakage, plain-language Museums,
+experimental/legacy redirects, the real physical reward flow, muted gameplay
+causality, and a 390×844 phone layout with no horizontal overflow. The only
+build note is Vite's existing informational >500 kB main-chunk warning.
+
+## Previous change (July 13, 2026) — FX weapon class removed from the build
 
 At the developer's direction, the **FX band slot and its two weapons (crash =
 shockwave, riser = auto-dash) are removed from the player's build/weapons
@@ -241,8 +300,10 @@ Gate A also implicitly co-judged the July 6 genres-and-weapons material it stack
 
 ## Next action
 
-Run the manual eight-minute playtest and sandbox for the actual gate. TypeScript,
-the production build, deterministic parity assertions, bot smoke/batches, and
+Open the Dev Campus (`#dev`) and run the **Mad Forest parity run** Gym (issue
+#33) plus the focused Movement, Weapon, Enemy, Kick, Stage, VFX, Music, and
+Scratch Gyms for the actual gate. TypeScript, the production build,
+deterministic parity assertions, full Campus smoke, bot smoke/batches, and
 browser visual checks are clean. The developer now judges:
 
 - whether manual movement, collision, and contact danger have the first-level

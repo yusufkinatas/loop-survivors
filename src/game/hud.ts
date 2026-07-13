@@ -201,22 +201,14 @@ export class Hud {
       devToggle.classList.toggle('on', row.style.display !== 'none');
       (devToggle as HTMLButtonElement).blur();
     };
-    const bossBtn = el('button', 'small', row, 'boss fights');
-    bossBtn.onclick = () => {
-      location.hash = '#boss';
+    const campusBtn = el('button', 'small', row, 'Developer Campus');
+    campusBtn.onclick = () => {
+      location.hash = '#dev';
     };
     const sandboxBtn = el('button', 'small', row, 'sandbox');
     sandboxBtn.onclick = () => {
       this.closeScreen();
       onSandbox();
-    };
-    const roomBtn = el('button', 'small', row, 'rehearsal room');
-    roomBtn.onclick = () => {
-      location.hash = '#rehearsal';
-    };
-    const labBtn = el('button', 'small', row, 'experimentation room');
-    labBtn.onclick = () => {
-      location.hash = '#tracklab';
     };
   }
 

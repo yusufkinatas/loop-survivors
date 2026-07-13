@@ -1,7 +1,7 @@
 // The band: seven typed position-slots that cap a build into a group.
 //
 // Each slot holds at most ONE instrument, drawn from that slot's roster. A full
-// build is a complete band — eight voices, each in its own frequency lane and
+// build is a complete band — seven voices, each in its own frequency lane and
 // rhythmic job. Slots cap OWNERSHIP (filling one permanently retires its other
 // roster members from the pick pool), which is what keeps a full build sounding
 // like a track instead of a pile of voices. See docs/phases/the-band.md.
@@ -69,8 +69,8 @@ export const SLOT_ROSTER: Record<Slot, Role[]> = {
 };
 
 /** Inverse of SLOT_ROSTER, built once so the two can never drift. */
-export const ROLE_SLOT: Record<Role, Slot> = (() => {
-  const map = {} as Record<Role, Slot>;
+export const ROLE_SLOT: Partial<Record<Role, Slot>> = (() => {
+  const map: Partial<Record<Role, Slot>> = {};
   for (const slot of SLOTS) {
     for (const role of SLOT_ROSTER[slot]) map[role] = slot;
   }
@@ -78,7 +78,7 @@ export const ROLE_SLOT: Record<Role, Slot> = (() => {
 })();
 
 /** The band position a weapon belongs to. */
-export function slotOf(role: Role): Slot {
+export function slotOf(role: Role): Slot | undefined {
   return ROLE_SLOT[role];
 }
 

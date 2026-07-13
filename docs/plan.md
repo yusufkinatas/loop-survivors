@@ -1,6 +1,26 @@
 # Music Survivors (working title TBD): Development Plan
 
-Status: planning complete, implementation not started. Compiled July 3, 2026.
+Status: implementation and playtest iteration in progress. Compiled July 3,
+2026; current implementation truth reconciled July 13, 2026.
+
+## Current implementation truth (July 13, 2026)
+
+Later developer-directed cuts supersede the older catalog/genre descriptions
+retained below as design history. The current game has **one fixed soundset at
+122 BPM**, **fourteen playable weapons in seven permanent band slots** (two
+choices per slot), and an eight-minute Mad Forest parity stage. `crash` and
+`riser` remain available only as **dormant audio** for developer auditioning;
+their former FX slot and gameplay weapons are removed. Genre selection,
+passive items, weapon enhancement effects, and the full-track/drop direction
+are removed. Standalone Track Lab covers are historical experiments and the
+boss system is experimental, not integrated into normal runs.
+
+For current implementation state and the pending developer gate, read
+`docs/STATUS.md`. Runtime registries are authoritative for current catalog
+membership; this document remains authoritative for pillars, architecture,
+rationale, roadmap, and parked decisions. Sections below that describe twelve
+weapons, eight slots, genres, or the dropped full-track direction are preserved
+as dated history and must not be used as current catalog truth.
 
 ## The Game in One Sentence
 

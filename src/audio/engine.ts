@@ -54,6 +54,7 @@ export interface ScheduledTrigger {
 }
 
 export type TriggerListener = (t: ScheduledTrigger) => void;
+export type ScheduledTriggerListener = (t: ScheduledTrigger) => void;
 
 interface TimedAction {
   time: number;
@@ -99,11 +100,18 @@ export class MusicEngine {
   /** Independent transport gate: intentional game pauses mute immediately
    * while AudioContext.suspend() crosses the browser control boundary. */
   private transport: GainNode;
+  private limiter: DynamicsCompressorNode;
+  private activeSources = new Set<AudioScheduledSourceNode>();
+  private disposed = false;
   private transportHeld = false;
   private suspendPromise: Promise<void> | null = null;
   private transportGeneration = 0;
   private pending: PendingTrigger[] = [];
   private listeners: TriggerListener[] = [];
+  /** Developer instrumentation observes the moment an event enters Web Audio's
+   * lookahead queue. It is observational only: listeners cannot replace or
+   * cancel production scheduling. */
+  private scheduledListeners: ScheduledTriggerListener[] = [];
   private barQueue: ((audioTime: number) => void)[] = [];
   private timedActions: TimedAction[] = [];
   private nextTimedActionSeq = 0;
@@ -121,17 +129,17 @@ export class MusicEngine {
     this.transport.gain.value = 1;
     // Soft-knee limiter on the master so any build stays clean (Pillar 2:
     // the system owns the theory, no combination may sound broken).
-    const limiter = ctx.createDynamicsCompressor();
-    limiter.threshold.value = -10;
-    limiter.knee.value = 12;
-    limiter.ratio.value = 8;
-    limiter.attack.value = 0.002;
-    limiter.release.value = 0.12;
+    this.limiter = ctx.createDynamicsCompressor();
+    this.limiter.threshold.value = -10;
+    this.limiter.knee.value = 12;
+    this.limiter.ratio.value = 8;
+    this.limiter.attack.value = 0.002;
+    this.limiter.release.value = 0.12;
     this.analyser = ctx.createAnalyser();
     this.analyser.fftSize = 2048;
     this.master
       .connect(this.transport)
-      .connect(limiter)
+      .connect(this.limiter)
       .connect(this.analyser)
       .connect(ctx.destination);
 
@@ -179,6 +187,7 @@ export class MusicEngine {
    *  soundset kit does not cover keeps the default builtin buffers. */
   private async applySoundsetKit(): Promise<void> {
     const kit = await buildSoundsetKit(SKELETON.rootHz);
+    if (this.disposed) return;
     for (const voice of this.voices.values()) {
       const k = kit.get(voice.role);
       voice.activeSamples = k?.samples ?? voice.kit.samples;
@@ -246,6 +255,7 @@ export class MusicEngine {
     for (let i = 0; i < notes.length; i++) {
       const t0 = now + i * 0.045;
       const osc = this.ctx.createOscillator();
+      this.trackSource(osc);
       osc.type = 'triangle';
       osc.frequency.value = notes[i];
       const env = this.ctx.createGain();
@@ -372,9 +382,79 @@ export class MusicEngine {
     voice.tune = samples ? tune : 0;
   }
 
-  /** Register for due triggers. Fired from update(), i.e. frame-synced. */
-  addTriggerListener(cb: TriggerListener): void {
+  /** Register for due triggers. Fired from update(), i.e. frame-synced.
+   * Returns an idempotent disposer so rooms can own their subscription. */
+  addTriggerListener(cb: TriggerListener): () => void {
     this.listeners.push(cb);
+    return () => {
+      const index = this.listeners.indexOf(cb);
+      if (index >= 0) this.listeners.splice(index, 1);
+    };
+  }
+
+  /** Observe a trigger when it is scheduled ahead of heard time. This is the
+   * read-only seam used by the Dev Campus timing inspector. */
+  addScheduledTriggerListener(cb: ScheduledTriggerListener): () => void {
+    this.scheduledListeners.push(cb);
+    return () => {
+      const index = this.scheduledListeners.indexOf(cb);
+      if (index >= 0) this.scheduledListeners.splice(index, 1);
+    };
+  }
+
+  /** Tear down every mutable scheduler/audio resource owned by this engine.
+   * Decoded AudioBuffers live in the shared kit cache and are intentionally
+   * not destroyed. Safe to call more than once. */
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.clock.stop();
+    this.transportHeld = false;
+    this.transportGeneration++;
+    this.pending.length = 0;
+    this.listeners.length = 0;
+    this.scheduledListeners.length = 0;
+    this.barQueue.length = 0;
+    this.timedActions.length = 0;
+    this.stepMarkers.length = 0;
+    for (const source of this.activeSources) {
+      try {
+        source.stop();
+      } catch {
+        // A source that already ended may reject a second stop.
+      }
+      source.disconnect();
+    }
+    this.activeSources.clear();
+    for (const voice of this.voices.values()) {
+      voice.lastHit = null;
+      voice.gain.disconnect();
+      voice.duck.disconnect();
+    }
+    this.weaponsBus.disconnect();
+    this.master.disconnect();
+    this.transport.disconnect();
+    this.limiter.disconnect();
+    this.analyser.disconnect();
+  }
+
+  /** Read-only production audio-path values for live developer meters. */
+  debugAudioState(): {
+    master: number;
+    weapons: number;
+    transport: number;
+    output: number;
+    pendingTriggers: number;
+    timedActions: number;
+  } {
+    return {
+      master: this.master.gain.value,
+      weapons: this.weaponsBus.gain.value,
+      transport: this.transport.gain.value,
+      output: this.outputLevel(),
+      pendingTriggers: this.pending.length,
+      timedActions: this.timedActions.length,
+    };
   }
 
   /** Musical entry rule (M2): run fn while scheduling the start of the next
@@ -401,7 +481,7 @@ export class MusicEngine {
   /** Dispatch every trigger whose scheduled time has arrived. Call once per
    *  frame from whatever loop is driving visuals (room rAF or game ticker). */
   update(): void {
-    if (this.transportHeld) return;
+    if (this.disposed || this.transportHeld) return;
     const now = this.ctx.currentTime;
     const dueTriggers: PendingTrigger[] = [];
     const futureTriggers: PendingTrigger[] = [];
@@ -453,6 +533,7 @@ export class MusicEngine {
 
   /** Play one event immediately, outside the grid. Rehearsal-room audition. */
   preview(role: Role, event?: ChartEvent): void {
+    if (this.disposed) return;
     const voice = this.voices.get(role);
     if (!voice) return;
     const ev = event ?? { step: 0, velocity: 0.9, note: voice.kit.pitched ? 0 : undefined };
@@ -488,6 +569,7 @@ export class MusicEngine {
     if (!buffer) return;
 
     const src = this.ctx.createBufferSource();
+    this.trackSource(src);
     src.buffer = buffer;
 
     let rate = semitonesToRate((ev.note ?? 0) + voice.tune);
@@ -531,24 +613,31 @@ export class MusicEngine {
       voice.lastHit = { src, gain: g };
     }
 
+    const trigger: ScheduledTrigger = {
+      role: voice.role,
+      time,
+      velocity: ev.velocity,
+      step: phraseStep,
+      variant: ev.variant,
+      note: ev.note,
+    };
     this.pending.push({
       source: src,
       voice,
       chokedPrevious,
-      trigger: {
-        role: voice.role,
-        time,
-        velocity: ev.velocity,
-        step: phraseStep,
-        variant: ev.variant,
-        note: ev.note,
-      },
+      trigger,
     });
+    for (const cb of this.scheduledListeners) cb(trigger);
     // If no consumer is draining (hidden tab pauses rAF), drop stale entries
     // so the queue cannot grow unboundedly while audio keeps scheduling.
     if (this.pending.length > 64) {
       const cutoff = this.ctx.currentTime - 1;
       this.pending = this.pending.filter((pending) => pending.trigger.time > cutoff);
     }
+  }
+
+  private trackSource(source: AudioScheduledSourceNode): void {
+    this.activeSources.add(source);
+    source.addEventListener('ended', () => this.activeSources.delete(source), { once: true });
   }
 }

@@ -38,7 +38,8 @@ function buildPickPool(tiers: ReadonlyMap<Role, number>): PickOption[] {
     // leave the pool for the rest of the run. An owned instrument still tiers
     // up (its slot is its own).
     if (!tier) {
-      if (!slotFilled(slotOf(role), tiers)) pool.push({ kind: 'weapon', role, tier: 1 });
+      const slot = slotOf(role);
+      if (slot && !slotFilled(slot, tiers)) pool.push({ kind: 'weapon', role, tier: 1 });
     } else if (tier < TIER_COUNT) {
       pool.push({ kind: 'weapon', role, tier: tier + 1 });
     }
@@ -52,7 +53,8 @@ const WEAPON_WEIGHT = 3;
  *  drum nudge. Pure in (role, timeS) — no rng. */
 function weaponWeight(role: Role, timeS: number): number {
   let w = WEAPON_WEIGHT;
-  if (earlyNudgeApplies(slotOf(role), timeS)) w *= EARLY_NUDGE_FACTOR;
+  const slot = slotOf(role);
+  if (slot && earlyNudgeApplies(slot, timeS)) w *= EARLY_NUDGE_FACTOR;
   return w;
 }
 
@@ -75,7 +77,7 @@ export function rollOffers(
   for (const { o } of keyed) {
     if (out.length >= 3) break;
     const slot = slotOf(o.role);
-    if (usedSlots.has(slot)) continue;
+    if (!slot || usedSlots.has(slot)) continue;
     usedSlots.add(slot);
     out.push(o);
   }

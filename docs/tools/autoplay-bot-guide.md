@@ -25,7 +25,7 @@ npm run bot -- --runs 15 --policy focus:each --label per-instrument
 |---|---|---|
 | `--runs N` | 20 | Runs **per arm** (each policy spec is one arm) |
 | `--mover` | kiter | `afk` \| `kiter` \| `harvester` |
-| `--policy` | random | Comma list of `random`, `deep`, `wide`, `focus:<role>`; `focus:each` expands to all six roles |
+| `--policy` | random | Comma list of `random`, `deep`, `wide`, `focus:<role>`; `focus:each` expands to the fourteen active weapons (dormant crash/riser are excluded) |
 | `--seed-base N` | 1 | First seed; arms get consecutive blocks. **Reuse the same base to pair batches run-for-run** |
 | `--workers N` | cores−2 | Parallel worker processes |
 | `--label` | batch | Names the output folder |
