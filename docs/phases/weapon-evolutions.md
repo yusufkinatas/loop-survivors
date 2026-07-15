@@ -195,15 +195,18 @@ uniqueness matrix at the end is the contract.
 - **Base "Lead Melody":** a beam that locks onto one target and fires a short
   zap into it per melody note. It never misses (what the old homing was for),
   but reads as one voice aimed at one thing.
-- **Evolution "The Solo":** the beam locks onto the toughest target on screen
-  (elites, bosses), burns it down with continuous damage, and glides
-  (portamento) instantly to the next priority the moment one dies, an unbroken
-  line that never stops singing.
+- **Evolution "The Solo":** the beam locks onto the **nearest** target, burns it
+  down with continuous damage, and holds it (sticky) until it dies or leaves the
+  screen, then glides (portamento) to the next nearest, an unbroken line that
+  never stops singing. (Amended July 15: nearest + sticky, not toughest-priority
+  — see the amendment note.)
 - **Base sound:** short, plucked melody notes, one per note in the phrase.
 - **Evolved sound:** one sustained, singing lead that glides between notes with
-  audible portamento, expressive and held, the focal voice over the whole mix.
+  audible portamento, expressive and held — a clear voice that sits in the mix,
+  not a harsh or overbearing one (tamed at the gate: lower level, no resonant
+  whistle).
 - **Signature verb:** sustained lock-and-glide beam.
-- **Build role:** single-target elite melt, the boss killer.
+- **Build role:** single-target melt (locks and holds the nearest, glides on).
 - **Note:** this weapon's design changed during review. The base was originally
   homing seekers; the critic (correctly) flagged homing as generic dressing that
   did not reflect how a lead line actually sounds. The sustained beam grounds the
@@ -258,23 +261,37 @@ Two overlap risks were checked and cleared during review:
   beat. No two read as the same effect.
 ### Amendment — July 15, 2026 (developer-directed, sub-phase C gate loop)
 
-During the sub-phase C gate, the developer redirected the **Hat** toward a
-Vampire-Survivors-knife feel, aimed by player movement instead of auto-targeting:
+During the sub-phase C gate the developer directed several changes:
 
-- **Hat "16th-Note Storm"** dropped the movement-speed coupling (a still player
-  no longer goes quiet); it is now a **constant directional stream** of chips
-  fired in the player's movement heading. **Base Hat** (tiers 1-4) was brought
-  in line with the same feel, spraying its chips in the movement heading too (its
-  base description already read "chips in your travel direction").
+- **Hat toward a Vampire-Survivors-knife feel.** Hat "16th-Note Storm" dropped
+  the movement-speed coupling (a still player no longer goes quiet); it is now a
+  **constant directional stream** of chips fired in the player's movement heading.
+  **Base Hat** (tiers 1-4) was brought in line, spraying its chips in the movement
+  heading too (its base description already read "chips in your travel direction").
+  Both read `player.moveDirX/Y`, a unit vector that holds the last heading while
+  idle (VS-knife behaviour). Sound is untouched, so the gate rule still holds.
 
-Both read the player's movement heading (`player.moveDirX/Y`), a unit vector that
-holds the last heading while idle (VS-knife behaviour). Balance numbers are
-placeholders pending the gate. The sound half is untouched, so the
-sound-transformation gate rule still holds.
+- **Global rule: no off-screen targeting or damage.** No weapon (base or evolved)
+  may target or deal damage to anything outside the visible screen. Enforced at
+  two choke points in `run.ts`: an `onScreen(e)` test filters every targeting
+  helper (`nearestEnemy`, `densestEnemy`) and gates `damageEnemy` (which all
+  weapon damage flows through). The visible rect is the camera (player foot),
+  `worldW x worldH`, plus each enemy's radius (partially-visible counts). This is
+  a broad gameplay rule, not evolution-specific.
+
+- **Lead "The Solo" retargeting + sound.** The beam now locks the **nearest**
+  target (not the toughest) and holds it **sticky** until it dies or leaves the
+  screen, then glides to the next nearest. Its evolved voicing was **tamed** (the
+  developer found it jarring and too loud): level cut ~0.4→0.26, the resonant
+  lowpass peak removed (Q 2→0.8, cutoff lowered), gentler soft-clip, calmer
+  vibrato. Base Lead's voicing is unchanged (the developer likes it). The tamed
+  timbre is an ear-gate item.
 
 (A parallel Snare rework toward the same directional feel was tried in this loop
 and then reverted at the developer's direction: the instant densest-line rail +
 answering crack remains the intended evolved Snare, unchanged from its lock.)
+
+Balance numbers throughout remain placeholders pending the gate.
 
 ## New engine systems required (implementation map)
 

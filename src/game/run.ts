@@ -1253,6 +1253,10 @@ export class RunWorld {
 
   private damageEnemy(e: Enemy, amount: number, source?: Role): void {
     if (e.dead) return;
+    // Off-screen enemies can't be seen, so no weapon may damage them (developer
+    // rule, July 15). This is the single choke point every weapon's damage flows
+    // through, so it covers projectiles, zones, rails, pulses, beams, and cones.
+    if (!this.onScreen(e)) return;
     // Floating damage number (view-only). Weapon-colored,
     // rounded; sub-1 ticks and instakills (Infinity) don't get a number.
     if (this.fx && Number.isFinite(amount)) {
@@ -1370,12 +1374,25 @@ export class RunWorld {
 
   // ---- weapons ----
 
+  /** The visible-screen rectangle is centered on the camera (player foot),
+   *  worldW x worldH. A weapon may only target or damage an enemy that is at
+   *  least partially on screen: nothing off-screen can be seen, so nothing
+   *  off-screen can be targeted or hit (developer rule, July 15). */
+  private onScreen(e: Enemy): boolean {
+    const camX = this.player.x + PLAYER_FOOT_OFFSET.x;
+    const camY = this.player.y + PLAYER_FOOT_OFFSET.y;
+    return (
+      Math.abs(e.x - camX) <= this.worldW / 2 + e.radius &&
+      Math.abs(e.y - camY) <= this.worldH / 2 + e.radius
+    );
+  }
+
   private nearestEnemy(range: number): Enemy | null {
     const p = this.player;
     let best: Enemy | null = null;
     let bestD = range * range;
     for (const e of this.enemies) {
-      if (e.dead) continue;
+      if (e.dead || !this.onScreen(e)) continue;
       const dx = e.x - p.x;
       const dy = e.y - p.y;
       const d = dx * dx + dy * dy;
@@ -1397,7 +1414,7 @@ export class RunWorld {
     const r2 = range * range;
     const cands: Enemy[] = [];
     for (const e of this.enemies) {
-      if (e.dead) continue;
+      if (e.dead || !this.onScreen(e)) continue;
       const dx = e.x - px;
       const dy = e.y - py;
       if (dx * dx + dy * dy <= r2) cands.push(e);
@@ -1747,33 +1764,10 @@ export class RunWorld {
   /** Clap: damage every enemy inside a forward cone (also point-blank). */
   // ---- sub-phase C evolutions: lead beam, clap ovation, snare rail, hat storm ----
 
-  /** Distance-squared range check from the player. */
-  private outOfRange(e: Enemy, range: number): boolean {
-    const dx = e.x - this.player.x;
-    const dy = e.y - this.player.y;
-    return dx * dx + dy * dy > range * range;
-  }
-
-  /** The toughest live target within range (bosses first, then most HP + shield)
-   *  — what Lead "The Solo" locks onto. */
-  private toughestEnemy(range: number): Enemy | null {
-    let best: Enemy | null = null;
-    let bestScore = -1;
-    for (const e of this.enemies) {
-      if (e.dead || this.outOfRange(e, range)) continue;
-      const score = (ENEMIES[e.kind].boss ? 1e6 : 0) + e.hp + e.shieldHp;
-      if (score > bestScore) {
-        bestScore = score;
-        best = e;
-      }
-    }
-    return best;
-  }
-
   /** Base Lead: one instant zap into a sticky-locked nearest target (never
-   *  misses). Re-locks only when its target dies or leaves range. */
+   *  misses). Re-locks only when its target dies or leaves the visible screen. */
   private fireLeadZap(damage: number): void {
-    if (!this.leadTarget || this.leadTarget.dead || this.outOfRange(this.leadTarget, AIM_RANGE)) {
+    if (!this.leadTarget || this.leadTarget.dead || !this.onScreen(this.leadTarget)) {
       this.leadTarget = this.nearestEnemy(AIM_RANGE);
     }
     const t = this.leadTarget;
@@ -1790,8 +1784,9 @@ export class RunWorld {
     this.leadBeamDamage = damage;
   }
 
-  /** The persistent "The Solo" beam: lock the toughest target, tick continuous
-   *  damage, and glide instantly to the next priority the moment it dies. Idle
+  /** The persistent "The Solo" beam: lock the NEAREST target and hold it, ticking
+   *  continuous damage, until it dies or leaves the visible screen — then glide to
+   *  the next nearest. Sticky: it never swaps off a live, on-screen target. Idle
    *  unless the beam is lit — kept alive by lead triggers, so it stops when the
    *  voice is deactivated. (base Lead leaves leadBeamT at 0, so this is a no-op
    *  for it and never disturbs its sticky nearest lock.) */
@@ -1802,8 +1797,8 @@ export class RunWorld {
       this.leadBeamT = 0;
       return;
     }
-    if (!this.leadTarget || this.leadTarget.dead || this.outOfRange(this.leadTarget, LEAD_SOLO.range)) {
-      this.leadTarget = this.toughestEnemy(LEAD_SOLO.range); // glide-retarget
+    if (!this.leadTarget || this.leadTarget.dead || !this.onScreen(this.leadTarget)) {
+      this.leadTarget = this.nearestEnemy(LEAD_SOLO.range); // sticky nearest; glide on death/off-screen
     }
     const t = this.leadTarget;
     if (!t) return;

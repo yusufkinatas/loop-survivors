@@ -2,12 +2,32 @@
 
 Last updated: July 15, 2026
 
-## Latest change (July 15, 2026) — sub-phase C: Hat redirected to a VS-knife directional stream
+## Latest change (July 15, 2026) — sub-phase C gate loop: Hat directional, off-screen rule, Lead retarget + sound
 
-Developer-directed rework during the sub-phase C gate loop (the gate is still
-PENDING — this is feedback within the sub-phase, not a pass). The **Hat** was
-redirected to aim by **player movement** instead of auto-targeting,
-Vampire-Survivors-knife style:
+Several developer-directed changes during the sub-phase C gate loop (the gate is
+still PENDING — this is feedback within the sub-phase, not a pass).
+
+**Global rule — no off-screen targeting or damage.** No weapon (base or evolved)
+may target or damage anything outside the visible screen. A new `onScreen(e)`
+helper in `run.ts` filters the targeting helpers (`nearestEnemy`, `densestEnemy`)
+and gates `damageEnemy` — the single choke point all weapon damage flows through,
+so it covers projectiles, zones, rails, pulses, beams, cones, orbiters, and
+shards at once. Visible rect = camera (player foot) `worldW x worldH` plus each
+enemy's radius (partially visible counts). Removed the now-unused `outOfRange` and
+`toughestEnemy` helpers.
+
+**Lead "The Solo" — nearest + sticky, and a tamed sound.** The evolved beam now
+locks the **nearest** target (not the toughest) and holds it **sticky** until it
+dies or leaves the screen, then glides to the next nearest (`updateLeadBeam`).
+Its evolved voicing was **tamed** (developer: jarring + too loud): level cut
+~0.4→0.26, resonant lowpass peak removed (Q 2→0.8, cutoff 4400/4200→3200),
+gentler soft-clip (1.5/1.6→1.15), calmer vibrato — in both the in-game house kit
+(`kits/house.ts` `leadSolo`) and the rehearsal-room builtin (`kits.ts`
+`renderLeadSolo`). **Base Lead's voicing is unchanged** (the developer likes it).
+The tamed timbre is an ear-gate item.
+
+**Hat — VS-knife directional feel.** The **Hat** was redirected to aim by
+**player movement** instead of auto-targeting, Vampire-Survivors-knife style:
 
 - **Hat "16th-Note Storm"** — the movement-**speed** coupling is gone (a still
   player no longer goes quiet). It is now a **constant directional stream** of
@@ -30,13 +50,15 @@ movement input that holds the last heading while idle (VS-knife behaviour), set
 in `movePlayer`. Snare and the other six evolutions, and all other base weapons,
 are untouched. Balance numbers are placeholders pending the gate.
 
-**Verification.** `tsc --noEmit` + production `vite build` clean. A headless
-deterministic sim test (10/10, since removed) confirmed the hat stream emits
-chips in the movement heading within `±spread`, holds the last heading while
-idle, and that hat emission is now **constant regardless of player speed**
-(full-speed and 1/5-speed emit identical counts — the speed coupling is truly
-gone). Spec (`docs/phases/weapon-evolutions.md`) amended with a dated
-developer-directed note; the uniqueness matrix and implementation map updated.
+**Verification.** `tsc --noEmit` + production `vite build` clean. Two headless
+deterministic sim tests (since removed): one (10/10) confirmed the hat stream
+fires in the movement heading, holds the last heading while idle, and emits at a
+**constant rate regardless of player speed**; a second (8/8) confirmed off-screen
+enemies are neither targeted nor damaged (even along a snare rail's line) while
+on-screen ones are, and that evolved Lead locks the **nearest** target (not the
+toughest) and stays **sticky** on it when a nearer enemy appears. Spec
+(`docs/phases/weapon-evolutions.md`) amended with a dated developer-directed note;
+the uniqueness matrix and implementation map updated.
 
 A per-weapon, per-tier **DPS bench** (single high-HP target vs a 50-enemy horde,
 practically-infinite-HP sponges, one 4-bar phrase) was built and is being fed to

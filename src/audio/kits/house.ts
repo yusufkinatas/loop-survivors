@@ -569,25 +569,28 @@ async function leadSolo(rootHz: number): Promise<AudioBuffer> {
   osc2.detune.value = 7;
   const vib = ctx.createOscillator();
   vib.type = 'sine';
-  vib.frequency.value = 5.5;
+  vib.frequency.value = 5.0;
   const vibG = ctx.createGain();
-  vibG.gain.value = rootHz * 2 * 0.012;
+  vibG.gain.value = rootHz * 2 * 0.009;
   vib.connect(vibG);
   vibG.connect(osc.frequency);
   vibG.connect(osc2.frequency);
   const lp = ctx.createBiquadFilter();
   lp.type = 'lowpass';
-  lp.frequency.value = 4400;
-  lp.Q.value = 2;
+  // Tamed for the gate: lower cutoff + no resonant peak + gentler drive so the
+  // sustained beam is smooth, not a bright resonant whistle (developer: the
+  // evolved lead sounded jarring and too loud). Level cut from 0.4 to 0.26.
+  lp.frequency.value = 3200;
+  lp.Q.value = 0.8;
   const drive = ctx.createWaveShaper();
-  drive.curve = softClipCurve(1.5);
+  drive.curve = softClipCurve(1.15);
   const g = ctx.createGain();
   g.gain.setValueAtTime(0.001, 0);
-  g.gain.exponentialRampToValueAtTime(0.4, 0.04);
-  g.gain.setValueAtTime(0.4, 0.72);
+  g.gain.exponentialRampToValueAtTime(0.26, 0.04);
+  g.gain.setValueAtTime(0.26, 0.72);
   g.gain.exponentialRampToValueAtTime(0.001, 0.98);
   const o2g = ctx.createGain();
-  o2g.gain.value = 0.4;
+  o2g.gain.value = 0.28;
   osc.connect(lp);
   osc2.connect(o2g).connect(lp);
   lp.connect(drive).connect(g).connect(ctx.destination);
