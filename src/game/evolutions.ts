@@ -7,6 +7,77 @@ import type { Role } from '../audio/kits';
 export const GEAR_CAPACITY = 4;
 export const GEAR_OFFER_TIME_S = 60;
 
+/** Locked gameplay numbers from the implementation handoff. Keeping these
+ * beside the recipe registry prevents evolution-only tuning from leaking into
+ * generic weapon config. */
+export const GEAR_TUNING = {
+  heavyBootsReachMul: 1.15,
+  laserSightRangeMul: 1.25,
+  laserSightSpeedMul: 1.25,
+  needleCasePierceAdd: 1,
+  gyroscopeSpeedMul: 1.25,
+  leadWeightDamageMul: 1.15,
+  leadWeightShoveMul: 1.2,
+  hourglassLifetimeMul: 1.25,
+  compassRangeMul: 1.35,
+  boxingCloseRange: 140,
+  boxingDamageMul: 1.2,
+  boxingShoveMul: 1.3,
+  prismDamageMul: 1.4,
+  prismLifetimeMul: 1.2,
+} as const;
+
+export const EVOLUTION_TUNING = {
+  dancefloor: { echoDamageMul: 0.6, strikeLifeS: 0.2, kickRehitS: 1.35 },
+  deadCenter: { width: 16, bonusPerLesser: 0.15, bonusCap: 0.75, tracerS: 0.1 },
+  needleStorm: { maxCuts: 8, cutExpiryS: 1.5, consumeMul: 1.5 },
+  orrery: {
+    capPerRing: 6,
+    innerStart: 82,
+    outerStart: 126,
+    innerMin: 66,
+    innerMax: 106,
+    outerMin: 110,
+    outerMax: 158,
+    noteRadiusStep: 8,
+    minGap: 24,
+    radiusMoveS: 0.12,
+  },
+  undertow: {
+    shove: 14,
+    wallSpeed: 150,
+    wallLifeS: 1.5,
+    wallThickness: 64,
+    wallSpanMul: 1.5,
+    rehitS: 0.45,
+    damageMul: 0.65,
+  },
+  cathedral: { radiusMul: 0.72, offsetMul: 0.35, damageMul: 0.75, overlapSlowMul: 0.18 },
+  headliner: {
+    range: 900,
+    dashS: 0.12,
+    damageMul: 2,
+    comboStep: 0.1,
+    comboCap: 0.5,
+  },
+  standingOvation: {
+    radius: 140,
+    closeS: 0.12,
+    releaseAtS: 0.2,
+    endS: 0.28,
+    corridorWidth: 48,
+    damageMul: 1.75,
+    stunS: 0.35,
+    throwDist: 32,
+  },
+  glassChoir: {
+    preferredMinRange: 180,
+    clusterRadius: 120,
+    assignmentRadius: 180,
+    shards: 8,
+  },
+} as const;
+
 export type GearId =
   | 'heavyBoots'
   | 'laserSight'
@@ -217,4 +288,3 @@ export function eligibleEvolutions(
     canEvolve(conf.role, tiers, gear, evolved),
   );
 }
-

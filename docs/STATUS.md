@@ -2,13 +2,14 @@
 
 Last updated: July 15, 2026
 
-## Latest change (July 15, 2026) — weapon evolutions + Gear, Sub-phase B implemented
+## Latest change (July 15, 2026) — weapon evolutions + Gear, Gate C awaiting developer
 
 At the developer's explicit implementation request, the locked handoff at
 `docs/phases/weapon-evolutions.md` is now in progress. The developer explicitly
-passed **Sub-phase A — Gear and reward plumbing** in a live test. **Sub-phase B
-— evolved sound — is implemented and technically verified, awaiting only the
-developer's ear gate.** No evolution combat has started.
+passed **Sub-phase A — Gear and reward plumbing** in a live test and has now
+explicitly passed **Sub-phase B — evolved sound** by ear. **Sub-phase C —
+evolved combat** is implemented and technically verified. Its muted
+hands/strategy Gate C is waiting for the developer; Sub-phase D has not started.
 
 Built: the canonical nine-Gear/nine-evolution registry; four one-level Gear
 sockets; deterministic weapon/Gear offers (weapon-only before 1:00, paired
@@ -19,8 +20,8 @@ Chest eligibility is evaluated at presentation. Zero eligible evolutions falls
 back to a normal reward/+15 HP, one schedules directly, and two-to-four use the
 locked walk-onto layouts. Gear and evolution state land through the existing
 next-heard-bar/audio-time seam with stale-state revalidation and world-swap
-guards. `ScheduledTrigger.evolved` snapshots lookahead state now; evolved
-combat deliberately remains base behavior until its later gated phase.
+guards. `ScheduledTrigger.evolved` snapshots lookahead state so queued sound
+and combat always agree.
 
 Presentation: generic weapon/Gear/evolution ground tokens, physical gold chest,
 four-socket Gear racks in HUD and pause, pending pulses, evolved name/gold
@@ -42,15 +43,42 @@ full-evolved modes. Instrument Zoo exercises every base/evolved live variant
 through engine → due trigger → real `RunWorld.fireTrigger`, verifies paired Gear
 and the evolution snapshot, and restores global state on exit.
 
-Verification: `npm run check:evolved-audio`, `npm run check:evolutions`,
-`tsc --noEmit`, production `vite build`, `git diff --check`, and the browser
-drive pass. The browser drive covered all nine Base/Evolved solos, all four
-audible evolved seven-voice bands (post-limiter peak RMS 0.528), one dispatch
-per pulse, and clean state restoration with no console errors. The in-app
-browser plugin itself still failed to initialize, but no technical gate was
-delegated to the developer. The July 11 parity gate has **not** passed; the
-known shared Kick re-hit-lock mismatch remains a mandatory disposition before
-Dancefloor is implemented in Sub-phase C.
+Sub-phase C resolves the locked base Kick parity mismatch with one shared
+per-enemy 1.35-second re-hit lock across both sides, while keeping Dancefloor's
+echo set separate. The explicit attack-construction pipeline now applies
+variant rules, evolution overrides, scoped Gear, global damage, and conditional
+close-range rules once, then snapshots entities. All nine transformations are
+live: Dancefloor stored-position echoes; Dead Center lineup hitscan; Needle
+Storm Cuts; Orrery's two counter-rotating rings; Undertow waves and phrase-end
+wall; Cathedral's three-circle terrain; Headliner's persistent soloist;
+Standing Ovation's timed close/stun/throw; and Glass Choir's eight uniquely
+assigned curved shards. Damage remains attributed to the owning base role.
+
+Their production visuals expose stored Kick marks/echoes, the Dead Center
+tracer/terminal flash, Cut stacks/releases, Orrery ring motion, the Undertow
+wall, Cathedral overlap, Headliner's curved dash ribbon, closing palms, and
+Glass Choir trails. Instrument Zoo adds one real engine→trigger→world combat
+fixture for every evolution, including all explicitly required timing and
+targeting edge cases.
+
+Verification: `npm run check:evolution-combat`, `npm run check:evolved-audio`,
+`npm run check:evolutions`, `tsc --noEmit`, production `vite build`,
+`git diff --check`, and the browser drive pass. The combat check covers exact
+Gear scopes/composition, all nine signature mechanics, deterministic
+tie-breaks/caps/resets, and every Base IV/evolved weapon against one target, a
+dense pack, a boss, and a knockback-immune enemy with exact effective-damage
+attribution. The browser drive passes the four-room Lab and every evolved
+combat fixture at both 1440×900 and 390×844, restores global state, and covers
+all nine Base/Evolved solos plus all four audible legal evolved bands without
+console errors. The in-app browser plugin still fails during connection setup;
+the repository's bounded Chrome drive performed the objective browser tests,
+so no technical check was delegated to the developer. The unrelated, already
+documented `check:mad-forest` fixture remains stale at its starting-spawn
+assertion (`30 !== 10`).
+
+**Next action:** the developer runs Gate C muted and judges whether all nine
+evolutions demand distinct movement/targeting decisions. A pass authorizes
+Sub-phase D; a failure loops inside Sub-phase C.
 
 ## Previous change (July 15, 2026) — instrument activate/deactivate on the next bar
 
@@ -421,12 +449,11 @@ ladders, samples) is kept. See the History entry below for the full teardown.
 
 ## Current phase
 
-**Weapon evolutions + Gear, Sub-phase B — implemented, awaiting the developer's
-ear gate.** Sub-phase A passed explicitly. Browser-verifiable behavior is
-already covered; the remaining decision is whether the evolved sounds are good
-and recognizable in every legal full band. The known shared Kick re-hit lock
-remains an implementation/spec mismatch and must be resolved or explicitly
-dispositioned before evolution combat begins.
+**Weapon evolutions + Gear, Sub-phase C — evolved combat implementation.**
+Sub-phases A and B passed explicitly. Before Dancefloor is added, the shared
+Kick re-hit lock must be made truthful to the locked 1.35-second per-target
+parity rule; then the nine combat transformations, visuals, attribution,
+sandbox fixtures, Living Lab coverage, and muted balance pass are built.
 
 ## What was built (July 6)
 
@@ -457,14 +484,10 @@ Gate A also implicitly co-judged the July 6 genres-and-weapons material it stack
 
 ## Next action
 
-Run only the Sub-phase B **ear** gate in the rehearsal room: compare Base IV to
-Evolved for each of the nine weapons, then listen to full evolved Snare/Clap ×
-Lead/Bell combinations. Each weapon should remain recognizable, the rhythm and
-number of hits should feel unchanged, and the lingering ends of Undertow,
-Cathedral, and Glass Choir must not make the full track cloudy.
-
-Record an explicit pass/fail. Do not begin Sub-phase C combat without that ear
-pass.
+Resolve the shared Kick re-hit-lock mismatch, implement and technically verify
+all nine Sub-phase C combat transformations, then run the muted gate: each
+evolution must be identifiable by how it changes movement and positioning, and
+no pair may feel like a stronger version of the same spatial job.
 
 The July 11 parity hands gate remains outstanding; resolve or disposition its
 shared Kick re-hit-lock mismatch before Sub-phase C implements Dancefloor.

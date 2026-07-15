@@ -11,6 +11,7 @@ import { drawGearIcon } from './gearicons';
 import type { GearId } from './evolutions';
 import {
   type Chest,
+  type DancefloorStamp,
   KICK_GEOMETRY,
   PLAYER_FOOT_OFFSET,
   type Enemy,
@@ -18,6 +19,8 @@ import {
   type Gem,
   type Projectile,
   type RunWorld,
+  type StandingOvation,
+  type UndertowWall,
   type Zone,
 } from './run';
 
@@ -250,6 +253,11 @@ export class RunView {
   private enemyGfx = new Map<Enemy, Graphics>();
   private projectileGfx = new Map<Projectile, Graphics>();
   private zoneGfx = new Map<Zone, Graphics>();
+  private dancefloorGfx = new Map<DancefloorStamp, Graphics>();
+  private undertowGfx = new Map<UndertowWall, Graphics>();
+  private ovationGfx = new Map<StandingOvation, Graphics>();
+  private cutGfx = new Map<Enemy, Graphics>();
+  private soloistGfx = makeSoloistGfx();
   private gemGfx = new Map<Gem, GemGfx>();
   private chestGfx = new Map<Chest, Container>();
   // Level-up ground picks: shell-owned, so they ride a dedicated layer that is
@@ -266,6 +274,7 @@ export class RunView {
   private shakes: { start: number; mag: number; dur: number }[] = [];
   private flashes: { start: number; dur: number; color: number; alpha: number }[] = [];
   private trails = new Map<Projectile, number[]>(); // flattened [x,y,...], newest last
+  private soloistTrail: number[] = [];
 
   constructor(world: RunWorld, view: { width: number; height: number }) {
     this.world = world;
@@ -281,6 +290,7 @@ export class RunView {
     body.circle(0, 0, RUN.playerRadius + 3).stroke({ width: 2, color: 0x59ffd1, alpha: 0.9 });
     this.playerGfx.addChild(glow, body);
     this.stage.addChild(this.playerGfx);
+    this.stage.addChild(this.soloistGfx);
     this.stage.addChild(this.groundLayer); // re-topped each frame while active
     this.stage.addChild(this.flashGfx); // re-topped each active frame
   }
@@ -347,14 +357,47 @@ export class RunView {
     if (this.world.fx) this.world.fx.length = 0;
 
     this.syncEnemies();
+    this.sync(
+      this.world.enemies.filter((e) => !e.dead && e.hatCuts > 0),
+      this.cutGfx,
+      makeCutStackGfx,
+      (e, gfx) => {
+        redrawCutStackGfx(gfx, e);
+        gfx.position.set(e.x, e.y - e.radius - 8);
+        gfx.alpha = Math.max(0.25, Math.min(1, (e.hatCutExpiryS - this.world.timeS) * 2));
+      },
+    );
     this.sync(this.world.projectiles, this.projectileGfx, makeProjectileGfx, (pr, gfx) => {
       gfx.position.set(pr.x, pr.y);
       if (pr.role !== 'hat') gfx.rotation = Math.atan2(pr.vy, pr.vx);
+    });
+    this.sync(this.world.dancefloorStamps, this.dancefloorGfx, makeDancefloorStampGfx, (stamp, gfx) => {
+      gfx.position.set(stamp.x, stamp.y);
+      gfx.scale.x = stamp.side;
     });
     this.drawTrails();
     this.sync(this.world.zones, this.zoneGfx, makeZoneGfx, (z, gfx) => {
       gfx.alpha = Math.min(1, z.lifeS * 2);
     });
+    this.sync(this.world.undertowWalls, this.undertowGfx, makeUndertowGfx, (wall, gfx) => {
+      gfx.position.set(wall.x, wall.y);
+      gfx.rotation = Math.atan2(wall.vy, wall.vx);
+      gfx.alpha = Math.min(1, wall.lifeS * 2);
+    });
+    this.sync(this.world.standingOvations, this.ovationGfx, makeOvationGfx, (clap, gfx) => {
+      redrawOvationGfx(gfx, clap);
+      gfx.position.set(clap.x, clap.y);
+      gfx.rotation = Math.atan2(clap.dirY, clap.dirX);
+    });
+    const soloist = this.world.headliner;
+    this.soloistGfx.renderable = soloist?.visible === true;
+    if (soloist?.visible) {
+      this.soloistGfx.position.set(soloist.x, soloist.y);
+      this.soloistGfx.rotation += dt * 4;
+      this.soloistGfx.tint = soloist.color;
+    } else {
+      this.soloistTrail.length = 0;
+    }
     const p = this.world.player;
     const cameraX = p.x + PLAYER_FOOT_OFFSET.x;
     const cameraY = p.y + PLAYER_FOOT_OFFSET.y;
@@ -415,6 +458,10 @@ export class RunView {
     this.enemyGfx.clear();
     this.projectileGfx.clear();
     this.zoneGfx.clear();
+    this.dancefloorGfx.clear();
+    this.undertowGfx.clear();
+    this.ovationGfx.clear();
+    this.cutGfx.clear();
     this.gemGfx.clear();
     this.chestGfx.clear();
     this.groundPickGfx.length = 0; // stage.destroy already freed the graphics
@@ -555,6 +602,51 @@ export class RunView {
         this.pops.push({ gfx, t: 0, dur: 0.18, grow: 0, holdHalf: true, expandHalf: true });
         break;
       }
+      case 'stamp': {
+        const { width, height } = whipDimensions(fx.area);
+        const x0 = fx.side === 1 ? 0 : -width;
+        const gfx = new Graphics()
+          .roundRect(x0, -height / 2, width, height, height / 2)
+          .fill({ color: 0xffffff, alpha: 0.2 })
+          .roundRect(x0, -height / 2, width, height, height / 2)
+          .stroke({ width: 3, color: 0xffffff, alpha: 0.9 });
+        gfx.tint = fx.color;
+        gfx.blendMode = 'add';
+        gfx.position.set(fx.x, fx.y);
+        this.stage.addChild(gfx);
+        this.pops.push({ gfx, t: 0, dur: 0.2, grow: 0 });
+        break;
+      }
+      case 'line': {
+        const gfx = new Graphics()
+          .moveTo(fx.x1, fx.y1)
+          .lineTo(fx.x2, fx.y2)
+          .stroke({ width: fx.width, color: 0xffffff, alpha: 0.3 })
+          .moveTo(fx.x1, fx.y1)
+          .lineTo(fx.x2, fx.y2)
+          .stroke({ width: 2, color: 0xffffff, alpha: 1 });
+        gfx.tint = fx.color;
+        gfx.blendMode = 'add';
+        this.stage.addChild(gfx);
+        this.pops.push({ gfx, t: 0, dur: fx.dur, grow: 0 });
+        break;
+      }
+      case 'cut': {
+        const gfx = new Graphics();
+        const r = fx.radius * (fx.release ? 1.5 : 0.8);
+        const count = fx.release ? 5 : 2;
+        for (let i = 0; i < count; i++) {
+          const off = (i - (count - 1) / 2) * 4;
+          gfx.moveTo(-r, off + r * 0.45).lineTo(r, off - r * 0.45);
+        }
+        gfx.stroke({ width: fx.release ? 3 : 2, color: 0xffffff, alpha: 0.9 });
+        gfx.tint = fx.color;
+        gfx.blendMode = 'add';
+        gfx.position.set(fx.x, fx.y);
+        this.stage.addChild(gfx);
+        this.pops.push({ gfx, t: 0, dur: fx.release ? 0.25 : 0.16, grow: fx.release ? 1.4 : 1 });
+        break;
+      }
       case 'shake':
         // Firing is deterministic (a sim event); the decay reads world.timeS.
         this.shakes.push({ start: this.world.timeS, mag: fx.mag, dur: fx.dur });
@@ -679,7 +771,7 @@ export class RunView {
     this.trailGfx.clear();
     const liveTrails = new Set<Projectile>();
     for (const pr of this.world.projectiles) {
-      if (!TRAIL_ROLES.has(pr.role)) continue;
+      if (!TRAIL_ROLES.has(pr.role) && !pr.glassShard) continue;
       liveTrails.add(pr);
       let buf = this.trails.get(pr);
       if (!buf) {
@@ -697,6 +789,18 @@ export class RunView {
       }
     }
     for (const pr of this.trails.keys()) if (!liveTrails.has(pr)) this.trails.delete(pr);
+    const soloist = this.world.headliner;
+    if (soloist?.visible) {
+      this.soloistTrail.push(soloist.x, soloist.y);
+      if (this.soloistTrail.length > TRAIL_LEN * 2) this.soloistTrail.splice(0, 2);
+      for (let i = 2; i < this.soloistTrail.length; i += 2) {
+        const a = i / this.soloistTrail.length;
+        this.trailGfx
+          .moveTo(this.soloistTrail[i - 2], this.soloistTrail[i - 1])
+          .lineTo(this.soloistTrail[i], this.soloistTrail[i + 1])
+          .stroke({ width: 3 + 3 * a, color: soloist.color, alpha: 0.45 * a });
+      }
+    }
   }
 
   /** Full-screen colored flash: a world-space rect sized to the visible
@@ -1064,7 +1168,7 @@ function makeEnemyGfx(e: Enemy): Graphics {
 
 function makeProjectileGfx(pr: Projectile): Graphics {
   // Distinct silhouette per weapon (gate B: colored circles read the same).
-  const ctx = cachedShape(`shot:${pr.role}:${pr.radius}`, (g) => {
+  const ctx = cachedShape(`shot:${pr.role}:${pr.radius}:${pr.evolved}:${pr.orbitRing}:${pr.glassShard}`, (g) => {
     switch (pr.role) {
       case 'snare': // hard-hitting bolt with a bright leading tip
         g.roundRect(-10, -3, 20, 6, 3).fill(0xffffff);
@@ -1081,6 +1185,13 @@ function makeProjectileGfx(pr: Projectile): Graphics {
       case 'arp': // orbiter: a bead with a ring
         g.circle(0, 0, pr.radius).stroke({ width: 3, color: 0xffffff });
         g.circle(0, 0, pr.radius * 0.45).fill(0xffffff);
+        if (pr.evolved) {
+          const side = pr.orbitRing < 0 ? -1 : 1;
+          g.moveTo(0, -pr.radius * 1.5)
+            .lineTo(side * pr.radius * 0.65, -pr.radius * 0.8)
+            .lineTo(0, -pr.radius * 0.55)
+            .stroke({ width: 2, color: 0xffffff });
+        }
         break;
       case 'bell': {
         // twinkly note: a small four-point sparkle (shards reuse this at their
@@ -1104,6 +1215,91 @@ function makeProjectileGfx(pr: Projectile): Graphics {
   return gfx;
 }
 
+function makeSoloistGfx(): Graphics {
+  const gfx = new Graphics()
+    .poly([0, -14, 5, -5, 14, 0, 5, 5, 0, 14, -5, 5, -14, 0, -5, -5])
+    .fill(0xffffff)
+    .circle(0, 0, 4)
+    .fill(0x101014)
+    .circle(0, 0, 18)
+    .stroke({ width: 2, color: 0xffffff, alpha: 0.55 });
+  gfx.blendMode = 'add';
+  gfx.renderable = false;
+  return gfx;
+}
+
+function makeDancefloorStampGfx(stamp: DancefloorStamp): Graphics {
+  const width = 22 * stamp.area;
+  const height = 11 * stamp.area;
+  const gfx = new Graphics()
+    .ellipse(-width * 0.18, 0, width * 0.42, height)
+    .fill({ color: 0xffffff, alpha: 0.12 })
+    .ellipse(width * 0.18, -height * 0.45, width * 0.35, height * 0.75)
+    .fill({ color: 0xffffff, alpha: 0.1 })
+    .ellipse(0, 0, width * 0.62, height * 1.15)
+    .stroke({ width: 2, color: 0xffffff, alpha: 0.35 });
+  gfx.tint = 0xff5a3c;
+  return gfx;
+}
+
+function makeCutStackGfx(e: Enemy): Graphics {
+  const gfx = new Graphics();
+  redrawCutStackGfx(gfx, e);
+  return gfx;
+}
+
+function redrawCutStackGfx(gfx: Graphics, e: Enemy): void {
+  gfx.clear();
+  const count = Math.min(8, e.hatCuts);
+  for (let i = 0; i < count; i++) {
+    const x = (i - (count - 1) / 2) * 4;
+    gfx.moveTo(x - 2, 3).lineTo(x + 2, -3);
+  }
+  gfx.stroke({ width: 2, color: 0x3ce0ff, alpha: 0.95 });
+}
+
+function makeUndertowGfx(wall: UndertowWall): Graphics {
+  const gfx = new Graphics();
+  gfx.rect(-wall.thickness / 2, -wall.span / 2, wall.thickness, wall.span)
+    .fill({ color: 0xffffff, alpha: 0.14 });
+  for (const x of [-wall.thickness * 0.25, wall.thickness * 0.25]) {
+    gfx.moveTo(x, -wall.span / 2).lineTo(x, wall.span / 2);
+  }
+  gfx.stroke({ width: 3, color: 0xffffff, alpha: 0.65 });
+  for (let y = -wall.span / 2; y <= wall.span / 2; y += 46) {
+    gfx.moveTo(-wall.thickness / 2, y)
+      .bezierCurveTo(-wall.thickness / 6, y - 12, wall.thickness / 6, y + 12, wall.thickness / 2, y);
+  }
+  gfx.stroke({ width: 2, color: 0xffffff, alpha: 0.8 });
+  gfx.tint = wall.color;
+  gfx.blendMode = 'add';
+  return gfx;
+}
+
+function makeOvationGfx(clap: StandingOvation): Graphics {
+  const gfx = new Graphics();
+  redrawOvationGfx(gfx, clap);
+  return gfx;
+}
+
+function redrawOvationGfx(gfx: Graphics, clap: StandingOvation): void {
+  gfx.clear();
+  const close = Math.min(1, clap.age / 0.12);
+  const side = clap.radius * (1 - close);
+  const palmW = 18;
+  const palmH = 46;
+  gfx.rect(-palmW / 2, side - palmH / 2, palmW, palmH)
+    .rect(-palmW / 2, -side - palmH / 2, palmW, palmH)
+    .fill({ color: 0xffffff, alpha: 0.65 });
+  gfx.moveTo(-clap.radius, -clap.width / 2)
+    .lineTo(clap.radius, -clap.width / 2)
+    .moveTo(-clap.radius, clap.width / 2)
+    .lineTo(clap.radius, clap.width / 2)
+    .stroke({ width: 2, color: 0xffffff, alpha: clap.released ? 0.2 : 0.45 });
+  gfx.tint = clap.color;
+  gfx.blendMode = 'add';
+}
+
 function makeZoneGfx(z: Zone): Graphics {
   // Zones use a distinct floor mark so their damaging area reads in a crowd.
   const gfx = new Graphics();
@@ -1112,9 +1308,17 @@ function makeZoneGfx(z: Zone): Graphics {
     case 'chord': {
       // A held chord: concentric "strings" inside a filled pool.
       gfx.circle(0, 0, r).fill({ color: 0xffffff, alpha: 0.1 });
-      gfx.circle(0, 0, r).stroke({ width: 2, color: 0xffffff, alpha: 0.5 });
+      gfx.circle(0, 0, r).stroke({ width: z.cathedral ? 3 : 2, color: 0xffffff, alpha: 0.5 });
       for (const f of [0.35, 0.6, 0.82])
         gfx.circle(0, 0, r * f).stroke({ width: 1, color: 0xffffff, alpha: 0.22 });
+      if (z.cathedral) {
+        for (let i = 0; i < 6; i++) {
+          const a = (i / 6) * Math.PI * 2;
+          gfx.moveTo(Math.cos(a) * r * 0.82, Math.sin(a) * r * 0.82)
+            .lineTo(Math.cos(a) * r, Math.sin(a) * r);
+        }
+        gfx.stroke({ width: 3, color: 0xffffff, alpha: 0.75 });
+      }
       break;
     }
     default: {

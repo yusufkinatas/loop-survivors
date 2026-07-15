@@ -435,6 +435,7 @@ export async function bootGame(
           hud.showToast(`${GEARS[choice.gear].name} equipped`);
         } else {
           w.setEvolved(choice.role, true);
+          w.setWeaponActive(choice.role, !deactivatedRoles.has(choice.role));
           pendingEvolutions.delete(choice.role);
           hud.showToast(`${ROLE_META[choice.role].name} → ${EVOLUTION_BY_ROLE.get(choice.role)!.name}`);
         }
@@ -632,6 +633,7 @@ export async function bootGame(
         w.addWeapon(role, 4);
         if (needsGear) w.addGear(evolution.gear);
         w.setEvolved(role, on);
+        w.setWeaponActive(role, on && !deactivatedRoles.has(role));
         pendingEvolutions.delete(role);
         if (needsGear) pendingGear.delete(evolution.gear);
         if (needsGear) pendingGearTargets.delete(evolution.gear);
@@ -791,6 +793,7 @@ export async function bootGame(
       return;
     }
     const w = world;
+    if (!w) return;
     // A pending change always flips the settled state (round-trips self-cancel
     // above), so the target is fixed at schedule time.
     const willDeactivate = !deactivatedRoles.has(role);
@@ -810,6 +813,7 @@ export async function bootGame(
         deactivatedRoles.delete(role);
         engine.setVoiceEnabled(role, true);
       }
+      w.setWeaponActive(role, !willDeactivate);
       paintBand();
     });
     paintBand();

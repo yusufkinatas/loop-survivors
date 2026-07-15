@@ -241,6 +241,51 @@ try {
     throw new Error(`Living Lab browser errors:\n${client.errors.join('\n')}`);
   }
 
+  // Repeat the real auto-drive at the locked narrow layout. This catches
+  // fixture controls or readouts that only work at desktop width.
+  await client.send('Emulation.setDeviceMetricsOverride', {
+    width: 390,
+    height: 844,
+    deviceScaleFactor: 1,
+    mobile: true,
+  });
+  await client.send('Page.navigate', { url: `${base}/?lab=auto&viewport=mobile` });
+  const mobileLab = await waitFor(
+    'mobile Living Lab auto-drive',
+    client,
+    `(() => {
+      const marker = document.querySelector('[data-lab-autodrive-state]');
+      return {
+        state: marker?.getAttribute('data-lab-autodrive-state') ?? 'missing',
+        text: marker?.textContent ?? '',
+      };
+    })()`,
+    (value) => value?.state === 'passed' || value?.state === 'failed',
+  );
+  if (mobileLab.state !== 'passed') {
+    throw new Error(`Mobile Living Lab auto-drive failed: ${mobileLab.text || mobileLab.state}`);
+  }
+  const mobileLayout = await client.evaluate(`(() => {
+    const root = document.querySelector('[data-lab-ready]');
+    const rect = root?.getBoundingClientRect();
+    return {
+      width: innerWidth,
+      height: innerHeight,
+      scrollWidth: document.documentElement.scrollWidth,
+      rootLeft: rect?.left ?? -1,
+      rootRight: rect?.right ?? -1,
+    };
+  })()`);
+  if (
+    mobileLayout.width !== 390 || mobileLayout.height !== 844 ||
+    mobileLayout.scrollWidth > 391 || mobileLayout.rootLeft < -1 || mobileLayout.rootRight > 391
+  ) {
+    throw new Error(`Mobile Living Lab layout regression: ${JSON.stringify(mobileLayout)}`);
+  }
+  if (client.errors.length > 0) {
+    throw new Error(`Mobile Living Lab browser errors:\n${client.errors.join('\n')}`);
+  }
+
   // Exercise the real exit path. It restores/disposes the shared context and
   // reloads the ordinary game; a failed restore marks the resulting URL.
   await client.evaluate('window.loop.lab.exit(); true');
@@ -272,6 +317,8 @@ try {
   if (client.errors.length > 0) {
     throw new Error(`Browser errors after normal boot:\n${client.errors.join('\n')}`);
   }
+
+  await client.send('Emulation.clearDeviceMetricsOverride');
 
   await client.evaluate("document.querySelector('.start-dev-toggle').click(); true");
   await waitFor(
@@ -361,7 +408,7 @@ try {
     throw new Error(`Browser errors after rehearsal checks:\n${client.errors.join('\n')}`);
   }
 
-  console.log('Living Lab: PASS (4 rooms, fail-fast browser drive, globals restored)');
+  console.log('Living Lab: PASS (4 rooms at 1440×900 + 390×844, fail-fast browser drive, globals restored)');
   console.log('Normal game: PASS (fresh start, Lab entry collapsed then opened through dev tools)');
   console.log(`Rehearsal: PASS (9 Base/Evolved solos, 4 audible legal bands; peak RMS ${Math.max(...mixLevels).toFixed(3)})`);
 } finally {

@@ -509,6 +509,9 @@ export async function mountDocumentationLab(
     });
     setPressed(patternBtn, false);
     button(actions, 'reset targets', 'instrument-targets', () => seedTargets());
+    const fixtureBtn = button(actions, 'run evolved combat fixture', 'instrument-evolution-fixture', () => runEvolutionFixture());
+    const fixtureResult = el('output', 'lab-result', node, 'evolved fixture ready');
+    fixtureResult.dataset.labResult = 'evolution-combat';
     const live = el('div', 'lab-live-readout', node, '0 trigger events received');
     el('p', 'lab-legend', node, 'Choose an instrument, tier, and variant · pulse is manual and immediate · Esc or ← hub: back');
 
@@ -597,6 +600,7 @@ export async function mountDocumentationLab(
       }
       context.selectInstrument(selected, tier, evolved);
       pulseBtn.style.setProperty('--voice-color', meta.color);
+      fixtureBtn.disabled = !evolution;
     }
 
     function pulseEvent(): ChartEvent {
@@ -633,6 +637,137 @@ export async function mountDocumentationLab(
         [480, 0], [250, 100], [440, 170], [80, 230],
       ] as const;
       for (const [x, y] of positions) context.spawnEnemy('flower', p.x + x, p.y + y);
+    }
+
+    function runEvolutionFixture(): void {
+      stopPattern();
+      evolved = true;
+      tier = 4;
+      refreshSelection();
+      context.world.clearSandboxEntities();
+      context.selectInstrument(selected, 4, true);
+      const w = context.world;
+      w.player.x = 0;
+      w.player.y = 0;
+      w.player.facingX = 1;
+      const target = (x: number, y: number, hp = 1000): Enemy => {
+        const spawned = context.spawnEnemy('skeleton', x, y);
+        if (!spawned) throw new Error(`instrument fixture could not spawn ${selected} target`);
+        spawned.speed = 0;
+        spawned.hp = hp;
+        return spawned;
+      };
+      const send = (event: ChartEvent): void => context.pulse(selected, event);
+      let pass = false;
+      let observation = '';
+
+      switch (selected) {
+        case 'kick': {
+          for (const [index, step] of [0, 4, 8, 12].entries()) {
+            w.player.x = index * 80;
+            target(w.player.x + 100, 0);
+            send({ step, velocity: 1 });
+          }
+          context.runSteps(15);
+          const stamps = w.fx?.filter((effect) => effect.type === 'stamp').length ?? 0;
+          pass = stamps === 4;
+          observation = `${stamps} stored-position echoes on beat 4`;
+          break;
+        }
+        case 'snare': {
+          const front = target(100, 0, 40);
+          const middle = target(220, 0, 80);
+          const elite = target(430, 0, 1000);
+          send({ step: 4, velocity: 1 });
+          pass = front.hp < 40 && middle.hp < 80 && elite.hp < 1000 && elite.hp < 1000 - 13 * 1.25;
+          observation = `line hits ${fmt(40 - front.hp, 1)} / ${fmt(80 - middle.hp, 1)} · target ${fmt(1000 - elite.hp, 1)}`;
+          break;
+        }
+        case 'hat': {
+          const marked = target(20, 0);
+          for (let i = 0; i < 4; i++) {
+            send({ step: i, velocity: 1, variant: 'closed' });
+            context.runSteps(8);
+          }
+          const stored = marked.hatCuts;
+          send({ step: 4, velocity: 1, variant: 'open' });
+          context.runSteps(8);
+          pass = stored === 4 && marked.hatCuts === 0;
+          observation = `${stored} Cuts stored · open hit leaves ${marked.hatCuts}`;
+          break;
+        }
+        case 'arp': {
+          send({ step: 0, velocity: 1, note: 0 });
+          send({ step: 4, velocity: 1, note: 10 });
+          send({ step: 8, velocity: 1, note: 3 });
+          context.runSteps(10);
+          const rings = new Set(w.projectiles.filter((shot) => shot.role === 'arp').map((shot) => shot.orbitRing));
+          pass = rings.has(-1) && rings.has(1);
+          observation = `${w.projectiles.length} orbiters · inner/outer counter-rotate`;
+          break;
+        }
+        case 'bass': {
+          target(24, 0);
+          send({ step: 31, velocity: 1 });
+          context.runSteps(3);
+          pass = w.undertowWalls.length === 1 && w.enemies.some((enemy) => enemy.wallCarryT > 0);
+          observation = `${w.undertowWalls.length} phrase-end wall · carried target ${pass ? 'yes' : 'no'}`;
+          break;
+        }
+        case 'chord': {
+          target(80, 0);
+          send({ step: 0, velocity: 0.8, variant: 'stab' });
+          send({ step: 48, velocity: 1, variant: 'pad' });
+          context.runSteps(1);
+          pass = w.zones.length === 6 && new Set(w.zones.map((zone) => zone.groupId)).size === 2;
+          observation = `${w.zones.length} circles from short + held events · overlap slow ${fmt(w.enemies[0]?.slowMul ?? 1, 2)}×`;
+          break;
+        }
+        case 'lead': {
+          target(70, 0);
+          target(120, 0);
+          target(170, 0);
+          send({ step: 0, velocity: 1, note: 0 });
+          context.runSteps(8);
+          send({ step: 4, velocity: 1, note: 3 });
+          context.runSteps(8);
+          const beforeReset = w.headliner?.visited.size ?? 0;
+          send({ step: 0, velocity: 1, note: 5 });
+          context.runSteps(8);
+          const afterReset = w.headliner?.visited.size ?? 0;
+          pass = beforeReset === 2 && afterReset === 1;
+          observation = `${beforeReset} fresh targets · phrase reset → ${afterReset}`;
+          break;
+        }
+        case 'clap': {
+          const caught = target(70, 0);
+          const before = caught.hp;
+          send({ step: 4, velocity: 1 });
+          context.runSteps(10);
+          const wasCaught = w.standingOvations[0]?.caught.has(caught) === true;
+          context.runSteps(4);
+          const released = w.standingOvations[0]?.released === true;
+          pass = wasCaught && released && caught.hp < before;
+          observation = `caught once ${wasCaught ? 'yes' : 'no'} · released without second hit ${released ? 'yes' : 'no'}`;
+          break;
+        }
+        case 'bell': {
+          for (let i = 0; i < 9; i++) target(180 + (i % 3) * 18, (Math.floor(i / 3) - 1) * 18);
+          send({ step: 4, velocity: 1, note: 0 });
+          for (let i = 0; i < 45 && !w.projectiles.some((shot) => shot.shard); i++) context.runSteps(1);
+          const shards = w.projectiles.filter((shot) => shot.shard);
+          const assigned = shards.map((shot) => shot.assignedTargetId).filter((id): id is number => id !== null);
+          pass = shards.length === 8 && new Set(assigned).size === assigned.length;
+          observation = `${shards.length} shards · ${new Set(assigned).size} unique assignments`;
+          break;
+        }
+      }
+
+      fixtureResult.textContent = `${pass ? 'PASS' : 'FAIL'} · ${EVOLUTION_BY_ROLE.get(selected)?.name ?? selected} · ${observation}`;
+      fixtureResult.classList.toggle('pass', pass);
+      fixtureResult.classList.toggle('fail', !pass);
+      fixtureResult.dataset.labEvolutionRole = selected;
+      fixtureResult.dataset.labEvolutionState = pass ? 'passed' : 'failed';
     }
 
     const labels = new Map<Enemy, ReturnType<LabSandbox['worldLabel']>>();
@@ -890,6 +1025,7 @@ export async function mountDocumentationLab(
           );
           assert(!content.querySelector('[data-role="crash"], [data-role="riser"]'), 'retired FX leaked');
           const pulse = content.querySelector<HTMLButtonElement>('[data-lab-action="instrument-pulse"]')!;
+          const combatFixture = content.querySelector<HTMLButtonElement>('[data-lab-action="instrument-evolution-fixture"]')!;
           const base = content.querySelector<HTMLButtonElement>('[data-lab-evolution="base"]')!;
           const evolvedButton = content.querySelector<HTMLButtonElement>('[data-lab-evolution="evolved"]')!;
           for (const entry of roster) {
@@ -924,6 +1060,12 @@ export async function mountDocumentationLab(
                 assert(context.triggerCount === before + 1, `${role}/${variant}/${mode} pulse mismatch`);
                 assert(context.lastTrigger?.role === role, `${role}/${variant}/${mode} routed wrong role`);
                 assert(context.lastTrigger?.evolved === on, `${role}/${variant}/${mode} snapshot mismatch`);
+              }
+              if (on) {
+                combatFixture.click();
+                const result = content.querySelector<HTMLOutputElement>('[data-lab-result="evolution-combat"]')!;
+                assert(result.dataset.labEvolutionRole === role, `${role} combat fixture routed wrong role`);
+                assert(result.dataset.labEvolutionState === 'passed', `${role} evolved combat fixture failed: ${result.textContent}`);
               }
             }
           }

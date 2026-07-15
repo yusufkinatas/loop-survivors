@@ -46,7 +46,12 @@ import {
 } from './madforest';
 import type { Rng } from './rng';
 import { SpatialHash, circlesOverlap } from './spatial';
-import type { GearId } from './evolutions';
+import { STEPS_PER_BAR, STEPS_PER_PHRASE } from '../audio/scale';
+import {
+  EVOLUTION_TUNING,
+  GEAR_TUNING,
+  type GearId,
+} from './evolutions';
 
 /** Roles that emit a per-hit spark on impact. Bounded to low-count roles so
  *  a 500-enemy event frame never floods the fx queue. */
@@ -67,6 +72,25 @@ export function circleIntersectsRect(
   const dx = cx - qx;
   const dy = cy - qy;
   return dx * dx + dy * dy <= radius * radius;
+}
+
+/** Circle versus a finite oriented corridor. Returns the projection from the
+ * segment start when intersecting, which also supplies stable hit ordering. */
+export function circleIntersectsSegment(
+  e: Pick<Enemy, 'x' | 'y' | 'radius'>,
+  x: number,
+  y: number,
+  dirX: number,
+  dirY: number,
+  length: number,
+  halfWidth: number,
+): number | null {
+  const dx = e.x - x;
+  const dy = e.y - y;
+  const projected = dx * dirX + dy * dirY;
+  if (projected < -e.radius || projected > length + e.radius) return null;
+  const perpendicular = Math.abs(dx * -dirY + dy * dirX);
+  return perpendicular <= halfWidth + e.radius ? projected : null;
 }
 
 /** Whip-style facing strip geometry. baseWidth is the reach (kept short so it
@@ -124,6 +148,15 @@ export interface Enemy {
   dashing: boolean;
   /** Time left under a chord zone's slow. */
   slowT: number;
+  slowMul: number;
+  /** Evolved status carried by the enemy, never by a module-global map. */
+  stunT: number;
+  hatCuts: number;
+  hatCutExpiryS: number;
+  /** Undertow carry wins over pursuit while the enemy remains in the wall. */
+  wallCarryX: number;
+  wallCarryY: number;
+  wallCarryT: number;
   /** Weapon knockback: velocity (px/s) and time left being pushed. While
    *  knockT > 0 the enemy rides this vector instead of chasing. */
   knockX: number;
@@ -180,6 +213,36 @@ export interface Projectile {
   shatter: number;
   /** True for a bell shard (a fragment shot), so its hit path skips shattering. */
   shard: boolean;
+  evolved: boolean;
+  variant?: string;
+  secondary: boolean;
+  shove: number;
+  closeBonus: boolean;
+  homingTurnRate: number;
+  homingRange: number;
+  targetId: number | null;
+  retargetsLeft: number;
+  /** Orrery ring (-1 inner, +1 outer, 0 non-Orrery) and smooth radius move. */
+  orbitRing: -1 | 0 | 1;
+  orbitOmega: number;
+  orbitFromRadius: number;
+  orbitTargetRadius: number;
+  orbitMoveT: number;
+  orbitReachMul: number;
+  /** Bell carries its fully snapshotted child configuration to first impact. */
+  shardTemplate: ProjectileTemplate | null;
+  assignedTargetId: number | null;
+  glassShard: boolean;
+}
+
+export interface ProjectileTemplate {
+  damage: number;
+  speed: number;
+  radius: number;
+  lifeS: number;
+  pierce: number;
+  turnRate: number;
+  closeBonus: boolean;
 }
 
 export interface Zone {
@@ -194,6 +257,72 @@ export interface Zone {
   source: Role;
   /** Whether enemies inside are slowed on each tick. */
   slow: boolean;
+  closeBonus: boolean;
+  groupId: number;
+  cathedral: boolean;
+}
+
+export interface UndertowWall {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  lifeS: number;
+  totalLifeS: number;
+  span: number;
+  thickness: number;
+  damage: number;
+  shove: number;
+  color: number;
+  closeBonus: boolean;
+  hitAt: Map<number, number>;
+}
+
+export interface StandingOvation {
+  x: number;
+  y: number;
+  dirX: number;
+  dirY: number;
+  radius: number;
+  width: number;
+  age: number;
+  damage: number;
+  throwDist: number;
+  color: number;
+  closeBonus: boolean;
+  caught: Set<Enemy>;
+  throwByEnemy: Map<number, number>;
+  closed: boolean;
+  released: boolean;
+}
+
+export interface HeadlinerSoloist {
+  x: number;
+  y: number;
+  fromX: number;
+  fromY: number;
+  targetId: number | null;
+  age: number;
+  dashS: number;
+  damage: number;
+  closeBonus: boolean;
+  retargetsLeft: number;
+  visited: Set<number>;
+  combo: number;
+  lastTargetId: number | null;
+  dashing: boolean;
+  returning: boolean;
+  visible: boolean;
+  color: number;
+}
+
+export interface DancefloorStamp {
+  x: number;
+  y: number;
+  side: 1 | -1;
+  damage: number;
+  area: number;
+  closeBonus: boolean;
 }
 
 export interface Gem {
@@ -228,7 +357,10 @@ export type FxEvent =
   | { type: 'spark'; x: number; y: number; color: number; n: number; spread: number }
   | { type: 'shake'; mag: number; dur: number }
   | { type: 'flash'; color: number; alpha: number; dur: number }
-  | { type: 'slam'; x: number; y: number; radius: number; color: number };
+  | { type: 'slam'; x: number; y: number; radius: number; color: number }
+  | { type: 'stamp'; x: number; y: number; side: 1 | -1; area: number; color: number }
+  | { type: 'line'; x1: number; y1: number; x2: number; y2: number; width: number; color: number; dur: number }
+  | { type: 'cut'; x: number; y: number; radius: number; color: number; release: boolean };
 
 export interface RunEvents {
   onLevelUp(level: number): void;
@@ -268,12 +400,35 @@ export interface RunWorldOpts {
   fx?: boolean;
 }
 
+interface AttackScope {
+  reach?: 'area' | 'radius' | 'orbitRadius';
+  aimed?: boolean;
+  projectileSpeed?: boolean;
+  finitePierce?: boolean;
+  persistent?: boolean;
+  orbit?: boolean;
+  homing?: boolean;
+  secondary?: boolean;
+  shove?: number;
+}
+
+interface BuiltAttack {
+  conf: WeaponConf;
+  aimRange: number;
+  homingRange: number;
+  homingTurnRate: number;
+  orbitOmega: number;
+  shove: number;
+  closeBonus: boolean;
+}
+
 export class RunWorld {
   /** Owned weapons and their ladder tier (1-4). */
   readonly tiers = new Map<Role, number>();
   /** Four-socket silent Gear inventory and evolved weapon identities. */
   readonly gear = new Set<GearId>();
   readonly evolved = new Set<Role>();
+  private readonly inactiveRoles = new Set<Role>();
 
   player = {
     x: 0,
@@ -302,6 +457,9 @@ export class RunWorld {
   readonly enemies: Enemy[] = [];
   readonly projectiles: Projectile[] = [];
   readonly zones: Zone[] = [];
+  readonly undertowWalls: UndertowWall[] = [];
+  readonly standingOvations: StandingOvation[] = [];
+  headliner: HeadlinerSoloist | null = null;
   readonly gems: Gem[] = [];
   readonly chests: Chest[] = [];
 
@@ -325,6 +483,16 @@ export class RunWorld {
    * collider weighting without consuming the separate stage RNG stream. */
   private enemyFrameCounters: Partial<Record<EnemyKind, number>> = {};
   private overflowGem: Gem | null = null;
+  private kickRehitUntil = new Map<number, number>();
+  readonly dancefloorStamps: DancefloorStamp[] = [];
+  private dancefloorBar = -1;
+  private nextZoneGroupId = 1;
+  private arpNextRing: -1 | 1 = -1;
+  private arpInnerRadius: number = EVOLUTION_TUNING.orrery.innerStart;
+  private arpOuterRadius: number = EVOLUTION_TUNING.orrery.outerStart;
+  private arpPreviousNote: number | null = null;
+  private arpLastStep = -1;
+  private headlinerLastStep = -1;
   private pendingKick: Array<{
     atS: number;
     x: number;
@@ -337,6 +505,8 @@ export class RunWorld {
     expiresAt: number;
     samplePlayer: boolean;
     spawnFollowUp: boolean;
+    echo: boolean;
+    closeBonus: boolean;
     /** Enemies already damaged by THIS strike, so its 200 ms hitbox lands one
      *  hit per enemy across its frames while every new trigger hits fresh. */
     hit: Set<Enemy>;
@@ -383,6 +553,7 @@ export class RunWorld {
   /** The coupling point: a scheduled trigger fires this kit's weapon at the
    *  owned tier. Variant peaks (bass sub, chord pad) scale the same weapon. */
   fireTrigger(t: ScheduledTrigger): void {
+    if (this.inactiveRoles.has(t.role)) return;
     const tier = this.tiers.get(t.role);
     if (!tier) return;
     // WEAPONS is keyed on the supported catalog; a trigger only ever fires for
@@ -405,74 +576,122 @@ export class RunWorld {
         damage: conf.damage * fx.damageMul,
       };
     }
-    // Single build-transform pipeline (D1): tempo compensation, folded in one
-    // place — balance code multiplies here.
-    conf = this.applyBuild(conf);
-
     switch (t.role) {
       case 'kick': {
-        // Whip geometry and damage, while retaining Model A's audible Kick on
-        // every gameplay trigger. A per-enemy 1.35 s lock below preserves the
-        // reference weapon's target cadence despite the 122 BPM beat grid.
+        const built = this.buildAttack('kick', conf, { reach: 'area' });
         const side = p.facingX;
-        this.pendingKick.push({
-          atS: this.timeS,
-          x: p.x,
-          y: p.y,
-          side,
-          damage: conf.damage,
-          area: conf.area ?? 1,
-          started: false,
-          startedAt: 0,
-          expiresAt: 0,
-          samplePlayer: false,
-          spawnFollowUp: (conf.amount ?? 1) > 1,
-          hit: new Set(),
-        });
+        this.spawnKickAttack(p.x, p.y, side, built, (built.conf.amount ?? 1) > 1, false);
+        if (t.evolved) this.recordDancefloorStamp(t, p.x, p.y, side, built);
         break;
       }
       case 'chord': {
+        const built = this.buildAttack('chord', conf, { persistent: true });
         // Thrown at the nearest enemy, not dropped underfoot: the zone has
         // to land where the horde actually is to be worth a pick.
         const target = this.nearestEnemy(ZONE_THROW_RANGE);
         // Loud chords stamp a bigger zone (velocity → size).
-        const zc = { ...conf, radius: conf.radius! * (0.85 + 0.3 * v) };
-        this.spawnZone(target?.x ?? p.x, target?.y ?? p.y, zc, color, 'chord');
+        const zc = { ...built.conf, radius: built.conf.radius! * (0.85 + 0.3 * v) };
+        if (t.evolved) {
+          this.spawnCathedral(target?.x ?? p.x, target?.y ?? p.y, zc, color, built.closeBonus);
+        } else {
+          this.spawnZone(target?.x ?? p.x, target?.y ?? p.y, zc, color, 'chord', {
+            closeBonus: built.closeBonus,
+          });
+        }
         break;
       }
       case 'clap': {
-        // Whip: a wide forward slash in the aim direction, hitting a cone.
-        const aim = this.aimDir(0);
+        const clapConf = t.evolved ? { ...conf, radius: EVOLUTION_TUNING.standingOvation.radius } : conf;
+        const built = this.buildAttack('clap', clapConf, {
+          reach: 'radius',
+          shove: t.evolved ? EVOLUTION_TUNING.standingOvation.throwDist : (WEAPON_SHOVE.clap ?? 0),
+        });
+        const aim = this.aimDir(0, built.aimRange);
         const ang = Math.atan2(aim.y, aim.x);
-        const reach = conf.radius! * (0.9 + 0.2 * v);
-        this.damageCone(p.x, p.y, ang, conf.arc!, reach, conf.damage * (0.85 + 0.3 * v), 'clap', WEAPON_SHOVE.clap);
-        this.fx?.push({ type: 'arc', x: p.x, y: p.y, angle: ang, arc: conf.arc!, radius: reach, color });
+        if (t.evolved) {
+          this.spawnStandingOvation(aim, built, color, v);
+        } else {
+          const reach = built.conf.radius! * (0.9 + 0.2 * v);
+          this.damageCone(
+            p.x, p.y, ang, built.conf.arc!, reach,
+            built.conf.damage * (0.85 + 0.3 * v), 'clap', built.shove, built.closeBonus,
+          );
+          this.fx?.push({ type: 'arc', x: p.x, y: p.y, angle: ang, arc: built.conf.arc!, radius: reach, color });
+        }
         break;
       }
       case 'bell': {
-        // A note lobbed straight that shatters into shards on its first hit.
-        this.spawnBell(this.aimDir(0.1), conf, color, v);
+        const mul = 0.8 + 0.4 * v;
+        const built = this.buildAttack('bell', { ...conf, damage: conf.damage * mul }, {
+          aimed: true, projectileSpeed: true, finitePierce: true, persistent: true,
+        });
+        const shardBuilt = this.buildAttack('bell', {
+          damage: conf.damage * mul * BELL.shardDamageMul,
+          speed: BELL.shardSpeed,
+          radius: BELL.shardRadius,
+          lifetimeS: BELL.shardLifeS,
+          pierce: BELL.shardPierce,
+        }, {
+          projectileSpeed: true, finitePierce: true, persistent: true,
+          homing: t.evolved, secondary: true,
+        });
+        const dir = t.evolved ? this.glassChoirAim(built.aimRange) : this.aimDir(0.1, built.aimRange);
+        this.spawnBell(dir, built, shardBuilt, color, t.evolved);
         break;
       }
       case 'arp': {
-        // King Bible: an orbiter per note, circling the player.
-        this.spawnOrbiter(conf, color, v);
+        const built = this.buildAttack('arp', { ...conf, damage: conf.damage * (0.8 + 0.4 * v) }, {
+          reach: 'orbitRadius', persistent: true, orbit: true,
+        });
+        if (t.evolved) this.spawnOrrery(t, built, color);
+        else this.spawnOrbiter(built, color, false);
         break;
       }
       case 'bass': {
-        // Bass never multishots (no 'aimedfan' tag): one wide rolling wave.
-        this.spawnProjectile('bass', this.aimDir(0.08), conf, color, v);
-        // Sub-drop peak: a low boom the screen feels.
-        if (t.variant === 'sub') {
+        const finalEvent = t.evolved && t.step >= 0 && t.step % 32 === 31;
+        const bassConf = {
+          ...conf,
+          damage: conf.damage * (0.75 + 0.5 * v),
+          lifetimeS: finalEvent ? EVOLUTION_TUNING.undertow.wallLifeS : conf.lifetimeS,
+        };
+        const built = this.buildAttack('bass', bassConf, {
+          aimed: true,
+          projectileSpeed: !finalEvent,
+          persistent: true,
+          shove: t.evolved ? EVOLUTION_TUNING.undertow.shove : (WEAPON_SHOVE.bass ?? 0),
+        });
+        const dir = this.aimDir(0.08, built.aimRange);
+        if (finalEvent) this.spawnUndertow(dir, built, color);
+        else this.spawnProjectile('bass', dir, built, color, t);
+        if (t.variant === 'sub' || finalEvent) {
           this.fx?.push({ type: 'shake', mag: SHAKE.bassSub.mag, dur: SHAKE.bassSub.dur });
           this.fx?.push({ type: 'flash', color, alpha: FLASH.bassSub.alpha, dur: FLASH.bassSub.dur });
         }
         break;
       }
-      case 'snare':
-      case 'hat':
       case 'lead': {
-        this.spawnProjectile(t.role, this.aimDir(t.role === 'hat' ? 0.35 : 0.08), conf, color, v);
+        const built = this.buildAttack('lead', { ...conf, damage: conf.damage * (0.75 + 0.5 * v) }, {
+          aimed: true, projectileSpeed: !t.evolved, finitePierce: !t.evolved,
+          persistent: !t.evolved, homing: true,
+        });
+        if (t.evolved) this.fireHeadliner(t, built, color);
+        else this.spawnProjectile('lead', this.aimDir(0.08, built.aimRange), built, color, t);
+        break;
+      }
+      case 'snare': {
+        const built = this.buildAttack('snare', { ...conf, damage: conf.damage * (0.75 + 0.5 * v) }, {
+          aimed: true, projectileSpeed: !t.evolved, finitePierce: !t.evolved,
+          persistent: !t.evolved, shove: WEAPON_SHOVE.snare ?? 0,
+        });
+        if (t.evolved) this.fireDeadCenter(built, color);
+        else this.spawnProjectile('snare', this.aimDir(0.08, built.aimRange), built, color, t);
+        break;
+      }
+      case 'hat': {
+        const built = this.buildAttack('hat', { ...conf, damage: conf.damage * (0.75 + 0.5 * v) }, {
+          aimed: true, projectileSpeed: true, finitePierce: true, persistent: true,
+        });
+        this.spawnProjectile('hat', this.aimDir(0.35, built.aimRange), built, color, t);
         break;
       }
     }
@@ -488,7 +707,18 @@ export class RunWorld {
   /** Sandbox loadout editor: drop a weapon entirely. */
   removeWeapon(role: Role): void {
     this.tiers.delete(role);
-    this.evolved.delete(role);
+    this.inactiveRoles.delete(role);
+    this.setEvolved(role, false);
+    for (let i = this.projectiles.length - 1; i >= 0; i--) {
+      if (this.projectiles[i].role === role) this.projectiles.splice(i, 1);
+    }
+    for (let i = this.zones.length - 1; i >= 0; i--) {
+      if (this.zones[i].source === role) this.zones.splice(i, 1);
+    }
+    if (role === 'kick') this.pendingKick.length = 0;
+    if (role === 'bass') this.undertowWalls.length = 0;
+    if (role === 'clap') this.standingOvations.length = 0;
+    if (role === 'lead') this.headliner = null;
   }
 
   addGear(gear: GearId): void {
@@ -502,14 +732,107 @@ export class RunWorld {
   setEvolved(role: Role, on: boolean): void {
     if (on) this.evolved.add(role);
     else this.evolved.delete(role);
+    this.clearEvolutionState(role);
+    if (role === 'lead' && on) this.headliner = this.makeHeadliner();
   }
 
-  /** The single build-transform pipeline: soundset multiplier plus Antonio's
-   * documented level-based Might. */
-  private applyBuild(conf: WeaponConf): WeaponConf {
+  setWeaponActive(role: Role, on: boolean): void {
+    if (on) this.inactiveRoles.delete(role);
+    else this.inactiveRoles.add(role);
+    if (!on) {
+      if (role === 'kick') {
+        this.dancefloorStamps.length = 0;
+        this.dancefloorBar = -1;
+      }
+      if (role === 'lead') {
+        this.headliner = null;
+        this.headlinerLastStep = -1;
+      }
+      return;
+    }
+    if (role === 'lead' && this.evolved.has('lead')) this.headliner = this.makeHeadliner();
+  }
+
+  private clearEvolutionState(role: Role): void {
+    switch (role) {
+      case 'kick':
+        this.dancefloorStamps.length = 0;
+        this.dancefloorBar = -1;
+        break;
+      case 'snare':
+        break;
+      case 'hat':
+        break;
+      case 'arp':
+        this.resetOrreryState();
+        break;
+      case 'bass':
+        break;
+      case 'chord':
+        break;
+      case 'lead':
+        this.headliner = null;
+        this.headlinerLastStep = -1;
+        break;
+      case 'clap':
+        break;
+      case 'bell':
+        break;
+    }
+  }
+
+  /** Explicit one-pass entity construction pipeline. Gear mutates only the
+   * new attack described by `scope`; already-live entities retain snapshots. */
+  private buildAttack(role: Role, source: WeaponConf, scope: AttackScope = {}): BuiltAttack {
+    void role;
+    const conf = { ...source };
+    let aimRange = AIM_RANGE;
+    let homingRange = AIM_RANGE;
+    let homingTurnRate = 10;
+    let orbitOmega = ARP_OMEGA;
+    let shove = scope.shove ?? 0;
+
+    if (this.gear.has('heavyBoots') && scope.reach) {
+      const key = scope.reach;
+      if (conf[key] !== undefined) conf[key] = conf[key]! * GEAR_TUNING.heavyBootsReachMul;
+    }
+    if (this.gear.has('laserSight')) {
+      if (scope.aimed) aimRange *= GEAR_TUNING.laserSightRangeMul;
+      if (scope.projectileSpeed && conf.speed !== undefined) conf.speed *= GEAR_TUNING.laserSightSpeedMul;
+    }
+    if (this.gear.has('needleCase') && scope.finitePierce && Number.isFinite(conf.pierce ?? 1)) {
+      conf.pierce = (conf.pierce ?? 1) + GEAR_TUNING.needleCasePierceAdd;
+    }
+    if (this.gear.has('gyroscope')) {
+      if (scope.orbit) orbitOmega *= GEAR_TUNING.gyroscopeSpeedMul;
+      if (scope.homing) homingTurnRate *= GEAR_TUNING.gyroscopeSpeedMul;
+    }
+    if (this.gear.has('hourglass') && scope.persistent && conf.lifetimeS !== undefined) {
+      conf.lifetimeS *= GEAR_TUNING.hourglassLifetimeMul;
+    }
+    if (this.gear.has('compass') && scope.homing) {
+      homingRange *= GEAR_TUNING.compassRangeMul;
+    }
+    if (this.gear.has('leadWeight')) {
+      conf.damage *= GEAR_TUNING.leadWeightDamageMul;
+      shove *= GEAR_TUNING.leadWeightShoveMul;
+    }
+    if (this.gear.has('prism') && scope.secondary) {
+      conf.damage *= GEAR_TUNING.prismDamageMul;
+      if (conf.lifetimeS !== undefined) conf.lifetimeS *= GEAR_TUNING.prismLifetimeMul;
+    }
     // Antonio's passive adds 10% Might every ten levels, capped at +50%.
     const antonioMight = 1 + Math.min(5, Math.floor(this.level / 10)) * 0.1;
-    return { ...conf, damage: conf.damage * this.powerMul * antonioMight };
+    conf.damage *= this.powerMul * antonioMight;
+    return {
+      conf,
+      aimRange,
+      homingRange,
+      homingTurnRate,
+      orbitOmega,
+      shove,
+      closeBonus: this.gear.has('boxingGloves'),
+    };
   }
 
   /** Push an enemy away from a point, sharing the weapon knock channel. */
@@ -569,6 +892,9 @@ export class RunWorld {
     this.updateKickStrikes();
     this.updateProjectiles(dt);
     this.updateZones(dt);
+    this.updateUndertowWalls(dt);
+    this.updateStandingOvations(dt);
+    this.updateHeadliner(dt);
     this.updateGems(dt);
     this.updateChests();
     this.contactDamage(dt);
@@ -847,6 +1173,13 @@ export class RunWorld {
       dashY: 0,
       dashing: false,
       slowT: 0,
+      slowMul: 1,
+      stunT: 0,
+      hatCuts: 0,
+      hatCutExpiryS: 0,
+      wallCarryX: 0,
+      wallCarryY: 0,
+      wallCarryT: 0,
       knockX: 0,
       knockY: 0,
       knockT: 0,
@@ -902,6 +1235,7 @@ export class RunWorld {
   /** Sandbox: remove every enemy without kills, gems, or pops. */
   clearEnemies(): void {
     this.enemies.length = 0;
+    this.kickRehitUntil.clear();
   }
 
   /** Reset every transient sandbox entity without touching the player, loadout,
@@ -910,10 +1244,17 @@ export class RunWorld {
     this.enemies.length = 0;
     this.projectiles.length = 0;
     this.zones.length = 0;
+    this.undertowWalls.length = 0;
+    this.standingOvations.length = 0;
+    this.headliner = this.evolved.has('lead') ? this.makeHeadliner() : null;
     this.gems.length = 0;
     this.chests.length = 0;
     if (this.fx) this.fx.length = 0;
     this.pendingKick.length = 0;
+    this.kickRehitUntil.clear();
+    this.dancefloorStamps.length = 0;
+    this.dancefloorBar = -1;
+    this.resetOrreryState();
     this.overflowGem = null;
     this.hash.clear();
     this.queryBuf.length = 0;
@@ -928,9 +1269,27 @@ export class RunWorld {
       let speed = e.speed;
       if (e.slowT > 0) {
         e.slowT -= dt;
-        speed *= ZONE_SLOW_MUL;
+        speed *= e.slowMul;
+        if (e.slowT <= 0) e.slowMul = 1;
       }
+      if (e.hatCuts > 0 && e.hatCutExpiryS < this.timeS) {
+        e.hatCuts = 0;
+        e.hatCutExpiryS = 0;
+      }
+      if (e.stunT > 0) e.stunT -= dt;
       if (e.flashT > 0) e.flashT -= dt;
+
+      // Undertow's wall owns movement while contact persists, even for kinds
+      // that normally resist knockback.
+      if (e.wallCarryT > 0) {
+        const carryDt = Math.min(dt, e.wallCarryT);
+        e.wallCarryT -= dt;
+        e.lastMoveX = e.wallCarryX;
+        e.lastMoveY = e.wallCarryY;
+        e.x += e.wallCarryX * carryDt;
+        e.y += e.wallCarryY * carryDt;
+        continue;
+      }
 
       // Weapon knockback overrides everything: ride the push, don't chase.
       if (e.knockT > 0) {
@@ -942,6 +1301,8 @@ export class RunWorld {
         e.y += e.knockY * pushDt;
         continue;
       }
+
+      if (e.stunT > 0) continue;
 
       if (e.moveX !== 0 || e.moveY !== 0) {
         e.lastMoveX = e.moveX * speed;
@@ -1108,6 +1469,7 @@ export class RunWorld {
     if (source) this.damageByRole[source] = (this.damageByRole[source] ?? 0) + dealt;
     if (e.hp <= 0) {
       e.dead = true;
+      this.kickRehitUntil.delete(e.id);
       this.kills++;
       if (source) this.killsByRole[source] = (this.killsByRole[source] ?? 0) + 1;
       this.fx?.push({
@@ -1128,7 +1490,10 @@ export class RunWorld {
 
   private reapEnemies(): void {
     for (let i = this.enemies.length - 1; i >= 0; i--) {
-      if (this.enemies[i].dead) this.enemies.splice(i, 1);
+      if (this.enemies[i].dead) {
+        this.kickRehitUntil.delete(this.enemies[i].id);
+        this.enemies.splice(i, 1);
+      }
     }
   }
 
@@ -1199,7 +1564,7 @@ export class RunWorld {
       const dx = e.x - p.x;
       const dy = e.y - p.y;
       const d = dx * dx + dy * dy;
-      if (d < bestD) {
+      if (d < bestD || (d === bestD && best !== null && e.id < best.id)) {
         bestD = d;
         best = e;
       }
@@ -1207,9 +1572,9 @@ export class RunWorld {
     return best;
   }
 
-  private aimDir(spread: number): { x: number; y: number } {
+  private aimDir(spread: number, range = AIM_RANGE): { x: number; y: number } {
     const p = this.player;
-    const best = this.nearestEnemy(AIM_RANGE);
+    const best = this.nearestEnemy(range);
     let ang: number;
     if (best) {
       ang = Math.atan2(best.y - p.y, best.x - p.x);
@@ -1220,20 +1585,123 @@ export class RunWorld {
     return { x: Math.cos(ang), y: Math.sin(ang) };
   }
 
+  private damageForHit(e: Enemy, damage: number, closeBonus: boolean, source: Role): void {
+    const dx = e.x - this.player.x;
+    const dy = e.y - this.player.y;
+    const close = closeBonus && dx * dx + dy * dy <= GEAR_TUNING.boxingCloseRange ** 2;
+    this.damageEnemy(e, damage * (close ? GEAR_TUNING.boxingDamageMul : 1), source);
+  }
+
+  private shoveForHit(
+    e: Enemy,
+    fromX: number,
+    fromY: number,
+    distance: number,
+    closeBonus: boolean,
+  ): void {
+    const dx = e.x - this.player.x;
+    const dy = e.y - this.player.y;
+    const close = closeBonus && dx * dx + dy * dy <= GEAR_TUNING.boxingCloseRange ** 2;
+    this.shove(e, fromX, fromY, distance * (close ? GEAR_TUNING.boxingShoveMul : 1));
+  }
+
+  private shoveAlong(
+    e: Enemy,
+    dirX: number,
+    dirY: number,
+    distance: number,
+    closeBonus: boolean,
+  ): void {
+    const close = closeBonus && Math.hypot(e.x - this.player.x, e.y - this.player.y) <= GEAR_TUNING.boxingCloseRange;
+    const resisted = distance * (close ? GEAR_TUNING.boxingShoveMul : 1) * e.knockbackMul;
+    if (resisted <= 0) return;
+    const d = Math.hypot(dirX, dirY) || 1;
+    e.knockX = (dirX / d) * resisted / SHOVE_S;
+    e.knockY = (dirY / d) * resisted / SHOVE_S;
+    e.knockT = Math.max(e.knockT, SHOVE_S);
+  }
+
+  private spawnKickAttack(
+    x: number,
+    y: number,
+    side: 1 | -1,
+    built: BuiltAttack,
+    followUp: boolean,
+    echo: boolean,
+    hit = new Set<Enemy>(),
+  ): void {
+    this.pendingKick.push({
+      atS: this.timeS,
+      x,
+      y,
+      side,
+      damage: built.conf.damage,
+      area: built.conf.area ?? 1,
+      started: false,
+      startedAt: 0,
+      expiresAt: 0,
+      samplePlayer: false,
+      spawnFollowUp: followUp,
+      echo,
+      closeBonus: built.closeBonus,
+      hit,
+    });
+  }
+
+  private recordDancefloorStamp(
+    trigger: ScheduledTrigger,
+    x: number,
+    y: number,
+    side: 1 | -1,
+    built: BuiltAttack,
+  ): void {
+    if (trigger.step < 0) return;
+    const barStep = trigger.step % STEPS_PER_BAR;
+    const bar = Math.floor(trigger.step / STEPS_PER_BAR);
+    if (bar !== this.dancefloorBar) this.dancefloorStamps.length = 0;
+    this.dancefloorBar = bar;
+    this.dancefloorStamps.push({
+      x,
+      y,
+      side,
+      damage: built.conf.damage,
+      area: built.conf.area ?? 1,
+      closeBonus: built.closeBonus,
+    });
+    if (this.dancefloorStamps.length > 4) this.dancefloorStamps.shift();
+    if (barStep !== STEPS_PER_BAR - 4) return;
+
+    const echoHit = new Set<Enemy>();
+    for (const stamp of this.dancefloorStamps) {
+      const echoBuilt: BuiltAttack = {
+        ...built,
+        conf: {
+          ...built.conf,
+          damage: stamp.damage * EVOLUTION_TUNING.dancefloor.echoDamageMul,
+          area: stamp.area,
+        },
+        closeBonus: stamp.closeBonus,
+      };
+      this.spawnKickAttack(stamp.x, stamp.y, stamp.side, echoBuilt, false, true, echoHit);
+    }
+    this.dancefloorStamps.length = 0;
+  }
+
   /** Base projectile with all fields defaulted; specialized spawners tweak
    *  the few that matter to them. */
-  private baseProjectile(role: Role, conf: WeaponConf, color: number, damage: number): Projectile {
+  private baseProjectile(role: Role, built: BuiltAttack, color: number): Projectile {
+    const conf = built.conf;
     return {
       role,
       x: this.player.x,
       y: this.player.y,
       vx: 0,
       vy: 0,
-      radius: conf.radius!,
-      damage,
+      radius: conf.radius ?? 4,
+      damage: conf.damage,
       pierce: conf.pierce ?? 1,
       maxPierce: conf.pierce ?? 1,
-      lifeS: conf.lifetimeS!,
+      lifeS: conf.lifetimeS ?? 0.2,
       homing: role === 'lead',
       speed: conf.speed ?? 0,
       color,
@@ -1244,32 +1712,142 @@ export class RunWorld {
       rehitT: 0,
       shatter: 0,
       shard: false,
+      evolved: false,
+      secondary: false,
+      shove: built.shove,
+      closeBonus: built.closeBonus,
+      homingTurnRate: built.homingTurnRate,
+      homingRange: built.homingRange,
+      targetId: null,
+      retargetsLeft: 0,
+      orbitRing: 0,
+      orbitOmega: built.orbitOmega,
+      orbitFromRadius: 0,
+      orbitTargetRadius: 0,
+      orbitMoveT: 1,
+      orbitReachMul: 1,
+      shardTemplate: null,
+      assignedTargetId: null,
+      glassShard: false,
     };
   }
 
   private spawnProjectile(
     role: Role,
     dir: { x: number; y: number },
-    conf: WeaponConf,
+    built: BuiltAttack,
     color: number,
-    velocity: number,
+    trigger: ScheduledTrigger,
   ): void {
-    const pr = this.baseProjectile(role, conf, color, conf.damage * (0.75 + 0.5 * velocity));
-    pr.vx = dir.x * conf.speed!;
-    pr.vy = dir.y * conf.speed!;
+    const pr = this.baseProjectile(role, built, color);
+    pr.vx = dir.x * pr.speed;
+    pr.vy = dir.y * pr.speed;
+    pr.evolved = trigger.evolved;
+    pr.variant = trigger.variant;
+    if (role === 'lead') {
+      pr.homing = true;
+      pr.retargetsLeft = this.gear.has('compass') ? 1 : Infinity;
+      pr.targetId = this.findHomingTarget(pr)?.id ?? null;
+    }
     this.projectiles.push(pr);
   }
 
   /** Arp: an orbiter that circles the player, chipping what it sweeps. */
-  private spawnOrbiter(conf: WeaponConf, color: number, velocity: number): void {
+  private spawnOrbiter(
+    built: BuiltAttack,
+    color: number,
+    evolved: boolean,
+    ring: -1 | 0 | 1 = 0,
+  ): Projectile {
     const angle = this.rng() * Math.PI * 2;
-    const pr = this.baseProjectile('arp', conf, color, conf.damage * (0.8 + 0.4 * velocity));
+    const pr = this.baseProjectile('arp', built, color);
     pr.pierce = Infinity;
     pr.orbitAngle = angle;
-    pr.orbitRadius = conf.orbitRadius!;
+    pr.orbitRing = ring;
+    const baseOrbit = WEAPONS.arp?.[(this.tiers.get('arp') ?? 1) - 1]?.orbitRadius ?? built.conf.orbitRadius ?? 1;
+    pr.orbitReachMul = (built.conf.orbitRadius ?? baseOrbit) / baseOrbit;
+    pr.orbitRadius = ring < 0
+      ? this.arpInnerRadius * pr.orbitReachMul
+      : ring > 0
+        ? this.arpOuterRadius * pr.orbitReachMul
+        : (built.conf.orbitRadius ?? EVOLUTION_TUNING.orrery.innerStart);
+    pr.orbitFromRadius = pr.orbitRadius;
+    pr.orbitTargetRadius = pr.orbitRadius;
+    pr.orbitOmega = built.orbitOmega * (ring < 0 ? -1 : 1);
+    pr.evolved = evolved;
     pr.x = this.player.x + Math.cos(angle) * pr.orbitRadius;
     pr.y = this.player.y + Math.sin(angle) * pr.orbitRadius;
     this.projectiles.push(pr);
+    return pr;
+  }
+
+  private resetOrreryState(): void {
+    this.arpNextRing = -1;
+    this.arpInnerRadius = EVOLUTION_TUNING.orrery.innerStart;
+    this.arpOuterRadius = EVOLUTION_TUNING.orrery.outerStart;
+    this.arpPreviousNote = null;
+    this.arpLastStep = -1;
+  }
+
+  private spawnOrrery(trigger: ScheduledTrigger, built: BuiltAttack, color: number): void {
+    if (
+      trigger.step >= 0 &&
+      (trigger.step % STEPS_PER_PHRASE === 0 || (this.arpLastStep >= 0 && trigger.step < this.arpLastStep))
+    ) {
+      this.arpPreviousNote = null;
+    }
+    if (trigger.step >= 0) this.arpLastStep = trigger.step;
+    if (trigger.note !== undefined && this.arpPreviousNote !== null) {
+      const direction = Math.sign(trigger.note - this.arpPreviousNote);
+      if (direction !== 0) {
+        const step = direction * EVOLUTION_TUNING.orrery.noteRadiusStep;
+        this.arpInnerRadius = Math.max(
+          EVOLUTION_TUNING.orrery.innerMin,
+          Math.min(EVOLUTION_TUNING.orrery.innerMax, this.arpInnerRadius + step),
+        );
+        this.arpOuterRadius = Math.max(
+          EVOLUTION_TUNING.orrery.outerMin,
+          Math.min(EVOLUTION_TUNING.orrery.outerMax, this.arpOuterRadius + step),
+        );
+        if (this.arpOuterRadius - this.arpInnerRadius < EVOLUTION_TUNING.orrery.minGap) {
+          this.arpOuterRadius = Math.min(
+            EVOLUTION_TUNING.orrery.outerMax,
+            this.arpInnerRadius + EVOLUTION_TUNING.orrery.minGap,
+          );
+        }
+        for (const pr of this.projectiles) {
+          if (pr.role !== 'arp' || !pr.evolved || pr.orbitRing === 0) continue;
+          pr.orbitFromRadius = pr.orbitRadius;
+          pr.orbitTargetRadius = (pr.orbitRing < 0 ? this.arpInnerRadius : this.arpOuterRadius) * pr.orbitReachMul;
+          pr.orbitMoveT = 0;
+        }
+      }
+    }
+    if (trigger.note !== undefined) this.arpPreviousNote = trigger.note;
+
+    const ring = this.arpNextRing;
+    this.arpNextRing = ring === -1 ? 1 : -1;
+    const members = this.projectiles.filter(
+      (pr) => pr.role === 'arp' && pr.evolved && pr.orbitRing === ring,
+    );
+    if (members.length >= EVOLUTION_TUNING.orrery.capPerRing) {
+      let oldest = members[0];
+      for (const pr of members) if (pr.age > oldest.age) oldest = pr;
+      oldest.lifeS = built.conf.lifetimeS ?? oldest.lifeS;
+      oldest.age = 0;
+      oldest.damage = built.conf.damage;
+      oldest.radius = built.conf.radius ?? oldest.radius;
+      oldest.closeBonus = built.closeBonus;
+      oldest.orbitOmega = built.orbitOmega * (ring < 0 ? -1 : 1);
+      const baseOrbit = WEAPONS.arp?.[(this.tiers.get('arp') ?? 1) - 1]?.orbitRadius ?? built.conf.orbitRadius ?? 1;
+      oldest.orbitReachMul = (built.conf.orbitRadius ?? baseOrbit) / baseOrbit;
+      oldest.orbitFromRadius = oldest.orbitRadius;
+      oldest.orbitTargetRadius = (ring < 0 ? this.arpInnerRadius : this.arpOuterRadius) * oldest.orbitReachMul;
+      oldest.orbitMoveT = 0;
+      oldest.hit.clear();
+      return;
+    }
+    this.spawnOrbiter(built, color, true, ring);
   }
 
   /** Bell: a note lobbed straight that shatters into shards on its first hit.
@@ -1277,38 +1855,149 @@ export class RunWorld {
    *  updateProjectiles when it lands its first hit. */
   private spawnBell(
     dir: { x: number; y: number },
-    conf: WeaponConf,
+    built: BuiltAttack,
+    shardBuilt: BuiltAttack,
     color: number,
-    velocity: number,
+    evolved: boolean,
   ): void {
     const tier = this.tiers.get('bell') ?? 1;
-    const pr = this.baseProjectile('bell', conf, color, conf.damage * (0.8 + 0.4 * velocity));
-    pr.vx = dir.x * conf.speed!;
-    pr.vy = dir.y * conf.speed!;
-    pr.shatter = BELL.shards[tier - 1] ?? BELL.shards[0];
+    const pr = this.baseProjectile('bell', built, color);
+    pr.vx = dir.x * pr.speed;
+    pr.vy = dir.y * pr.speed;
+    pr.evolved = evolved;
+    pr.shatter = evolved
+      ? EVOLUTION_TUNING.glassChoir.shards
+      : (BELL.shards[tier - 1] ?? BELL.shards[0]);
+    pr.shardTemplate = {
+      damage: shardBuilt.conf.damage,
+      speed: shardBuilt.conf.speed ?? BELL.shardSpeed,
+      radius: shardBuilt.conf.radius ?? BELL.shardRadius,
+      lifeS: shardBuilt.conf.lifetimeS ?? BELL.shardLifeS,
+      pierce: shardBuilt.conf.pierce ?? BELL.shardPierce,
+      turnRate: shardBuilt.homingTurnRate,
+      closeBonus: shardBuilt.closeBonus,
+    };
     this.projectiles.push(pr);
   }
 
-  /** Bell's shatter: fling a radial burst of small shard shots from (x,y). Each
-   *  shard is a bell projectile flagged so it can never itself re-shatter. */
-  private spawnShards(x: number, y: number, count: number, damage: number, color: number): void {
+  private glassChoirAim(range: number): { x: number; y: number } {
+    const p = this.player;
+    const inRange = this.enemies.filter(
+      (e) => !e.dead && Math.hypot(e.x - p.x, e.y - p.y) <= range,
+    );
+    const hasPreferred = inRange.some(
+      (e) => Math.hypot(e.x - p.x, e.y - p.y) >= EVOLUTION_TUNING.glassChoir.preferredMinRange,
+    );
+    let best: Enemy | null = null;
+    let bestCount = -1;
+    let bestD = -1;
+    for (const e of inRange) {
+      const d = Math.hypot(e.x - p.x, e.y - p.y);
+      if (hasPreferred && d < EVOLUTION_TUNING.glassChoir.preferredMinRange) continue;
+      let count = 0;
+      for (const other of this.enemies) {
+        if (!other.dead && Math.hypot(other.x - e.x, other.y - e.y) <= EVOLUTION_TUNING.glassChoir.clusterRadius) count++;
+      }
+      if (
+        count > bestCount ||
+        (count === bestCount && d > bestD) ||
+        (count === bestCount && d === bestD && best !== null && e.id < best.id)
+      ) {
+        best = e;
+        bestCount = count;
+        bestD = d;
+      }
+    }
+    if (!best) return this.aimDir(0.1, range);
+    const d = Math.hypot(best.x - p.x, best.y - p.y) || 1;
+    return { x: (best.x - p.x) / d, y: (best.y - p.y) / d };
+  }
+
+  /** Bell's shatter. Glass Choir gives every shard a different nearby target;
+   * excess shards keep the stable radial fan and never retarget. */
+  private spawnShards(parent: Projectile, main: Enemy): void {
+    const count = parent.shatter;
+    const template = parent.shardTemplate;
+    if (!template || count <= 0) return;
+    const candidates = parent.evolved
+      ? this.enemies
+        .filter((e) => !e.dead && e !== main && Math.hypot(e.x - parent.x, e.y - parent.y) <= EVOLUTION_TUNING.glassChoir.assignmentRadius)
+        .sort((a, b) => {
+          const ad = Math.hypot(a.x - parent.x, a.y - parent.y);
+          const bd = Math.hypot(b.x - parent.x, b.y - parent.y);
+          return ad - bd || a.id - b.id;
+        })
+      : [];
     const base = this.rng() * Math.PI * 2;
     for (let i = 0; i < count; i++) {
       const a = base + (i / count) * Math.PI * 2;
-      const pr = this.baseProjectile(
-        'bell',
-        { damage, radius: BELL.shardRadius, lifetimeS: BELL.shardLifeS, pierce: BELL.shardPierce },
-        color,
-        damage,
-      );
-      pr.damage = damage;
-      pr.x = x;
-      pr.y = y;
-      pr.vx = Math.cos(a) * BELL.shardSpeed;
-      pr.vy = Math.sin(a) * BELL.shardSpeed;
+      const shardBuilt: BuiltAttack = {
+        conf: {
+          damage: template.damage,
+          speed: template.speed,
+          radius: template.radius,
+          lifetimeS: template.lifeS,
+          pierce: template.pierce,
+        },
+        aimRange: AIM_RANGE,
+        homingRange: AIM_RANGE,
+        homingTurnRate: template.turnRate,
+        orbitOmega: ARP_OMEGA,
+        shove: 0,
+        closeBonus: template.closeBonus,
+      };
+      const pr = this.baseProjectile('bell', shardBuilt, parent.color);
+      pr.x = parent.x;
+      pr.y = parent.y;
+      const assigned = candidates[i] ?? null;
+      const dx = assigned ? assigned.x - pr.x : Math.cos(a);
+      const dy = assigned ? assigned.y - pr.y : Math.sin(a);
+      const d = Math.hypot(dx, dy) || 1;
+      pr.vx = (dx / d) * pr.speed;
+      pr.vy = (dy / d) * pr.speed;
       pr.shard = true;
+      pr.secondary = true;
+      pr.evolved = parent.evolved;
+      pr.glassShard = parent.evolved;
+      pr.assignedTargetId = assigned?.id ?? null;
+      pr.targetId = assigned?.id ?? null;
+      pr.homing = assigned !== null;
       this.projectiles.push(pr);
     }
+  }
+
+  private findHomingTarget(pr: Projectile): Enemy | null {
+    const claimed = new Set<number>();
+    if (this.gear.has('compass') && !pr.glassShard) {
+      for (const other of this.projectiles) {
+        if (other !== pr && other.homing && other.targetId !== null) claimed.add(other.targetId);
+      }
+    }
+    let best: Enemy | null = null;
+    let bestD = pr.homingRange * pr.homingRange;
+    for (const e of this.enemies) {
+      if (e.dead || pr.hit.has(e) || claimed.has(e.id)) continue;
+      const dx = e.x - pr.x;
+      const dy = e.y - pr.y;
+      const d = dx * dx + dy * dy;
+      if (d < bestD || (d === bestD && best !== null && e.id < best.id)) {
+        bestD = d;
+        best = e;
+      }
+    }
+    if (best || claimed.size === 0) return best;
+    bestD = pr.homingRange * pr.homingRange;
+    for (const e of this.enemies) {
+      if (e.dead || pr.hit.has(e)) continue;
+      const dx = e.x - pr.x;
+      const dy = e.y - pr.y;
+      const d = dx * dx + dy * dy;
+      if (d < bestD || (d === bestD && best !== null && e.id < best.id)) {
+        bestD = d;
+        best = e;
+      }
+    }
+    return best;
   }
 
   private updateKickStrikes(): void {
@@ -1339,12 +2028,14 @@ export class RunWorld {
             expiresAt: 0,
             samplePlayer: true,
             spawnFollowUp: false,
+            echo: false,
+            closeBonus: strike.closeBonus,
             hit: new Set(),
           });
         }
         // Anchor at the player; the view bursts the pulse outward from here.
         this.fx?.push({
-          type: 'whip',
+          type: strike.echo ? 'stamp' : 'whip',
           x: strike.x,
           y: strike.y,
           side: strike.side,
@@ -1371,12 +2062,16 @@ export class RunWorld {
         if (
           e.dead ||
           strike.hit.has(e) ||
+          (!strike.echo && (this.kickRehitUntil.get(e.id) ?? 0) > this.timeS) ||
           !circleIntersectsRect(e.x, e.y, e.radius, centerX, centerY, halfW, halfH)
         ) {
           continue;
         }
-        this.damageEnemy(e, strike.damage, 'kick');
+        this.damageForHit(e, strike.damage, strike.closeBonus, 'kick');
         strike.hit.add(e);
+        if (!strike.echo) {
+          this.kickRehitUntil.set(e.id, this.timeS + EVOLUTION_TUNING.dancefloor.kickRehitS);
+        }
         // Enemy hit response reverses pursuit for the same 120 ms flash,
         // scaled by the source bestiary's knockback multiplier.
         this.reverseForKick(e, strike.x, strike.y);
@@ -1405,6 +2100,7 @@ export class RunWorld {
     damage: number,
     source: Role,
     shove = 0,
+    closeBonus = false,
   ): void {
     const near = this.hash.query(x, y, reach + 24, this.queryBuf);
     for (const e of near) {
@@ -1414,17 +2110,288 @@ export class RunWorld {
       const d = Math.hypot(dx, dy);
       if (d > reach + e.radius) continue;
       if (d < 34) {
-        this.damageEnemy(e, damage, source);
-        if (shove) this.shove(e, x, y, shove);
+        this.damageForHit(e, damage, closeBonus, source);
+        if (shove) this.shoveForHit(e, x, y, shove, closeBonus);
         continue;
       }
       let diff = Math.atan2(dy, dx) - angle;
       while (diff > Math.PI) diff -= Math.PI * 2;
       while (diff < -Math.PI) diff += Math.PI * 2;
       if (Math.abs(diff) <= halfArc) {
-        this.damageEnemy(e, damage, source);
-        if (shove) this.shove(e, x, y, shove);
+        this.damageForHit(e, damage, closeBonus, source);
+        if (shove) this.shoveForHit(e, x, y, shove, closeBonus);
       }
+    }
+  }
+
+  private fireDeadCenter(built: BuiltAttack, color: number): void {
+    const p = this.player;
+    let target: Enemy | null = null;
+    let targetD = Infinity;
+    for (const e of this.enemies) {
+      if (e.dead) continue;
+      const d = Math.hypot(e.x - p.x, e.y - p.y);
+      if (d > built.aimRange) continue;
+      if (
+        target === null || e.hp > target.hp ||
+        (e.hp === target.hp && (d < targetD || (d === targetD && e.id < target.id)))
+      ) {
+        target = e;
+        targetD = d;
+      }
+    }
+    if (!target) return;
+    const dx = target.x - p.x;
+    const dy = target.y - p.y;
+    const d = Math.hypot(dx, dy) || 1;
+    const dirX = dx / d;
+    const dirY = dy / d;
+    const length = d + target.radius;
+    const before: Array<{ enemy: Enemy; projected: number; hp: number }> = [];
+    for (const e of this.enemies) {
+      if (e.dead || e === target) continue;
+      const projected = circleIntersectsSegment(
+        e, p.x, p.y, dirX, dirY, length, EVOLUTION_TUNING.deadCenter.width / 2,
+      );
+      if (projected !== null && projected < d) before.push({ enemy: e, projected, hp: e.hp });
+    }
+    before.sort((a, b) => a.projected - b.projected || a.enemy.id - b.enemy.id);
+    let lesser = 0;
+    const targetHp = target.hp;
+    for (const entry of before) {
+      if (entry.hp < targetHp) lesser++;
+      this.damageForHit(entry.enemy, built.conf.damage, built.closeBonus, 'snare');
+      if (built.shove) this.shoveForHit(entry.enemy, p.x, p.y, built.shove, built.closeBonus);
+    }
+    const bonus = Math.min(
+      EVOLUTION_TUNING.deadCenter.bonusCap,
+      lesser * EVOLUTION_TUNING.deadCenter.bonusPerLesser,
+    );
+    this.damageForHit(target, built.conf.damage * (1 + bonus), built.closeBonus, 'snare');
+    if (built.shove) this.shoveForHit(target, p.x, p.y, built.shove, built.closeBonus);
+    this.fx?.push({
+      type: 'line', x1: p.x, y1: p.y,
+      x2: p.x + dirX * length, y2: p.y + dirY * length,
+      width: EVOLUTION_TUNING.deadCenter.width, color, dur: EVOLUTION_TUNING.deadCenter.tracerS,
+    });
+    this.fx?.push({ type: 'spark', x: target.x, y: target.y, color, n: 9, spread: 20 });
+  }
+
+  private spawnUndertow(dir: { x: number; y: number }, built: BuiltAttack, color: number): void {
+    this.undertowWalls.push({
+      x: this.player.x,
+      y: this.player.y,
+      vx: dir.x * EVOLUTION_TUNING.undertow.wallSpeed,
+      vy: dir.y * EVOLUTION_TUNING.undertow.wallSpeed,
+      lifeS: built.conf.lifetimeS ?? EVOLUTION_TUNING.undertow.wallLifeS,
+      totalLifeS: built.conf.lifetimeS ?? EVOLUTION_TUNING.undertow.wallLifeS,
+      span: Math.max(this.worldW, this.worldH) * EVOLUTION_TUNING.undertow.wallSpanMul,
+      thickness: EVOLUTION_TUNING.undertow.wallThickness,
+      damage: built.conf.damage * EVOLUTION_TUNING.undertow.damageMul,
+      shove: built.shove,
+      color,
+      closeBonus: built.closeBonus,
+      hitAt: new Map(),
+    });
+  }
+
+  private updateUndertowWalls(dt: number): void {
+    for (let i = this.undertowWalls.length - 1; i >= 0; i--) {
+      const wall = this.undertowWalls[i];
+      wall.lifeS -= dt;
+      wall.x += wall.vx * dt;
+      wall.y += wall.vy * dt;
+      const speed = Math.hypot(wall.vx, wall.vy) || 1;
+      const dirX = wall.vx / speed;
+      const dirY = wall.vy / speed;
+      const sideX = -dirY;
+      const sideY = dirX;
+      const startX = wall.x - sideX * wall.span / 2;
+      const startY = wall.y - sideY * wall.span / 2;
+      for (const e of this.enemies) {
+        if (e.dead) continue;
+        if (circleIntersectsSegment(e, startX, startY, sideX, sideY, wall.span, wall.thickness / 2) === null) continue;
+        const last = wall.hitAt.get(e.id) ?? -Infinity;
+        const validTick = this.timeS - last + 1e-9 >= EVOLUTION_TUNING.undertow.rehitS;
+        if (validTick) {
+          wall.hitAt.set(e.id, this.timeS);
+          this.damageForHit(e, wall.damage, wall.closeBonus, 'bass');
+        }
+        if (ENEMIES[e.kind].boss) {
+          if (validTick) this.shoveAlong(e, dirX, dirY, wall.shove, wall.closeBonus);
+        } else {
+          e.wallCarryX = wall.vx * e.knockbackMul;
+          e.wallCarryY = wall.vy * e.knockbackMul;
+          e.wallCarryT = Math.max(e.wallCarryT, dt * 2);
+        }
+      }
+      if (wall.lifeS <= 0) this.undertowWalls.splice(i, 1);
+    }
+  }
+
+  private makeHeadliner(): HeadlinerSoloist {
+    return {
+      x: this.player.x, y: this.player.y,
+      fromX: this.player.x, fromY: this.player.y,
+      targetId: null, age: 0, dashS: EVOLUTION_TUNING.headliner.dashS,
+      damage: 0, closeBonus: false, retargetsLeft: 1,
+      visited: new Set(), combo: 0, lastTargetId: null,
+      dashing: false, returning: false, visible: true, color: KIT_COLORS.lead,
+    };
+  }
+
+  private headlinerTarget(soloist: HeadlinerSoloist, unvisitedOnly: boolean): Enemy | null {
+    const range = EVOLUTION_TUNING.headliner.range *
+      (this.gear.has('compass') ? GEAR_TUNING.compassRangeMul : 1);
+    let best: Enemy | null = null;
+    let bestD = range * range;
+    for (const e of this.enemies) {
+      if (e.dead || (unvisitedOnly && soloist.visited.has(e.id))) continue;
+      const dx = e.x - soloist.x;
+      const dy = e.y - soloist.y;
+      const d = dx * dx + dy * dy;
+      if (d < bestD || (d === bestD && best !== null && e.id < best.id)) {
+        bestD = d;
+        best = e;
+      }
+    }
+    return best;
+  }
+
+  private fireHeadliner(trigger: ScheduledTrigger, built: BuiltAttack, color: number): void {
+    const soloist = this.headliner ?? this.makeHeadliner();
+    this.headliner = soloist;
+    soloist.visible = true;
+    soloist.color = color;
+    if (
+      trigger.step >= 0 &&
+      (trigger.step % STEPS_PER_PHRASE === 0 ||
+        (this.headlinerLastStep >= 0 && trigger.step < this.headlinerLastStep))
+    ) {
+      soloist.visited.clear();
+      soloist.combo = 0;
+      soloist.lastTargetId = null;
+    }
+    if (trigger.step >= 0) this.headlinerLastStep = trigger.step;
+    let target = this.headlinerTarget(soloist, true);
+    const fallback = target === null;
+    if (!target) target = this.headlinerTarget(soloist, false);
+    if (!target) return;
+    if (!fallback && soloist.lastTargetId !== null && soloist.lastTargetId !== target.id) {
+      soloist.combo = Math.min(
+        EVOLUTION_TUNING.headliner.comboCap,
+        soloist.combo + EVOLUTION_TUNING.headliner.comboStep,
+      );
+    }
+    soloist.fromX = soloist.x;
+    soloist.fromY = soloist.y;
+    soloist.targetId = target.id;
+    soloist.age = 0;
+    soloist.damage = built.conf.damage * EVOLUTION_TUNING.headliner.damageMul * (1 + soloist.combo);
+    soloist.closeBonus = built.closeBonus;
+    soloist.retargetsLeft = 1;
+    soloist.returning = false;
+    soloist.dashing = true;
+  }
+
+  private updateHeadliner(dt: number): void {
+    const soloist = this.headliner;
+    if (!soloist?.visible || !soloist.dashing) return;
+    let target = soloist.targetId === null
+      ? null
+      : this.enemies.find((e) => e.id === soloist.targetId && !e.dead) ?? null;
+    if (!target && !soloist.returning && soloist.retargetsLeft > 0) {
+      soloist.retargetsLeft--;
+      target = this.headlinerTarget(soloist, true);
+      if (target) {
+        soloist.targetId = target.id;
+        soloist.fromX = soloist.x;
+        soloist.fromY = soloist.y;
+        soloist.age = 0;
+      }
+    }
+    if (!target && !soloist.returning) {
+      soloist.returning = true;
+      soloist.targetId = null;
+      soloist.fromX = soloist.x;
+      soloist.fromY = soloist.y;
+      soloist.age = 0;
+    }
+    soloist.age += dt;
+    const u = Math.min(1, soloist.age / soloist.dashS);
+    const toX = soloist.returning ? this.player.x : (target?.x ?? this.player.x);
+    const toY = soloist.returning ? this.player.y : (target?.y ?? this.player.y);
+    const pathX = toX - soloist.fromX;
+    const pathY = toY - soloist.fromY;
+    const pathD = Math.hypot(pathX, pathY) || 1;
+    const curve = Math.sin(Math.PI * u) * Math.min(18, pathD * 0.12) * ((soloist.targetId ?? 0) % 2 ? 1 : -1);
+    soloist.x = soloist.fromX + pathX * u + (-pathY / pathD) * curve;
+    soloist.y = soloist.fromY + pathY * u + (pathX / pathD) * curve;
+    if (u < 1) return;
+    if (target && !soloist.returning) {
+      this.damageForHit(target, soloist.damage, soloist.closeBonus, 'lead');
+      soloist.visited.add(target.id);
+      soloist.lastTargetId = target.id;
+      this.fx?.push({ type: 'spark', x: target.x, y: target.y, color: soloist.color, n: 8, spread: 18 });
+    }
+    soloist.dashing = false;
+    soloist.returning = false;
+    soloist.targetId = null;
+  }
+
+  private spawnStandingOvation(
+    dir: { x: number; y: number },
+    built: BuiltAttack,
+    color: number,
+    velocity: number,
+  ): void {
+    this.standingOvations.push({
+      x: this.player.x,
+      y: this.player.y,
+      dirX: dir.x,
+      dirY: dir.y,
+      radius: built.conf.radius ?? EVOLUTION_TUNING.standingOvation.radius,
+      width: EVOLUTION_TUNING.standingOvation.corridorWidth,
+      age: 0,
+      damage: built.conf.damage * (0.85 + 0.3 * velocity) * EVOLUTION_TUNING.standingOvation.damageMul,
+      throwDist: built.shove,
+      color,
+      closeBonus: built.closeBonus,
+      caught: new Set(),
+      throwByEnemy: new Map(),
+      closed: false,
+      released: false,
+    });
+  }
+
+  private updateStandingOvations(dt: number): void {
+    for (let i = this.standingOvations.length - 1; i >= 0; i--) {
+      const clap = this.standingOvations[i];
+      clap.age += dt;
+      if (!clap.closed && clap.age + 1e-9 >= EVOLUTION_TUNING.standingOvation.closeS) {
+        clap.closed = true;
+        const startX = clap.x - clap.dirX * clap.radius;
+        const startY = clap.y - clap.dirY * clap.radius;
+        for (const e of this.enemies) {
+          if (e.dead || clap.caught.has(e)) continue;
+          const projected = circleIntersectsSegment(
+            e, startX, startY, clap.dirX, clap.dirY, clap.radius * 2, clap.width / 2,
+          );
+          if (projected === null) continue;
+          clap.caught.add(e);
+          this.damageForHit(e, clap.damage, clap.closeBonus, 'clap');
+          if (!ENEMIES[e.kind].boss) e.stunT = Math.max(e.stunT, EVOLUTION_TUNING.standingOvation.stunS);
+        }
+      }
+      if (!clap.released && clap.age + 1e-9 >= EVOLUTION_TUNING.standingOvation.releaseAtS) {
+        clap.released = true;
+        for (const e of clap.caught) {
+          if (e.dead) continue;
+          this.shoveForHit(e, this.player.x, this.player.y, clap.throwDist, clap.closeBonus);
+        }
+        clap.caught.clear();
+      }
+      if (clap.age >= EVOLUTION_TUNING.standingOvation.endS) this.standingOvations.splice(i, 1);
     }
   }
 
@@ -1438,7 +2405,13 @@ export class RunWorld {
       if (pr.role === 'arp') {
         // Orbit the player; clear the hit set on a cooldown so a slow sweep
         // keeps chipping the same enemy instead of touching it once.
-        pr.orbitAngle += ARP_OMEGA * dt;
+        if (pr.orbitMoveT < 1) {
+          pr.orbitMoveT = Math.min(1, pr.orbitMoveT + dt / EVOLUTION_TUNING.orrery.radiusMoveS);
+          const u = pr.orbitMoveT;
+          const smooth = u * u * (3 - 2 * u);
+          pr.orbitRadius = pr.orbitFromRadius + (pr.orbitTargetRadius - pr.orbitFromRadius) * smooth;
+        }
+        pr.orbitAngle += pr.orbitOmega * dt;
         pr.x = p.x + Math.cos(pr.orbitAngle) * pr.orbitRadius;
         pr.y = p.y + Math.sin(pr.orbitAngle) * pr.orbitRadius;
         pr.rehitT -= dt;
@@ -1448,16 +2421,15 @@ export class RunWorld {
         }
       } else {
         if (pr.homing) {
-          let best: Enemy | null = null;
-          let bestD = Infinity;
-          for (const e of this.enemies) {
-            if (e.dead || pr.hit.has(e)) continue;
-            const dx = e.x - pr.x;
-            const dy = e.y - pr.y;
-            const d = dx * dx + dy * dy;
-            if (d < bestD) {
-              bestD = d;
-              best = e;
+          let best = pr.targetId === null
+            ? null
+            : this.enemies.find((e) => e.id === pr.targetId && !e.dead && !pr.hit.has(e)) ?? null;
+          if (!best && !pr.glassShard) {
+            const initialAcquire = pr.targetId === null && pr.hit.size === 0 && pr.age <= dt + 1e-9;
+            if (initialAcquire || pr.retargetsLeft > 0) {
+              if (!initialAcquire && Number.isFinite(pr.retargetsLeft)) pr.retargetsLeft--;
+              best = this.findHomingTarget(pr);
+              pr.targetId = best?.id ?? null;
             }
           }
           if (best) {
@@ -1467,7 +2439,7 @@ export class RunWorld {
             while (diff > Math.PI) diff -= Math.PI * 2;
             while (diff < -Math.PI) diff += Math.PI * 2;
             // tight turn so seekers snap to targets instead of orbiting them
-            const turn = Math.max(-10 * dt, Math.min(10 * dt, diff));
+            const turn = Math.max(-pr.homingTurnRate * dt, Math.min(pr.homingTurnRate * dt, diff));
             const next = cur + turn;
             pr.vx = Math.cos(next) * pr.speed;
             pr.vy = Math.sin(next) * pr.speed;
@@ -1481,15 +2453,38 @@ export class RunWorld {
       for (const e of near) {
         if (e.dead || pr.hit.has(e) || !circlesOverlap(pr, e)) continue;
         pr.hit.add(e);
-        this.damageEnemy(e, pr.damage, pr.role);
-        // Shove (sim, deterministic): snare 20 / bass 10. Writes only the
-        // shared knock channel.
-        const sh = WEAPON_SHOVE[pr.role];
-        if (sh) this.shove(e, pr.x, pr.y, sh);
+        if (pr.role === 'hat' && pr.evolved) {
+          const open = pr.variant === 'open';
+          const cuts = e.hatCutExpiryS >= this.timeS ? e.hatCuts : 0;
+          this.damageForHit(e, pr.damage, pr.closeBonus, 'hat');
+          if (open) {
+            if (cuts > 0) {
+              this.damageForHit(
+                e,
+                pr.damage * EVOLUTION_TUNING.needleStorm.consumeMul * cuts,
+                pr.closeBonus,
+                'hat',
+              );
+              this.fx?.push({ type: 'cut', x: e.x, y: e.y, radius: e.radius, color: pr.color, release: true });
+            }
+            e.hatCuts = 0;
+            e.hatCutExpiryS = 0;
+          } else if (!e.dead) {
+            e.hatCuts = Math.min(EVOLUTION_TUNING.needleStorm.maxCuts, cuts + 1);
+            e.hatCutExpiryS = this.timeS + EVOLUTION_TUNING.needleStorm.cutExpiryS;
+            this.fx?.push({ type: 'cut', x: e.x, y: e.y, radius: e.radius, color: pr.color, release: false });
+          }
+        } else {
+          this.damageForHit(e, pr.damage, pr.closeBonus, pr.role);
+        }
+        if (pr.shove) {
+          if (pr.role === 'bass') this.shoveAlong(e, pr.vx, pr.vy, pr.shove, pr.closeBonus);
+          else this.shoveForHit(e, pr.x, pr.y, pr.shove, pr.closeBonus);
+        }
         // Bell: the note shatters into a radial burst of shards on its first
         // hit. shatter is 0 on a shard, so shards never re-shatter.
         if (pr.role === 'bell' && pr.shatter > 0) {
-          this.spawnShards(pr.x, pr.y, pr.shatter, pr.damage * BELL.shardDamageMul, pr.color);
+          this.spawnShards(pr, e);
           this.fx?.push({ type: 'spark', x: e.x, y: e.y, color: pr.color, n: 6, spread: 14 });
           pr.shatter = 0;
         }
@@ -1517,6 +2512,7 @@ export class RunWorld {
     conf: { damage: number; radius?: number; lifetimeS?: number },
     color: number,
     source: Role,
+    opts: { closeBonus?: boolean; groupId?: number; cathedral?: boolean } = {},
   ): void {
     this.zones.push({
       x,
@@ -1528,7 +2524,37 @@ export class RunWorld {
       color,
       source,
       slow: true,
+      closeBonus: opts.closeBonus ?? false,
+      groupId: opts.groupId ?? 0,
+      cathedral: opts.cathedral ?? false,
     });
+  }
+
+  private spawnCathedral(
+    x: number,
+    y: number,
+    conf: WeaponConf,
+    color: number,
+    closeBonus: boolean,
+  ): void {
+    const groupId = this.nextZoneGroupId++;
+    const parentRadius = conf.radius ?? 76;
+    const offset = parentRadius * EVOLUTION_TUNING.cathedral.offsetMul;
+    for (let i = 0; i < 3; i++) {
+      const angle = (i / 3) * Math.PI * 2;
+      this.spawnZone(
+        x + Math.cos(angle) * offset,
+        y + Math.sin(angle) * offset,
+        {
+          damage: conf.damage * EVOLUTION_TUNING.cathedral.damageMul,
+          radius: parentRadius * EVOLUTION_TUNING.cathedral.radiusMul,
+          lifetimeS: conf.lifetimeS,
+        },
+        color,
+        'chord',
+        { closeBonus, groupId, cathedral: true },
+      );
+    }
   }
 
   private updateZones(dt: number): void {
@@ -1539,17 +2565,34 @@ export class RunWorld {
       z.tickT -= dt;
       if (z.tickT <= 0) {
         z.tickT = ZONE_TICK_S;
-        this.damageArea(z.x, z.y, z.radius, z.damage, z.source);
-        // The zone's other half: everything inside wades, it doesn't walk.
-        if (z.slow) {
-          const inside = this.hash.query(z.x, z.y, z.radius + 24, this.queryBuf);
-          for (const e of inside) {
-            if (!e.dead && circlesOverlap(z, e)) e.slowT = ZONE_TICK_S + 0.15;
-          }
-        }
+        this.damageArea(z.x, z.y, z.radius, z.damage, z.source, 0, z.closeBonus);
       }
       if (z.lifeS <= 0) {
         this.zones.splice(i, 1);
+      }
+    }
+    this.applyZoneSlows();
+  }
+
+  private applyZoneSlows(): void {
+    for (const e of this.enemies) {
+      if (e.dead) continue;
+      let slowMul = 1;
+      const cathedralByGroup = new Map<number, number>();
+      for (const z of this.zones) {
+        if (!z.slow || !circlesOverlap(z, e)) continue;
+        if (!z.cathedral) slowMul = Math.min(slowMul, ZONE_SLOW_MUL);
+        else cathedralByGroup.set(z.groupId, (cathedralByGroup.get(z.groupId) ?? 0) + 1);
+      }
+      for (const count of cathedralByGroup.values()) {
+        slowMul = Math.min(
+          slowMul,
+          count >= 2 ? EVOLUTION_TUNING.cathedral.overlapSlowMul : ZONE_SLOW_MUL,
+        );
+      }
+      if (slowMul < 1) {
+        e.slowMul = slowMul;
+        e.slowT = Math.max(e.slowT, 0.08);
       }
     }
   }
@@ -1561,13 +2604,15 @@ export class RunWorld {
     damage: number,
     source?: Role,
     shove = 0,
+    closeBonus = false,
   ): void {
     const near = this.hash.query(x, y, radius + 24, this.queryBuf);
     const area = { x, y, radius };
     for (const e of near) {
       if (!e.dead && circlesOverlap(area, e)) {
-        this.damageEnemy(e, damage, source);
-        if (shove) this.shove(e, x, y, shove);
+        if (source) this.damageForHit(e, damage, closeBonus, source);
+        else this.damageEnemy(e, damage);
+        if (shove) this.shoveForHit(e, x, y, shove, closeBonus);
       }
     }
   }
