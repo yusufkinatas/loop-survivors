@@ -675,9 +675,10 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
     { damage: 7, speed: 650, radius: 7, lifetimeS: 1.4, pierce: 3 },
     { damage: 9, speed: 680, radius: 8, lifetimeS: 1.5, pierce: 4 },
     { damage: 13, speed: 720, radius: 8, lifetimeS: 1.5, pierce: 6 },
-    // Evolved "Rimshot Rail": an instant infinite-pierce rail through the
-    // densest line (geometry in SNARE_RAIL); this is its high single-hit damage.
-    { damage: 22 },
+    // Evolved "Rimshot Rain": a forward volley of fast piercing bolts fanned in
+    // the player's movement direction (count/spread in SNARE_RAIN). These are the
+    // per-BOLT stats; each backbeat fires SNARE_RAIN.shots of them at once.
+    { damage: 12, speed: 780, radius: 8, lifetimeS: 1.2, pierce: 4 },
   ],
   // Dense stream of weak fast chips, wide scatter. Density IS the ladder;
   // per-trigger damage barely moves.
@@ -686,9 +687,10 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
     { damage: 1, speed: 450, radius: 3, lifetimeS: 0.85, pierce: 1 },
     { damage: 1, speed: 460, radius: 3, lifetimeS: 0.9, pierce: 1 },
     { damage: 2, speed: 480, radius: 3, lifetimeS: 0.95, pierce: 2 },
-    // Evolved "16th-Note Storm": per-shard stats for the movement-scaled swirl
-    // cloud (emission rate in HAT_STORM). Each shard is weak; density is the DPS.
-    { damage: 2, speed: 300, radius: 3, lifetimeS: 0.5, pierce: 1 },
+    // Evolved "16th-Note Storm": per-chip stats for the directional shred stream
+    // (emission rate/spread in HAT_STORM). Each chip is weak; the stream's density
+    // is the DPS. Fired in the player's movement direction (VS-knife style).
+    { damage: 2, speed: 300, radius: 3, lifetimeS: 0.55, pierce: 1 },
   ],
   // Slow wide low wave that rolls through everything. The weight ladder:
   // per-trigger damage climbs harder than any other kit.
@@ -964,28 +966,25 @@ export const LEAD_SOLO = {
   tickS: 0.1,
 };
 
-/** Snare "Rimshot Rail": an instant hitscan rail auto-aimed through the densest
- *  line within `range`. It damages every enemy within `thickness` of the ray
- *  out to `length` (infinite pierce), plus an answering crack at `answerAngle`
- *  for `answerDamageMul` of the damage. */
-export const SNARE_RAIL = {
-  range: AIM_RANGE,
-  length: 900,
-  thickness: 22,
-  answerAngle: 0.5,
-  answerDamageMul: 0.7,
+/** Snare "Rimshot Rain": on each backbeat the snare fires a forward VOLLEY of
+ *  `shots` fast piercing bolts, fanned evenly across ±`spread` radians around the
+ *  player's current movement direction (a "rain" of shots where you are heading,
+ *  VS-shotgun style). Per-bolt speed/radius/lifetime/pierce/damage come from
+ *  WEAPONS.snare[EVOLVED_TIER-1]. */
+export const SNARE_RAIN = {
+  shots: 8,
+  spread: 0.42,
 };
 
-/** Hat "16th-Note Storm": a persistent swirl of shards around the player whose
- *  emission rate scales with how fast the player is moving (`baseRate` when
- *  still up to `baseRate + speedRate` at full speed), so a moving player shreds
- *  a bubble and a still one goes quiet. Each hat trigger keeps the storm alive
- *  for `activeS` (so it stops when the voice is deactivated). Shards spawn
- *  `spawnR` out and fly outward at `shardSpeed`. */
+/** Hat "16th-Note Storm": a directional shred STREAM. While kept alive by hat
+ *  triggers (`activeS`), it emits chips at a constant `rate` per second, each
+ *  launched in the player's movement direction with a small ±`spread` jitter, at
+ *  `shardSpeed`, from `spawnR` ahead of the player (VS-knife style). No longer
+ *  coupled to player speed — the stream is constant while the hat plays. */
 export const HAT_STORM = {
   activeS: 0.5,
-  baseRate: 5,
-  speedRate: 34,
+  rate: 22,
+  spread: 0.18,
   spawnR: 14,
-  shardSpeed: 300,
+  shardSpeed: 520,
 };

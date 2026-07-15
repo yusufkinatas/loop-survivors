@@ -634,19 +634,6 @@ export class RunView {
         this.pops.push({ gfx, t: 0, dur: 0.3, grow: 0, collapse: true });
         break;
       }
-      case 'rail': {
-        // Snare "Rimshot Rail": an instant bright rail lancing out, gone fast.
-        const gfx = new Graphics();
-        const x2 = fx.x + Math.cos(fx.angle) * fx.length;
-        const y2 = fx.y + Math.sin(fx.angle) * fx.length;
-        gfx.moveTo(fx.x, fx.y).lineTo(x2, y2).stroke({ width: 9, color: 0xffffff, alpha: 0.3 });
-        gfx.moveTo(fx.x, fx.y).lineTo(x2, y2).stroke({ width: 3, color: 0xffffff, alpha: 0.95 });
-        gfx.tint = fx.color;
-        gfx.blendMode = 'add';
-        this.stage.addChild(gfx);
-        this.pops.push({ gfx, t: 0, dur: 0.18, grow: 0 });
-        break;
-      }
       case 'dmg': {
         // Floating damage number. Bounded by DMG_CAP and culled off-screen so
         // the horde's hits never become a wall of text.

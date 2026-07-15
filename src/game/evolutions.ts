@@ -59,12 +59,12 @@ export const EVOLUTIONS: Partial<Record<Role, Evolution>> = {
     line: 'a beam that melts the toughest, then glides on',
   },
   snare: {
-    name: 'Rimshot Rail',
-    line: 'an instant rail through the densest line',
+    name: 'Rimshot Rain',
+    line: 'a rain of piercing shots where you head',
   },
   hat: {
     name: '16th-Note Storm',
-    line: 'a shred cloud that grows with your speed',
+    line: 'a shred stream fired where you move',
   },
 };
 

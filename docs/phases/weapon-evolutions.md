@@ -101,15 +101,15 @@ uniqueness matrix at the end is the contract.
   a clean hole through a line.
 - **Base "Backbeat Crack":** a fast, hard, piercing bolt on beats 2 and 4.
   (Today's snare sniper, `WEAPONS.snare`.)
-- **Evolution "Rimshot Rail":** on the backbeat it snaps an instant rail through
-  the densest line of enemies (auto-aimed at the most targets), infinite pierce,
-  high single-hit damage, plus a snare-roll answering crack from the opposite
-  angle.
+- **Evolution "Rimshot Rain":** on the backbeat it fires a forward volley of
+  fast piercing bolts, fanned across a spread in the direction the player is
+  moving (a rain of shots where you are heading, not auto-aimed). See the
+  amendment note below.
 - **Base sound:** a sharp, dry crack on 2 and 4.
 - **Evolved sound:** the crack gains a metallic ring and a fast tail (a
-  rimshot's ping), with a quick snare-roll flourish answering it a beat later.
-- **Signature verb:** instant precise line-clear.
-- **Build role:** the single-line burst, an elite and column cutter.
+  rimshot's ping), a rapid snare-roll burst answering each backbeat.
+- **Signature verb:** directional forward burst-volley.
+- **Build role:** the mobile spread burst, a cone-clearer aimed by where you go.
 
 ### 3. Clap (Snap slot)
 
@@ -128,18 +128,18 @@ uniqueness matrix at the end is the contract.
 
 ### 4. Hat (Tick slot)
 
-- **Fantasy:** hi-hats ride your momentum, so the faster you move the fiercer the
-  metal storm around you gets.
+- **Fantasy:** hi-hats ride your momentum, a fast metal stream that shreds
+  whatever lies in the direction you are driving toward.
 - **Base "Hi-Hat Shimmer":** a dense spray of fast, weak chips in your travel
   direction. (Today's hat spray, `WEAPONS.hat`.)
-- **Evolution "16th-Note Storm":** a permanent swirling cloud of shards around
-  you whose density scales with your speed, so a moving player shreds a bubble
-  and a still one goes quiet.
+- **Evolution "16th-Note Storm":** a continuous directional stream of shredding
+  chips fired in the direction the player is moving (VS-knife style), tight and
+  fast. Constant while the hat plays. See the amendment note below.
 - **Base sound:** a thin, closed "tss" tick on the off-beats.
 - **Evolved sound:** an open, sizzling wash of fast hats, brighter and busier, a
-  continuous shimmer that intensifies with the motion it is scoring.
-- **Signature verb:** movement-scaled shred cloud.
-- **Build role:** mobile self-damage, the reward for never standing still.
+  continuous shimmer that rides the run of 16th notes.
+- **Signature verb:** continuous directional shred stream.
+- **Build role:** mobile forward DPS, aimed by where you point yourself.
 
 ### 5. Arp (Groove slot)
 
@@ -238,9 +238,9 @@ every future edit to this spec must hold.
 | Weapon | Signature verb | Tactical niche |
 |---|---|---|
 | Kick | outward knockback pulse | rhythmic spacing / defensive CC |
-| Snare | instant piercing rail | single-line burst, elite line-cutter |
+| Snare | directional burst-volley | mobile forward spread burst |
 | Clap | inward collapse + stun | hard lockdown CC |
-| Hat | movement-scaled cloud | mobile self-DPS |
+| Hat | continuous directional stream | mobile forward DPS |
 | Arp | breathing orbital ring | stationary bodyguard |
 | Bass | slow traveling wall | widest raw AoE |
 | Chord | placed slow-field | area denial |
@@ -256,6 +256,30 @@ Two overlap risks were checked and cleared during review:
 - **Three area weapons, three different footprints.** Bass **travels** across
   the field, Chord is **placed** and lingers, Kick **pulses in place** on the
   beat. No two read as the same effect.
+- **Two directional forward weapons (post-amendment), two cadences.** Snare
+  "Rimshot Rain" is a **periodic heavy spread volley** on the backbeat (sparse,
+  punchy, wide fan); Hat "16th-Note Storm" is a **continuous thin stream** (dense
+  16ths, tight, constant). Burst versus stream, spread versus line: distinct feel
+  and distinct build role even though both fire where the player is heading.
+
+### Amendment — July 15, 2026 (developer-directed, sub-phase C gate loop)
+
+During the sub-phase C gate, the developer redirected two of the four
+new-system evolutions toward a Vampire-Survivors-knife feel, aimed by player
+movement instead of auto-targeting:
+
+- **Hat "16th-Note Storm"** dropped the movement-speed coupling (a still player
+  no longer goes quiet); it is now a **constant directional stream** fired in the
+  player's movement heading.
+- **Snare "Rimshot Rail" → "Rimshot Rain"** dropped the auto-aimed densest-line
+  hitscan rail and its opposite-angle answer; it is now a **forward volley of
+  piercing bolts fanned in the player's movement heading**. Renamed to match
+  (the metallic rimshot voicing and chart are unchanged).
+
+Both now read the player's movement heading (`player.moveDirX/Y`), which holds
+the last heading while idle (VS-knife behaviour). Balance numbers are
+placeholders pending the gate. The sound halves are untouched, so the
+sound-transformation gate rule still holds for both.
 
 ## New engine systems required (implementation map)
 
@@ -265,9 +289,9 @@ against real code seams so grilling and implementation price this honestly.
 | Evolution | Cost | What is needed |
 |---|---|---|
 | Kick "The Drop" | new | radial expanding-ring hitbox on each beat + a knockback-launch channel. The old crash "Shock" system (removed with FX) is the closest ancestor; the boss module has its own shock/dash to reference. |
-| Snare "Rimshot Rail" | new | instant/hitscan line targeting the densest enemy row, infinite pierce, plus a second angled crack. New: line-selection targeting. |
+| Snare "Rimshot Rain" | new | a forward volley of piercing bolts fanned across a spread in the player's movement heading (amended from the hitscan densest-line rail). New: movement-heading directional fan. |
 | Clap "Standing Ovation" | new | a collapsing-ring hitbox and a brief full stop: a timed **0× speed multiplier** per enemy caught, riding the same speed channel slow already uses (`ZONE_SLOW_MUL`), plus a frozen visual tell. The boss is immune to the stop and takes only the damage. |
-| Hat "16th-Note Storm" | new | a persistent aura whose shard spawn-rate reads player velocity each frame. New: movement-coupled emission. |
+| Hat "16th-Note Storm" | new | a persistent stream emitting chips at a constant rate in the player's movement heading (amended from movement-speed-coupled emission). New: movement-heading directional stream. |
 | Arp "Arp Carousel" | extend | orbiters with a time-varying `orbitRadius` synced to the arp phrase. Extends today's fixed-radius orbiters (`ARP_OMEGA`, `ORBIT_REHIT_S`). |
 | Bass "The Sub" | extend | continuous rolling waves (exist) + a once-per-phrase full-width screen-crossing wall. Extends `VARIANT_EFFECTS.bassSub` + `SHAKE.bassSub`. |
 | Chord "Sustain" | extend | a large, long-lived placed field with a stronger slow. Extends `VARIANT_EFFECTS.chordPad` and the zone system. Lowest new-system cost. |
