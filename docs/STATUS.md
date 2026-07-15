@@ -22,10 +22,16 @@ auto-targeting, Vampire-Survivors-knife style:
   voicing + chart are unchanged, so the sound-transformation gate rule still
   holds). **This name is flagged for the developer's sign-off.**
 
+Also (developer follow-up): **base Hat (tiers 1-4)** now fires along the movement
+heading too, not auto-aimed at the nearest enemy — the base "Hi-Hat Shimmer" spec
+already reads "a dense spray of chips in your travel direction," so this brings
+the code in line and matches the evolution's feel (`moveAim` helper; base hat and
+the evolved stream/chip both fire where the player is going).
+
 New shared seam: `player.moveDirX/moveDirY`, a unit vector of the last non-zero
 movement input that holds the last heading while idle (VS-knife behaviour), set
-in `movePlayer`. Base weapons and the other seven evolutions are untouched.
-Balance numbers are placeholders pending the gate.
+in `movePlayer`. The other seven evolutions and all other base weapons are
+untouched. Balance numbers are placeholders pending the gate.
 
 **Verification.** `tsc --noEmit` + production `vite build` clean. A headless
 deterministic sim test (10/10, since removed) confirmed: moveDir tracks the

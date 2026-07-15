@@ -605,7 +605,9 @@ export class RunWorld {
           this.hatStormT = HAT_STORM.activeS;
           break;
         }
-        this.spawnProjectile('hat', this.aimDir(0.35), conf, color, v);
+        // Base "Hi-Hat Shimmer": a wide spray of chips in the player's travel
+        // direction (not auto-aimed) — the same directional feel as the evolution.
+        this.spawnProjectile('hat', this.moveAim(0.35), conf, color, v);
         break;
       }
       case 'lead': {
@@ -1430,6 +1432,15 @@ export class RunWorld {
     return { x: Math.cos(ang), y: Math.sin(ang) };
   }
 
+  /** A unit direction along the player's movement heading, jittered by ±spread.
+   *  Used by the hat (base spray and evolved stream), which fires where the
+   *  player is going rather than at the nearest enemy. */
+  private moveAim(spread: number): { x: number; y: number } {
+    const p = this.player;
+    const ang = Math.atan2(p.moveDirY, p.moveDirX) + (this.rng() * 2 - 1) * spread;
+    return { x: Math.cos(ang), y: Math.sin(ang) };
+  }
+
   /** Base projectile with all fields defaulted; specialized spawners tweak
    *  the few that matter to them. */
   private baseProjectile(role: Role, conf: WeaponConf, color: number, damage: number): Projectile {
@@ -1856,13 +1867,13 @@ export class RunWorld {
 
   private spawnHatChip(): void {
     const p = this.player;
-    const ang = Math.atan2(p.moveDirY, p.moveDirX) + (this.rng() * 2 - 1) * HAT_STORM.spread;
+    const dir = this.moveAim(HAT_STORM.spread);
     const conf = this.applyBuild(WEAPONS.hat![EVOLVED_TIER - 1]);
     const pr = this.baseProjectile('hat', conf, KIT_COLORS.hat, conf.damage);
-    pr.x = p.x + Math.cos(ang) * HAT_STORM.spawnR;
-    pr.y = p.y + Math.sin(ang) * HAT_STORM.spawnR;
-    pr.vx = Math.cos(ang) * HAT_STORM.shardSpeed;
-    pr.vy = Math.sin(ang) * HAT_STORM.shardSpeed;
+    pr.x = p.x + dir.x * HAT_STORM.spawnR;
+    pr.y = p.y + dir.y * HAT_STORM.spawnR;
+    pr.vx = dir.x * HAT_STORM.shardSpeed;
+    pr.vy = dir.y * HAT_STORM.shardSpeed;
     this.projectiles.push(pr);
   }
 
