@@ -7,7 +7,7 @@ import { type Kit, type Role } from '../audio/kits';
 import { SLOTS, SLOT_LABEL, ownerOfSlot, supportedRoster } from './band';
 
 import { TIER_COUNT } from '../audio/charts';
-/** Tier numerals still used by the band rack + the bot-replay pick toast. */
+/** Tier numerals used by the band rack. */
 export const TIER_NUMERALS = ['I', 'II', 'III', 'IV'];
 
 export interface DebugAction {
@@ -225,8 +225,8 @@ export class Hud {
     };
   }
 
-  /** Transient notice (heal fallback, bot replay picks). Toasts stack
-   *  instead of overlapping, animate in and out, and cap at four. */
+  /** Transient notices stack instead of overlapping, animate in and out,
+   *  and cap at four. */
   showToast(text: string): void {
     while (this.toastStack.children.length >= 4) this.toastStack.firstElementChild!.remove();
     const t = el('div', 'toast', this.toastStack, text);
@@ -240,8 +240,7 @@ export class Hud {
   }
 
   /** End screen. Weapon chips lead with damage share, kills in parentheses:
-   *  kill counts flatter AoE last hits and hide single-target work on tanks
-   *  (docs/tools/autoplay-bot.md, damage share is the primary attribution). */
+   *  kill counts flatter AoE last hits and hide single-target work on tanks. */
   showEnd(
     victory: boolean,
     stats: {

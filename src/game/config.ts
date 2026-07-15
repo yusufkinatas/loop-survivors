@@ -79,8 +79,8 @@ export type EnemyKind =
   | 'circler'
   | 'shielded'
   | 'elite'
-  // Mad Forest parity roster. The legacy kinds above remain only so old
-  // replay URLs and the dormant pre-parity director can still deserialize.
+  // Mad Forest parity roster. The legacy kinds above remain for development
+  // fixtures and the dormant pre-parity director.
   | 'bat'
   | 'redBat'
   | 'redBat2'
@@ -166,8 +166,8 @@ export const BAT_SWARM_RADII = MAD_FOREST_FRAMES.batSwarm!.map(
   (frame) => legacyEnemyRadius(frame.width),
 ) as readonly number[];
 
-// The first eight entries and the legacy scaling fields remain only for old
-// replay/sandbox comparisons. RunWorld's active parity path reads the Mad
+// The first eight entries and legacy scaling fields remain for sandbox and
+// regression fixtures. RunWorld's active parity path reads the Mad
 // Forest entries below and never applies those continuous scaling fields.
 export const ENEMIES: Record<EnemyKind, EnemyConf> & {
   spawnMargin: number;

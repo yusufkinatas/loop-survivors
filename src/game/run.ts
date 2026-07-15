@@ -3,11 +3,8 @@
 // two outputs). The stage script here is time-driven only and carries no
 // musical meaning (the dividing rule, docs/plan.md).
 //
-// This file is pure simulation: no rendering, no input devices, no real
-// time. Rendering lives in view.ts, which reads this world's state each
-// frame. Randomness and movement control are injected so the autoplay bot
-// (docs/tools/autoplay-bot.md) can run the same world headless under a
-// seeded RNG — one source of truth, the game and the bot share this code.
+// This file is pure simulation: no rendering, input devices, or real-time
+// clock. Rendering lives in view.ts, which reads the world each frame.
 
 import type { Role } from '../audio/kits';
 import type { ScheduledTrigger } from '../audio/engine';
@@ -40,7 +37,6 @@ import {
   type EnemyKind,
   type WeaponConf,
 } from './config';
-import { dcos, dsin } from './dmath';
 import {
   STAGE_EVENTS,
   STAGE_STARTING_KIND,
@@ -206,8 +202,7 @@ export interface Gem {
   tier: 'blue' | 'green' | 'red';
 }
 
-/** Fire-and-forget visuals the world requests and the view renders. Null in
- *  headless runs: the bot pays nothing for juice nobody sees. */
+/** Fire-and-forget visuals the world requests and the view renders. */
 export type FxEvent =
   | { type: 'ring'; x: number; y: number; radius: number; color: number; dur: number; soft?: boolean }
   | { type: 'death'; x: number; y: number; radius: number; color: number; elite: boolean }
@@ -256,12 +251,11 @@ export const KIT_COLORS: Record<Role, number> = {
 export interface RunWorldOpts {
   /** False in the sandbox: no stage script, no waves, no victory timer. */
   scripted?: boolean;
-  /** Injected randomness; bot runs pass a seeded generator. */
+  /** Optional seeded randomness for deterministic development fixtures. */
   rng?: Rng;
-  /** Movement axis provider (magnitude 0..1). The game wires the keyboard/
-   *  joystick here; the bot wires a mover. */
+  /** Movement axis provider (magnitude 0..1). */
   control?: () => { x: number; y: number };
-  /** False for headless runs: skip the fx queue entirely. */
+  /** False for non-visual fixtures that do not consume effects. */
   fx?: boolean;
 }
 
@@ -282,9 +276,7 @@ export class RunWorld {
   timeS = 0;
   kills = 0;
   killsByRole: Partial<Record<Role, number>> = {};
-  /** Effective damage dealt per weapon (overkill not counted): the primary
-   *  attribution metric — kill counts flatter AoE last hits and hide
-   *  single-target work on tanks (docs/tools/autoplay-bot.md). */
+  /** Effective damage dealt per weapon (overkill not counted). */
   damageByRole: Partial<Record<Role, number>> = {};
   invincible = false;
   /** Tempo damage compensation (docs/plan.md, tempo and damage): more triggers
@@ -292,7 +284,7 @@ export class RunWorld {
    *  factor as every weapon fires. Set once from the soundset at run start. */
   powerMul = 1;
 
-  /** Visual-effect requests for the view; null when running headless. */
+  /** Visual-effect requests for the view; null when effects are disabled. */
   readonly fx: FxEvent[] | null;
 
   readonly enemies: Enemy[] = [];
@@ -493,8 +485,7 @@ export class RunWorld {
     return { ...conf, damage: conf.damage * this.powerMul * antonioMight };
   }
 
-  /** Push an enemy away from a point (Feature 3), sharing the crash knock
-   *  channel. Pure arithmetic, so it runs headless untouched. */
+  /** Push an enemy away from a point, sharing the weapon knock channel. */
   private shove(e: Enemy, fromX: number, fromY: number, dist: number): void {
     dist *= e.knockbackMul;
     if (dist <= 0) return;
@@ -508,9 +499,7 @@ export class RunWorld {
 
   /** Level-up breathing room: shove every enemy currently inside `minRadius`
    *  of (fromX, fromY) out to that ring, so the dropped-item triangle opens
-   *  into cleared space. Only ever called from the live shell on a human
-   *  level-up — the headless bot and replay never invoke it, so determinism
-   *  is intact. */
+   *  into cleared space. Called by the live shell on a level-up. */
   shoveEnemiesOut(fromX: number, fromY: number, minRadius: number): void {
     for (const e of this.enemies) {
       if (e.dead) continue;
@@ -637,8 +626,7 @@ export class RunWorld {
 
     const wave = this.currentWave;
     if (!wave) return;
-    // A large frame or replay seek must drain every scheduled attempt in the
-    // same deterministic order rather than silently dropping spawns.
+    // A large frame must drain every scheduled attempt instead of dropping spawns.
     while (this.timeS + 1e-9 >= this.nextSpawnT) {
       this.spawnWaveAttempt(wave);
       this.nextSpawnT += wave.intervalS;
@@ -676,8 +664,8 @@ export class RunWorld {
     const targetY = this.player.y + PLAYER_FOOT_OFFSET.y;
     for (let i = 0; i < count && this.enemies.length < MAX_ALIVE_HARD; i++) {
       const a = startAngle + (i * Math.PI) / 500;
-      const x = targetX + dcos(a) * this.worldW * 0.72;
-      const y = targetY + dsin(a) * this.worldH * 0.72;
+      const x = targetX + Math.cos(a) * this.worldW * 0.72;
+      const y = targetY + Math.sin(a) * this.worldH * 0.72;
       const dx = targetX - x;
       const dy = targetY - y;
       const d = Math.hypot(dx, dy) || 1;
@@ -703,8 +691,8 @@ export class RunWorld {
       const a = start + (i / count) * Math.PI * 2;
       this.pushEnemy(
         kind,
-        this.player.x + PLAYER_FOOT_OFFSET.x + dcos(a) * rx,
-        this.player.y + PLAYER_FOOT_OFFSET.y + dsin(a) * ry,
+        this.player.x + PLAYER_FOOT_OFFSET.x + Math.cos(a) * rx,
+        this.player.y + PLAYER_FOOT_OFFSET.y + Math.sin(a) * ry,
         'event',
         0,
         0,
@@ -742,8 +730,8 @@ export class RunWorld {
     let y: number;
     if (angle !== undefined) {
       const dist = this.spawnDist(ENEMIES[kind].radius) * distMul;
-      x = playerFootX + dcos(angle) * dist;
-      y = playerFootY + dsin(angle) * dist;
+      x = playerFootX + Math.cos(angle) * dist;
+      y = playerFootY + Math.sin(angle) * dist;
     } else {
       // Four off-screen rectangles, matching the source stage's all-sides
       // approach while avoiding corner-biased polar spawns.
@@ -879,7 +867,7 @@ export class RunWorld {
     const cr = ENEMIES[k].radius;
     for (let i = 0; i < SPLITTER.childCount; i++) {
       const a = this.rng() * Math.PI * 2;
-      this.pushEnemy(k, e.x + dcos(a) * (e.radius + cr), e.y + dsin(a) * (e.radius + cr));
+      this.pushEnemy(k, e.x + Math.cos(a) * (e.radius + cr), e.y + Math.sin(a) * (e.radius + cr));
     }
   }
 
@@ -1059,7 +1047,7 @@ export class RunWorld {
 
   private damageEnemy(e: Enemy, amount: number, source?: Role): void {
     if (e.dead) return;
-    // Floating damage number (view-only; fx is null headless). Weapon-colored,
+    // Floating damage number (view-only). Weapon-colored,
     // rounded; sub-1 ticks and instakills (Infinity) don't get a number.
     if (this.fx && Number.isFinite(amount)) {
       const shown = Math.round(amount);
@@ -1142,8 +1130,8 @@ export class RunWorld {
       if (e.spawnClass === 'boss') {
         const a = this.rng() * Math.PI * 2;
         const d = this.spawnDist(e.radius);
-        e.x = playerFootX + dcos(a) * d - e.footOffsetX;
-        e.y = playerFootY + dsin(a) * d - e.footOffsetY;
+        e.x = playerFootX + Math.cos(a) * d - e.footOffsetX;
+        e.y = playerFootY + Math.sin(a) * d - e.footOffsetY;
       } else {
         e.dead = true;
       }
@@ -1203,7 +1191,7 @@ export class RunWorld {
       ang = this.rng() * Math.PI * 2;
     }
     ang += (this.rng() * 2 - 1) * spread;
-    return { x: dcos(ang), y: dsin(ang) };
+    return { x: Math.cos(ang), y: Math.sin(ang) };
   }
 
   /** Base projectile with all fields defaulted; specialized spawners tweak
@@ -1253,8 +1241,8 @@ export class RunWorld {
     pr.pierce = Infinity;
     pr.orbitAngle = angle;
     pr.orbitRadius = conf.orbitRadius!;
-    pr.x = this.player.x + dcos(angle) * pr.orbitRadius;
-    pr.y = this.player.y + dsin(angle) * pr.orbitRadius;
+    pr.x = this.player.x + Math.cos(angle) * pr.orbitRadius;
+    pr.y = this.player.y + Math.sin(angle) * pr.orbitRadius;
     this.projectiles.push(pr);
   }
 
@@ -1290,8 +1278,8 @@ export class RunWorld {
       pr.damage = damage;
       pr.x = x;
       pr.y = y;
-      pr.vx = dcos(a) * BELL.shardSpeed;
-      pr.vy = dsin(a) * BELL.shardSpeed;
+      pr.vx = Math.cos(a) * BELL.shardSpeed;
+      pr.vy = Math.sin(a) * BELL.shardSpeed;
       pr.shard = true;
       this.projectiles.push(pr);
     }
@@ -1425,8 +1413,8 @@ export class RunWorld {
         // Orbit the player; clear the hit set on a cooldown so a slow sweep
         // keeps chipping the same enemy instead of touching it once.
         pr.orbitAngle += ARP_OMEGA * dt;
-        pr.x = p.x + dcos(pr.orbitAngle) * pr.orbitRadius;
-        pr.y = p.y + dsin(pr.orbitAngle) * pr.orbitRadius;
+        pr.x = p.x + Math.cos(pr.orbitAngle) * pr.orbitRadius;
+        pr.y = p.y + Math.sin(pr.orbitAngle) * pr.orbitRadius;
         pr.rehitT -= dt;
         if (pr.rehitT <= 0) {
           pr.hit.clear();
@@ -1455,8 +1443,8 @@ export class RunWorld {
             // tight turn so seekers snap to targets instead of orbiting them
             const turn = Math.max(-10 * dt, Math.min(10 * dt, diff));
             const next = cur + turn;
-            pr.vx = dcos(next) * pr.speed;
-            pr.vy = dsin(next) * pr.speed;
+            pr.vx = Math.cos(next) * pr.speed;
+            pr.vy = Math.sin(next) * pr.speed;
           }
         }
         pr.x += pr.vx * dt;
@@ -1469,7 +1457,7 @@ export class RunWorld {
         pr.hit.add(e);
         this.damageEnemy(e, pr.damage, pr.role);
         // Shove (sim, deterministic): snare 20 / bass 10. Writes only the
-        // knock channel the bot already simulates.
+        // shared knock channel.
         const sh = WEAPON_SHOVE[pr.role];
         if (sh) this.shove(e, pr.x, pr.y, sh);
         // Bell: the note shatters into a radial burst of shards on its first

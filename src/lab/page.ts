@@ -9,7 +9,7 @@ import { getChart } from '../audio/chartstore';
 import { supportedRoles } from '../audio/soundset';
 import { ROLE_META, type Kit, type Role } from '../audio/kits';
 import { TIER_COUNT, type ChartEvent } from '../audio/charts';
-import { SIM_DT } from '../bot/conductor';
+import { SIM_DT } from '../game/timing';
 import type { LabBootRoom, LabRoomId } from '../dev';
 import {
   ENEMIES,

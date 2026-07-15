@@ -821,59 +821,6 @@ button.big {
   justify-content: flex-end;
 }
 
-/* Replay speed buttons: top-right, same look as the debug buttons. */
-.replay-speed {
-  position: absolute;
-  top: max(10px, env(safe-area-inset-top));
-  right: max(12px, env(safe-area-inset-right));
-  display: flex;
-  gap: 6px;
-  z-index: 6;
-}
-
-/* Replay seek bar: bottom-center, video-style scrubbing in 15s stops. */
-.replay-seek {
-  position: absolute;
-  bottom: max(48px, calc(env(safe-area-inset-bottom) + 36px));
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: min(56vw, 520px);
-  padding: var(--sp-2) var(--sp-3);
-  background: rgba(34, 34, 42, 0.85);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  z-index: 6;
-}
-
-.replay-seek input[type='range'] {
-  flex: 1;
-  accent-color: var(--signal);
-}
-
-.replay-seek span {
-  min-width: 38px;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink);
-}
-
-/* Shown while a seek computes: the picture freezes behind this note. */
-.seek-overlay {
-  position: absolute;
-  top: 42%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background: rgba(34, 34, 42, 0.92);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  padding: var(--sp-3) var(--sp-5);
-  z-index: 7;
-  font-variant-numeric: tabular-nums;
-}
-
 /* The pause overlay is a .screen (game.ts gives it both classes); only its
    stacking and rhythm differ. */
 .pause-overlay {

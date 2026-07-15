@@ -6,23 +6,20 @@ import { Application } from 'pixi.js';
 import type { MusicEngine } from '../audio/engine';
 import { SOUNDSET } from '../audio/soundset';
 import { ROLES, type Kit, type Role } from '../audio/kits';
-import { SIM_DT, VirtualConductor } from '../bot/conductor';
-import { MOVERS, type Mover, type MoverName } from '../bot/movers';
-import { makePolicy } from '../bot/policies';
-import { SIM_VIEW } from '../bot/sim';
 import { RUN, LEVELUP } from './config';
 import { SLOTS, ownerOfSlot } from './band';
 import { mountTrackOverlay } from './trackoverlay';
-import { Hud, TIER_NUMERALS } from './hud';
+import { Hud } from './hud';
+import { createGreedyMover, createKiter, type AutoMover } from './auto-move';
 import { autoMove, Input, type AutoMoveMode } from './input';
 import { mountJoystick } from './joystick';
 import { rollOffers, type PickOption } from './picks';
-import { mulberry32 } from './rng';
 import { RunWorld, KIT_COLORS } from './run';
+import { SIM_DT } from './timing';
 import { RunView, type GroundPickView } from './view';
 import { mountSandboxPanel, type SandboxPanel } from './sandbox';
 
-type State = 'start' | 'run' | 'end' | 'sandbox' | 'replay';
+type State = 'start' | 'run' | 'end' | 'sandbox';
 
 export async function bootGame(
   root: HTMLElement,
@@ -78,8 +75,7 @@ export async function bootGame(
   let tsSlider: HTMLInputElement;
   let tsControl: HTMLElement;
   let tsLabel: HTMLElement;
-  /** timeScale is only live in run + sandbox. Replay keeps its own speed/seek
-   *  controls untouched; menus have no world to scale. */
+  /** timeScale is only live in run + sandbox; menus have no world to scale. */
   function timeScaleLive(): boolean {
     return state === 'run' || state === 'sandbox';
   }
@@ -121,14 +117,14 @@ export async function bootGame(
   // control seam reads this state every frame, so a mid-run switch takes hold
   // on the next tick.
   let autoMode: AutoMoveMode = 'off';
-  let autoMoverFn: Mover | null = null;
+  let autoMoverFn: AutoMover | null = null;
   function setAutoMode(mode: AutoMoveMode): void {
     autoMode = mode;
     autoMove.active = mode !== 'off'; // suppresses the touch joystick on mobile
     // Movers carry per-run state (the harvester's orbit/target memory), so a
     // switch hands out a fresh instance.
     autoMoverFn =
-      mode === 'kiter' ? MOVERS.kiter() : mode === 'greedy' ? MOVERS.harvester() : null;
+      mode === 'kiter' ? createKiter() : mode === 'greedy' ? createGreedyMover() : null;
     hud.refreshDebug(); // keep the auto-move button's label/state in sync
   }
   /** The player's movement each frame: the active mover, or manual input. */
@@ -138,8 +134,7 @@ export async function bootGame(
 
   // Pause overlay: ESC freezes the run behind a dimmed screen; the audio clock
   // stops so no triggers fire, and the game loop skips its world step. A second
-  // ESC resumes. Only the live run pauses — menus and replays have their own
-  // controls (the replay has speed/seek).
+  // ESC resumes. Only the live run pauses.
   const pauseOverlay = document.createElement('div');
   pauseOverlay.className = 'screen pause-overlay';
   pauseOverlay.style.display = 'none';
@@ -178,8 +173,7 @@ export async function bootGame(
   let presentQueuedPickAtAudioT: number | null = null;
   // The level-up offers currently dropped on the ground as physical items, in
   // a triangle around the player. Shell-owned (never entities in the
-  // deterministic world), so the autoplay bot and replays are untouched — they
-  // keep resolving each level instantly through VirtualConductor. Empty = none.
+  // simulation), so it stays independent from world entities. Empty = none.
   interface GroundItem {
     x: number;
     y: number;
@@ -218,8 +212,7 @@ export async function bootGame(
     // fallback immediately; the first real offer drops a triangle and stops.
     while (pendingUpgrades.length > 0 && groundPicks.length === 0) {
       pendingUpgrades.shift();
-      // The offer roll (docs/phases/m2-the-arc.md) is shared with the autoplay
-      // bot via picks.ts, so the bot faces the exact offers a player does.
+      // Roll the real three-option offer for this reward.
       const options = rollOffers(w.tiers, Math.random, w.timeS);
       if (options.length === 0) {
         w.player.hp = Math.min(RUN.playerHp, w.player.hp + 15);
@@ -338,142 +331,18 @@ export async function bootGame(
     },
   };
   let sandboxPanel: SandboxPanel | null = null;
-  let replayConductor: VirtualConductor | null = null;
   let liveAcc = 0;
-  let replayAcc = 0;
-  let replaySpeed = 1;
   const LIVE_MAX_STEPS = 6;
 
-  // Replay speed control: multiplies how much simulated time each frame
-  // pays out. The fixed-dt step sequence is untouched, so speed never
-  // breaks a replay's tick-identity with its batch run. Above 1x the
-  // audio mutes: the sound clock is real time and cannot be sped up.
-  const REPLAY_SPEEDS = [1, 2, 5, 10];
-  const speedRow = document.createElement('div');
-  speedRow.className = 'replay-speed';
-  speedRow.style.display = 'none';
-  root.appendChild(speedRow);
-
-  // Replay seek: a replay is a simulation, not a video, so seeking means
-  // computing. Forward: fast-forward at uncapped speed (budgeted per frame
-  // so the page stays alive). Backward: restart from the seed — determinism
-  // guarantees the identical run — then fast-forward to the target.
-  let replayTarget: number | null = null;
-  let lastReplay: { seed: number; mover: MoverName; policy: string } | null = null;
-  /** Background probe: a second headless copy of the run raced ahead to
-   *  discover where it actually ends, so the seek bar can span the real
-   *  run (its right edge = the moment of death) instead of a flat 8:00. */
-  let probe: { world: RunWorld; conductor: VirtualConductor; endT: number | null } | null = null;
-  const seekOverlay = document.createElement('div');
-  seekOverlay.className = 'seek-overlay';
-  seekOverlay.style.display = 'none';
-  root.appendChild(seekOverlay);
-  const seekRow = document.createElement('div');
-  seekRow.className = 'replay-seek';
-  seekRow.style.display = 'none';
-  const seekSlider = document.createElement('input');
-  seekSlider.type = 'range';
-  seekSlider.min = '0';
-  seekSlider.max = String(RUN.durationS);
-  seekSlider.step = '15';
-  seekSlider.value = '0';
-  const seekLabel = document.createElement('span');
-  seekLabel.textContent = '0:00';
-  seekRow.append(seekSlider, seekLabel);
-  root.appendChild(seekRow);
-  let seekDragging = false;
-  seekSlider.addEventListener('pointerdown', () => {
-    seekDragging = true;
-  });
-  seekSlider.addEventListener('input', () => {
-    seekLabel.textContent = fmtTime(Number(seekSlider.value));
-  });
-  seekSlider.addEventListener('change', () => {
-    seekDragging = false;
-    seekTo(Number(seekSlider.value));
-    seekSlider.blur(); // keep arrow keys for the game
-  });
-
-  function seekTo(targetS: number): void {
-    if (!lastReplay) return;
-    if (state !== 'replay' || !world || targetS < world.timeS) {
-      const r = lastReplay;
-      startReplay(r.seed, r.mover, r.policy);
-    }
-    replayTarget = targetS;
-    applyGain();
-  }
-
-  /** The probe is the same run again (same seed, same policies), stepped in
-   *  spare frame time with no fx and no view until it ends. */
-  function startProbe(
-    seed: number,
-    moverName: MoverName,
-    policySpec: string,
-  ): void {
-    const rng = mulberry32(seed);
-    const policy = makePolicy(policySpec);
-    const mover = (MOVERS[moverName] ?? MOVERS.kiter)();
-    const events = {
-      onLevelUp: () => probe?.conductor.onLevelUp(),
-      onDeath: () => finishProbe(),
-      onVictory: () => finishProbe(),
-      onHit: () => {},
-    };
-    const w: RunWorld = new RunWorld(SIM_VIEW, events, {
-      rng,
-      control: () => mover(w),
-      fx: false,
-    });
-    w.powerMul = SOUNDSET.powerMul;
-    const conductor = new VirtualConductor(w, policy.choose, rng);
-    probe = { world: w, conductor, endT: null };
-    conductor.start(policy.startingKit(rng));
-  }
-
-  function finishProbe(): void {
-    if (!probe || probe.endT !== null) return;
-    probe.endT = probe.world.timeS;
-    seekSlider.max = String(Math.ceil(probe.endT));
-  }
-
-  /** Step the probe inside a small per-frame budget until it ends. */
-  function pumpProbe(): void {
-    if (!probe || probe.endT !== null) return;
-    const deadline = performance.now() + 6;
-    let guard = 0;
-    while (probe.endT === null && performance.now() < deadline && guard++ < 4000) {
-      probe.conductor.tick(SIM_DT);
-      probe.world.update(SIM_DT);
-    }
-  }
-
   function applyGain(): void {
-    engine.setMasterGain(muted || replaySpeed > 1 || replayTarget !== null ? 0 : 0.8);
-  }
-  function setReplaySpeed(mult: number): void {
-    replaySpeed = mult;
-    applyGain();
-    for (const [i, btn] of [...speedRow.children].entries()) {
-      btn.classList.toggle('on', REPLAY_SPEEDS[i] === mult);
-    }
-  }
-  for (const mult of REPLAY_SPEEDS) {
-    const btn = document.createElement('button');
-    btn.className = 'small debug-btn';
-    btn.textContent = `${mult}x`;
-    btn.onclick = () => {
-      setReplaySpeed(mult);
-      btn.blur();
-    };
-    speedRow.appendChild(btn);
+    engine.setMasterGain(muted ? 0 : 0.8);
   }
 
   function resetWorld(): void {
     paused = false;
     resetUpgradeQueue();
     liveAcc = 0;
-    setTimeScale(1); // every new run / sandbox / replay starts at normal speed
+    setTimeScale(1); // every new run or sandbox starts at normal speed
     syncTimeScaleControl(); // disabled until startRun/startSandbox re-enables it
     setAutoMode('off'); // manual by default; startRun re-arms it if chosen
     pauseOverlay.style.display = 'none';
@@ -483,18 +352,14 @@ export async function bootGame(
     view = null;
     world = null;
     resetMutes(); // new run starts with every voice audible
-    replayConductor = null;
-    replayAcc = 0;
-    probe = null;
-    seekOverlay.style.display = 'none';
     engine.clearBarQueue();
     for (const role of ROLES) engine.setVoiceEnabled(role, false);
   }
 
   function startRun(startingKit: Role, mode: AutoMoveMode = 'off'): void {
     resetWorld();
-    // Auto-move hands the player's movement to a bot mover (kiter = survival,
-    // greedy = the gem-hungry harvester); manual keeps the keyboard/joystick.
+    // Auto-move hands movement to a kiter or gem-hungry greedy mode;
+    // manual keeps the keyboard/joystick.
     // The seam reads playerControl live, so the in-game toggle works too.
     setAutoMode(mode);
     const w: RunWorld = new RunWorld(app.screen, events, {
@@ -548,85 +413,12 @@ export async function bootGame(
     engine.clock.start();
   }
 
-  /** Bot replay (docs/tools/autoplay-bot.md): re-run a batch seed live and
-   *  watchable. The world runs at the sim's fixed dimensions and fixed
-   *  60 Hz ticks under the seeded RNG, so it is tick-identical to the
-   *  headless run; the view and the engine's sound ride along. */
-  function startReplay(
-    seed: number,
-    moverName: MoverName,
-    policySpec: string,
-  ): void {
-    resetWorld();
-    replayTarget = null;
-    lastReplay = { seed, mover: moverName, policy: policySpec };
-    const rng = mulberry32(seed);
-    const policy = makePolicy(policySpec);
-    const mover = (MOVERS[moverName] ?? MOVERS.kiter)();
-    const replayEvents = {
-      onLevelUp(): void {
-        replayConductor?.onLevelUp();
-      },
-      onDeath(): void {
-        endRun(false);
-      },
-      onVictory(): void {
-        endRun(true);
-      },
-      onHit(): void {
-        hud.hitFlash();
-        view?.pushShake(7, 0.12);
-      },
-    };
-    const w: RunWorld = new RunWorld(SIM_VIEW, replayEvents, { rng, control: () => mover(w) });
-    w.powerMul = SOUNDSET.powerMul;
-    world = w;
-    replayConductor = new VirtualConductor(w, policy.choose, rng, {
-      onPick(option) {
-        hud.showToast(`bot picks ${pickLabel(option)}`);
-      },
-      onApply(option) {
-        // the sound mirrors the sim's build; gameplay is driven by the
-        // virtual clock, the engine only plays along.
-        engine.setVoiceTier(option.role, option.tier);
-        engine.setVoiceEnabled(option.role, true);
-        hud.renderBand(w.tiers, undefined, mutedRoles);
-        refreshTrackOverlay();
-      },
-      onHeal() {
-        hud.showToast('+15 hp — the track is complete');
-      },
-    });
-    view = new RunView(w, app.screen);
-    app.stage.addChild(view.stage);
-    hud.showHud(true);
-    hud.renderBand(w.tiers);
-    hud.showToast(`replaying seed ${seed} (${moverName}/${policySpec})`);
-    speedRow.style.display = '';
-    seekRow.style.display = '';
-    seekSlider.value = '0';
-    seekSlider.max = String(RUN.durationS);
-    seekLabel.textContent = '0:00';
-    setReplaySpeed(1);
-    startProbe(seed, moverName, policySpec);
-    state = 'replay';
-    void engine.ctx.resume();
-    engine.clock.start();
-    replayConductor.start(policy.startingKit(rng));
-  }
-
   function endRun(victory: boolean): void {
     if (!world || state === 'end') return;
     state = 'end';
     syncTimeScaleControl(); // no live world to scale on the end screen
     resetUpgradeQueue();
     liveAcc = 0;
-    speedRow.style.display = 'none';
-    seekRow.style.display = 'none';
-    seekOverlay.style.display = 'none';
-    replaySpeed = 1;
-    replayTarget = null;
-    probe = null;
     applyGain();
     engine.clock.stop();
     engine.clearBarQueue();
@@ -668,8 +460,8 @@ export async function bootGame(
 
   // Number-key track toggles (dev mechanism): Digit1..Digit7 map to the seven
   // band slots in rack order and mute the AUDIO of the instrument owning that
-  // slot. Audio-only — engine triggers, damage, determinism, and replays are
-  // untouched; only the voice's gain goes to 0.
+  // slot. Audio-only: engine triggers and damage are untouched; only the
+  // voice's gain goes to 0.
   const mutedRoles = new Set<Role>();
   function toggleRoleMute(role: Role): void {
     if (mutedRoles.has(role)) {
@@ -711,9 +503,8 @@ export async function bootGame(
       }
       const ts = timeScale * momentScale;
       // timeScale (issue #21) compresses / expands wall-clock. The sim still
-      // only ever advances in fixed SIM_DT ticks (determinism intact) — ts
-      // scales the COUNT of ticks paid out per frame, never their size, exactly
-      // like replay speed does. The per-frame step cap scales with ts so a
+      // only advances in fixed SIM_DT ticks: ts scales the count of ticks paid
+      // out per frame, never their size. The per-frame step cap scales so a
       // legitimate fast frame isn't silently throttled, but stays bounded so a
       // stalled frame or backgrounded tab drops time instead of spiralling.
       const maxSteps = Math.max(1, Math.ceil(LIVE_MAX_STEPS * ts));
@@ -775,64 +566,6 @@ export async function bootGame(
         w.level,
         w.timeS,
       );
-    } else if (state === 'replay' && world && replayConductor) {
-      pumpProbe();
-      if (replayTarget !== null) {
-        // seeking: the picture freezes behind a "jumping to…" note while
-        // the sim computes flat out inside a per-frame budget — a seek
-        // should read as a load, not as hyper-speed gameplay
-        const deadline = performance.now() + 40;
-        while (
-          state === 'replay' &&
-          world.timeS < replayTarget &&
-          performance.now() < deadline
-        ) {
-          replayConductor.tick(SIM_DT);
-          world.update(SIM_DT);
-        }
-        if (state === 'replay') {
-          if (world.timeS >= replayTarget) {
-            replayTarget = null;
-            replayAcc = 0;
-            seekOverlay.style.display = 'none';
-            if (world.fx) world.fx.length = 0; // drop queued juice from the jump
-            applyGain();
-          } else {
-            if (world.fx) world.fx.length = 0; // nobody draws during the jump
-            seekOverlay.style.display = '';
-            seekOverlay.textContent = `jumping to ${fmtTime(replayTarget)} — at ${fmtTime(world.timeS)}`;
-            if (!seekDragging) seekSlider.value = String(Math.floor(world.timeS));
-            return; // picture stays frozen while jumping
-          }
-        }
-      } else {
-        // fixed 60 Hz sub-steps: only fixed ticks reproduce the batch run.
-        // replaySpeed pays out more simulated time per frame; the step cap
-        // keeps heavy frames responsive (the replay just falls behind the
-        // requested speed instead of freezing the page).
-        replayAcc += Math.min(ticker.deltaMS / 1000, 1 / 20) * replaySpeed;
-        let steps = 0;
-        while (replayAcc >= SIM_DT && steps < 12 && state === 'replay') {
-          replayAcc -= SIM_DT;
-          steps++;
-          replayConductor.tick(SIM_DT);
-          world.update(SIM_DT);
-        }
-        if (replayAcc > SIM_DT * 12) replayAcc = SIM_DT * 12; // don't bank a backlog
-      }
-      if (state === 'replay') {
-        view?.update((ticker.deltaMS / 1000) * replaySpeed);
-        hud.setStatus(
-          world.player.hp / RUN.playerHp,
-          world.xpProgress(),
-          world.level,
-          world.timeS,
-        );
-        if (!seekDragging) {
-          seekSlider.value = String(Math.floor(world.timeS));
-          seekLabel.textContent = fmtTime(world.timeS);
-        }
-      }
     }
     if (trackOverlayEl.style.display !== 'none') trackOverlay.tick();
     if (overlay.style.display !== 'none' && world) {
@@ -917,9 +650,8 @@ export async function bootGame(
   hud.mountDebug(Object.values(debugActions));
 
   // timeScale slider (issue #21): lives in the debug row beside the buttons and
-  // shares the ⚙ show/hide. A live readout ("speed 1.50x") + a 0.25-step range;
-  // the [ and ] keys drive the same value and drag the handle. Inert outside
-  // run / sandbox (disabled), so replay's own speed controls are never touched.
+  // shares the debug disclosure. A live readout ("speed 1.50x") + a 0.25-step
+  // range; the [ and ] keys drive the same value and drag the handle.
   tsControl = document.createElement('label');
   tsControl.className = 'ts-control';
   tsLabel = document.createElement('span');
@@ -938,7 +670,7 @@ export async function bootGame(
   });
   tsSlider.addEventListener('change', () => tsSlider.blur()); // keys back to game
   setTimeScale(1); // paint the initial readout ("speed 1.00x")
-  syncTimeScaleControl(); // start disabled (boot lands on start or replay)
+  syncTimeScaleControl(); // start disabled until a run or sandbox begins
 
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Escape') {
@@ -958,7 +690,7 @@ export async function bootGame(
     // Number-key track toggles: only while playing (never over the start /
     // pick / end screens, mirroring the state guards the debug actions use).
     if (/^Digit[1-7]$/.test(e.code) && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      if ((state === 'run' || state === 'sandbox' || state === 'replay') && world) {
+      if ((state === 'run' || state === 'sandbox') && world) {
         const slot = SLOTS[Number(e.code.slice(5)) - 1];
         const role = ownerOfSlot(slot, world.tiers);
         if (role) toggleRoleMute(role); // empty slot: the key does nothing
@@ -981,28 +713,7 @@ export async function bootGame(
     }
   });
 
-  function fmtTime(s: number): string {
-    return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-  }
-
-  function pickLabel(option: PickOption): string {
-    const kit = kits.get(option.role)!;
-    return option.tier > 1 ? `${kit.name} ${TIER_NUMERALS[option.tier - 1]}` : kit.name;
-  }
-
-  // ?replay=<seed>&mover=<mover>&policy=<policy> boots straight into a bot
-  // replay (the batch report prints these links for its outliers)
-  const params = new URLSearchParams(location.search);
-  const replaySeed = params.get('replay');
-  if (replaySeed !== null) {
-    startReplay(
-      Number(replaySeed),
-      (params.get('mover') ?? 'kiter') as MoverName,
-      params.get('policy') ?? 'random',
-    );
-  } else {
-    hud.showStart(startRun, startSandbox);
-  }
+  hud.showStart(startRun, startSandbox);
 
   // extend the dev console handle
   Object.assign((window as unknown as { loop: object }).loop, {

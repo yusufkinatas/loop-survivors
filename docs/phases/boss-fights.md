@@ -37,7 +37,7 @@ Each is a real Experimentation-room cover, walking an arrangement of its section
 All of it lives in `src/boss/` and touches the rest of the game in only three
 tiny, additive spots: a `#boss` route in `src/main.ts`, a "boss fights" button on
 the start screen (`src/game/hud.ts`), and appended CSS. The weapon system, the
-genres, the run, and the autoplay bot are untouched.
+genres and the main run are untouched.
 
 - `conductor.ts` — wraps the Experimentation room's `LabEngine` (the ear-tested
   track player) and walks a per-boss **arrangement** (`{section, bars}` list,

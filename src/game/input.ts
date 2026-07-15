@@ -5,9 +5,8 @@
 
 export const touchAxis = { x: 0, y: 0, active: false };
 
-/** Auto-move modes take the movement verb away from the player and hand it to
- *  a mover (bot/movers.ts): 'kiter' flees the horde (survival first), 'greedy'
- *  survives but detours for XP to level faster. 'off' is normal manual play. */
+/** Auto-move modes take the movement verb away from the player: 'kiter' flees
+ *  the horde, while 'greedy' also detours for XP. 'off' is manual play. */
 export type AutoMoveMode = 'off' | 'kiter' | 'greedy';
 
 /** True while an auto-move mode drives the player. The keyboard/touch axis is

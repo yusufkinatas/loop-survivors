@@ -73,8 +73,6 @@ Every milestone ends playable and answers one named question.
 
 One question per session. The developer plays continuously and is the sole judge at each milestone exit. A recurring muted run enforces pillar 3.
 
-An autoplay bot runs batch playtests as a balance instrument (floors, not peaks; it detects broken, never defines balanced). Spec: `docs/tools/autoplay-bot.md`.
-
 ## Parked Decisions (deliberately deferred to playtesting)
 
 > **July 6, 2026 redirect:** the full-track / genre-drop direction was dropped (genres are now playable characters, see the Genre system section). The four M3-grilling "RESOLVED" items below and the exact-match / per-track-drop items are therefore **moot** — kept for history only. They do not describe the shipped design.

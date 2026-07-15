@@ -3,10 +3,8 @@
 // drums (and the sub-bass) are real one-shots overlaid on top, since drums
 // carry a kit's identity in a way one synth engine cannot.
 //
-// IMPORTANT (Node safety): this module and everything it imports run
-// OfflineAudioContext only INSIDE builder functions, never at module load — the
-// headless bot never imports this file and must stay importable under Node.
-// Only browser code (engine.ts) imports here.
+// OfflineAudioContext work happens only inside builder functions, never at
+// module load. Only browser code (engine.ts) imports here.
 
 import { loadSample, makeKit, type Kit, type Role } from '../kits';
 import { buildHouseKit } from './house';

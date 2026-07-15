@@ -1,5 +1,5 @@
-// Seeded randomness (docs/tools/autoplay-bot.md): every bot run records its
-// seed and can be replayed identically. Human play keeps Math.random.
+// Seeded randomness for deterministic development fixtures. Human play uses
+// Math.random.
 
 export type Rng = () => number;
 

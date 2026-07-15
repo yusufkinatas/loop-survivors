@@ -232,7 +232,7 @@ export class MusicEngine {
 
   /** A short, bright "level up" chime — a quick ascending major sparkle.
    *  Rides master (respects mute) on its own gain, bypassing the weapons bus
-   *  so the level-up dip never swallows it. Purely cosmetic, never headless. */
+   *  so the level-up dip never swallows it. Purely cosmetic. */
   playLevelCue(): void {
     if (this.masterTarget <= 0) return; // muted
     const now = this.ctx.currentTime;

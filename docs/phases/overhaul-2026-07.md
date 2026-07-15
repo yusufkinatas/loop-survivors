@@ -32,7 +32,7 @@ document these decisions").
 
 2. **Items and weapon effects removed.** `items.ts`, `effects.ts`, the Mods
    bag, the audio `voicefx` insert chain, the item strip UI, the sandbox item
-   editor, and the bot's item/effect handling are deleted. The pick pool is
+   editor are deleted. The pick pool is
    weapons and tier-ups only (heal fallback stays). This is deliberately a
    clean amputation, not a flag: a different enhancement system comes later.
 
@@ -50,14 +50,13 @@ document these decisions").
    (TTK <= 1s), contact damage ~10% of player HP and mostly flat, danger
    scales through density and HP, sawtooth pressure (per-minute spikes with
    structural breathers), min-alive quota backfill, scripted swarm/wall
-   events. Tuned with headless bot batches; the developer's hands remain the
-   real gate.
+   events. The developer's hands remain the real gate.
 
 5. **Dev track toggles:** keys 1..8 map to the eight band slots in rack order.
    Pressing a number MUTES/UNMUTES the audio of the instrument owning that
-   slot (voice gain 0/1). Gameplay triggers still fire (damage unchanged) so
-   the toggle is a listening tool, not a balance cheat; this also keeps bot
-   determinism and replays intact. The rack socket dims while muted.
+   slot (voice gain 0/1). Gameplay triggers still fire (damage unchanged), so
+   the toggle is a listening tool, not a balance cheat. The rack socket dims
+   while muted.
 
 6. **Track overlay minimalized:** the wide scrollable playground dock is
    replaced by a slim "now playing" readout — one row per active voice (color

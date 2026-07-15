@@ -8,7 +8,7 @@ import type { MusicEngine, ScheduledTrigger } from '../audio/engine';
 import { SOUNDSET, supportedRoles } from '../audio/soundset';
 import { ROLE_META, type Kit, type Role } from '../audio/kits';
 import type { ChartEvent } from '../audio/charts';
-import { SIM_DT } from '../bot/conductor';
+import { SIM_DT } from '../game/timing';
 import { RUN } from '../game/config';
 import { Input, autoMove, touchAxis } from '../game/input';
 import { mountJoystick, type JoystickHandle } from '../game/joystick';

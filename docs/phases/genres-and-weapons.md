@@ -96,17 +96,13 @@ with new-weapon behavior inspired by Vampire Survivors, plus a synthesized kit
   orbit, random strikes, shockwave + enemy knockback) and `powerMul`.
 - `src/game/game.ts`, `src/game/hud.ts` — genre→weapon start flow.
 - `src/game/sandbox.ts` — live genre switcher.
-- Bot (`src/bot/*`, `scripts/bot.ts`) — genre-aware (`--genre <id>`), so
-  floor-check batches can run per genre. The conductor times its virtual clock
-  to the active genre's bpm.
-
 ## Verdict protocol
 
 Same as every milestone: the developer plays it. Passes when (1) each genre
 sounds recognizably itself and good to his ear, (2) the twelve weapons feel
 distinct in the hand, muted, and (3) picking a genre feels like picking a
-character worth replaying. Balance is the bot's job as a floor-check only
-(floors, not peaks), per genre — no equalization.
+character worth replaying. Balance remains subordinate to hands-on playtesting;
+no equalization target is imposed.
 
 ## Known non-goals / follow-ups
 

@@ -1,8 +1,7 @@
 // The run's renderer: everything PixiJS lives here. The world (run.ts) is
 // pure simulation; this view diffs its state every frame — creating visuals
 // for new entities, syncing live ones, destroying gone ones — and drains the
-// world's fx queue. Headless bot runs never construct a view, which is the
-// whole point of the split (docs/tools/autoplay-bot.md).
+// world's fx queue.
 
 import { Container, Graphics, GraphicsContext, Text, TextStyle } from 'pixi.js';
 import type { Role } from '../audio/kits';
@@ -255,9 +254,7 @@ export class RunView {
   private floaters: Floater[] = [];
   private live = new Set<object>();
 
-  // Shared view-only feel systems (Feature 3). All decay off world.timeS,
-  // which advances in fixed sim steps during replay/seek, so a jump leaves
-  // zero residue (game clears world.fx on jumps). Never constructed headless.
+  // Shared view-only feel systems (Feature 3). All decay off world.timeS.
   private shakes: { start: number; mag: number; dur: number }[] = [];
   private flashes: { start: number; dur: number; color: number; alpha: number }[] = [];
   private trails = new Map<Projectile, number[]>(); // flattened [x,y,...], newest last
@@ -287,7 +284,7 @@ export class RunView {
   }
 
   /** Level-up flourish: a signal-colored ring that expands and fades from
-   *  (x,y). View-only (rides the pops list), never called headless. */
+   *  (x,y). View-only and rides the pops list. */
   flourish(x: number, y: number): void {
     const g = new Graphics().circle(0, 0, 30).stroke({ width: 4, color: 0xffffff });
     g.tint = 0x59ffd1;
@@ -376,10 +373,7 @@ export class RunView {
     this.drawGrid();
     this.drawFlash();
 
-    // Screenshake: decay each active shake off world.timeS (fixed sim steps
-    // in replay/seek, so no residue after a jump) and take the peak amplitude.
-    // The jitter direction uses Math.random — view is never headless, so this
-    // never touches the sim or the bot.
+    // Screenshake decays off world.timeS and uses view-only random jitter.
     let amp = 0;
     for (let i = this.shakes.length - 1; i >= 0; i--) {
       const s = this.shakes[i];

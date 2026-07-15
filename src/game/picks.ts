@@ -1,15 +1,11 @@
-// The pick economy's one source of truth, shared by the game's level-up
-// screen and the autoplay bot (docs/tools/autoplay-bot.md). Offers are a
-// weighted draw over new/upgraded weapons. Both consumers roll with their own
-// RNG (the game unseeded, the bot seeded) and take three. The rng->option
-// mapping is deterministic: the pool is built in a fixed order (ROLES).
+// The pick economy's one source of truth. Offers are a weighted draw over new
+// and upgraded weapons and take three. The pool is built in a fixed order.
 //
 // The band (docs/phases/the-band.md) shapes the pool and the draw: filling a
 // slot permanently retires its other roster members (a fresh weapon is offered
 // only while its slot is empty), an offer never shows two candidates for the
 // same slot, and the weapon draw leans early toward the drum slots. All of it
-// stays a pure function of (tiers, rng, timeS) so bot runs and replays stay
-// deterministic; changing it re-baselines the bot's comparative numbers.
+// stays a pure function of tiers, rng, and time.
 
 import { TIER_COUNT } from '../audio/charts';
 import { soundsetSupports } from '../audio/soundset';
