@@ -666,7 +666,9 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
     // Evolved "The Drop" (tier EVOLVED_TIER): the facing strip becomes an
     // omnidirectional pressure ring on every beat. area/amount no longer apply
     // (the ring is radial); damage is per pulse, geometry lives in KICK_DROP.
-    { damage: 22 },
+    // Power-neutral pass (July 16): 22->11 to pull the ring off the top of the
+    // crowd-clear field (was ~2237 swarm DPS, the #3 trivializer).
+    { damage: 11 },
   ],
   // Backbeat sniper: few, fast, hard-hitting, drills a line. The premium
   // single-target trigger — sparse chart, so each hit is a statement.
@@ -718,7 +720,9 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
     // Evolved "Sustain": a large, long-lived kill-field. Heavy per-tick damage
     // (it must out-damage tier 4's many stacked stab-zones, not just slow more);
     // size/life/slow/tick come from CHORD_SUSTAIN.
-    { damage: 8, radius: 150, lifetimeS: 6.0 },
+    // Power-neutral pass (July 16): per-tick 8->3 to pull the kill-field off the
+    // top of the crowd-clear field (was ~3245 swarm DPS, the #2 trivializer).
+    { damage: 3, radius: 150, lifetimeS: 6.0 },
   ],
   // Lock-on beam: one instant zap into the locked target per melody note, never
   // misses (the respec from homing seekers; only `damage` is read now — the
@@ -728,9 +732,11 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
     { damage: 4 },
     { damage: 5 },
     { damage: 7 },
-    // Evolved "The Solo": a sustained beam on the toughest target; this is its
+    // Evolved "The Solo": a sustained beam on the NEAREST target; this is its
     // PER-TICK damage (ticks every LEAD_SOLO.tickS), so DPS = damage / tickS.
-    { damage: 5 },
+    // Power-neutral pass (July 16): 5->10 to make Lead the single-target king
+    // (its intended niche); it locks ONE target, so this can't leak into crowd DPS.
+    { damage: 10 },
   ],
   // Whip: a wide forward slash that hits everything in a close cone. Melee
   // crowd control — no travel, instant, safest when the wall is on top of you.
@@ -741,7 +747,10 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
     { damage: 6, radius: 108, arc: 0.9 },
     // Evolved "Standing Ovation": a ring collapses inward onto everything near
     // you, crushing (this damage) and briefly freezing (CLAP_OVATION).
-    { damage: 8, radius: 130 },
+    // Power-neutral pass (July 16): 8->12 so evolving clears T4 on single-target
+    // too (was 8.1 < T4's 11.7 DPS; now ~12.2 > 11.7). Freeze + the big swarm jump
+    // are still the real payload; this just stops the card reading as a downgrade.
+    { damage: 12, radius: 130 },
   ],
   // King Bible: notes that orbit the player, a rotating shield of damage.
   // Each trigger adds one orbiter; a melody makes a ring.
@@ -754,7 +763,9 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
     // breathing). Bigger radius + long life packs the ring full; higher damage
     // and a fast re-hit (ARP_CAROUSEL) make it reliable continuous DPS. radius
     // here is the blade's own size (a bigger blade, not the base bead).
-    { damage: 4, radius: 15, lifetimeS: 5.5, orbitRadius: 140 },
+    // Power-neutral pass (July 16): 4->2 (paired with ARP_CAROUSEL.rehitS
+    // 0.18->0.28) to pull the runaway ring down toward the crowd-clear pack.
+    { damage: 2, radius: 15, lifetimeS: 5.5, orbitRadius: 140 },
   ],
   // Bell (band, Melody): a note lobbed straight that shatters into shards on
   // its first hit (shard count per tier in BELL). radius = the shot's own size.
@@ -765,7 +776,9 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
     { damage: 5, speed: 400, radius: 7, lifetimeS: 2.1, pierce: 2 },
     // Evolved "Carillon": a bright shot that cascades — its shards shatter once
     // more (depth 2, counts in BELL_CARILLON).
-    { damage: 6, speed: 410, radius: 8, lifetimeS: 2.2, pierce: 1 },
+    // Power-neutral pass (July 16): 6->8 so evolving isn't a single-target
+    // downgrade from T4 (was 12.4 < T4's 15.3 DPS).
+    { damage: 8, speed: 410, radius: 8, lifetimeS: 2.2, pierce: 1 },
   ],
 };
 
@@ -931,7 +944,7 @@ export const CHORD_SUSTAIN = {
  *  re-hit on this faster cooldown for reliable continuous DPS (base ORBIT_REHIT_S
  *  is slower). Density comes from the evolved chart + the long blade lifetime. */
 export const ARP_CAROUSEL = {
-  rehitS: 0.18,
+  rehitS: 0.28,
 };
 
 /** Bell "Carillon": the cascade. The main shot shatters into `shards`, and each

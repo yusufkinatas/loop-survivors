@@ -302,7 +302,25 @@ During the sub-phase C gate the developer directed several changes:
 and then reverted at the developer's direction: the instant densest-line rail +
 answering crack remains the intended evolved Snare, unchanged from its lock.)
 
-Balance numbers throughout remain placeholders pending the gate.
+**Balance pass (July 16, power-neutral / mostly-nerf).** A DPS bench (real chart
+cadence at 122 BPM, one 4-bar phrase against infinite-HP sponges) plus a senior
+balance review found the evolved band's power concentrated in three crowd
+outliers, with three other evolutions reading as single-target sidegrades. The
+developer chose a power-neutral pass: pull the outliers down toward the pack and
+apply only the buffs that could not be nerfs. Applied:
+
+- arp EVO: `WEAPONS.arp[EVO].damage` 4→2 + `ARP_CAROUSEL.rehitS` 0.18→0.28 (~3582→~1499 swarm DPS).
+- chord EVO: `WEAPONS.chord[EVO].damage` (per tick) 8→3 (~3245→~1217 swarm).
+- kick EVO: `WEAPONS.kick[EVO].damage` 22→11 (~2237→~1118 swarm).
+- lead EVO: `WEAPONS.lead[EVO].damage` (per tick) 5→10 — Lead becomes the single-target king (~46→~92 single), its intended niche; it locks one target so this can't leak into crowd DPS.
+- clap EVO: `WEAPONS.clap[EVO].damage` 8→12 — evolving now clears T4 on single (8.1<11.7 → ~12.2).
+- bell EVO: `WEAPONS.bell[EVO].damage` 6→8 — evolving now clears T4 on single (12.4<15.3 → ~16.5).
+
+The crowd-clear band is now ~500–1500 swarm DPS (was ~167–3582), Lead clearly
+tops single-target, and no evolution is a downgrade of its own tier 4. Base-tier
+pacing kinks the review flagged (chord T2==T3, hat T1==T2, snare T3, lead T1–T2
+floor) were left for a later pass. All numbers remain placeholders the gate can
+retune; the bench harness was a throwaway and was removed.
 
 ## New engine systems required (implementation map)
 

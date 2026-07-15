@@ -2,7 +2,34 @@
 
 Last updated: July 15, 2026
 
-## Latest change (July 15, 2026) — sub-phase C gate loop: Hat directional, off-screen rule, Lead retarget + sound
+## Latest change (July 16, 2026) — power-neutral EVO balance pass
+
+A per-weapon/per-tier DPS bench (real 122-BPM chart cadence, one 4-bar phrase vs
+infinite-HP sponges, single target + 50-enemy horde) was built and fed to a
+senior balance review (3-lens panel + synthesis). It found the evolved band's
+power concentrated in three crowd outliers (arp/chord/kick EVO at ~2200–3600
+swarm DPS) with three evolutions reading as single-target sidegrades (bass/clap/
+bell EVO ≤ their own T4). The developer chose a **power-neutral (mostly-nerf)**
+pass — pull the outliers down toward the pack, and apply only the buffs that
+cannot be nerfs. Applied to `WEAPONS`/`ARP_CAROUSEL` in `config.ts`:
+
+- **arp EVO** dmg 4→2 + `ARP_CAROUSEL.rehitS` 0.18→0.28 (~3582→~1499 swarm DPS)
+- **chord EVO** per-tick dmg 8→3 (~3245→~1217 swarm)
+- **kick EVO** dmg 22→11 (~2237→~1118 swarm)
+- **lead EVO** per-tick dmg 5→10 — Lead is now the single-target king (~46→~92 single); locks one target so it can't leak into crowd DPS
+- **clap EVO** dmg 8→12 — evolving now clears T4 on single (~12.2 > 11.7)
+- **bell EVO** dmg 6→8 — evolving now clears T4 on single (~16.5 > 15.3)
+
+Result: the crowd-clear band is ~500–1500 swarm DPS (was ~167–3582), Lead clearly
+tops single-target, no evolution is a downgrade of its own tier 4, and total power
+leans slightly DOWN (the three big nerfs outweigh the small buffs), so difficulty
+stays stable-to-slightly-harder rather than inflating. `tsc` + `vite build` clean;
+re-benched to confirm each landing number. Base-tier pacing kinks the review
+flagged (chord T2==T3, hat T1==T2, snare T3, lead T1–T2) were **left for a later
+pass** at the developer's direction. All numbers remain placeholders the gate can
+retune. Bench harness was throwaway (removed).
+
+## Previous change (July 15, 2026) — sub-phase C gate loop: Hat directional, off-screen rule, Lead retarget + sound
 
 Several developer-directed changes during the sub-phase C gate loop (the gate is
 still PENDING — this is feedback within the sub-phase, not a pass).
