@@ -2,7 +2,25 @@
 
 Last updated: July 15, 2026
 
-## Latest change (July 16, 2026) — power-neutral EVO balance pass
+## Latest change (July 16, 2026) — SUB-PHASE C GATE PASSED; phase at its verdict protocol
+
+The developer **passed the sub-phase C gate** (ear + hands, explicit sign-off,
+July 16) on the reworked new-system evolutions plus this session's changes: the
+directional Hat (base line + evolved knife-wall), the reverted Snare "Rimshot
+Rail", the Lead "The Solo" nearest+sticky targeting and tamed sound, the global
+no-off-screen-targeting rule, the kick re-hit bugfix, and the power-neutral EVO
+balance pass. Clap "Standing Ovation" and the rest of sub-phase C are in with it.
+
+**All three build sub-phases (A, B, C) have now PASSED.** The weapon-evolutions
+phase moves to its **verdict protocol** (spec §"Verdict protocol"): the developer
+plays full runs, evolving weapons across several builds, and declares pass/fail on
+the phase question — *does taking a weapon to its final form feel like a real
+transformation, in the hand and in the ear?* A verdict pass folds evolutions into
+the roadmap ahead of **M4 (vertical slice)** and unlocks M4's grilling session; a
+fail reworks at the level the failure points to. **Verdict is PENDING** (the
+developer's judgment). Nothing new is being built until the verdict lands.
+
+## Previous change (July 16, 2026) — power-neutral EVO balance pass
 
 A per-weapon/per-tier DPS bench (real 122-BPM chart cadence, one 4-bar phrase vs
 infinite-HP sponges, single target + 50-enemy horde) was built and fed to a
