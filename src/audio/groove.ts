@@ -23,11 +23,10 @@ const VEL: Record<string, number | undefined> = {
   O: 0.7,
 };
 
-/** Which sample variant a drum hit uses, by role and character. Only hat and
- *  kick carry two variants; everything else uses the kit default. */
+/** Which sample variant a drum hit uses, by role and character. Only the hat
+ *  carries two variants; everything else uses the kit default. */
 function drumVariant(role: Role, char: string): string | undefined {
   if (role === 'hat') return char === 'O' ? 'open' : 'closed';
-  if (role === 'kick') return char === '-' ? 'soft' : 'hard';
   return undefined;
 }
 

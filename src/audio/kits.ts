@@ -96,29 +96,29 @@ export function softClipCurve(amount: number): Float32Array<ArrayBuffer> {
   return curve;
 }
 
-async function renderKick(hard: boolean): Promise<AudioBuffer> {
+async function renderKick(): Promise<AudioBuffer> {
   const ctx = offline(0.5);
   // Body: a fast pitch-swept sine gives the "thud", landing on a defined
   // fundamental instead of sagging. A two-stage drop keeps the top punchy.
   const body = ctx.createOscillator();
   body.type = 'sine';
-  body.frequency.setValueAtTime(hard ? 210 : 150, 0);
-  body.frequency.exponentialRampToValueAtTime(hard ? 58 : 50, 0.045);
-  body.frequency.exponentialRampToValueAtTime(hard ? 46 : 42, 0.16);
+  body.frequency.setValueAtTime(210, 0);
+  body.frequency.exponentialRampToValueAtTime(58, 0.045);
+  body.frequency.exponentialRampToValueAtTime(46, 0.16);
   const bodyGain = ctx.createGain();
-  bodyGain.gain.setValueAtTime(hard ? 1.0 : 0.82, 0);
-  bodyGain.gain.exponentialRampToValueAtTime(0.001, hard ? 0.4 : 0.3);
+  bodyGain.gain.setValueAtTime(1.0, 0);
+  bodyGain.gain.exponentialRampToValueAtTime(0.001, 0.4);
   // Light saturation keeps the kick present on small speakers without
   // muddying the sub.
   const drive = ctx.createWaveShaper();
-  drive.curve = softClipCurve(hard ? 2.2 : 1.4);
+  drive.curve = softClipCurve(2.2);
   body.connect(bodyGain).connect(drive).connect(ctx.destination);
   // Click transient: a short highpassed noise burst plus a fast pitched
   // "beater" tick, so the attack has both a snap and a defined pitch.
   const click = ctx.createBufferSource();
   click.buffer = noiseBuffer(ctx, 0.01);
   const clickGain = ctx.createGain();
-  clickGain.gain.setValueAtTime(hard ? 0.4 : 0.18, 0);
+  clickGain.gain.setValueAtTime(0.4, 0);
   clickGain.gain.exponentialRampToValueAtTime(0.001, 0.01);
   const clickHp = ctx.createBiquadFilter();
   clickHp.type = 'highpass';
@@ -126,10 +126,10 @@ async function renderKick(hard: boolean): Promise<AudioBuffer> {
   click.connect(clickHp).connect(clickGain).connect(ctx.destination);
   const tick = ctx.createOscillator();
   tick.type = 'triangle';
-  tick.frequency.setValueAtTime(hard ? 640 : 420, 0);
+  tick.frequency.setValueAtTime(640, 0);
   tick.frequency.exponentialRampToValueAtTime(180, 0.02);
   const tickGain = ctx.createGain();
-  tickGain.gain.setValueAtTime(hard ? 0.28 : 0.12, 0);
+  tickGain.gain.setValueAtTime(0.28, 0);
   tickGain.gain.exponentialRampToValueAtTime(0.001, 0.025);
   tick.connect(tickGain).connect(ctx.destination);
   body.start(0);
@@ -494,10 +494,8 @@ async function renderBass(rootHz: number): Promise<AudioBuffer> {
 // minor-pentatonic root stay inside the note set when the chart shifts the
 // whole sample to the other allowed chord roots (0, +5, +7), which a triad
 // would not.
-// The bass ladder's weight variants (M2 spec: "fatter variants, and a
-// designed top-tier peak"). "Fat" is the same line with more grit and a
-// slower filter close; "sub" is the once-per-phrase tier-4 drop, a long
-// pitch-falling sine that lands like a weight hitting the floor.
+// The bass ladder's weight variant (M2 spec: "fatter variants"). "Fat" is the
+// same line with more grit and a slower filter close.
 async function renderBassFat(rootHz: number): Promise<AudioBuffer> {
   const ctx = offline(0.8);
   const osc = ctx.createOscillator();
@@ -535,30 +533,6 @@ async function renderBassFat(rootHz: number): Promise<AudioBuffer> {
   osc.start(0);
   osc2.start(0);
   sub.start(0);
-  return ctx.startRendering();
-}
-
-async function renderBassSub(rootHz: number): Promise<AudioBuffer> {
-  const ctx = offline(1.4);
-  const osc = ctx.createOscillator();
-  osc.type = 'sine';
-  osc.frequency.setValueAtTime(rootHz / 2, 0);
-  osc.frequency.exponentialRampToValueAtTime(rootHz / 8, 0.35);
-  const g = ctx.createGain();
-  g.gain.setValueAtTime(0.001, 0);
-  g.gain.exponentialRampToValueAtTime(0.9, 0.01);
-  g.gain.setValueAtTime(0.9, 0.6);
-  g.gain.exponentialRampToValueAtTime(0.001, 1.3);
-  // a short click so the drop has an attack that survives small speakers
-  const click = ctx.createBufferSource();
-  click.buffer = noiseBuffer(ctx, 0.01);
-  const clickG = ctx.createGain();
-  clickG.gain.setValueAtTime(0.25, 0);
-  clickG.gain.exponentialRampToValueAtTime(0.001, 0.01);
-  osc.connect(g).connect(ctx.destination);
-  click.connect(clickG).connect(ctx.destination);
-  osc.start(0);
-  click.start(0);
   return ctx.startRendering();
 }
 
@@ -766,10 +740,10 @@ export interface RoleMeta {
 }
 
 export const ROLE_META: Record<Role, RoleMeta> = {
-  kick: { name: 'Kick', color: '#ff5a3c', pitched: false, choke: false, variants: ['hard', 'soft'] },
-  snare: { name: 'Snare', color: '#ffc93c', pitched: false, choke: false, variants: ['snare', 'clap'] },
+  kick: { name: 'Kick', color: '#ff5a3c', pitched: false, choke: false, variants: ['hard'] },
+  snare: { name: 'Snare', color: '#ffc93c', pitched: false, choke: false, variants: ['snare'] },
   hat: { name: 'Hi-hat', color: '#3ce0ff', pitched: false, choke: false, variants: ['closed', 'open'] },
-  bass: { name: 'Bass', color: '#a06bff', pitched: true, choke: true, variants: ['bass', 'fat', 'sub'] },
+  bass: { name: 'Bass', color: '#a06bff', pitched: true, choke: true, variants: ['bass', 'fat'] },
   chord: { name: 'Chord', color: '#4dff88', pitched: true, choke: false, variants: ['stab', 'pad'] },
   lead: { name: 'Lead', color: '#ff6bd6', pitched: true, choke: false, variants: ['lead'] },
   clap: { name: 'Clap', color: '#ff4f7d', pitched: false, choke: false, variants: ['clap'] },
@@ -819,14 +793,12 @@ export function makeKit(role: Role, samples: Map<string, AudioBuffer>, tune = 0)
 export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
   const [
     kickHard,
-    kickSoft,
     snare,
     clap,
     hatClosed,
     hatOpen,
     bass,
     bassFat,
-    bassSub,
     stab,
     pad,
     lead,
@@ -840,15 +812,13 @@ export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
     riser,
     bell,
   ] = await Promise.all([
-    renderKick(true),
-    renderKick(false),
+    renderKick(),
     renderSnare(),
     renderClap(),
     renderHat(false),
     renderHat(true),
     renderBass(rootHz),
     renderBassFat(rootHz),
-    renderBassSub(rootHz),
     renderChord(rootHz, false),
     renderChord(rootHz, true),
     renderLead(rootHz),
@@ -868,14 +838,8 @@ export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
     kits.set(role, makeKit(role, new Map(entries)));
   };
 
-  add('kick', [
-    ['hard', kickHard],
-    ['soft', kickSoft],
-  ]);
-  add('snare', [
-    ['snare', snare],
-    ['clap', clap], // auditionable in the room, never charted
-  ]);
+  add('kick', [['hard', kickHard]]);
+  add('snare', [['snare', snare]]);
   add('hat', [
     ['closed', hatClosed],
     ['open', hatOpen],
@@ -883,7 +847,6 @@ export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
   add('bass', [
     ['bass', bass],
     ['fat', bassFat], // tier 3+ weight
-    ['sub', bassSub], // tier 4 once-per-phrase drop
   ]);
   add('chord', [
     ['stab', stab],
