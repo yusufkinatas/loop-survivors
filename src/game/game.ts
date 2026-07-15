@@ -150,7 +150,7 @@ export async function bootGame(
       engine.clock.pause();
       engine.holdTransport();
       // Show the current band while paused (the same rack the HUD draws).
-      if (world) hud.renderBand(world.tiers, pauseRack, mutedRoles);
+      if (world) hud.renderBand(world.tiers, pauseRack, deactivatedRoles, pendingRoles);
     } else {
       engine.releaseTransport();
       engine.clock.resume();
@@ -285,11 +285,14 @@ export async function bootGame(
       // note of the new bar. World state waits for the exact heard timestamp
       // below, preserving old-tier damage on any older trigger.
       engine.setVoiceTier(option.role, option.tier);
-      engine.setVoiceEnabled(option.role, true);
+      // Sticky deactivation: a tier-up applies the new tier but does not revive
+      // an instrument the developer deliberately turned off. It returns at the
+      // higher tier when reactivated.
+      if (!deactivatedRoles.has(option.role)) engine.setVoiceEnabled(option.role, true);
       engine.atAudioTime(barAudioTime, () => {
         if (world !== w || state !== 'run') return;
         w.addWeapon(option.role, option.tier);
-        hud.renderBand(w.tiers, undefined, mutedRoles);
+        hud.renderBand(w.tiers, undefined, deactivatedRoles, pendingRoles);
         refreshTrackOverlay();
         view?.flourish(w.player.x, w.player.y);
         pickAwaitingBar = false;
@@ -351,7 +354,7 @@ export async function bootGame(
     view?.destroy();
     view = null;
     world = null;
-    resetMutes(); // new run starts with every voice audible
+    resetDeactivations(); // new run starts with every instrument active
     engine.clearBarQueue();
     for (const role of ROLES) engine.setVoiceEnabled(role, false);
   }
@@ -393,7 +396,7 @@ export async function bootGame(
     app.stage.addChild(view.stage);
     sandboxPanel = mountSandboxPanel(root, engine, w, {
       onLoadout: () => {
-        hud.renderBand(w.tiers, undefined, mutedRoles);
+        hud.renderBand(w.tiers, undefined, deactivatedRoles, pendingRoles);
         refreshTrackOverlay();
       },
       onExit: () => {
@@ -450,7 +453,7 @@ export async function bootGame(
   const trackOverlay = mountTrackOverlay(trackOverlayEl, engine, kits);
   function refreshTrackOverlay(): void {
     if (trackOverlayEl.style.display === 'none') return;
-    trackOverlay.refresh(world?.tiers ?? new Map(), mutedRoles);
+    trackOverlay.refresh(world?.tiers ?? new Map(), deactivatedRoles, pendingRoles);
   }
   function toggleChartOverlay(): void {
     const show = trackOverlayEl.style.display === 'none';
@@ -458,29 +461,64 @@ export async function bootGame(
     if (show) refreshTrackOverlay();
   }
 
-  // Number-key track toggles (dev mechanism): Digit1..Digit7 map to the seven
-  // band slots in rack order and mute the AUDIO of the instrument owning that
-  // slot. Audio-only: engine triggers and damage are untouched; only the
-  // voice's gain goes to 0.
-  const mutedRoles = new Set<Role>();
-  function toggleRoleMute(role: Role): void {
-    if (mutedRoles.has(role)) {
-      mutedRoles.delete(role);
-      engine.setVoiceGain(role, 1);
-    } else {
-      mutedRoles.add(role);
-      engine.setVoiceGain(role, 0);
-    }
-    if (world) {
-      hud.renderBand(world.tiers, undefined, mutedRoles);
-      // The pause menu mirrors the same rack; keep it truthful if it's open.
-      if (paused) hud.renderBand(world.tiers, pauseRack, mutedRoles);
-    }
+  // Number-key instrument toggles (dev mechanism): Digit1..Digit7 map to the
+  // seven band slots in rack order and activate/deactivate the instrument owning
+  // that slot, quantized to the next heard bar. Deactivation flips the voice's
+  // `enabled` flag: a disabled voice generates no triggers, so its sound AND its
+  // damage stop together because live damage rides the engine's triggers.
+  //
+  // deactivatedRoles = the settled off-state (dim). pendingRoles = a change is
+  // scheduled but has not reached its bar yet (pulse). A pending role is always
+  // heading to the OPPOSITE of its settled state, so the two sets fully describe
+  // where each slot is and where it is going.
+  const deactivatedRoles = new Set<Role>();
+  const pendingRoles = new Set<Role>();
+  function paintBand(): void {
+    if (!world) return;
+    hud.renderBand(world.tiers, undefined, deactivatedRoles, pendingRoles);
+    // The pause menu mirrors the same rack; keep it truthful if it's open.
+    if (paused) hud.renderBand(world.tiers, pauseRack, deactivatedRoles, pendingRoles);
     refreshTrackOverlay();
   }
-  function resetMutes(): void {
-    for (const role of mutedRoles) engine.setVoiceGain(role, 1);
-    mutedRoles.clear();
+  function toggleRoleActive(role: Role): void {
+    if (pendingRoles.has(role)) {
+      // Second press before the bar: cancel the scheduled change (round-trip).
+      // The already-queued callback stays in the bar queue but no-ops, because
+      // it re-checks pendingRoles before applying.
+      pendingRoles.delete(role);
+      paintBand();
+      return;
+    }
+    const w = world;
+    // A pending change always flips the settled state (round-trips self-cancel
+    // above), so the target is fixed at schedule time.
+    const willDeactivate = !deactivatedRoles.has(role);
+    pendingRoles.add(role);
+    engine.atNextBar(() => {
+      // The run ended or the world swapped: drop it silently.
+      if (world !== w || (state !== 'run' && state !== 'sandbox')) {
+        pendingRoles.delete(role);
+        return;
+      }
+      if (!pendingRoles.has(role)) return; // cancelled by a round-trip press
+      pendingRoles.delete(role);
+      if (willDeactivate) {
+        deactivatedRoles.add(role);
+        engine.setVoiceEnabled(role, false);
+      } else {
+        deactivatedRoles.delete(role);
+        engine.setVoiceEnabled(role, true);
+      }
+      paintBand();
+    });
+    paintBand();
+  }
+  function resetDeactivations(): void {
+    // resetWorld disables every voice right after this, so re-enabling is
+    // belt-and-suspenders; clearing both sets is the part that matters.
+    for (const role of deactivatedRoles) engine.setVoiceEnabled(role, true);
+    deactivatedRoles.clear();
+    pendingRoles.clear();
   }
 
   // one trigger, two outputs: the engine already made the sound; this makes
@@ -687,13 +725,12 @@ export async function bootGame(
       }
       return;
     }
-    // Number-key track toggles: only while playing (never over the start /
-    // pick / end screens, mirroring the state guards the debug actions use).
+    // Number-key instrument toggles are live only in a run or sandbox.
     if (/^Digit[1-7]$/.test(e.code) && !e.ctrlKey && !e.metaKey && !e.altKey) {
       if ((state === 'run' || state === 'sandbox') && world) {
         const slot = SLOTS[Number(e.code.slice(5)) - 1];
         const role = ownerOfSlot(slot, world.tiers);
-        if (role) toggleRoleMute(role); // empty slot: the key does nothing
+        if (role) toggleRoleActive(role); // empty slot: the key does nothing
       }
       return;
     }

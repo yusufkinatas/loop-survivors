@@ -72,12 +72,15 @@ export class Hud {
    *  order, empty ones asking to be filled, filled ones showing the hired
    *  instrument (its color + name) and its tier as pips. Rebuilt on every pick
    *  (cheap: 7 sockets). Renders into the HUD rack by default, or any supplied
-   *  container so the pause menu can show the same band. An audio-muted owner
-   *  (the dev number-key toggles) renders its socket dimmed. */
+   *  container so the pause menu can show the same band. The dev number-key
+   *  toggles mark a deactivated owner's socket dimmed, and a socket with a
+   *  change scheduled for the next bar pulses (up from dim toward on, or down
+   *  from full toward off). */
   renderBand(
     tiers: ReadonlyMap<Role, number>,
     into: HTMLElement = this.rack,
-    muted?: ReadonlySet<Role>,
+    deactivated?: ReadonlySet<Role>,
+    pending?: ReadonlySet<Role>,
   ): void {
     into.replaceChildren();
     for (const slot of SLOTS) {
@@ -86,7 +89,14 @@ export class Hud {
       // and unavailable, never asking to be filled.
       const dropped = supportedRoster(slot).length === 0;
       let cls = dropped ? 'unavailable' : owner ? 'filled' : 'empty';
-      if (owner && !dropped && muted?.has(owner)) cls += ' muted';
+      if (owner && !dropped) {
+        const off = deactivated?.has(owner) ?? false;
+        const pend = pending?.has(owner) ?? false;
+        // Pending pulses from the CURRENT settled state toward its opposite;
+        // a settled-off socket with no pending change just sits dimmed.
+        if (pend) cls += off ? ' pending-on' : ' pending-off';
+        else if (off) cls += ' deactivated';
+      }
       const socket = el('div', `band-socket ${cls}`, into);
       el('span', 'socket-slot', socket, SLOT_LABEL[slot]);
       if (owner && !dropped) {

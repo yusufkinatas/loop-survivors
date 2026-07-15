@@ -1032,8 +1032,9 @@ button.big {
   gap: 5px;
 }
 
-/* Audio-muted voice (the number-key dev toggles): dimmed, with an 'm' mark. */
-.tr-row.muted {
+/* Deactivated voice (the number-key dev toggles): dimmed, with an 'off' mark.
+   A pending (next-bar) change pulses instead — see the rules below. */
+.tr-row.deactivated {
   opacity: 0.4;
 }
 
@@ -1073,8 +1074,11 @@ button.big {
 
 .tr-mute {
   flex: none;
-  width: 8px;
+  width: 22px;
+  font-size: 8px;
   font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--warn);
 }
 
@@ -1394,8 +1398,10 @@ button.big {
   border-top-color: var(--line-2);
   opacity: 0.6;
 }
-/* An audio-muted owner (the number-key dev toggles): dimmed. */
-.band-socket.muted {
+/* A deactivated owner (the number-key dev toggles): dimmed. A socket with a
+   change scheduled for the next bar pulses instead (see the pending rules at
+   the end of this file). */
+.band-socket.deactivated {
   opacity: 0.45;
 }
 /* A slot the soundset drops: dimmed, no fill affordance. */
@@ -2036,5 +2042,49 @@ button.big {
 
   .lab-room-card p {
     display: none;
+  }
+}
+
+/* ---- instrument activate/deactivate: the next-bar pending pulse ----
+   The dev number-key toggles schedule a change for the next heard bar. Until
+   it lands, the slot pulses so the wait is visible; it settles to plain
+   (active) or dimmed (deactivated) the instant the bar arrives. A pending
+   deactivate pulses DOWN from full (it is on now, heading off); a pending
+   reactivate pulses UP from the dim (off now, heading on). Shared by the HUD
+   band rack and the track overlay (hotkey C). */
+@keyframes voice-pending-off {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+@keyframes voice-pending-on {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.band-socket.pending-off,
+.tr-row.pending-off {
+  animation: voice-pending-off 0.5s ease-in-out infinite;
+}
+.band-socket.pending-on,
+.tr-row.pending-on {
+  animation: voice-pending-on 0.5s ease-in-out infinite;
+}
+/* No motion: still read as pending, just held at a distinct mid-opacity. */
+@media (prefers-reduced-motion: reduce) {
+  .band-socket.pending-off,
+  .band-socket.pending-on,
+  .tr-row.pending-off,
+  .tr-row.pending-on {
+    animation: none;
+    opacity: 0.7;
   }
 }

@@ -2,16 +2,40 @@
 
 Last updated: July 15, 2026
 
-## Latest change (July 15, 2026) — shared player damage feedback
+## Latest change (July 15, 2026) — instrument activate/deactivate on the next bar
 
-A landed player hit now gives the same **0.5-second recovery window** in the
-normal run, sandbox, and boss fights. The already-shared hit overlay was
-retuned to match: a light red tint stays on the screen edges for that recovery
-window, then fades out without obscuring the combat area. Dash invulnerability
-in boss fights remains its separate 0.3-second movement-dodge rule.
+The developer number-key toggles (Digit1–Digit7 → band slot → owning instrument)
+were converted from an instant, audio-only mute into a true **activate/deactivate
+quantized to the next heard bar**. Grilled and locked this session; spec at
+`docs/phases/instrument-deactivate.md`.
 
-Verification: TypeScript check and production build clean. No developer gate
-advanced; this is a focused feedback and fairness adjustment.
+Behavior: a press flips the owning voice's `enabled` flag via
+`engine.setVoiceEnabled`, scheduled through the existing `engine.atNextBar` seam.
+Because a live run's damage rides the audio engine's triggers and a disabled voice
+generates no notes, the sound AND the damage stop together on the next bar and
+return together on reactivation. In-flight projectiles, zones, and orbiters finish
+their bounded lifetime; only new triggers stop.
+
+UI: the moment a key is pressed the slot shows a **pending pulse** until the bar
+lands, then settles (dim = off, normal = on). A pending deactivate pulses down
+from full; a pending reactivate pulses up from the dim. Shown on all three
+surfaces (HUD band rack, pause rack, track overlay hotkey C). Double-tap flips the
+target and self-cancels on a round-trip. Sticky across tier-ups: a tier-up applies
+the new tier but leaves a deactivated instrument off (it returns at the higher tier
+when reactivated). The control is gated to run + sandbox only. Vocabulary moved
+off "mute": `mutedRoles` → `deactivatedRoles` plus a new `pendingRoles`, the CSS
+`.muted` → `.deactivated`, and the track overlay's `m` mark → `off`.
+
+Seams: `game.ts` owns the toggle (`toggleRoleActive`, the two sets, `paintBand`,
+`resetDeactivations`); `hud.ts` `renderBand` and `trackoverlay.ts` `refresh` each
+gained a `pending` set; `style.css` adds the `voice-pending-off`/`voice-pending-on`
+keyframes (with a `prefers-reduced-motion` fallback). No audio or sim files touched.
+
+Verification: `tsc --noEmit` + `vite build` clean. Browser-driven on
+`npm run dev`: no console errors; pending and settled states render across the HUD,
+pause rack, and track overlay; bar landing and double-tap cancellation work.
+**No developer gate advanced: whether it sounds silent, deals no damage, and the
+pulse feels right is the developer's ear/hands gate, still pending.**
 
 ## Previous change (July 15, 2026) — automated playtest harness removed
 
@@ -22,14 +46,25 @@ batch artifacts, and the tool's spec and guide. Project and phase documentation
 no longer prescribe automated balance runs.
 
 The in-game and sandbox **auto-move** control remains. Its Kiter and Greedy
-movement behaviors now live in `src/game/auto-move.ts`, independent of any bot,
-recording, replay, or batch infrastructure. No developer gate advanced; this is
-a tooling scope removal.
+movement behaviors now live in `src/game/auto-move.ts`, independent of recording,
+replay, or batch infrastructure. No developer gate advanced; this is a tooling
+scope removal.
 
 Verification: `tsc --noEmit` and the production Vite build pass; the four-room
 Living Lab browser drive passes and returns to a clean normal-game start. The
 pre-existing Mad Forest check still stops at its stale starting-spawn assertion
 (`30 !== 10`).
+
+## Previous change (July 15, 2026) — shared player damage feedback
+
+A landed player hit now gives the same **0.5-second recovery window** in the
+normal run, sandbox, and boss fights. The already-shared hit overlay was
+retuned to match: a light red tint stays on the screen edges for that recovery
+window, then fades out without obscuring the combat area. Dash invulnerability
+in boss fights remains its separate 0.3-second movement-dodge rule.
+
+Verification: TypeScript check and production build clean. No developer gate
+advanced; this is a focused feedback and fairness adjustment.
 
 ## Previous change (July 13, 2026) — pluck bass, Rhodes, acid, and shaker removed
 
