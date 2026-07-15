@@ -16,6 +16,14 @@ shards at once. Visible rect = camera (player foot) `worldW x worldH` plus each
 enemy's radius (partially visible counts). Removed the now-unused `outOfRange` and
 `toughestEnemy` helpers.
 
+**Kick base re-hit bug fixed.** The four-on-the-floor strip was re-hitting the
+same enemy every beat (the intended per-target lock was in the comments but never
+coded). Added a shared per-enemy cooldown (`Enemy.kickHitT`, `KICK_REHIT_S` =
+1.35 s) gating the strike loop, so the strip hits each enemy at most once per
+1.35 s. This de-inflates base-kick DPS (single target ~30.5→11.4 at T4; the swarm
+also drops since re-hits are gated), so kick balance can now be judged on real
+numbers. The evolved ring ("The Drop") is unaffected.
+
 **Lead "The Solo" — nearest + sticky, and a tamed sound.** The evolved beam now
 locks the **nearest** target (not the toughest) and holds it **sticky** until it
 dies or leaves the screen, then glides to the next nearest (`updateLeadBeam`).
@@ -30,15 +38,14 @@ The tamed timbre is an ear-gate item.
 **player movement** instead of auto-targeting, Vampire-Survivors-knife style:
 
 - **Hat "16th-Note Storm"** — the movement-**speed** coupling is gone (a still
-  player no longer goes quiet). It is now a **constant directional stream** of
-  chips fired in the player's movement heading, tight and fast (`HAT_STORM.rate`
-  constant, `spread`, `shardSpeed`; `spawnHatChip`). The speed-fraction logic
-  (`playerMoveFrac`, `HAT_STORM.speedRate/baseRate`) was removed.
-- **Base Hat (tiers 1-4)** now fires along the movement heading too, not
-  auto-aimed at the nearest enemy — the base "Hi-Hat Shimmer" spec already reads
-  "a dense spray of chips in your travel direction," so this brings the code in
-  line and matches the evolution's feel (`moveAim` helper; base hat and the
-  evolved stream both fire where the player is going).
+  player no longer goes quiet). It is now a **VS-knife-evolution wall**: every chip
+  advances in the movement heading with **zero angular scatter** but spawns across
+  a line perpendicular to it (`HAT_STORM.lineHalfWidth`), a parallel wall of chips,
+  with a bit more reach (`WEAPONS.hat[EVO].lifetimeS` 0.55→0.75; `spawnHatChip`).
+  The speed-fraction logic (`playerMoveFrac`, `speedRate/baseRate`) was removed.
+- **Base Hat (tiers 1-4)** fires along the movement heading with **zero scatter**
+  (a single straight line, `moveAim(0)`), not auto-aimed at the nearest enemy —
+  matching its "chips in your travel direction" spec line and the evolution's feel.
 
 A parallel **Snare** rework toward the same directional feel (a "Rimshot Rain"
 forward volley) was tried in this loop and then **reverted at the developer's

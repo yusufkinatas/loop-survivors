@@ -85,6 +85,13 @@ export const KICK_GEOMETRY = {
   baseHeight: 22 * (800 / 456),
 } as const;
 
+/** Shared per-enemy kick re-hit lock: once the facing strip hits an enemy it
+ *  cannot hit that same enemy again for this long, so the four-on-the-floor beat
+ *  does not re-drill one target every beat (it preserves the reference weapon's
+ *  target cadence despite the 122 BPM grid). Rides an enemy-level cooldown timer
+ *  (`Enemy.kickHitT`), not the per-strip hit set, so it spans beats. */
+export const KICK_REHIT_S = 1.35;
+
 /** Source player sprite uses a feet anchor; the stored player position is its
  * circle center. This is the source feet offset normalized to H800. */
 export const PLAYER_FOOT_OFFSET = {
@@ -142,6 +149,9 @@ export interface Enemy {
    *  speed on the same channel the slow uses) and the view draws a frozen tell.
    *  Bosses are never given this (immune to the stop). */
   freezeT: number;
+  /** Kick re-hit lock: while > 0 the facing-strip kick cannot hit this enemy
+   *  again (KICK_REHIT_S), so a fresh beat does not re-drill the same target. */
+  kickHitT: number;
   /** Weapon knockback: velocity (px/s) and time left being pushed. While
    *  knockT > 0 the enemy rides this vector instead of chasing. */
   knockX: number;
@@ -606,9 +616,9 @@ export class RunWorld {
           this.hatStormT = HAT_STORM.activeS;
           break;
         }
-        // Base "Hi-Hat Shimmer": a wide spray of chips in the player's travel
-        // direction (not auto-aimed) — the same directional feel as the evolution.
-        this.spawnProjectile('hat', this.moveAim(0.35), conf, color, v);
+        // Base "Hi-Hat Shimmer": chips fired straight along the player's travel
+        // direction with zero scatter (a linear stream, VS-knife style).
+        this.spawnProjectile('hat', this.moveAim(0), conf, color, v);
         break;
       }
       case 'lead': {
@@ -992,6 +1002,7 @@ export class RunWorld {
       slowT: 0,
       slowMul: 1,
       freezeT: 0,
+      kickHitT: 0,
       knockX: 0,
       knockY: 0,
       knockT: 0,
@@ -1084,6 +1095,7 @@ export class RunWorld {
       if (e.dead) continue;
       e.lastMoveX = 0;
       e.lastMoveY = 0;
+      if (e.kickHitT > 0) e.kickHitT -= dt; // kick re-hit lock ticks regardless of freeze/knock state
       // Clap "Standing Ovation" freeze: a full stop (0x speed) that overrides
       // chase and knockback, on the same movement channel the slow uses. It
       // swallows any pending knock (clear knockT) so a hit landed mid-freeze
@@ -1639,12 +1651,14 @@ export class RunWorld {
         if (
           e.dead ||
           strike.hit.has(e) ||
+          e.kickHitT > 0 || // shared per-enemy re-hit lock: not hit again until it lapses
           !circleIntersectsRect(e.x, e.y, e.radius, centerX, centerY, halfW, halfH)
         ) {
           continue;
         }
         this.damageEnemy(e, strike.damage, 'kick');
         strike.hit.add(e);
+        e.kickHitT = KICK_REHIT_S;
         // Enemy hit response reverses pursuit for the same 120 ms flash,
         // scaled by the source bestiary's knockback multiplier.
         this.reverseForKick(e, strike.x, strike.y);
@@ -1879,13 +1893,21 @@ export class RunWorld {
 
   private spawnHatChip(): void {
     const p = this.player;
-    const dir = this.moveAim(HAT_STORM.spread);
+    const ang = Math.atan2(p.moveDirY, p.moveDirX);
+    const hx = Math.cos(ang);
+    const hy = Math.sin(ang);
+    // Perpendicular axis: every chip shares the one heading but spawns at a random
+    // offset along this line, so the chips advance as a parallel wall (the VS
+    // knife-evolution look), not a fan out of a single point.
+    const px = -hy;
+    const py = hx;
+    const off = (this.rng() * 2 - 1) * HAT_STORM.lineHalfWidth;
     const conf = this.applyBuild(WEAPONS.hat![EVOLVED_TIER - 1]);
     const pr = this.baseProjectile('hat', conf, KIT_COLORS.hat, conf.damage);
-    pr.x = p.x + dir.x * HAT_STORM.spawnR;
-    pr.y = p.y + dir.y * HAT_STORM.spawnR;
-    pr.vx = dir.x * HAT_STORM.shardSpeed;
-    pr.vy = dir.y * HAT_STORM.shardSpeed;
+    pr.x = p.x + hx * HAT_STORM.spawnR + px * off;
+    pr.y = p.y + hy * HAT_STORM.spawnR + py * off;
+    pr.vx = hx * HAT_STORM.shardSpeed;
+    pr.vy = hy * HAT_STORM.shardSpeed;
     this.projectiles.push(pr);
   }
 

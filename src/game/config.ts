@@ -687,9 +687,9 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
     { damage: 1, speed: 460, radius: 3, lifetimeS: 0.9, pierce: 1 },
     { damage: 2, speed: 480, radius: 3, lifetimeS: 0.95, pierce: 2 },
     // Evolved "16th-Note Storm": per-chip stats for the directional shred stream
-    // (emission rate/spread in HAT_STORM). Each chip is weak; the stream's density
-    // is the DPS. Fired in the player's movement direction (VS-knife style).
-    { damage: 2, speed: 300, radius: 3, lifetimeS: 0.55, pierce: 1 },
+    // (emission rate/line-width in HAT_STORM). Each chip is weak; the stream's
+    // density is the DPS. lifetimeS sets the chips' reach (a bit longer than base).
+    { damage: 2, speed: 300, radius: 3, lifetimeS: 0.75, pierce: 1 },
   ],
   // Slow wide low wave that rolls through everything. The weight ladder:
   // per-trigger damage climbs harder than any other kit.
@@ -977,15 +977,17 @@ export const SNARE_RAIL = {
   answerDamageMul: 0.7,
 };
 
-/** Hat "16th-Note Storm": a directional shred STREAM. While kept alive by hat
- *  triggers (`activeS`), it emits chips at a constant `rate` per second, each
- *  launched in the player's movement direction with a small ±`spread` jitter, at
- *  `shardSpeed`, from `spawnR` ahead of the player (VS-knife style). No longer
+/** Hat "16th-Note Storm": a directional shred STREAM shaped like a Vampire-
+ *  Survivors knife-evolution wall. While kept alive by hat triggers (`activeS`),
+ *  it emits chips at a constant `rate` per second; every chip flies in the SAME
+ *  direction (the player's movement heading, zero angular scatter) but spawns at
+ *  a random offset across a line perpendicular to it (±`lineHalfWidth`), from
+ *  `spawnR` ahead, at `shardSpeed` — a parallel wall of chips, not a fan. Not
  *  coupled to player speed — the stream is constant while the hat plays. */
 export const HAT_STORM = {
   activeS: 0.5,
   rate: 22,
-  spread: 0.18,
+  lineHalfWidth: 46,
   spawnR: 14,
   shardSpeed: 520,
 };

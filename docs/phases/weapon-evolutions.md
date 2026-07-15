@@ -130,11 +130,13 @@ uniqueness matrix at the end is the contract.
 
 - **Fantasy:** hi-hats ride your momentum, a fast metal stream that shreds
   whatever lies in the direction you are driving toward.
-- **Base "Hi-Hat Shimmer":** a dense spray of fast, weak chips in your travel
-  direction. (Today's hat spray, `WEAPONS.hat`.)
-- **Evolution "16th-Note Storm":** a continuous directional stream of shredding
-  chips fired in the direction the player is moving (VS-knife style), tight and
-  fast. Constant while the hat plays. See the amendment note below.
+- **Base "Hi-Hat Shimmer":** a straight, linear stream of fast, weak chips fired
+  in your travel direction with zero scatter (a single line). (Today's hat spray,
+  `WEAPONS.hat`.)
+- **Evolution "16th-Note Storm":** a continuous stream of shredding chips that all
+  advance in your movement direction but spawn across a line perpendicular to it —
+  a parallel wall of chips, exactly like the Vampire-Survivors knife evolution,
+  with a bit more reach. Constant while the hat plays. See the amendment note.
 - **Base sound:** a thin, closed "tss" tick on the off-beats.
 - **Evolved sound:** an open, sizzling wash of fast hats, brighter and busier, a
   continuous shimmer that rides the run of 16th notes.
@@ -265,11 +267,20 @@ During the sub-phase C gate the developer directed several changes:
 
 - **Hat toward a Vampire-Survivors-knife feel.** Hat "16th-Note Storm" dropped
   the movement-speed coupling (a still player no longer goes quiet); it is now a
-  **constant directional stream** of chips fired in the player's movement heading.
-  **Base Hat** (tiers 1-4) was brought in line, spraying its chips in the movement
-  heading too (its base description already read "chips in your travel direction").
-  Both read `player.moveDirX/Y`, a unit vector that holds the last heading while
-  idle (VS-knife behaviour). Sound is untouched, so the gate rule still holds.
+  **constant stream shaped like the VS knife evolution** — every chip advances in
+  the player's movement heading (zero angular scatter) but spawns across a line
+  perpendicular to it (`HAT_STORM.lineHalfWidth`), so the chips form a parallel
+  wall, with a bit more reach. **Base Hat** (tiers 1-4) fires the same heading with
+  **zero scatter** (a single straight line). Both read `player.moveDirX/Y`, a unit
+  vector that holds the last heading while idle. Sound untouched, gate rule holds.
+
+- **Kick base re-hit bug fixed.** The four-on-the-floor strip was re-hitting the
+  same enemy every beat (the per-target lock was documented in the code but never
+  implemented). Added a shared per-enemy cooldown (`Enemy.kickHitT`, `KICK_REHIT_S`
+  = 1.35 s): the strip now hits each enemy at most once per 1.35 s, as intended.
+  This de-inflates base-kick DPS (single target ~30.5→11.4 at T4), so kick balance
+  can finally be judged on real numbers. The evolved ring ("The Drop") is
+  unaffected (per-beat by design).
 
 - **Global rule: no off-screen targeting or damage.** No weapon (base or evolved)
   may target or deal damage to anything outside the visible screen. Enforced at
