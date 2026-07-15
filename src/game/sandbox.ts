@@ -15,6 +15,7 @@ import {
   SLOT_LABEL,
 } from './band';
 import { TIER_NUMERALS } from './hud';
+import { EVOLVED_TIER, evolvedName, hasEvolution } from './evolutions';
 import { ENEMY_LABELS, madForestEnemyStats, type EnemyKind } from './config';
 import { ACTIVE_ENEMY_KINDS } from './madforest';
 import type { RunWorld } from './run';
@@ -189,6 +190,17 @@ export function mountSandboxPanel(
         b.onclick = () => set(i + 1);
         options.push(b);
       });
+      // Force-evolve (docs/phases/weapon-evolutions.md): a ★ button sets the
+      // weapon straight to its evolved form so gate playtests skip the five
+      // picks. Only shown for roles that have an evolution; its button index
+      // (after off + the four numerals) equals EVOLVED_TIER, so the shared
+      // `i === tier` highlight logic lights it correctly.
+      if (hasEvolution(role)) {
+        const evo = el('button', 'small evo-btn', btns, '★') as HTMLButtonElement;
+        evo.title = `evolve → ${evolvedName(role)}`;
+        evo.onclick = () => set(EVOLVED_TIER);
+        options.push(evo);
+      }
       const current = world.tiers.get(role);
       options.forEach((b, i) => b.classList.toggle('on', current === undefined ? i === 0 : i === current));
     }

@@ -663,6 +663,10 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
     { damage: 5, area: 1, amount: 2 },
     { damage: 9, area: 1.1, amount: 2 },
     { damage: 15, area: 1.2, amount: 2 },
+    // Evolved "The Drop" (tier EVOLVED_TIER): the facing strip becomes an
+    // omnidirectional pressure ring on every beat. area/amount no longer apply
+    // (the ring is radial); damage is per pulse, geometry lives in KICK_DROP.
+    { damage: 22 },
   ],
   // Backbeat sniper: few, fast, hard-hitting, drills a line. The premium
   // single-target trigger — sparse chart, so each hit is a statement.
@@ -687,6 +691,9 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
     { damage: 5, speed: 140, radius: 28, lifetimeS: 2.4, pierce: Infinity },
     { damage: 8, speed: 145, radius: 34, lifetimeS: 2.5, pierce: Infinity },
     { damage: 13, speed: 150, radius: 42, lifetimeS: 2.6, pierce: Infinity },
+    // Evolved "The Sub": every trigger sends a real traveling WALL across the
+    // arena (geometry in BASS_SUB); only its per-hit damage lives here.
+    { damage: 20 },
   ],
   // Zone thrown onto the nearest pack: ticks damage and slows enemies
   // inside. Chip damage + control; the slow is the identity. NOTE: zone
@@ -701,6 +708,10 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
     { damage: 1, radius: 56, lifetimeS: 1.15 },
     { damage: 1, radius: 64, lifetimeS: 1.3 },
     { damage: 2, radius: 76, lifetimeS: 1.45 },
+    // Evolved "Sustain": a large, long-lived kill-field. Heavy per-tick damage
+    // (it must out-damage tier 4's many stacked stab-zones, not just slow more);
+    // size/life/slow/tick come from CHORD_SUSTAIN.
+    { damage: 8, radius: 150, lifetimeS: 6.0 },
   ],
   // Homing seeker per melody note: mid damage, never misses.
   lead: [
@@ -724,6 +735,11 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
     { damage: 2, radius: 8, lifetimeS: 2.4, orbitRadius: 92 },
     { damage: 2, radius: 9, lifetimeS: 2.8, orbitRadius: 106 },
     { damage: 3, radius: 10, lifetimeS: 3.2, orbitRadius: 122 },
+    // Evolved "Arp Carousel": a dense, fixed-radius ring of blades (no
+    // breathing). Bigger radius + long life packs the ring full; higher damage
+    // and a fast re-hit (ARP_CAROUSEL) make it reliable continuous DPS. radius
+    // here is the blade's own size (a bigger blade, not the base bead).
+    { damage: 4, radius: 15, lifetimeS: 5.5, orbitRadius: 140 },
   ],
   // Bell (band, Melody): a note lobbed straight that shatters into shards on
   // its first hit (shard count per tier in BELL). radius = the shot's own size.
@@ -732,6 +748,9 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
     { damage: 3, speed: 370, radius: 6, lifetimeS: 1.9, pierce: 1 },
     { damage: 4, speed: 380, radius: 7, lifetimeS: 2.0, pierce: 1 },
     { damage: 5, speed: 400, radius: 7, lifetimeS: 2.1, pierce: 2 },
+    // Evolved "Carillon": a bright shot that cascades — its shards shatter once
+    // more (depth 2, counts in BELL_CARILLON).
+    { damage: 6, speed: 410, radius: 8, lifetimeS: 2.2, pierce: 1 },
   ],
 };
 
@@ -840,4 +859,65 @@ export const BELL = {
   shardLifeS: 0.45,
   shardRadius: 4,
   shardPierce: 1,
+};
+
+// ---- weapon evolutions ----
+
+/** Kick "The Drop" (docs/phases/weapon-evolutions.md): each beat spawns a
+ *  pressure ring from the player's feet that expands to `maxRadius` over
+ *  `expandS`, damaging (WEAPONS.kick[EVOLVED_TIER-1].damage) and hard-launching
+ *  each enemy once as the ring front passes it, keeping a clear bubble around
+ *  the player. `launch` rides the shared weapon-shove channel (respects an
+ *  enemy's knockback resistance, so ghosts/some elites take the hit without
+ *  flying). Base kick strip reach is ~149 units, so the ring reaches a touch
+ *  further and all the way around. */
+export const KICK_DROP = {
+  maxRadius: 175,
+  expandS: 0.22,
+  launch: 90,
+};
+
+/** Bass "The Sub": every evolved trigger fires a real traveling WALL — a long,
+ *  thin damage band, `halfWidth` to each side and `thickness` deep, sweeping
+ *  along the aim at `speed` for `lifeS`. It grinds enemies it overlaps on a
+ *  `rehitS` cooldown (an enemy caught in the moving band takes a hit as it
+ *  passes). Rendered as a thick glowing bar perpendicular to travel — a proper
+ *  wall, not a stretched ellipse. Several sweep at once (the evolved chart fires
+ *  a few per bar), so the low end rolls continuously across the arena. */
+export const BASS_SUB = {
+  halfWidth: 300,
+  thickness: 22,
+  speed: 150,
+  lifeS: 4.2,
+  rehitS: 0.4,
+};
+
+/** Chord "Sustain": the large, long-lived placed kill-field. Dropped on the
+ *  densest pack within `densityR`, heavily slowing (`slowMul`, smaller = slower)
+ *  and ticking damage every `tickS` (faster than the base zone's ZONE_TICK_S,
+ *  for real DPS) for `lifeS` — far longer than any other effect. The heavy slow
+ *  pins enemies inside so they eat the fast ticks. Several fields coexist (the
+ *  evolved chart drops one per bar) so coverage exceeds tier 4's stacked stabs. */
+export const CHORD_SUSTAIN = {
+  radius: 150,
+  lifeS: 6.0,
+  slowMul: 0.3,
+  tickS: 0.3,
+  densityR: 130,
+};
+
+/** Arp "Arp Carousel": a dense, fixed-radius spinning ring of blades (the orbit
+ *  radius is WEAPONS.arp[evolved].orbitRadius — no breathing). Evolved orbiters
+ *  re-hit on this faster cooldown for reliable continuous DPS (base ORBIT_REHIT_S
+ *  is slower). Density comes from the evolved chart + the long blade lifetime. */
+export const ARP_CAROUSEL = {
+  rehitS: 0.18,
+};
+
+/** Bell "Carillon": the cascade. The main shot shatters into `shards`, and each
+ *  of those shatters once more into `secondaryShards` (depth 2). Sub-shards do
+ *  not re-shatter, so the chain always terminates. */
+export const BELL_CARILLON = {
+  shards: 10,
+  secondaryShards: 3,
 };

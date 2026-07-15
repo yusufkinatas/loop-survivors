@@ -139,6 +139,54 @@ async function renderKick(): Promise<AudioBuffer> {
   return ctx.startRendering();
 }
 
+// The kick's evolved "drop" voicing (docs/phases/weapon-evolutions.md, Kick
+// "The Drop"): the tight thump turns into a deeper, fuller boom with a longer
+// sub tail and a low "whoomph" underneath, so four-on-the-floor reads as heavy
+// and physical. Lower fundamental, longer decay, an added sub-octave swell, and
+// a softer (less clicky) front than the base kick.
+async function renderKickDrop(): Promise<AudioBuffer> {
+  const ctx = offline(0.9);
+  // Body: a deeper pitch-swept sine landing on a ~40 Hz fundamental with a long
+  // tail (the "boom"), driven a touch harder for weight.
+  const body = ctx.createOscillator();
+  body.type = 'sine';
+  body.frequency.setValueAtTime(180, 0);
+  body.frequency.exponentialRampToValueAtTime(44, 0.06);
+  body.frequency.exponentialRampToValueAtTime(38, 0.35);
+  const bodyGain = ctx.createGain();
+  bodyGain.gain.setValueAtTime(1.0, 0);
+  bodyGain.gain.exponentialRampToValueAtTime(0.001, 0.7);
+  const drive = ctx.createWaveShaper();
+  drive.curve = softClipCurve(2.6);
+  body.connect(bodyGain).connect(drive).connect(ctx.destination);
+  // Sub "whoomph": a very low sine that swells in slightly under the body and
+  // rings out longest — the physical low end the base kick has none of.
+  const sub = ctx.createOscillator();
+  sub.type = 'sine';
+  sub.frequency.setValueAtTime(33, 0);
+  sub.frequency.exponentialRampToValueAtTime(30, 0.4);
+  const subGain = ctx.createGain();
+  subGain.gain.setValueAtTime(0.0001, 0);
+  subGain.gain.linearRampToValueAtTime(0.6, 0.03);
+  subGain.gain.exponentialRampToValueAtTime(0.001, 0.8);
+  sub.connect(subGain).connect(ctx.destination);
+  // Soft transient: a low pitched "beater" thump (no bright noise click) so the
+  // attack lands as a punch of pressure, not a snap.
+  const tick = ctx.createOscillator();
+  tick.type = 'triangle';
+  tick.frequency.setValueAtTime(320, 0);
+  tick.frequency.exponentialRampToValueAtTime(120, 0.03);
+  const tickGain = ctx.createGain();
+  tickGain.gain.setValueAtTime(0.22, 0);
+  tickGain.gain.exponentialRampToValueAtTime(0.001, 0.04);
+  tick.connect(tickGain).connect(ctx.destination);
+  body.start(0);
+  sub.start(0);
+  tick.start(0);
+  tick.stop(0.06);
+  return ctx.startRendering();
+}
+
 async function renderSnare(): Promise<AudioBuffer> {
   const ctx = offline(0.3);
   // Snap: a bright, fast-decaying noise band that gives the initial crack.
@@ -409,6 +457,171 @@ async function renderBell(rootHz: number): Promise<AudioBuffer> {
   const sg = ctx.createGain();
   sg.gain.setValueAtTime(0.12, 0);
   sg.gain.exponentialRampToValueAtTime(0.001, 0.008);
+  strike.connect(shp).connect(sg).connect(ctx.destination);
+  strike.start(0);
+  return ctx.startRendering();
+}
+
+// ---- sub-phase B evolved voicings (docs/phases/weapon-evolutions.md) ----
+// Each is a NEW variant on an existing pitched voice, so the evolved weapon
+// SOUNDS different from its base form (the core principle), not just busier.
+
+// Bass "The Sub": a deep, clean, powerful sustained sub. A strong sine sub
+// carries the weight; a triangle octave and a gently low-passed saw add just
+// enough warm body without grit — no resonant wobble (that read as ugly). In
+// the game the bass voice's -3 sample tune seats it lower still, on-brief for
+// "lower and heavier than anything else in the mix".
+async function renderBassSub(rootHz: number): Promise<AudioBuffer> {
+  const ctx = offline(0.95);
+  const sub = ctx.createOscillator();
+  sub.type = 'sine';
+  sub.frequency.value = rootHz / 4;
+  const body = ctx.createOscillator();
+  body.type = 'triangle';
+  body.frequency.value = rootHz / 4;
+  const saw = ctx.createOscillator();
+  saw.type = 'sawtooth';
+  saw.frequency.value = rootHz / 4;
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.Q.value = 0.6; // gentle, NOT resonant — stays round and clean
+  lp.frequency.setValueAtTime(190, 0);
+  lp.frequency.linearRampToValueAtTime(320, 0.45); // a slow, subtle opening for life
+  const drive = ctx.createWaveShaper();
+  drive.curve = softClipCurve(1.5); // warm, not gritty
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.001, 0);
+  g.gain.exponentialRampToValueAtTime(0.66, 0.03); // headroom so a clean sub isn't crushed by the limiter
+  g.gain.setValueAtTime(0.66, 0.6);
+  g.gain.exponentialRampToValueAtTime(0.001, 0.92);
+  const subG = ctx.createGain();
+  subG.gain.value = 0.8; // the sub dominates
+  const bodyG = ctx.createGain();
+  bodyG.gain.value = 0.32;
+  saw.connect(lp).connect(drive).connect(g).connect(ctx.destination);
+  sub.connect(subG).connect(g);
+  body.connect(bodyG).connect(g);
+  sub.start(0);
+  body.start(0);
+  saw.start(0);
+  return ctx.startRendering();
+}
+
+// Chord "Sustain": the stab opens into a held, lush pad that swells slowly and
+// hangs — longer and more atmospheric than the base 'pad'. A slow filter
+// opening and a shared vibrato give it the breathing, sustained character.
+async function renderChordSustain(rootHz: number): Promise<AudioBuffer> {
+  const dur = 2.8;
+  const ctx = offline(dur + 0.1);
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.setValueAtTime(700, 0);
+  lp.frequency.linearRampToValueAtTime(2200, dur * 0.6); // slow opening = the swell
+  const hp = ctx.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = 230;
+  const master = ctx.createGain();
+  master.gain.setValueAtTime(0.001, 0);
+  master.gain.exponentialRampToValueAtTime(0.3, 0.5); // slow swell in
+  master.gain.setValueAtTime(0.3, dur * 0.7);
+  master.gain.exponentialRampToValueAtTime(0.001, dur); // long hang out
+  lp.connect(hp).connect(master).connect(ctx.destination);
+  const vib = ctx.createOscillator();
+  vib.type = 'sine';
+  vib.frequency.value = 3.8;
+  const vibGain = ctx.createGain();
+  vibGain.gain.value = rootHz * 0.005;
+  vib.connect(vibGain);
+  vib.start(0);
+  // Quartal voicing (root, +5, +10), four detuned voices per note for a wide,
+  // liquid pad.
+  for (const semis of [0, 5, 10]) {
+    for (const detune of [-12, -4, 4, 12]) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.value = rootHz * Math.pow(2, semis / 12);
+      osc.detune.value = detune;
+      vibGain.connect(osc.frequency);
+      const g = ctx.createGain();
+      g.gain.value = 0.1;
+      osc.connect(g).connect(lp);
+      osc.start(0);
+      osc.stop(dur);
+    }
+  }
+  return ctx.startRendering();
+}
+
+// Arp "Arp Carousel": a more resonant, liquid arp than the plucky base — a
+// longer resonant filter sweep so the note glides and pours rather than snaps.
+async function renderArpCarousel(rootHz: number): Promise<AudioBuffer> {
+  const ctx = offline(0.55);
+  const base = rootHz * 2;
+  const o = ctx.createOscillator();
+  o.type = 'sawtooth';
+  o.frequency.value = base;
+  const o2 = ctx.createOscillator();
+  o2.type = 'square';
+  o2.frequency.value = base;
+  o2.detune.value = 7;
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.setValueAtTime(1200, 0);
+  lp.frequency.exponentialRampToValueAtTime(5600, 0.06); // open...
+  lp.frequency.exponentialRampToValueAtTime(700, 0.42); // ...then a long liquid close
+  lp.Q.value = 7; // high resonance = the vocal, liquid squelch
+  const drive = ctx.createWaveShaper();
+  drive.curve = softClipCurve(2.0);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, 0);
+  g.gain.exponentialRampToValueAtTime(0.42, 0.008);
+  g.gain.exponentialRampToValueAtTime(0.001, 0.5);
+  const o2g = ctx.createGain();
+  o2g.gain.value = 0.5;
+  o.connect(lp);
+  o2.connect(o2g).connect(lp);
+  lp.connect(drive).connect(g).connect(ctx.destination);
+  o.start(0);
+  o2.start(0);
+  return ctx.startRendering();
+}
+
+// Bell "Carillon": a bigger, richer bell — a chord of bells rather than one
+// chime. More (and lower) inharmonic partials plus an octave-below body ring
+// out into a longer shimmering tail.
+async function renderBellCarillon(rootHz: number): Promise<AudioBuffer> {
+  const ctx = offline(1.3);
+  // A fuller partial set (an octave-below fundamental + the music-box ratios,
+  // stacked a fifth up) with longer decays = a ringing chord of bells.
+  const partials: [number, number, number][] = [
+    [0.5, 0.4, 1.1], // octave-below body — the "chord" weight
+    [1, 0.5, 1.0],
+    [1.5, 0.3, 0.8], // a fifth
+    [2.76, 0.26, 0.6],
+    [4.07, 0.16, 0.4],
+    [5.4, 0.13, 0.35],
+    [8.1, 0.07, 0.22],
+  ];
+  for (const [mult, level, dec] of partials) {
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.value = rootHz * 2 * mult;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, 0);
+    g.gain.exponentialRampToValueAtTime(level, 0.004);
+    g.gain.exponentialRampToValueAtTime(0.001, dec);
+    o.connect(g).connect(ctx.destination);
+    o.start(0);
+    o.stop(dec + 0.02);
+  }
+  const strike = ctx.createBufferSource();
+  strike.buffer = noiseBuffer(ctx, 0.008);
+  const shp = ctx.createBiquadFilter();
+  shp.type = 'highpass';
+  shp.frequency.value = 4600;
+  const sg = ctx.createGain();
+  sg.gain.setValueAtTime(0.14, 0);
+  sg.gain.exponentialRampToValueAtTime(0.001, 0.01);
   strike.connect(shp).connect(sg).connect(ctx.destination);
   strike.start(0);
   return ctx.startRendering();
@@ -740,22 +953,22 @@ export interface RoleMeta {
 }
 
 export const ROLE_META: Record<Role, RoleMeta> = {
-  kick: { name: 'Kick', color: '#ff5a3c', pitched: false, choke: false, variants: ['hard'] },
+  kick: { name: 'Kick', color: '#ff5a3c', pitched: false, choke: false, variants: ['hard', 'drop'] },
   snare: { name: 'Snare', color: '#ffc93c', pitched: false, choke: false, variants: ['snare'] },
   hat: { name: 'Hi-hat', color: '#3ce0ff', pitched: false, choke: false, variants: ['closed', 'open'] },
-  bass: { name: 'Bass', color: '#a06bff', pitched: true, choke: true, variants: ['bass', 'fat'] },
-  chord: { name: 'Chord', color: '#4dff88', pitched: true, choke: false, variants: ['stab', 'pad'] },
+  bass: { name: 'Bass', color: '#a06bff', pitched: true, choke: true, variants: ['bass', 'fat', 'sub'] },
+  chord: { name: 'Chord', color: '#4dff88', pitched: true, choke: false, variants: ['stab', 'pad', 'sustain'] },
   lead: { name: 'Lead', color: '#ff6bd6', pitched: true, choke: false, variants: ['lead'] },
   clap: { name: 'Clap', color: '#ff4f7d', pitched: false, choke: false, variants: ['clap'] },
   tom: { name: 'Tom', color: '#d08a4a', pitched: true, choke: true, variants: ['tom'] },
-  arp: { name: 'Arp', color: '#33e6c2', pitched: true, choke: false, variants: ['arp'] },
+  arp: { name: 'Arp', color: '#33e6c2', pitched: true, choke: false, variants: ['arp', 'carousel'] },
   crash: { name: 'Crash', color: '#b9c2dd', pitched: false, choke: true, variants: ['crash'] },
   shaker: { name: 'Shaker', color: '#7be0d0', pitched: false, choke: false, variants: ['shaker'] },
   acid: { name: 'Acid', color: '#b6ff5a', pitched: true, choke: false, variants: ['acid'] },
   pluck: { name: 'Pluck Bass', color: '#8f7bff', pitched: true, choke: true, variants: ['pluck'] },
   rhodes: { name: 'Rhodes', color: '#5ad1ff', pitched: true, choke: false, variants: ['rhodes'] },
   riser: { name: 'Riser', color: '#cbb4ff', pitched: false, choke: true, variants: ['riser'] },
-  bell: { name: 'Bell', color: '#ffd76b', pitched: true, choke: false, variants: ['bell'] },
+  bell: { name: 'Bell', color: '#ffd76b', pitched: true, choke: false, variants: ['bell', 'carillon'] },
 };
 
 /** Load a real sample file and decode it. The files are pre-corrected at build
@@ -793,6 +1006,7 @@ export function makeKit(role: Role, samples: Map<string, AudioBuffer>, tune = 0)
 export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
   const [
     kickHard,
+    kickDrop,
     snare,
     clap,
     hatClosed,
@@ -811,8 +1025,13 @@ export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
     rhodes,
     riser,
     bell,
+    bassSub,
+    chordSustain,
+    arpCarousel,
+    bellCarillon,
   ] = await Promise.all([
     renderKick(),
+    renderKickDrop(),
     renderSnare(),
     renderClap(),
     renderHat(false),
@@ -831,6 +1050,10 @@ export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
     renderRhodes(rootHz),
     renderRiser(),
     renderBell(rootHz),
+    renderBassSub(rootHz), // evolved voicings (sub-phase B)
+    renderChordSustain(rootHz),
+    renderArpCarousel(rootHz),
+    renderBellCarillon(rootHz),
   ]);
 
   const kits = new Map<Role, Kit>();
@@ -838,7 +1061,7 @@ export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
     kits.set(role, makeKit(role, new Map(entries)));
   };
 
-  add('kick', [['hard', kickHard]]);
+  add('kick', [['hard', kickHard], ['drop', kickDrop]]); // 'drop' = the evolved boom
   add('snare', [['snare', snare]]);
   add('hat', [
     ['closed', hatClosed],
@@ -847,21 +1070,29 @@ export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
   add('bass', [
     ['bass', bass],
     ['fat', bassFat], // tier 3+ weight
+    ['sub', bassSub], // evolved "The Sub"
   ]);
   add('chord', [
     ['stab', stab],
     ['pad', pad],
+    ['sustain', chordSustain], // evolved "Sustain"
   ]);
   add('lead', [['lead', lead]]);
   add('clap', [['clap', clap]]);
   add('tom', [['tom', tom]]);
-  add('arp', [['arp', arp]]);
+  add('arp', [
+    ['arp', arp],
+    ['carousel', arpCarousel], // evolved "Arp Carousel"
+  ]);
   add('crash', [['crash', crash]]);
   add('shaker', [['shaker', shaker]]);
   add('acid', [['acid', acid]]);
   add('pluck', [['pluck', pluck]]);
   add('rhodes', [['rhodes', rhodes]]);
   add('riser', [['riser', riser]]);
-  add('bell', [['bell', bell]]);
+  add('bell', [
+    ['bell', bell],
+    ['carillon', bellCarillon], // evolved "Carillon"
+  ]);
   return kits;
 }

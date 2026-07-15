@@ -9,7 +9,9 @@ import { RUN } from './config';
 import { drawWeaponIcon } from './weaponicons';
 import {
   KICK_GEOMETRY,
+  KIT_COLORS,
   PLAYER_FOOT_OFFSET,
+  type BassWall,
   type Enemy,
   type FxEvent,
   type Gem,
@@ -243,6 +245,7 @@ export class RunView {
   private enemyGfx = new Map<Enemy, Graphics>();
   private projectileGfx = new Map<Projectile, Graphics>();
   private zoneGfx = new Map<Zone, Graphics>();
+  private bassWallGfx = new Map<BassWall, Graphics>();
   private gemGfx = new Map<Gem, GemGfx>();
   // Level-up ground picks: shell-owned, so they ride a dedicated layer that is
   // re-topped each frame (entities are added to the stage as they spawn, which
@@ -341,11 +344,19 @@ export class RunView {
     this.syncEnemies();
     this.sync(this.world.projectiles, this.projectileGfx, makeProjectileGfx, (pr, gfx) => {
       gfx.position.set(pr.x, pr.y);
-      if (pr.role !== 'hat') gfx.rotation = Math.atan2(pr.vy, pr.vx);
+      // Orbiters have no velocity; point them (and their evolved blades) radially
+      // outward along the orbit angle. Everything else faces its travel.
+      if (pr.role === 'arp') gfx.rotation = pr.orbitAngle;
+      else if (pr.role !== 'hat') gfx.rotation = Math.atan2(pr.vy, pr.vx);
     });
     this.drawTrails();
     this.sync(this.world.zones, this.zoneGfx, makeZoneGfx, (z, gfx) => {
       gfx.alpha = Math.min(1, z.lifeS * 2);
+    });
+    this.sync(this.world.bassWalls, this.bassWallGfx, makeBassWallGfx, (w, gfx) => {
+      gfx.position.set(w.x, w.y);
+      gfx.rotation = Math.atan2(w.dirY, w.dirX);
+      gfx.alpha = Math.min(1, w.lifeS * 1.5);
     });
     const p = this.world.player;
     const cameraX = p.x + PLAYER_FOOT_OFFSET.x;
@@ -403,6 +414,7 @@ export class RunView {
     this.enemyGfx.clear();
     this.projectileGfx.clear();
     this.zoneGfx.clear();
+    this.bassWallGfx.clear();
     this.gemGfx.clear();
     this.groundPickGfx.length = 0; // stage.destroy already freed the graphics
     this.pops.length = 0;
@@ -540,6 +552,23 @@ export class RunView {
         gfx.scale.set(0);
         this.stage.addChildAt(gfx, this.stage.getChildIndex(this.playerGfx));
         this.pops.push({ gfx, t: 0, dur: 0.18, grow: 0, holdHalf: true, expandHalf: true });
+        break;
+      }
+      case 'kickpulse': {
+        // Kick "The Drop": a heavy pressure ring that bursts out from the
+        // player's feet across the strike bubble and fades. A thick bright ring
+        // over a faint filled disc reads as a shockwave, distinct from the base
+        // kick's flat strip. Drawn beneath the player so it never covers it.
+        const gfx = new Graphics();
+        gfx.circle(0, 0, fx.radius).fill({ color: 0xffffff, alpha: 0.1 });
+        gfx.circle(0, 0, fx.radius).stroke({ width: 7, color: 0xffffff });
+        gfx.circle(0, 0, fx.radius * 0.62).stroke({ width: 3, color: 0xffffff, alpha: 0.5 });
+        gfx.tint = fx.color;
+        gfx.blendMode = 'add';
+        gfx.position.set(fx.x, fx.y);
+        gfx.scale.set(0.2);
+        this.stage.addChildAt(gfx, this.stage.getChildIndex(this.playerGfx));
+        this.pops.push({ gfx, t: 0, dur: 0.32, grow: 1 });
         break;
       }
       case 'spark': {
@@ -1044,7 +1073,7 @@ function makeEnemyGfx(e: Enemy): Graphics {
 
 function makeProjectileGfx(pr: Projectile): Graphics {
   // Distinct silhouette per weapon (gate B: colored circles read the same).
-  const ctx = cachedShape(`shot:${pr.role}:${pr.radius}`, (g) => {
+  const ctx = cachedShape(`shot:${pr.role}:${pr.radius}${pr.blade ? ':blade' : ''}`, (g) => {
     switch (pr.role) {
       case 'snare': // hard-hitting bolt with a bright leading tip
         g.roundRect(-10, -3, 20, 6, 3).fill(0xffffff);
@@ -1058,9 +1087,18 @@ function makeProjectileGfx(pr: Projectile): Graphics {
         g.poly([12, 0, -6, 6, -2, 0, -6, -6]).fill(0xffffff);
         g.poly([-6, 3, -10, 0, -6, -3]).fill(0xffffff);
         break;
-      case 'arp': // orbiter: a bead with a ring
-        g.circle(0, 0, pr.radius).stroke({ width: 3, color: 0xffffff });
-        g.circle(0, 0, pr.radius * 0.45).fill(0xffffff);
+      case 'arp':
+        if (pr.blade) {
+          // Evolved Carousel: a saw blade pointing outward (rotated to the
+          // orbit angle by the sync), so the dense ring reads as spinning steel.
+          const r = pr.radius;
+          g.poly([r * 1.4, 0, r * 0.15, r * 0.55, -r * 0.5, 0, r * 0.15, -r * 0.55]).fill(0xffffff);
+          g.circle(0, 0, r * 0.3).fill(0xffffff);
+        } else {
+          // orbiter: a bead with a ring
+          g.circle(0, 0, pr.radius).stroke({ width: 3, color: 0xffffff });
+          g.circle(0, 0, pr.radius * 0.45).fill(0xffffff);
+        }
         break;
       case 'bell': {
         // twinkly note: a small four-point sparkle (shards reuse this at their
@@ -1090,6 +1128,17 @@ function makeZoneGfx(z: Zone): Graphics {
   const r = z.radius;
   switch (z.source) {
     case 'chord': {
+      if (z.evolved) {
+        // Sustain (evolved): a large held cloud — a fuller fill, many rings, a
+        // bright rim and a soft core, so it reads as an atmospheric field that
+        // hangs, not just a bigger stab.
+        gfx.circle(0, 0, r).fill({ color: 0xffffff, alpha: 0.16 });
+        for (const f of [0.28, 0.44, 0.6, 0.76, 0.9])
+          gfx.circle(0, 0, r * f).stroke({ width: 1.5, color: 0xffffff, alpha: 0.28 });
+        gfx.circle(0, 0, r).stroke({ width: 3.5, color: 0xffffff, alpha: 0.75 });
+        gfx.circle(0, 0, r * 0.14).fill({ color: 0xffffff, alpha: 0.5 });
+        break;
+      }
       // A held chord: concentric "strings" inside a filled pool.
       gfx.circle(0, 0, r).fill({ color: 0xffffff, alpha: 0.1 });
       gfx.circle(0, 0, r).stroke({ width: 2, color: 0xffffff, alpha: 0.5 });
@@ -1105,6 +1154,22 @@ function makeZoneGfx(z: Zone): Graphics {
   gfx.tint = z.color;
   gfx.position.set(z.x, z.y);
   return gfx;
+}
+
+function makeBassWallGfx(w: BassWall): Graphics {
+  // Bass "The Sub": a thick bar perpendicular to travel. Local +x is the travel
+  // direction (thin), +/-y is the wall's length. A soft body, a solid core band,
+  // and a bright leading edge read it as a wall of low-end energy sweeping past
+  // — not a stretched ellipse. The sync rotates it to the travel angle.
+  const g = new Graphics();
+  const hw = w.halfWidth;
+  const th = w.thickness;
+  g.roundRect(-th * 1.7, -hw, th * 3.4, hw * 2, th).fill({ color: 0xffffff, alpha: 0.12 });
+  g.roundRect(-th, -hw, th * 2, hw * 2, th).fill({ color: 0xffffff, alpha: 0.42 });
+  g.roundRect(th * 0.4, -hw, th, hw * 2, th * 0.4).fill({ color: 0xffffff, alpha: 0.9 });
+  g.tint = KIT_COLORS.bass;
+  g.blendMode = 'add';
+  return g;
 }
 
 function makeGroundPick(pk: GroundPickView): Container {

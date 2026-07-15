@@ -5,8 +5,9 @@
 
 import { type Kit, type Role } from '../audio/kits';
 import { SLOTS, SLOT_LABEL, ownerOfSlot, supportedRoster } from './band';
+import { evolvedName } from './evolutions';
 
-import { TIER_COUNT } from '../audio/charts';
+import { TIER_COUNT, EVOLVED_TIER } from '../audio/charts';
 /** Tier numerals used by the band rack. */
 export const TIER_NUMERALS = ['I', 'II', 'III', 'IV'];
 
@@ -88,6 +89,7 @@ export class Hud {
       // A slot the soundset supports no instrument for is dropped: shown dimmed
       // and unavailable, never asking to be filled.
       const dropped = supportedRoster(slot).length === 0;
+      const evolved = owner ? (tiers.get(owner) ?? 1) === EVOLVED_TIER : false;
       let cls = dropped ? 'unavailable' : owner ? 'filled' : 'empty';
       if (owner && !dropped) {
         const off = deactivated?.has(owner) ?? false;
@@ -96,17 +98,22 @@ export class Hud {
         // a settled-off socket with no pending change just sits dimmed.
         if (pend) cls += off ? ' pending-on' : ' pending-off';
         else if (off) cls += ' deactivated';
+        // Evolved: the socket shows the evolved name and reads as maxed-plus.
+        if (evolved) cls += ' evolved';
       }
       const socket = el('div', `band-socket ${cls}`, into);
       el('span', 'socket-slot', socket, SLOT_LABEL[slot]);
       if (owner && !dropped) {
         const kit = this.kits.get(owner)!;
         socket.style.setProperty('--voice-color', kit.color);
-        el('span', 'socket-name', socket, kit.name);
+        // From the moment the evolution lands, the rack shows its evolved name.
+        el('span', 'socket-name', socket, evolved ? evolvedName(owner) : kit.name);
         const tier = tiers.get(owner) ?? 1;
         const pips = el('span', 'socket-pips', socket);
+        // An evolved weapon shows every ladder pip lit (it is past maxed).
+        const litTier = evolved ? TIER_COUNT : tier;
         for (let i = 1; i <= TIER_COUNT; i++) {
-          el('span', `pip ${i <= tier ? 'on' : ''}`, pips);
+          el('span', `pip ${i <= litTier ? 'on' : ''}`, pips);
         }
       }
     }

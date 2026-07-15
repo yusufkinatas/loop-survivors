@@ -44,6 +44,23 @@ export function d(role: Role, ...bars: string[]): Chart {
   return { role, bars: Math.max(1, bars.length), events };
 }
 
+/** Like d(), but every hit is forced to `variant` instead of the role default.
+ *  Used by the evolved ladders (docs/phases/weapon-evolutions.md): an evolution
+ *  keeps its rhythmic contract but swaps to a transformed voicing (e.g. the
+ *  kick's four-on-the-floor on the deeper "drop" boom). */
+export function dVar(role: Role, variant: string, ...bars: string[]): Chart {
+  const events: ChartEvent[] = [];
+  bars.forEach((pat, bar) => {
+    for (let s = 0; s < B; s++) {
+      const c = pat[s] ?? '.';
+      const v = VEL[c];
+      if (v === undefined) continue;
+      events.push({ step: bar * B + s, velocity: v, variant });
+    }
+  });
+  return { role, bars: Math.max(1, bars.length), events };
+}
+
 /** A pitched hit: [step, velocity, note?, variant?]. note defaults to the
  *  root (0), variant to the kit default. Step is absolute across all bars. */
 export type Hit = [step: number, vel: number, note?: number, variant?: string];

@@ -13,7 +13,7 @@
 
 import type { Chart } from '../charts';
 import type { Role } from '../kits';
-import { B, d, m } from '../groove';
+import { B, d, dVar, m } from '../groove';
 
 export const SOUNDSET_LADDERS: Partial<Record<Role, Chart[]>> = {
   // Pulse: four-on-the-floor, dead on every beat at EVERY tier. Kick growth
@@ -151,4 +151,56 @@ export const SOUNDSET_LADDERS: Partial<Record<Role, Chart[]>> = {
       [B + 2, 0.6, 15], [B + 3, 0.45, 19], [B + 6, 0.5, 22], [B + 10, 0.55, 24], [B + 11, 0.45, 19], [B + 14, 0.5, 15],
     ]),
   ],
+};
+
+// The evolved charts: one per weapon past the four-tier ladder
+// (docs/phases/weapon-evolutions.md). An evolution keeps its rhythmic contract
+// but transforms its voicing — the ear must register a new instrument, not the
+// old one playing more notes. Sub-phase A ships the kick only; sub-phases B/C
+// add the rest.
+//
+// Kick "The Drop": still dead four-on-the-floor (the kick never leaves the four
+// downbeats), but on the deeper "drop" boom instead of the tight "hard" thump —
+// so the pulse turns heavy and physical. The transformation lands on the ear
+// through the voicing while the gameplay flips from a facing strip to an
+// omnidirectional knockback ring (run.ts).
+export const SOUNDSET_EVOLVED: Partial<Record<Role, Chart>> = {
+  kick: dVar('kick', 'drop', 'X...X...X...X...'),
+  // Bass "The Sub": a deep clean sub on the 'sub' voicing. Every hit sends one
+  // traveling WALL across the arena (run.ts); ~two per bar keeps a few sweeping
+  // at once so the low end rolls continuously, with none of the old
+  // out-of-nowhere once-per-phrase surprise. Notes stay low (root/fifth/octave)
+  // so it reads as weight, not melody.
+  bass: m('bass', 2, [
+    [0, 0.9, 0, 'sub'], [8, 0.85, 7, 'sub'],
+    [B, 0.9, 0, 'sub'], [B + 8, 0.85, 12, 'sub'],
+  ]),
+  // Chord "Sustain": the stab opens into a held, lush pad on the 'sustain'
+  // voicing. One field per bar (4 per phrase): each lingers ~6s and lands on the
+  // densest pack, so 2-3 overlap at once for real coverage while the heavy slow
+  // + fast ticks delete what is trapped inside. Roots stay in {0,5,7}.
+  chord: m('chord', 4, [
+    [0, 0.85, 0, 'sustain'],
+    [B, 0.8, 7, 'sustain'],
+    [2 * B, 0.8, 5, 'sustain'],
+    [3 * B, 0.8, 7, 'sustain'],
+  ]),
+  // Arp "Arp Carousel": near-running 16ths on the liquid 'carousel' voicing —
+  // dense, so the fixed-radius ring stays packed with blades (every note is one
+  // blade; the long blade life keeps the whole ring full for reliable
+  // continuous DPS). Rests on 5/13 let the line breathe without thinning the
+  // ring. Pentatonic notes only.
+  arp: m('arp', 2, [
+    [0, 0.55, 0, 'carousel'], [1, 0.5, 3, 'carousel'], [2, 0.55, 7, 'carousel'], [3, 0.5, 10, 'carousel'], [4, 0.55, 12, 'carousel'], [6, 0.5, 10, 'carousel'], [7, 0.5, 7, 'carousel'],
+    [8, 0.55, 12, 'carousel'], [9, 0.5, 15, 'carousel'], [10, 0.55, 12, 'carousel'], [11, 0.5, 10, 'carousel'], [12, 0.55, 7, 'carousel'], [14, 0.5, 10, 'carousel'], [15, 0.5, 12, 'carousel'],
+    [B, 0.55, 3, 'carousel'], [B + 1, 0.5, 7, 'carousel'], [B + 2, 0.55, 10, 'carousel'], [B + 3, 0.5, 12, 'carousel'], [B + 4, 0.55, 15, 'carousel'], [B + 6, 0.5, 12, 'carousel'], [B + 7, 0.5, 10, 'carousel'],
+    [B + 8, 0.55, 7, 'carousel'], [B + 9, 0.5, 10, 'carousel'], [B + 10, 0.55, 12, 'carousel'], [B + 11, 0.5, 15, 'carousel'], [B + 12, 0.55, 12, 'carousel'], [B + 14, 0.5, 7, 'carousel'], [B + 15, 0.5, 3, 'carousel'],
+  ]),
+  // Bell "Carillon": the twinkly ping becomes a richer 'carillon' bell that
+  // cascades. Chart density stays sparse and glittery (the shatter chain, not
+  // the chart, does the multiplication).
+  bell: m('bell', 2, [
+    [2, 0.6, 12, 'carillon'], [6, 0.5, 19, 'carillon'], [10, 0.55, 24, 'carillon'], [14, 0.5, 19, 'carillon'],
+    [B + 2, 0.6, 15, 'carillon'], [B + 6, 0.5, 22, 'carillon'], [B + 10, 0.55, 27, 'carillon'], [B + 14, 0.5, 19, 'carillon'],
+  ]),
 };

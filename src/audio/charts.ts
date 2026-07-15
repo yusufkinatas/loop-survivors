@@ -28,6 +28,13 @@ export interface Chart {
 /** Tiers per weapon ladder. Tier 1 = first pick, tier 4 = maxed. */
 export const TIER_COUNT = 4;
 
+/** The evolved form's tier: one past the four-tier ladder. A weapon that
+ *  reaches TIER_COUNT and evolves plays this tier — its own chart (a parallel
+ *  evolved ladder, see soundset.ts `evolved`) and its own transformed gameplay
+ *  (docs/phases/weapon-evolutions.md). Not every role has one; only roles the
+ *  soundset supplies an evolved chart for (soundsetEvolves) ever reach it. */
+export const EVOLVED_TIER = TIER_COUNT + 1;
+
 /** Validate one chart against the coherence skeleton. Used when the soundset's
  *  ladders load and by the chart store for edited charts. */
 export function validateChart(chart: Chart): void {

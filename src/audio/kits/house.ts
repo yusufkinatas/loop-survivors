@@ -57,6 +57,51 @@ async function kick(): Promise<AudioBuffer> {
   return ctx.startRendering();
 }
 
+// --- Pulse: the evolved kick ("The Drop") ---------------------------------
+// The Kick's evolved voicing (docs/phases/weapon-evolutions.md): the tight 909
+// thump becomes a deeper, fuller boom with a longer sub tail and a low
+// "whoomph" underneath, so the four-on-the-floor turns heavy and physical.
+// Lower fundamental (~40 Hz), a long decay, an added sub-octave swell, and a
+// soft pressure attack instead of the bright 909 click.
+async function kickDrop(): Promise<AudioBuffer> {
+  const ctx = offline(0.9);
+  const body = ctx.createOscillator();
+  body.type = 'sine';
+  body.frequency.setValueAtTime(180, 0);
+  body.frequency.exponentialRampToValueAtTime(42, 0.06);
+  body.frequency.exponentialRampToValueAtTime(37, 0.35);
+  const bg = ctx.createGain();
+  bg.gain.setValueAtTime(1.0, 0);
+  bg.gain.exponentialRampToValueAtTime(0.001, 0.68);
+  const drive = ctx.createWaveShaper();
+  drive.curve = softClipCurve(2.4);
+  body.connect(bg).connect(drive).connect(ctx.destination);
+  // Sub "whoomph": a very low sine that swells under the body and rings longest.
+  const sub = ctx.createOscillator();
+  sub.type = 'sine';
+  sub.frequency.setValueAtTime(33, 0);
+  sub.frequency.exponentialRampToValueAtTime(29, 0.4);
+  const subG = ctx.createGain();
+  subG.gain.setValueAtTime(0.0001, 0);
+  subG.gain.linearRampToValueAtTime(0.6, 0.03);
+  subG.gain.exponentialRampToValueAtTime(0.001, 0.82);
+  sub.connect(subG).connect(ctx.destination);
+  // Soft pressure attack: a low pitched beater thump, no bright noise click.
+  const tick = ctx.createOscillator();
+  tick.type = 'triangle';
+  tick.frequency.setValueAtTime(300, 0);
+  tick.frequency.exponentialRampToValueAtTime(110, 0.03);
+  const tickG = ctx.createGain();
+  tickG.gain.setValueAtTime(0.2, 0);
+  tickG.gain.exponentialRampToValueAtTime(0.001, 0.045);
+  tick.connect(tickG).connect(ctx.destination);
+  body.start(0);
+  sub.start(0);
+  tick.start(0);
+  tick.stop(0.06);
+  return ctx.startRendering();
+}
+
 // --- Backbeat: the 909 "clay" clap ----------------------------------------
 // The signature house clap: three tight noise bursts (hands not quite in sync)
 // through a mid formant, then a longer diffuse tail that gives the clap its
@@ -263,6 +308,47 @@ async function bass(rootHz: number, flavor: 'bass' | 'fat'): Promise<AudioBuffer
   return ctx.startRendering();
 }
 
+// --- Bass: the evolved sub ("The Sub") ------------------------------------
+// A deep, clean, powerful sustained sub — a strong sine sub for weight, a
+// triangle octave and a gently low-passed saw for warm body, no resonant
+// wobble. The bass voice's -3 sample tune seats it lower still in-game, on-brief
+// for "lower and heavier than anything else in the mix".
+async function bassSub(rootHz: number): Promise<AudioBuffer> {
+  const ctx = offline(0.95);
+  const sub = ctx.createOscillator();
+  sub.type = 'sine';
+  sub.frequency.value = rootHz / 4;
+  const body = ctx.createOscillator();
+  body.type = 'triangle';
+  body.frequency.value = rootHz / 4;
+  const saw = ctx.createOscillator();
+  saw.type = 'sawtooth';
+  saw.frequency.value = rootHz / 4;
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.Q.value = 0.6;
+  lp.frequency.setValueAtTime(190, 0);
+  lp.frequency.linearRampToValueAtTime(320, 0.45);
+  const drive = ctx.createWaveShaper();
+  drive.curve = softClipCurve(1.6);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.001, 0);
+  g.gain.exponentialRampToValueAtTime(0.66, 0.03); // headroom so a clean sub isn't crushed by the limiter
+  g.gain.setValueAtTime(0.66, 0.6);
+  g.gain.exponentialRampToValueAtTime(0.001, 0.92);
+  const subG = ctx.createGain();
+  subG.gain.value = 0.8;
+  const bodyG = ctx.createGain();
+  bodyG.gain.value = 0.32;
+  saw.connect(lp).connect(drive).connect(g).connect(ctx.destination);
+  sub.connect(subG).connect(g);
+  body.connect(bodyG).connect(g);
+  sub.start(0);
+  body.start(0);
+  saw.start(0);
+  return ctx.startRendering();
+}
+
 // --- Harmony: the house chord stab ----------------------------------------
 // The signature stabby chord: a quartal voicing (root, +5, +10 — stacked
 // fourths that stay in the note set when the chart shifts the whole chord to
@@ -305,6 +391,52 @@ async function chord(rootHz: number, pad: boolean): Promise<AudioBuffer> {
       if (vibGain) vibGain.connect(osc.frequency);
       const g = ctx.createGain();
       g.gain.value = 0.14;
+      osc.connect(g).connect(lp);
+      osc.start(0);
+      osc.stop(dur);
+    }
+  }
+  return ctx.startRendering();
+}
+
+// --- Harmony: the evolved sustain pad ("Sustain") -------------------------
+// The stab opens into a held, lush pad that swells slowly and hangs — longer
+// and more atmospheric than the top-tier 'pad'. A slow filter opening and a
+// wide detuned quartal voicing give it the breathing, coloured-space character
+// the evolution wants.
+async function chordSustain(rootHz: number): Promise<AudioBuffer> {
+  const dur = 2.8;
+  const ctx = offline(dur + 0.1);
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.setValueAtTime(650, 0);
+  lp.frequency.linearRampToValueAtTime(2100, dur * 0.6);
+  const hp = ctx.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = 240; // stay above the rolling bass
+  const master = ctx.createGain();
+  master.gain.setValueAtTime(0.001, 0);
+  master.gain.exponentialRampToValueAtTime(0.3, 0.5);
+  master.gain.setValueAtTime(0.3, dur * 0.7);
+  master.gain.exponentialRampToValueAtTime(0.001, dur);
+  lp.connect(hp).connect(master).connect(ctx.destination);
+  const vib = ctx.createOscillator();
+  vib.type = 'sine';
+  vib.frequency.value = 3.8;
+  const vibGain = ctx.createGain();
+  vibGain.gain.value = rootHz * 0.005;
+  vib.connect(vibGain);
+  vib.start(0);
+  vib.stop(dur);
+  for (const semis of [0, 5, 10]) {
+    for (const detune of [-12, -4, 4, 12]) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.value = rootHz * Math.pow(2, semis / 12);
+      osc.detune.value = detune;
+      vibGain.connect(osc.frequency);
+      const g = ctx.createGain();
+      g.gain.value = 0.095;
       osc.connect(g).connect(lp);
       osc.start(0);
       osc.stop(dur);
@@ -397,6 +529,7 @@ async function lead(rootHz: number): Promise<AudioBuffer> {
 export async function buildHouseKit(rootHz: number): Promise<Map<Role, Kit>> {
   const [
     kickHard,
+    kickDropBuf,
     clapBuf,
     hatClosed,
     hatOpen,
@@ -405,12 +538,15 @@ export async function buildHouseKit(rootHz: number): Promise<Map<Role, Kit>> {
     riserBuf,
     bassBuf,
     bassFat,
+    bassSubBuf,
     stab,
     pad,
+    chordSustainBuf,
     rhodesBuf,
     leadBuf,
   ] = await Promise.all([
     kick(),
+    kickDrop(),
     clap(),
     hat(false),
     hat(true),
@@ -419,14 +555,18 @@ export async function buildHouseKit(rootHz: number): Promise<Map<Role, Kit>> {
     riser(),
     bass(rootHz, 'bass'),
     bass(rootHz, 'fat'),
+    bassSub(rootHz), // evolved "The Sub"
     chord(rootHz, false),
     chord(rootHz, true),
+    chordSustain(rootHz), // evolved "Sustain"
     rhodes(rootHz),
     lead(rootHz),
   ]);
 
   const kits = new Map<Role, Kit>();
-  kits.set('kick', makeKit('kick', new Map([['hard', kickHard]])));
+  // 'drop' is the evolved boom (Kick "The Drop"); the sample overlay preserves
+  // it because it merges onto (not replaces) these synth variants.
+  kits.set('kick', makeKit('kick', new Map([['hard', kickHard], ['drop', kickDropBuf]])));
   kits.set('clap', makeKit('clap', new Map([['clap', clapBuf]])));
   kits.set('hat', makeKit('hat', new Map([['closed', hatClosed], ['open', hatOpen]])));
   kits.set('shaker', makeKit('shaker', new Map([['shaker', shakerBuf]])));
@@ -434,9 +574,13 @@ export async function buildHouseKit(rootHz: number): Promise<Map<Role, Kit>> {
   kits.set('riser', makeKit('riser', new Map([['riser', riserBuf]])));
   kits.set(
     'bass',
-    makeKit('bass', new Map([['bass', bassBuf], ['fat', bassFat]])),
+    // 'sub' (evolved) is preserved by the sample overlay's merge, like the kick.
+    makeKit('bass', new Map([['bass', bassBuf], ['fat', bassFat], ['sub', bassSubBuf]])),
   );
-  kits.set('chord', makeKit('chord', new Map([['stab', stab], ['pad', pad]])));
+  kits.set(
+    'chord',
+    makeKit('chord', new Map([['stab', stab], ['pad', pad], ['sustain', chordSustainBuf]])),
+  );
   kits.set('rhodes', makeKit('rhodes', new Map([['rhodes', rhodesBuf]])));
   kits.set('lead', makeKit('lead', new Map([['lead', leadBuf]])));
   return kits;

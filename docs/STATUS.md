@@ -2,7 +2,197 @@
 
 Last updated: July 15, 2026
 
-## Latest change (July 15, 2026) — weapon-evolutions spec grilled and LOCKED
+## Latest change (July 15, 2026) — weapon-evolutions SUB-PHASE B REWORK (gate-fail loop)
+
+The first sub-phase B build FAILED its developer gate with specific per-weapon
+feedback; the fail loops within sub-phase B (never downstream). All four were
+reworked to his direction. **The gate is re-PENDING** on the reworked four.
+
+The feedback and the fix:
+- **Bass "The Sub"** — "terrible": the old once-per-phrase huge wall was one
+  wide ellipse that looked wrong (a single note stretched huge), came out of
+  nowhere, and sounded ugly (the resonant `wub`). **Full refactor.** Dropped the
+  ellipse-projectile wall entirely. Every evolved bass trigger now spawns a real
+  traveling **wall entity** (`BassWall` in `run.ts`: a long thin damage band that
+  sweeps along its facing, grinding enemies in the band on a re-hit cooldown),
+  rendered as a **thick glowing bar perpendicular to travel** (`makeBassWallGfx`),
+  so it reads as a wall, not a stretched wave, and it is consistent (no
+  out-of-nowhere surprise). The sound variant was renamed `wub` → `sub` and
+  rewritten to a **clean, deep, powerful sub** (strong sine + gentle body, no
+  resonant LFO), with the level lowered for limiter headroom (peak 1.77 → 1.28).
+- **Arp "Arp Carousel"** — the breathing (grow/shrink) "feels wrong", the
+  evolved ring had FEWER notes than tier 4, and it was "the same dots".
+  **Removed the breathing**: a **fixed larger radius** (140), a **dense**
+  near-16ths chart so the ring stays packed, a **faster re-hit**
+  (`ARP_CAROUSEL.rehitS`) for reliable continuous DPS, and a distinct **blade**
+  silhouette (`Projectile.blade`) rotated radially — spinning steel, not dots.
+- **Chord "Sustain"** — weaker than tier 4 (tier 4 stacks many stab-zones for a
+  lot of damage; the evolution was sparse/big/slow, so "less area", didn't feel
+  stronger). Made it a **kill-field**: per-tick damage 3 → 8, a per-zone tick
+  rate (`Zone.tickS` = 0.3, faster than the base 0.45), and one field per bar (4
+  per phrase) so 2-3 overlap for coverage. It now measurably out-damages tier 4.
+- **Bell "Carillon"** — sound is good; the weapon problem is that shards spawned
+  on a hit could re-hit the SAME (tanky) enemy and be swallowed, never reaching
+  behind it. **Fixed (base + evolved), Sivir-W style**: `spawnShards` takes the
+  source enemy and pre-adds it to each shard's hit set, so shards scatter PAST
+  the body they broke on and reach the enemies behind/around it.
+
+**Verification.** `tsc --noEmit` + production build clean. A **headless
+deterministic sim test** (drives `fireTrigger`, steps the pure sim) asserts the
+reworked mechanics, 10/10: the bass wall damages an enemy in its band and misses
+one past its ends and despawns on lifetime; the **chord evolution out-damages
+tier 4 over a phrase** (7552 vs 2806); the **arp ring radius is fixed at 140**
+(no breathing) with blades and **out-damages tier 4** (13010 vs 4822, continuous
+DPS); the **bell shards reach the enemy behind the tank**. (Temporary test file,
+removed.) A four-lens adversarial review of the rework diff was run (bass-wall,
+chord/arp, bell/integration). Browser-driven: no console errors; the `bass`
+variants are now `[bass, fat, sub]` (`wub` gone) and the `sub` buffer is a clean
+deep sub at the tamed level; a screenshot confirmed the new visuals render
+distinctly — the bass **wall bar** (not an ellipse) with a bright leading edge,
+the arp **blade ring**, and the large chord **Sustain field**, all landing
+damage.
+
+**Sub-phase B gate (re-PENDING, the developer's ear/hands):** do the four now
+feel and sound like real transformations — the bass wall satisfying and clean,
+the arp a reliable continuous-DPS ring, the chord clearly stronger than tier 4,
+the bell reaching behind tanky enemies? A pass unlocks sub-phase C.
+
+## Previous change (July 15, 2026) — weapon-evolutions SUB-PHASE B implemented
+
+Sub-phase A's gate PASSED (below), which unlocked sub-phase B: the four
+**extension evolutions**, each built end to end (gameplay AND sound) on the
+generic framework A established. This first build FAILED its gate (see the
+rework entry above).
+
+The four:
+- **Bass "The Sub"** (variant `wub`): the base rolling wave becomes massive slow
+  waves plus a **once-per-phrase screen-wide wall** (fired on the phrase
+  downbeat, `t.step === 0`, in a 4-bar evolved chart); the wall is one enormous
+  bass wave whose tall wave-front reads as a wall crossing the arena. Sound: a
+  deep, sustained sub with an LFO wobble (the "wub"), seated lower still by the
+  bass voice's −3 sample tune (on-brief for "lower and heavier than anything
+  else").
+- **Chord "Sustain"** (variant `sustain`): the stab becomes a large, long-lived
+  field dropped on the **densest pack** (`densestEnemy`) that **slows harder**
+  and lingers far longer. A per-enemy `slowMul` (last-writer-wins, reset when the
+  slow lapses) lets the Sustain field slow to 0.3 where the base zone slows to
+  0.55; a distinct larger, brighter zone silhouette. Sound: a held, lush pad
+  that swells and hangs (2.9 s vs the base 0.42 s stab).
+- **Arp "Arp Carousel"** (variant `carousel`): the fixed-radius orbit becomes a
+  **breathing ring** — every evolved orbiter shares one breathing phase, so the
+  ring sweeps out to `maxR` then pulls in to `minR` (`ARP_CAROUSEL`). Sound: a
+  more resonant, liquid arp with a longer filter sweep.
+- **Bell "Carillon"** (variant `carillon`): the single shatter becomes a
+  **depth-2 cascade** — the main shot's shards each shatter once more, then
+  terminate (sub-shards carry `shatter 0` via the `shatterChild` field). Sound:
+  a bigger, richer bell, a chord of bells (1.3 s ring-out).
+
+**How the framework carried it.** A's generic seams meant B was mostly data: a
+new `EVOLUTIONS` entry, a `SOUNDSET_EVOLVED` chart, a new kit variant (declared
+in `ROLE_META`, wired into the builtin and/or house kit; the sample-overlay
+merge preserves synth variants — that is how bass keeps `wub`), a `WEAPONS[4]`
+block, and one `fireTrigger`/`updateProjectiles` branch per weapon plus new
+config blocks (`BASS_SUB`, `CHORD_SUSTAIN`, `ARP_CAROUSEL`, `BELL_CARILLON`).
+The trigger, guaranteed card, ceremony, band rack, and sandbox force-evolve are
+unchanged and picked all four up with no per-weapon special-casing. arp/bell are
+not built by the house kit, so their evolved voicings come from the builtin kit
+via the engine's existing per-role fallback.
+
+**Verification.** `tsc --noEmit` and the production build are clean. A four-lens
+adversarial-review workflow (audio, bass/chord, arp/bell, visuals+integration),
+each finding adversarially verified, returned **zero confirmed defects**; the one
+flagged item was a stale `Enemy.slowMul` docstring (it said "strongest wins"
+while the code does the sound last-writer-wins) — corrected, no behaviour change.
+Browser-driven on the dev server: boot is console-error-clean; all four evolved
+buffers and charts are confirmed live (bass `wub`/chord `sustain`/arp
+`carousel`/bell `carillon`, each audibly distinct from its base by duration and
+timbre); and a screenshot caught three at once rendering distinctly — the bass
+wall crossing the arena, the large concentric Sustain field, and the arp
+breathing ring. A **headless deterministic sim test** (drives `fireTrigger`
+directly, steps the pure sim) asserts all four mechanics: the bass wall (r 420)
+vs rolling wave (r 58) split on the downbeat; the Sustain field (r 150, slow 0.3,
+resets cleanly); the arp ring breathing exactly across 72↔172 with no NaN; and
+the bell cascade terminating **exactly** at the depth-2 cap (41 = 1 + 10 + 30)
+with no projectile leak — 15/15 pass. (The test file was temporary and removed;
+`check:lab` still cannot run in this worktree, see sub-phase A note.)
+
+**Sub-phase B gate (PENDING, the developer's ear/hands):** each of the four
+plays and sounds like a real transformation, not a scaled tier. A pass unlocks
+sub-phase C (the new-system evolutions: Clap, Lead, Snare, Hat, plus base Lead's
+respec); a fail loops within sub-phase B.
+
+## Previous change (July 15, 2026) — weapon-evolutions SUB-PHASE A implemented
+
+Sub-phase A of the weapon-evolutions phase is built end to end: the evolution
+**trigger**, the shared **ceremony**, **sandbox force-evolve**, and the one full
+vertical-slice evolution, **Kick "The Drop"** (gameplay AND sound). Built on
+branch `worktree-weapon-evolutions-spec` per the locked spec
+(`docs/phases/weapon-evolutions.md`). **No developer gate has passed** — the
+sub-phase A gate is his ear and hands (below).
+
+**The evolved-tier model.** An evolution is tier 5 (`EVOLVED_TIER = TIER_COUNT +
+1`, `src/audio/charts.ts`), threaded through the existing tier machinery. A
+weapon evolves only if the soundset supplies an evolved chart (`SOUNDSET.evolved`
+in `src/audio/soundset.ts`, `soundsetEvolves`) AND the game registers it
+(`src/game/evolutions.ts` `EVOLUTIONS`), so the two halves can never drift.
+`getChart(role, EVOLVED_TIER)` returns a fifth working copy built in
+`chartstore.ts`; `engine.setVoiceTier` now clamps to `EVOLVED_TIER` for evolvable
+roles only (every other voice still caps at 4, so a stray evolve can't leave a
+non-evolving voice on a silent chart).
+
+**The two-layer transformation (the core principle).** The kick's *timbre*
+changes via a new `drop` kit variant — a deeper, longer boom with a sub
+"whoomph" (`renderKickDrop` in `kits.ts` and `kits/house.ts`), measured in the
+browser at 0.9 s / peak 1.44 against the base hard hit's 0.37 s / 0.89. Its
+*arrangement* is the evolved chart `dVar('kick','drop','X...X...X...X...')`
+(`ladders/house.ts`): still four-on-the-floor (the kick's contract), now voiced
+on the drop. The synth `drop` variant survives the `SAMPLE_OVERLAY` because that
+overlay now **merges** onto the synth kit's variants instead of replacing them
+(`kits/index.ts`) — behaviour-neutral for every existing role. So base Kick still
+plays the sampled `hard` thump; evolved Kick plays the deep `drop` boom.
+
+**The Drop gameplay.** The facing strip becomes an omnidirectional **pressure
+ring** on every beat (`fireTrigger` kick branch → `spawnKickPulse` /
+`updateKickPulses` in `run.ts`): each ring expands to `KICK_DROP.maxRadius` over
+`expandS`, damaging (`WEAPONS.kick[4].damage`) and hard-launching every enemy
+once as the front passes (per-pulse hit set + the shared shove channel), carving
+a clear bubble. A distinct expanding-shockwave silhouette (`kickpulse` fx,
+`view.ts`) replaces the flat strip. Base-kick behaviour is untouched.
+
+**Trigger + ceremony + persistence.** A maxed weapon with an evolution now
+contributes a **guaranteed** evolution card to every offer until taken
+(`picks.ts` `rollOffers`: evolutions claim their slot before the weighted draw);
+once evolved it leaves the pool. The card leads with the evolved name and an
+"EVOLVE" tag. On its bar, the evolution lands (next-bar entry, old-tier damage
+preserved) and fires a shared **ceremony** reusing the level-up moment (slow-mo,
+duck, cue, burst) plus an "evolved — The Drop" toast. The band rack shows the
+evolved name with an evolved style from that moment (`hud.ts`, `style.css`).
+Sandbox loadout gains a ★ force-evolve button (`sandbox.ts`).
+
+**Verification.** `tsc --noEmit` and the production `vite build` are clean (771
+modules). A four-lens adversarial-review workflow (pool/trigger, audio wiring,
+sim/gameplay, shell/persistence), each finding adversarially verified, returned
+**zero defects**. Browser-driven on the dev server: boot is console-error-clean;
+the audio wiring is confirmed live (the kick voice carries both `hard` and `drop`
+buffers, the evolved chart is four drop hits, the drop buffer is the deeper
+boom); sandbox force-evolve sets the kick to tier 5 and the rack reads "The
+Drop"; the pulse dealt 1540 dmg clearing a tank ring in sandbox and 1320 in a
+live run; and a full run reproduced the guaranteed evolution card → collect →
+next-bar ceremony (toast + 0.75× slow-mo) → "The Drop" on the rack. (The
+`check:lab` harness could not run: this worktree has no local `node_modules`, so
+its hard-coded `node_modules/vite/bin/vite.js` preview path is unresolvable — a
+worktree tooling limitation, not a code issue; its `build` step passed.)
+
+**Flag for the ear gate:** the drop's raw level sits a touch hotter than the
+other drums (limiter-safe, and on-brief for "lower and heavier than anything
+else"), so exact mix balance is a taste call at the gate.
+
+**Sub-phase A gate: PASSED** (July 15, 2026, the developer's explicit sign-off):
+taking the kick to The Drop feels like a transformation in the hand and in the
+ear, and the trigger feels right. This unlocks sub-phase B (the extension
+evolutions: Bass, Chord, Bell, Arp), now in progress; sub-phase C is not started.
+
+## Previous change (July 15, 2026) — weapon-evolutions spec grilled and LOCKED
 
 The weapon-evolutions phase was grilled and its spec **locked with the
 developer's explicit sign-off**: `docs/phases/weapon-evolutions.md` (a roadmap

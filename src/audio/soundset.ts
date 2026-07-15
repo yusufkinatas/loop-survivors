@@ -14,7 +14,7 @@
 
 import { TIER_COUNT, validateChart } from './charts';
 import { ROLES, type Role } from './kits';
-import { SOUNDSET_LADDERS } from './ladders/house';
+import { SOUNDSET_LADDERS, SOUNDSET_EVOLVED } from './ladders/house';
 import type { Chart } from './charts';
 
 export interface Soundset {
@@ -28,6 +28,10 @@ export interface Soundset {
    *  here is an instrument the soundset is not built around — it is never
    *  offered, never voiced. Partial by design (whole slots may be dropped). */
   ladders: Partial<Record<Role, Chart[]>>;
+  /** The evolved chart for each weapon that has a final form past tier 4
+   *  (docs/phases/weapon-evolutions.md). A role absent here has no evolution:
+   *  it maxes at tier 4 and leaves the pool as before. */
+  evolved: Partial<Record<Role, Chart>>;
 }
 
 export const SOUNDSET: Soundset = {
@@ -35,6 +39,7 @@ export const SOUNDSET: Soundset = {
   swing: 0.1,
   powerMul: 1,
   ladders: SOUNDSET_LADDERS,
+  evolved: SOUNDSET_EVOLVED,
 };
 
 // ---------------------------------------------------------------------------
@@ -52,6 +57,13 @@ export function supportedRoles(): Role[] {
 /** Whether the soundset voices/offers a given role. */
 export function soundsetSupports(role: Role): boolean {
   return SOUNDSET.ladders[role] !== undefined;
+}
+
+/** Whether the soundset supplies an evolved chart for a role — i.e. whether the
+ *  weapon can reach EVOLVED_TIER at all (docs/phases/weapon-evolutions.md).
+ *  Read by the engine (tier clamp) and, via game/evolutions.ts, the pick pool. */
+export function soundsetEvolves(role: Role): boolean {
+  return SOUNDSET.evolved[role] !== undefined;
 }
 
 // Playability floor (Pillar 3: the game must be a good survivors-like muted).
@@ -92,5 +104,16 @@ const FLOOR_GROUPS: { label: string; anyOf: Role[] }[] = [
     if (!group.anyOf.some((r) => supported.has(r))) {
       throw new Error(`soundset: playability floor unmet — needs ${group.label}`);
     }
+  }
+  // Evolved charts: a role can only evolve if it is supported (its base ladder
+  // exists), and each evolved chart must be a valid chart for its own role.
+  for (const [role, chart] of Object.entries(SOUNDSET.evolved) as [Role, Chart][]) {
+    if (!supported.has(role)) {
+      throw new Error(`soundset: ${role} has an evolved chart but no base ladder`);
+    }
+    if (chart.role !== role) {
+      throw new Error(`soundset: ${role} evolved slot holds a ${chart.role} chart`);
+    }
+    validateChart(chart);
   }
 }

@@ -40,9 +40,14 @@ export function sampledRoles(): Set<Role> {
   return new Set(Object.keys(SAMPLE_OVERLAY) as Role[]);
 }
 
-/** Overlay the real drum/bass samples onto the synth kit. A role whose every
- *  variant loads is replaced by the sampled kit; if any file fails to load
- *  (offline, 404), that role keeps its synthesized voice (never silent). */
+/** Overlay the real drum/bass samples onto the synth kit. The sampled variants
+ *  are merged ON TOP of the role's existing synth variants (not a wholesale
+ *  replace), so a synth-only variant the overlay does not cover survives — this
+ *  is what keeps the kick's evolved "drop" voicing while its base "hard" hit is
+ *  sample-backed (docs/phases/weapon-evolutions.md). For every role today the
+ *  overlay covers all of its base variants, so the merge is behaviour-neutral
+ *  there. If any file fails to load (offline, 404), that role keeps its
+ *  synthesized voice untouched (never silent). */
 async function overlaySamples(kit: Map<Role, Kit>): Promise<void> {
   await Promise.all(
     (Object.entries(SAMPLE_OVERLAY) as [Role, SampleSpec[]][]).map(async ([role, specs]) => {
@@ -52,7 +57,9 @@ async function overlaySamples(kit: Map<Role, Kit>): Promise<void> {
             [variant, await loadSample(`/samples/${DIR}/${file}.wav`)] as const,
           ),
         );
-        kit.set(role, makeKit(role, new Map(entries), SAMPLE_TUNE[role] ?? 0));
+        const merged = new Map(kit.get(role)?.samples);
+        for (const [variant, buffer] of entries) merged.set(variant, buffer);
+        kit.set(role, makeKit(role, merged, SAMPLE_TUNE[role] ?? 0));
       } catch (e) {
         console.warn(`[kits] ${role} sample load failed, keeping synth voice:`, e);
       }

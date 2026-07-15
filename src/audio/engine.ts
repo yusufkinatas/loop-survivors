@@ -5,9 +5,9 @@
 
 import { Clock } from './clock';
 import { chartEventsAtStep } from './arranger';
-import { TIER_COUNT, type Chart, type ChartEvent } from './charts';
+import { TIER_COUNT, EVOLVED_TIER, type Chart, type ChartEvent } from './charts';
 import { getChart } from './chartstore';
-import { SOUNDSET } from './soundset';
+import { SOUNDSET, soundsetEvolves } from './soundset';
 import { SKELETON, STEPS_PER_BAR, STEPS_PER_PHRASE, semitonesToRate } from './scale';
 import type { Kit, Role } from './kits';
 import { buildSoundsetKit } from './kits/index';
@@ -350,11 +350,15 @@ export class MusicEngine {
   }
 
   /** Put a voice on a ladder tier: swaps its chart for the tier's working
-   *  copy. Takes effect on the next step the new chart fires. */
+   *  copy. Takes effect on the next step the new chart fires. A role the
+   *  soundset evolves may reach EVOLVED_TIER (its transformed chart); every
+   *  other role is capped at TIER_COUNT, so a stray evolve can never leave a
+   *  non-evolving voice reading a silent stand-in chart. */
   setVoiceTier(role: Role, tier: number): void {
     const voice = this.voices.get(role);
     if (!voice) return;
-    voice.tier = Math.max(1, Math.min(TIER_COUNT, tier));
+    const maxTier = soundsetEvolves(role) ? EVOLVED_TIER : TIER_COUNT;
+    voice.tier = Math.max(1, Math.min(maxTier, tier));
     voice.chart = getChart(role, voice.tier);
   }
 

@@ -7,7 +7,7 @@
 // Persistence (plumbing) saves edits to localStorage and re-applies them on
 // load.
 
-import { TIER_COUNT, validateChart, type Chart } from './charts';
+import { TIER_COUNT, EVOLVED_TIER, validateChart, type Chart } from './charts';
 import { SOUNDSET, supportedRoles } from './soundset';
 import { type Role } from './kits';
 
@@ -53,6 +53,16 @@ for (const role of supportedRoles()) {
     }
     working.set(key, chart);
   }
+}
+
+// Evolved charts get a fifth working copy at EVOLVED_TIER for each role the
+// soundset evolves (docs/phases/weapon-evolutions.md). The chart playground
+// only edits tiers 1..TIER_COUNT, so evolved charts carry no localStorage
+// overlay — the shipped chart is the working copy.
+for (const role of supportedRoles()) {
+  const evolved = SOUNDSET.evolved[role];
+  if (!evolved) continue;
+  working.set(storageKey(role, EVOLVED_TIER), cloneChart(evolved));
 }
 
 /** The live working chart for a (role, tier). Stable object identity. Returns a

@@ -1435,6 +1435,20 @@ button.big {
 .socket-pips .pip.on {
   background: var(--voice-color);
 }
+/* An evolved weapon (docs/phases/weapon-evolutions.md): its socket reads as
+   past-maxed — the voice color intensified with a soft glow and its evolved
+   name emphasized, so the transformation shows on the rack the moment it lands. */
+.band-socket.evolved {
+  border-color: color-mix(in srgb, var(--voice-color) 60%, var(--line));
+  border-top-width: 3px;
+  box-shadow: 0 0 10px color-mix(in srgb, var(--voice-color) 40%, transparent);
+}
+.band-socket.evolved .socket-name {
+  text-shadow: 0 0 6px color-mix(in srgb, var(--voice-color) 60%, transparent);
+}
+.band-socket.evolved .socket-pips .pip.on {
+  box-shadow: 0 0 4px var(--voice-color);
+}
 
 /* Slot badge on a pick card: the plain player-facing band position this hire
    plugs, so every card answers "what does taking this cost me?" at a glance. */

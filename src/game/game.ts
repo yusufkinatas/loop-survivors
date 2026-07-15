@@ -15,6 +15,7 @@ import { createGreedyMover, createKiter, type AutoMover } from './auto-move';
 import { autoMove, Input, type AutoMoveMode } from './input';
 import { mountJoystick } from './joystick';
 import { rollOffers, type PickOption } from './picks';
+import { EVOLVED_TIER, evolvedName } from './evolutions';
 import { RunWorld, KIT_COLORS } from './run';
 import { SIM_DT } from './timing';
 import { RunView, type GroundPickView } from './view';
@@ -238,15 +239,19 @@ export async function bootGame(
       const x = cx + Math.cos(rad) * LEVELUP.itemRadius;
       const y = cy + Math.sin(rad) * LEVELUP.itemRadius;
       items.push({ x, y, option });
+      const isEvo = option.tier === EVOLVED_TIER;
       const prevTier = w.tiers.get(option.role) ?? 0;
       payload.push({
         x,
         y,
         role: option.role,
         color: KIT_COLORS[option.role],
-        name: kits.get(option.role)!.name,
-        // New pick reads "1"; a tier-up reads e.g. "2 → 3".
-        level: prevTier > 0 ? `${prevTier} → ${option.tier}` : '1',
+        // An evolution card leads with the evolved name; a normal card shows
+        // the instrument name.
+        name: isEvo ? evolvedName(option.role) : kits.get(option.role)!.name,
+        // New pick reads "1"; a tier-up reads e.g. "2 → 3"; an evolution reads
+        // "EVOLVE" (a 4→5 number would mean nothing to the player).
+        level: isEvo ? 'EVOLVE' : prevTier > 0 ? `${prevTier} → ${option.tier}` : '1',
       });
     }
     groundPicks = items;
@@ -296,6 +301,13 @@ export async function bootGame(
         hud.renderBand(w.tiers, undefined, deactivatedRoles, pendingRoles);
         refreshTrackOverlay();
         view?.flourish(w.player.x, w.player.y);
+        // Evolution ceremony: the new behavior, the new sound, and the moment
+        // all land together on this bar. Reuse the level-up moment plumbing
+        // (slow-mo + duck + cue + burst) and name the evolved form.
+        if (option.tier === EVOLVED_TIER) {
+          startLevelMoment(w.player.x, w.player.y);
+          hud.showToast(`evolved — ${evolvedName(option.role)}`);
+        }
         pickAwaitingBar = false;
         // Wait until this bar's due gameplay triggers have been consumed by one
         // fixed world step before dropping a stacked reward's triangle.

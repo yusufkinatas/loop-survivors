@@ -7,16 +7,22 @@
 // clock. Rendering lives in view.ts, which reads the world each frame.
 
 import type { Role } from '../audio/kits';
+import { EVOLVED_TIER } from '../audio/charts';
 import type { ScheduledTrigger } from '../audio/engine';
 import {
   AIM_RANGE,
+  ARP_CAROUSEL,
   ARP_OMEGA,
+  BASS_SUB,
   BELL,
+  BELL_CARILLON,
   CHARGER,
+  CHORD_SUSTAIN,
   CIRCLER,
   DAMAGE_FEEDBACK,
   DARTER,
   ENEMIES,
+  KICK_DROP,
   MAD_FOREST_FRAMES,
   MAX_ALIVE_HARD,
   ORBIT_REHIT_S,
@@ -122,6 +128,12 @@ export interface Enemy {
   dashing: boolean;
   /** Time left under a chord zone's slow. */
   slowT: number;
+  /** Active slow strength (speed multiplier) while slowT > 0; 1 = no slow. Set
+   *  by whichever zone last ticked this enemy (last-writer-wins) and reset to 1
+   *  when slowT expires, so a strong→weak move corrects on the weak zone's next
+   *  tick. Once the chord evolves, every chord zone is a 0.3 Sustain, so the
+   *  only mixed-strength window is a brief transient at the evolution instant. */
+  slowMul: number;
   /** Weapon knockback: velocity (px/s) and time left being pushed. While
    *  knockT > 0 the enemy rides this vector instead of chasing. */
   knockX: number;
@@ -173,11 +185,19 @@ export interface Projectile {
   orbitAngle: number;
   orbitRadius: number;
   rehitT: number;
-  /** bell: shards to spawn on this shot's first hit (0 for a shard itself, so
-   *  shards never re-shatter). */
+  /** bell: shards to spawn on this shot's first hit (0 = none). */
   shatter: number;
-  /** True for a bell shard (a fragment shot), so its hit path skips shattering. */
+  /** bell: the `shatter` count each spawned shard itself carries. 0 on the base
+   *  Bell (shards never re-shatter). The evolved "Carillon" gives its shards a
+   *  positive value so they shatter once more (depth 2); their sub-shards get 0,
+   *  so the cascade always terminates. */
+  shatterChild: number;
+  /** True for a bell shard (a fragment shot); used only to suppress the per-hit
+   *  spark. Re-shattering is driven by `shatter`, not this flag. */
   shard: boolean;
+  /** True for an evolved Arp "Arp Carousel" orbiter: a bigger blade silhouette
+   *  (view) and a faster re-hit cooldown (continuous DPS). */
+  blade: boolean;
 }
 
 export interface Zone {
@@ -192,6 +212,15 @@ export interface Zone {
   source: Role;
   /** Whether enemies inside are slowed on each tick. */
   slow: boolean;
+  /** Enemy speed multiplier applied while inside (smaller = slower). The base
+   *  chord zone uses ZONE_SLOW_MUL; the evolved Sustain field slows harder. */
+  slowMul: number;
+  /** Damage-tick interval (s). The base zone uses ZONE_TICK_S; the evolved
+   *  Sustain field ticks faster (CHORD_SUSTAIN.tickS) for real DPS. */
+  tickS: number;
+  /** True for the evolved Chord "Sustain" field: a distinct, larger silhouette
+   *  in the view. */
+  evolved: boolean;
 }
 
 export interface Gem {
@@ -201,11 +230,48 @@ export interface Gem {
   tier: 'blue' | 'green' | 'red';
 }
 
+/** Kick "The Drop": an omnidirectional pressure ring spawned on every beat that
+ *  expands from its origin, damaging and hard-launching each enemy once as the
+ *  ring front reaches it (docs/phases/weapon-evolutions.md). Anchored at the
+ *  player's position at trigger time, like a VS shockwave. */
+interface KickPulse {
+  x: number;
+  y: number;
+  /** Seconds since spawn; the ring radius is maxRadius * (age / expandS). */
+  age: number;
+  damage: number;
+  /** Enemies already hit by THIS pulse, so each takes one hit as the front
+   *  passes and no enemy is chipped every frame it stays inside. */
+  hit: Set<Enemy>;
+}
+
+/** Bass "The Sub": a traveling wall — a long, thin damage band centered at
+ *  (x,y), facing its travel direction (dirX,dirY), extending +/- halfWidth to
+ *  each side and +/- thickness deep. It sweeps along its facing and grinds
+ *  enemies in the band on a re-hit cooldown. Rendered as a thick bar
+ *  perpendicular to travel (view.ts). */
+export interface BassWall {
+  x: number;
+  y: number;
+  /** Unit travel direction (also the wall's facing normal). */
+  dirX: number;
+  dirY: number;
+  halfWidth: number;
+  thickness: number;
+  speed: number;
+  damage: number;
+  lifeS: number;
+  /** Re-hit cooldown timer; the hit set clears when it lapses. */
+  rehitT: number;
+  hit: Set<Enemy>;
+}
+
 /** Fire-and-forget visuals the world requests and the view renders. */
 export type FxEvent =
   | { type: 'ring'; x: number; y: number; radius: number; color: number; dur: number; soft?: boolean }
   | { type: 'death'; x: number; y: number; radius: number; color: number; elite: boolean }
   | { type: 'whip'; x: number; y: number; side: 1 | -1; area: number; color: number }
+  | { type: 'kickpulse'; x: number; y: number; radius: number; color: number }
   | {
       type: 'arc';
       x: number;
@@ -288,6 +354,10 @@ export class RunWorld {
   readonly projectiles: Projectile[] = [];
   readonly zones: Zone[] = [];
   readonly gems: Gem[] = [];
+  /** Live Bass "The Sub" traveling walls (evolved bass only); read by the view. */
+  readonly bassWalls: BassWall[] = [];
+  /** Live Kick "The Drop" pressure rings (evolved kick only). */
+  private pulses: KickPulse[] = [];
 
   private rng: Rng;
   private control: () => { x: number; y: number };
@@ -391,6 +461,12 @@ export class RunWorld {
 
     switch (t.role) {
       case 'kick': {
+        // Evolved "The Drop": the facing strip becomes an omnidirectional
+        // pressure ring from the player's feet on every beat.
+        if (tier === EVOLVED_TIER) {
+          this.spawnKickPulse(conf.damage);
+          break;
+        }
         // Whip geometry and damage, while retaining Model A's audible Kick on
         // every gameplay trigger. A per-enemy 1.35 s lock below preserves the
         // reference weapon's target cadence despite the 122 BPM beat grid.
@@ -412,6 +488,24 @@ export class RunWorld {
         break;
       }
       case 'chord': {
+        if (tier === EVOLVED_TIER) {
+          // Sustain: a large, long-lived field dropped on the DENSEST pack that
+          // slows hard and lingers far longer than any other effect.
+          const target =
+            this.densestEnemy(ZONE_THROW_RANGE) ?? this.nearestEnemy(ZONE_THROW_RANGE);
+          const zc = { ...conf, radius: CHORD_SUSTAIN.radius, lifetimeS: CHORD_SUSTAIN.lifeS };
+          this.spawnZone(
+            target?.x ?? p.x,
+            target?.y ?? p.y,
+            zc,
+            color,
+            'chord',
+            CHORD_SUSTAIN.slowMul,
+            true,
+            CHORD_SUSTAIN.tickS,
+          );
+          break;
+        }
         // Thrown at the nearest enemy, not dropped underfoot: the zone has
         // to land where the horde actually is to be worth a pick.
         const target = this.nearestEnemy(ZONE_THROW_RANGE);
@@ -440,6 +534,12 @@ export class RunWorld {
         break;
       }
       case 'bass': {
+        // Evolved "The Sub": every trigger sends a real traveling wall sweeping
+        // across the arena (a proper wall, not a stretched wave).
+        if (tier === EVOLVED_TIER) {
+          this.spawnBassWall(conf.damage);
+          break;
+        }
         // Bass never multishots (no 'aimedfan' tag): one wide rolling wave.
         this.spawnProjectile('bass', this.aimDir(0.08), conf, color, v);
         break;
@@ -528,6 +628,8 @@ export class RunWorld {
     this.hash.clear();
     for (const e of this.enemies) if (!e.dead) this.hash.insert(e);
     this.updateKickStrikes();
+    this.updateKickPulses(dt);
+    this.updateBassWalls(dt);
     this.updateProjectiles(dt);
     this.updateZones(dt);
     this.updateGems(dt);
@@ -807,6 +909,7 @@ export class RunWorld {
       dashY: 0,
       dashing: false,
       slowT: 0,
+      slowMul: 1,
       knockX: 0,
       knockY: 0,
       knockT: 0,
@@ -873,6 +976,8 @@ export class RunWorld {
     this.gems.length = 0;
     if (this.fx) this.fx.length = 0;
     this.pendingKick.length = 0;
+    this.pulses.length = 0;
+    this.bassWalls.length = 0;
     this.overflowGem = null;
     this.hash.clear();
     this.queryBuf.length = 0;
@@ -887,7 +992,8 @@ export class RunWorld {
       let speed = e.speed;
       if (e.slowT > 0) {
         e.slowT -= dt;
-        speed *= ZONE_SLOW_MUL;
+        speed *= e.slowMul;
+        if (e.slowT <= 0) e.slowMul = 1; // slow lapsed: back to full speed
       }
       if (e.flashT > 0) e.flashT -= dt;
 
@@ -1169,6 +1275,39 @@ export class RunWorld {
     return best;
   }
 
+  /** The enemy with the most neighbours within CHORD_SUSTAIN.densityR, among
+   *  those in `range` of the player — where the evolved Chord "Sustain" field
+   *  wants to land. O(k^2) over the in-range set only, and called rarely (the
+   *  evolved chord fires ~twice a phrase). */
+  private densestEnemy(range: number): Enemy | null {
+    const px = this.player.x;
+    const py = this.player.y;
+    const r2 = range * range;
+    const cands: Enemy[] = [];
+    for (const e of this.enemies) {
+      if (e.dead) continue;
+      const dx = e.x - px;
+      const dy = e.y - py;
+      if (dx * dx + dy * dy <= r2) cands.push(e);
+    }
+    const dr2 = CHORD_SUSTAIN.densityR * CHORD_SUSTAIN.densityR;
+    let best: Enemy | null = null;
+    let bestN = -1;
+    for (const e of cands) {
+      let n = 0;
+      for (const o of cands) {
+        const dx = e.x - o.x;
+        const dy = e.y - o.y;
+        if (dx * dx + dy * dy <= dr2) n++;
+      }
+      if (n > bestN) {
+        bestN = n;
+        best = e;
+      }
+    }
+    return best;
+  }
+
   private aimDir(spread: number): { x: number; y: number } {
     const p = this.player;
     const best = this.nearestEnemy(AIM_RANGE);
@@ -1205,7 +1344,9 @@ export class RunWorld {
       orbitRadius: 0,
       rehitT: 0,
       shatter: 0,
+      shatterChild: 0,
       shard: false,
+      blade: false,
     };
   }
 
@@ -1222,13 +1363,16 @@ export class RunWorld {
     this.projectiles.push(pr);
   }
 
-  /** Arp: an orbiter that circles the player, chipping what it sweeps. */
+  /** Arp: an orbiter that circles the player, chipping what it sweeps. Evolved
+   *  "Arp Carousel" orbiters are blades — a bigger silhouette and a faster
+   *  re-hit — packed into a dense fixed-radius ring. */
   private spawnOrbiter(conf: WeaponConf, color: number, velocity: number): void {
     const angle = this.rng() * Math.PI * 2;
     const pr = this.baseProjectile('arp', conf, color, conf.damage * (0.8 + 0.4 * velocity));
     pr.pierce = Infinity;
     pr.orbitAngle = angle;
     pr.orbitRadius = conf.orbitRadius!;
+    pr.blade = this.tiers.get('arp') === EVOLVED_TIER;
     pr.x = this.player.x + Math.cos(angle) * pr.orbitRadius;
     pr.y = this.player.y + Math.sin(angle) * pr.orbitRadius;
     this.projectiles.push(pr);
@@ -1247,13 +1391,36 @@ export class RunWorld {
     const pr = this.baseProjectile('bell', conf, color, conf.damage * (0.8 + 0.4 * velocity));
     pr.vx = dir.x * conf.speed!;
     pr.vy = dir.y * conf.speed!;
-    pr.shatter = BELL.shards[tier - 1] ?? BELL.shards[0];
+    if (tier === EVOLVED_TIER) {
+      // Carillon: shatters into many shards, and each of THOSE shatters once
+      // more (depth 2) into secondaryShards. Sub-shards carry shatter 0.
+      pr.shatter = BELL_CARILLON.shards;
+      pr.shatterChild = BELL_CARILLON.secondaryShards;
+    } else {
+      pr.shatter = BELL.shards[tier - 1] ?? BELL.shards[0];
+    }
     this.projectiles.push(pr);
   }
 
-  /** Bell's shatter: fling a radial burst of small shard shots from (x,y). Each
-   *  shard is a bell projectile flagged so it can never itself re-shatter. */
-  private spawnShards(x: number, y: number, count: number, damage: number, color: number): void {
+  /** Bell's shatter: fling a radial burst of small shard shots from (x,y).
+   *  `childShatter` is the shatter count each shard itself carries: 0 for the
+   *  base Bell (shards never re-shatter) and BELL_CARILLON.secondaryShards for
+   *  the evolved cascade (each shard shatters once more). Sub-shards always get
+   *  0 (baseProjectile default), so the chain terminates at depth 2.
+   *
+   *  `source` is the enemy the parent shot just hit: each shard starts with it
+   *  in its hit set, so shards never re-hit the body they scattered off (Sivir
+   *  W). Without this, a shard spawned inside a tanky enemy is swallowed by that
+   *  same enemy on its first frame and can never reach the enemies behind it. */
+  private spawnShards(
+    x: number,
+    y: number,
+    count: number,
+    damage: number,
+    color: number,
+    childShatter = 0,
+    source?: Enemy,
+  ): void {
     const base = this.rng() * Math.PI * 2;
     for (let i = 0; i < count; i++) {
       const a = base + (i / count) * Math.PI * 2;
@@ -1269,6 +1436,8 @@ export class RunWorld {
       pr.vx = Math.cos(a) * BELL.shardSpeed;
       pr.vy = Math.sin(a) * BELL.shardSpeed;
       pr.shard = true;
+      pr.shatter = childShatter;
+      if (source) pr.hit.add(source); // scatter past the body it broke on
       this.projectiles.push(pr);
     }
   }
@@ -1357,6 +1526,94 @@ export class RunWorld {
     this.shove(e, fromX, fromY, e.speed * SHOVE_S);
   }
 
+  /** Kick "The Drop": spawn a pressure ring at the player's feet. */
+  private spawnKickPulse(damage: number): void {
+    const p = this.player;
+    this.pulses.push({ x: p.x, y: p.y, age: 0, damage, hit: new Set() });
+    this.fx?.push({
+      type: 'kickpulse',
+      x: p.x,
+      y: p.y,
+      radius: KICK_DROP.maxRadius,
+      color: KIT_COLORS.kick,
+    });
+  }
+
+  /** Grow each live pressure ring; damage + hard-launch each enemy once as the
+   *  expanding front reaches it, so inner enemies are cleared first and the ring
+   *  carves an outward bubble. Retired once fully expanded. */
+  private updateKickPulses(dt: number): void {
+    for (let i = this.pulses.length - 1; i >= 0; i--) {
+      const pulse = this.pulses[i];
+      pulse.age += dt;
+      const k = Math.min(1, pulse.age / KICK_DROP.expandS);
+      const r = KICK_DROP.maxRadius * k;
+      const near = this.hash.query(pulse.x, pulse.y, r + 48, this.queryBuf);
+      for (const e of near) {
+        if (e.dead || pulse.hit.has(e)) continue;
+        const dx = e.x - pulse.x;
+        const dy = e.y - pulse.y;
+        const reach = r + e.radius;
+        if (dx * dx + dy * dy > reach * reach) continue; // ring front not here yet
+        this.damageEnemy(e, pulse.damage, 'kick');
+        pulse.hit.add(e);
+        this.shove(e, pulse.x, pulse.y, KICK_DROP.launch);
+      }
+      if (pulse.age >= KICK_DROP.expandS) this.pulses.splice(i, 1);
+    }
+  }
+
+  /** Bass "The Sub": spawn a traveling wall sweeping toward the horde. */
+  private spawnBassWall(damage: number): void {
+    const p = this.player;
+    const aim = this.aimDir(0.04);
+    this.bassWalls.push({
+      x: p.x,
+      y: p.y,
+      dirX: aim.x,
+      dirY: aim.y,
+      halfWidth: BASS_SUB.halfWidth,
+      thickness: BASS_SUB.thickness,
+      speed: BASS_SUB.speed,
+      damage,
+      lifeS: BASS_SUB.lifeS,
+      rehitT: 0,
+      hit: new Set(),
+    });
+  }
+
+  /** Sweep each live wall along its facing; damage enemies inside the band
+   *  (within `thickness` along travel and `halfWidth` across), re-hitting on a
+   *  cooldown so an enemy caught in the moving band is ground as it passes. */
+  private updateBassWalls(dt: number): void {
+    for (let i = this.bassWalls.length - 1; i >= 0; i--) {
+      const w = this.bassWalls[i];
+      w.lifeS -= dt;
+      w.x += w.dirX * w.speed * dt;
+      w.y += w.dirY * w.speed * dt;
+      w.rehitT -= dt;
+      if (w.rehitT <= 0) {
+        w.hit.clear();
+        w.rehitT = BASS_SUB.rehitS;
+      }
+      const nx = w.dirX;
+      const ny = w.dirY; // along-travel axis (the wall's facing)
+      const tx = -w.dirY;
+      const ty = w.dirX; // lateral axis (along the wall)
+      const near = this.hash.query(w.x, w.y, w.halfWidth + 64, this.queryBuf);
+      for (const e of near) {
+        if (e.dead || w.hit.has(e)) continue;
+        const rx = e.x - w.x;
+        const ry = e.y - w.y;
+        if (Math.abs(rx * nx + ry * ny) > w.thickness + e.radius) continue; // not in the band's depth
+        if (Math.abs(rx * tx + ry * ty) > w.halfWidth + e.radius) continue; // past the wall's ends
+        this.damageEnemy(e, w.damage, 'bass');
+        w.hit.add(e);
+      }
+      if (w.lifeS <= 0) this.bassWalls.splice(i, 1);
+    }
+  }
+
   /** Clap: damage every enemy inside a forward cone (also point-blank). */
   private damageCone(
     x: number,
@@ -1398,15 +1655,17 @@ export class RunWorld {
       pr.lifeS -= dt;
 
       if (pr.role === 'arp') {
-        // Orbit the player; clear the hit set on a cooldown so a slow sweep
-        // keeps chipping the same enemy instead of touching it once.
+        // Orbit the player at a FIXED radius (the evolved Carousel is a bigger,
+        // denser ring — no breathing) and clear the hit set on a cooldown so
+        // the sweep keeps chipping. Evolved blades re-hit faster, so a full ring
+        // of them is reliable continuous DPS.
         pr.orbitAngle += ARP_OMEGA * dt;
         pr.x = p.x + Math.cos(pr.orbitAngle) * pr.orbitRadius;
         pr.y = p.y + Math.sin(pr.orbitAngle) * pr.orbitRadius;
         pr.rehitT -= dt;
         if (pr.rehitT <= 0) {
           pr.hit.clear();
-          pr.rehitT = ORBIT_REHIT_S;
+          pr.rehitT = pr.blade ? ARP_CAROUSEL.rehitS : ORBIT_REHIT_S;
         }
       } else {
         if (pr.homing) {
@@ -1449,10 +1708,14 @@ export class RunWorld {
         const sh = WEAPON_SHOVE[pr.role];
         if (sh) this.shove(e, pr.x, pr.y, sh);
         // Bell: the note shatters into a radial burst of shards on its first
-        // hit. shatter is 0 on a shard, so shards never re-shatter.
+        // hit. Base shards carry shatter 0 (never re-shatter); the evolved
+        // Carillon passes shatterChild so each shard shatters once more (depth
+        // 2). The burst spark fires only for the main shot / first generation
+        // (shard re-shatters are read through the shard shots themselves), so a
+        // full cascade cannot flood the fx queue.
         if (pr.role === 'bell' && pr.shatter > 0) {
-          this.spawnShards(pr.x, pr.y, pr.shatter, pr.damage * BELL.shardDamageMul, pr.color);
-          this.fx?.push({ type: 'spark', x: e.x, y: e.y, color: pr.color, n: 6, spread: 14 });
+          this.spawnShards(pr.x, pr.y, pr.shatter, pr.damage * BELL.shardDamageMul, pr.color, pr.shatterChild, e);
+          if (!pr.shard) this.fx?.push({ type: 'spark', x: e.x, y: e.y, color: pr.color, n: 6, spread: 14 });
           pr.shatter = 0;
         }
         // Per-hit spark (view-only, bounded to low-count roles).
@@ -1479,6 +1742,9 @@ export class RunWorld {
     conf: { damage: number; radius?: number; lifetimeS?: number },
     color: number,
     source: Role,
+    slowMul = ZONE_SLOW_MUL,
+    evolved = false,
+    tickS = ZONE_TICK_S,
   ): void {
     this.zones.push({
       x,
@@ -1490,6 +1756,9 @@ export class RunWorld {
       color,
       source,
       slow: true,
+      slowMul,
+      tickS,
+      evolved,
     });
   }
 
@@ -1500,13 +1769,19 @@ export class RunWorld {
 
       z.tickT -= dt;
       if (z.tickT <= 0) {
-        z.tickT = ZONE_TICK_S;
+        z.tickT = z.tickS;
         this.damageArea(z.x, z.y, z.radius, z.damage, z.source);
-        // The zone's other half: everything inside wades, it doesn't walk.
+        // The zone's other half: everything inside wades, it doesn't walk. Each
+        // tick refreshes the slow window and (re)sets its strength from THIS
+        // zone, so an enemy carries the strength of whatever zone last ticked it
+        // and recovers once it leaves (slowMul resets in moveEnemies).
         if (z.slow) {
           const inside = this.hash.query(z.x, z.y, z.radius + 24, this.queryBuf);
           for (const e of inside) {
-            if (!e.dead && circlesOverlap(z, e)) e.slowT = ZONE_TICK_S + 0.15;
+            if (!e.dead && circlesOverlap(z, e)) {
+              e.slowT = z.tickS + 0.15;
+              e.slowMul = z.slowMul;
+            }
           }
         }
       }
