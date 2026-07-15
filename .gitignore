@@ -4,6 +4,5 @@ dist/
 *.local
 .DS_Store
 .vercel
-bot-results/
 
 .claude/

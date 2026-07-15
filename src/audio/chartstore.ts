@@ -13,8 +13,7 @@ import { type Role } from './kits';
 
 const storageKey = (role: Role, tier: number) => `loop.chart.${role}.${tier}`;
 
-// The autoplay bot imports this store under Node, where localStorage does not
-// exist: headless runs always play the shipped charts, never local edits.
+// Non-browser tools have no localStorage and use the shipped charts.
 const storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> =
   typeof localStorage !== 'undefined'
     ? localStorage

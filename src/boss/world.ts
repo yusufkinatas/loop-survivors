@@ -13,7 +13,9 @@ export const BOSS_PLAYER = {
   hp: 100,
   speed: 258,
   radius: 11,
-  iframesS: 0.6,
+  // Keep ordinary hits aligned with the main run: both modes give a clear
+  // half-second recovery window, signalled by the shared red edge tint.
+  iframesS: 0.5,
   dashSpeed: 760,
   dashDurS: 0.15,
   // Near-minimal so the dash is almost always available against beat-frequent

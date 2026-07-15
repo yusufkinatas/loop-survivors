@@ -15,8 +15,9 @@ export const RUN = {
    * reference viewport, then multiplied by Mad Forest's normal x1.1. */
   playerSpeed: 82.5 * 1.1 * (800 / 456),
   playerRadius: 9 * (800 / 456),
-  /** The reference damage lock is about 120 ms. */
-  iframesS: 0.12,
+  /** A landed hit grants a clear half-second recovery window. The shared
+   * edge-tint feedback lasts for this same interval (style.css). */
+  iframesS: 0.5,
   /** Vampire Survivors' unmodified Magnet stat. */
   magnetRadius: 53,
   pickupRadius: 16,
@@ -78,8 +79,8 @@ export type EnemyKind =
   | 'circler'
   | 'shielded'
   | 'elite'
-  // Mad Forest parity roster. The legacy kinds above remain only so old
-  // replay URLs and the dormant pre-parity director can still deserialize.
+  // Mad Forest parity roster. The legacy kinds above remain for development
+  // fixtures and the dormant pre-parity director.
   | 'bat'
   | 'redBat'
   | 'redBat2'
@@ -165,8 +166,8 @@ export const BAT_SWARM_RADII = MAD_FOREST_FRAMES.batSwarm!.map(
   (frame) => legacyEnemyRadius(frame.width),
 ) as readonly number[];
 
-// The first eight entries and the legacy scaling fields remain only for old
-// replay/sandbox comparisons. RunWorld's active parity path reads the Mad
+// The first eight entries and legacy scaling fields remain for sandbox and
+// regression fixtures. RunWorld's active parity path reads the Mad
 // Forest entries below and never applies those continuous scaling fields.
 export const ENEMIES: Record<EnemyKind, EnemyConf> & {
   spawnMargin: number;

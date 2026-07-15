@@ -95,8 +95,8 @@ convincingly — first candidates for CC0 samples if they fail the ear.
   short **automatic dash / speed surge** on the phrase. Sound anticipates,
   body responds.
 - **Small damage, never zero.** Model A stays intact (every trigger is still
-  damage + sound), the autoplay bot's damage-share floor checks keep working
-  without special cases, and the weapon reads alive on pickup.
+  damage + sound), damage attribution works without special cases, and the
+  weapon reads alive on pickup.
 - The utility count is **capped at two**. Milder effects already in the
   catalog (chord's slow, acid's pull, crash's knockback, heartbeat's drag) are
   seasoning and do not count. A third utility weapon costs a redesign

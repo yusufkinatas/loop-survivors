@@ -622,24 +622,26 @@ input[type='range'] {
   pointer-events: none;
 }
 
-/* Bullet-hell readability: hit feedback is an edge vignette, never a
-   center-flooding wash, so the play area stays legible. */
+/* Bullet-hell readability: every landed hit holds a light red edge tint for
+   the same half-second as the player's recovery window. It never floods the
+   center, so the play area stays legible. */
 .hit-flash {
   position: absolute;
   inset: 0;
-  background: radial-gradient(120% 120% at 50% 50%, transparent 52%, rgba(255, 77, 94, 0.55) 100%);
+  background: radial-gradient(120% 120% at 50% 50%, transparent 52%, rgba(255, 77, 94, 0.42) 100%);
   opacity: 0;
   pointer-events: none;
   z-index: 2;
 }
 
 .hit-flash.on {
-  animation: hitflash 0.25s ease-out;
+  animation: hitflash 0.5s linear;
 }
 
 @keyframes hitflash {
-  0% {
-    opacity: 0.9;
+  0%,
+  78% {
+    opacity: 0.62;
   }
   100% {
     opacity: 0;
@@ -817,59 +819,6 @@ button.big {
   gap: 6px;
   flex-wrap: wrap;
   justify-content: flex-end;
-}
-
-/* Replay speed buttons: top-right, same look as the debug buttons. */
-.replay-speed {
-  position: absolute;
-  top: max(10px, env(safe-area-inset-top));
-  right: max(12px, env(safe-area-inset-right));
-  display: flex;
-  gap: 6px;
-  z-index: 6;
-}
-
-/* Replay seek bar: bottom-center, video-style scrubbing in 15s stops. */
-.replay-seek {
-  position: absolute;
-  bottom: max(48px, calc(env(safe-area-inset-bottom) + 36px));
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: min(56vw, 520px);
-  padding: var(--sp-2) var(--sp-3);
-  background: rgba(34, 34, 42, 0.85);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  z-index: 6;
-}
-
-.replay-seek input[type='range'] {
-  flex: 1;
-  accent-color: var(--signal);
-}
-
-.replay-seek span {
-  min-width: 38px;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink);
-}
-
-/* Shown while a seek computes: the picture freezes behind this note. */
-.seek-overlay {
-  position: absolute;
-  top: 42%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background: rgba(34, 34, 42, 0.92);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  padding: var(--sp-3) var(--sp-5);
-  z-index: 7;
-  font-variant-numeric: tabular-nums;
 }
 
 /* The pause overlay is a .screen (game.ts gives it both classes); only its
