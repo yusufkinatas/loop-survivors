@@ -356,7 +356,9 @@ export class RunView {
     this.sync(this.world.bassWalls, this.bassWallGfx, makeBassWallGfx, (w, gfx) => {
       gfx.position.set(w.x, w.y);
       gfx.rotation = Math.atan2(w.dirY, w.dirX);
-      gfx.alpha = Math.min(1, w.lifeS * 1.5);
+      // Fade in fast (no hard pop) and fade out at end of life.
+      gfx.alpha = Math.min(1, w.age / 0.12) * Math.min(1, w.lifeS * 1.5);
+      drawBassWall(gfx, w);
     });
     const p = this.world.player;
     const cameraX = p.x + PLAYER_FOOT_OFFSET.x;
@@ -1156,20 +1158,49 @@ function makeZoneGfx(z: Zone): Graphics {
   return gfx;
 }
 
-function makeBassWallGfx(w: BassWall): Graphics {
-  // Bass "The Sub": a thick bar perpendicular to travel. Local +x is the travel
-  // direction (thin), +/-y is the wall's length. A soft body, a solid core band,
-  // and a bright leading edge read it as a wall of low-end energy sweeping past
-  // — not a stretched ellipse. The sync rotates it to the travel angle.
+function makeBassWallGfx(_w: BassWall): Graphics {
+  // The crest's width changes every frame (it opens as it rolls), so the gfx is
+  // an empty additive-tinted canvas that drawBassWall redraws each frame.
   const g = new Graphics();
-  const hw = w.halfWidth;
-  const th = w.thickness;
-  g.roundRect(-th * 1.7, -hw, th * 3.4, hw * 2, th).fill({ color: 0xffffff, alpha: 0.12 });
-  g.roundRect(-th, -hw, th * 2, hw * 2, th).fill({ color: 0xffffff, alpha: 0.42 });
-  g.roundRect(th * 0.4, -hw, th, hw * 2, th * 0.4).fill({ color: 0xffffff, alpha: 0.9 });
   g.tint = KIT_COLORS.bass;
   g.blendMode = 'add';
   return g;
+}
+
+/** Bass "The Sub": a bright bowed crest line leading two dimmer trailing ripple
+ *  arcs over a soft glow body. Local +x is the travel direction, +/-y the crest
+ *  length; each line bows FORWARD at its center (a wave crest), tapering to the
+ *  band face at the ends. The bright leading stroke is the contact line, so it
+ *  reads instantly as a low-frequency wave, not a translucent slab. Redrawn
+ *  each frame because the crest opens (w.halfWidth grows) as it unfurls. */
+function drawBassWall(g: Graphics, w: BassWall): void {
+  g.clear();
+  const hw = Math.max(1, w.halfWidth);
+  const th = w.thickness;
+  const bow = 28; // forward bulge of the crest center, in world units
+  const N = 9;
+  const bowPts = (baseX: number): number[] => {
+    const pts: number[] = [];
+    for (let i = 0; i < N; i++) {
+      const yy = -hw + (i / (N - 1)) * hw * 2;
+      const k = yy / hw;
+      pts.push(baseX + bow * (1 - k * k), yy);
+    }
+    return pts;
+  };
+  const arc = (baseX: number, width: number, alpha: number): void => {
+    const p = bowPts(baseX);
+    g.moveTo(p[0], p[1]);
+    for (let i = 2; i < p.length; i += 2) g.lineTo(p[i], p[i + 1]);
+    g.stroke({ width, color: 0xffffff, alpha });
+  };
+  // soft glow body (crest front back to the trailing edge), then the trailing
+  // ripple arcs, then the bright leading crest on top.
+  const crest = bowPts(th);
+  g.poly([...crest, -th, hw, -th, -hw]).fill({ color: 0xffffff, alpha: 0.12 });
+  arc(th - th * 1.6, 3, 0.5);
+  arc(th - th * 3.2, 2, 0.28);
+  arc(th, 5, 0.95);
 }
 
 function makeGroundPick(pk: GroundPickView): Container {

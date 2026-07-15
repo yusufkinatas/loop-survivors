@@ -877,19 +877,24 @@ export const KICK_DROP = {
   launch: 90,
 };
 
-/** Bass "The Sub": every evolved trigger fires a real traveling WALL — a long,
- *  thin damage band, `halfWidth` to each side and `thickness` deep, sweeping
- *  along the aim at `speed` for `lifeS`. It grinds enemies it overlaps on a
- *  `rehitS` cooldown (an enemy caught in the moving band takes a hit as it
- *  passes). Rendered as a thick glowing bar perpendicular to travel — a proper
- *  wall, not a stretched ellipse. Several sweep at once (the evolved chart fires
- *  a few per bar), so the low end rolls continuously across the arena. */
+/** Bass "The Sub": every evolved trigger fires a traveling CREST — a bright
+ *  bowed wavefront seated `spawnAhead` in front of the player that opens from a
+ *  narrow `startHalfWidth` seed to `halfWidth` over `openS` (so it unfurls
+ *  forward, never popping in full-size on the player) and rolls along the aim at
+ *  `speed` for `lifeS`. Its damage band is `thickness` deep and the CURRENT
+ *  (growing) half-width across; it grinds enemies on a `rehitS` cooldown as it
+ *  passes. Rendered as a bright crest line + trailing ripple arcs (view.ts), so
+ *  it reads clearly as a low-frequency wave, not a translucent slab. Several
+ *  sweep at once (a few triggers per bar), so the low end rolls continuously. */
 export const BASS_SUB = {
-  halfWidth: 300,
-  thickness: 22,
+  startHalfWidth: 40,
+  halfWidth: 320,
+  thickness: 20,
   speed: 150,
-  lifeS: 4.2,
+  lifeS: 3.0,
   rehitS: 0.4,
+  spawnAhead: 40,
+  openS: 0.35,
 };
 
 /** Chord "Sustain": the large, long-lived placed kill-field. Dropped on the

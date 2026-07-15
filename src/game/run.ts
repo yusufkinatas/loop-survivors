@@ -256,11 +256,17 @@ export interface BassWall {
   /** Unit travel direction (also the wall's facing normal). */
   dirX: number;
   dirY: number;
+  /** CURRENT lateral half-length; grows from a narrow seed to maxHalfWidth over
+   *  BASS_SUB.openS, so the crest unfurls instead of popping in full-size. Both
+   *  the hitbox and the view read this. */
   halfWidth: number;
+  maxHalfWidth: number;
   thickness: number;
   speed: number;
   damage: number;
   lifeS: number;
+  /** Seconds since spawn; drives the width open and the alpha fade-in. */
+  age: number;
   /** Re-hit cooldown timer; the hit set clears when it lapses. */
   rehitT: number;
   hit: Set<Enemy>;
@@ -1563,34 +1569,44 @@ export class RunWorld {
     }
   }
 
-  /** Bass "The Sub": spawn a traveling wall sweeping toward the horde. */
+  /** Bass "The Sub": spawn a traveling crest, seated AHEAD of the player and
+   *  starting narrow, so it unfurls forward instead of popping in on top of the
+   *  player at full width. */
   private spawnBassWall(damage: number): void {
     const p = this.player;
     const aim = this.aimDir(0.04);
     this.bassWalls.push({
-      x: p.x,
-      y: p.y,
+      x: p.x + aim.x * BASS_SUB.spawnAhead,
+      y: p.y + aim.y * BASS_SUB.spawnAhead,
       dirX: aim.x,
       dirY: aim.y,
-      halfWidth: BASS_SUB.halfWidth,
+      halfWidth: BASS_SUB.startHalfWidth,
+      maxHalfWidth: BASS_SUB.halfWidth,
       thickness: BASS_SUB.thickness,
       speed: BASS_SUB.speed,
       damage,
       lifeS: BASS_SUB.lifeS,
+      age: 0,
       rehitT: 0,
       hit: new Set(),
     });
   }
 
-  /** Sweep each live wall along its facing; damage enemies inside the band
-   *  (within `thickness` along travel and `halfWidth` across), re-hitting on a
-   *  cooldown so an enemy caught in the moving band is ground as it passes. */
+  /** Sweep each live crest along its facing, opening its width from the narrow
+   *  seed to maxHalfWidth (ease-out), and damage enemies inside the band (within
+   *  `thickness` along travel and the CURRENT `halfWidth` across), re-hitting on
+   *  a cooldown so an enemy caught in the moving band is ground as it passes.
+   *  The growing width means edge enemies are hit only once the crest opens out
+   *  to them, matching the unfurling visual. */
   private updateBassWalls(dt: number): void {
     for (let i = this.bassWalls.length - 1; i >= 0; i--) {
       const w = this.bassWalls[i];
+      w.age += dt;
       w.lifeS -= dt;
       w.x += w.dirX * w.speed * dt;
       w.y += w.dirY * w.speed * dt;
+      const k = Math.min(1, w.age / BASS_SUB.openS);
+      w.halfWidth = w.maxHalfWidth - (w.maxHalfWidth - BASS_SUB.startHalfWidth) * (1 - k) * (1 - k);
       w.rehitT -= dt;
       if (w.rehitT <= 0) {
         w.hit.clear();
