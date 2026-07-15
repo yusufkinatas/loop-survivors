@@ -5,6 +5,11 @@
 
 import { type Kit, type Role } from '../audio/kits';
 import { SLOTS, SLOT_LABEL, ownerOfSlot, supportedRoster } from './band';
+import {
+  EVOLUTION_BY_ROLE,
+  GEARS,
+  type GearId,
+} from './evolutions';
 
 import { TIER_COUNT } from '../audio/charts';
 /** Tier numerals used by the band rack. */
@@ -32,6 +37,7 @@ export class Hud {
   private pulse: HTMLElement;
   private toastStack: HTMLElement;
   private rack: HTMLElement;
+  private gearRack: HTMLElement;
   private screen: HTMLElement | null = null;
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
   private kits: Map<Role, Kit>;
@@ -61,11 +67,14 @@ export class Hud {
     // The band rack: seven sockets, one per band position, empty until hired.
     this.rack = el('div', 'band-rack', root);
     this.rack.style.display = 'none';
+    this.gearRack = el('div', 'gear-rack', root);
+    this.gearRack.style.display = 'none';
   }
 
   showHud(show: boolean): void {
     this.bar.style.display = show ? '' : 'none';
     this.rack.style.display = show ? '' : 'none';
+    this.gearRack.style.display = show ? '' : 'none';
   }
 
   /** The band rack (docs/phases/the-band.md): seven typed sockets in rack
@@ -81,6 +90,8 @@ export class Hud {
     into: HTMLElement = this.rack,
     deactivated?: ReadonlySet<Role>,
     pending?: ReadonlySet<Role>,
+    evolved?: ReadonlySet<Role>,
+    pendingEvolution?: ReadonlySet<Role>,
   ): void {
     into.replaceChildren();
     for (const slot of SLOTS) {
@@ -102,13 +113,46 @@ export class Hud {
       if (owner && !dropped) {
         const kit = this.kits.get(owner)!;
         socket.style.setProperty('--voice-color', kit.color);
-        el('span', 'socket-name', socket, kit.name);
+        const evolution = EVOLUTION_BY_ROLE.get(owner);
+        const isEvolved = evolved?.has(owner) ?? false;
+        const evolutionPending = pendingEvolution?.has(owner) ?? false;
+        if (evolutionPending) socket.classList.add('pending-evolution');
+        if (isEvolved) socket.classList.add('evolved');
+        el('span', 'socket-name', socket, isEvolved && evolution ? evolution.name : kit.name);
         const tier = tiers.get(owner) ?? 1;
         const pips = el('span', 'socket-pips', socket);
         for (let i = 1; i <= TIER_COUNT; i++) {
           el('span', `pip ${i <= tier ? 'on' : ''}`, pips);
         }
+        if (isEvolved || evolutionPending) {
+          el('span', `evolution-diamond${isEvolved ? ' on' : ''}`, pips, '◆');
+        }
       }
+    }
+  }
+
+  /** Four one-level Gear sockets. Pending Gear occupies a socket immediately
+   *  and pulses until its passive state lands on the next heard bar. */
+  renderGear(
+    owned: ReadonlySet<GearId>,
+    pending: ReadonlySet<GearId> = new Set(),
+    into: HTMLElement = this.gearRack,
+    expanded = false,
+  ): void {
+    into.replaceChildren();
+    el('span', 'gear-title', into, 'Gear');
+    const ids: GearId[] = [...owned];
+    for (const id of pending) if (!owned.has(id)) ids.push(id);
+    for (let i = 0; i < 4; i++) {
+      const id = ids[i];
+      const socket = el('div', `gear-socket${id ? ' filled' : ' empty'}${id && pending.has(id) ? ' pending' : ''}`, into);
+      if (!id) continue;
+      const conf = GEARS[id];
+      socket.style.setProperty('--voice-color', `#${conf.color.toString(16).padStart(6, '0')}`);
+      el('span', 'gear-icon', socket, '◇');
+      const copy = el('span', 'gear-copy', socket);
+      el('span', 'gear-name', copy, conf.name);
+      if (expanded) el('span', 'gear-detail', copy, conf.rackLine);
     }
   }
 
@@ -129,7 +173,8 @@ export class Hud {
 
   /** Level-up affirmation: a full-screen signal-colored edge vignette, the
    *  positive twin of hitFlash. Fired on every applied pick. */
-  levelPulse(): void {
+  levelPulse(color = '#59ffd1'): void {
+    this.pulse.style.setProperty('--pulse-color', color);
     this.pulse.classList.remove('on');
     void this.pulse.offsetWidth;
     this.pulse.classList.add('on');
@@ -259,6 +304,7 @@ export class Hud {
       level: number;
       damageByRole: Partial<Record<Role, number>>;
       killsByRole: Partial<Record<Role, number>>;
+      evolved: ReadonlySet<Role>;
     },
     onRetry: () => void,
   ): void {
@@ -277,7 +323,8 @@ export class Hud {
         const kit = this.kits.get(role)!;
         const pct = Math.round((dmg / total) * 100);
         const kills = stats.killsByRole[role] ?? 0;
-        const chip = el('span', 'kill-chip', row, `${kit.name} ${pct}% (${kills})`);
+        const evolution = stats.evolved.has(role) ? EVOLUTION_BY_ROLE.get(role) : undefined;
+        const chip = el('span', 'kill-chip', row, `${evolution?.name ?? kit.name} ${pct}% (${kills})`);
         chip.style.setProperty('--voice-color', kit.color);
       }
     }

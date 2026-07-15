@@ -743,7 +743,8 @@ export async function mountDocumentationLab(
       let rivalOffers = 0;
       let ownerTierUps = 0;
       for (let i = 0; i < 128; i++) {
-        for (const offer of rollOffers(tiers, rng, 180)) {
+        for (const offer of rollOffers(tiers, new Set(), rng, 180)) {
+          if (offer.kind !== 'weapon') continue;
           if (offer.role === rival) rivalOffers++;
           if (offer.role === owner && offer.tier === 2) ownerTierUps++;
         }

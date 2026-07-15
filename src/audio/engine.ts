@@ -23,6 +23,10 @@ export interface Voice {
   chart: Chart;
   /** Ladder tier 1-4 the voice is playing. */
   tier: number;
+  /** Evolution is orthogonal to tier: evolved voices keep their tier-IV chart.
+   *  Sub-phase A snapshots this into gameplay triggers; evolved sound layers
+   *  arrive in the later audio-gated sub-phase. */
+  evolved: boolean;
   enabled: boolean;
   gain: GainNode;
   /** Sidechain node between gain and the output chain: the kick dips it on the
@@ -51,6 +55,9 @@ export interface ScheduledTrigger {
   step: number;
   variant?: string;
   note?: number;
+  /** State captured when lookahead schedules the event, so gameplay cannot see
+   *  a newer mutable evolution state than the sound it is paired with. */
+  evolved: boolean;
 }
 
 export type TriggerListener = (t: ScheduledTrigger) => void;
@@ -153,6 +160,7 @@ export class MusicEngine {
         kit,
         chart: getChart(role, 1),
         tier: 1,
+        evolved: false,
         enabled: false,
         gain,
         duck,
@@ -356,6 +364,14 @@ export class MusicEngine {
     if (!voice) return;
     voice.tier = Math.max(1, Math.min(TIER_COUNT, tier));
     voice.chart = getChart(role, voice.tier);
+  }
+
+  /** Evolution never changes the chart or tier. The evolved audio treatment is
+   *  layered onto this state in Sub-phase B; gameplay already receives the
+   *  exact lookahead snapshot through ScheduledTrigger. */
+  setVoiceEvolved(role: Role, on: boolean): void {
+    const voice = this.voices.get(role);
+    if (voice) voice.evolved = on;
   }
 
   setVoiceGain(role: Role, value: number): void {
@@ -593,6 +609,7 @@ export class MusicEngine {
         step: phraseStep,
         variant: ev.variant,
         note: ev.note,
+        evolved: voice.evolved,
       },
     });
     // If no consumer is draining (hidden tab pauses rAF), drop stale entries

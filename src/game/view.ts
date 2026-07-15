@@ -7,7 +7,10 @@ import { Container, Graphics, GraphicsContext, Text, TextStyle } from 'pixi.js';
 import type { Role } from '../audio/kits';
 import { RUN } from './config';
 import { drawWeaponIcon } from './weaponicons';
+import { drawGearIcon } from './gearicons';
+import type { GearId } from './evolutions';
 import {
+  type Chest,
   KICK_GEOMETRY,
   PLAYER_FOOT_OFFSET,
   type Enemy,
@@ -205,12 +208,13 @@ const DMG_STYLE = new TextStyle({
 export interface GroundPickView {
   x: number;
   y: number;
-  role: Role;
   color: number;
-  /** Instrument name, e.g. "Shaker". */
+  icon: { kind: 'weapon'; role: Role } | { kind: 'gear'; gear: GearId };
   name: string;
-  /** Level line: "1" for a new pick, "2 → 3" for a tier-up. */
-  level: string;
+  detail: string;
+  rarity: 'normal' | 'evolution';
+  /** Labels grow toward the player so long Gear/evolution copy stays on-screen. */
+  labelSide: 'left' | 'center' | 'right';
 }
 
 const PICK_NAME_STYLE = new TextStyle({
@@ -221,9 +225,12 @@ const PICK_NAME_STYLE = new TextStyle({
 });
 const PICK_LEVEL_STYLE = new TextStyle({
   fontFamily: 'system-ui, sans-serif',
-  fontSize: 14,
+  fontSize: 12,
   fontWeight: '600',
   fill: 0xdfe4ee,
+  align: 'center',
+  wordWrap: true,
+  wordWrapWidth: 190,
 });
 const PICK_COIN_R = 27; // coin radius, world units
 const PICK_ICON_S = 15; // glyph half-extent, world units
@@ -244,6 +251,7 @@ export class RunView {
   private projectileGfx = new Map<Projectile, Graphics>();
   private zoneGfx = new Map<Zone, Graphics>();
   private gemGfx = new Map<Gem, GemGfx>();
+  private chestGfx = new Map<Chest, Container>();
   // Level-up ground picks: shell-owned, so they ride a dedicated layer that is
   // re-topped each frame (entities are added to the stage as they spawn, which
   // would otherwise draw the horde over the reward).
@@ -297,17 +305,17 @@ export class RunView {
 
   /** Bigger level-up burst: a few layered signal-colored rings plus a soft
    *  screen flash, for the "you levelled" moment. View-only. */
-  levelBurst(x: number, y: number): void {
+  levelBurst(x: number, y: number, color = 0x59ffd1): void {
     for (const grow of [7, 11, 15]) {
       const g = new Graphics().circle(0, 0, 26).stroke({ width: 5, color: 0xffffff });
-      g.tint = 0x59ffd1;
+      g.tint = color;
       g.position.set(x, y);
       g.scale.set(0.15);
       g.blendMode = 'add';
       this.stage.addChild(g);
       this.pops.push({ gfx: g, t: 0, dur: 0.72, grow });
     }
-    this.flashes.push({ start: this.world.timeS, dur: 0.5, color: 0x59ffd1, alpha: 0.2 });
+    this.flashes.push({ start: this.world.timeS, dur: 0.5, color, alpha: 0.2 });
   }
 
   /** Replace the on-ground level-up items (empty array clears them). The shell
@@ -367,6 +375,10 @@ export class RunView {
       gfx.renderable = visible;
       if (visible) gfx.position.set(g.x, g.y);
     });
+    this.sync(this.world.chests, this.chestGfx, makeChestGfx, (chest, gfx) => {
+      gfx.position.set(chest.x, chest.y);
+      gfx.scale.set(1 + 0.04 * Math.sin(this.world.timeS * 3));
+    });
     this.updatePops(dt);
     this.updateFloaters(dt);
     this.updateGroundPicks();
@@ -404,6 +416,7 @@ export class RunView {
     this.projectileGfx.clear();
     this.zoneGfx.clear();
     this.gemGfx.clear();
+    this.chestGfx.clear();
     this.groundPickGfx.length = 0; // stage.destroy already freed the graphics
     this.pops.length = 0;
     this.deathBurstCount = 0;
@@ -1123,23 +1136,65 @@ function makeGroundPick(pk: GroundPickView): Container {
   // context so destroy({children:true}) frees the container without leaking an
   // owned context and without over-freeing the shared glow/glyph contexts.
   const coin = new Graphics(
-    cachedShape(`coin:${pk.color}`, (cc) => {
-      cc.circle(0, 0, PICK_COIN_R).fill(0x0a0b0f);
-      cc.circle(0, 0, PICK_COIN_R).stroke({ width: 3, color: pk.color, alpha: 0.95 });
+    cachedShape(`coin:${pk.icon.kind}:${pk.rarity}:${pk.color}`, (cc) => {
+      if (pk.icon.kind === 'gear') {
+        const pts: number[] = [];
+        for (let i = 0; i < 6; i++) {
+          const a = -Math.PI / 2 + (i / 6) * Math.PI * 2;
+          pts.push(Math.cos(a) * PICK_COIN_R, Math.sin(a) * PICK_COIN_R);
+        }
+        cc.poly(pts).fill(0x0a0b0f).stroke({ width: 3, color: pk.color, alpha: 0.95 });
+        cc.poly(pts.map((n) => n * 0.78)).stroke({ width: 1.5, color: pk.color, alpha: 0.6 });
+      } else {
+        cc.circle(0, 0, PICK_COIN_R).fill(0x0a0b0f);
+        cc.circle(0, 0, PICK_COIN_R).stroke({ width: 3, color: pk.color, alpha: 0.95 });
+        if (pk.rarity === 'evolution') {
+          cc.circle(0, 0, PICK_COIN_R + 6).stroke({ width: 3, color: 0xffd76b, alpha: 0.95 });
+          for (let i = 0; i < 8; i++) {
+            const a = (i / 8) * Math.PI * 2;
+            cc.moveTo(Math.cos(a) * (PICK_COIN_R + 3), Math.sin(a) * (PICK_COIN_R + 3))
+              .lineTo(Math.cos(a) * (PICK_COIN_R + 9), Math.sin(a) * (PICK_COIN_R + 9));
+          }
+          cc.stroke({ width: 2, color: 0xffd76b, alpha: 0.9 });
+        }
+      }
     }),
   );
-  const icon = new Graphics(
-    cachedShape(`wicon:${pk.role}`, (cc) => drawWeaponIcon(cc, pk.role, PICK_ICON_S)),
-  );
+  const iconKey = pk.icon.kind === 'weapon' ? `wicon:${pk.icon.role}` : `gicon:${pk.icon.gear}`;
+  const icon = new Graphics(cachedShape(iconKey, (cc) => {
+    if (pk.icon.kind === 'weapon') drawWeaponIcon(cc, pk.icon.role, PICK_ICON_S);
+    else drawGearIcon(cc, pk.icon.gear, PICK_ICON_S);
+  }));
   icon.tint = pk.color;
   const name = new Text({ text: pk.name, style: PICK_NAME_STYLE });
-  name.anchor.set(0.5);
-  name.position.set(0, PICK_COIN_R + 15);
+  const anchorX = pk.labelSide === 'left' ? 1 : pk.labelSide === 'right' ? 0 : 0.5;
+  const labelX = pk.labelSide === 'left' ? 18 : pk.labelSide === 'right' ? -18 : 0;
+  name.anchor.set(anchorX, 0.5);
+  name.position.set(labelX, PICK_COIN_R + 15);
   name.tint = pk.color;
-  const level = new Text({ text: pk.level, style: PICK_LEVEL_STYLE });
-  level.anchor.set(0.5);
-  level.position.set(0, PICK_COIN_R + 34);
-  c.addChild(glow, coin, icon, name, level);
+  const detail = new Text({ text: pk.detail, style: PICK_LEVEL_STYLE });
+  detail.anchor.set(anchorX, 0);
+  detail.position.set(labelX, PICK_COIN_R + 27);
+  c.addChild(glow, coin, icon, name, detail);
+  return c;
+}
+
+function makeChestGfx(chest: Chest): Container {
+  const c = new Container();
+  const glow = makeGlow(34, 0xffd76b);
+  glow.alpha = 0.42;
+  const body = new Graphics(
+    cachedShape('reward-chest', (g) => {
+      g.roundRect(-24, -16, 48, 32, 5).fill(0x17120a);
+      g.roundRect(-24, -16, 48, 32, 5).stroke({ width: 3, color: 0xffd76b });
+      g.rect(-24, -4, 48, 8).fill(0x8a5d18);
+      g.roundRect(-6, -7, 12, 15, 3).fill(0xffd76b);
+      g.moveTo(-20, -16).quadraticCurveTo(0, -30, 20, -16)
+        .stroke({ width: 4, color: 0xffd76b });
+    }),
+  );
+  c.position.set(chest.x, chest.y);
+  c.addChild(glow, body);
   return c;
 }
 

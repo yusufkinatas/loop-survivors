@@ -46,6 +46,7 @@ import {
 } from './madforest';
 import type { Rng } from './rng';
 import { SpatialHash, circlesOverlap } from './spatial';
+import type { GearId } from './evolutions';
 
 /** Roles that emit a per-hit spark on impact. Bounded to low-count roles so
  *  a 500-enemy event frame never floods the fx queue. */
@@ -147,8 +148,8 @@ export interface Enemy {
   /** Scripted event expiry; 0 means normal lifetime/recycling. */
   despawnAt: number;
   knockbackMul: number;
-  /** Project-native chest substitute chance assigned by the stage row. */
-  upgradeChance: number;
+  /** Chance that this boss drops one physical chest on death. */
+  chestChance: number;
 }
 
 export interface Projectile {
@@ -202,6 +203,13 @@ export interface Gem {
   tier: 'blue' | 'green' | 'red';
 }
 
+/** A persistent boss reward. Chests are simulation-owned, never magnetized,
+ *  recycled, blocked, damaged, or despawned. */
+export interface Chest {
+  x: number;
+  y: number;
+}
+
 /** Fire-and-forget visuals the world requests and the view renders. */
 export type FxEvent =
   | { type: 'ring'; x: number; y: number; radius: number; color: number; dur: number; soft?: boolean }
@@ -224,6 +232,7 @@ export type FxEvent =
 
 export interface RunEvents {
   onLevelUp(level: number): void;
+  onChestCollected(): void;
   onDeath(): void;
   onVictory(): void;
   onHit(): void;
@@ -262,6 +271,9 @@ export interface RunWorldOpts {
 export class RunWorld {
   /** Owned weapons and their ladder tier (1-4). */
   readonly tiers = new Map<Role, number>();
+  /** Four-socket silent Gear inventory and evolved weapon identities. */
+  readonly gear = new Set<GearId>();
+  readonly evolved = new Set<Role>();
 
   player = {
     x: 0,
@@ -291,6 +303,7 @@ export class RunWorld {
   readonly projectiles: Projectile[] = [];
   readonly zones: Zone[] = [];
   readonly gems: Gem[] = [];
+  readonly chests: Chest[] = [];
 
   private rng: Rng;
   private control: () => { x: number; y: number };
@@ -475,6 +488,20 @@ export class RunWorld {
   /** Sandbox loadout editor: drop a weapon entirely. */
   removeWeapon(role: Role): void {
     this.tiers.delete(role);
+    this.evolved.delete(role);
+  }
+
+  addGear(gear: GearId): void {
+    this.gear.add(gear);
+  }
+
+  removeGear(gear: GearId): void {
+    this.gear.delete(gear);
+  }
+
+  setEvolved(role: Role, on: boolean): void {
+    if (on) this.evolved.add(role);
+    else this.evolved.delete(role);
   }
 
   /** The single build-transform pipeline: soundset multiplier plus Antonio's
@@ -543,6 +570,7 @@ export class RunWorld {
     this.updateProjectiles(dt);
     this.updateZones(dt);
     this.updateGems(dt);
+    this.updateChests();
     this.contactDamage(dt);
 
     this.reapEnemies();
@@ -616,7 +644,7 @@ export class RunWorld {
         const before = this.enemies.length;
         this.spawnEnemy(event.kind, undefined, 1, true);
         const spawned = this.enemies.length > before ? this.enemies[this.enemies.length - 1] : null;
-        if (spawned) spawned.upgradeChance = event.rewardChance;
+        if (spawned) spawned.chestChance = event.rewardChance;
       } else if (event.type === 'batSweep') {
         if (this.rng() < event.chance) this.spawnBatSweep(event.kind, event.count);
       } else {
@@ -832,7 +860,7 @@ export class RunWorld {
       moveY,
       despawnAt,
       knockbackMul: stats.knockback,
-      upgradeChance: 0,
+      chestChance: 0,
     };
     this.enemies.push(enemy);
     return enemy;
@@ -883,6 +911,7 @@ export class RunWorld {
     this.projectiles.length = 0;
     this.zones.length = 0;
     this.gems.length = 0;
+    this.chests.length = 0;
     if (this.fx) this.fx.length = 0;
     this.pendingKick.length = 0;
     this.overflowGem = null;
@@ -1090,11 +1119,8 @@ export class RunWorld {
         elite: ENEMIES[e.kind].boss === true,
       });
       this.spawnGem(e.x, e.y, e.xp);
-      // Chests are outside this game's item vocabulary. Preserve each stage
-      // row's any-chest chance, but translate a successful roll directly into
-      // one project-native weapon upgrade pick.
-      if (e.upgradeChance > 0 && this.rng() < e.upgradeChance) {
-        this.events.onLevelUp(this.level);
+      if (e.chestChance > 0 && this.rng() < e.chestChance) {
+        this.spawnChest(e.x, e.y);
       }
       if (e.kind === 'splitter') this.spawnChildren(e);
     }
@@ -1596,6 +1622,31 @@ export class RunWorld {
         if (g === this.overflowGem) this.overflowGem = null;
         this.checkLevel();
       }
+    }
+  }
+
+  /** Sandbox fixture and boss-drop seam. A chest stays exactly where it lands
+   *  until the player walks within its fixed 36-unit radius. */
+  spawnChest(x = this.player.x, y = this.player.y): Chest {
+    const chest = { x, y };
+    this.chests.push(chest);
+    return chest;
+  }
+
+  clearChests(): void {
+    this.chests.length = 0;
+  }
+
+  private updateChests(): void {
+    const p = this.player;
+    const rr = 36 * 36;
+    for (let i = this.chests.length - 1; i >= 0; i--) {
+      const chest = this.chests[i];
+      const dx = p.x - chest.x;
+      const dy = p.y - chest.y;
+      if (dx * dx + dy * dy > rr) continue;
+      this.chests.splice(i, 1);
+      this.events.onChestCollected();
     }
   }
 

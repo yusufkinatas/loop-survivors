@@ -18,8 +18,15 @@ import { TIER_NUMERALS } from './hud';
 import { ENEMY_LABELS, madForestEnemyStats, type EnemyKind } from './config';
 import { ACTIVE_ENEMY_KINDS } from './madforest';
 import type { RunWorld } from './run';
+import {
+  EVOLUTION_BY_ROLE,
+  GEAR_IDS,
+  GEARS,
+  type GearId,
+} from './evolutions';
 
 export interface SandboxPanel {
+  refresh(): void;
   destroy(): void;
 }
 
@@ -28,6 +35,14 @@ export interface SandboxOpts {
   /** The loadout changed (force-assembly): keep the band rack in sync. The
    *  sandbox itself ignores slot rules — it lets any combination be built. */
   onLoadout?: () => void;
+  onToggleGear?: (gear: GearId, on: boolean) => void;
+  onSetEvolution?: (role: Role, on: boolean) => void;
+  onSpawnChest?: () => void;
+  onEnqueueChest?: () => void;
+  onClearRewards?: () => void;
+  rewardQueueLength?: () => number;
+  isGearPending?: (gear: GearId) => boolean;
+  isEvolutionPending?: (role: Role) => boolean;
 }
 
 export function mountSandboxPanel(
@@ -47,6 +62,7 @@ export function mountSandboxPanel(
     parent.appendChild(node);
     return node;
   };
+  const refreshers: Array<() => void> = [];
 
   const head = el('div', 'sb-head', panel);
   el('span', 'sb-title', head, 'sandbox');
@@ -71,6 +87,7 @@ export function mountSandboxPanel(
     bandOn = !bandOn;
     for (const role of ROLES) {
       engine.setVoiceEnabled(role, false);
+      engine.setVoiceEvolved(role, false);
       world.removeWeapon(role);
     }
     if (bandOn) {
@@ -169,11 +186,14 @@ export function mountSandboxPanel(
       const set = (tier: number | null) => {
         if (tier === null) {
           engine.setVoiceEnabled(role, false);
+          engine.setVoiceEvolved(role, false);
           world.removeWeapon(role);
         } else {
           engine.setVoiceTier(role, tier);
+          engine.setVoiceEvolved(role, false);
           engine.setVoiceEnabled(role, true);
           world.addWeapon(role, tier);
+          world.setEvolved(role, false);
         }
         options.forEach((b, i) =>
           b.classList.toggle('on', tier === null ? i === 0 : i === tier),
@@ -205,6 +225,70 @@ export function mountSandboxPanel(
   }
   refreshCustom();
 
+  // ---- Gear / evolution reward plumbing (Sub-phase A) ----
+  el('div', 'sb-section', panel, 'gear / evolution');
+  el('div', 'sb-hint', panel, 'Live changes land on the next heard bar. Four Gear sockets maximum.');
+  for (const gear of GEAR_IDS) {
+    const conf = GEARS[gear];
+    const row = el('div', 'sb-loadout sb-gear-row', panel);
+    row.style.setProperty('--voice-color', `#${conf.color.toString(16).padStart(6, '0')}`);
+    const info = el('div', 'sb-loadout-name', row);
+    el('span', 'sb-loadout-label', info, conf.name);
+    el('span', 'sb-enemy-stats', info, conf.pickLine);
+    const btn = el('button', 'small', el('div', 'sb-btns', row)) as HTMLButtonElement;
+    btn.onclick = () => {
+      if (opts.isGearPending?.(gear)) return;
+      opts.onToggleGear?.(gear, !world.gear.has(gear));
+      refresh();
+    };
+    refreshers.push(() => {
+      const pending = opts.isGearPending?.(gear) ?? false;
+      const owned = world.gear.has(gear);
+      btn.textContent = pending ? 'next bar…' : owned ? 'remove' : 'equip';
+      btn.classList.toggle('on', owned);
+      btn.classList.toggle('pending', pending);
+    });
+  }
+
+  for (const role of supportedRoles()) {
+    const evolution = EVOLUTION_BY_ROLE.get(role);
+    if (!evolution) continue;
+    const row = el('div', 'sb-loadout sb-evolution-row', panel);
+    row.style.setProperty('--voice-color', `#${evolution.color.toString(16).padStart(6, '0')}`);
+    const info = el('div', 'sb-loadout-name', row);
+    el('span', 'sb-loadout-label', info, `${ROLE_META[role].name} → ${evolution.name}`);
+    el('span', 'sb-enemy-stats', info, evolution.pickLine);
+    const btns = el('div', 'sb-btns', row);
+    const base = el('button', 'small', btns, 'IV base') as HTMLButtonElement;
+    const evolved = el('button', 'small', btns, 'evolved') as HTMLButtonElement;
+    base.onclick = () => opts.onSetEvolution?.(role, false);
+    evolved.onclick = () => opts.onSetEvolution?.(role, true);
+    refreshers.push(() => {
+      const pending = opts.isEvolutionPending?.(role) ?? false;
+      base.classList.toggle('on', world.tiers.get(role) === 4 && !world.evolved.has(role));
+      evolved.classList.toggle('on', world.evolved.has(role));
+      base.disabled = pending;
+      evolved.disabled = pending;
+    });
+  }
+
+  const rewardControls = el('div', 'sb-btns sb-controls', panel);
+  const spawnChest = el('button', 'small', rewardControls, 'spawn chest') as HTMLButtonElement;
+  spawnChest.onclick = () => opts.onSpawnChest?.();
+  const queueChest = el('button', 'small', rewardControls, 'queue chest') as HTMLButtonElement;
+  queueChest.onclick = () => opts.onEnqueueChest?.();
+  const clearRewards = el('button', 'small', rewardControls, 'clear rewards') as HTMLButtonElement;
+  clearRewards.onclick = () => opts.onClearRewards?.();
+  const queueReadout = el('div', 'sb-hint', panel);
+  refreshers.push(() => {
+    queueReadout.textContent = `reward queue: ${opts.rewardQueueLength?.() ?? 0}`;
+  });
+
+  function refresh(): void {
+    for (const fn of refreshers) fn();
+  }
+  refresh();
+
   el(
     'div',
     'sb-hint',
@@ -213,6 +297,7 @@ export function mountSandboxPanel(
   );
 
   return {
+    refresh,
     destroy(): void {
       panel.remove();
     },

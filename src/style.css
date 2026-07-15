@@ -651,9 +651,10 @@ input[type='range'] {
 /* Level-up affirmation: a signal-colored edge vignette, the positive twin
    of the hit flash. */
 .level-pulse {
+  --pulse-color: #59ffd1;
   position: absolute;
   inset: 0;
-  background: radial-gradient(120% 120% at 50% 50%, transparent 50%, rgba(89, 255, 209, 0.42) 100%);
+  background: radial-gradient(120% 120% at 50% 50%, transparent 50%, color-mix(in srgb, var(--pulse-color) 42%, transparent) 100%);
   opacity: 0;
   pointer-events: none;
   z-index: 2;
@@ -990,6 +991,23 @@ button.big {
   padding: 1px 6px;
 }
 
+.sb-gear-row .sb-loadout-name,
+.sb-evolution-row .sb-loadout-name {
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: 230px;
+}
+
+.sb-gear-row .sb-enemy-stats,
+.sb-evolution-row .sb-enemy-stats {
+  white-space: normal;
+}
+
+.sb-btns button.pending {
+  border-color: var(--signal);
+  color: var(--signal);
+}
+
 /* Slot group header in the loadout list — matches the band-rack order/naming. */
 .sb-slot-head {
   color: var(--ink);
@@ -1070,6 +1088,18 @@ button.big {
 
 .tr-pips .pip.on {
   background: var(--voice-color);
+}
+
+.tr-evolution,
+.evolution-diamond {
+  color: rgba(255, 215, 107, 0.35);
+  font: 700 8px/5px var(--font-mono);
+}
+
+.tr-evolution.on,
+.evolution-diamond.on {
+  color: #ffd76b;
+  text-shadow: 0 0 6px rgba(255, 215, 107, 0.7);
 }
 
 .tr-mute {
@@ -1442,6 +1472,86 @@ button.big {
   background: var(--voice-color);
 }
 
+.band-socket.evolved {
+  border-color: color-mix(in srgb, #ffd76b 48%, var(--line));
+  box-shadow: 0 0 12px rgba(255, 215, 107, 0.13);
+}
+
+.band-socket.pending-evolution,
+.gear-socket.pending {
+  animation: voice-pending-on 0.5s ease-in-out infinite;
+}
+
+/* Four silent passive sockets, directly below the seven-voice band rack. */
+.gear-rack {
+  position: absolute;
+  top: max(70px, calc(env(safe-area-inset-top) + 58px));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.gear-title {
+  margin-right: 3px;
+  color: var(--ink-faint);
+  font: 700 8px/1 var(--font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.gear-socket {
+  --voice-color: var(--ink-faint);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 72px;
+  height: 24px;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: rgba(10, 11, 15, 0.82);
+}
+
+.gear-socket.empty {
+  min-width: 30px;
+  border-style: dashed;
+  opacity: 0.45;
+}
+
+.gear-socket.filled {
+  border-color: color-mix(in srgb, var(--voice-color) 45%, var(--line));
+}
+
+.gear-icon {
+  color: var(--voice-color);
+  font: 700 14px/1 var(--font-mono);
+}
+
+.gear-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.gear-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--voice-color);
+  font: 700 9px/1 var(--font-mono);
+}
+
+.gear-detail {
+  margin-top: 3px;
+  color: var(--ink-dim);
+  font: 500 10px/1.25 var(--font-sans);
+}
+
 /* Slot badge on a pick card: the plain player-facing band position this hire
    plugs, so every card answers "what does taking this cost me?" at a glance. */
 /* Start-screen auxiliary entrances: one small disclosure link that reveals
@@ -1492,6 +1602,32 @@ button.big {
   font-size: var(--fs-sm);
 }
 
+.pause-gear {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  max-width: min(92vw, 820px);
+  margin-bottom: var(--sp-3);
+}
+
+.pause-gear .gear-title {
+  display: flex;
+  align-items: center;
+}
+
+.pause-gear .gear-socket {
+  width: 170px;
+  height: auto;
+  min-height: 40px;
+  padding: 7px 9px;
+}
+
+.pause-gear .gear-socket.empty {
+  width: 44px;
+}
+
 /* Phones: shrink the rack to a compact slot+pip strip so it never covers the
    arena or the HUD panel. */
 @media (max-width: 640px) {
@@ -1509,6 +1645,24 @@ button.big {
   .band-rack .socket-slot {
     font-size: 8px;
     letter-spacing: 0.06em;
+  }
+  .gear-rack {
+    top: max(50px, calc(env(safe-area-inset-top) + 39px));
+    gap: 2px;
+  }
+  .gear-rack .gear-title,
+  .gear-rack .gear-name {
+    display: none;
+  }
+  .gear-rack .gear-socket,
+  .gear-rack .gear-socket.empty {
+    min-width: 20px;
+    width: 20px;
+    height: 18px;
+    padding: 1px 3px;
+  }
+  .gear-rack .gear-icon {
+    font-size: 11px;
   }
 }
 
@@ -2084,6 +2238,11 @@ button.big {
   .band-socket.pending-on,
   .tr-row.pending-off,
   .tr-row.pending-on {
+    animation: none;
+    opacity: 0.7;
+  }
+  .band-socket.pending-evolution,
+  .gear-socket.pending {
     animation: none;
     opacity: 0.7;
   }

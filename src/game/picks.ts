@@ -18,12 +18,19 @@ import {
   type Slot,
 } from './band';
 import type { Rng } from './rng';
+import {
+  eligibleGear,
+  type GearId,
+} from './evolutions';
 
-/** A level-up option: a new weapon or a tier-up of an owned one. */
-export type PickOption = { kind: 'weapon'; role: Role; tier: number };
+/** A normal reward: a new/tiered weapon or one silent Gear item. */
+export type WeaponPickOption = { kind: 'weapon'; role: Role; tier: number };
+export type PickOption =
+  | WeaponPickOption
+  | { kind: 'gear'; gear: GearId };
 
-function buildPickPool(tiers: ReadonlyMap<Role, number>): PickOption[] {
-  const pool: PickOption[] = [];
+function buildPickPool(tiers: ReadonlyMap<Role, number>): WeaponPickOption[] {
+  const pool: WeaponPickOption[] = [];
   for (const role of ROLES) {
     // The soundset is built around a subset of the catalog: a role it does not
     // support is never offered (nor voiced by the engine).
@@ -58,6 +65,7 @@ function weaponWeight(role: Role, timeS: number): number {
  *  three cards always span three different band positions. */
 export function rollOffers(
   tiers: ReadonlyMap<Role, number>,
+  gear: ReadonlySet<GearId>,
   rng: Rng,
   timeS: number,
 ): PickOption[] {
@@ -66,14 +74,25 @@ export function rollOffers(
   keyed.sort((a, b) => b.k - a.k);
   // One instrument candidate per slot per offer: walk the sorted draw and skip
   // a weapon whose band position is already spoken for this offer.
-  const out: PickOption[] = [];
+  const weapons: WeaponPickOption[] = [];
   const usedSlots = new Set<Slot>();
   for (const { o } of keyed) {
-    if (out.length >= 3) break;
+    if (weapons.length >= 3) break;
     const slot = slotOf(o.role);
     if (usedSlots.has(slot)) continue;
     usedSlots.add(slot);
-    out.push(o);
+    weapons.push(o);
   }
-  return out;
+
+  const gearKeyed = eligibleGear(tiers, gear, timeS)
+    .map((conf) => ({
+      o: { kind: 'gear' as const, gear: conf.id },
+      // A paired tier-II/III/IV weapon gives weight 1/2/3.
+      k: Math.pow(rng(), 1 / Math.max(1, (tiers.get(conf.role) ?? 1) - 1)),
+    }))
+    .sort((a, b) => b.k - a.k);
+
+  if (gearKeyed.length === 0) return weapons;
+  if (weapons.length >= 2) return [...weapons.slice(0, 2), gearKeyed[0].o];
+  return [...weapons, ...gearKeyed.slice(0, 3 - weapons.length).map(({ o }) => o)];
 }

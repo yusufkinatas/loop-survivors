@@ -19,6 +19,7 @@ import { RunView } from '../game/view';
 interface VoiceSnapshot {
   enabled: boolean;
   tier: number;
+  evolved: boolean;
   gain: number;
 }
 
@@ -91,6 +92,7 @@ export class LabSandbox {
 
     const events = {
       onLevelUp(): void {},
+      onChestCollected(): void {},
       onDeath: (): void => {
         // Documentation rooms are observation spaces, never run-ending states.
         this.world.player.hp = RUN.playerHp;
@@ -240,9 +242,12 @@ export class LabSandbox {
     for (const role of this.engine.voices.keys()) {
       this.engine.setVoiceEnabled(role, false);
       this.engine.setVoiceTier(role, 1);
+      this.engine.setVoiceEvolved(role, false);
     }
     this.world.clearSandboxEntities();
     this.world.tiers.clear();
+    this.world.gear.clear();
+    this.world.evolved.clear();
     this.world.player.x = 0;
     this.world.player.y = 0;
     this.world.player.hp = RUN.playerHp;
@@ -279,6 +284,7 @@ export class LabSandbox {
       const voice = this.engine.voices.get(role);
       if (!voice) continue;
       this.engine.setVoiceTier(role, saved.tier);
+      this.engine.setVoiceEvolved(role, saved.evolved);
       this.engine.setVoiceEnabled(role, saved.enabled);
       voice.gain.gain.cancelScheduledValues(now);
       voice.gain.gain.value = saved.gain;
@@ -318,7 +324,12 @@ export class LabSandbox {
     }
     for (const [role, saved] of this.snapshot.voices) {
       const voice = this.engine.voices.get(role);
-      if (!voice || voice.enabled !== saved.enabled || voice.tier !== saved.tier) return false;
+      if (
+        !voice ||
+        voice.enabled !== saved.enabled ||
+        voice.tier !== saved.tier ||
+        voice.evolved !== saved.evolved
+      ) return false;
       if (Math.abs(voice.gain.gain.value - saved.gain) > 1e-6) return false;
     }
     return true;
@@ -355,6 +366,7 @@ export class LabSandbox {
       voices.set(role, {
         enabled: voice.enabled,
         tier: voice.tier,
+        evolved: voice.evolved,
         gain: voice.gain.gain.value,
       });
     }

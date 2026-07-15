@@ -9,6 +9,7 @@ import type { MusicEngine } from '../audio/engine';
 import type { Kit, Role } from '../audio/kits';
 import { STEPS_PER_BAR, STEPS_PER_PHRASE } from '../audio/scale';
 import { SLOTS, ownerOfSlot } from './band';
+import { EVOLUTION_BY_ROLE } from './evolutions';
 
 interface Row {
   /** Phrase steps (0..63) on which this voice's chart fires. */
@@ -26,6 +27,8 @@ export interface TrackOverlay {
     tiers: ReadonlyMap<Role, number>,
     deactivated: ReadonlySet<Role>,
     pending: ReadonlySet<Role>,
+    evolved?: ReadonlySet<Role>,
+    pendingEvolution?: ReadonlySet<Role>,
   ): void;
   /** Per-frame: move the playhead and repaint on bar changes. Cheap. */
   tick(): void;
@@ -42,6 +45,8 @@ export function mountTrackOverlay(
     tiers: ReadonlyMap<Role, number>,
     deactivated: ReadonlySet<Role>,
     pending: ReadonlySet<Role>,
+    evolved: ReadonlySet<Role> = new Set(),
+    pendingEvolution: ReadonlySet<Role> = new Set(),
   ): void {
     root.replaceChildren();
     rows = [];
@@ -64,13 +69,21 @@ export function mountTrackOverlay(
       dot.className = 'tr-dot';
       const name = document.createElement('span');
       name.className = 'tr-name';
-      name.textContent = kit.name;
+      const evolution = EVOLUTION_BY_ROLE.get(role);
+      const isEvolved = evolved.has(role);
+      name.textContent = isEvolved && evolution ? evolution.name : kit.name;
       const pips = document.createElement('span');
       pips.className = 'tr-pips';
       for (let i = 1; i <= TIER_COUNT; i++) {
         const pip = document.createElement('span');
         pip.className = `pip${i <= tier ? ' on' : ''}`;
         pips.appendChild(pip);
+      }
+      if (isEvolved || pendingEvolution.has(role)) {
+        const diamond = document.createElement('span');
+        diamond.className = `tr-evolution${isEvolved ? ' on' : ''}`;
+        diamond.textContent = '◆';
+        pips.appendChild(diamond);
       }
       const mark = document.createElement('span');
       mark.className = 'tr-mute';

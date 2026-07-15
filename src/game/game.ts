@@ -5,9 +5,9 @@
 import { Application } from 'pixi.js';
 import type { MusicEngine } from '../audio/engine';
 import { SOUNDSET } from '../audio/soundset';
-import { ROLES, type Kit, type Role } from '../audio/kits';
+import { ROLES, ROLE_META, type Kit, type Role } from '../audio/kits';
 import { RUN, LEVELUP } from './config';
-import { SLOTS, ownerOfSlot } from './band';
+import { SLOTS, ownerOfSlot, slotOf } from './band';
 import { mountTrackOverlay } from './trackoverlay';
 import { Hud } from './hud';
 import { createGreedyMover, createKiter, type AutoMover } from './auto-move';
@@ -18,6 +18,15 @@ import { RunWorld, KIT_COLORS } from './run';
 import { SIM_DT } from './timing';
 import { RunView, type GroundPickView } from './view';
 import { mountSandboxPanel, type SandboxPanel } from './sandbox';
+import {
+  EVOLUTION_BY_ROLE,
+  GEARS,
+  GEAR_CAPACITY,
+  canEvolve,
+  canOwnGear,
+  eligibleEvolutions,
+  type GearId,
+} from './evolutions';
 
 type State = 'start' | 'run' | 'end' | 'sandbox';
 
@@ -139,9 +148,10 @@ export async function bootGame(
   pauseOverlay.className = 'screen pause-overlay';
   pauseOverlay.style.display = 'none';
   pauseOverlay.innerHTML =
-    '<h1>Paused</h1><div class="pause-rack"></div><p class="hint">Hit ESC again to continue.</p>';
+    '<h1>Paused</h1><div class="pause-rack"></div><div class="pause-gear"></div><p class="hint">Hit ESC again to continue.</p>';
   root.appendChild(pauseOverlay);
   const pauseRack = pauseOverlay.querySelector('.pause-rack') as HTMLElement;
+  const pauseGear = pauseOverlay.querySelector('.pause-gear') as HTMLElement;
   function togglePause(): void {
     if (state !== 'run') return;
     paused = !paused;
@@ -150,7 +160,10 @@ export async function bootGame(
       engine.clock.pause();
       engine.holdTransport();
       // Show the current band while paused (the same rack the HUD draws).
-      if (world) hud.renderBand(world.tiers, pauseRack, deactivatedRoles, pendingRoles);
+      if (world) {
+        hud.renderBand(world.tiers, pauseRack, deactivatedRoles, pendingRoles, world.evolved, pendingEvolutions);
+        hud.renderGear(world.gear, pendingGear, pauseGear, true);
+      }
     } else {
       engine.releaseTransport();
       engine.clock.resume();
@@ -163,21 +176,26 @@ export async function bootGame(
   overlay.style.display = 'none';
   root.appendChild(overlay);
 
-  // Every XP threshold and every elite kill grants one upgrade. Several can
-  // arrive in the same simulation tick, including while the first pick screen
-  // is already open, so callbacks enqueue instead of being discarded by the
-  // state guard. A queued pick is not presented until the previous choice has
-  // actually entered on its next bar.
-  const pendingUpgrades: number[] = [];
-  let pickAwaitingBar = false;
-  let presentQueuedPickAtAudioT: number | null = null;
-  // The level-up offers currently dropped on the ground as physical items, in
-  // a triangle around the player. Shell-owned (never entities in the
-  // simulation), so it stays independent from world entities. Empty = none.
+  type PendingReward = { kind: 'level'; level: number } | { kind: 'chest' };
+  type GroundChoice = PickOption | { kind: 'evolution'; role: Role };
+
+  // XP thresholds and collected chests share one FIFO. The active reward stays
+  // explicit until its selected build change lands on the heard bar, so a stale
+  // sandbox mutation can reroll it without losing or duplicating the reward.
+  const pendingRewards: PendingReward[] = [];
+  let activeReward: PendingReward | null = null;
+  let activeChestOpened = false;
+  let choiceAwaitingBar = false;
+  let presentQueuedRewardAtAudioT: number | null = null;
+  let rewardGeneration = 0;
+  let sandboxBuildGeneration = 0;
+  const pendingGear = new Set<GearId>();
+  const pendingGearTargets = new Map<GearId, boolean>();
+  const pendingEvolutions = new Set<Role>();
   interface GroundItem {
     x: number;
     y: number;
-    option: PickOption;
+    choice: GroundChoice;
   }
   let groundPicks: GroundItem[] = [];
 
@@ -186,126 +204,255 @@ export async function bootGame(
     view?.setGroundPicks([]);
   }
 
-  function resetUpgradeQueue(): void {
-    pendingUpgrades.length = 0;
-    pickAwaitingBar = false;
-    presentQueuedPickAtAudioT = null;
+  function resetRewardQueue(): void {
+    rewardGeneration++;
+    pendingRewards.length = 0;
+    activeReward = null;
+    activeChestOpened = false;
+    choiceAwaitingBar = false;
+    presentQueuedRewardAtAudioT = null;
+    pendingGear.clear();
+    pendingGearTargets.clear();
+    pendingEvolutions.clear();
     clearGroundPicks();
     endLevelMoment();
+    sandboxPanel?.refresh();
   }
 
-  function enqueueUpgrade(level: number): void {
-    if (!world || state !== 'run') return;
-    pendingUpgrades.push(level);
+  function rewardStateLive(): boolean {
+    return state === 'run' || state === 'sandbox';
   }
 
-  // A level-up no longer opens a menu: the three offers drop as items on the
-  // ground and the run keeps playing. Only one triangle is out at a time; a
-  // queued reward waits until the current one is collected and its weapon has
-  // entered on the next bar (pickAwaitingBar / presentQueuedPickAtAudioT).
-  function presentNextUpgrade(): void {
-    if (!world || state !== 'run' || pickAwaitingBar || presentQueuedPickAtAudioT !== null) return;
-    if (groundPicks.length > 0) return; // one triangle at a time
+  function enqueueReward(reward: PendingReward): void {
+    if (!world || !rewardStateLive()) return;
+    pendingRewards.push(reward);
+    sandboxPanel?.refresh();
+  }
+
+  function rewardQueueLength(): number {
+    return pendingRewards.length + (activeReward ? 1 : 0);
+  }
+
+  function completeRewardImmediately(): void {
+    activeReward = null;
+    activeChestOpened = false;
+    sandboxPanel?.refresh();
+  }
+
+  /** Present one FIFO reward. A level reward rolls normal weapon/Gear choices.
+   *  A chest evaluates evolution eligibility now, not at drop/collection time. */
+  function presentNextReward(): void {
+    if (!world || !rewardStateLive() || choiceAwaitingBar || presentQueuedRewardAtAudioT !== null) return;
+    if (groundPicks.length > 0) return;
 
     const w = world;
-    // Build-complete rewards have no item to drop and resolve to the heal
-    // fallback immediately; the first real offer drops a triangle and stops.
-    while (pendingUpgrades.length > 0 && groundPicks.length === 0) {
-      pendingUpgrades.shift();
-      // Roll the real three-option offer for this reward.
-      const options = rollOffers(w.tiers, Math.random, w.timeS);
-      if (options.length === 0) {
-        w.player.hp = Math.min(RUN.playerHp, w.player.hp + 15);
-        hud.showToast('+15 hp — the track is complete');
-        continue;
+    while (!choiceAwaitingBar && groundPicks.length === 0) {
+      activeReward ??= pendingRewards.shift() ?? null;
+      if (!activeReward) break;
+
+      if (activeReward.kind === 'chest') {
+        const evolutions = eligibleEvolutions(w.tiers, w.gear, w.evolved);
+        if (!activeChestOpened) {
+          activeChestOpened = true;
+          startRewardMoment(w.player.x, w.player.y, 0xffd76b, false);
+        }
+        if (evolutions.length === 1) {
+          const evolution = evolutions[0];
+          hud.showToast(`${ROLE_META[evolution.role].name} → ${evolution.name}`);
+          scheduleChoice({ kind: 'evolution', role: evolution.role });
+          break;
+        }
+        if (evolutions.length > 1) {
+          dropGroundChoices(w, evolutions.map(({ role }) => ({ kind: 'evolution' as const, role })), false);
+          break;
+        }
       }
-      dropGroundPicks(w, options);
+
+      const options = rollOffers(w.tiers, w.gear, Math.random, w.timeS);
+      if (options.length > 0) {
+        dropGroundChoices(w, options, activeReward.kind === 'level');
+        break;
+      }
+      w.player.hp = Math.min(RUN.playerHp, w.player.hp + 15);
+      hud.showToast('+15 hp — the track is complete');
+      completeRewardImmediately();
     }
   }
 
-  /** Drop the offered options as items in a triangle around the player, shove
-   *  the horde clear of them, and fire the cosmetic level-up moment. */
-  function dropGroundPicks(w: RunWorld, options: PickOption[]): void {
+  /** Drop normal or evolution choices around the player. Two evolution tokens
+   *  oppose each other; three/four use the locked symmetric layouts. */
+  function dropGroundChoices(w: RunWorld, choices: GroundChoice[], levelMoment: boolean): void {
     const cx = w.player.x;
     const cy = w.player.y;
     const items: GroundItem[] = [];
     const payload: GroundPickView[] = [];
-    for (let i = 0; i < options.length; i++) {
-      const option = options[i];
-      const deg = LEVELUP.angles[i % LEVELUP.angles.length];
+    const allEvolutions = choices.every((choice) => choice.kind === 'evolution');
+    const angles = allEvolutions && choices.length === 2
+      ? [0, 180]
+      : allEvolutions && choices.length === 4
+        ? [0, 90, 180, 270]
+        : LEVELUP.angles;
+    for (let i = 0; i < choices.length; i++) {
+      const choice = choices[i];
+      const deg = angles[i % angles.length];
       const rad = (deg * Math.PI) / 180;
       const x = cx + Math.cos(rad) * LEVELUP.itemRadius;
       const y = cy + Math.sin(rad) * LEVELUP.itemRadius;
-      items.push({ x, y, option });
-      const prevTier = w.tiers.get(option.role) ?? 0;
-      payload.push({
-        x,
-        y,
-        role: option.role,
-        color: KIT_COLORS[option.role],
-        name: kits.get(option.role)!.name,
-        // New pick reads "1"; a tier-up reads e.g. "2 → 3".
-        level: prevTier > 0 ? `${prevTier} → ${option.tier}` : '1',
-      });
+      const labelSide = Math.cos(rad) > 0.4 ? 'left' as const : Math.cos(rad) < -0.4 ? 'right' as const : 'center' as const;
+      items.push({ x, y, choice });
+      if (choice.kind === 'weapon') {
+        const prevTier = w.tiers.get(choice.role) ?? 0;
+        payload.push({
+          x, y, color: KIT_COLORS[choice.role],
+          icon: { kind: 'weapon', role: choice.role },
+          name: kits.get(choice.role)!.name,
+          detail: prevTier > 0 ? `${prevTier} → ${choice.tier}` : '1',
+          rarity: 'normal',
+          labelSide,
+        });
+      } else if (choice.kind === 'gear') {
+        const conf = GEARS[choice.gear];
+        payload.push({
+          x, y, color: conf.color,
+          icon: { kind: 'gear', gear: conf.id },
+          name: conf.name,
+          detail: conf.pickLine,
+          rarity: 'normal',
+          labelSide,
+        });
+      } else {
+        const conf = EVOLUTION_BY_ROLE.get(choice.role)!;
+        payload.push({
+          x, y, color: conf.color,
+          icon: { kind: 'weapon', role: choice.role },
+          name: `${ROLE_META[choice.role].name} → ${conf.name}`,
+          detail: `EVOLVE · ${conf.pickLine}`,
+          rarity: 'evolution',
+          labelSide,
+        });
+      }
     }
     groundPicks = items;
     view?.setGroundPicks(payload);
     w.shoveEnemiesOut(cx, cy, LEVELUP.enemyPushRadius);
-    startLevelMoment(cx, cy);
+    if (levelMoment) startRewardMoment(cx, cy, 0x59ffd1, true);
   }
 
   /** The satisfying beat: slowScale slow-mo + weapon-volume duck for up to
    *  momentS, plus a bright cue and a screen pulse. Everything snaps back when
    *  the player collects a pick, or when momentS elapses, whichever is first. */
-  function startLevelMoment(cx: number, cy: number): void {
+  function startRewardMoment(cx: number, cy: number, color: number, playCue: boolean): void {
     momentT = LEVELUP.momentS;
     momentScale = LEVELUP.slowScale;
     applyClockRate();
     engine.duckWeapons(LEVELUP.duckDepth, LEVELUP.momentS);
-    engine.playLevelCue();
-    hud.levelPulse();
-    view?.levelBurst(cx, cy);
+    if (playCue) engine.playLevelCue();
+    const cssColor = `#${color.toString(16).padStart(6, '0')}`;
+    hud.levelPulse(cssColor);
+    view?.levelBurst(cx, cy, color);
   }
 
-  /** Walk-onto collection: take one item, clear the rest, and enter the chosen
-   *  weapon on the next bar (audio keeps playing — no transport hold). Mirrors
-   *  the old pick's bar-accurate entry so old-tier damage is preserved. */
+  function choiceStillValid(choice: GroundChoice, w: RunWorld): boolean {
+    if (choice.kind === 'gear') {
+      return canOwnGear(choice.gear, w.tiers, w.gear, w.timeS, GEAR_CAPACITY);
+    }
+    if (choice.kind === 'evolution') {
+      return canEvolve(choice.role, w.tiers, w.gear, w.evolved);
+    }
+    const current = w.tiers.get(choice.role) ?? 0;
+    if (choice.tier !== current + 1) return false;
+    if (current > 0) return true;
+    return ownerOfSlot(slotOf(choice.role), w.tiers) === undefined;
+  }
+
   function collectGroundPick(item: GroundItem): void {
     const w = world;
     if (!w) return;
-    // The player reached a pick before momentS elapsed: snap game speed and
-    // weapon volume back now instead of riding out the full slow-mo.
     endLevelMoment();
-    const option = item.option;
+    const choice = item.choice;
     clearGroundPicks();
-    pickAwaitingBar = true;
+    if (!choiceStillValid(choice, w)) {
+      // Keep activeReward intact; the next frame re-evaluates/rerolls it.
+      hud.showToast('build changed — reward refreshed');
+      return;
+    }
+    scheduleChoice(choice);
+  }
+
+  function scheduleChoice(choice: GroundChoice): void {
+    const w = world;
+    if (!w || !activeReward) return;
+    choiceAwaitingBar = true;
+    if (choice.kind === 'gear') pendingGear.add(choice.gear);
+    if (choice.kind === 'gear') pendingGearTargets.set(choice.gear, true);
+    if (choice.kind === 'evolution') pendingEvolutions.add(choice.role);
+    paintBand();
+    const generation = rewardGeneration;
     engine.atNextBar((barAudioTime) => {
-      if (world !== w || state !== 'run') return;
-      // Audio is scheduled ahead, so its chart must change now for the first
-      // note of the new bar. World state waits for the exact heard timestamp
-      // below, preserving old-tier damage on any older trigger.
-      engine.setVoiceTier(option.role, option.tier);
-      // Sticky deactivation: a tier-up applies the new tier but does not revive
-      // an instrument the developer deliberately turned off. It returns at the
-      // higher tier when reactivated.
-      if (!deactivatedRoles.has(option.role)) engine.setVoiceEnabled(option.role, true);
+      if (world !== w || !rewardStateLive() || generation !== rewardGeneration) return;
+      if (!choiceStillValid(choice, w)) {
+        engine.atAudioTime(barAudioTime, () => {
+          if (world !== w || !rewardStateLive() || generation !== rewardGeneration) return;
+          if (choice.kind === 'gear') pendingGear.delete(choice.gear);
+          if (choice.kind === 'gear') pendingGearTargets.delete(choice.gear);
+          if (choice.kind === 'evolution') pendingEvolutions.delete(choice.role);
+          choiceAwaitingBar = false;
+          paintBand();
+        });
+        return;
+      }
+      if (choice.kind === 'weapon') {
+        engine.setVoiceTier(choice.role, choice.tier);
+        if (!deactivatedRoles.has(choice.role)) engine.setVoiceEnabled(choice.role, true);
+      } else if (choice.kind === 'evolution') {
+        engine.setVoiceTier(choice.role, 4);
+        engine.setVoiceEvolved(choice.role, true);
+      }
       engine.atAudioTime(barAudioTime, () => {
-        if (world !== w || state !== 'run') return;
-        w.addWeapon(option.role, option.tier);
-        hud.renderBand(w.tiers, undefined, deactivatedRoles, pendingRoles);
-        refreshTrackOverlay();
+        if (world !== w || !rewardStateLive() || generation !== rewardGeneration) return;
+        if (!choiceStillValid(choice, w)) {
+          if (choice.kind === 'weapon') {
+            const currentTier = w.tiers.get(choice.role);
+            if (currentTier) engine.setVoiceTier(choice.role, currentTier);
+            else engine.setVoiceEnabled(choice.role, false);
+          } else if (choice.kind === 'evolution') {
+            engine.setVoiceEvolved(choice.role, w.evolved.has(choice.role));
+          }
+          if (choice.kind === 'gear') {
+            pendingGear.delete(choice.gear);
+            pendingGearTargets.delete(choice.gear);
+          }
+          if (choice.kind === 'evolution') pendingEvolutions.delete(choice.role);
+          choiceAwaitingBar = false;
+          paintBand();
+          return;
+        }
+        if (choice.kind === 'weapon') w.addWeapon(choice.role, choice.tier);
+        else if (choice.kind === 'gear') {
+          w.addGear(choice.gear);
+          pendingGear.delete(choice.gear);
+          pendingGearTargets.delete(choice.gear);
+          hud.showToast(`${GEARS[choice.gear].name} equipped`);
+        } else {
+          w.setEvolved(choice.role, true);
+          pendingEvolutions.delete(choice.role);
+          hud.showToast(`${ROLE_META[choice.role].name} → ${EVOLUTION_BY_ROLE.get(choice.role)!.name}`);
+        }
+        paintBand();
         view?.flourish(w.player.x, w.player.y);
-        pickAwaitingBar = false;
-        // Wait until this bar's due gameplay triggers have been consumed by one
-        // fixed world step before dropping a stacked reward's triangle.
-        presentQueuedPickAtAudioT = barAudioTime;
+        choiceAwaitingBar = false;
+        completeRewardImmediately();
+        presentQueuedRewardAtAudioT = barAudioTime;
       });
     });
   }
 
   const events = {
     onLevelUp(level: number): void {
-      enqueueUpgrade(level);
+      enqueueReward({ kind: 'level', level });
+    },
+    onChestCollected(): void {
+      enqueueReward({ kind: 'chest' });
     },
     onDeath(): void {
       endRun(false);
@@ -323,6 +470,9 @@ export async function bootGame(
   // invulnerability toggle is the real control).
   const sandboxEvents = {
     onLevelUp(): void {},
+    onChestCollected(): void {
+      enqueueReward({ kind: 'chest' });
+    },
     onDeath(): void {
       if (world) world.player.hp = RUN.playerHp;
       hud.showToast('you would have died — hp refilled');
@@ -343,7 +493,8 @@ export async function bootGame(
 
   function resetWorld(): void {
     paused = false;
-    resetUpgradeQueue();
+    resetRewardQueue();
+    sandboxBuildGeneration++;
     liveAcc = 0;
     setTimeScale(1); // every new run or sandbox starts at normal speed
     syncTimeScaleControl(); // disabled until startRun/startSandbox re-enables it
@@ -356,7 +507,10 @@ export async function bootGame(
     world = null;
     resetDeactivations(); // new run starts with every instrument active
     engine.clearBarQueue();
-    for (const role of ROLES) engine.setVoiceEnabled(role, false);
+    for (const role of ROLES) {
+      engine.setVoiceEnabled(role, false);
+      engine.setVoiceEvolved(role, false);
+    }
   }
 
   function startRun(startingKit: Role, mode: AutoMoveMode = 'off'): void {
@@ -376,11 +530,115 @@ export async function bootGame(
     engine.setVoiceEnabled(startingKit, true);
     w.addWeapon(startingKit, 1);
     hud.showHud(true);
-    hud.renderBand(w.tiers);
+    hud.renderBand(w.tiers, undefined, undefined, undefined, w.evolved, pendingEvolutions);
+    hud.renderGear(w.gear, pendingGear);
     state = 'run';
     syncTimeScaleControl(); // arm the timeScale slider for the live run
     void engine.ctx.resume();
     engine.clock.start();
+  }
+
+  function projectedGearCount(w: RunWorld): number {
+    let count = w.gear.size;
+    for (const [gear, target] of pendingGearTargets) {
+      if (target && !w.gear.has(gear)) count++;
+      else if (!target && w.gear.has(gear)) count--;
+    }
+    return count;
+  }
+
+  function scheduleSandboxGear(gear: GearId, on: boolean): void {
+    const w = world;
+    if (!w || state !== 'sandbox' || pendingGear.has(gear)) return;
+    const conf = GEARS[gear];
+    if (on && !w.gear.has(gear) && projectedGearCount(w) >= GEAR_CAPACITY) {
+      hud.showToast('four Gear sockets full — clear one first');
+      return;
+    }
+    if (!on && w.evolved.has(conf.role)) {
+      hud.showToast(`return ${EVOLUTION_BY_ROLE.get(conf.role)!.name} to base first`);
+      return;
+    }
+    pendingGear.add(gear);
+    pendingGearTargets.set(gear, on);
+    paintBand();
+    const generation = sandboxBuildGeneration;
+    engine.atNextBar((barAudioTime) => {
+      if (world !== w || state !== 'sandbox' || generation !== sandboxBuildGeneration) return;
+      engine.atAudioTime(barAudioTime, () => {
+        if (world !== w || state !== 'sandbox' || generation !== sandboxBuildGeneration) return;
+        if (on && !w.gear.has(gear) && w.gear.size >= GEAR_CAPACITY) {
+          pendingGear.delete(gear);
+          pendingGearTargets.delete(gear);
+          hud.showToast('four Gear sockets full — change cancelled');
+          paintBand();
+          sandboxPanel?.refresh();
+          return;
+        }
+        if (on) w.addGear(gear);
+        else w.removeGear(gear);
+        pendingGear.delete(gear);
+        pendingGearTargets.delete(gear);
+        paintBand();
+        sandboxPanel?.refresh();
+      });
+    });
+  }
+
+  function scheduleSandboxEvolution(role: Role, on: boolean): void {
+    const w = world;
+    const evolution = EVOLUTION_BY_ROLE.get(role);
+    if (!w || state !== 'sandbox' || !evolution || pendingEvolutions.has(role)) return;
+    if (on && pendingGearTargets.get(evolution.gear) === false) {
+      hud.showToast('wait for the paired Gear removal first');
+      return;
+    }
+    const needsGear = on && !w.gear.has(evolution.gear) && pendingGearTargets.get(evolution.gear) !== true;
+    if (needsGear && projectedGearCount(w) >= GEAR_CAPACITY) {
+      hud.showToast('four Gear sockets full — clear one first');
+      return;
+    }
+    pendingEvolutions.add(role);
+    if (needsGear) pendingGear.add(evolution.gear);
+    if (needsGear) pendingGearTargets.set(evolution.gear, true);
+    paintBand();
+    sandboxPanel?.refresh();
+    const generation = sandboxBuildGeneration;
+    engine.atNextBar((barAudioTime) => {
+      if (world !== w || state !== 'sandbox' || generation !== sandboxBuildGeneration) return;
+      engine.setVoiceTier(role, 4);
+      engine.setVoiceEvolved(role, on);
+      if (!deactivatedRoles.has(role)) engine.setVoiceEnabled(role, true);
+      engine.atAudioTime(barAudioTime, () => {
+        if (world !== w || state !== 'sandbox' || generation !== sandboxBuildGeneration) return;
+        if (on && !needsGear && !w.gear.has(evolution.gear)) {
+          engine.setVoiceEvolved(role, w.evolved.has(role));
+          pendingEvolutions.delete(role);
+          hud.showToast('paired Gear missing — evolution cancelled');
+          paintBand();
+          sandboxPanel?.refresh();
+          return;
+        }
+        if (needsGear && !w.gear.has(evolution.gear) && w.gear.size >= GEAR_CAPACITY) {
+          engine.setVoiceEvolved(role, w.evolved.has(role));
+          pendingEvolutions.delete(role);
+          pendingGear.delete(evolution.gear);
+          pendingGearTargets.delete(evolution.gear);
+          hud.showToast('four Gear sockets full — evolution cancelled');
+          paintBand();
+          sandboxPanel?.refresh();
+          return;
+        }
+        w.addWeapon(role, 4);
+        if (needsGear) w.addGear(evolution.gear);
+        w.setEvolved(role, on);
+        pendingEvolutions.delete(role);
+        if (needsGear) pendingGear.delete(evolution.gear);
+        if (needsGear) pendingGearTargets.delete(evolution.gear);
+        paintBand();
+        sandboxPanel?.refresh();
+      });
+    });
   }
 
   function startSandbox(): void {
@@ -396,9 +654,24 @@ export async function bootGame(
     app.stage.addChild(view.stage);
     sandboxPanel = mountSandboxPanel(root, engine, w, {
       onLoadout: () => {
-        hud.renderBand(w.tiers, undefined, deactivatedRoles, pendingRoles);
-        refreshTrackOverlay();
+        paintBand();
       },
+      onToggleGear: (gear, on) => scheduleSandboxGear(gear, on),
+      onSetEvolution: (role, on) => scheduleSandboxEvolution(role, on),
+      onSpawnChest: () => {
+        w.spawnChest(w.player.x + 100, w.player.y);
+        sandboxPanel?.refresh();
+      },
+      onEnqueueChest: () => enqueueReward({ kind: 'chest' }),
+      onClearRewards: () => {
+        sandboxBuildGeneration++;
+        resetRewardQueue();
+        w.clearChests();
+        paintBand();
+      },
+      rewardQueueLength,
+      isGearPending: (gear) => pendingGear.has(gear),
+      isEvolutionPending: (role) => pendingEvolutions.has(role),
       onExit: () => {
         resetWorld();
         engine.clock.stop();
@@ -409,7 +682,8 @@ export async function bootGame(
       },
     });
     hud.showHud(true);
-    hud.renderBand(w.tiers);
+    hud.renderBand(w.tiers, undefined, undefined, undefined, w.evolved, pendingEvolutions);
+    hud.renderGear(w.gear, pendingGear);
     state = 'sandbox';
     syncTimeScaleControl(); // arm the timeScale slider for the sandbox
     void engine.ctx.resume();
@@ -418,9 +692,11 @@ export async function bootGame(
 
   function endRun(victory: boolean): void {
     if (!world || state === 'end') return;
+    world.clearChests();
     state = 'end';
     syncTimeScaleControl(); // no live world to scale on the end screen
-    resetUpgradeQueue();
+    const evolvedAtEnd = new Set(world.evolved);
+    resetRewardQueue();
     liveAcc = 0;
     applyGain();
     engine.clock.stop();
@@ -433,6 +709,7 @@ export async function bootGame(
         level: world.level,
         damageByRole: world.damageByRole,
         killsByRole: world.killsByRole,
+        evolved: evolvedAtEnd,
       },
       () => {
         hud.showHud(false);
@@ -453,7 +730,13 @@ export async function bootGame(
   const trackOverlay = mountTrackOverlay(trackOverlayEl, engine, kits);
   function refreshTrackOverlay(): void {
     if (trackOverlayEl.style.display === 'none') return;
-    trackOverlay.refresh(world?.tiers ?? new Map(), deactivatedRoles, pendingRoles);
+    trackOverlay.refresh(
+      world?.tiers ?? new Map(),
+      deactivatedRoles,
+      pendingRoles,
+      world?.evolved,
+      pendingEvolutions,
+    );
   }
   function toggleChartOverlay(): void {
     const show = trackOverlayEl.style.display === 'none';
@@ -475,9 +758,27 @@ export async function bootGame(
   const pendingRoles = new Set<Role>();
   function paintBand(): void {
     if (!world) return;
-    hud.renderBand(world.tiers, undefined, deactivatedRoles, pendingRoles);
+    hud.renderBand(
+      world.tiers,
+      undefined,
+      deactivatedRoles,
+      pendingRoles,
+      world.evolved,
+      pendingEvolutions,
+    );
+    hud.renderGear(world.gear, pendingGear);
     // The pause menu mirrors the same rack; keep it truthful if it's open.
-    if (paused) hud.renderBand(world.tiers, pauseRack, deactivatedRoles, pendingRoles);
+    if (paused) {
+      hud.renderBand(
+        world.tiers,
+        pauseRack,
+        deactivatedRoles,
+        pendingRoles,
+        world.evolved,
+        pendingEvolutions,
+      );
+      hud.renderGear(world.gear, pendingGear, pauseGear, true);
+    }
     refreshTrackOverlay();
   }
   function toggleRoleActive(role: Role): void {
@@ -566,23 +867,22 @@ export async function bootGame(
         w.update(SIM_DT);
       }
       if (
-        presentQueuedPickAtAudioT !== null &&
-        engine.ctx.currentTime >= presentQueuedPickAtAudioT &&
+        presentQueuedRewardAtAudioT !== null &&
+        engine.ctx.currentTime >= presentQueuedRewardAtAudioT &&
         steps > 0 &&
         world === w &&
-        state === 'run'
+        rewardStateLive()
       ) {
-        presentQueuedPickAtAudioT = null;
-        presentNextUpgrade();
+        presentQueuedRewardAtAudioT = null;
+        presentNextReward();
       }
-      // Level and elite rewards are raised from inside RunWorld.update(). Drop
-      // their triangle only after the full fixed step has survived, so contact
-      // damage later in that same step cannot end a run mid-reward.
-      if (steps > 0 && world === w && state === 'run') presentNextUpgrade();
+      // XP and chest callbacks are raised inside RunWorld.update(). Present only
+      // after the full fixed step survived, so same-frame rewards retain FIFO.
+      if (steps > 0 && world === w && rewardStateLive()) presentNextReward();
       // Walk-onto collection of a dropped level-up item — a FIXED range, so a
       // future pickup-range buff never reaches it. Checked after stepping so
       // the player's fresh position is used; at most one taken per frame.
-      if (groundPicks.length > 0 && world === w && state === 'run') {
+      if (groundPicks.length > 0 && world === w && rewardStateLive()) {
         const p = w.player;
         const rr = LEVELUP.itemPickupRadius * LEVELUP.itemPickupRadius;
         for (const item of groundPicks) {
