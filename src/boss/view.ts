@@ -36,6 +36,7 @@ export class BossView {
 
   private pops: Pop[] = [];
   private lastFit = 0;
+  private shakes: { start: number; mag: number; dur: number }[] = [];
 
   constructor(world: BossWorld, palette: BossPalette) {
     this.world = world;
@@ -81,16 +82,49 @@ export class BossView {
       this.box.scale.set(scale);
       this.lastFit = scale;
     }
-    this.box.position.set(viewW / 2, viewH / 2);
   }
 
   update(dt: number, viewW: number, viewH: number): void {
     this.fit(viewW, viewH);
+    // Hit shake: nudge the whole arena box a few view pixels, decaying over
+    // each shake's life. Same feel as RunView so a hit reads identically in
+    // either arena. Frozen (the end screen) drops any shake so it can't jitter
+    // behind the results.
+    if (this.world.frozen) {
+      this.shakes.length = 0;
+      this.box.position.set(viewW / 2, viewH / 2);
+    } else {
+      const [sx, sy] = this.shakeOffset();
+      this.box.position.set(viewW / 2 + sx, viewH / 2 + sy);
+    }
     this.drawHazards();
     this.drawBullets();
     this.drawBoss();
     this.drawPlayer();
     this.drawFx(dt);
+  }
+
+  /** Kick a screenshake (mag view px, over durS seconds). Same contract as
+   *  RunView.pushShake so the shared damage feedback drives both arenas. */
+  pushShake(mag: number, durS: number): void {
+    this.shakes.push({ start: this.world.timeS, mag, dur: durS });
+  }
+
+  /** Current shake offset in view pixels: the strongest live shake decayed by
+   *  its age, jittered per frame. Drops finished shakes as it scans. */
+  private shakeOffset(): [number, number] {
+    let amp = 0;
+    for (let i = this.shakes.length - 1; i >= 0; i--) {
+      const s = this.shakes[i];
+      const k = (this.world.timeS - s.start) / s.dur;
+      if (k >= 1 || k < 0) {
+        this.shakes.splice(i, 1);
+        continue;
+      }
+      amp = Math.max(amp, s.mag * (1 - k));
+    }
+    if (!amp) return [0, 0];
+    return [(Math.random() * 2 - 1) * amp, (Math.random() * 2 - 1) * amp];
   }
 
   private drawHazards(): void {

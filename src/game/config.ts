@@ -15,15 +15,34 @@ export const RUN = {
    * reference viewport, then multiplied by Mad Forest's normal x1.1. */
   playerSpeed: 82.5 * 1.1 * (800 / 456),
   playerRadius: 9 * (800 / 456),
-  /** A landed hit grants a clear half-second recovery window. The shared
-   * edge-tint feedback lasts for this same interval (style.css). */
-  iframesS: 0.5,
   /** Vampire Survivors' unmodified Magnet stat. */
   magnetRadius: 53,
   pickupRadius: 16,
   gemPullSpeed: 420,
   maxGems: 400,
 };
+
+/** Player take-damage feedback, shared by every arena (normal run, sandbox,
+ *  and boss) through damage-feedback.ts. One place for the whole feel: the
+ *  recovery window, the red edge tint, and the hit screenshake. The flash
+ *  timing/color/intensity are pushed onto the `.hit-flash` element as CSS
+ *  variables at runtime, so changing them here is enough (no CSS edit needed).
+ *  `flashDurS` is meant to track `iframesS`: the tint lasts exactly as long as
+ *  the recovery window. */
+export const DAMAGE_FEEDBACK = {
+  /** Recovery window after a landed hit: no further contact damage until it
+   *  elapses. Both the run and the boss read this one value. */
+  iframesS: 0.5,
+  /** How long the red edge tint holds, then fades (seconds). */
+  flashDurS: 0.5,
+  /** CSS color of the edge tint, including its own base alpha. */
+  flashColor: 'rgba(255, 77, 94, 0.55)',
+  /** Peak opacity of the flash during its hold (0..1). */
+  flashIntensity: 0.9,
+  /** Screenshake kicked on a landed hit (magnitude in view px, duration s). */
+  shakeMag: 7,
+  shakeDurS: 0.12,
+} as const;
 
 /** Level-up ground picks (diegetic reward). Instead of a full-screen menu, the
  * three offers drop as physical items in a triangle around the player, the

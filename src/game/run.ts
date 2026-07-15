@@ -14,6 +14,7 @@ import {
   BELL,
   CHARGER,
   CIRCLER,
+  DAMAGE_FEEDBACK,
   DARTER,
   ENEMIES,
   FLASH,
@@ -586,7 +587,7 @@ export class RunWorld {
     }
     if (!hitter || p.iframesT > 0 || this.invincible) return;
     p.hp = Math.max(0, p.hp - hitter.damage);
-    p.iframesT = RUN.iframesS;
+    p.iframesT = DAMAGE_FEEDBACK.iframesS;
     this.events.onHit();
     if (p.hp <= 0) this.events.onDeath();
   }

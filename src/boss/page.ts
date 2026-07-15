@@ -13,6 +13,7 @@ import { Mp3Engine } from './mp3engine';
 import { BOSSES, type BossDef } from './bosses';
 import { ARENA, BossWorld } from './world';
 import { BossView } from './view';
+import { pushDamageFeedback } from '../game/damage-feedback';
 
 type State = 'select' | 'loading' | 'fight' | 'end';
 
@@ -221,11 +222,7 @@ export async function mountBossFight(root: HTMLElement, ctx: AudioContext): Prom
     syncOffset = chosen.mp3?.offsetS ?? 0;
 
     world = new BossWorld(() => input.axis(), {
-      onHit: () => {
-        flash.classList.remove('on');
-        void flash.offsetWidth;
-        flash.classList.add('on');
-      },
+      onHit: () => pushDamageFeedback(flash, view),
       onDeath: () => endFight(false),
     });
     world.invincible = invincible;

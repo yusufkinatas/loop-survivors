@@ -10,6 +10,7 @@ import { RUN, LEVELUP } from './config';
 import { SLOTS, ownerOfSlot } from './band';
 import { mountTrackOverlay } from './trackoverlay';
 import { Hud } from './hud';
+import { pushDamageFeedback } from './damage-feedback';
 import { createGreedyMover, createKiter, type AutoMover } from './auto-move';
 import { autoMove, Input, type AutoMoveMode } from './input';
 import { mountJoystick } from './joystick';
@@ -314,8 +315,7 @@ export async function bootGame(
       endRun(true);
     },
     onHit(): void {
-      hud.hitFlash();
-      view?.pushShake(7, 0.12);
+      pushDamageFeedback(hud.flashEl, view);
     },
   };
 
@@ -329,8 +329,7 @@ export async function bootGame(
     },
     onVictory(): void {},
     onHit(): void {
-      hud.hitFlash();
-      view?.pushShake(7, 0.12);
+      pushDamageFeedback(hud.flashEl, view);
     },
   };
   let sandboxPanel: SandboxPanel | null = null;

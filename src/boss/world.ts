@@ -5,6 +5,8 @@
 // the beat; the boss cannot be hurt, it dies when its song ends (see
 // conductor.ts). Pure simulation: rendering lives in view.ts.
 
+import { DAMAGE_FEEDBACK } from '../game/config';
+
 /** Fixed arena, world units, centered on (0,0). The view letterboxes it into
  *  whatever window it gets, so the whole box is always visible. */
 export const ARENA = { w: 1240, h: 760 };
@@ -13,9 +15,6 @@ export const BOSS_PLAYER = {
   hp: 100,
   speed: 258,
   radius: 11,
-  // Keep ordinary hits aligned with the main run: both modes give a clear
-  // half-second recovery window, signalled by the shared red edge tint.
-  iframesS: 0.5,
   dashSpeed: 760,
   dashDurS: 0.15,
   // Near-minimal so the dash is almost always available against beat-frequent
@@ -596,7 +595,7 @@ export class BossWorld {
     const p = this.player;
     if (this.invincible || p.iframesT > 0 || p.hp <= 0 || this.frozen) return false;
     p.hp = Math.max(0, p.hp - dmg);
-    p.iframesT = BOSS_PLAYER.iframesS;
+    p.iframesT = DAMAGE_FEEDBACK.iframesS;
     this.events.onHit();
     if (p.hp <= 0) this.events.onDeath();
     return true;

@@ -121,10 +121,10 @@ export class Hud {
     this.timer.textContent = `${m}:${String(s).padStart(2, '0')}`;
   }
 
-  hitFlash(): void {
-    this.flash.classList.remove('on');
-    void this.flash.offsetWidth;
-    this.flash.classList.add('on');
+  /** The `.hit-flash` edge-tint element. The shared damage-feedback helper
+   *  (damage-feedback.ts) drives it so every arena flashes identically. */
+  get flashEl(): HTMLElement {
+    return this.flash;
   }
 
   /** Level-up affirmation: a full-screen signal-colored edge vignette, the
