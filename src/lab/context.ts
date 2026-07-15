@@ -10,6 +10,7 @@ import { ROLE_META, type Kit, type Role } from '../audio/kits';
 import type { ChartEvent } from '../audio/charts';
 import { SIM_DT } from '../game/timing';
 import { RUN } from '../game/config';
+import { EVOLUTION_BY_ROLE } from '../game/evolutions';
 import { Input, autoMove, touchAxis } from '../game/input';
 import { mountJoystick, type JoystickHandle } from '../game/joystick';
 import { mulberry32 } from '../game/rng';
@@ -69,6 +70,7 @@ export class LabSandbox {
   private lastAxis = { x: 0, y: 0 };
   hitCount = 0;
   triggerCount = 0;
+  lastTrigger: ScheduledTrigger | null = null;
 
   private constructor(
     root: HTMLElement,
@@ -124,6 +126,7 @@ export class LabSandbox {
     this.unsubscribeTrigger = engine.addTriggerListener((trigger) => {
       if (this.world.tiers.has(trigger.role)) this.world.fireTrigger(trigger);
       this.triggerCount++;
+      this.lastTrigger = trigger;
       for (const watcher of this.triggerWatchers) watcher(trigger);
     });
 
@@ -182,15 +185,26 @@ export class LabSandbox {
   /** Select one real instrument and its real tier. The clock remains stopped
    * until a room explicitly asks for pattern playback; manual preview still
    * routes through the normal trigger pipeline. */
-  selectInstrument(role: Role, tier: number): void {
+  selectInstrument(role: Role, tier: number, evolved = false): void {
     this.engine.clearTransientSchedule();
     for (const active of supportedRoles()) {
       this.engine.setVoiceEnabled(active, false);
+      this.engine.setVoiceEvolved(active, false);
       this.world.removeWeapon(active);
     }
-    this.engine.setVoiceTier(role, tier);
+    this.world.gear.clear();
+    this.world.evolved.clear();
+    const selectedTier = evolved ? 4 : tier;
+    this.engine.setVoiceTier(role, selectedTier);
+    this.engine.setVoiceEvolved(role, evolved);
     this.engine.setVoiceEnabled(role, true);
-    this.world.addWeapon(role, tier);
+    this.world.addWeapon(role, selectedTier);
+    if (evolved) {
+      const evolution = EVOLUTION_BY_ROLE.get(role);
+      if (!evolution) throw new Error(`Living Lab: ${role} has no evolution registry entry`);
+      this.world.addGear(evolution.gear);
+      this.world.setEvolved(role, true);
+    }
   }
 
   pulse(role: Role, event?: ChartEvent): void {
@@ -262,6 +276,7 @@ export class LabSandbox {
     this.world.invincible = true;
     this.hitCount = 0;
     this.triggerCount = 0;
+    this.lastTrigger = null;
     this.lastAxis = { x: 0, y: 0 };
     touchAxis.x = 0;
     touchAxis.y = 0;

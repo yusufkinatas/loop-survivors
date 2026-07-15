@@ -11,6 +11,11 @@ import { SOUNDSET } from './soundset';
 import { SKELETON, STEPS_PER_BAR, STEPS_PER_PHRASE, semitonesToRate } from './scale';
 import type { Kit, Role } from './kits';
 import { buildSoundsetKit } from './kits/index';
+import {
+  evolvedAudioTreatment,
+  type AudioLayerPlan,
+  type EvolvedAudioTreatment,
+} from './evolved';
 
 interface VoiceHit {
   src: AudioBufferSourceNode;
@@ -24,8 +29,8 @@ export interface Voice {
   /** Ladder tier 1-4 the voice is playing. */
   tier: number;
   /** Evolution is orthogonal to tier: evolved voices keep their tier-IV chart.
-   *  Sub-phase A snapshots this into gameplay triggers; evolved sound layers
-   *  arrive in the later audio-gated sub-phase. */
+   *  The state selects an audio-owned treatment and is snapshotted into the
+   *  same one-per-chart-event gameplay trigger. */
   evolved: boolean;
   enabled: boolean;
   gain: GainNode;
@@ -70,7 +75,11 @@ interface TimedAction {
 
 interface PendingTrigger {
   trigger: ScheduledTrigger;
+  /** Main source retained separately for the choke-history identity; sources
+   *  includes every quiet evolved layer so lookahead rewind cancels the whole
+   *  one-trigger audio event. */
   source: AudioBufferSourceNode;
+  sources: AudioBufferSourceNode[];
   voice: Voice;
   chokedPrevious: VoiceHit | null;
 }
@@ -304,11 +313,13 @@ export class MusicEngine {
         continue;
       }
       canceled.set(pending.source, pending);
-      try {
-        pending.source.stop(now);
-      } catch {
-        // A browser may report an already-finished source at the boundary; its
-        // gameplay trigger is still removed with the canceled unheard tail.
+      for (const source of pending.sources) {
+        try {
+          source.stop(now);
+        } catch {
+          // A browser may report an already-finished source at the boundary;
+          // its gameplay trigger is still removed with the canceled tail.
+        }
       }
     }
     this.pending = keep;
@@ -366,9 +377,8 @@ export class MusicEngine {
     voice.chart = getChart(role, voice.tier);
   }
 
-  /** Evolution never changes the chart or tier. The evolved audio treatment is
-   *  layered onto this state in Sub-phase B; gameplay already receives the
-   *  exact lookahead snapshot through ScheduledTrigger. */
+  /** Evolution never changes the chart or tier. Audio layers and gameplay both
+   *  read the exact lookahead snapshot authored by this boolean. */
   setVoiceEvolved(role: Role, on: boolean): void {
     const voice = this.voices.get(role);
     if (voice) voice.evolved = on;
@@ -523,7 +533,7 @@ export class MusicEngine {
     const voice = this.voices.get(role);
     if (!voice) return;
     const ev = event ?? { step: 0, velocity: 0.9, note: voice.kit.pitched ? 0 : undefined };
-    this.trigger(voice, ev, this.ctx.currentTime);
+    this.trigger(voice, ev, this.ctx.currentTime, ev.step);
   }
 
   private onStep(step: number, time: number): void {
@@ -554,22 +564,91 @@ export class MusicEngine {
       voice.activeSamples.values().next().value;
     if (!buffer) return;
 
-    const src = this.ctx.createBufferSource();
-    src.buffer = buffer;
-    this.activeSources.add(src);
-    src.addEventListener('ended', () => this.activeSources.delete(src), { once: true });
-
     let rate = semitonesToRate((ev.note ?? 0) + voice.tune);
     if (!voice.kit.pitched) {
       rate *= semitonesToRate(((Math.random() * 2 - 1) * HUMANIZE_CENTS) / 100);
     }
-    src.playbackRate.value = rate;
 
+    // One event bus owns the velocity envelope and choke state for the main
+    // buffer plus every evolved layer. Routing it through voice.gain preserves
+    // per-voice volume, master mute, transport pause, reward ducking, and the
+    // kick→bass duck for every layer without a parallel FX bus.
     const g = this.ctx.createGain();
     const humanized = ev.velocity * (1 + (Math.random() * 2 - 1) * HUMANIZE_GAIN);
     g.gain.value = Math.max(0.01, humanized);
-    src.connect(g).connect(voice.gain);
-    src.start(time);
+    g.connect(voice.gain);
+
+    const treatment: EvolvedAudioTreatment = voice.evolved
+      ? evolvedAudioTreatment(voice.role, phraseStep, ev.variant ?? voice.kit.defaultVariant)
+      : { mainGain: 1, mainRateMul: 1, layers: [] };
+    const sources: AudioBufferSourceNode[] = [];
+
+    const startSource = (
+      plan: AudioLayerPlan,
+      rateFromMul = plan.rateMul,
+      slideS = 0,
+    ): AudioBufferSourceNode => {
+      const source = this.ctx.createBufferSource();
+      source.buffer = buffer;
+      const at = time + plan.delayS;
+      source.playbackRate.setValueAtTime(rate * rateFromMul, at);
+      if (slideS > 0 && rateFromMul !== plan.rateMul) {
+        source.playbackRate.exponentialRampToValueAtTime(rate * plan.rateMul, at + slideS);
+      }
+
+      const sourceGain = this.ctx.createGain();
+      sourceGain.gain.setValueAtTime(Math.max(0.0001, plan.gain), at);
+      let tail: AudioNode = sourceGain;
+      source.connect(sourceGain);
+      if (plan.highpassHz !== undefined) {
+        const hp = this.ctx.createBiquadFilter();
+        hp.type = 'highpass';
+        hp.frequency.value = plan.highpassHz;
+        tail.connect(hp);
+        tail = hp;
+      }
+      if (plan.lowpassHz !== undefined) {
+        const lp = this.ctx.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.frequency.value = plan.lowpassHz;
+        tail.connect(lp);
+        tail = lp;
+      }
+      if (plan.pan !== undefined) {
+        const pan = this.ctx.createStereoPanner();
+        pan.pan.value = Math.max(-1, Math.min(1, plan.pan));
+        tail.connect(pan);
+        tail = pan;
+      }
+      tail.connect(g);
+
+      this.activeSources.add(source);
+      source.addEventListener('ended', () => this.activeSources.delete(source), { once: true });
+      source.start(at);
+      if (plan.stopAfterS !== undefined) {
+        const stopAt = at + plan.stopAfterS;
+        const fadeAt = Math.max(at, stopAt - 0.02);
+        sourceGain.gain.setValueAtTime(Math.max(0.0001, plan.gain), fadeAt);
+        sourceGain.gain.exponentialRampToValueAtTime(0.0001, stopAt);
+        source.stop(stopAt);
+      }
+      sources.push(source);
+      return source;
+    };
+
+    const src = startSource(
+      {
+        delayS: 0,
+        gain: treatment.mainGain,
+        rateMul: treatment.mainRateMul,
+        highpassHz: treatment.mainHighpassHz,
+        lowpassHz: treatment.mainLowpassHz,
+        stopAfterS: treatment.mainStopAfterS,
+      },
+      treatment.mainRateFromMul ?? treatment.mainRateMul,
+      treatment.mainRateSlideS ?? 0,
+    );
+    for (const layer of treatment.layers) startSource(layer);
 
     // Kick ducks bass (design rule 1): schedule the dip at the kick's future
     // audio time (the clock runs ~0.12s ahead).
@@ -600,6 +679,7 @@ export class MusicEngine {
 
     this.pending.push({
       source: src,
+      sources,
       voice,
       chokedPrevious,
       trigger: {

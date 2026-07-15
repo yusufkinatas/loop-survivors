@@ -2,12 +2,13 @@
 
 Last updated: July 15, 2026
 
-## Latest change (July 15, 2026) — weapon evolutions + Gear, Sub-phase A implemented
+## Latest change (July 15, 2026) — weapon evolutions + Gear, Sub-phase B implemented
 
 At the developer's explicit implementation request, the locked handoff at
-`docs/phases/weapon-evolutions.md` is now in progress. **Sub-phase A — Gear and
-reward plumbing — is implemented and awaiting its developer gate.** No later
-sub-phase has started.
+`docs/phases/weapon-evolutions.md` is now in progress. The developer explicitly
+passed **Sub-phase A — Gear and reward plumbing** in a live test. **Sub-phase B
+— evolved sound — is implemented and technically verified, awaiting only the
+developer's ear gate.** No evolution combat has started.
 
 Built: the canonical nine-Gear/nine-evolution registry; four one-level Gear
 sockets; deterministic weapon/Gear offers (weapon-only before 1:00, paired
@@ -18,8 +19,8 @@ Chest eligibility is evaluated at presentation. Zero eligible evolutions falls
 back to a normal reward/+15 HP, one schedules directly, and two-to-four use the
 locked walk-onto layouts. Gear and evolution state land through the existing
 next-heard-bar/audio-time seam with stale-state revalidation and world-swap
-guards. `ScheduledTrigger.evolved` snapshots lookahead state now; evolved audio
-and combat deliberately remain base behavior until their later gated phases.
+guards. `ScheduledTrigger.evolved` snapshots lookahead state now; evolved
+combat deliberately remains base behavior until its later gated phase.
 
 Presentation: generic weapon/Gear/evolution ground tokens, physical gold chest,
 four-socket Gear racks in HUD and pause, pending pulses, evolved name/gold
@@ -28,12 +29,27 @@ The sandbox can quantize Gear on/off, atomically grant Tier IV + paired Gear +
 evolution within the four-socket cap, return to Tier IV base while keeping Gear,
 spawn/queue/clear chests, and show queue length.
 
-Verification: `npm run check:evolutions`, `tsc --noEmit`, production `vite
-build`, `git diff --check`, and the four-room Living Lab browser drive pass.
-The in-app interactive browser connection failed to initialize in this
-environment, so the live walk-onto and layout gate remains entirely the
-developer's hands/eyes. The July 11 parity gate has **not** passed; the known
-shared Kick re-hit-lock mismatch remains a mandatory disposition before
+Sub-phase B adds nine audio-owned treatments without importing game evolution
+ids or changing charts: deeper/fourth-beat-heavy Kick, tighter Snare, distinct
+sharp/bright closed/open Hats, a quiet higher Arp copy, Bass's bounded 0.34 s
+final plunge, wider/longer Chord, sliding/bolder Lead, crowd-layered Clap, and
+four quiet Bell reflections. All internal layers route through the owning
+voice's gain/choke/duck/transport path and still dispatch one gameplay trigger.
+
+The rehearsal room now has Base IV/Evolved solo A/B for all nine weapons plus
+all four legal full bands (Snare or Clap × Lead or Bell) in full-base and
+full-evolved modes. Instrument Zoo exercises every base/evolved live variant
+through engine → due trigger → real `RunWorld.fireTrigger`, verifies paired Gear
+and the evolution snapshot, and restores global state on exit.
+
+Verification: `npm run check:evolved-audio`, `npm run check:evolutions`,
+`tsc --noEmit`, production `vite build`, `git diff --check`, and the browser
+drive pass. The browser drive covered all nine Base/Evolved solos, all four
+audible evolved seven-voice bands (post-limiter peak RMS 0.528), one dispatch
+per pulse, and clean state restoration with no console errors. The in-app
+browser plugin itself still failed to initialize, but no technical gate was
+delegated to the developer. The July 11 parity gate has **not** passed; the
+known shared Kick re-hit-lock mismatch remains a mandatory disposition before
 Dancefloor is implemented in Sub-phase C.
 
 ## Previous change (July 15, 2026) — instrument activate/deactivate on the next bar
@@ -405,11 +421,12 @@ ladders, samples) is kept. See the History entry below for the full teardown.
 
 ## Current phase
 
-**Weapon evolutions + Gear, Sub-phase A — implemented, awaiting the developer's
-live-run gate.** Work began at the developer's explicit implementation request;
-this does not pass or hide the still-outstanding July 11 parity hands gate. The
-known shared Kick re-hit lock remains an implementation/spec mismatch and must
-be resolved or explicitly dispositioned before evolution combat begins.
+**Weapon evolutions + Gear, Sub-phase B — implemented, awaiting the developer's
+ear gate.** Sub-phase A passed explicitly. Browser-verifiable behavior is
+already covered; the remaining decision is whether the evolved sounds are good
+and recognizable in every legal full band. The known shared Kick re-hit lock
+remains an implementation/spec mismatch and must be resolved or explicitly
+dispositioned before evolution combat begins.
 
 ## What was built (July 6)
 
@@ -440,16 +457,17 @@ Gate A also implicitly co-judged the July 6 genres-and-weapons material it stack
 
 ## Next action
 
-Run the Sub-phase A gate on `npm run dev`: intentionally acquire paired Gear,
-prepare at least one Tier-IV recipe, collect a physical chest, exercise a
-multi-evolution walk-onto choice in the sandbox, and confirm the selected state
-lands on the next heard bar without a lost/duplicated reward. Also inspect HUD,
-pause, track overlay, and four-choice layout at desktop and phone width.
+Run only the Sub-phase B **ear** gate in the rehearsal room: compare Base IV to
+Evolved for each of the nine weapons, then listen to full evolved Snare/Clap ×
+Lead/Bell combinations. Each weapon should remain recognizable, the rhythm and
+number of hits should feel unchanged, and the lingering ends of Undertow,
+Cathedral, and Glass Choir must not make the full track cloudy.
 
-Record an explicit pass/fail here. **Do not begin Sub-phase B evolved sound
-without that pass.** The July 11 parity hands gate also remains outstanding;
-resolve or disposition its shared Kick re-hit-lock mismatch before Sub-phase C
-implements Dancefloor.
+Record an explicit pass/fail. Do not begin Sub-phase C combat without that ear
+pass.
+
+The July 11 parity hands gate remains outstanding; resolve or disposition its
+shared Kick re-hit-lock mismatch before Sub-phase C implements Dancefloor.
 
 ## Side branch: per-genre sound (`audio-refresh`)
 

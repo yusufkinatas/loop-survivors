@@ -7,8 +7,11 @@
 
 import { MusicEngine } from '../audio/engine';
 import { ROLES, type Role } from '../audio/kits';
+import { supportedRoles } from '../audio/soundset';
 import { SKELETON, STEPS_PER_BAR, STEPS_PER_PHRASE, BARS_PER_PHRASE } from '../audio/scale';
 import { SAMPLE_SETS, applySampleSet, coveredRoles } from '../audio/samplesets';
+import { slotOf, supportedRoster, supportedSlots } from '../game/band';
+import { EVOLUTION_BY_ROLE } from '../game/evolutions';
 import { mountPlayground, type Playground } from './playground';
 
 /** The progression scrub walks a scripted run of picks (M2: a pick is a new
@@ -60,10 +63,19 @@ interface VoiceUi {
   card: HTMLElement;
   light: HTMLElement;
   toggle: HTMLInputElement;
+  baseBtn?: HTMLButtonElement;
+  evolvedBtn?: HTMLButtonElement;
 }
 
 export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void {
   const voiceUis = new Map<Role, VoiceUi>();
+  const liveRoles = supportedRoles();
+  const legalBands = supportedSlots().reduce<Role[][]>(
+    (bands, slot) => bands.flatMap((band) => supportedRoster(slot).map((role) => [...band, role])),
+    [[]],
+  );
+  let selectedBand = legalBands[0] ?? liveRoles;
+  let fullMixEvolved = false;
 
   root.innerHTML = '';
   const el = (tag: string, className: string, parent: HTMLElement, text = ''): HTMLElement => {
@@ -146,6 +158,35 @@ export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void
   }
   setButtons.get('synth')!.classList.add('current');
 
+  // ---- evolved sound audition: all legal seven-voice bands ----------------
+  const evolvedRow = el('div', 'evolved-audition', root);
+  el('span', 'sets-label', evolvedRow, 'evolved audition');
+  const mixButtons = new Map<Role[], HTMLButtonElement>();
+  for (const band of legalBands) {
+    const forks = band.filter((role) => supportedRoster(slotOf(role)).length > 1);
+    const label = forks.map((role) => engine.voices.get(role)!.kit.name).join(' + ');
+    const btn = el('button', 'set-btn', evolvedRow, label || 'full band') as HTMLButtonElement;
+    btn.dataset.rehearsalBand = band.join(',');
+    btn.title = `legal seven-voice band: ${band.map((role) => engine.voices.get(role)!.kit.name).join(', ')}`;
+    btn.onclick = () => {
+      selectedBand = band;
+      applyFullMix(fullMixEvolved);
+    };
+    mixButtons.set(band, btn);
+  }
+  const fullBaseBtn = el('button', 'set-btn', evolvedRow, 'full base IV') as HTMLButtonElement;
+  const fullEvolvedBtn = el('button', 'set-btn', evolvedRow, 'full evolved') as HTMLButtonElement;
+  fullBaseBtn.dataset.rehearsalFull = 'base';
+  fullEvolvedBtn.dataset.rehearsalFull = 'evolved';
+  fullBaseBtn.onclick = () => applyFullMix(false);
+  fullEvolvedBtn.onclick = () => applyFullMix(true);
+  el(
+    'span',
+    'sets-status',
+    evolvedRow,
+    'Choose one of the four legal bands, then switch every voice between Base IV and Evolved.',
+  );
+
   // ---- progression scrub: pick by pick through a whole run's arc ----
   const scrubRow = el('div', 'scrub-row', root);
   el('span', 'sets-label', scrubRow, 'run arc');
@@ -185,6 +226,7 @@ export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void
     for (const role of ROLES) {
       const tier = tiers.get(role);
       if (tier) engine.setVoiceTier(role, tier);
+      engine.setVoiceEvolved(role, false);
       setVoice(role, tier !== undefined);
     }
     const last = count > 0 ? arc.picks[count - 1] : null;
@@ -192,6 +234,7 @@ export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void
       ? `pick ${count}/${arc.picks.length}: ${last.role} ${['I', 'II', 'III', 'IV'][last.tier - 1]}`
       : 'no picks';
     playground.refresh();
+    refreshEvolutionControls();
   }
 
   // ---- voice cards ----
@@ -212,6 +255,7 @@ export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void
     toggle.onchange = () => {
       setVoice(role, toggle.checked, false);
       playground.refresh();
+      refreshEvolutionControls();
     };
 
     const volWrap = el('label', 'row', card, 'volume');
@@ -252,7 +296,22 @@ export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void
       file.value = '';
     };
 
-    voiceUis.set(role, { card, light, toggle });
+    let baseBtn: HTMLButtonElement | undefined;
+    let evolvedBtn: HTMLButtonElement | undefined;
+    const evolution = EVOLUTION_BY_ROLE.get(role);
+    if (evolution) {
+      const audition = el('div', 'evolved-voice-tools', card);
+      baseBtn = el('button', 'small', audition, 'solo Base IV') as HTMLButtonElement;
+      evolvedBtn = el('button', 'small', audition, `solo ${evolution.name}`) as HTMLButtonElement;
+      baseBtn.dataset.rehearsalSolo = 'base';
+      baseBtn.dataset.role = role;
+      evolvedBtn.dataset.rehearsalSolo = 'evolved';
+      evolvedBtn.dataset.role = role;
+      baseBtn.onclick = () => auditionSolo(role, false);
+      evolvedBtn.onclick = () => auditionSolo(role, true);
+    }
+
+    voiceUis.set(role, { card, light, toggle, baseBtn, evolvedBtn });
   }
 
   // ---- chart playground: the whole arrangement, editable while it plays ----
@@ -279,6 +338,51 @@ export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void
     ui.card.classList.toggle('active', on);
   }
 
+  function refreshEvolutionControls(): void {
+    for (const [role, ui] of voiceUis) {
+      const voice = engine.voices.get(role)!;
+      const activeIV = voice.enabled && voice.tier === 4;
+      ui.baseBtn?.classList.toggle('current', activeIV && !voice.evolved);
+      ui.evolvedBtn?.classList.toggle('current', activeIV && voice.evolved);
+      ui.card.classList.toggle('voice-evolved', activeIV && voice.evolved);
+    }
+    for (const [band, btn] of mixButtons) btn.classList.toggle('current', band === selectedBand);
+    fullBaseBtn.classList.toggle('current', !fullMixEvolved && selectedBand.every((role) => {
+      const voice = engine.voices.get(role)!;
+      return voice.enabled && voice.tier === 4 && !voice.evolved;
+    }));
+    fullEvolvedBtn.classList.toggle('current', fullMixEvolved && selectedBand.every((role) => {
+      const voice = engine.voices.get(role)!;
+      return voice.enabled && voice.tier === 4 && voice.evolved;
+    }));
+  }
+
+  function auditionSolo(role: Role, evolved: boolean): void {
+    fullMixEvolved = evolved;
+    for (const candidate of ROLES) {
+      engine.setVoiceEvolved(candidate, false);
+      setVoice(candidate, false);
+    }
+    engine.setVoiceTier(role, 4);
+    engine.setVoiceEvolved(role, evolved);
+    setVoice(role, true);
+    playground.refresh();
+    refreshEvolutionControls();
+  }
+
+  function applyFullMix(evolved: boolean): void {
+    fullMixEvolved = evolved;
+    const selected = new Set(selectedBand);
+    for (const role of ROLES) {
+      const on = selected.has(role);
+      if (on) engine.setVoiceTier(role, 4);
+      engine.setVoiceEvolved(role, on && evolved && EVOLUTION_BY_ROLE.has(role));
+      setVoice(role, on);
+    }
+    playground.refresh();
+    refreshEvolutionControls();
+  }
+
   // ---- hotkeys ----
   window.addEventListener('keydown', (e) => {
     if (e.target instanceof HTMLInputElement && e.target.type !== 'range') return;
@@ -291,6 +395,7 @@ export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void
       const role = ROLES[idx];
       setVoice(role, !engine.voices.get(role)!.enabled);
       playground.refresh();
+      refreshEvolutionControls();
     }
   });
 
@@ -301,6 +406,8 @@ export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void
     void light.offsetWidth; // restart the CSS animation
     light.classList.add('lit');
   });
+
+  refreshEvolutionControls();
 
   function frame(): void {
     engine.update();

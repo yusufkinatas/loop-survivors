@@ -270,7 +270,7 @@ export class Hud {
       this.closeScreen();
       onSandbox();
     };
-    const roomBtn = el('button', 'small', row, 'rehearsal room');
+    const roomBtn = el('button', 'small start-rehearsal-btn', row, 'rehearsal room');
     roomBtn.onclick = () => {
       location.hash = '#rehearsal';
     };

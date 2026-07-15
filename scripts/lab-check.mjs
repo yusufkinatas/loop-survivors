@@ -294,8 +294,76 @@ try {
     (value) => value?.ready === true && value?.room === 'hub',
   );
 
+  // Re-enter the ordinary shell and exercise the evolved-audio rehearsal
+  // controls. This is structural browser coverage; the developer's ear still
+  // owns whether the resulting legal mixes sound good.
+  await client.evaluate('window.loop.lab.exit(); true');
+  await waitFor(
+    'normal game boot before rehearsal check',
+    client,
+    'Boolean(document.querySelector(".start-btn"))',
+    (value) => value === true,
+  );
+  await client.evaluate("document.querySelector('.start-dev-toggle').click(); true");
+  await client.evaluate("document.querySelector('.start-rehearsal-btn').click(); true");
+  const rehearsal = await waitFor(
+    'rehearsal evolved-audio controls',
+    client,
+    `(() => ({
+      ready: Boolean(document.querySelector('.evolved-audition')),
+      bands: document.querySelectorAll('[data-rehearsal-band]').length,
+      baseSolo: document.querySelectorAll('[data-rehearsal-solo="base"]').length,
+      evolvedSolo: document.querySelectorAll('[data-rehearsal-solo="evolved"]').length,
+    }))()`,
+    (value) => value?.ready === true,
+  );
+  if (rehearsal.bands !== 4 || rehearsal.baseSolo !== 9 || rehearsal.evolvedSolo !== 9) {
+    throw new Error(`Rehearsal evolved controls drift: ${JSON.stringify(rehearsal)}`);
+  }
+  const rehearsalState = await client.evaluate(`(() => {
+    const state = () => ({
+      enabled: document.querySelectorAll('.voice input[type="checkbox"]:checked').length,
+      evolved: document.querySelectorAll('.voice.voice-evolved').length,
+    });
+    document.querySelector('[data-rehearsal-full="evolved"]').click();
+    const fullEvolved = state();
+    document.querySelector('[data-rehearsal-full="base"]').click();
+    const fullBase = state();
+    const soloStates = [...document.querySelectorAll('[data-rehearsal-solo="evolved"]')].map((button) => {
+      button.click();
+      return { role: button.dataset.role, ...state() };
+    });
+    return { fullEvolved, fullBase, soloStates };
+  })()`);
+  if (
+    rehearsalState.fullEvolved.enabled !== 7 || rehearsalState.fullEvolved.evolved !== 7 ||
+    rehearsalState.fullBase.enabled !== 7 || rehearsalState.fullBase.evolved !== 0 ||
+    rehearsalState.soloStates.some((state) => state.enabled !== 1 || state.evolved !== 1)
+  ) {
+    throw new Error(`Rehearsal evolved state mismatch: ${JSON.stringify(rehearsalState)}`);
+  }
+  await client.evaluate("document.querySelector('[data-rehearsal-band]').click(); document.querySelector('[data-rehearsal-full=\"evolved\"]').click(); document.querySelector('.play').click(); true");
+  const mixLevels = [];
+  for (let bandIndex = 0; bandIndex < 4; bandIndex++) {
+    await client.evaluate(`document.querySelectorAll('[data-rehearsal-band]')[${bandIndex}].click(); true`);
+    let maxRms = 0;
+    for (let sample = 0; sample < 18; sample++) {
+      await delay(75);
+      maxRms = Math.max(maxRms, await client.evaluate('window.loop.engine.outputLevel()'));
+    }
+    mixLevels.push(maxRms);
+  }
+  await client.evaluate("document.querySelector('.play').click(); true");
+  if (mixLevels.some((level) => level <= 0.001 || level > 1.05)) {
+    throw new Error(`Rehearsal evolved full-mix output out of bounds: ${JSON.stringify(mixLevels)}`);
+  }
+  if (client.errors.length > 0) {
+    throw new Error(`Browser errors after rehearsal checks:\n${client.errors.join('\n')}`);
+  }
+
   console.log('Living Lab: PASS (4 rooms, fail-fast browser drive, globals restored)');
   console.log('Normal game: PASS (fresh start, Lab entry collapsed then opened through dev tools)');
+  console.log(`Rehearsal: PASS (9 Base/Evolved solos, 4 audible legal bands; peak RMS ${Math.max(...mixLevels).toFixed(3)})`);
 } finally {
   client?.close();
   await terminate(chrome);

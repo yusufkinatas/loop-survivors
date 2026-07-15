@@ -26,6 +26,7 @@ import { ACTIVE_ENEMY_KINDS, STAGE_EVENTS, STAGE_WAVES } from '../game/madforest
 import { rollOffers } from '../game/picks';
 import { mulberry32 } from '../game/rng';
 import { PLAYER_FOOT_OFFSET, type Enemy } from '../game/run';
+import { EVOLUTION_BY_ROLE, GEARS } from '../game/evolutions';
 import { LabSandbox } from './context';
 
 interface RoomDef {
@@ -55,8 +56,8 @@ const ROOMS: readonly RoomDef[] = [
     id: 'instruments',
     eyebrow: 'ZOO',
     title: 'Instrument Zoo',
-    description: 'Fire one sound-weapon by hand, at any tier and sound variant, against live targets.',
-    count: () => `${supportedRoles().length} active weapons`,
+    description: 'Fire one sound-weapon by hand, including its Base IV and Evolved sound states, against live targets.',
+    count: () => `${supportedRoles().length} active weapons · base/evolved`,
   },
   {
     id: 'systems',
@@ -477,6 +478,7 @@ export async function mountDocumentationLab(
     let selected = roles[0];
     let tier = 1;
     let variant = ROLE_META[selected].variants[0];
+    let evolved = false;
     let patternOn = false;
     const roster = el('div', 'lab-roster lab-instrument-roster', node);
     const detail = el('div', 'lab-detail', node);
@@ -487,6 +489,12 @@ export async function mountDocumentationLab(
     const tierRow = el('div', 'lab-actions compact', node);
     el('span', 'lab-action-label', tierRow, 'tier');
     const tierButtons: HTMLButtonElement[] = [];
+    const evolutionRow = el('div', 'lab-actions compact', node);
+    el('span', 'lab-action-label', evolutionRow, 'sound state');
+    const baseBtn = el('button', 'small', evolutionRow, 'Base IV');
+    baseBtn.dataset.labEvolution = 'base';
+    const evolvedBtn = el('button', 'small', evolutionRow, 'Evolved');
+    evolvedBtn.dataset.labEvolution = 'evolved';
     const variantRow = el('div', 'lab-actions compact', node);
     el('span', 'lab-action-label', variantRow, 'sound variant');
     const variantButtons = el('div', 'lab-inline-buttons', variantRow);
@@ -514,6 +522,7 @@ export async function mountDocumentationLab(
       entry.onclick = () => {
         selected = role;
         variant = ROLE_META[role].variants[0];
+        evolved = false;
         stopPattern();
         refreshSelection();
         seedTargets();
@@ -525,6 +534,7 @@ export async function mountDocumentationLab(
       tierBtn.dataset.labTier = String(n);
       tierBtn.onclick = () => {
         tier = n;
+        evolved = false;
         tierButtons.forEach((candidate) => setPressed(candidate, candidate === tierBtn));
         refreshSelection();
         seedTargets();
@@ -532,6 +542,16 @@ export async function mountDocumentationLab(
       tierButtons.push(tierBtn);
     }
     tierButtons.forEach((candidate, index) => setPressed(candidate, index === 0));
+    baseBtn.onclick = () => setEvolution(false);
+    evolvedBtn.onclick = () => setEvolution(true);
+
+    function setEvolution(on: boolean): void {
+      evolved = on;
+      tier = 4;
+      tierButtons.forEach((candidate, index) => setPressed(candidate, index === 3));
+      refreshSelection();
+      seedTargets();
+    }
 
     function stopPattern(): void {
       patternOn = false;
@@ -546,13 +566,25 @@ export async function mountDocumentationLab(
       const meta = ROLE_META[selected];
       const conf = WEAPONS[selected]![tier - 1];
       const chart = getChart(selected, tier);
-      detailName.textContent = `${meta.name} · tier ${tier}`;
-      detailId.textContent = `${selected} / slot:${slotOf(selected)}`;
+      const evolution = EVOLUTION_BY_ROLE.get(selected);
+      const gear = evolution ? GEARS[evolution.gear] : undefined;
+      detailName.textContent = evolved && evolution
+        ? `${meta.name} → ${evolution.name}`
+        : `${meta.name} · tier ${tier}`;
+      detailId.textContent = evolved && gear
+        ? `${selected} / slot:${slotOf(selected)} / paired Gear:${gear.name}`
+        : `${selected} / slot:${slotOf(selected)}`;
       detailStats.textContent =
         `${weaponStats(conf)} · ${chart.events.length} scheduled sound event${chart.events.length === 1 ? '' : 's'}` +
         ` in a ${chart.bars * 4}-beat loop`;
-      detailLine.textContent = TIER_LINES[selected]?.[tier - 1] ?? 'Live tier from the gameplay registry.';
+      detailLine.textContent = evolved && evolution
+        ? `${evolution.fantasy} The chart and trigger count stay identical to Base IV.`
+        : TIER_LINES[selected]?.[tier - 1] ?? 'Live tier from the gameplay registry.';
       for (const [role, entry] of roleButtons) setPressed(entry, role === selected);
+      baseBtn.disabled = !evolution;
+      evolvedBtn.disabled = !evolution;
+      setPressed(baseBtn, tier === 4 && !evolved);
+      setPressed(evolvedBtn, tier === 4 && evolved);
       variantButtons.replaceChildren();
       for (const name of meta.variants) {
         const variantBtn = el('button', 'small', variantButtons, name);
@@ -563,7 +595,7 @@ export async function mountDocumentationLab(
           refreshSelection();
         };
       }
-      context.selectInstrument(selected, tier);
+      context.selectInstrument(selected, tier, evolved);
       pulseBtn.style.setProperty('--voice-color', meta.color);
     }
 
@@ -594,7 +626,7 @@ export async function mountDocumentationLab(
     function seedTargets(): void {
       stopPattern();
       context.world.clearSandboxEntities();
-      context.selectInstrument(selected, tier);
+      context.selectInstrument(selected, tier, evolved);
       const p = context.world.player;
       const positions = [
         [105, 0], [230, -180], [430, -190], [260, -60],
@@ -858,9 +890,13 @@ export async function mountDocumentationLab(
           );
           assert(!content.querySelector('[data-role="crash"], [data-role="riser"]'), 'retired FX leaked');
           const pulse = content.querySelector<HTMLButtonElement>('[data-lab-action="instrument-pulse"]')!;
+          const base = content.querySelector<HTMLButtonElement>('[data-lab-evolution="base"]')!;
+          const evolvedButton = content.querySelector<HTMLButtonElement>('[data-lab-evolution="evolved"]')!;
           for (const entry of roster) {
             entry.click();
             const role = entry.dataset.role as Role;
+            const evolution = EVOLUTION_BY_ROLE.get(role);
+            assert(evolution, `missing evolution registry entry for ${role}`);
             const tiers = [...content.querySelectorAll<HTMLButtonElement>('[data-lab-tier]')];
             assert(
               JSON.stringify(tiers.map((tierButton) => tierButton.dataset.labTier)) ===
@@ -868,14 +904,27 @@ export async function mountDocumentationLab(
               `tier controls drift for ${role}`,
             );
             for (const tierButton of tiers) tierButton.click();
-            for (const variant of ROLE_META[role].variants) {
-              const variantButton = [...content.querySelectorAll<HTMLButtonElement>('[data-lab-variant]')]
-                .find((candidate) => candidate.dataset.labVariant === variant);
-              assert(variantButton, `missing ${role} variant ${variant}`);
-              variantButton!.click();
-              const before = context.triggerCount;
-              pulse.click();
-              assert(context.triggerCount === before + 1, `${role}/${variant} pulse mismatch`);
+            for (const [mode, on, modeButton] of [
+              ['base', false, base],
+              ['evolved', true, evolvedButton],
+            ] as const) {
+              modeButton.click();
+              assert(context.world.evolved.has(role) === on, `${role} ${mode} world-state mismatch`);
+              assert(
+                !on || context.world.gear.has(evolution!.gear),
+                `${role} ${mode} missing paired Gear`,
+              );
+              for (const variant of ROLE_META[role].variants) {
+                const variantButton = [...content.querySelectorAll<HTMLButtonElement>('[data-lab-variant]')]
+                  .find((candidate) => candidate.dataset.labVariant === variant);
+                assert(variantButton, `missing ${role} variant ${variant}`);
+                variantButton!.click();
+                const before = context.triggerCount;
+                pulse.click();
+                assert(context.triggerCount === before + 1, `${role}/${variant}/${mode} pulse mismatch`);
+                assert(context.lastTrigger?.role === role, `${role}/${variant}/${mode} routed wrong role`);
+                assert(context.lastTrigger?.evolved === on, `${role}/${variant}/${mode} snapshot mismatch`);
+              }
             }
           }
         }
