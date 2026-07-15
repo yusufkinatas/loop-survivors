@@ -320,6 +320,103 @@ try {
 
   await client.send('Emulation.clearDeviceMetricsOverride');
 
+  // Exercise the production sandbox reward seam—not a parallel fixture. A
+  // physical chest is collected through real movement, then a prepared
+  // Snare-IV + Laser Sight recipe converts through the real FIFO/next-bar path
+  // and appears consistently in the HUD and track overlay.
+  await client.evaluate("document.querySelector('.start-dev-toggle').click(); document.querySelector('.start-sandbox-btn').click(); true");
+  const sandboxCatalog = await waitFor(
+    'sandbox evolution catalog',
+    client,
+    `(() => ({
+      ready: document.querySelector('.sandbox-panel')?.dataset.sandboxReady === 'true',
+      gear: document.querySelectorAll('.sb-gear-row[data-gear]').length,
+      evolutions: document.querySelectorAll('.sb-evolution-row[data-role]').length,
+      sockets: document.querySelectorAll('.gear-rack .gear-socket').length,
+      queue: document.querySelector('[data-sandbox-queue]')?.textContent ?? '',
+    }))()`,
+    (value) => value?.ready === true,
+  );
+  if (
+    sandboxCatalog.gear !== 9 || sandboxCatalog.evolutions !== 9 ||
+    sandboxCatalog.sockets !== 4 || sandboxCatalog.queue !== 'reward queue: 0'
+  ) {
+    throw new Error(`Sandbox evolution catalog drift: ${JSON.stringify(sandboxCatalog)}`);
+  }
+
+  await client.evaluate("document.querySelector('[data-sandbox-action=\"spawn-chest\"]').click(); true");
+  await client.send('Input.dispatchKeyEvent', { type: 'keyDown', code: 'KeyD', key: 'd' });
+  await delay(900);
+  await client.send('Input.dispatchKeyEvent', { type: 'keyUp', code: 'KeyD', key: 'd' });
+  await waitFor(
+    'physical sandbox chest collection',
+    client,
+    "document.querySelector('[data-sandbox-queue]')?.textContent ?? ''",
+    (value) => value === 'reward queue: 1',
+  );
+  await client.evaluate("document.querySelector('[data-sandbox-action=\"clear-rewards\"]').click(); true");
+
+  await client.evaluate(`(() => {
+    document.querySelector('.sb-evolution-row[data-role="snare"] [data-sandbox-action="base"]').click();
+    document.querySelector('.sb-gear-row[data-gear="laserSight"] [data-sandbox-action="toggle-gear"]').click();
+    return true;
+  })()`);
+  await waitFor(
+    'prepared sandbox recipe',
+    client,
+    `(() => ({
+      base: document.querySelector('.sb-evolution-row[data-role="snare"] [data-sandbox-action="base"]')?.classList.contains('on') ?? false,
+      gear: document.querySelector('.sb-gear-row[data-gear="laserSight"] [data-sandbox-action="toggle-gear"]')?.classList.contains('on') ?? false,
+      filled: document.querySelectorAll('.gear-rack .gear-socket.filled').length,
+    }))()`,
+    (value) => value?.base === true && value?.gear === true,
+    8_000,
+  );
+  await client.evaluate("document.querySelector('[data-sandbox-action=\"queue-chest\"]').click(); true");
+  const convertedRecipe = await waitFor(
+    'sandbox chest evolution conversion',
+    client,
+    `(() => {
+      const row = document.querySelector('.sb-evolution-row[data-role="snare"]');
+      return {
+        evolved: row?.querySelector('[data-sandbox-action="evolved"]')?.classList.contains('on') ?? false,
+        hudName: [...document.querySelectorAll('.band-socket.evolved .socket-name')].map((node) => node.textContent),
+        diamonds: document.querySelectorAll('.band-socket.evolved .evolution-diamond.on').length,
+        queue: document.querySelector('[data-sandbox-queue]')?.textContent ?? '',
+      };
+    })()`,
+    (value) => value?.evolved === true && value?.queue === 'reward queue: 0',
+    8_000,
+  );
+  if (!convertedRecipe.hudName.includes('Dead Center') || convertedRecipe.diamonds !== 1) {
+    throw new Error(`Sandbox evolved HUD drift: ${JSON.stringify(convertedRecipe)}`);
+  }
+  await client.send('Input.dispatchKeyEvent', { type: 'keyDown', code: 'KeyC', key: 'c' });
+  await client.send('Input.dispatchKeyEvent', { type: 'keyUp', code: 'KeyC', key: 'c' });
+  const trackEvolution = await waitFor(
+    'evolved track overlay',
+    client,
+    `(() => ({
+      visible: document.querySelector('.track-overlay')?.style.display !== 'none',
+      names: [...document.querySelectorAll('.track-overlay .tr-name')].map((node) => node.textContent),
+      diamonds: document.querySelectorAll('.track-overlay .tr-evolution.on').length,
+    }))()`,
+    (value) => value?.visible === true,
+  );
+  if (!trackEvolution.names.includes('Dead Center') || trackEvolution.diamonds !== 1) {
+    throw new Error(`Track evolution drift: ${JSON.stringify(trackEvolution)}`);
+  }
+  if (client.errors.length > 0) {
+    throw new Error(`Browser errors after sandbox evolution checks:\n${client.errors.join('\n')}`);
+  }
+  await client.evaluate("[...document.querySelectorAll('.sb-head button')].find((button) => button.textContent.includes('leave')).click(); true");
+  await waitFor(
+    'normal game after sandbox exit',
+    client,
+    'Boolean(document.querySelector(".start-btn"))',
+    (value) => value === true,
+  );
+
   await client.evaluate("document.querySelector('.start-dev-toggle').click(); true");
   await waitFor(
     'expanded Living Lab menu entry',
@@ -410,6 +507,7 @@ try {
 
   console.log('Living Lab: PASS (4 rooms at 1440×900 + 390×844, fail-fast browser drive, globals restored)');
   console.log('Normal game: PASS (fresh start, Lab entry collapsed then opened through dev tools)');
+  console.log('Sandbox rewards: PASS (physical chest, prepared recipe, next-bar evolution, HUD + track)');
   console.log(`Rehearsal: PASS (9 Base/Evolved solos, 4 audible legal bands; peak RMS ${Math.max(...mixLevels).toFixed(3)})`);
 } finally {
   client?.close();

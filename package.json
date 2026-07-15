@@ -10,6 +10,7 @@
     "check": "tsc --noEmit",
     "check:lab": "npm run build && node scripts/lab-check.mjs --preview",
     "check:evolutions": "tsx scripts/evolutions-check.ts",
+    "check:evolution-economy": "tsx scripts/evolution-economy-check.ts",
     "check:evolution-combat": "tsx scripts/evolution-combat-check.ts",
     "check:evolved-audio": "tsx scripts/evolved-audio-check.ts",
     "check:mad-forest": "tsx scripts/madforest-check.ts"

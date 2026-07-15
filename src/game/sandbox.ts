@@ -53,6 +53,7 @@ export function mountSandboxPanel(
 ): SandboxPanel {
   const panel = document.createElement('div');
   panel.className = 'sandbox-panel';
+  panel.dataset.sandboxReady = 'true';
   root.appendChild(panel);
 
   const el = (tag: string, className: string, parent: HTMLElement, text = ''): HTMLElement => {
@@ -231,11 +232,13 @@ export function mountSandboxPanel(
   for (const gear of GEAR_IDS) {
     const conf = GEARS[gear];
     const row = el('div', 'sb-loadout sb-gear-row', panel);
+    row.dataset.gear = gear;
     row.style.setProperty('--voice-color', `#${conf.color.toString(16).padStart(6, '0')}`);
     const info = el('div', 'sb-loadout-name', row);
     el('span', 'sb-loadout-label', info, conf.name);
     el('span', 'sb-enemy-stats', info, conf.pickLine);
     const btn = el('button', 'small', el('div', 'sb-btns', row)) as HTMLButtonElement;
+    btn.dataset.sandboxAction = 'toggle-gear';
     btn.onclick = () => {
       if (opts.isGearPending?.(gear)) return;
       opts.onToggleGear?.(gear, !world.gear.has(gear));
@@ -254,6 +257,7 @@ export function mountSandboxPanel(
     const evolution = EVOLUTION_BY_ROLE.get(role);
     if (!evolution) continue;
     const row = el('div', 'sb-loadout sb-evolution-row', panel);
+    row.dataset.role = role;
     row.style.setProperty('--voice-color', `#${evolution.color.toString(16).padStart(6, '0')}`);
     const info = el('div', 'sb-loadout-name', row);
     el('span', 'sb-loadout-label', info, `${ROLE_META[role].name} → ${evolution.name}`);
@@ -261,6 +265,8 @@ export function mountSandboxPanel(
     const btns = el('div', 'sb-btns', row);
     const base = el('button', 'small', btns, 'IV base') as HTMLButtonElement;
     const evolved = el('button', 'small', btns, 'evolved') as HTMLButtonElement;
+    base.dataset.sandboxAction = 'base';
+    evolved.dataset.sandboxAction = 'evolved';
     base.onclick = () => opts.onSetEvolution?.(role, false);
     evolved.onclick = () => opts.onSetEvolution?.(role, true);
     refreshers.push(() => {
@@ -274,12 +280,16 @@ export function mountSandboxPanel(
 
   const rewardControls = el('div', 'sb-btns sb-controls', panel);
   const spawnChest = el('button', 'small', rewardControls, 'spawn chest') as HTMLButtonElement;
+  spawnChest.dataset.sandboxAction = 'spawn-chest';
   spawnChest.onclick = () => opts.onSpawnChest?.();
   const queueChest = el('button', 'small', rewardControls, 'queue chest') as HTMLButtonElement;
+  queueChest.dataset.sandboxAction = 'queue-chest';
   queueChest.onclick = () => opts.onEnqueueChest?.();
   const clearRewards = el('button', 'small', rewardControls, 'clear rewards') as HTMLButtonElement;
+  clearRewards.dataset.sandboxAction = 'clear-rewards';
   clearRewards.onclick = () => opts.onClearRewards?.();
   const queueReadout = el('div', 'sb-hint', panel);
+  queueReadout.dataset.sandboxQueue = 'true';
   refreshers.push(() => {
     queueReadout.textContent = `reward queue: ${opts.rewardQueueLength?.() ?? 0}`;
   });

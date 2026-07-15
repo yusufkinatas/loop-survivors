@@ -15,6 +15,7 @@ import { autoMove, Input, type AutoMoveMode } from './input';
 import { mountJoystick } from './joystick';
 import { rollOffers, type PickOption } from './picks';
 import { RunWorld, KIT_COLORS } from './run';
+import { PendingRewardQueue, rewardChoiceAngles, type PendingReward } from './rewards';
 import { SIM_DT } from './timing';
 import { RunView, type GroundPickView } from './view';
 import { mountSandboxPanel, type SandboxPanel } from './sandbox';
@@ -176,13 +177,12 @@ export async function bootGame(
   overlay.style.display = 'none';
   root.appendChild(overlay);
 
-  type PendingReward = { kind: 'level'; level: number } | { kind: 'chest' };
   type GroundChoice = PickOption | { kind: 'evolution'; role: Role };
 
   // XP thresholds and collected chests share one FIFO. The active reward stays
   // explicit until its selected build change lands on the heard bar, so a stale
   // sandbox mutation can reroll it without losing or duplicating the reward.
-  const pendingRewards: PendingReward[] = [];
+  const pendingRewards = new PendingRewardQueue();
   let activeReward: PendingReward | null = null;
   let activeChestOpened = false;
   let choiceAwaitingBar = false;
@@ -206,7 +206,7 @@ export async function bootGame(
 
   function resetRewardQueue(): void {
     rewardGeneration++;
-    pendingRewards.length = 0;
+    pendingRewards.clear();
     activeReward = null;
     activeChestOpened = false;
     choiceAwaitingBar = false;
@@ -225,7 +225,7 @@ export async function bootGame(
 
   function enqueueReward(reward: PendingReward): void {
     if (!world || !rewardStateLive()) return;
-    pendingRewards.push(reward);
+    pendingRewards.enqueue(reward);
     sandboxPanel?.refresh();
   }
 
@@ -247,7 +247,7 @@ export async function bootGame(
 
     const w = world;
     while (!choiceAwaitingBar && groundPicks.length === 0) {
-      activeReward ??= pendingRewards.shift() ?? null;
+      activeReward ??= pendingRewards.dequeue() ?? null;
       if (!activeReward) break;
 
       if (activeReward.kind === 'chest') {
@@ -287,11 +287,7 @@ export async function bootGame(
     const items: GroundItem[] = [];
     const payload: GroundPickView[] = [];
     const allEvolutions = choices.every((choice) => choice.kind === 'evolution');
-    const angles = allEvolutions && choices.length === 2
-      ? [0, 180]
-      : allEvolutions && choices.length === 4
-        ? [0, 90, 180, 270]
-        : LEVELUP.angles;
+    const angles = rewardChoiceAngles(choices.length, allEvolutions);
     for (let i = 0; i < choices.length; i++) {
       const choice = choices[i];
       const deg = angles[i % angles.length];

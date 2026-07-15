@@ -265,7 +265,7 @@ export class Hud {
     bossBtn.onclick = () => {
       location.hash = '#boss';
     };
-    const sandboxBtn = el('button', 'small', row, 'sandbox');
+    const sandboxBtn = el('button', 'small start-sandbox-btn', row, 'sandbox');
     sandboxBtn.onclick = () => {
       this.closeScreen();
       onSandbox();

@@ -2,14 +2,16 @@
 
 Last updated: July 15, 2026
 
-## Latest change (July 15, 2026) — weapon evolutions + Gear, Gate C awaiting developer
+## Latest change (July 15, 2026) — weapon evolutions + Gear, Gate D awaiting developer
 
 At the developer's explicit implementation request, the locked handoff at
 `docs/phases/weapon-evolutions.md` is now in progress. The developer explicitly
 passed **Sub-phase A — Gear and reward plumbing** in a live test and has now
 explicitly passed **Sub-phase B — evolved sound** by ear. **Sub-phase C —
-evolved combat** is implemented and technically verified. Its muted
-hands/strategy Gate C is waiting for the developer; Sub-phase D has not started.
+evolved combat** is implemented and technically verified. The developer has
+explicitly passed its muted hands/strategy **Gate C**. Sub-phase D — fusion and
+run economy — is implemented and technically verified; its sound-on/full-run
+**Gate D** is waiting for the developer.
 
 Built: the canonical nine-Gear/nine-evolution registry; four one-level Gear
 sockets; deterministic weapon/Gear offers (weapon-only before 1:00, paired
@@ -61,7 +63,26 @@ Glass Choir trails. Instrument Zoo adds one real engine→trigger→world combat
 fixture for every evolution, including all explicitly required timing and
 targeting edge cases.
 
-Verification: `npm run check:evolution-combat`, `npm run check:evolved-audio`,
+Sub-phase D makes the live FIFO reward sequence and choice geometry directly
+testable without changing behavior. Gear still occupies exactly one card when
+at least two weapon alternatives exist, so taking it consumes a reward without
+advancing a weapon tier. Completed-weapon Gear keeps its locked higher offer
+weight. A fixed 4,096-seed offer-pressure audit prepares the starting Kick's
+Dancefloor recipe within twelve post-minute reward screens in 91.7% of cases;
+this is a bounded economy regression, not an automatic claim about live-run
+balance. Zero-to-four prepared recipes, exact two/three/four-way layouts, FIFO
+level/chest order, no duplicate Gear, and the four-socket limit are covered.
+
+The production browser path now enters the real sandbox, collects a physical
+chest through player movement, prepares Snare IV + Laser Sight, queues a chest,
+and verifies its next-bar Dead Center conversion in both the HUD and track
+overlay. No damage, coverage, Gear, or evolution tuning constant moved in
+Sub-phase D: the objective combat/economy checks exposed no numeric failure,
+and the locked spec reserves the remaining late-run strength/cost judgment for
+the developer's hands and ear.
+
+Verification: `npm run check:evolution-economy`,
+`npm run check:evolution-combat`, `npm run check:evolved-audio`,
 `npm run check:evolutions`, `tsc --noEmit`, production `vite build`,
 `git diff --check`, and the browser drive pass. The combat check covers exact
 Gear scopes/composition, all nine signature mechanics, deterministic
@@ -76,9 +97,11 @@ so no technical check was delegated to the developer. The unrelated, already
 documented `check:mad-forest` fixture remains stale at its starting-spawn
 assertion (`30 !== 10`).
 
-**Next action:** the developer runs Gate C muted and judges whether all nine
-evolutions demand distinct movement/targeting decisions. A pass authorizes
-Sub-phase D; a failure loops inside Sub-phase C.
+**Next action:** the developer runs Gate D sound-on for a complete eight-minute
+run, deliberately pursuing an evolution for the guaranteed 5:00 chest, then
+judges whether Gear costs a meaningful reward, the sound/attack arrives as one
+event, and the evolution improves minutes 5–8 without trivializing them. A pass
+authorizes the verdict protocol; a failure loops inside Sub-phase D.
 
 ## Previous change (July 15, 2026) — instrument activate/deactivate on the next bar
 
