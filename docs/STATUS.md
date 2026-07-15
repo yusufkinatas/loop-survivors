@@ -2,7 +2,35 @@
 
 Last updated: July 15, 2026
 
-## Latest change (July 15, 2026) — remove unreachable sound variants
+## Latest change (July 15, 2026) — weapon-evolutions spec grilled and LOCKED
+
+The weapon-evolutions phase was grilled and its spec **locked with the
+developer's explicit sign-off**: `docs/phases/weapon-evolutions.md` (a roadmap
+pointer was added to `docs/plan.md`, interstitial before M4). The phase gives
+each of the nine weapons a final evolved form past tier 4 that transforms
+gameplay AND sound together; the core gated principle is that an evolution
+which does not sound different from its base form fails its gate.
+
+The six open mechanic questions were settled one at a time: (1) trigger =
+max-then-offer with the evolution card **guaranteed** one of the three offers
+once a weapon hits tier 4, costing one pick, eligibility written as a swappable
+per-weapon rule; (2) pacing = one evolution in a typical run, two in a narrow
+one, XP curve untouched; (3) base Lead's respec from homing seekers to a
+per-note lock-on beam is confirmed (ships in sub-phase C, whose gate judges the
+base feel too); (4) Clap's freeze = a brief timed 0× speed multiplier on the
+existing speed channel, no new status framework, boss immune to the stop; (5)
+visuals = distinct silhouette per evolution + frozen tell + evolved name on the
+band rack + one shared ceremony reusing the level-up moment plumbing; (6)
+persistence = permanent, next-bar entry, sticky through deactivation, pool exit
+after evolving, sandbox force-evolve in scope. Passive items and chest-style
+delivery were raised and deliberately parked; they block nothing in this phase.
+
+Work happened on branch `worktree-weapon-evolutions-spec` (docs only, no code).
+**Implementation has not started.** Next action for this phase: sub-phase A
+(trigger plumbing + shared ceremony + sandbox force-evolve + Kick "The Drop"
+end to end), gated by the developer per the spec.
+
+## Previous change (July 15, 2026) — remove unreachable sound variants
 
 At the developer's direction, the three sound variants that exist in code but are
 never selected by the four-tune (the house ladders) are removed everywhere:
