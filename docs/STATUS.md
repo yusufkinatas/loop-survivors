@@ -1,8 +1,54 @@
 # Project Status
 
-Last updated: July 13, 2026
+Last updated: July 15, 2026
 
-## Latest change (July 13, 2026) — pluck bass, Rhodes, acid, and shaker removed
+## Latest change (July 15, 2026) — instrument activate/deactivate on the next bar
+
+The developer number-key toggles (Digit1–Digit7 → band slot → owning instrument)
+were converted from an instant, audio-only mute into a true **activate/deactivate
+quantized to the next heard bar**. Grilled and locked this session; spec at
+`docs/phases/instrument-deactivate.md`.
+
+Behavior: a press flips the owning voice's `enabled` flag via
+`engine.setVoiceEnabled`, scheduled through the existing `engine.atNextBar` seam.
+Because a live run's damage rides the audio engine's triggers and a disabled voice
+generates no notes, the sound AND the damage stop together on the next bar and
+return together on reactivation. `run.ts` and the deterministic sim graph are
+untouched. In-flight projectiles/zones/orbiters finish their bounded lifetime;
+only new triggers stop.
+
+UI: the moment a key is pressed the slot shows a **pending pulse** until the bar
+lands, then settles (dim = off, normal = on). A pending deactivate pulses down
+from full; a pending reactivate pulses up from the dim. Shown on all three
+surfaces (HUD band rack, pause rack, track overlay hotkey C). Double-tap flips the
+target and self-cancels on a round-trip. Sticky across tier-ups: a tier-up applies
+the new tier but leaves a deactivated instrument off (it returns at the higher tier
+when reactivated). Gated to run + sandbox only, dropped from replay (a
+deterministic re-sim, driven by `VirtualConductor` off `world.tiers`, cannot be
+deactivated). Vocabulary moved off "mute": `mutedRoles` → `deactivatedRoles` plus a
+new `pendingRoles`, the CSS `.muted` → `.deactivated`, and the track overlay's `m`
+mark → `off`.
+
+Seams: `game.ts` owns the toggle (`toggleRoleActive`, the two sets, `paintBand`,
+`resetDeactivations`); `hud.ts` `renderBand` and `trackoverlay.ts` `refresh` each
+gained a `pending` set; `style.css` adds the `voice-pending-off`/`voice-pending-on`
+keyframes (with a `prefers-reduced-motion` fallback). No audio or sim files touched.
+
+Verification: `tsc --noEmit` + `vite build` clean. All four changed files
+(`game.ts` shell, `hud.ts`, `trackoverlay.ts`, `style.css`) sit outside the
+headless bot's import graph, so the simulation is byte-identical by construction (a
+kiter/random 20-run batch ran healthy). Browser-driven on `npm run dev`: no console
+errors; a press shows `pending-off` on the HUD rack, the pause rack, and the track
+overlay (with the `off` mark) plus the real `voice-pending-off` animation; the bar
+landing settles it to `deactivated` (pulse stops), which proves the `atNextBar`
+callback — and thus the `setVoiceEnabled(role, false)` on the line above it — ran; a
+double-tap self-cancels back to active with nothing queued. Background-tab rAF
+throttling prevented sampling the sub-2s live transition, so the pending state was
+confirmed deterministically by scheduling it while paused (which freezes the clock).
+**No developer gate advanced: whether it sounds silent, deals no damage, and the
+pulse feels right is the developer's ear/hands gate, still pending.**
+
+## Previous change (July 13, 2026) — pluck bass, Rhodes, acid, and shaker removed
 
 At the developer's direction, **pluck bass, Rhodes, acid, and shaker are
 removed from the player's build/weapons system**. The playable catalog is now

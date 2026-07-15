@@ -19,8 +19,14 @@ interface Row {
 }
 
 export interface TrackOverlay {
-  /** Rebuild the rows from the current build (call on picks / mute toggles). */
-  refresh(tiers: ReadonlyMap<Role, number>, muted: ReadonlySet<Role>): void;
+  /** Rebuild the rows from the current build (call on picks / instrument
+   *  toggles). `deactivated` = settled off; `pending` = a change scheduled for
+   *  the next bar (shown pulsing). */
+  refresh(
+    tiers: ReadonlyMap<Role, number>,
+    deactivated: ReadonlySet<Role>,
+    pending: ReadonlySet<Role>,
+  ): void;
   /** Per-frame: move the playhead and repaint on bar changes. Cheap. */
   tick(): void;
 }
@@ -32,7 +38,11 @@ export function mountTrackOverlay(
 ): TrackOverlay {
   let rows: Row[] = [];
 
-  function refresh(tiers: ReadonlyMap<Role, number>, muted: ReadonlySet<Role>): void {
+  function refresh(
+    tiers: ReadonlyMap<Role, number>,
+    deactivated: ReadonlySet<Role>,
+    pending: ReadonlySet<Role>,
+  ): void {
     root.replaceChildren();
     rows = [];
     for (const slot of SLOTS) {
@@ -40,10 +50,14 @@ export function mountTrackOverlay(
       if (!role) continue;
       const kit = kits.get(role)!;
       const tier = tiers.get(role) ?? 1;
-      const isMuted = muted.has(role);
+      const off = deactivated.has(role);
+      const pend = pending.has(role);
+      // Where the row is heading once any pending change lands.
+      const willBeOff = off !== pend;
 
       const rowEl = document.createElement('div');
-      rowEl.className = `tr-row${isMuted ? ' muted' : ''}`;
+      const stateCls = pend ? (off ? ' pending-on' : ' pending-off') : off ? ' deactivated' : '';
+      rowEl.className = `tr-row${stateCls}`;
       rowEl.style.setProperty('--voice-color', kit.color);
 
       const dot = document.createElement('span');
@@ -60,7 +74,9 @@ export function mountTrackOverlay(
       }
       const mark = document.createElement('span');
       mark.className = 'tr-mute';
-      mark.textContent = isMuted ? 'm' : '';
+      // Anticipates the pending target: the 'off' tag appears the moment a
+      // deactivate is scheduled and clears the moment a reactivate is.
+      mark.textContent = willBeOff ? 'off' : '';
       rowEl.append(dot, name, pips, mark);
 
       // Charts loop inside the 4-bar phrase, so precompute which phrase step
