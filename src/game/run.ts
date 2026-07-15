@@ -17,12 +17,10 @@ import {
   DAMAGE_FEEDBACK,
   DARTER,
   ENEMIES,
-  FLASH,
   MAD_FOREST_FRAMES,
   MAX_ALIVE_HARD,
   ORBIT_REHIT_S,
   RUN,
-  SHAKE,
   SHIELDED,
   SHOVE_S,
   SPLITTER,
@@ -219,8 +217,6 @@ export type FxEvent =
     }
   | { type: 'dmg'; x: number; y: number; amount: number; color: number }
   | { type: 'spark'; x: number; y: number; color: number; n: number; spread: number }
-  | { type: 'shake'; mag: number; dur: number }
-  | { type: 'flash'; color: number; alpha: number; dur: number }
   | { type: 'slam'; x: number; y: number; radius: number; color: number };
 
 export interface RunEvents {
@@ -369,7 +365,7 @@ export class RunWorld {
   }
 
   /** The coupling point: a scheduled trigger fires this kit's weapon at the
-   *  owned tier. Variant peaks (bass sub, chord pad) scale the same weapon. */
+   *  owned tier. Variant peaks (chord pad) scale the same weapon. */
   fireTrigger(t: ScheduledTrigger): void {
     const tier = this.tiers.get(t.role);
     if (!tier) return;
@@ -380,10 +376,6 @@ export class RunWorld {
     const v = t.velocity;
     const p = this.player;
 
-    if (t.role === 'bass' && t.variant === 'sub') {
-      const fx = VARIANT_EFFECTS.bassSub;
-      conf = { ...conf, radius: conf.radius! * fx.radiusMul, damage: conf.damage * fx.damageMul };
-    }
     if (t.role === 'chord' && t.variant === 'pad') {
       const fx = VARIANT_EFFECTS.chordPad;
       conf = {
@@ -450,11 +442,6 @@ export class RunWorld {
       case 'bass': {
         // Bass never multishots (no 'aimedfan' tag): one wide rolling wave.
         this.spawnProjectile('bass', this.aimDir(0.08), conf, color, v);
-        // Sub-drop peak: a low boom the screen feels.
-        if (t.variant === 'sub') {
-          this.fx?.push({ type: 'shake', mag: SHAKE.bassSub.mag, dur: SHAKE.bassSub.dur });
-          this.fx?.push({ type: 'flash', color, alpha: FLASH.bassSub.alpha, dur: FLASH.bassSub.dur });
-        }
         break;
       }
       case 'snare':

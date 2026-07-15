@@ -203,7 +203,7 @@ export function mountPlayground(
   }
 
   /** Right-click on a placed pitched hit cycles its sample variant (e.g.
-   *  bass -> fat -> sub). Unpitched kits put variants on rows instead. */
+   *  bass -> fat). Unpitched kits put variants on rows instead. */
   function cycleVariant(role: Role, row: RowDef, step: number): void {
     const sct = sections.get(role)!;
     const voice = engine.voices.get(role)!;
@@ -265,7 +265,7 @@ export function mountPlayground(
             voice.kit.samples.size > 1 &&
             (ev.variant ?? voice.kit.defaultVariant) !== voice.kit.defaultVariant
           ) {
-            cell.textContent = ev.variant![0]; // e.g. bass "f"/"s" for fat/sub
+            cell.textContent = ev.variant![0]; // e.g. bass "f" for fat
           }
         }
         if (ghost) {

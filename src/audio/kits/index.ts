@@ -18,7 +18,7 @@ type SampleSpec = [variant: string, file: string];
 const DIR = 'house';
 
 const SAMPLE_OVERLAY: Partial<Record<Role, SampleSpec[]>> = {
-  kick: [['hard', 'kick'], ['soft', 'kick']],
+  kick: [['hard', 'kick']],
   clap: [['clap', 'clap']],
   hat: [['closed', 'hat_closed'], ['open', 'hat_open']],
   shaker: [['shaker', 'shaker']],

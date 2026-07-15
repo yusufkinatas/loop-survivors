@@ -542,13 +542,6 @@ export class RunView {
         this.pops.push({ gfx, t: 0, dur: 0.18, grow: 0, holdHalf: true, expandHalf: true });
         break;
       }
-      case 'shake':
-        // Firing is deterministic (a sim event); the decay reads world.timeS.
-        this.shakes.push({ start: this.world.timeS, mag: fx.mag, dur: fx.dur });
-        break;
-      case 'flash':
-        this.flashes.push({ start: this.world.timeS, dur: fx.dur, color: fx.color, alpha: fx.alpha });
-        break;
       case 'spark': {
         // A short radial burst of lines; scales up as it fades.
         const gfx = new Graphics();

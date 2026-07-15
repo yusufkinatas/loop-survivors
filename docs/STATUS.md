@@ -2,7 +2,41 @@
 
 Last updated: July 15, 2026
 
-## Latest change (July 15, 2026) — instrument activate/deactivate on the next bar
+## Latest change (July 15, 2026) — remove unreachable sound variants
+
+At the developer's direction, the three sound variants that exist in code but are
+never selected by the four-tune (the house ladders) are removed everywhere:
+**kick `soft`**, the snare role's **`clap`** variant (a separate `clap` weapon is
+untouched), and **bass `sub`**. An audit found the four-tune only ever fires kick
+`hard`, snare `snare`, bass `bass`/`fat`, hat `closed`/`open`, and chord
+`stab`/`pad`; the three above were reachable only through the Instrument Zoo's
+manual variation control, never in a normal run.
+
+Removed: the three ids from `ROLE_META.variants` (the single source of truth the
+Instrument Zoo and rehearsal playground read, so the buttons disappear
+automatically); their rendered buffers and builders (`renderBassSub`, the
+`kick(hard)`/`renderKick(hard)` boolean collapsed to hard-only, the house `bass`
+`'sub'` branch, the snare `clap` and kick `soft` entries in `buildKits`/
+`buildHouseKit`); the kick `soft` overlay entry in `SAMPLE_OVERLAY`
+(`kits/index.ts`); the kick special-case in `groove.ts` `drumVariant` (only the
+hat carries two variants now); and the entire dead bass sub-drop gameplay path
+that hung off the never-fired variant — `VARIANT_EFFECTS.bassSub`, the whole
+`SHAKE`/`FLASH` config tables (bass sub was their only member), the two
+`fireTrigger` blocks in `run.ts`, and the now-unfed `'shake'`/`'flash'` `FxEvent`
+carriers and their `view.ts` cases. The independent player-hit shake
+(`view.pushShake`) and level-up flash (`view.levelBurst`) use their own paths and
+are untouched.
+
+Note this supersedes the M2 spec's "designed top-tier peak" (the bass sub drop),
+which was never wired into the shipped four-tune. Removal is developer-directed;
+the locked M2 spec text is left as the historical record.
+
+Verification: `tsc --noEmit` + `vite build` clean (771 modules). `npm run
+check:lab` passes: the Instrument Zoo drive exercises every remaining
+instrument/tier/variant pulse with no runtime/console errors, and the normal game
+boots clean. No developer gate advanced; this is a scope edit.
+
+## Previous change (July 15, 2026) — instrument activate/deactivate on the next bar
 
 The developer number-key toggles (Digit1–Digit7 → band slot → owning instrument)
 were converted from an instant, audio-only mute into a true **activate/deactivate

@@ -796,10 +796,9 @@ export const TIER_LINES: Partial<Record<Role, string[]>> = {
   ],
 };
 
-/** Bass tier 4's once-per-phrase sub drop and chord tier 4's pads get a
- *  matching gameplay peak: the same weapon, scaled up. */
+/** Chord tier 4's pads get a matching gameplay peak: the same weapon, scaled
+ *  up. */
 export const VARIANT_EFFECTS = {
-  bassSub: { radiusMul: 1.6, damageMul: 1.5 },
   chordPad: { radiusMul: 1.5, lifetimeMul: 2.0, damageMul: 0.6 },
 };
 
@@ -828,19 +827,6 @@ export const SHOVE_S = 0.12;
 
 /** Per-weapon knock distance applied on hit (Feature 3). Absent = no shove. */
 export const WEAPON_SHOVE: Partial<Record<Role, number>> = { snare: 8, clap: 12, bass: 6 };
-
-/** Screenshake magnitudes/durations (Feature 3, cosmetic). Shake is reserved
- *  for the rare, heavy moments only — the once-per-phrase bass sub-drop.
- *  Frequent triggers (kick, snare, clap) deliberately do NOT shake the camera;
- *  they punch through local fx (slam/spark/trails). */
-export const SHAKE = {
-  bassSub: { mag: 8, dur: 0.3 },
-} as const;
-
-/** Full-screen colored flash per source (Feature 3, cosmetic). */
-export const FLASH = {
-  bassSub: { alpha: 0.12, dur: 0.16 },
-} as const;
 
 // ---- sub-phase C: the shatter weapon ----
 

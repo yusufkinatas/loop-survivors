@@ -17,19 +17,19 @@ import { makeKit, noiseBuffer, offline, softClipCurve, type Kit, type Role } fro
 // A tight, punchy four-on-the-floor kick. Short pitch sweep into a defined
 // ~50 Hz fundamental, a bright click transient (the 909's signature attack),
 // moderate decay so it drives without booming, and gentle drive for analog
-// warmth. 'soft' (the ghost variant) is the same kick, quieter and rounder.
-async function kick(hard: boolean): Promise<AudioBuffer> {
+// warmth.
+async function kick(): Promise<AudioBuffer> {
   const ctx = offline(0.45);
   const body = ctx.createOscillator();
   body.type = 'sine';
-  body.frequency.setValueAtTime(hard ? 200 : 168, 0);
-  body.frequency.exponentialRampToValueAtTime(hard ? 55 : 52, 0.05);
-  body.frequency.exponentialRampToValueAtTime(hard ? 49 : 47, 0.2);
+  body.frequency.setValueAtTime(200, 0);
+  body.frequency.exponentialRampToValueAtTime(55, 0.05);
+  body.frequency.exponentialRampToValueAtTime(49, 0.2);
   const bg = ctx.createGain();
-  bg.gain.setValueAtTime(hard ? 1.0 : 0.8, 0);
-  bg.gain.exponentialRampToValueAtTime(0.001, hard ? 0.32 : 0.24);
+  bg.gain.setValueAtTime(1.0, 0);
+  bg.gain.exponentialRampToValueAtTime(0.001, 0.32);
   const drive = ctx.createWaveShaper();
-  drive.curve = softClipCurve(hard ? 1.9 : 1.4);
+  drive.curve = softClipCurve(1.9);
   body.connect(bg).connect(drive).connect(ctx.destination);
   // Click: a highpassed noise snap plus a fast pitched beater tick so the
   // attack cuts on small speakers — the crisp front of a 909 kick.
@@ -39,15 +39,15 @@ async function kick(hard: boolean): Promise<AudioBuffer> {
   clickHp.type = 'highpass';
   clickHp.frequency.value = 2200;
   const clickG = ctx.createGain();
-  clickG.gain.setValueAtTime(hard ? 0.34 : 0.16, 0);
+  clickG.gain.setValueAtTime(0.34, 0);
   clickG.gain.exponentialRampToValueAtTime(0.001, 0.008);
   click.connect(clickHp).connect(clickG).connect(ctx.destination);
   const tick = ctx.createOscillator();
   tick.type = 'triangle';
-  tick.frequency.setValueAtTime(hard ? 700 : 500, 0);
+  tick.frequency.setValueAtTime(700, 0);
   tick.frequency.exponentialRampToValueAtTime(190, 0.018);
   const tickG = ctx.createGain();
-  tickG.gain.setValueAtTime(hard ? 0.26 : 0.12, 0);
+  tickG.gain.setValueAtTime(0.26, 0);
   tickG.gain.exponentialRampToValueAtTime(0.001, 0.022);
   tick.connect(tickG).connect(ctx.destination);
   body.start(0);
@@ -218,23 +218,8 @@ async function riser(): Promise<AudioBuffer> {
 // over a clean sine sub, through a resonant lowpass that closes over the note,
 // with a punchy amp envelope so it "rolls" and clears fast in the kick gaps —
 // it never sustains onto the four-on-the-floor downbeats. 'fat' adds a detuned
-// square and more grit for the upper tiers; 'sub' is a deeper, longer round
-// note (supplied for completeness, kept out of the downbeat by the chart).
-async function bass(rootHz: number, flavor: 'bass' | 'fat' | 'sub'): Promise<AudioBuffer> {
-  if (flavor === 'sub') {
-    const ctx = offline(0.6);
-    const osc = ctx.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.value = rootHz / 4;
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.001, 0);
-    g.gain.exponentialRampToValueAtTime(0.9, 0.012);
-    g.gain.exponentialRampToValueAtTime(0.001, 0.5);
-    osc.connect(g).connect(ctx.destination);
-    osc.start(0);
-    osc.stop(0.55);
-    return ctx.startRendering();
-  }
+// square and more grit for the upper tiers.
+async function bass(rootHz: number, flavor: 'bass' | 'fat'): Promise<AudioBuffer> {
   const fat = flavor === 'fat';
   const ctx = offline(0.5);
   const osc = ctx.createOscillator();
@@ -412,7 +397,6 @@ async function lead(rootHz: number): Promise<AudioBuffer> {
 export async function buildHouseKit(rootHz: number): Promise<Map<Role, Kit>> {
   const [
     kickHard,
-    kickSoft,
     clapBuf,
     hatClosed,
     hatOpen,
@@ -421,14 +405,12 @@ export async function buildHouseKit(rootHz: number): Promise<Map<Role, Kit>> {
     riserBuf,
     bassBuf,
     bassFat,
-    bassSub,
     stab,
     pad,
     rhodesBuf,
     leadBuf,
   ] = await Promise.all([
-    kick(true),
-    kick(false),
+    kick(),
     clap(),
     hat(false),
     hat(true),
@@ -437,7 +419,6 @@ export async function buildHouseKit(rootHz: number): Promise<Map<Role, Kit>> {
     riser(),
     bass(rootHz, 'bass'),
     bass(rootHz, 'fat'),
-    bass(rootHz, 'sub'),
     chord(rootHz, false),
     chord(rootHz, true),
     rhodes(rootHz),
@@ -445,7 +426,7 @@ export async function buildHouseKit(rootHz: number): Promise<Map<Role, Kit>> {
   ]);
 
   const kits = new Map<Role, Kit>();
-  kits.set('kick', makeKit('kick', new Map([['hard', kickHard], ['soft', kickSoft]])));
+  kits.set('kick', makeKit('kick', new Map([['hard', kickHard]])));
   kits.set('clap', makeKit('clap', new Map([['clap', clapBuf]])));
   kits.set('hat', makeKit('hat', new Map([['closed', hatClosed], ['open', hatOpen]])));
   kits.set('shaker', makeKit('shaker', new Map([['shaker', shakerBuf]])));
@@ -453,7 +434,7 @@ export async function buildHouseKit(rootHz: number): Promise<Map<Role, Kit>> {
   kits.set('riser', makeKit('riser', new Map([['riser', riserBuf]])));
   kits.set(
     'bass',
-    makeKit('bass', new Map([['bass', bassBuf], ['fat', bassFat], ['sub', bassSub]])),
+    makeKit('bass', new Map([['bass', bassBuf], ['fat', bassFat]])),
   );
   kits.set('chord', makeKit('chord', new Map([['stab', stab], ['pad', pad]])));
   kits.set('rhodes', makeKit('rhodes', new Map([['rhodes', rhodesBuf]])));
