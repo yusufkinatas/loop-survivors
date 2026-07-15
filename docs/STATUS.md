@@ -1,6 +1,17 @@
 # Project Status
 
-Last updated: July 13, 2026
+Last updated: July 15, 2026
+
+## Latest change (July 15, 2026) — shared player damage feedback
+
+A landed player hit now gives the same **0.5-second recovery window** in the
+normal run, sandbox, and boss fights. The already-shared hit overlay was
+retuned to match: a light red tint stays on the screen edges for that recovery
+window, then fades out without obscuring the combat area. Dash invulnerability
+in boss fights remains its separate 0.3-second movement-dodge rule.
+
+Verification: TypeScript check and production build clean. No developer gate
+advanced; this is a focused feedback and fairness adjustment.
 
 ## Latest change (July 13, 2026) — pluck bass, Rhodes, acid, and shaker removed
 

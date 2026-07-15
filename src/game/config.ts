@@ -15,8 +15,9 @@ export const RUN = {
    * reference viewport, then multiplied by Mad Forest's normal x1.1. */
   playerSpeed: 82.5 * 1.1 * (800 / 456),
   playerRadius: 9 * (800 / 456),
-  /** The reference damage lock is about 120 ms. */
-  iframesS: 0.12,
+  /** A landed hit grants a clear half-second recovery window. The shared
+   * edge-tint feedback lasts for this same interval (style.css). */
+  iframesS: 0.5,
   /** Vampire Survivors' unmodified Magnet stat. */
   magnetRadius: 53,
   pickupRadius: 16,

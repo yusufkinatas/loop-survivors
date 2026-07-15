@@ -622,24 +622,26 @@ input[type='range'] {
   pointer-events: none;
 }
 
-/* Bullet-hell readability: hit feedback is an edge vignette, never a
-   center-flooding wash, so the play area stays legible. */
+/* Bullet-hell readability: every landed hit holds a light red edge tint for
+   the same half-second as the player's recovery window. It never floods the
+   center, so the play area stays legible. */
 .hit-flash {
   position: absolute;
   inset: 0;
-  background: radial-gradient(120% 120% at 50% 50%, transparent 52%, rgba(255, 77, 94, 0.55) 100%);
+  background: radial-gradient(120% 120% at 50% 50%, transparent 52%, rgba(255, 77, 94, 0.42) 100%);
   opacity: 0;
   pointer-events: none;
   z-index: 2;
 }
 
 .hit-flash.on {
-  animation: hitflash 0.25s ease-out;
+  animation: hitflash 0.5s linear;
 }
 
 @keyframes hitflash {
-  0% {
-    opacity: 0.9;
+  0%,
+  78% {
+    opacity: 0.62;
   }
   100% {
     opacity: 0;
