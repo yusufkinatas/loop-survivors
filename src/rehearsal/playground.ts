@@ -11,8 +11,9 @@
 import { MusicEngine } from '../audio/engine';
 import type { Chart, ChartEvent } from '../audio/charts';
 import { getChart, isEdited, resetChart, saveChart } from '../audio/chartstore';
-import { ROLES, type Role, type Kit } from '../audio/kits';
+import { type Role, type Kit } from '../audio/kits';
 import { STEPS_PER_BAR, STEPS_PER_PHRASE } from '../audio/scale';
+import { supportedRoles } from '../audio/soundset';
 
 export interface PlaygroundOptions {
   editable: boolean;
@@ -98,7 +99,9 @@ export function mountPlayground(
     return node;
   };
 
-  for (const role of ROLES) {
+  // Only the instruments the game actually voices; the dormant catalog roles
+  // the soundset builds no weapon around are not shown (see supportedRoles).
+  for (const role of supportedRoles()) {
     const voice = engine.voices.get(role)!;
     const sec = el('div', 'pg-section', root);
     sec.style.setProperty('--voice-color', voice.kit.color);

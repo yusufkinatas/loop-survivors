@@ -6,9 +6,9 @@
 // builtin placeholder sample.
 
 import { MusicEngine } from '../audio/engine';
-import { ROLES, type Role } from '../audio/kits';
+import { type Role } from '../audio/kits';
 import { SKELETON, STEPS_PER_BAR, STEPS_PER_PHRASE, BARS_PER_PHRASE } from '../audio/scale';
-import { SAMPLE_SETS, applySampleSet, coveredRoles } from '../audio/samplesets';
+import { supportedRoles } from '../audio/soundset';
 import { mountPlayground, type Playground } from './playground';
 
 /** The progression scrub walks a scripted run of picks (M2: a pick is a new
@@ -64,6 +64,11 @@ interface VoiceUi {
 
 export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void {
   const voiceUis = new Map<Role, VoiceUi>();
+  // Only the instruments the game actually voices. The full ROLES catalog still
+  // carries dormant sounds the soundset builds no weapon around (tom, crash,
+  // shaker, acid, pluck, rhodes, riser); those are not playable, so the room
+  // does not show them.
+  const playable = supportedRoles();
 
   root.innerHTML = '';
   const el = (tag: string, className: string, parent: HTMLElement, text = ''): HTMLElement => {
@@ -115,37 +120,6 @@ export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void
   };
   playBtn.onclick = () => setPlaying(!engine.clock.running);
 
-  // ---- sample set switcher ----
-  const setsRow = el('div', 'sets', root);
-  el('span', 'sets-label', setsRow, 'sample set');
-  const setButtons = new Map<string, HTMLButtonElement>();
-  const setStatus = el('span', 'sets-status', setsRow);
-  for (const def of SAMPLE_SETS) {
-    const btn = el('button', 'set-btn', setsRow, def.name) as HTMLButtonElement;
-    const covered = coveredRoles(def);
-    btn.title =
-      covered.length === 0
-        ? 'builtin synthesized placeholders'
-        : `${def.source}: ${covered.join(', ')} — other voices stay synth`;
-    btn.onclick = async () => {
-      for (const b of setButtons.values()) b.disabled = true;
-      setStatus.textContent = 'loading…';
-      try {
-        await applySampleSet(engine, def);
-        for (const b of setButtons.values()) b.classList.remove('current');
-        btn.classList.add('current');
-        setStatus.textContent = '';
-      } catch (err) {
-        setStatus.textContent = `failed: ${err instanceof Error ? err.message : err}`;
-      } finally {
-        for (const b of setButtons.values()) b.disabled = false;
-      }
-    };
-    setButtons.set(def.id, btn);
-    setsRow.insertBefore(btn, setStatus);
-  }
-  setButtons.get('synth')!.classList.add('current');
-
   // ---- progression scrub: pick by pick through a whole run's arc ----
   const scrubRow = el('div', 'scrub-row', root);
   el('span', 'sets-label', scrubRow, 'run arc');
@@ -182,7 +156,7 @@ export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void
     for (const pick of arc.picks.slice(0, count)) {
       tiers.set(pick.role, Math.max(pick.tier, tiers.get(pick.role) ?? 0));
     }
-    for (const role of ROLES) {
+    for (const role of playable) {
       const tier = tiers.get(role);
       if (tier) engine.setVoiceTier(role, tier);
       setVoice(role, tier !== undefined);
@@ -196,7 +170,7 @@ export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void
 
   // ---- voice cards ----
   const grid = el('div', 'voices', root);
-  for (const role of ROLES) {
+  for (const role of playable) {
     const voice = engine.voices.get(role)!;
     const card = el('div', 'voice', grid);
     card.style.setProperty('--voice-color', voice.kit.color);
@@ -204,7 +178,7 @@ export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void
     const head = el('div', 'voice-head', card);
     const light = el('span', 'light', head);
     el('span', 'voice-name', head, voice.kit.name);
-    el('span', 'voice-key', head, String(ROLES.indexOf(role) + 1));
+    el('span', 'voice-key', head, String(playable.indexOf(role) + 1));
 
     const toggleWrap = el('label', 'row', card, 'in the mix');
     const toggle = el('input', '', toggleWrap) as HTMLInputElement;
@@ -287,8 +261,8 @@ export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void
       setPlaying(!engine.clock.running);
     }
     const idx = Number(e.key) - 1;
-    if (idx >= 0 && idx < ROLES.length) {
-      const role = ROLES[idx];
+    if (idx >= 0 && idx < playable.length) {
+      const role = playable[idx];
       setVoice(role, !engine.voices.get(role)!.enabled);
       playground.refresh();
     }
