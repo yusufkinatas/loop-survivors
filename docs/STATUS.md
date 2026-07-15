@@ -2,7 +2,91 @@
 
 Last updated: July 15, 2026
 
-## Latest change (July 15, 2026) — weapon-evolutions SUB-PHASE B REWORK (gate-fail loop)
+## Latest change (July 15, 2026) — weapon-evolutions SUB-PHASE C implemented
+
+The last, riskiest sub-phase (the new systems) is built end to end: **Clap
+"Standing Ovation"**, **Lead "The Solo"** (with base Lead's respec), **Snare
+"Rimshot Rail"**, and **Hat "16th-Note Storm"**. **No developer gate has passed
+for C** — its gate is his ear and hands, and it also judges whether base Lead
+still feels good as a beam.
+
+- **Base Lead respec (ships now):** homing seekers are gone. Each melody note
+  fires an instant hitscan **lock-on zap** into a sticky-locked nearest target
+  (never misses), re-locking only on death/out-of-range (`fireLeadZap`; the
+  `Projectile.homing` field, its steering branch, and the lead projectile/trail/
+  spark are removed). Reads as one voice aimed at one thing.
+- **Lead "The Solo":** a persistent **beam** (`updateLeadBeam` + `world.leadBeam`
+  + `view.drawLeadBeam`) that locks the **toughest** target (bosses first, then
+  HP+shield), ticks continuous damage (`LEAD_SOLO.tickS`), and **glides**
+  instantly to the next priority on death. Each trigger refreshes the beam so it
+  stays lit while the lead plays and stops when the voice is deactivated. Sound:
+  one sustained, singing lead with vibrato.
+- **Clap "Standing Ovation":** a ring **collapses inward** onto everything within
+  `CLAP_OVATION.radius`, crushing and briefly **freezing** each non-boss — a 0x
+  speed timer (`Enemy.freezeT`) on the existing speed channel (no new status
+  framework), which also **roots** them against collision de-overlap; bosses
+  take the damage but are immune to the stop. The view tints frozen enemies icy
+  and draws the closing ring. Sound: a whole-hall layered clap with reverb.
+- **Snare "Rimshot Rail":** an instant infinite-pierce **rail** auto-aimed
+  through the densest line (`fireSnareRail`/`railHit`, a band hitbox), plus an
+  answering angled crack. Sound: the crack gains a metallic rimshot ping.
+- **Hat "16th-Note Storm":** a persistent **swirl of shards** emitted around the
+  player at a rate scaled by how fast the player is moving (`updateHatStorm`,
+  `HAT_STORM.baseRate + speedRate * playerMoveFrac`) — moving shreds, still goes
+  quiet. Sound: an open, sizzling continuous wash.
+
+The framework carried the data (4 EVOLUTIONS entries, 4 evolved charts, 4 new
+kit variants — snare's routes from the builtin kit since the house kit has no
+snare — 4 WEAPONS[4] blocks, config, and one fireTrigger/update branch each). The
+pool, guaranteed card, ceremony, band rack, and sandbox force-evolve picked all
+four up unchanged.
+
+**Verification.** `tsc --noEmit` + production build clean. A **headless
+deterministic sim test** (drives `fireTrigger`, steps the pure sim) asserts all
+five, 17/17: base lead is hitscan/never-misses/sticky; The Solo locks the
+toughest, its beam lights, and it glides on death; Ovation freezes a non-boss,
+leaves a boss unfrozen but damaged, roots the frozen enemy (fully stopped) and
+thaws; the Rail hits a whole in-line row (infinite pierce) and misses off-line;
+the Storm emits, and a **moving player shreds more than a still one**. A four-lens
+adversarial review of the diff was run. Browser-driven: no console errors; the
+four evolved voicings/charts are wired in-game (snare from the builtin kit); and
+a screenshot confirmed all four render distinctly — the magenta **beam** locked
+on the boss, the icy-**frozen** tank ring inside a collapsing clap ring, and the
+gold **rails** (main + answer).
+
+**Sub-phase C gate (PENDING, the developer's ear/hands):** do the four new
+systems feel good and read clearly, do their evolved sounds land, and does base
+Lead still feel good as a beam? This is the final sub-phase — a pass takes the
+whole weapon-evolutions phase to its verdict protocol (full runs, evolving across
+builds); a fail loops within sub-phase C.
+
+## Previous change (July 15, 2026) — SUB-PHASE B gate PASSED; bass Rolling Crest
+
+After the rework (below), the developer flagged the **bass** evolution one more
+time: the traveling-wall visual popped in full-size and read as a confusing
+slab. A design subagent generated and ranked six alternatives; the chosen
+**"Rolling Crest"** ships: the evolved bass now spawns a bright bowed wave crest
+narrow and just ahead of the player that **unfurls** open to full width (with a
+fast fade-in) as it rolls, drawn as a bright leading crest line + trailing ripple
+arcs over a soft glow body (`view.ts` `drawBassWall`, redrawn per frame; sim in
+`run.ts` `BassWall` grows `halfWidth` over `BASS_SUB.openS`). It reads clearly as
+a low-frequency wave and no longer pops in. tsc + build clean; headless sim
+(narrow spawn, seated ahead, opens to full, hits in-path/misses off-side,
+despawns) and browser screenshots verified.
+
+With the bass fixed, **sub-phase B's gate PASSED** (the developer's sign-off on
+all four: Bass "The Sub", Chord "Sustain", Arp "Arp Carousel", Bell "Carillon").
+Committed and pushed; PR #99 open.
+
+**Sub-phase C is now in progress** — the last, riskiest set (new systems): Clap
+"Standing Ovation" (collapsing ring + a brief 0x-speed freeze, boss-immune),
+Lead "The Solo" (a beam with toughest-target priority + glide, INCLUDING base
+Lead's respec from homing seekers to a per-note lock-on beam), Snare "Rimshot
+Rail" (instant densest-line rail + answering crack), and Hat "16th-Note Storm" (a
+movement-coupled shred aura). Its gate also judges whether base Lead still feels
+good as a beam.
+
+## Previous change (July 15, 2026) — weapon-evolutions SUB-PHASE B REWORK (gate-fail loop)
 
 The first sub-phase B build FAILED its developer gate with specific per-weapon
 feedback; the fail loops within sub-phase B (never downstream). All four were

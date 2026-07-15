@@ -526,6 +526,115 @@ async function lead(rootHz: number): Promise<AudioBuffer> {
   return ctx.startRendering();
 }
 
+// --- sub-phase C evolved voicings (docs/phases/weapon-evolutions.md) ---
+
+// Clap "Standing Ovation": a whole hall clapping — many layered hand bursts
+// spread wider than the single 909 clap, then a long room-sized reverb tail.
+async function clapOvation(): Promise<AudioBuffer> {
+  const ctx = offline(0.75);
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.value = 1350;
+  bp.Q.value = 1.0;
+  const hp = ctx.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = 900;
+  bp.connect(hp).connect(ctx.destination);
+  const bursts: [number, number, number][] = [
+    [0, 0.5, 0.011], [0.006, 0.55, 0.011], [0.013, 0.5, 0.011], [0.021, 0.6, 0.011],
+    [0.03, 0.5, 0.011], [0.04, 0.55, 0.011], [0.05, 0.75, 0.45],
+  ];
+  for (const [at, level, dur] of bursts) {
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuffer(ctx, dur);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(level, at);
+    g.gain.exponentialRampToValueAtTime(0.001, at + dur);
+    src.connect(g).connect(bp);
+    src.start(at);
+  }
+  return ctx.startRendering();
+}
+
+// Lead "The Solo": one sustained, singing lead with vibrato — held and
+// expressive, longer and richer than the plucked base topline.
+async function leadSolo(rootHz: number): Promise<AudioBuffer> {
+  const ctx = offline(1.0);
+  const osc = ctx.createOscillator();
+  osc.type = 'sawtooth';
+  osc.frequency.value = rootHz * 2;
+  const osc2 = ctx.createOscillator();
+  osc2.type = 'square';
+  osc2.frequency.value = rootHz * 2;
+  osc2.detune.value = 7;
+  const vib = ctx.createOscillator();
+  vib.type = 'sine';
+  vib.frequency.value = 5.5;
+  const vibG = ctx.createGain();
+  vibG.gain.value = rootHz * 2 * 0.012;
+  vib.connect(vibG);
+  vibG.connect(osc.frequency);
+  vibG.connect(osc2.frequency);
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 4400;
+  lp.Q.value = 2;
+  const drive = ctx.createWaveShaper();
+  drive.curve = softClipCurve(1.5);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.001, 0);
+  g.gain.exponentialRampToValueAtTime(0.4, 0.04);
+  g.gain.setValueAtTime(0.4, 0.72);
+  g.gain.exponentialRampToValueAtTime(0.001, 0.98);
+  const o2g = ctx.createGain();
+  o2g.gain.value = 0.4;
+  osc.connect(lp);
+  osc2.connect(o2g).connect(lp);
+  lp.connect(drive).connect(g).connect(ctx.destination);
+  osc.start(0);
+  osc2.start(0);
+  vib.start(0);
+  return ctx.startRendering();
+}
+
+// Hat "16th-Note Storm": an open, sizzling wash — brighter and longer than the
+// closed tick, a continuous shimmer.
+async function hatStorm(): Promise<AudioBuffer> {
+  const dur = 0.22;
+  const ctx = offline(dur + 0.05);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.3, 0);
+  g.gain.exponentialRampToValueAtTime(0.05, 0.05);
+  g.gain.exponentialRampToValueAtTime(0.001, dur);
+  const hp = ctx.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = 8000;
+  const peak = ctx.createBiquadFilter();
+  peak.type = 'peaking';
+  peak.frequency.value = 12500;
+  peak.Q.value = 1.1;
+  peak.gain.value = 7;
+  hp.connect(peak).connect(g).connect(ctx.destination);
+  const base = 340;
+  for (const mult of [1, 1.34, 1.79, 2.41, 3.17, 4.09]) {
+    const o = ctx.createOscillator();
+    o.type = 'square';
+    o.frequency.value = base * mult;
+    const og = ctx.createGain();
+    og.gain.value = 0.045;
+    o.connect(og).connect(hp);
+    o.start(0);
+    o.stop(dur);
+  }
+  const noise = ctx.createBufferSource();
+  noise.buffer = noiseBuffer(ctx, dur);
+  const ng = ctx.createGain();
+  ng.gain.value = 0.6;
+  noise.connect(ng).connect(hp);
+  noise.start(0);
+  return ctx.startRendering();
+}
+
 export async function buildHouseKit(rootHz: number): Promise<Map<Role, Kit>> {
   const [
     kickHard,
@@ -544,6 +653,9 @@ export async function buildHouseKit(rootHz: number): Promise<Map<Role, Kit>> {
     chordSustainBuf,
     rhodesBuf,
     leadBuf,
+    clapOvationBuf,
+    leadSoloBuf,
+    hatStormBuf,
   ] = await Promise.all([
     kick(),
     kickDrop(),
@@ -561,14 +673,20 @@ export async function buildHouseKit(rootHz: number): Promise<Map<Role, Kit>> {
     chordSustain(rootHz), // evolved "Sustain"
     rhodes(rootHz),
     lead(rootHz),
+    clapOvation(), // evolved voicings (sub-phase C)
+    leadSolo(rootHz),
+    hatStorm(),
   ]);
 
   const kits = new Map<Role, Kit>();
   // 'drop' is the evolved boom (Kick "The Drop"); the sample overlay preserves
   // it because it merges onto (not replaces) these synth variants.
   kits.set('kick', makeKit('kick', new Map([['hard', kickHard], ['drop', kickDropBuf]])));
-  kits.set('clap', makeKit('clap', new Map([['clap', clapBuf]])));
-  kits.set('hat', makeKit('hat', new Map([['closed', hatClosed], ['open', hatOpen]])));
+  kits.set('clap', makeKit('clap', new Map([['clap', clapBuf], ['ovation', clapOvationBuf]])));
+  kits.set(
+    'hat',
+    makeKit('hat', new Map([['closed', hatClosed], ['open', hatOpen], ['storm', hatStormBuf]])),
+  );
   kits.set('shaker', makeKit('shaker', new Map([['shaker', shakerBuf]])));
   kits.set('crash', makeKit('crash', new Map([['crash', crashBuf]])));
   kits.set('riser', makeKit('riser', new Map([['riser', riserBuf]])));
@@ -582,6 +700,6 @@ export async function buildHouseKit(rootHz: number): Promise<Map<Role, Kit>> {
     makeKit('chord', new Map([['stab', stab], ['pad', pad], ['sustain', chordSustainBuf]])),
   );
   kits.set('rhodes', makeKit('rhodes', new Map([['rhodes', rhodesBuf]])));
-  kits.set('lead', makeKit('lead', new Map([['lead', leadBuf]])));
+  kits.set('lead', makeKit('lead', new Map([['lead', leadBuf], ['solo', leadSoloBuf]])));
   return kits;
 }

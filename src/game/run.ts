@@ -19,16 +19,20 @@ import {
   CHARGER,
   CHORD_SUSTAIN,
   CIRCLER,
+  CLAP_OVATION,
   DAMAGE_FEEDBACK,
   DARTER,
   ENEMIES,
+  HAT_STORM,
   KICK_DROP,
+  LEAD_SOLO,
   MAD_FOREST_FRAMES,
   MAX_ALIVE_HARD,
   ORBIT_REHIT_S,
   RUN,
   SHIELDED,
   SHOVE_S,
+  SNARE_RAIL,
   SPLITTER,
   VARIANT_EFFECTS,
   WEAPON_SHOVE,
@@ -54,7 +58,7 @@ import { SpatialHash, circlesOverlap } from './spatial';
 
 /** Roles that emit a per-hit spark on impact. Bounded to low-count roles so
  *  a 500-enemy event frame never floods the fx queue. */
-const SPARK_HIT_ROLES = new Set<Role>(['snare', 'lead']);
+const SPARK_HIT_ROLES = new Set<Role>(['snare']);
 
 /** Circle versus axis-aligned rectangle, exported for parity regression tests. */
 export function circleIntersectsRect(
@@ -134,6 +138,10 @@ export interface Enemy {
    *  tick. Once the chord evolves, every chord zone is a 0.3 Sustain, so the
    *  only mixed-strength window is a brief transient at the evolution instant. */
   slowMul: number;
+  /** Clap "Standing Ovation" freeze: while > 0 the enemy is fully stopped (a 0x
+   *  speed on the same channel the slow uses) and the view draws a frozen tell.
+   *  Bosses are never given this (immune to the stop). */
+  freezeT: number;
   /** Weapon knockback: velocity (px/s) and time left being pushed. While
    *  knockT > 0 the enemy rides this vector instead of chasing. */
   knockX: number;
@@ -173,12 +181,10 @@ export interface Projectile {
   pierce: number;
   maxPierce: number;
   lifeS: number;
-  homing: boolean;
   speed: number;
   color: number;
   hit: Set<Enemy>;
-  /** Total time alive. Behavior otherwise keys off role: lead homes, arp
-   *  orbits. */
+  /** Total time alive. Behavior otherwise keys off role (e.g. arp orbits). */
   age: number;
   /** arp: orbit geometry around the player, and the re-hit cooldown so a slow
    *  sweep keeps chipping the same enemy. */
@@ -289,7 +295,10 @@ export type FxEvent =
     }
   | { type: 'dmg'; x: number; y: number; amount: number; color: number }
   | { type: 'spark'; x: number; y: number; color: number; n: number; spread: number }
-  | { type: 'slam'; x: number; y: number; radius: number; color: number };
+  | { type: 'slam'; x: number; y: number; radius: number; color: number }
+  | { type: 'zap'; x1: number; y1: number; x2: number; y2: number; color: number }
+  | { type: 'ovation'; x: number; y: number; radius: number; color: number }
+  | { type: 'rail'; x: number; y: number; angle: number; length: number; color: number };
 
 export interface RunEvents {
   onLevelUp(level: number): void;
@@ -365,6 +374,19 @@ export class RunWorld {
   /** Live Kick "The Drop" pressure rings (evolved kick only). */
   private pulses: KickPulse[] = [];
 
+  // Lead lock-on beam state (base: per-note zap; evolved "The Solo": a sustained
+  // beam). The locked target is shared; base sticks to the nearest, evolved to
+  // the toughest.
+  private leadTarget: Enemy | null = null;
+  private leadBeamT = 0; // evolved beam active window, refreshed by each trigger
+  private leadTickT = 0; // evolved beam damage-tick timer
+  private leadBeamDamage = 0; // per-tick damage, carried (build-applied) from the last trigger
+  // Hat "16th-Note Storm" state.
+  private hatStormT = 0; // storm active window, refreshed by each trigger
+  private hatStormAcc = 0; // fractional shard-emission accumulator
+  /** Movement fraction (0..1) the player used this frame — drives the storm. */
+  private playerMoveFrac = 0;
+
   private rng: Rng;
   private control: () => { x: number; y: number };
   private events: RunEvents;
@@ -422,6 +444,13 @@ export class RunWorld {
 
   get projectileCount(): number {
     return this.projectiles.length;
+  }
+
+  /** The evolved Lead "The Solo" beam endpoints for the view, or null when the
+   *  beam is not currently lit. */
+  get leadBeam(): { x1: number; y1: number; x2: number; y2: number } | null {
+    if (this.leadBeamT <= 0 || !this.leadTarget || this.leadTarget.dead) return null;
+    return { x1: this.player.x, y1: this.player.y, x2: this.leadTarget.x, y2: this.leadTarget.y };
   }
 
   /** Height-normalized parity camera: the visible world is always 800 units
@@ -521,6 +550,12 @@ export class RunWorld {
         break;
       }
       case 'clap': {
+        // Evolved "Standing Ovation": the crowd surrounds you and claps inward —
+        // a ring collapses onto everything nearby, crushing and briefly freezing.
+        if (tier === EVOLVED_TIER) {
+          this.spawnClapOvation(conf.damage);
+          break;
+        }
         // Whip: a wide forward slash in the aim direction, hitting a cone.
         const aim = this.aimDir(0);
         const ang = Math.atan2(aim.y, aim.x);
@@ -550,10 +585,35 @@ export class RunWorld {
         this.spawnProjectile('bass', this.aimDir(0.08), conf, color, v);
         break;
       }
-      case 'snare':
-      case 'hat':
+      case 'snare': {
+        // Evolved "Rimshot Rail": an instant infinite-pierce rail through the
+        // densest line, plus an answering crack.
+        if (tier === EVOLVED_TIER) {
+          this.fireSnareRail(conf.damage);
+          break;
+        }
+        this.spawnProjectile('snare', this.aimDir(0.08), conf, color, v);
+        break;
+      }
+      case 'hat': {
+        // Evolved "16th-Note Storm": no per-trigger spray — the trigger keeps
+        // the persistent swirl cloud alive; it emits shards in update() at a rate
+        // scaled by the player's speed.
+        if (tier === EVOLVED_TIER) {
+          this.hatStormT = HAT_STORM.activeS;
+          break;
+        }
+        this.spawnProjectile('hat', this.aimDir(0.35), conf, color, v);
+        break;
+      }
       case 'lead': {
-        this.spawnProjectile(t.role, this.aimDir(t.role === 'hat' ? 0.35 : 0.08), conf, color, v);
+        // Lock-on beam per note (base), or a sustained "The Solo" beam (evolved,
+        // refreshed here and ticked in update()). Both never miss.
+        if (tier === EVOLVED_TIER) {
+          this.fireLeadSolo(conf.damage);
+          break;
+        }
+        this.fireLeadZap(conf.damage);
         break;
       }
     }
@@ -636,6 +696,8 @@ export class RunWorld {
     this.updateKickStrikes();
     this.updateKickPulses(dt);
     this.updateBassWalls(dt);
+    this.updateLeadBeam(dt);
+    this.updateHatStorm(dt);
     this.updateProjectiles(dt);
     this.updateZones(dt);
     this.updateGems(dt);
@@ -652,6 +714,9 @@ export class RunWorld {
     else if (a.x < -0.001) this.player.facingX = -1;
     this.player.x += a.x * RUN.playerSpeed * dt;
     this.player.y += a.y * RUN.playerSpeed * dt;
+    // Movement fraction (0..1) for the hat "16th-Note Storm" (a still player
+    // goes quiet, a moving one shreds).
+    this.playerMoveFrac = Math.min(1, Math.hypot(a.x, a.y));
     if (this.player.iframesT > 0) this.player.iframesT -= dt;
   }
 
@@ -916,6 +981,7 @@ export class RunWorld {
       dashing: false,
       slowT: 0,
       slowMul: 1,
+      freezeT: 0,
       knockX: 0,
       knockY: 0,
       knockT: 0,
@@ -968,9 +1034,21 @@ export class RunWorld {
     }
   }
 
+  /** Drop the lead lock and the transient beam/storm timers (their target
+   *  enemy is about to leave the array). Shared by every path that empties or
+   *  resets the enemy list, so a beam can never keep damaging a phantom. */
+  private resetEvolvedTargeting(): void {
+    this.leadTarget = null;
+    this.leadBeamT = 0;
+    this.leadTickT = 0;
+    this.hatStormT = 0;
+    this.hatStormAcc = 0;
+  }
+
   /** Sandbox: remove every enemy without kills, gems, or pops. */
   clearEnemies(): void {
     this.enemies.length = 0;
+    this.resetEvolvedTargeting();
   }
 
   /** Reset every transient sandbox entity without touching the player, loadout,
@@ -984,6 +1062,7 @@ export class RunWorld {
     this.pendingKick.length = 0;
     this.pulses.length = 0;
     this.bassWalls.length = 0;
+    this.resetEvolvedTargeting();
     this.overflowGem = null;
     this.hash.clear();
     this.queryBuf.length = 0;
@@ -995,6 +1074,16 @@ export class RunWorld {
       if (e.dead) continue;
       e.lastMoveX = 0;
       e.lastMoveY = 0;
+      // Clap "Standing Ovation" freeze: a full stop (0x speed) that overrides
+      // chase and knockback, on the same movement channel the slow uses. It
+      // swallows any pending knock (clear knockT) so a hit landed mid-freeze
+      // doesn't launch the enemy the instant it thaws.
+      if (e.freezeT > 0) {
+        e.freezeT -= dt;
+        e.knockT = 0;
+        if (e.flashT > 0) e.flashT -= dt;
+        continue;
+      }
       let speed = e.speed;
       if (e.slowT > 0) {
         e.slowT -= dt;
@@ -1137,10 +1226,17 @@ export class RunWorld {
         const push = (target - d) * 0.5;
         const nx = dx / d;
         const ny = dy / d;
-        e.x += nx * push;
-        e.y += ny * push;
-        o.x -= nx * push;
-        o.y -= ny * push;
+        // A frozen enemy (clap "Standing Ovation") is rooted: it is not
+        // displaced by collisions, so a frozen wall stays put and non-frozen
+        // enemies de-overlap around it.
+        if (e.freezeT <= 0) {
+          e.x += nx * push;
+          e.y += ny * push;
+        }
+        if (o.freezeT <= 0) {
+          o.x -= nx * push;
+          o.y -= ny * push;
+        }
       }
     }
   }
@@ -1341,7 +1437,6 @@ export class RunWorld {
       pierce: conf.pierce ?? 1,
       maxPierce: conf.pierce ?? 1,
       lifeS: conf.lifetimeS!,
-      homing: role === 'lead',
       speed: conf.speed ?? 0,
       color,
       hit: new Set(),
@@ -1631,6 +1726,155 @@ export class RunWorld {
   }
 
   /** Clap: damage every enemy inside a forward cone (also point-blank). */
+  // ---- sub-phase C evolutions: lead beam, clap ovation, snare rail, hat storm ----
+
+  /** Distance-squared range check from the player. */
+  private outOfRange(e: Enemy, range: number): boolean {
+    const dx = e.x - this.player.x;
+    const dy = e.y - this.player.y;
+    return dx * dx + dy * dy > range * range;
+  }
+
+  /** The toughest live target within range (bosses first, then most HP + shield)
+   *  — what Lead "The Solo" locks onto. */
+  private toughestEnemy(range: number): Enemy | null {
+    let best: Enemy | null = null;
+    let bestScore = -1;
+    for (const e of this.enemies) {
+      if (e.dead || this.outOfRange(e, range)) continue;
+      const score = (ENEMIES[e.kind].boss ? 1e6 : 0) + e.hp + e.shieldHp;
+      if (score > bestScore) {
+        bestScore = score;
+        best = e;
+      }
+    }
+    return best;
+  }
+
+  /** Base Lead: one instant zap into a sticky-locked nearest target (never
+   *  misses). Re-locks only when its target dies or leaves range. */
+  private fireLeadZap(damage: number): void {
+    if (!this.leadTarget || this.leadTarget.dead || this.outOfRange(this.leadTarget, AIM_RANGE)) {
+      this.leadTarget = this.nearestEnemy(AIM_RANGE);
+    }
+    const t = this.leadTarget;
+    if (!t) return; // nothing in range: the note just sounds
+    this.damageEnemy(t, damage, 'lead');
+    this.fx?.push({ type: 'zap', x1: this.player.x, y1: this.player.y, x2: t.x, y2: t.y, color: KIT_COLORS.lead });
+  }
+
+  /** Evolved "The Solo": keep the beam lit and carry this trigger's
+   *  (build-applied) per-tick damage; the beam locks/glides/ticks in
+   *  updateLeadBeam. */
+  private fireLeadSolo(damage: number): void {
+    this.leadBeamT = LEAD_SOLO.activeS;
+    this.leadBeamDamage = damage;
+  }
+
+  /** The persistent "The Solo" beam: lock the toughest target, tick continuous
+   *  damage, and glide instantly to the next priority the moment it dies. Idle
+   *  unless the beam is lit — kept alive by lead triggers, so it stops when the
+   *  voice is deactivated. (base Lead leaves leadBeamT at 0, so this is a no-op
+   *  for it and never disturbs its sticky nearest lock.) */
+  private updateLeadBeam(dt: number): void {
+    if (this.leadBeamT <= 0) return;
+    this.leadBeamT -= dt;
+    if (this.tiers.get('lead') !== EVOLVED_TIER) {
+      this.leadBeamT = 0;
+      return;
+    }
+    if (!this.leadTarget || this.leadTarget.dead || this.outOfRange(this.leadTarget, LEAD_SOLO.range)) {
+      this.leadTarget = this.toughestEnemy(LEAD_SOLO.range); // glide-retarget
+    }
+    const t = this.leadTarget;
+    if (!t) return;
+    this.leadTickT -= dt;
+    if (this.leadTickT <= 0) {
+      this.leadTickT = LEAD_SOLO.tickS;
+      this.damageEnemy(t, this.leadBeamDamage, 'lead');
+    }
+  }
+
+  /** Clap "Standing Ovation": a ring collapses inward, crushing everything
+   *  within CLAP_OVATION.radius and briefly freezing each non-boss (bosses take
+   *  the damage but are immune to the stop). */
+  private spawnClapOvation(damage: number): void {
+    const p = this.player;
+    const near = this.hash.query(p.x, p.y, CLAP_OVATION.radius + 24, this.queryBuf);
+    for (const e of near) {
+      if (e.dead) continue;
+      const dx = e.x - p.x;
+      const dy = e.y - p.y;
+      const reach = CLAP_OVATION.radius + e.radius;
+      if (dx * dx + dy * dy > reach * reach) continue;
+      this.damageEnemy(e, damage, 'clap');
+      if (!ENEMIES[e.kind].boss) e.freezeT = Math.max(e.freezeT, CLAP_OVATION.freezeS);
+    }
+    this.fx?.push({ type: 'ovation', x: p.x, y: p.y, radius: CLAP_OVATION.radius, color: KIT_COLORS.clap });
+  }
+
+  /** Snare "Rimshot Rail": an instant infinite-pierce rail aimed through the
+   *  densest line, plus an answering crack at an angle. */
+  private fireSnareRail(damage: number): void {
+    const p = this.player;
+    const target = this.densestEnemy(SNARE_RAIL.range) ?? this.nearestEnemy(SNARE_RAIL.range);
+    const ang = target ? Math.atan2(target.y - p.y, target.x - p.x) : this.rng() * Math.PI * 2;
+    this.railHit(ang, damage);
+    this.fx?.push({ type: 'rail', x: p.x, y: p.y, angle: ang, length: SNARE_RAIL.length, color: KIT_COLORS.snare });
+    const ang2 = ang + SNARE_RAIL.answerAngle;
+    this.railHit(ang2, damage * SNARE_RAIL.answerDamageMul);
+    this.fx?.push({ type: 'rail', x: p.x, y: p.y, angle: ang2, length: SNARE_RAIL.length, color: KIT_COLORS.snare });
+  }
+
+  /** Damage every enemy within SNARE_RAIL.thickness of the ray from the player
+   *  at `ang`, out to SNARE_RAIL.length (infinite pierce, instant). */
+  private railHit(ang: number, damage: number): void {
+    const p = this.player;
+    const dx = Math.cos(ang);
+    const dy = Math.sin(ang);
+    const tx = -dy;
+    const ty = dx;
+    const half = SNARE_RAIL.length / 2;
+    const near = this.hash.query(p.x + dx * half, p.y + dy * half, half + SNARE_RAIL.thickness + 48, this.queryBuf);
+    for (const e of near) {
+      if (e.dead) continue;
+      const rx = e.x - p.x;
+      const ry = e.y - p.y;
+      const along = rx * dx + ry * dy;
+      if (along < -e.radius || along > SNARE_RAIL.length + e.radius) continue; // not on the segment
+      if (Math.abs(rx * tx + ry * ty) > SNARE_RAIL.thickness + e.radius) continue; // off the rail line
+      this.damageEnemy(e, damage, 'snare');
+    }
+  }
+
+  /** Hat "16th-Note Storm": while alive (kept by triggers), emit shards around
+   *  the player at a rate that scales with how fast the player moved this frame
+   *  — a moving player shreds a bubble, a still one goes quiet. */
+  private updateHatStorm(dt: number): void {
+    if (this.hatStormT <= 0) return;
+    this.hatStormT -= dt;
+    const rate = HAT_STORM.baseRate + HAT_STORM.speedRate * this.playerMoveFrac;
+    this.hatStormAcc += rate * dt;
+    let guard = 0;
+    while (this.hatStormAcc >= 1 && guard < 24) {
+      this.hatStormAcc -= 1;
+      this.spawnHatShard();
+      guard++;
+    }
+  }
+
+  private spawnHatShard(): void {
+    const p = this.player;
+    const ang = this.rng() * Math.PI * 2;
+    const conf = this.applyBuild(WEAPONS.hat![EVOLVED_TIER - 1]);
+    const pr = this.baseProjectile('hat', conf, KIT_COLORS.hat, conf.damage);
+    pr.x = p.x + Math.cos(ang) * HAT_STORM.spawnR;
+    pr.y = p.y + Math.sin(ang) * HAT_STORM.spawnR;
+    pr.vx = Math.cos(ang) * HAT_STORM.shardSpeed;
+    pr.vy = Math.sin(ang) * HAT_STORM.shardSpeed;
+    this.projectiles.push(pr);
+  }
+
   private damageCone(
     x: number,
     y: number,
@@ -1684,32 +1928,8 @@ export class RunWorld {
           pr.rehitT = pr.blade ? ARP_CAROUSEL.rehitS : ORBIT_REHIT_S;
         }
       } else {
-        if (pr.homing) {
-          let best: Enemy | null = null;
-          let bestD = Infinity;
-          for (const e of this.enemies) {
-            if (e.dead || pr.hit.has(e)) continue;
-            const dx = e.x - pr.x;
-            const dy = e.y - pr.y;
-            const d = dx * dx + dy * dy;
-            if (d < bestD) {
-              bestD = d;
-              best = e;
-            }
-          }
-          if (best) {
-            const ang = Math.atan2(best.y - pr.y, best.x - pr.x);
-            const cur = Math.atan2(pr.vy, pr.vx);
-            let diff = ang - cur;
-            while (diff > Math.PI) diff -= Math.PI * 2;
-            while (diff < -Math.PI) diff += Math.PI * 2;
-            // tight turn so seekers snap to targets instead of orbiting them
-            const turn = Math.max(-10 * dt, Math.min(10 * dt, diff));
-            const next = cur + turn;
-            pr.vx = Math.cos(next) * pr.speed;
-            pr.vy = Math.sin(next) * pr.speed;
-          }
-        }
+        // Straight-flying shots (snare/hat/bass/bell + shards). Lead no longer
+        // spawns a projectile — it is a hitscan lock-on beam now.
         pr.x += pr.vx * dt;
         pr.y += pr.vy * dt;
       }

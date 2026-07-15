@@ -203,4 +203,20 @@ export const SOUNDSET_EVOLVED: Partial<Record<Role, Chart>> = {
     [2, 0.6, 12, 'carillon'], [6, 0.5, 19, 'carillon'], [10, 0.55, 24, 'carillon'], [14, 0.5, 19, 'carillon'],
     [B + 2, 0.6, 15, 'carillon'], [B + 6, 0.5, 22, 'carillon'], [B + 10, 0.55, 27, 'carillon'], [B + 14, 0.5, 19, 'carillon'],
   ]),
+  // Clap "Standing Ovation": stays on the backbeat (2 & 4) — where the crowd
+  // claps inward — on the layered 'ovation' voicing.
+  clap: dVar('clap', 'ovation', '....X.......X...'),
+  // Snare "Rimshot Rail": the rail snaps on the backbeat, on the metallic
+  // 'rimshot' voicing.
+  snare: dVar('snare', 'rimshot', '....X.......X...'),
+  // Hat "16th-Note Storm": a busy 8th-note shimmer on the open 'storm' voicing
+  // that keeps the swirl cloud alive and playing continuously.
+  hat: dVar('hat', 'storm', 'x.x.x.x.x.x.x.x.'),
+  // Lead "The Solo": a sustained, singing melody on the 'solo' voicing, no gap
+  // longer than LEAD_SOLO.activeS so the beam stays continuously lit while the
+  // lead plays. Pentatonic notes.
+  lead: m('lead', 2, [
+    [0, 0.75, 7, 'solo'], [6, 0.7, 12, 'solo'], [12, 0.7, 15, 'solo'],
+    [B, 0.75, 10, 'solo'], [B + 6, 0.7, 7, 'solo'], [B + 12, 0.7, 12, 'solo'],
+  ]),
 };

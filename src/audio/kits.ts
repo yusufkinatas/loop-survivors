@@ -627,6 +627,147 @@ async function renderBellCarillon(rootHz: number): Promise<AudioBuffer> {
   return ctx.startRendering();
 }
 
+// ---- sub-phase C evolved voicings (docs/phases/weapon-evolutions.md) ----
+
+// Clap "Standing Ovation": a whole hall clapping at once — many layered hand
+// bursts spread wider than the single smack, then a long room-sized reverb tail.
+async function renderClapOvation(): Promise<AudioBuffer> {
+  const ctx = offline(0.75);
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.value = 1500;
+  bp.Q.value = 0.9;
+  const hp = ctx.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = 800;
+  bp.connect(hp).connect(ctx.destination);
+  // A crowd: many short bursts scattered over ~50 ms, then a long diffuse tail.
+  const bursts: [number, number, number][] = [
+    [0, 0.5, 0.011], [0.006, 0.55, 0.011], [0.013, 0.5, 0.011], [0.021, 0.6, 0.011],
+    [0.03, 0.5, 0.011], [0.04, 0.55, 0.011], [0.05, 0.75, 0.45],
+  ];
+  for (const [at, level, dur] of bursts) {
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuffer(ctx, dur);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(level, at);
+    g.gain.exponentialRampToValueAtTime(0.001, at + dur);
+    src.connect(g).connect(bp);
+    src.start(at);
+  }
+  return ctx.startRendering();
+}
+
+// Lead "The Solo": one sustained, singing lead with vibrato — held and
+// expressive (the focal voice), longer and richer than the plucked base note.
+async function renderLeadSolo(rootHz: number): Promise<AudioBuffer> {
+  const ctx = offline(1.0);
+  const osc = ctx.createOscillator();
+  osc.type = 'sawtooth';
+  osc.frequency.value = rootHz * 2;
+  const osc2 = ctx.createOscillator();
+  osc2.type = 'square';
+  osc2.frequency.value = rootHz * 2;
+  osc2.detune.value = 6;
+  // Vibrato: a slow LFO on the pitch gives the sustained note its singing voice.
+  const vib = ctx.createOscillator();
+  vib.type = 'sine';
+  vib.frequency.value = 5.5;
+  const vibG = ctx.createGain();
+  vibG.gain.value = rootHz * 2 * 0.012;
+  vib.connect(vibG);
+  vibG.connect(osc.frequency);
+  vibG.connect(osc2.frequency);
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 4200;
+  lp.Q.value = 2;
+  const drive = ctx.createWaveShaper();
+  drive.curve = softClipCurve(1.6);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.001, 0);
+  g.gain.exponentialRampToValueAtTime(0.4, 0.04);
+  g.gain.setValueAtTime(0.4, 0.72); // held
+  g.gain.exponentialRampToValueAtTime(0.001, 0.98);
+  const o2g = ctx.createGain();
+  o2g.gain.value = 0.4;
+  osc.connect(lp);
+  osc2.connect(o2g).connect(lp);
+  lp.connect(drive).connect(g).connect(ctx.destination);
+  osc.start(0);
+  osc2.start(0);
+  vib.start(0);
+  return ctx.startRendering();
+}
+
+// Snare "Rimshot Rail": the dry crack gains a bright metallic ring and a fast
+// ping tail — a rimshot.
+async function renderSnareRimshot(): Promise<AudioBuffer> {
+  const ctx = offline(0.3);
+  const snap = ctx.createBufferSource();
+  snap.buffer = noiseBuffer(ctx, 0.1);
+  const shp = ctx.createBiquadFilter();
+  shp.type = 'highpass';
+  shp.frequency.value = 1800;
+  const sg = ctx.createGain();
+  sg.gain.setValueAtTime(0.7, 0);
+  sg.gain.exponentialRampToValueAtTime(0.001, 0.05);
+  snap.connect(shp).connect(sg).connect(ctx.destination);
+  // Metallic ring: inharmonic square partials with a fast tail (the "ping").
+  const base = 1700;
+  for (const mult of [1, 1.48, 2.03, 2.71]) {
+    const o = ctx.createOscillator();
+    o.type = 'square';
+    o.frequency.value = base * mult;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.12, 0);
+    g.gain.exponentialRampToValueAtTime(0.001, 0.12);
+    o.connect(g).connect(ctx.destination);
+    o.start(0);
+    o.stop(0.14);
+  }
+  snap.start(0);
+  return ctx.startRendering();
+}
+
+// Hat "16th-Note Storm": an open, sizzling wash — brighter and longer than the
+// closed tick, a continuous shimmer.
+async function renderHatStorm(): Promise<AudioBuffer> {
+  const dur = 0.22;
+  const ctx = offline(dur + 0.05);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.3, 0);
+  g.gain.exponentialRampToValueAtTime(0.05, 0.05);
+  g.gain.exponentialRampToValueAtTime(0.001, dur);
+  const hp = ctx.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = 7500;
+  const peak = ctx.createBiquadFilter();
+  peak.type = 'peaking';
+  peak.frequency.value = 12000;
+  peak.Q.value = 1.0;
+  peak.gain.value = 7;
+  hp.connect(peak).connect(g).connect(ctx.destination);
+  const base = 360;
+  for (const mult of [1, 1.34, 1.79, 2.41, 3.17, 4.09]) {
+    const o = ctx.createOscillator();
+    o.type = 'square';
+    o.frequency.value = base * mult;
+    const og = ctx.createGain();
+    og.gain.value = 0.05;
+    o.connect(og).connect(hp);
+    o.start(0);
+    o.stop(dur);
+  }
+  const noise = ctx.createBufferSource();
+  noise.buffer = noiseBuffer(ctx, dur);
+  const ng = ctx.createGain();
+  ng.gain.value = 0.6;
+  noise.connect(ng).connect(hp);
+  noise.start(0);
+  return ctx.startRendering();
+}
+
 async function renderHat(open: boolean): Promise<AudioBuffer> {
   const dur = open ? 0.34 : 0.06;
   const ctx = offline(dur + 0.05);
@@ -954,12 +1095,12 @@ export interface RoleMeta {
 
 export const ROLE_META: Record<Role, RoleMeta> = {
   kick: { name: 'Kick', color: '#ff5a3c', pitched: false, choke: false, variants: ['hard', 'drop'] },
-  snare: { name: 'Snare', color: '#ffc93c', pitched: false, choke: false, variants: ['snare'] },
-  hat: { name: 'Hi-hat', color: '#3ce0ff', pitched: false, choke: false, variants: ['closed', 'open'] },
+  snare: { name: 'Snare', color: '#ffc93c', pitched: false, choke: false, variants: ['snare', 'rimshot'] },
+  hat: { name: 'Hi-hat', color: '#3ce0ff', pitched: false, choke: false, variants: ['closed', 'open', 'storm'] },
   bass: { name: 'Bass', color: '#a06bff', pitched: true, choke: true, variants: ['bass', 'fat', 'sub'] },
   chord: { name: 'Chord', color: '#4dff88', pitched: true, choke: false, variants: ['stab', 'pad', 'sustain'] },
-  lead: { name: 'Lead', color: '#ff6bd6', pitched: true, choke: false, variants: ['lead'] },
-  clap: { name: 'Clap', color: '#ff4f7d', pitched: false, choke: false, variants: ['clap'] },
+  lead: { name: 'Lead', color: '#ff6bd6', pitched: true, choke: false, variants: ['lead', 'solo'] },
+  clap: { name: 'Clap', color: '#ff4f7d', pitched: false, choke: false, variants: ['clap', 'ovation'] },
   tom: { name: 'Tom', color: '#d08a4a', pitched: true, choke: true, variants: ['tom'] },
   arp: { name: 'Arp', color: '#33e6c2', pitched: true, choke: false, variants: ['arp', 'carousel'] },
   crash: { name: 'Crash', color: '#b9c2dd', pitched: false, choke: true, variants: ['crash'] },
@@ -1029,6 +1170,10 @@ export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
     chordSustain,
     arpCarousel,
     bellCarillon,
+    clapOvation,
+    leadSolo,
+    snareRimshot,
+    hatStorm,
   ] = await Promise.all([
     renderKick(),
     renderKickDrop(),
@@ -1054,6 +1199,10 @@ export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
     renderChordSustain(rootHz),
     renderArpCarousel(rootHz),
     renderBellCarillon(rootHz),
+    renderClapOvation(), // evolved voicings (sub-phase C)
+    renderLeadSolo(rootHz),
+    renderSnareRimshot(),
+    renderHatStorm(),
   ]);
 
   const kits = new Map<Role, Kit>();
@@ -1062,10 +1211,11 @@ export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
   };
 
   add('kick', [['hard', kickHard], ['drop', kickDrop]]); // 'drop' = the evolved boom
-  add('snare', [['snare', snare]]);
+  add('snare', [['snare', snare], ['rimshot', snareRimshot]]); // 'rimshot' = evolved
   add('hat', [
     ['closed', hatClosed],
     ['open', hatOpen],
+    ['storm', hatStorm], // evolved "16th-Note Storm"
   ]);
   add('bass', [
     ['bass', bass],
@@ -1077,8 +1227,8 @@ export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
     ['pad', pad],
     ['sustain', chordSustain], // evolved "Sustain"
   ]);
-  add('lead', [['lead', lead]]);
-  add('clap', [['clap', clap]]);
+  add('lead', [['lead', lead], ['solo', leadSolo]]); // 'solo' = evolved beam voice
+  add('clap', [['clap', clap], ['ovation', clapOvation]]); // 'ovation' = evolved
   add('tom', [['tom', tom]]);
   add('arp', [
     ['arp', arp],

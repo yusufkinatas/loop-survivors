@@ -675,6 +675,9 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
     { damage: 7, speed: 650, radius: 7, lifetimeS: 1.4, pierce: 3 },
     { damage: 9, speed: 680, radius: 8, lifetimeS: 1.5, pierce: 4 },
     { damage: 13, speed: 720, radius: 8, lifetimeS: 1.5, pierce: 6 },
+    // Evolved "Rimshot Rail": an instant infinite-pierce rail through the
+    // densest line (geometry in SNARE_RAIL); this is its high single-hit damage.
+    { damage: 22 },
   ],
   // Dense stream of weak fast chips, wide scatter. Density IS the ladder;
   // per-trigger damage barely moves.
@@ -683,6 +686,9 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
     { damage: 1, speed: 450, radius: 3, lifetimeS: 0.85, pierce: 1 },
     { damage: 1, speed: 460, radius: 3, lifetimeS: 0.9, pierce: 1 },
     { damage: 2, speed: 480, radius: 3, lifetimeS: 0.95, pierce: 2 },
+    // Evolved "16th-Note Storm": per-shard stats for the movement-scaled swirl
+    // cloud (emission rate in HAT_STORM). Each shard is weak; density is the DPS.
+    { damage: 2, speed: 300, radius: 3, lifetimeS: 0.5, pierce: 1 },
   ],
   // Slow wide low wave that rolls through everything. The weight ladder:
   // per-trigger damage climbs harder than any other kit.
@@ -713,12 +719,17 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
     // size/life/slow/tick come from CHORD_SUSTAIN.
     { damage: 8, radius: 150, lifetimeS: 6.0 },
   ],
-  // Homing seeker per melody note: mid damage, never misses.
+  // Lock-on beam: one instant zap into the locked target per melody note, never
+  // misses (the respec from homing seekers; only `damage` is read now — the
+  // zap is hitscan). Reads as one voice aimed at one thing.
   lead: [
-    { damage: 2, speed: 340, radius: 6, lifetimeS: 2.2, pierce: 1 },
-    { damage: 3, speed: 350, radius: 6, lifetimeS: 2.2, pierce: 1 },
-    { damage: 3, speed: 360, radius: 6, lifetimeS: 2.3, pierce: 1 },
-    { damage: 4, speed: 380, radius: 7, lifetimeS: 2.4, pierce: 2 },
+    { damage: 3 },
+    { damage: 4 },
+    { damage: 5 },
+    { damage: 7 },
+    // Evolved "The Solo": a sustained beam on the toughest target; this is its
+    // PER-TICK damage (ticks every LEAD_SOLO.tickS), so DPS = damage / tickS.
+    { damage: 5 },
   ],
   // Whip: a wide forward slash that hits everything in a close cone. Melee
   // crowd control — no travel, instant, safest when the wall is on top of you.
@@ -727,6 +738,9 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
     { damage: 3, radius: 88, arc: 0.72 },
     { damage: 4, radius: 98, arc: 0.8 },
     { damage: 6, radius: 108, arc: 0.9 },
+    // Evolved "Standing Ovation": a ring collapses inward onto everything near
+    // you, crushing (this damage) and briefly freezing (CLAP_OVATION).
+    { damage: 8, radius: 130 },
   ],
   // King Bible: notes that orbit the player, a rotating shield of damage.
   // Each trigger adds one orbiter; a melody makes a ring.
@@ -790,10 +804,10 @@ export const TIER_LINES: Partial<Record<Role, string[]>> = {
     'adds huge lingering zones every 4th bar',
   ],
   lead: [
-    'a few homing seekers',
-    'more seekers',
-    'the full melody of seekers',
-    'denser seekers that pierce',
+    'a lock-on beam, one zap per note',
+    'harder zaps',
+    'the full melody, harder still',
+    'a strong, never-miss lock-on',
   ],
   clap: [
     'a wide slash close to you',
@@ -925,4 +939,53 @@ export const ARP_CAROUSEL = {
 export const BELL_CARILLON = {
   shards: 10,
   secondaryShards: 3,
+};
+
+// ---- sub-phase C evolutions (new systems) ----
+
+/** Clap "Standing Ovation": a ring collapses inward onto everything within
+ *  `radius` of the player, crushing (WEAPONS.clap evolved damage) and briefly
+ *  FREEZING each non-boss for `freezeS` (a per-enemy 0x-speed timer on the
+ *  existing speed channel — no new status framework). Bosses take the damage
+ *  but are immune to the stop. */
+export const CLAP_OVATION = {
+  radius: 130,
+  freezeS: 0.8,
+};
+
+/** Lead "The Solo": a sustained beam locking the TOUGHEST target within `range`.
+ *  Each lead trigger refreshes the beam for `activeS` (kept longer than the gap
+ *  between notes, so it reads continuous while the lead plays and stops when the
+ *  voice is deactivated). It ticks damage every `tickS` and glides instantly to
+ *  the next priority the moment its target dies. */
+export const LEAD_SOLO = {
+  range: 900,
+  activeS: 1.0,
+  tickS: 0.1,
+};
+
+/** Snare "Rimshot Rail": an instant hitscan rail auto-aimed through the densest
+ *  line within `range`. It damages every enemy within `thickness` of the ray
+ *  out to `length` (infinite pierce), plus an answering crack at `answerAngle`
+ *  for `answerDamageMul` of the damage. */
+export const SNARE_RAIL = {
+  range: AIM_RANGE,
+  length: 900,
+  thickness: 22,
+  answerAngle: 0.5,
+  answerDamageMul: 0.7,
+};
+
+/** Hat "16th-Note Storm": a persistent swirl of shards around the player whose
+ *  emission rate scales with how fast the player is moving (`baseRate` when
+ *  still up to `baseRate + speedRate` at full speed), so a moving player shreds
+ *  a bubble and a still one goes quiet. Each hat trigger keeps the storm alive
+ *  for `activeS` (so it stops when the voice is deactivated). Shards spawn
+ *  `spawnR` out and fly outward at `shardSpeed`. */
+export const HAT_STORM = {
+  activeS: 0.5,
+  baseRate: 5,
+  speedRate: 34,
+  spawnR: 14,
+  shardSpeed: 300,
 };

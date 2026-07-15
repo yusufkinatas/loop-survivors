@@ -23,7 +23,7 @@ import {
 // Projectile trails (pure view): only these low-count roles trail, so the
 // per-frame work stays independent of the capped horde. Hat (can be
 // hundreds) and arp/bass are deliberately excluded.
-const TRAIL_ROLES = new Set<Role>(['snare', 'lead']);
+const TRAIL_ROLES = new Set<Role>(['snare']);
 const TRAIL_LEN = 6; // points kept per trail
 
 // Shared geometry (M2 sub-phase C, frame rate above ~2000 alive): every
@@ -67,6 +67,8 @@ interface Pop {
   holdHalf?: boolean;
   /** Whip grows from zero to full body scale during its first 100 ms. */
   expandHalf?: boolean;
+  /** Clap "Standing Ovation": the ring closes inward (scale 1 -> ~0.1). */
+  collapse?: boolean;
 }
 
 interface DeathFragment {
@@ -239,6 +241,9 @@ export class RunView {
   private gridGfx = new Graphics();
   private trailGfx = new Graphics();
   private flashGfx = new Graphics();
+  // Lead "The Solo": the persistent beam, redrawn each frame from world.leadBeam
+  // and kept near the top of the stack (a beam over the field).
+  private leadBeamGfx = new Graphics();
   // The player is a Container (additive glow child + white core + signal ring);
   // only its .position/.alpha are ever touched, matching the old Graphics.
   private playerGfx = new Container();
@@ -276,6 +281,9 @@ export class RunView {
     body.circle(0, 0, RUN.playerRadius + 3).stroke({ width: 2, color: 0x59ffd1, alpha: 0.9 });
     this.playerGfx.addChild(glow, body);
     this.stage.addChild(this.playerGfx);
+    this.leadBeamGfx.tint = KIT_COLORS.lead;
+    this.leadBeamGfx.blendMode = 'add';
+    this.stage.addChild(this.leadBeamGfx); // re-topped each frame when lit
     this.stage.addChild(this.groundLayer); // re-topped each frame while active
     this.stage.addChild(this.flashGfx); // re-topped each active frame
   }
@@ -383,6 +391,7 @@ export class RunView {
     this.updatePops(dt);
     this.updateFloaters(dt);
     this.updateGroundPicks();
+    this.drawLeadBeam();
     this.drawGrid();
     this.drawFlash();
 
@@ -449,7 +458,8 @@ export class RunView {
       gfx.renderable = visible;
       if (!visible) continue;
       gfx.position.set(e.x, e.y);
-      gfx.tint = e.flashT > 0 ? 0xffffff : e.color;
+      // Frozen tell (clap "Standing Ovation"): a pale icy tint while stopped.
+      gfx.tint = e.flashT > 0 ? 0xffffff : e.freezeT > 0 ? 0x9fd8ff : e.color;
       if (e.kind === 'batSwarm' && (e.moveX !== 0 || e.moveY !== 0)) {
         gfx.rotation = Math.atan2(e.moveY, e.moveX);
       } else if (
@@ -599,6 +609,44 @@ export class RunView {
         this.pops.push({ gfx, t: 0, dur: 0.28, grow: 1.6 });
         break;
       }
+      case 'zap': {
+        // Base Lead lock-on: a short bright beam line into the target, gone fast.
+        const gfx = new Graphics();
+        gfx.moveTo(fx.x1, fx.y1).lineTo(fx.x2, fx.y2).stroke({ width: 7, color: 0xffffff, alpha: 0.25 });
+        gfx.moveTo(fx.x1, fx.y1).lineTo(fx.x2, fx.y2).stroke({ width: 3, color: 0xffffff, alpha: 0.95 });
+        gfx.circle(fx.x2, fx.y2, 5).fill({ color: 0xffffff, alpha: 0.8 });
+        gfx.tint = fx.color;
+        gfx.blendMode = 'add';
+        this.stage.addChild(gfx);
+        this.pops.push({ gfx, t: 0, dur: 0.13, grow: 0 });
+        break;
+      }
+      case 'ovation': {
+        // Clap "Standing Ovation": a ring that closes inward onto the player.
+        const gfx = new Graphics();
+        gfx.circle(0, 0, fx.radius).fill({ color: 0xffffff, alpha: 0.08 });
+        gfx.circle(0, 0, fx.radius).stroke({ width: 6, color: 0xffffff, alpha: 0.9 });
+        gfx.circle(0, 0, fx.radius * 0.66).stroke({ width: 3, color: 0xffffff, alpha: 0.5 });
+        gfx.tint = fx.color;
+        gfx.blendMode = 'add';
+        gfx.position.set(fx.x, fx.y);
+        this.stage.addChild(gfx);
+        this.pops.push({ gfx, t: 0, dur: 0.3, grow: 0, collapse: true });
+        break;
+      }
+      case 'rail': {
+        // Snare "Rimshot Rail": an instant bright rail lancing out, gone fast.
+        const gfx = new Graphics();
+        const x2 = fx.x + Math.cos(fx.angle) * fx.length;
+        const y2 = fx.y + Math.sin(fx.angle) * fx.length;
+        gfx.moveTo(fx.x, fx.y).lineTo(x2, y2).stroke({ width: 9, color: 0xffffff, alpha: 0.3 });
+        gfx.moveTo(fx.x, fx.y).lineTo(x2, y2).stroke({ width: 3, color: 0xffffff, alpha: 0.95 });
+        gfx.tint = fx.color;
+        gfx.blendMode = 'add';
+        this.stage.addChild(gfx);
+        this.pops.push({ gfx, t: 0, dur: 0.18, grow: 0 });
+        break;
+      }
       case 'dmg': {
         // Floating damage number. Bounded by DMG_CAP and culled off-screen so
         // the horde's hits never become a wall of text.
@@ -679,6 +727,7 @@ export class RunView {
       } else {
         p.gfx.alpha = p.holdHalf ? (k < 0.5 ? 1 : (1 - k) * 2) : 1 - k;
         if (p.expandHalf) p.gfx.scale.set(Math.min(1, k * 2));
+        else if (p.collapse) p.gfx.scale.set(1 - k * 0.9); // ring closes inward
         else if (p.grow > 0) p.gfx.scale.set(0.2 + (p.grow - 0.2) * k);
       }
     }
@@ -708,6 +757,27 @@ export class RunView {
       }
     }
     for (const pr of this.trails.keys()) if (!liveTrails.has(pr)) this.trails.delete(pr);
+  }
+
+  /** Lead "The Solo": redraw the persistent beam from the player to the locked
+   *  target (world.leadBeam) and keep it on top. Nothing when the beam is unlit
+   *  (base Lead's per-note zaps are one-shot fx instead). */
+  private drawLeadBeam(): void {
+    const beam = this.world.leadBeam;
+    this.leadBeamGfx.clear();
+    if (!beam) return;
+    this.leadBeamGfx
+      .moveTo(beam.x1, beam.y1)
+      .lineTo(beam.x2, beam.y2)
+      .stroke({ width: 12, color: 0xffffff, alpha: 0.28 })
+      .moveTo(beam.x1, beam.y1)
+      .lineTo(beam.x2, beam.y2)
+      .stroke({ width: 4, color: 0xffffff, alpha: 0.95 })
+      .circle(beam.x2, beam.y2, 9)
+      .fill({ color: 0xffffff, alpha: 0.5 })
+      .circle(beam.x2, beam.y2, 4)
+      .fill({ color: 0xffffff, alpha: 0.95 });
+    this.stage.setChildIndex(this.leadBeamGfx, this.stage.children.length - 1);
   }
 
   /** Full-screen colored flash: a world-space rect sized to the visible
@@ -1085,10 +1155,7 @@ function makeProjectileGfx(pr: Projectile): Graphics {
         g.ellipse(0, 0, 16, pr.radius).fill({ color: 0xffffff, alpha: 0.5 });
         g.ellipse(0, 0, 16, pr.radius).stroke({ width: 2, color: 0xffffff });
         break;
-      case 'lead': // homing seeker arrow with a small tail notch
-        g.poly([12, 0, -6, 6, -2, 0, -6, -6]).fill(0xffffff);
-        g.poly([-6, 3, -10, 0, -6, -3]).fill(0xffffff);
-        break;
+      // (lead no longer spawns projectiles — it is a hitscan lock-on beam)
       case 'arp':
         if (pr.blade) {
           // Evolved Carousel: a saw blade pointing outward (rotated to the

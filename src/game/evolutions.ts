@@ -49,6 +49,23 @@ export const EVOLUTIONS: Partial<Record<Role, Evolution>> = {
     name: 'Carillon',
     line: 'shards that shatter again, a cascade through the pack',
   },
+  // Sub-phase C: the new-system evolutions.
+  clap: {
+    name: 'Standing Ovation',
+    line: 'a ring collapses inward, crushing and freezing',
+  },
+  lead: {
+    name: 'The Solo',
+    line: 'a beam that melts the toughest, then glides on',
+  },
+  snare: {
+    name: 'Rimshot Rail',
+    line: 'an instant rail through the densest line',
+  },
+  hat: {
+    name: '16th-Note Storm',
+    line: 'a shred cloud that grows with your speed',
+  },
 };
 
 /** Whether a role has a shipped evolution — both a registry entry here AND an
