@@ -12,6 +12,7 @@ import { TIER_COUNT, type ChartEvent } from '../audio/charts';
 import { SIM_DT } from '../game/timing';
 import type { LabBootRoom, LabRoomId } from '../dev';
 import {
+  DAMAGE_FEEDBACK,
   ENEMIES,
   ENEMY_LABELS,
   RUN,
@@ -680,7 +681,7 @@ export async function mountDocumentationLab(
     const contactCard = el('section', 'lab-exhibit', node);
     const batStats = madForestEnemyStats('bat', 1);
     const batPower = ENEMIES.bat.power ?? batStats.damage + RUN.playerArmor;
-    el('h2', '', contactCard, `2. Contact damage and the ${fmt(RUN.iframesS * 1000)} ms lock`);
+    el('h2', '', contactCard, `2. Contact damage and the ${fmt(DAMAGE_FEEDBACK.iframesS * 1000)} ms lock`);
     el(
       'p',
       '',
@@ -718,7 +719,7 @@ export async function mountDocumentationLab(
       context.world.invincible = true;
       contactResult.textContent =
         `first hit ${fmt(first)} hp · repeat inside ${fmt(repeatSteps * SIM_DT * 1000)} ms ${fmt(repeat)} hp` +
-        ` · lock ${fmt(RUN.iframesS * 1000)} ms`;
+        ` · lock ${fmt(DAMAGE_FEEDBACK.iframesS * 1000)} ms`;
       const pass = first === attacker?.damage && repeat === 0;
       contactResult.classList.toggle('pass', pass);
       contactResult.classList.toggle('fail', !pass);
