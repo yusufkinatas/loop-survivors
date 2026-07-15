@@ -675,10 +675,9 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
     { damage: 7, speed: 650, radius: 7, lifetimeS: 1.4, pierce: 3 },
     { damage: 9, speed: 680, radius: 8, lifetimeS: 1.5, pierce: 4 },
     { damage: 13, speed: 720, radius: 8, lifetimeS: 1.5, pierce: 6 },
-    // Evolved "Rimshot Rain": a forward volley of fast piercing bolts fanned in
-    // the player's movement direction (count/spread in SNARE_RAIN). These are the
-    // per-BOLT stats; each backbeat fires SNARE_RAIN.shots of them at once.
-    { damage: 12, speed: 780, radius: 8, lifetimeS: 1.2, pierce: 4 },
+    // Evolved "Rimshot Rail": an instant infinite-pierce rail through the
+    // densest line (geometry in SNARE_RAIL); this is its high single-hit damage.
+    { damage: 22 },
   ],
   // Dense stream of weak fast chips, wide scatter. Density IS the ladder;
   // per-trigger damage barely moves.
@@ -966,14 +965,16 @@ export const LEAD_SOLO = {
   tickS: 0.1,
 };
 
-/** Snare "Rimshot Rain": on each backbeat the snare fires a forward VOLLEY of
- *  `shots` fast piercing bolts, fanned evenly across ±`spread` radians around the
- *  player's current movement direction (a "rain" of shots where you are heading,
- *  VS-shotgun style). Per-bolt speed/radius/lifetime/pierce/damage come from
- *  WEAPONS.snare[EVOLVED_TIER-1]. */
-export const SNARE_RAIN = {
-  shots: 8,
-  spread: 0.42,
+/** Snare "Rimshot Rail": an instant hitscan rail auto-aimed through the densest
+ *  line within `range`. It damages every enemy within `thickness` of the ray
+ *  out to `length` (infinite pierce), plus an answering crack at `answerAngle`
+ *  for `answerDamageMul` of the damage. */
+export const SNARE_RAIL = {
+  range: AIM_RANGE,
+  length: 900,
+  thickness: 22,
+  answerAngle: 0.5,
+  answerDamageMul: 0.7,
 };
 
 /** Hat "16th-Note Storm": a directional shred STREAM. While kept alive by hat

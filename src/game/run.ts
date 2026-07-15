@@ -32,7 +32,7 @@ import {
   RUN,
   SHIELDED,
   SHOVE_S,
-  SNARE_RAIN,
+  SNARE_RAIL,
   SPLITTER,
   VARIANT_EFFECTS,
   WEAPON_SHOVE,
@@ -297,7 +297,8 @@ export type FxEvent =
   | { type: 'spark'; x: number; y: number; color: number; n: number; spread: number }
   | { type: 'slam'; x: number; y: number; radius: number; color: number }
   | { type: 'zap'; x1: number; y1: number; x2: number; y2: number; color: number }
-  | { type: 'ovation'; x: number; y: number; radius: number; color: number };
+  | { type: 'ovation'; x: number; y: number; radius: number; color: number }
+  | { type: 'rail'; x: number; y: number; angle: number; length: number; color: number };
 
 export interface RunEvents {
   onLevelUp(level: number): void;
@@ -348,8 +349,8 @@ export class RunWorld {
     iframesT: 0,
     facingX: 1 as 1 | -1,
     // Unit vector of the player's last non-zero movement input; holds the last
-    // heading while idle (starts facing right). Drives the directional evolved
-    // weapons (hat stream, snare rain) the way a VS knife fires where you face.
+    // heading while idle (starts facing right). Drives the directional Hat (base
+    // spray and the evolved stream) the way a VS knife fires where you face.
     moveDirX: 1,
     moveDirY: 0,
   };
@@ -588,10 +589,10 @@ export class RunWorld {
         break;
       }
       case 'snare': {
-        // Evolved "Rimshot Rain": a forward volley of fast piercing bolts fanned
-        // in the player's movement direction (a rain of shots where you head).
+        // Evolved "Rimshot Rail": an instant infinite-pierce rail through the
+        // densest line, plus an answering crack.
         if (tier === EVOLVED_TIER) {
-          this.fireSnareRain(conf);
+          this.fireSnareRail(conf.damage);
           break;
         }
         this.spawnProjectile('snare', this.aimDir(0.08), conf, color, v);
@@ -718,8 +719,8 @@ export class RunWorld {
     else if (a.x < -0.001) this.player.facingX = -1;
     this.player.x += a.x * RUN.playerSpeed * dt;
     this.player.y += a.y * RUN.playerSpeed * dt;
-    // Track the movement heading for the directional evolved weapons (hat stream,
-    // snare rain). Update only while actually moving, so a stationary player keeps
+    // Track the movement heading for the directional Hat (base spray + evolved
+    // stream). Update only while actually moving, so a stationary player keeps
     // firing along the last heading (VS-knife behaviour).
     const mag = Math.hypot(a.x, a.y);
     if (mag > 0.001) {
@@ -1831,22 +1832,38 @@ export class RunWorld {
     this.fx?.push({ type: 'ovation', x: p.x, y: p.y, radius: CLAP_OVATION.radius, color: KIT_COLORS.clap });
   }
 
-  /** Snare "Rimshot Rain": a forward volley of `SNARE_RAIN.shots` fast piercing
-   *  bolts, fanned evenly across ±`spread` around the player's movement heading —
-   *  a rain of shots where the player is going, not an auto-aimed line. */
-  private fireSnareRain(conf: WeaponConf): void {
+  /** Snare "Rimshot Rail": an instant infinite-pierce rail aimed through the
+   *  densest line, plus an answering crack at an angle. */
+  private fireSnareRail(damage: number): void {
     const p = this.player;
-    const base = Math.atan2(p.moveDirY, p.moveDirX);
-    const n = SNARE_RAIN.shots;
-    for (let i = 0; i < n; i++) {
-      const frac = n === 1 ? 0 : (i / (n - 1)) * 2 - 1; // -1..1 across the fan
-      const ang = base + frac * SNARE_RAIN.spread;
-      const pr = this.baseProjectile('snare', conf, KIT_COLORS.snare, conf.damage);
-      pr.vx = Math.cos(ang) * conf.speed!;
-      pr.vy = Math.sin(ang) * conf.speed!;
-      this.projectiles.push(pr);
+    const target = this.densestEnemy(SNARE_RAIL.range) ?? this.nearestEnemy(SNARE_RAIL.range);
+    const ang = target ? Math.atan2(target.y - p.y, target.x - p.x) : this.rng() * Math.PI * 2;
+    this.railHit(ang, damage);
+    this.fx?.push({ type: 'rail', x: p.x, y: p.y, angle: ang, length: SNARE_RAIL.length, color: KIT_COLORS.snare });
+    const ang2 = ang + SNARE_RAIL.answerAngle;
+    this.railHit(ang2, damage * SNARE_RAIL.answerDamageMul);
+    this.fx?.push({ type: 'rail', x: p.x, y: p.y, angle: ang2, length: SNARE_RAIL.length, color: KIT_COLORS.snare });
+  }
+
+  /** Damage every enemy within SNARE_RAIL.thickness of the ray from the player
+   *  at `ang`, out to SNARE_RAIL.length (infinite pierce, instant). */
+  private railHit(ang: number, damage: number): void {
+    const p = this.player;
+    const dx = Math.cos(ang);
+    const dy = Math.sin(ang);
+    const tx = -dy;
+    const ty = dx;
+    const half = SNARE_RAIL.length / 2;
+    const near = this.hash.query(p.x + dx * half, p.y + dy * half, half + SNARE_RAIL.thickness + 48, this.queryBuf);
+    for (const e of near) {
+      if (e.dead) continue;
+      const rx = e.x - p.x;
+      const ry = e.y - p.y;
+      const along = rx * dx + ry * dy;
+      if (along < -e.radius || along > SNARE_RAIL.length + e.radius) continue; // not on the segment
+      if (Math.abs(rx * tx + ry * ty) > SNARE_RAIL.thickness + e.radius) continue; // off the rail line
+      this.damageEnemy(e, damage, 'snare');
     }
-    this.fx?.push({ type: 'spark', x: p.x, y: p.y, color: KIT_COLORS.snare, n: 6, spread: SNARE_RAIN.spread });
   }
 
   /** Hat "16th-Note Storm": while alive (kept by triggers), emit chips at a

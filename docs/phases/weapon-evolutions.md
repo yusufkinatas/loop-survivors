@@ -101,15 +101,15 @@ uniqueness matrix at the end is the contract.
   a clean hole through a line.
 - **Base "Backbeat Crack":** a fast, hard, piercing bolt on beats 2 and 4.
   (Today's snare sniper, `WEAPONS.snare`.)
-- **Evolution "Rimshot Rain":** on the backbeat it fires a forward volley of
-  fast piercing bolts, fanned across a spread in the direction the player is
-  moving (a rain of shots where you are heading, not auto-aimed). See the
-  amendment note below.
+- **Evolution "Rimshot Rail":** on the backbeat it snaps an instant rail through
+  the densest line of enemies (auto-aimed at the most targets), infinite pierce,
+  high single-hit damage, plus a snare-roll answering crack from the opposite
+  angle.
 - **Base sound:** a sharp, dry crack on 2 and 4.
 - **Evolved sound:** the crack gains a metallic ring and a fast tail (a
-  rimshot's ping), a rapid snare-roll burst answering each backbeat.
-- **Signature verb:** directional forward burst-volley.
-- **Build role:** the mobile spread burst, a cone-clearer aimed by where you go.
+  rimshot's ping), with a quick snare-roll flourish answering it a beat later.
+- **Signature verb:** instant precise line-clear.
+- **Build role:** the single-line burst, an elite and column cutter.
 
 ### 3. Clap (Snap slot)
 
@@ -238,7 +238,7 @@ every future edit to this spec must hold.
 | Weapon | Signature verb | Tactical niche |
 |---|---|---|
 | Kick | outward knockback pulse | rhythmic spacing / defensive CC |
-| Snare | directional burst-volley | mobile forward spread burst |
+| Snare | instant piercing rail | single-line burst, elite line-cutter |
 | Clap | inward collapse + stun | hard lockdown CC |
 | Hat | continuous directional stream | mobile forward DPS |
 | Arp | breathing orbital ring | stationary bodyguard |
@@ -256,30 +256,25 @@ Two overlap risks were checked and cleared during review:
 - **Three area weapons, three different footprints.** Bass **travels** across
   the field, Chord is **placed** and lingers, Kick **pulses in place** on the
   beat. No two read as the same effect.
-- **Two directional forward weapons (post-amendment), two cadences.** Snare
-  "Rimshot Rain" is a **periodic heavy spread volley** on the backbeat (sparse,
-  punchy, wide fan); Hat "16th-Note Storm" is a **continuous thin stream** (dense
-  16ths, tight, constant). Burst versus stream, spread versus line: distinct feel
-  and distinct build role even though both fire where the player is heading.
-
 ### Amendment — July 15, 2026 (developer-directed, sub-phase C gate loop)
 
-During the sub-phase C gate, the developer redirected two of the four
-new-system evolutions toward a Vampire-Survivors-knife feel, aimed by player
-movement instead of auto-targeting:
+During the sub-phase C gate, the developer redirected the **Hat** toward a
+Vampire-Survivors-knife feel, aimed by player movement instead of auto-targeting:
 
 - **Hat "16th-Note Storm"** dropped the movement-speed coupling (a still player
-  no longer goes quiet); it is now a **constant directional stream** fired in the
-  player's movement heading.
-- **Snare "Rimshot Rail" → "Rimshot Rain"** dropped the auto-aimed densest-line
-  hitscan rail and its opposite-angle answer; it is now a **forward volley of
-  piercing bolts fanned in the player's movement heading**. Renamed to match
-  (the metallic rimshot voicing and chart are unchanged).
+  no longer goes quiet); it is now a **constant directional stream** of chips
+  fired in the player's movement heading. **Base Hat** (tiers 1-4) was brought
+  in line with the same feel, spraying its chips in the movement heading too (its
+  base description already read "chips in your travel direction").
 
-Both now read the player's movement heading (`player.moveDirX/Y`), which holds
-the last heading while idle (VS-knife behaviour). Balance numbers are
-placeholders pending the gate. The sound halves are untouched, so the
-sound-transformation gate rule still holds for both.
+Both read the player's movement heading (`player.moveDirX/Y`), a unit vector that
+holds the last heading while idle (VS-knife behaviour). Balance numbers are
+placeholders pending the gate. The sound half is untouched, so the
+sound-transformation gate rule still holds.
+
+(A parallel Snare rework toward the same directional feel was tried in this loop
+and then reverted at the developer's direction: the instant densest-line rail +
+answering crack remains the intended evolved Snare, unchanged from its lock.)
 
 ## New engine systems required (implementation map)
 
@@ -289,7 +284,7 @@ against real code seams so grilling and implementation price this honestly.
 | Evolution | Cost | What is needed |
 |---|---|---|
 | Kick "The Drop" | new | radial expanding-ring hitbox on each beat + a knockback-launch channel. The old crash "Shock" system (removed with FX) is the closest ancestor; the boss module has its own shock/dash to reference. |
-| Snare "Rimshot Rain" | new | a forward volley of piercing bolts fanned across a spread in the player's movement heading (amended from the hitscan densest-line rail). New: movement-heading directional fan. |
+| Snare "Rimshot Rail" | new | instant/hitscan line targeting the densest enemy row, infinite pierce, plus a second angled crack. New: line-selection targeting. |
 | Clap "Standing Ovation" | new | a collapsing-ring hitbox and a brief full stop: a timed **0× speed multiplier** per enemy caught, riding the same speed channel slow already uses (`ZONE_SLOW_MUL`), plus a frozen visual tell. The boss is immune to the stop and takes only the damage. |
 | Hat "16th-Note Storm" | new | a persistent stream emitting chips at a constant rate in the player's movement heading (amended from movement-speed-coupled emission). New: movement-heading directional stream. |
 | Arp "Arp Carousel" | extend | orbiters with a time-varying `orbitRadius` synced to the arp phrase. Extends today's fixed-radius orbiters (`ARP_OMEGA`, `ORBIT_REHIT_S`). |

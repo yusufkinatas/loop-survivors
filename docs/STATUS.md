@@ -2,51 +2,45 @@
 
 Last updated: July 15, 2026
 
-## Latest change (July 15, 2026) — sub-phase C: Hat + Snare redirected to VS-knife feel
+## Latest change (July 15, 2026) — sub-phase C: Hat redirected to a VS-knife directional stream
 
 Developer-directed rework during the sub-phase C gate loop (the gate is still
-PENDING — this is feedback within the sub-phase, not a pass). Two of the four
-new-system evolutions were redirected to aim by **player movement** instead of
-auto-targeting, Vampire-Survivors-knife style:
+PENDING — this is feedback within the sub-phase, not a pass). The **Hat** was
+redirected to aim by **player movement** instead of auto-targeting,
+Vampire-Survivors-knife style:
 
 - **Hat "16th-Note Storm"** — the movement-**speed** coupling is gone (a still
   player no longer goes quiet). It is now a **constant directional stream** of
   chips fired in the player's movement heading, tight and fast (`HAT_STORM.rate`
   constant, `spread`, `shardSpeed`; `spawnHatChip`). The speed-fraction logic
   (`playerMoveFrac`, `HAT_STORM.speedRate/baseRate`) was removed.
-- **Snare "Rimshot Rail" → "Rimshot Rain"** — the auto-aimed hitscan densest-line
-  rail and its opposite-angle answer are gone. It now fires a **forward volley**
-  of `SNARE_RAIN.shots` fast piercing bolts fanned across `±spread` in the
-  player's movement heading (`fireSnareRain`). The `rail` fx and `railHit` were
-  removed. Renamed the evolved form to **"Rimshot Rain"** (the metallic rimshot
-  voicing + chart are unchanged, so the sound-transformation gate rule still
-  holds). **This name is flagged for the developer's sign-off.**
+- **Base Hat (tiers 1-4)** now fires along the movement heading too, not
+  auto-aimed at the nearest enemy — the base "Hi-Hat Shimmer" spec already reads
+  "a dense spray of chips in your travel direction," so this brings the code in
+  line and matches the evolution's feel (`moveAim` helper; base hat and the
+  evolved stream both fire where the player is going).
 
-Also (developer follow-up): **base Hat (tiers 1-4)** now fires along the movement
-heading too, not auto-aimed at the nearest enemy — the base "Hi-Hat Shimmer" spec
-already reads "a dense spray of chips in your travel direction," so this brings
-the code in line and matches the evolution's feel (`moveAim` helper; base hat and
-the evolved stream/chip both fire where the player is going).
+A parallel **Snare** rework toward the same directional feel (a "Rimshot Rain"
+forward volley) was tried in this loop and then **reverted at the developer's
+direction**: the evolved Snare stays **"Rimshot Rail"** (the instant densest-line
+hitscan rail + answering crack), unchanged from its lock.
 
 New shared seam: `player.moveDirX/moveDirY`, a unit vector of the last non-zero
 movement input that holds the last heading while idle (VS-knife behaviour), set
-in `movePlayer`. The other seven evolutions and all other base weapons are
-untouched. Balance numbers are placeholders pending the gate.
+in `movePlayer`. Snare and the other six evolutions, and all other base weapons,
+are untouched. Balance numbers are placeholders pending the gate.
 
 **Verification.** `tsc --noEmit` + production `vite build` clean. A headless
-deterministic sim test (10/10, since removed) confirmed: moveDir tracks the
-control heading and holds it while idle; the snare rain fires exactly
-`SNARE_RAIN.shots` bolts fanned within `±spread` of the heading, damaging a
-sponge placed AHEAD and missing one placed BEHIND; the hat stream emits chips in
-the movement heading within `±spread`; and hat emission is now **constant
-regardless of player speed** (full-speed and 1/5-speed emit identical counts —
-the speed coupling is truly gone). Spec (`docs/phases/weapon-evolutions.md`)
-amended with a dated developer-directed note; the uniqueness matrix and
-implementation map updated.
+deterministic sim test (10/10, since removed) confirmed the hat stream emits
+chips in the movement heading within `±spread`, holds the last heading while
+idle, and that hat emission is now **constant regardless of player speed**
+(full-speed and 1/5-speed emit identical counts — the speed coupling is truly
+gone). Spec (`docs/phases/weapon-evolutions.md`) amended with a dated
+developer-directed note; the uniqueness matrix and implementation map updated.
 
 A per-weapon, per-tier **DPS bench** (single high-HP target vs a 50-enemy horde,
-practically-infinite-HP sponges, one 4-bar phrase) is being run next to feed a
-balance review; results will land in the phase notes.
+practically-infinite-HP sponges, one 4-bar phrase) was built and is being fed to
+a senior balance-specialist review; results and recommendations to follow.
 
 ## Previous change (July 15, 2026) — weapon-evolutions SUB-PHASE C implemented
 
