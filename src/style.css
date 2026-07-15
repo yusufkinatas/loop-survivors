@@ -167,15 +167,7 @@ input[type='range'] {
   max-width: 420px;
 }
 
-/* sample set switcher */
-.sets {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding: 12px 0 0;
-}
-
+/* run-arc label (shared with the progression scrub row) */
 .sets-label {
   font-size: 13px;
   color: var(--ink-dim);
@@ -185,11 +177,6 @@ input[type='range'] {
 .set-btn.current {
   border-color: var(--line-2);
   background: var(--bg-3);
-}
-
-.sets-status {
-  font-size: var(--fs-sm);
-  color: var(--ink-dim);
 }
 
 /* voice cards */
