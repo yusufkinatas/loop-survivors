@@ -148,7 +148,6 @@ input[type='range'] {
 }
 
 .knob,
-.scrub,
 .row {
   display: flex;
   align-items: center;
@@ -157,17 +156,7 @@ input[type='range'] {
   color: var(--ink-dim);
 }
 
-.scrub {
-  padding: 16px 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.scrub input {
-  flex: 1;
-  max-width: 420px;
-}
-
-/* run-arc label (shared with the progression scrub row) */
+/* set-selector label + buttons (used by the Track Lab) */
 .sets-label {
   font-size: 13px;
   color: var(--ink-dim);
@@ -179,28 +168,12 @@ input[type='range'] {
   background: var(--bg-3);
 }
 
-/* voice cards */
+/* voice cards (Track Lab) */
 .voices {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 12px;
   padding-top: 16px;
-}
-
-.voice {
-  border: 1px solid var(--line);
-  border-left: 4px solid var(--voice-color);
-  border-radius: var(--r-sm);
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  opacity: 0.55;
-  transition: opacity 0.15s;
-}
-
-.voice.active {
-  opacity: 1;
 }
 
 .voice-head {
@@ -213,14 +186,6 @@ input[type='range'] {
   font-weight: bold;
   color: var(--voice-color);
   flex: 1;
-}
-
-.voice-key {
-  color: var(--ink-faint);
-  font-size: var(--fs-sm);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  padding: 0 5px;
 }
 
 .light {
@@ -258,22 +223,6 @@ input[type='range'] {
 
 .hidden {
   display: none;
-}
-
-/* ---- progression scrub (M2) ---- */
-
-.scrub-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding: 12px 0 0;
-}
-
-.scrub-readout {
-  min-width: 150px;
-  font-size: var(--fs-sm);
-  color: var(--ink-dim);
 }
 
 /* ---- chart playground (M2) ---- */
@@ -352,6 +301,19 @@ input[type='range'] {
   border-color: var(--voice-color);
   color: var(--voice-color);
   background: var(--bg-3);
+}
+
+.pg-vol {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 8px;
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+}
+
+.pg-vol input {
+  width: 72px;
 }
 
 .pg-bars {
