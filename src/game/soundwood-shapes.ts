@@ -3,7 +3,7 @@
 
 import { Container, Graphics, GraphicsContext, Text, TextStyle } from 'pixi.js';
 import type { Role } from '../audio/kits';
-import type { Enemy, Gem, Projectile, Zone } from './run';
+import type { Enemy, Gem, MusicNotePickup, Projectile, Zone } from './run';
 import { SOUNDWOOD, hash2, regularPixelPoly, snap } from './soundwood-art';
 import { drawWeaponIcon } from './weaponicons';
 
@@ -60,194 +60,251 @@ function darkSilhouette(g: GraphicsContext, points: number[]): void {
   g.poly(points.map(snap)).fill(SOUNDWOOD.ink);
 }
 
-function bat(g: GraphicsContext, r: number, frame: number, crown: boolean): void {
-  const flap = frame ? 0.45 : -0.45;
-  const outline = [
-    0, -r * 0.6,
-    -r * 0.35, -r * 0.32,
-    -r * 0.95, -r * (0.7 + flap),
-    -r * 1.55, -r * (0.36 + flap),
-    -r * 1.1, r * 0.16,
-    -r * 1.45, r * (0.62 - flap * 0.25),
-    -r * 0.42, r * 0.48,
-    0, r * 0.9,
-    r * 0.42, r * 0.48,
-    r * 1.45, r * (0.62 - flap * 0.25),
-    r * 1.1, r * 0.16,
-    r * 1.55, -r * (0.36 + flap),
-    r * 0.95, -r * (0.7 + flap),
-    r * 0.35, -r * 0.32,
-  ];
-  darkSilhouette(g, outline);
-  const inner = outline.map((v, index) => v * (index % 2 === 0 ? 0.84 : 0.78));
-  g.poly(inner.map(snap)).fill(0xffffff);
-  box(g, -r * 0.28, -r * 0.5, r * 0.56, r * 1.15, 0x8b92a8);
-  box(g, -r * 0.17, -r * 0.12, r * 0.1, r * 0.12, SOUNDWOOD.ink);
-  box(g, r * 0.07, -r * 0.12, r * 0.1, r * 0.12, SOUNDWOOD.ink);
-  if (crown) {
-    g.poly(regularPixelPoly(8, r * 1.85, Math.PI / 8))
-      .stroke({ width: Math.max(2, snap(r * 0.16)), color: 0xffffff, alpha: 0.9 });
-    pixelDiamond(g, 0, -r * 1.62, Math.max(2, r * 0.2), 0xffffff);
-  }
+function hushFeet(g: GraphicsContext, r: number, frame: number, wide = 0.62): void {
+  const step = frame ? r * 0.13 : -r * 0.13;
+  box(g, -r * wide + step, r * 0.5, r * 0.34, r * 0.44, SOUNDWOOD.ink);
+  box(g, r * (wide - 0.34) - step, r * 0.5, r * 0.34, r * 0.44, SOUNDWOOD.ink);
+  box(g, -r * wide + step + 2, r * 0.53, Math.max(2, r * 0.19), r * 0.26, 0xffffff);
+  box(g, r * (wide - 0.34) - step + 2, r * 0.53, Math.max(2, r * 0.19), r * 0.26, 0xffffff);
 }
 
-function humanoid(g: GraphicsContext, r: number, skeleton: boolean, frame: number): void {
-  const step = frame ? r * 0.16 : -r * 0.16;
-  box(g, -r * 0.42, -r * 1.08, r * 0.84, r * 0.72, SOUNDWOOD.ink);
-  box(g, -r * 0.3, -r, r * 0.6, r * 0.52, 0xffffff);
-  if (skeleton) {
-    box(g, -r * 0.13, -r * 0.36, r * 0.26, r * 1.02, 0xffffff);
-    for (const y of [-0.25, 0.02, 0.28]) box(g, -r * 0.48, r * y, r * 0.96, r * 0.12, 0xffffff);
-    box(g, -r * 0.95, -r * 0.18, r * 0.52, r * 0.14, 0xffffff);
-    box(g, r * 0.43, -r * 0.18, r * 0.52, r * 0.14, 0xffffff);
-    box(g, -r * 0.48 + step, r * 0.55, r * 0.18, r * 0.7, 0xffffff);
-    box(g, r * 0.3 - step, r * 0.55, r * 0.18, r * 0.7, 0xffffff);
+function hushMite(g: GraphicsContext, r: number, frame: number, variant: 0 | 1 | 2): void {
+  const pulse = frame ? 1 : 0.84;
+  const width = variant === 0 ? 0.9 : variant === 1 ? 1.12 : 1.28;
+  // Antenna plugs and four feet make a grounded bug-like machine, never wings.
+  box(g, -r * 0.55, -r * 1.04, r * 0.18, r * 0.42, SOUNDWOOD.ink);
+  box(g, r * 0.37, -r * 1.04, r * 0.18, r * 0.42, SOUNDWOOD.ink);
+  pixelDiamond(g, -r * 0.46, -r * 1.06, r * 0.12, 0xffffff);
+  pixelDiamond(g, r * 0.46, -r * 1.06, r * 0.12, 0xffffff);
+  darkSilhouette(g, [
+    0, -r * 0.88, r * width, -r * 0.42, r * width * pulse, r * 0.48,
+    r * 0.5, r * 0.78, -r * 0.5, r * 0.78, -r * width * pulse, r * 0.48,
+    -r * width, -r * 0.42,
+  ]);
+  g.poly([
+    0, -r * 0.65, r * width * 0.76, -r * 0.3, r * width * 0.72 * pulse, r * 0.34,
+    r * 0.38, r * 0.56, -r * 0.38, r * 0.56, -r * width * 0.72 * pulse, r * 0.34,
+    -r * width * 0.76, -r * 0.3,
+  ].map(snap)).fill(0xffffff);
+  if (variant === 2) {
+    box(g, -r * 0.72, -r * 0.08, r * 1.44, r * 0.22, SOUNDWOOD.ink);
+    box(g, -r * 0.12, -r * 0.54, r * 0.24, r * 0.82, SOUNDWOOD.ink);
   } else {
-    box(g, -r * 0.55, -r * 0.4, r * 1.1, r * 1.18, SOUNDWOOD.ink);
-    box(g, -r * 0.42, -r * 0.3, r * 0.84, r * 0.94, 0xffffff);
-    box(g, -r * 1.04, -r * 0.22, r * 0.62, r * 0.28, 0xffffff);
-    box(g, r * 0.42, -r * 0.05, r * 0.7, r * 0.28, 0xffffff);
-    box(g, -r * 0.46 + step, r * 0.58, r * 0.34, r * 0.7, 0xffffff);
-    box(g, r * 0.12 - step, r * 0.58, r * 0.34, r * 0.7, 0xffffff);
+    box(g, -r * 0.36, -r * 0.16, r * 0.2, r * 0.18, SOUNDWOOD.ink);
+    box(g, r * 0.16, -r * 0.16, r * 0.2, r * 0.18, SOUNDWOOD.ink);
   }
-  box(g, -r * 0.19, -r * 0.8, r * 0.11, r * 0.11, SOUNDWOOD.ink);
-  box(g, r * 0.08, -r * 0.8, r * 0.11, r * 0.11, SOUNDWOOD.ink);
+  hushFeet(g, r, frame, width * 0.7);
 }
 
-function mudman(g: GraphicsContext, r: number, angular: boolean): void {
-  if (angular) {
-    const outline = [-r * 1.12, r * 0.78, -r, -r * 0.18, -r * 0.48, -r * 0.92, 0, -r * 0.66, r * 0.52, -r, r, -r * 0.2, r * 1.12, r * 0.78];
-    darkSilhouette(g, outline);
-    g.poly(outline.map((v, i) => snap(v * (i % 2 === 0 ? 0.84 : 0.78)))).fill(0xffffff);
-    box(g, -r * 0.52, r * 0.02, r * 0.44, r * 0.12, SOUNDWOOD.ink);
-    box(g, r * 0.08, -r * 0.3, r * 0.44, r * 0.12, SOUNDWOOD.ink);
+function hushCabinet(g: GraphicsContext, r: number, cracked: boolean, frame: number): void {
+  const lean = frame ? 1 : -1;
+  box(g, -r * 0.94 + lean, -r * 0.94, r * 1.88, r * 1.84, SOUNDWOOD.ink);
+  box(g, -r * 0.75 + lean, -r * 0.75, r * 1.5, r * 1.45, 0xffffff);
+  for (const y of [-0.4, 0.32]) {
+    g.poly(regularPixelPoly(8, r * (y < 0 ? 0.4 : 0.48), Math.PI / 8)
+      .map((value, i) => snap(value + (i % 2 === 0 ? lean : r * y))))
+      .fill(SOUNDWOOD.ink);
+    pixelDiamond(g, lean, r * y, r * 0.13, 0xffffff);
+  }
+  if (cracked) {
+    g.poly([r * 0.55, -r * 0.72, r * 0.13, -r * 0.2, r * 0.46, r * 0.08, -r * 0.06, r * 0.66].map(snap))
+      .stroke({ width: Math.max(2, snap(r * 0.13)), color: SOUNDWOOD.ink });
+    box(g, -r * 0.94, -r * 0.94, r * 0.42, r * 0.28, SOUNDWOOD.ink);
   } else {
-    g.poly(regularPixelPoly(10, r * 1.12, Math.PI / 10)).fill(SOUNDWOOD.ink);
-    box(g, -r * 0.82, -r * 0.34, r * 1.64, r * 1.05, 0xffffff);
-    box(g, -r * 0.56, -r * 0.76, r * 0.7, r * 0.5, 0xffffff);
-    box(g, r * 0.08, -r * 0.62, r * 0.58, r * 0.5, 0xb1b7c7);
+    for (const x of [-0.58, -0.25, 0.36]) {
+      box(g, r * x, -r * 1.14, r * 0.18, r * 0.38, 0xffffff);
+      pixelDiamond(g, r * (x + 0.08), -r * 1.16, r * 0.14, 0xffffff);
+    }
   }
-  box(g, -r * 0.25, -r * 0.38, r * 0.12, r * 0.12, SOUNDWOOD.ink);
-  box(g, r * 0.13, -r * 0.38, r * 0.12, r * 0.12, SOUNDWOOD.ink);
+  hushFeet(g, r, frame, 0.72);
 }
 
+function hushWalker(g: GraphicsContext, r: number, frame: number, jack: boolean): void {
+  const step = frame ? r * 0.17 : -r * 0.17;
+  if (jack) {
+    // Tall connector on rigid stilts with cable bands, no bones.
+    box(g, -r * 0.52, -r * 1.12, r * 1.04, r * 1.55, SOUNDWOOD.ink);
+    box(g, -r * 0.34, -r * 0.92, r * 0.68, r * 1.12, 0xffffff);
+    box(g, -r * 0.28, -r * 1.4, r * 0.18, r * 0.48, SOUNDWOOD.ink);
+    box(g, r * 0.1, -r * 1.4, r * 0.18, r * 0.48, SOUNDWOOD.ink);
+    for (const y of [-0.55, -0.08, 0.28]) box(g, -r * 0.62, r * y, r * 1.24, r * 0.12, SOUNDWOOD.ink);
+  } else {
+    // Lopsided cable spool with plug head and dangling cable arms.
+    g.poly(regularPixelPoly(10, r * 0.78, Math.PI / 10)).fill(SOUNDWOOD.ink);
+    box(g, -r * 0.52, -r * 0.62, r * 1.04, r * 1.12, 0xffffff);
+    g.poly(regularPixelPoly(8, r * 0.35, Math.PI / 8)).fill(SOUNDWOOD.ink);
+    box(g, -r * 0.24, -r * 1.22, r * 0.48, r * 0.52, SOUNDWOOD.ink);
+    box(g, -r * 0.12, -r * 1.42, r * 0.09, r * 0.28, 0xffffff);
+    box(g, r * 0.06, -r * 1.42, r * 0.09, r * 0.28, 0xffffff);
+    g.poly([-r * 0.48, -r * 0.2, -r * 1.02, r * 0.12, -r * 0.78, r * 0.62].map(snap))
+      .stroke({ width: Math.max(2, snap(r * 0.16)), color: SOUNDWOOD.ink });
+    g.poly([r * 0.48, -r * 0.18, r * 1.04, r * 0.34, r * 0.86, r * 0.82].map(snap))
+      .stroke({ width: Math.max(2, snap(r * 0.16)), color: SOUNDWOOD.ink });
+  }
+  box(g, -r * 0.45 + step, r * 0.35, r * 0.28, r * 0.78, SOUNDWOOD.ink);
+  box(g, r * 0.17 - step, r * 0.35, r * 0.28, r * 0.78, SOUNDWOOD.ink);
+  box(g, -r * 0.37 + step, r * 0.42, r * 0.12, r * 0.54, 0xffffff);
+  box(g, r * 0.25 - step, r * 0.42, r * 0.12, r * 0.54, 0xffffff);
+}
+
+/** The Hush: living interference assembled from abandoned stage hardware,
+ * static, cables, wood rot, and broken light. Stable simulation IDs preserve
+ * behavior; every live silhouette and player-facing name is project-native. */
 export function enemyContext(e: Enemy, shieldOn: boolean, frame: number): GraphicsContext {
   const r = Math.max(4, snap(e.radius));
   const shieldKey = e.kind === 'shielded' ? (shieldOn ? ':shield' : ':bare') : '';
-  return cachedPixelShape('enemy:' + e.kind + ':' + e.band + ':' + r + ':' + frame + shieldKey, (g) => {
-    // A baked-in floor shadow gives every sprite a stable top-down footprint.
-    box(g, -r, r * 0.62, r * 2, Math.max(2, r * 0.38), SOUNDWOOD.ink, 0.72);
-
+  const spinKey = e.kind === 'circler' ? `:spin${e.spin}` : '';
+  return cachedPixelShape(`hush:${e.kind}:${e.band}:${r}:${frame}${shieldKey}${spinKey}`, (g) => {
+    box(g, -r, r * 0.66, r * 2, Math.max(2, r * 0.32), SOUNDWOOD.ink, 0.68);
     switch (e.kind) {
-      case 'bat':
-      case 'redBat':
-      case 'redBat2':
-        bat(g, r, frame, false);
-        if (e.kind === 'redBat2') {
-          box(g, -r * 1.2, r * 0.42, r * 0.52, r * 0.12, SOUNDWOOD.ink);
-          box(g, r * 0.68, r * 0.42, r * 0.52, r * 0.12, SOUNDWOOD.ink);
-        }
-        break;
-      case 'glowingBat':
-        bat(g, r, frame, true);
-        break;
-      case 'batSwarm':
-        darkSilhouette(g, [r * 1.7, 0, r * 0.15, -r * 0.62, -r * 0.55, -r, -r * 0.24, 0, -r * 0.55, r, r * 0.15, r * 0.62]);
-        g.poly([r * 1.4, 0, r * 0.05, -r * 0.45, -r * 0.38, -r * 0.72, -r * 0.16, 0, -r * 0.38, r * 0.72, r * 0.05, r * 0.45].map(snap)).fill(0xffffff);
-        for (const y of [-0.48, 0, 0.48]) box(g, -r * 1.35, r * y - 1, r * 0.72, 2, 0x9aa3bb, 0.65);
-        break;
-      case 'zombie':
-        humanoid(g, r, false, frame);
-        break;
-      case 'skeleton':
-        humanoid(g, r, true, frame);
-        break;
+      case 'bat': hushMite(g, r, frame, 0); break;
+      case 'redBat': hushMite(g, r, frame, 1); break;
+      case 'redBat2': hushMite(g, r, frame, 2); break;
+      case 'zombie': hushWalker(g, r, frame, false); break;
+      case 'skeleton': hushWalker(g, r, frame, true); break;
+      case 'greenMudman': hushCabinet(g, r, false, frame); break;
+      case 'grayMudman': hushCabinet(g, r, true, frame); break;
       case 'ghost': {
-        const tail = [-r, r * 0.72, -r, -r * 0.3, -r * 0.72, -r, 0, -r * 1.28, r * 0.72, -r, r, -r * 0.3, r, r * 0.72, r * 0.5, r * 0.35, 0, r, -r * 0.5, r * 0.35];
-        darkSilhouette(g, tail);
-        g.poly(tail.map((v, i) => snap(v * (i % 2 === 0 ? 0.82 : 0.84)))).fill(0xffffff);
-        box(g, -r * 0.42, -r * 0.45, r * 0.24, r * 0.35, SOUNDWOOD.ink);
-        box(g, r * 0.18, -r * 0.45, r * 0.24, r * 0.35, SOUNDWOOD.ink);
+        // Three displaced glass panes sell phasing without a face or sheet tail.
+        const offset = frame ? r * 0.18 : -r * 0.18;
+        for (const [x, y, alpha] of [[-0.48, 0.2, 0.32], [0.42, -0.18, 0.5], [0, 0, 1]] as const) {
+          g.poly([0, -r, r * 0.72, -r * 0.25, r * 0.42, r, -r * 0.42, r, -r * 0.72, -r * 0.25]
+            .map((value, i) => snap(value + (i % 2 === 0 ? r * x + offset : r * y))))
+            .stroke({ width: Math.max(2, snap(r * 0.14)), color: i32White(), alpha });
+        }
+        pixelDiamond(g, offset, 0, r * 0.23, 0xffffff);
         break;
       }
-      case 'greenMudman':
-        mudman(g, r, false);
-        break;
-      case 'grayMudman':
-        mudman(g, r, true);
-        break;
-      case 'flower':
+      case 'flower': {
+        // Eight rectangular speaker petals around a crossed-out mute core.
+        const open = frame ? 0.8 : 0.64;
         for (let i = 0; i < 8; i++) {
-          const a = (i / 8) * Math.PI * 2;
-          pixelDiamond(g, Math.cos(a) * r * 0.67, Math.sin(a) * r * 0.67, r * 0.42, 0xffffff);
+          const a = i * Math.PI / 4;
+          const x = Math.cos(a) * r * open;
+          const y = Math.sin(a) * r * open;
+          pixelDiamond(g, x, y, r * 0.38, SOUNDWOOD.ink);
+          pixelDiamond(g, x, y, r * 0.25, 0xffffff);
         }
-        pixelDiamond(g, 0, 0, r * 0.48, SOUNDWOOD.ink);
-        pixelDiamond(g, 0, 0, r * 0.2, 0xffffff);
+        g.poly(regularPixelPoly(8, r * 0.55, Math.PI / 8)).fill(SOUNDWOOD.ink);
+        box(g, -r * 0.34, -r * 0.08, r * 0.68, r * 0.16, 0xffffff);
+        box(g, -r * 0.08, -r * 0.34, r * 0.16, r * 0.68, 0xffffff);
         break;
-      case 'mantis':
-        darkSilhouette(g, [0, -r * 1.35, -r * 0.45, -r * 0.72, -r * 1.4, -r * 1.02, -r * 0.7, 0, -r * 1.45, r * 0.72, -r * 0.38, r * 0.28, 0, r * 1.25, r * 0.38, r * 0.28, r * 1.45, r * 0.72, r * 0.7, 0, r * 1.4, -r * 1.02, r * 0.45, -r * 0.72]);
-        g.poly([0, -r * 1.12, -r * 0.28, -r * 0.58, -r * 1.1, -r * 0.78, -r * 0.55, 0, -r * 1.14, r * 0.55, -r * 0.25, r * 0.17, 0, r, r * 0.25, r * 0.17, r * 1.14, r * 0.55, r * 0.55, 0, r * 1.1, -r * 0.78, r * 0.28, -r * 0.58].map(snap)).fill(0xffffff);
-        box(g, -r * 0.1, -r * 0.72, r * 0.2, r * 0.2, SOUNDWOOD.ink);
-        g.poly(regularPixelPoly(12, r * 1.65, Math.PI / 12)).stroke({ width: Math.max(3, snap(r * 0.12)), color: 0xffffff, alpha: 0.85 });
+      }
+      case 'glowingBat': {
+        // Floating antenna tower with scanning crown bars.
+        darkSilhouette(g, [0, -r * 1.3, r * 0.86, r * 0.45, r * 0.44, r, -r * 0.44, r, -r * 0.86, r * 0.45]);
+        g.poly([0, -r, r * 0.6, r * 0.38, r * 0.3, r * 0.72, -r * 0.3, r * 0.72, -r * 0.6, r * 0.38].map(snap)).fill(0xffffff);
+        for (let i = 0; i < 3; i++) box(g, -r * (0.72 + i * 0.12), -r * (1.05 + i * 0.25) + (frame ? 2 : 0), r * (1.44 + i * 0.24), r * 0.1, 0xffffff, 0.9 - i * 0.2);
+        pixelDiamond(g, 0, -r * 1.55, r * 0.2, 0xffffff);
         break;
+      }
+      case 'mantis': {
+        // Huge broken truss shears around a hard rectangular signal core.
+        const flex = frame ? r * 0.08 : 0;
+        const left = [-r * 1.5, -r * 1.05 - flex, -r * 0.3, -r * 0.28, -r * 1.42, r * 1.04 + flex, -r * 0.82, r * 1.26, 0, r * 0.32];
+        const right = left.map((value, i) => i % 2 === 0 ? -value : value);
+        darkSilhouette(g, left);
+        darkSilhouette(g, right);
+        g.poly(left.map((value, i) => snap(value * (i % 2 === 0 ? 0.76 : 0.82)))).fill(0xffffff);
+        g.poly(right.map((value, i) => snap(value * (i % 2 === 0 ? 0.76 : 0.82)))).fill(0xffffff);
+        box(g, -r * 0.5, -r * 0.65, r, r * 1.3, SOUNDWOOD.ink);
+        box(g, -r * 0.32, -r * 0.45, r * 0.64, r * 0.9, 0xffffff);
+        box(g, -r * 0.12, -r * 0.34, r * 0.24, r * 0.68, SOUNDWOOD.ink);
+        g.poly(regularPixelPoly(12, r * 1.72, Math.PI / 12)).stroke({ width: Math.max(3, snap(r * 0.11)), color: 0xffffff, alpha: 0.78 });
+        break;
+      }
+      case 'batSwarm': {
+        const jag = frame ? r * 0.22 : 0;
+        darkSilhouette(g, [r * 1.8, 0, r * 0.42, -r * 0.9 + jag, r * 0.1, -r * 0.32, -r * 1.2, -r * 0.72, -r * 0.55, 0, -r * 1.2, r * 0.72, r * 0.1, r * 0.32, r * 0.42, r * 0.9 - jag]);
+        g.poly([r * 1.42, 0, r * 0.34, -r * 0.58 + jag, r * 0.05, -r * 0.18, -r * 0.78, -r * 0.44, -r * 0.38, 0, -r * 0.78, r * 0.44, r * 0.05, r * 0.18, r * 0.34, r * 0.58 - jag].map(snap)).fill(0xffffff);
+        for (const y of [-0.58, 0, 0.58]) box(g, -r * 1.7, r * y, r * 0.58, 2, 0xffffff, 0.58);
+        break;
+      }
+      case 'swarmer': {
+        pixelDiamond(g, 0, 0, r * 1.15, SOUNDWOOD.ink);
+        pixelDiamond(g, 0, 0, r * 0.82, 0xffffff);
+        g.poly([-r * 0.58, -r * 0.25, 0, r * 0.12, -r * 0.18, r * 0.7].map(snap))
+          .stroke({ width: Math.max(2, snap(r * 0.16)), color: SOUNDWOOD.ink });
+        hushFeet(g, r, frame, 0.64);
+        break;
+      }
       case 'tank':
-        box(g, -r * 1.12, -r, r * 2.24, r * 2, SOUNDWOOD.ink);
-        box(g, -r * 0.88, -r * 0.78, r * 1.76, r * 1.56, 0xffffff);
-        darkSilhouette(g, [-r * 0.55, -r * 0.38, 0, -r * 0.7, r * 0.55, -r * 0.38, r * 0.55, r * 0.38, 0, r * 0.7, -r * 0.55, r * 0.38]);
+        hushCabinet(g, r, false, frame);
+        box(g, -r * 1.08, -r * 1.08, r * 2.16, r * 0.24, SOUNDWOOD.ink);
+        box(g, r * 0.48, -r * 1.42, r * 0.16, r * 0.42, 0xffffff);
         break;
-      case 'darter':
-        darkSilhouette(g, [r * 1.8, 0, -r * 1.15, r, -r * 0.72, 0, -r * 1.15, -r]);
-        g.poly([r * 1.48, 0, -r * 0.9, r * 0.7, -r * 0.5, 0, -r * 0.9, -r * 0.7].map(snap)).fill(0xffffff);
+      case 'darter': {
+        // Audio plug / needle nose with a forked tail.
+        darkSilhouette(g, [r * 1.9, 0, r * 0.72, -r * 0.64, -r * 0.85, -r * 0.52, -r * 1.28, -r, -r * 1.05, 0, -r * 1.28, r, -r * 0.85, r * 0.52, r * 0.72, r * 0.64]);
+        g.poly([r * 1.48, 0, r * 0.56, -r * 0.38, -r * 0.7, -r * 0.34, -r * 0.92, -r * 0.64, -r * 0.78, 0, -r * 0.92, r * 0.64, -r * 0.7, r * 0.34, r * 0.56, r * 0.38].map(snap)).fill(0xffffff);
+        box(g, r * 1.35, -r * 0.16, r * 0.55, r * 0.32, SOUNDWOOD.ink);
         break;
-      case 'splitter':
-        g.poly(regularPixelPoly(6, r * 1.15, -Math.PI / 2)).fill(SOUNDWOOD.ink);
-        g.poly(regularPixelPoly(6, r * 0.86, -Math.PI / 2)).fill(0xffffff);
-        box(g, -r * 0.08, -r * 0.68, r * 0.16, r * 1.36, SOUNDWOOD.ink);
-        box(g, -r * 0.68, -r * 0.08, r * 1.36, r * 0.16, SOUNDWOOD.ink);
+      }
+      case 'splitter': {
+        g.poly(regularPixelPoly(8, r * 1.16, Math.PI / 8)).fill(SOUNDWOOD.ink);
+        g.poly(regularPixelPoly(8, r * 0.88, Math.PI / 8)).fill(0xffffff);
+        for (let i = 0; i < 4; i++) {
+          const a = i * Math.PI / 2;
+          g.poly([0, 0, Math.cos(a) * r * 0.82, Math.sin(a) * r * 0.82].map(snap))
+            .stroke({ width: Math.max(2, snap(r * 0.15)), color: SOUNDWOOD.ink });
+          pixelDiamond(g, Math.cos(a) * r * 0.45, Math.sin(a) * r * 0.45, r * 0.14, SOUNDWOOD.ink);
+        }
         break;
-      case 'charger':
-        darkSilhouette(g, [r * 1.55, 0, r * 0.45, r * 0.58, -r * 0.82, r * 1.15, -r * 0.34, 0, -r * 0.82, -r * 1.15, r * 0.45, -r * 0.58]);
-        g.poly([r * 1.28, 0, r * 0.33, r * 0.38, -r * 0.58, r * 0.82, -r * 0.2, 0, -r * 0.58, -r * 0.82, r * 0.33, -r * 0.38].map(snap)).fill(0xffffff);
+      }
+      case 'charger': {
+        darkSilhouette(g, [r * 1.58, 0, r * 0.38, -r * 0.9, -r * 0.96, -r * 0.72, -r * 0.58, 0, -r * 0.96, r * 0.72, r * 0.38, r * 0.9]);
+        g.poly([r * 1.25, 0, r * 0.28, -r * 0.58, -r * 0.68, -r * 0.48, -r * 0.4, 0, -r * 0.68, r * 0.48, r * 0.28, r * 0.58].map(snap)).fill(0xffffff);
+        for (const y of [-0.5, 0.5]) box(g, -r * 1.28, r * y - r * 0.1, r * 1.1, r * 0.2, SOUNDWOOD.ink);
+        box(g, r * 0.25, -r * 0.12, r * 0.7, r * 0.24, SOUNDWOOD.ink);
         break;
-      case 'circler':
-        g.poly(regularPixelPoly(12, r * 1.15, Math.PI / 12)).fill(SOUNDWOOD.ink);
-        g.poly(regularPixelPoly(12, r * 0.88, Math.PI / 12)).fill(0xffffff);
-        g.poly(regularPixelPoly(8, r * 0.46, Math.PI / 8)).fill(SOUNDWOOD.ink);
-        pixelDiamond(g, 0, 0, r * 0.18, 0xffffff);
+      }
+      case 'circler': {
+        g.poly(regularPixelPoly(12, r * 1.16, Math.PI / 12)).fill(SOUNDWOOD.ink);
+        g.poly([r * 0.96, -r * 0.72, r * 0.2, -r * 0.98, -r * 0.72, -r * 0.65, -r * 0.92, 0, -r * 0.72, r * 0.65, r * 0.2, r * 0.98, r * 0.96, r * 0.72, r * 0.52, r * 0.28, r * 0.52, -r * 0.28].map(snap)).fill(0xffffff);
+        pixelDiamond(g, -r * 0.1, 0, r * 0.34, SOUNDWOOD.ink);
+        pixelDiamond(g, -r * 0.1, 0, r * 0.13, 0xffffff);
+        box(g, r * 0.88, e.spin > 0 ? -r * 0.6 : r * 0.4, r * 0.62, r * 0.18, 0xffffff);
         break;
-      case 'shielded':
-        g.poly(regularPixelPoly(8, r * 1.12, Math.PI / 8)).fill(SOUNDWOOD.ink);
-        g.poly(regularPixelPoly(8, r * 0.86, Math.PI / 8)).fill(0xffffff);
-        pixelDiamond(g, 0, 0, r * 0.34, SOUNDWOOD.ink);
+      }
+      case 'shielded': {
+        g.poly(regularPixelPoly(8, r * 1.05, Math.PI / 8)).fill(SOUNDWOOD.ink);
+        g.poly(regularPixelPoly(8, r * 0.76, Math.PI / 8)).fill(0xffffff);
+        pixelDiamond(g, 0, 0, r * 0.3, SOUNDWOOD.ink);
         if (shieldOn) {
-          g.poly(regularPixelPoly(12, r * 1.48, Math.PI / 12)).stroke({ width: Math.max(2, snap(r * 0.14)), color: 0xffffff, alpha: 0.95 });
+          g.poly(regularPixelPoly(12, r * 1.5, Math.PI / 12)).stroke({ width: Math.max(3, snap(r * 0.15)), color: 0xffffff, alpha: 0.92 });
           for (let i = 0; i < 4; i++) {
             const a = i * Math.PI / 2;
-            pixelDiamond(g, Math.cos(a) * r * 1.48, Math.sin(a) * r * 1.48, Math.max(2, r * 0.16), 0xffffff);
+            const x = Math.cos(a) * r * 1.5;
+            const y = Math.sin(a) * r * 1.5;
+            box(g, x - r * 0.18, y - r * 0.28, r * 0.36, r * 0.56, SOUNDWOOD.ink);
+            box(g, x - r * 0.08, y - r * 0.18, r * 0.16, r * 0.36, 0xffffff);
           }
+        } else {
+          g.poly([-r * 0.6, -r * 0.5, 0, -r * 0.08, r * 0.52, r * 0.62].map(snap))
+            .stroke({ width: Math.max(2, snap(r * 0.14)), color: SOUNDWOOD.ink });
         }
         break;
-      case 'elite':
-        g.poly(regularPixelPoly(8, r * 1.16, Math.PI / 8)).fill(SOUNDWOOD.ink);
-        g.poly(regularPixelPoly(8, r * 0.9, Math.PI / 8)).fill(0xffffff);
-        g.poly(regularPixelPoly(8, r * 0.46, Math.PI / 8)).fill(SOUNDWOOD.ink);
-        g.poly(regularPixelPoly(12, r * 1.48, Math.PI / 12)).stroke({ width: Math.max(3, snap(r * 0.13)), color: 0xffffff, alpha: 0.95 });
-        pixelDiamond(g, 0, -r * 1.52, Math.max(3, r * 0.2), 0xffffff);
+      }
+      case 'elite': {
+        box(g, -r * 0.86, -r * 1.08, r * 1.72, r * 2.08, SOUNDWOOD.ink);
+        box(g, -r * 0.6, -r * 0.82, r * 1.2, r * 1.52, 0xffffff);
+        box(g, -r * 0.32, -r * 0.62, r * 0.64, r * 1.1, SOUNDWOOD.ink);
+        box(g, -r * 0.1, -r * 0.48, r * 0.2, r * 0.82, 0xffffff);
+        for (const x of [-0.62, 0, 0.62]) pixelDiamond(g, r * x, -r * 1.22, r * 0.22, 0xffffff);
+        g.poly(regularPixelPoly(12, r * 1.36, Math.PI / 12)).stroke({ width: Math.max(3, snap(r * 0.1)), color: 0xffffff, alpha: 0.72 });
         break;
-      case 'swarmer':
-        g.poly(regularPixelPoly(8, r * 1.12, Math.PI / 8)).fill(SOUNDWOOD.ink);
-        g.poly(regularPixelPoly(8, r * 0.82, Math.PI / 8)).fill(0xffffff);
-        box(g, -r * 0.22, -r * 0.16, r * 0.12, r * 0.12, SOUNDWOOD.ink);
-        box(g, r * 0.1, -r * 0.16, r * 0.12, r * 0.12, SOUNDWOOD.ink);
-        break;
+      }
     }
-
     if (e.band >= 2 && e.kind !== 'elite' && e.kind !== 'glowingBat' && e.kind !== 'mantis') {
       const marker = Math.max(2, r * 0.15);
       pixelDiamond(g, -r * 0.78, -r * 0.82, marker, 0xffffff);
       if (e.band >= 3) pixelDiamond(g, r * 0.78, -r * 0.82, marker, 0xffffff);
     }
   });
+}
+
+function i32White(): number {
+  return 0xffffff;
 }
 
 export function makeEnemyGfx(e: Enemy, frame: number): EnemyGfx {
@@ -276,9 +333,18 @@ function projectileContext(pr: Projectile, evolved: boolean): GraphicsContext {
         box(g, r * 1.35, -r * 0.72, r * 0.42, r * 1.44, 0xffffff);
         break;
       case 'bass':
-        g.poly(regularPixelPoly(12, r * 1.5, Math.PI / 12)).fill(SOUNDWOOD.ink);
-        box(g, -r * 1.1, -r * 0.52, r * 2.2, r * 1.04, 0xffffff, 0.72);
-        box(g, -r * 0.7, -r * 0.16, r * 1.4, r * 0.32, 0xffffff);
+        // An open equalizer wave: a dark edge, not a huge opaque disc. The
+        // projectile keeps its heavy footprint while the horde stays visible
+        // through the generous negative space above and below the center bar.
+        g.poly(regularPixelPoly(12, r * 1.28, Math.PI / 12))
+          .stroke({ width: Math.max(3, snap(r * 0.16)), color: SOUNDWOOD.ink, alpha: 0.9 });
+        box(g, -r * 1.2, -r * 0.2, r * 2.4, r * 0.4, SOUNDWOOD.ink);
+        box(g, -r * 1.05, -r * 0.09, r * 2.1, Math.max(2, r * 0.18), 0xffffff);
+        for (const [x, height] of [[-0.72, 0.62], [-0.28, 0.92], [0.28, 0.92], [0.72, 0.62]] as const) {
+          box(g, r * x - r * 0.08, -r * height / 2, r * 0.16, r * height, 0xffffff, 0.78);
+        }
+        pixelDiamond(g, -r * 1.28, 0, r * 0.2, 0xffffff);
+        pixelDiamond(g, r * 1.28, 0, r * 0.2, 0xffffff);
         break;
       case 'lead':
       case 'pluck':
@@ -397,6 +463,44 @@ export function makeGemGfx(gem: Gem): GemGfx {
   result.__tier = gem.tier;
   result.addChild(glow, body);
   result.position.set(snap(gem.x), snap(gem.y));
+  return result;
+}
+
+export interface MusicNoteGfx extends Container {
+  __tier: MusicNotePickup['tier'];
+}
+
+/** Shop currency: an unmistakable gold pixel music note, never confused with
+ * blue/green/red XP diamonds. Higher-value drops become a beamed pair. */
+export function makeMusicNoteGfx(note: MusicNotePickup): MusicNoteGfx {
+  const anthem = note.tier === 'anthem';
+  const phrase = note.tier === 'phrase';
+  const color = anthem ? SOUNDWOOD.amber : phrase ? 0xffdf78 : 0xffc857;
+  const body = pixelGraphics(cachedPixelShape(`music-note:${note.tier}`, (g) => {
+    const stemH = anthem ? 18 : 15;
+    box(g, 1, -stemH, 6, stemH + 6, SOUNDWOOD.ink);
+    box(g, 3, -stemH + 2, 2, stemH, 0xffffff);
+    g.poly([5, -stemH, anthem ? 15 : 13, -stemH + 3, anthem ? 13 : 11, -stemH + 8, 5, -stemH + 5].map(snap))
+      .fill(SOUNDWOOD.ink);
+    g.poly([6, -stemH + 2, anthem ? 12 : 10, -stemH + 4, anthem ? 11 : 9, -stemH + 6, 6, -stemH + 4].map(snap))
+      .fill(0xffffff);
+    pixelDiamond(g, 0, 5, anthem ? 8 : phrase ? 7 : 6, SOUNDWOOD.ink);
+    pixelDiamond(g, 0, 4, anthem ? 5 : phrase ? 4 : 3.5, 0xffffff);
+    if (anthem) {
+      box(g, -10, -14, 5, 19, SOUNDWOOD.ink);
+      box(g, -8, -12, 2, 15, 0xffffff);
+      box(g, -8, -14, 13, 5, SOUNDWOOD.ink);
+      box(g, -6, -12, 9, 2, 0xffffff);
+      pixelDiamond(g, -11, 6, 6, SOUNDWOOD.ink);
+      pixelDiamond(g, -11, 5, 3.5, 0xffffff);
+    }
+  }));
+  body.tint = color;
+  const glow = makePixelGlow(anthem ? 24 : phrase ? 18 : 14, color, anthem ? 0.48 : 0.34);
+  const result = new Container() as MusicNoteGfx;
+  result.__tier = note.tier;
+  result.addChild(glow, body);
+  result.position.set(snap(note.x), snap(note.y));
   return result;
 }
 

@@ -7,6 +7,7 @@ import { type Kit, type Role } from '../audio/kits';
 import { SLOTS, SLOT_LABEL, ownerOfSlot, supportedRoster } from './band';
 import { EVOLUTION_BY_ROLE, ITEMS, type ItemId } from './items';
 import type { MetaStore, RunSettlement } from './meta';
+import { VENUES, isVenueId } from './tour';
 
 import { TIER_COUNT } from '../audio/charts';
 /** Tier numerals used by the band rack. */
@@ -30,6 +31,7 @@ export class Hud {
   private xpFill: HTMLElement;
   private timer: HTMLElement;
   private levelEl: HTMLElement;
+  private noteEl: HTMLElement;
   private flash: HTMLElement;
   private pulse: HTMLElement;
   private toastStack: HTMLElement;
@@ -57,6 +59,7 @@ export class Hud {
     this.timer = el('span', 'hud-timer', top, '0:00');
     this.levelEl = el('span', 'hud-level', top, 'LV 1');
     this.venueLabel = el('span', 'hud-venue', top, 'NEON ALLEY');
+    this.noteEl = el('span', 'hud-notes', top, '♫ 0');
     const hp = el('div', 'meter hp', this.bar);
     this.hpFill = el('div', 'fill', hp);
     el('span', 'meter-cap', hp, 'HP');
@@ -79,11 +82,13 @@ export class Hud {
     this.rerollButton.style.display = 'none';
   }
 
-  showHud(show: boolean): void {
+  showHud(show: boolean, sandbox = false): void {
     this.bar.style.display = show ? '' : 'none';
     this.rack.style.display = show ? '' : 'none';
-    this.itemRack.style.display = show ? '' : 'none';
-    this.rerollButton.style.display = show ? '' : 'none';
+    // The sandbox owns a complete Build/Career inspector. Hiding the live-run
+    // item rack and reroll button prevents two overlapping control surfaces.
+    this.itemRack.style.display = show && !sandbox ? '' : 'none';
+    this.rerollButton.style.display = show && !sandbox ? '' : 'none';
   }
 
   setRerollAction(action: () => void): void {
@@ -98,13 +103,15 @@ export class Hud {
     venue: string,
     chapter: number,
     rerolls: number,
+    notesCollected: number,
   ): void {
     const itemPart = [...items].map(([id, level]) => `${id}:${level}`).join('|');
     const evolvedPart = [...evolved].join('|');
-    const key = `${itemPart}/${evolvedPart}/${Math.round(pressureHeat)}/${pressureState}/${venue}/${chapter}/${rerolls}`;
+    const key = `${itemPart}/${evolvedPart}/${Math.round(pressureHeat)}/${pressureState}/${venue}/${chapter}/${rerolls}/${notesCollected}`;
     if (key === this.runInfoKey) return;
     this.runInfoKey = key;
-    this.venueLabel.textContent = `${venue.replace(/([A-Z])/g, ' $1').toUpperCase()} · SET ${chapter + 1}`;
+    const venueName = isVenueId(venue) ? VENUES[venue].name : venue.replace(/([A-Z])/g, ' $1');
+    this.venueLabel.textContent = `${venueName.toUpperCase()} · SET ${chapter + 1}`;
     this.pressureFill.style.width = `${Math.max(0, Math.min(100, pressureHeat))}%`;
     this.pressureLabel.textContent = pressureState === 'break'
       ? 'HOLD THE DROP'
@@ -115,6 +122,7 @@ export class Hud {
     this.pressureFill.classList.toggle('armed', pressureState === 'armed' || pressureState === 'break');
     this.rerollButton.textContent = `REROLL ×${rerolls}`;
     this.rerollButton.disabled = rerolls <= 0;
+    this.noteEl.textContent = `♫ ${notesCollected}`;
     this.itemRack.replaceChildren();
     for (let slot = 0; slot < 6; slot++) {
       const entry = [...items][slot];
@@ -256,6 +264,8 @@ export class Hud {
     onStart: (role: Role) => void,
     onSandbox: () => void,
     meta?: MetaStore,
+    shopOpen = false,
+    shopScrollTop = 0,
   ): void {
     const s = this.newScreen();
     s.classList.add('start-screen');
@@ -263,7 +273,7 @@ export class Hud {
     const art = document.createElement('img');
     art.className = 'title-art';
     art.src = '/art/soundwood-title.png';
-    art.alt = 'A neon pixel-art DJ stage hidden in a haunted forest';
+    art.alt = 'A neon pixel-art DJ stage surrounded by strange signal creatures in the Soundwood';
     hero.appendChild(art);
     const title = el('div', 'title-lockup', hero);
     el('span', 'eyebrow', title, 'THE INFINITE NIGHT TOUR');
@@ -272,24 +282,23 @@ export class Hud {
 
     if (meta) {
       const profile = el('div', 'career-panel', s);
-      const progress = meta.progress();
+      const collectionProgress = meta.collection();
       const head = el('div', 'career-head', profile);
-      el('strong', 'career-rank', head, `TOUR RANK ${progress.rank}`);
-      el('span', 'career-rep', head, `${meta.state.reputation} REPUTATION`);
+      el('strong', 'career-rank', head, 'AFTERHOURS COLLECTION');
+      el('span', 'career-rep', head, `♫ ${meta.state.notes} MUSIC NOTES`);
       const bar = el('div', 'rank-meter', profile);
       const fill = el('div', 'rank-meter-fill', bar);
-      fill.style.width = `${progress.ratio * 100}%`;
-      el('span', 'rank-meter-copy', bar, progress.maxed
+      fill.style.width = `${collectionProgress.ratio * 100}%`;
+      el('span', 'rank-meter-copy', bar, collectionProgress.complete
         ? 'COLLECTION COMPLETE'
-        : `${progress.earnedIntoRank} / ${progress.costToNext}`);
+        : `${collectionProgress.owned} / ${collectionProgress.total} SHOP UNLOCKS`);
       const rewards = el('div', 'next-reward', profile);
-      el('span', 'eyebrow', rewards, progress.nextRewards.length ? `NEXT UNLOCK · ${progress.remaining} REP` : 'HEADLINER STATUS');
-      el('strong', '', rewards, progress.nextRewards.length
-        ? progress.nextRewards.map((reward) => reward.name).join(' + ')
-        : 'Every venue and evolution recipe is in the collection.');
-      if (progress.nextRewards.length) {
-        el('span', 'reward-copy', rewards, progress.nextRewards.map((reward) => reward.description).join(' '));
-      }
+      el('span', 'eyebrow', rewards, 'PLAYER-DIRECTED PROGRESSION');
+      el('strong', '', rewards, collectionProgress.complete
+        ? 'Every shelf of the Afterhours Shop is yours.'
+        : 'Defeat The Hush, collect its music notes, then choose what unlocks next.');
+      el('span', 'reward-copy', rewards,
+        'Collected notes bank when the set ends. Shop purchases unlock new instruments, passives, venues, and perks.');
 
       const collection = el('div', 'collection-strip', profile);
       el('span', '', collection, `${meta.state.unlockedWeapons.length}/9 WEAPONS`);
@@ -297,7 +306,7 @@ export class Hud {
       el('span', '', collection, `${meta.state.unlockedVenues.length}/6 VENUES`);
       el('span', '', collection, `${meta.state.rerolls} REROLLS`);
 
-      if (meta.rank() >= 12) {
+      if (meta.hasPurchase('startItem')) {
         const loadout = el('div', 'start-loadout', profile);
         el('span', 'eyebrow', loadout, 'STARTING PASSIVE');
         const choices = el('div', 'loadout-choices', loadout);
@@ -307,18 +316,18 @@ export class Hud {
           choices,
           'NO PASSIVE',
         ) as HTMLButtonElement;
-        noneButton.onclick = () => {
-          meta.selectStartItem(undefined);
-          this.showStart(onStart, onSandbox, meta);
-        };
+          noneButton.onclick = () => {
+            meta.selectStartItem(undefined);
+            this.showStart(onStart, onSandbox, meta, shopOpen, s.scrollTop);
+          };
         for (const id of meta.state.unlockedItems) {
           const item = ITEMS[id];
           const button = el('button', `loadout-chip ${meta.state.startItem === id ? 'selected' : ''}`, choices,
             `${item.glyph} ${item.name}`) as HTMLButtonElement;
-          button.onclick = () => {
-            meta.selectStartItem(id);
-            this.showStart(onStart, onSandbox, meta);
-          };
+            button.onclick = () => {
+              meta.selectStartItem(id);
+              this.showStart(onStart, onSandbox, meta, shopOpen, s.scrollTop);
+            };
         }
       }
 
@@ -332,6 +341,62 @@ export class Hud {
           if (recipe) el('span', 'recipe-chip', hints, `${this.kits.get(role)?.name ?? role} + ${ITEMS[recipe.item].name} → ${recipe.name}`);
         }
       }
+
+      const shopToggle = el('button', 'shop-toggle', profile,
+        shopOpen ? 'CLOSE AFTERHOURS SHOP' : 'OPEN AFTERHOURS SHOP') as HTMLButtonElement;
+      const shop = el('section', 'shop-panel', profile);
+      shop.style.display = shopOpen ? '' : 'none';
+      const shopHead = el('div', 'shop-head', shop);
+      const shopTitle = el('div', '', shopHead);
+      el('span', 'eyebrow', shopTitle, 'SPEND MUSIC NOTES');
+      el('strong', '', shopTitle, 'AFTERHOURS SHOP');
+      const shopHeadActions = el('div', 'shop-head-actions', shopHead);
+      el('span', 'shop-wallet', shopHeadActions, `♫ ${meta.state.notes}`);
+      const shopClose = el('button', 'shop-close', shopHeadActions, 'CLOSE SHOP') as HTMLButtonElement;
+      const shopGrid = el('div', 'shop-grid', shop);
+      for (const status of meta.shop()) {
+        const { offer } = status;
+        const stateClass = status.purchased
+          ? 'purchased'
+          : status.shelfLocked
+            ? 'locked'
+            : status.affordable
+              ? 'available'
+              : 'short';
+        const card = el('article', `shop-card ${stateClass}`, shopGrid);
+        const cardTop = el('div', 'shop-card-top', card);
+        el('span', 'shop-kind', cardTop, offer.kind.toUpperCase());
+        el('span', 'shop-cost', cardTop, status.purchased ? 'OWNED' : `♫ ${offer.cost}`);
+        el('strong', 'shop-name', card, offer.name);
+        el('span', 'shop-copy', card, offer.description);
+        const buy = el('button', 'shop-buy', card, status.purchased
+          ? 'PURCHASED'
+          : status.shelfLocked
+            ? `BUY ${status.purchasesNeeded} MORE TO REVEAL`
+            : status.affordable
+              ? `UNLOCK FOR ♫ ${offer.cost}`
+              : `NEED ♫ ${offer.cost - meta.state.notes} MORE`) as HTMLButtonElement;
+        buy.disabled = status.purchased || status.shelfLocked || !status.affordable;
+        buy.onclick = () => {
+          if (!meta.purchase(offer.id)) return;
+          const scrollTop = s.scrollTop;
+          this.showToast(`SHOP UNLOCK · ${offer.name.toUpperCase()}`);
+          this.showStart(onStart, onSandbox, meta, true, scrollTop);
+        };
+      }
+      shopToggle.onclick = () => {
+        const opening = shop.style.display === 'none';
+        shop.style.display = opening ? '' : 'none';
+        shopToggle.textContent = opening ? 'CLOSE AFTERHOURS SHOP' : 'OPEN AFTERHOURS SHOP';
+        shopToggle.classList.toggle('on', opening);
+      };
+      shopToggle.classList.toggle('on', shopOpen);
+      shopClose.onclick = () => {
+        shop.style.display = 'none';
+        shopToggle.textContent = 'OPEN AFTERHOURS SHOP';
+        shopToggle.classList.remove('on');
+        shopToggle.focus();
+      };
     }
 
     const startBtn = el('button', 'start-btn', s, 'ENTER THE SOUNDWOOD');
@@ -339,7 +404,8 @@ export class Hud {
       this.closeScreen();
       onStart('kick');
     };
-    el('p', 'start-hint', s, 'WASD / arrow keys / touch to move · walk onto reward pedestals · R rerolls');
+    el('p', 'start-hint', s,
+      'WASD / arrow keys / touch to move · collect blue XP and gold music notes · walk onto reward pedestals · R rerolls');
     // Below the primary CTA, two menu buttons: sandbox launches directly,
     // experiments is a disclosure for the standalone playtest surfaces (boss
     // fights, full tracks, rehearsal room — mirrors src/experiments/).
@@ -373,6 +439,11 @@ export class Hud {
     roomBtn.onclick = () => {
       location.hash = '#rehearsal';
     };
+    if (shopScrollTop > 0) {
+      requestAnimationFrame(() => {
+        if (this.screen === s) s.scrollTop = Math.min(shopScrollTop, s.scrollHeight - s.clientHeight);
+      });
+    }
   }
 
   /** Transient notices stack instead of overlapping, animate in and out,
@@ -397,6 +468,7 @@ export class Hud {
       timeS: number;
       kills: number;
       level: number;
+      notesCollected: number;
       damageByRole: Partial<Record<Role, number>>;
       killsByRole: Partial<Record<Role, number>>;
     },
@@ -407,60 +479,46 @@ export class Hud {
     s.classList.add('end-screen');
     el('span', 'eyebrow', s, 'THE CROWD FINALLY WON');
     el('h1', '', s, 'SET ENDED');
-    el('p', 'sub run-summary', s, `${formatTime(stats.timeS)} · ${stats.kills} kills · level ${stats.level}`);
+    el('p', 'sub run-summary', s,
+      `${formatTime(stats.timeS)} · ${stats.kills} kills · level ${stats.level} · ♫ ${stats.notesCollected}`);
 
     if (settlement) {
       const rep = el('section', 'settlement-panel', s);
       const earned = el('div', 'rep-earned', rep);
-      el('span', 'eyebrow', earned, 'REPUTATION EARNED');
-      el('strong', '', earned, `+${settlement.breakdown.total}`);
+      const earnedCopy = el('div', '', earned);
+      el('span', 'eyebrow', earnedCopy, 'MUSIC NOTES BANKED');
+      el('span', 'reward-copy', earnedCopy,
+        `${settlement.walletBefore} before this set · ${settlement.walletAfter} now available`);
+      el('strong', '', earned, `+♫ ${settlement.notesEarned}`);
       const breakdown = el('div', 'rep-breakdown', rep);
-      for (const [label, amount] of [
-        ['SURVIVAL', settlement.breakdown.survival],
-        ['LEVELS', settlement.breakdown.level],
-        ['KILLS', settlement.breakdown.kills],
-        ['HEADLINERS', settlement.breakdown.headliners],
-        ['EVOLUTIONS', settlement.breakdown.evolutions],
-        ['MILESTONES', settlement.breakdown.milestones],
-        ['NEW VENUES', settlement.breakdown.newVenues],
-        ['FIRST NIGHT', settlement.breakdown.firstRun],
+      for (const [label, value] of [
+        ['COLLECTION', `${settlement.collection.owned} / ${settlement.collection.total}`],
+        ['NEW MILESTONES', String(settlement.newMilestones.length)],
+        ['NEW VENUES SEEN', String(settlement.newVenues.length)],
       ] as const) {
-        if (amount <= 0) continue;
         const row = el('div', 'rep-row', breakdown);
         el('span', '', row, label);
-        el('strong', '', row, `+${amount}`);
+        el('strong', '', row, value);
       }
       const rank = el('div', 'end-rank', rep);
-      el('strong', '', rank, `TOUR RANK ${settlement.rankAfter}`);
+      el('strong', '', rank, 'AFTERHOURS COLLECTION');
       const meter = el('div', 'rank-meter', rank);
       const fill = el('div', 'rank-meter-fill', meter);
-      fill.style.width = `${settlement.progress.ratio * 100}%`;
-      el('span', 'rank-meter-copy', meter, settlement.progress.maxed
+      fill.style.width = `${settlement.collection.ratio * 100}%`;
+      el('span', 'rank-meter-copy', meter, settlement.collection.complete
         ? 'COLLECTION COMPLETE'
-        : `${settlement.progress.earnedIntoRank} / ${settlement.progress.costToNext}`);
-      if (settlement.rankAfter > settlement.rankBefore) {
-        el('div', 'rank-up-banner', rep, `RANK UP · ${settlement.rankBefore} → ${settlement.rankAfter}`);
-      }
-      if (settlement.unlockedRewards.length > 0) {
-        const unlocks = el('div', 'unlock-grid', rep);
-        for (const reward of settlement.unlockedRewards) {
-          const card = el('div', 'unlock-card', unlocks);
-          el('span', 'eyebrow', card, 'NEW UNLOCK');
-          el('strong', '', card, reward.name);
-          el('span', '', card, reward.description);
-        }
-      }
+        : `${settlement.collection.owned} / ${settlement.collection.total} UNLOCKS`);
       if (settlement.newMilestones.length > 0) {
         el('p', 'milestone-line', rep,
           `MILESTONES · ${settlement.newMilestones.map((id) => id.replace(/([A-Z])/g, ' $1')).join(' · ')}`);
       }
       const next = el('div', 'next-reward end-next', rep);
-      el('span', 'eyebrow', next, settlement.progress.nextRewards.length
-        ? `NEXT UNLOCK · ${settlement.progress.remaining} REP TO GO`
-        : 'FULL TOUR COLLECTION');
-      el('strong', '', next, settlement.progress.nextRewards.length
-        ? settlement.progress.nextRewards.map((reward) => reward.name).join(' + ')
-        : 'Headliner Gold unlocked');
+      el('span', 'eyebrow', next, settlement.collection.complete
+        ? 'FULL TOUR COLLECTION'
+        : 'YOUR NEXT UNLOCK IS YOUR CHOICE');
+      el('strong', '', next, settlement.collection.complete
+        ? 'The Afterhours Shop is sold out.'
+        : 'Return to the Afterhours Shop and spend your music notes.');
     }
     const byDamage = (Object.entries(stats.damageByRole) as [Role, number][]).sort(
       (a, b) => b[1] - a[1],

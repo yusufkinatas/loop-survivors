@@ -387,6 +387,13 @@ export interface Gem {
   tier: 'blue' | 'green' | 'red';
 }
 
+export interface MusicNotePickup {
+  x: number;
+  y: number;
+  value: number;
+  tier: 'note' | 'phrase' | 'anthem';
+}
+
 /** Fire-and-forget visuals the world requests and the view renders. */
 export type FxEvent =
   | { type: 'ring'; x: number; y: number; radius: number; color: number; dur: number; soft?: boolean }
@@ -417,6 +424,7 @@ export interface RunEvents {
   onEncoreCase?(encore: EncoreCase): void;
   onPressureArmed?(): void;
   onPressureBreak?(active: boolean): void;
+  onNoteCollected?(value: number, runTotal: number): void;
   onVenueChanged?(venue: string): void;
   onMilestone?(id: 'first5m' | 'fullBand' | 'firstEvolution' | 'hitlessHeadliner' | 'loopCross' | 'pressureBreak'): void;
 }
@@ -452,7 +460,7 @@ export interface RunWorldOpts {
   startingItem?: ItemId;
   unlockedVenues?: readonly string[];
   secondWind?: boolean;
-  /** Rank-15 cosmetic collection reward. It never changes combat stats. */
+  /** Headliner Gold shop reward. Cosmetic only; it never changes combat stats. */
   headlinerGold?: boolean;
 }
 
@@ -480,6 +488,8 @@ export class RunWorld {
   evolutionsByRole: Partial<Record<Role, number>> = {};
   evolutionsMade = 0;
   headlinersKilled = 0;
+  /** Shop currency physically collected during this run. */
+  notesCollected = 0;
   readonly milestones = new Set<'first5m' | 'fullBand' | 'firstEvolution' | 'hitlessHeadliner' | 'loopCross' | 'pressureBreak'>();
   invincible = false;
   /** Tempo damage compensation (docs/plan.md, tempo and damage): more triggers
@@ -494,6 +504,7 @@ export class RunWorld {
   readonly projectiles: Projectile[] = [];
   readonly zones: Zone[] = [];
   readonly gems: Gem[] = [];
+  readonly musicNotes: MusicNotePickup[] = [];
   readonly shockwaves: Shockwave[] = [];
   readonly gravityWells: GravityWell[] = [];
   readonly encoreCases: EncoreCase[] = [];
@@ -535,6 +546,8 @@ export class RunWorld {
    * collider weighting without consuming the separate stage RNG stream. */
   private enemyFrameCounters: Partial<Record<EnemyKind, number>> = {};
   private overflowGem: Gem | null = null;
+  private overflowMusicNote: MusicNotePickup | null = null;
+  private noteDropPity = 0;
   private lastMinute = -1;
   private lastRecordedRailMinute = -1;
   private railSamples: Array<{ x: number; y: number }> = [];
@@ -634,6 +647,19 @@ export class RunWorld {
       this.player.hp = Math.min(this.playerMaxHp, this.player.hp + paddedJacketHeal(previous, next));
     }
     this.spawnRing(this.player.x, this.player.y, 190, 0xffd875, 0.5, true);
+  }
+
+  /** Exact passive-level setter for the sandbox. Normal rewards stay
+   * monotonic through addItem(); this developer surface supports removal. */
+  setItemLevelForSandbox(id: ItemId, level: number): void {
+    const previousMax = this.playerMaxHp;
+    const next = Math.max(0, Math.min(5, Math.floor(level)));
+    if (next === 0) this.items.delete(id);
+    else this.items.set(id, next);
+    if (id === 'paddedJacket') {
+      const hpRatio = previousMax > 0 ? this.player.hp / previousMax : 1;
+      this.player.hp = Math.min(this.playerMaxHp, Math.max(1, this.playerMaxHp * hpRatio));
+    }
   }
 
   applyEncoreChoice(kind: 'heal' | 'damage' | 'move' | 'area'): void {
@@ -804,6 +830,70 @@ export class RunWorld {
   /** Sandbox loadout editor: drop a weapon entirely. */
   removeWeapon(role: Role): void {
     this.tiers.delete(role);
+  }
+
+  /** Sandbox-only reversal for testing the before/after evolution contract. */
+  clearEvolutionForSandbox(role: Role): void {
+    this.evolved.delete(role);
+  }
+
+  /** Move the sandbox to a deterministic threat minute without running every
+   * preceding frame. Newly spawned enemies use that minute's endless scale. */
+  setSandboxThreatMinute(minute: number): void {
+    const next = Math.max(0, Math.floor(minute));
+    this.timeS = next * 60 + 0.01;
+    this.lastMinute = next - 1;
+    this.endlessMinute = -1;
+    this.endlessNextSpawnT = this.timeS;
+    this.lastRecordedRailMinute = -1;
+    this.railSamples = [];
+    this.neonRail = null;
+    this.venueGates = [];
+    this.pendingVenue = null;
+    this.lastGateChapter = Math.floor(this.timeS / 300);
+    this.lastVenueTransitionChapter = Math.floor(this.timeS / 300);
+  }
+
+  setSandboxVenue(venue: VenueId): void {
+    this.venue = venue;
+    this.venuesVisited.add(venue);
+    this.venueGates = [];
+    this.pendingVenue = null;
+    this.trainLane = null;
+    this.venueTransitionT = 0.5;
+    this.events.onVenueChanged?.(venue);
+  }
+
+  /** Put the sandbox twenty seconds before the next tour change and open the
+   * real pair of walk-through route gates. Selection and transition continue
+   * through the normal updateVenue path, so this exercises production logic. */
+  installSandboxVenueGate(): void {
+    const chapter = Math.floor(this.timeS / 300);
+    this.timeS = chapter * 300 + 280.01;
+    this.lastGateChapter = chapter - 1;
+    this.lastVenueTransitionChapter = chapter;
+    this.venueGates = [];
+    this.pendingVenue = null;
+    this.updateVenue(0);
+  }
+
+  installSandboxNeonLoop(): void {
+    const points: Array<{ x: number; y: number }> = [];
+    for (let i = 0; i <= 24; i++) {
+      const t = (i / 24) * Math.PI * 2;
+      points.push({
+        x: this.player.x + Math.sin(t) * 190,
+        y: this.player.y + Math.sin(t * 2) * 105,
+      });
+    }
+    this.neonRail = { points, phase: 'solid', lifeS: 12, crossedItself: true };
+  }
+
+  spawnSandboxWave(minute = Math.floor(this.timeS / 60)): void {
+    const recipe = waveRecipe(Math.max(8, Math.floor(minute)));
+    for (let i = 0; i < recipe.pattern.length; i++) {
+      this.spawnRingOf(recipe.pattern[i], Math.max(6, Math.floor(36 / recipe.pattern.length)));
+    }
   }
 
   /** The single build-transform pipeline: soundset multiplier plus Antonio's
@@ -1170,6 +1260,7 @@ export class RunWorld {
     this.updateShockwaves(dt);
     this.updateGravityWells(dt);
     this.updateGems(dt);
+    this.updateMusicNotes(dt);
     this.updateEncoreCases();
     this.updatePressure(dt);
     this.contactDamage(dt);
@@ -1469,6 +1560,13 @@ export class RunWorld {
     return this.pushEnemy(kind, x, y, spawnClass, moveX, moveY, despawnAt);
   }
 
+  /** Sandbox helper: spawn a real scaled boss and apply all Headliner rules. */
+  spawnSandboxHeadliner(kind: EnemyKind = 'mantis'): Enemy | null {
+    const enemy = this.spawnEnemyAt(kind, this.player.x + 320, this.player.y);
+    if (enemy) this.makeHeadliner(enemy);
+    return enemy;
+  }
+
   /** Construct one enemy from a source sprite-feet position. The simulation
    * stores its exact circle center; old project-native kinds have zero offset.
    * Opening rows preserve their authored composition while the endless-run
@@ -1584,12 +1682,23 @@ export class RunWorld {
     this.projectiles.length = 0;
     this.zones.length = 0;
     this.gems.length = 0;
+    this.musicNotes.length = 0;
     this.encoreCases.length = 0;
     this.shockwaves.length = 0;
     this.gravityWells.length = 0;
     if (this.fx) this.fx.length = 0;
     this.pendingKick.length = 0;
+    this.pendingPulses.length = 0;
     this.overflowGem = null;
+    this.overflowMusicNote = null;
+    this.noteDropPity = 0;
+    this.neonRail = null;
+    this.venueGates = [];
+    this.trainLane = null;
+    this.pressureBank.clear();
+    this.pressureHeat = 0;
+    this.pressureState = 'charging';
+    this.pressureCooldownT = 0;
     this.hash.clear();
     this.queryBuf.length = 0;
   }
@@ -1808,6 +1917,7 @@ export class RunWorld {
         elite: ENEMIES[e.kind].boss === true,
       });
       this.spawnGem(e.x, e.y, e.xp);
+      this.spawnMusicNoteForEnemy(e);
       if (e.headliner) {
         this.headlinersKilled += 1;
         const encore: EncoreCase = { x: e.x, y: e.y, minute: e.spawnMinute, color: 0xffd45c };
@@ -2712,6 +2822,51 @@ export class RunWorld {
     this.overflowGem.tier = 'red';
   }
 
+  private spawnMusicNoteForEnemy(enemy: Enemy): void {
+    this.noteDropPity += 1;
+    const boss = ENEMIES[enemy.kind].boss === true || enemy.spawnClass === 'boss';
+    const chance = Math.min(0.3, 0.08 + Math.sqrt(Math.max(1, enemy.xp)) * 0.035);
+    const guaranteed = enemy.headliner || boss || enemy.amped || this.noteDropPity >= 7;
+    if (!guaranteed && this.rng() >= chance) return;
+    this.noteDropPity = 0;
+    const value = enemy.headliner
+      ? 25
+      : boss
+        ? 10
+        : enemy.amped || enemy.xp >= 10
+          ? 3
+          : enemy.xp >= 3
+            ? 2
+            : 1;
+    this.spawnMusicNoteAt(enemy.x + enemy.radius * 0.28, enemy.y - enemy.radius * 0.18, value);
+  }
+
+  /** Public for the sandbox's currency shower; normal runs use enemy drops. */
+  spawnMusicNoteAt(x: number, y: number, value = 1): void {
+    const amount = Math.max(1, Math.floor(value));
+    const tier: MusicNotePickup['tier'] = amount >= 10 ? 'anthem' : amount >= 3 ? 'phrase' : 'note';
+    if (this.musicNotes.length < RUN.maxMusicNotes) {
+      this.musicNotes.push({ x, y, value: amount, tier });
+      return;
+    }
+    if (!this.overflowMusicNote || !this.musicNotes.includes(this.overflowMusicNote)) {
+      let farthest = this.musicNotes[0];
+      let farthestD = -1;
+      for (const note of this.musicNotes) {
+        const dx = note.x - this.player.x;
+        const dy = note.y - this.player.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 > farthestD) {
+          farthestD = d2;
+          farthest = note;
+        }
+      }
+      this.overflowMusicNote = farthest;
+    }
+    this.overflowMusicNote.value += amount;
+    this.overflowMusicNote.tier = 'anthem';
+  }
+
   private updateGems(dt: number): void {
     const p = this.player;
     for (let i = this.gems.length - 1; i >= 0; i--) {
@@ -2729,6 +2884,28 @@ export class RunWorld {
         this.gems.splice(i, 1);
         if (g === this.overflowGem) this.overflowGem = null;
         this.checkLevel();
+      }
+    }
+  }
+
+  private updateMusicNotes(dt: number): void {
+    const p = this.player;
+    for (let i = this.musicNotes.length - 1; i >= 0; i--) {
+      const note = this.musicNotes[i];
+      const dx = p.x - note.x;
+      const dy = p.y - note.y;
+      const d = Math.hypot(dx, dy);
+      if (d < RUN.magnetRadius * this.buildMods.magnetMul * 1.15) {
+        const pull = RUN.gemPullSpeed * this.buildMods.pullMul * 1.15 * dt;
+        note.x += (dx / (d || 1)) * pull;
+        note.y += (dy / (d || 1)) * pull;
+      }
+      if (d < RUN.pickupRadius + 4) {
+        this.notesCollected += note.value;
+        this.events.onNoteCollected?.(note.value, this.notesCollected);
+        this.fx?.push({ type: 'spark', x: note.x, y: note.y, color: 0xffd45c, n: 4, spread: 12 });
+        this.musicNotes.splice(i, 1);
+        if (note === this.overflowMusicNote) this.overflowMusicNote = null;
       }
     }
   }

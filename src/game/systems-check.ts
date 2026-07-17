@@ -7,18 +7,26 @@ import { fileURLToPath } from 'node:url';
 import type { Role } from '../audio/kits';
 import { AUDIO_SET_LIST } from '../audio/audio-sets';
 import { AFTERHOURS_ROLES, AFTERHOURS_VARIANTS } from '../audio/kits/afterhours';
+import { VOICE_MIX_GAIN } from '../audio/engine';
 import { EVOLUTIONS, ITEM_IDS, deriveBuildMods, type ItemId } from './items';
 import {
-  MAX_TOUR_RANK,
+  CORE_ITEMS,
+  CORE_VENUES,
+  CORE_WEAPONS,
   MILESTONE_IDS,
   MetaStore,
-  rankForReputation,
-  rankProgress,
-  reputationAtRank,
+  SHOP_OFFERS,
 } from './meta';
+import { ALL_ENEMY_KINDS, ENEMY_LABELS, WEAPONS, type EnemyKind } from './config';
 import { rollOffers } from './picks';
 import { RunWorld, type RunEvents } from './run';
-import { endlessScale, waveRecipe } from './tour';
+import {
+  SANDBOX_ENEMY_CATALOG,
+  SANDBOX_EVOLUTION_CATALOG,
+  SANDBOX_ITEM_CATALOG,
+  SANDBOX_VENUE_CATALOG,
+} from './sandbox';
+import { endlessScale, VENUE_IDS, waveRecipe } from './tour';
 
 class MemoryStorage implements Storage {
   private readonly values = new Map<string, string>();
@@ -45,6 +53,17 @@ const evolutionRoles = Object.values(EVOLUTIONS).map(({ role }) => role);
 assert.equal(new Set(evolutionRoles).size, 9, 'every evolution must have a unique weapon');
 assert.equal(new Set(Object.values(EVOLUTIONS).map(({ item }) => item)).size, 9,
   'every passive should complete one evolution recipe');
+assert.deepEqual(new Set(SANDBOX_ENEMY_CATALOG), new Set(ALL_ENEMY_KINDS),
+  'the sandbox must expose every opening, endless, child, event, and boss enemy');
+assert.deepEqual(new Set(SANDBOX_ITEM_CATALOG), new Set(ITEM_IDS),
+  'the sandbox must expose every passive item');
+assert.deepEqual(
+  new Set(SANDBOX_EVOLUTION_CATALOG.map(({ role }) => role)),
+  new Set(evolutionRoles),
+  'the sandbox must expose every weapon evolution',
+);
+assert.deepEqual(new Set(SANDBOX_VENUE_CATALOG), new Set(VENUE_IDS),
+  'the sandbox must expose every Infinite Night Tour venue');
 assert.deepEqual(new Set(AFTERHOURS_ROLES), new Set(evolutionRoles),
   'the fresh audio kit must cover every live weapon');
 assert.equal(
@@ -52,6 +71,14 @@ assert.equal(
   12,
   'the fresh audio kit must expose every canonical chart variant',
 );
+assert.equal(VOICE_MIX_GAIN.hat, 0.708,
+  'the dense hi-hat voice needs a calibrated cut after every palette swap');
+assert((VOICE_MIX_GAIN.chord ?? 0) > 1 && (VOICE_MIX_GAIN.arp ?? 0) > 1,
+  'chord and arp voices need calibrated lifts at the shared voice bus');
+const hatDamageLadder = WEAPONS.hat!.map(({ damage }) => damage);
+assert.deepEqual(hatDamageLadder, [2, 2, 2, 3]);
+assert(hatDamageLadder.every((damage, index) => index === 0 || damage >= hatDamageLadder[index - 1]),
+  'raising base hi-hat damage must never make a later tier a downgrade');
 const repositoryRoot = fileURLToPath(new URL('../../', import.meta.url));
 const paletteFiles = AUDIO_SET_LIST.flatMap((set) =>
   Object.values(set.samples).flatMap((specs) =>
@@ -71,44 +98,88 @@ const settlement = meta.settleRun({
   timeS: 360,
   level: 12,
   kills: 400,
+  notesCollected: 602,
   headlinersKilled: 2,
   evolutionsMade: 3,
   milestones: MILESTONE_IDS,
   venuesVisited: ['alley', 'warehouse'],
 });
-assert.equal(settlement.breakdown.level, 22);
-assert.equal(settlement.breakdown.newVenues, 50);
-assert.equal(settlement.breakdown.total, 602);
-assert.equal(settlement.rankAfter, 5);
-assert(meta.unlockedRoles().has('clap'));
-assert(meta.unlockedRoles().has('arp'));
+assert.equal(settlement.notesEarned, 602);
+assert.equal(settlement.walletBefore, 0);
+assert.equal(settlement.walletAfter, 602);
+assert.deepEqual(meta.unlockedRoles(), new Set(CORE_WEAPONS),
+  'run performance must not automatically unlock shop weapons');
+assert.deepEqual(meta.unlockedItemIds(), new Set(CORE_ITEMS),
+  'run performance must not automatically unlock shop passives');
+assert.deepEqual(meta.unlockedVenueIds(), new Set(CORE_VENUES),
+  'run performance must not automatically unlock shop venues');
+assert.equal(settlement.collection.owned, 0);
+assert.equal(settlement.collection.total, SHOP_OFFERS.length);
+assert.equal(settlement.collection.complete, false);
+const lockedArp = meta.shop().find(({ offer }) => offer.id === 'arp')!;
+assert.equal(lockedArp.shelfLocked, true);
+assert.equal(lockedArp.purchasesNeeded, 2);
+assert.equal(lockedArp.affordable, true);
+assert.equal(meta.purchase('arp'), false,
+  'enough notes must not bypass a shop shelf requirement');
+assert(meta.purchase('heavyAmp'));
 assert(meta.unlockedItemIds().has('heavyAmp'));
-assert.equal(new MetaStore(storage).state.reputation, 602, 'career save should round-trip');
+assert(meta.purchase('clap'));
+assert(meta.unlockedRoles().has('clap'));
+assert.equal(meta.purchase('heavyAmp'), false, 'a shop purchase must be one-time');
+assert.equal(meta.shop().find(({ offer }) => offer.id === 'arp')!.shelfLocked, false);
+assert(meta.purchase('arp'));
+assert(meta.unlockedRoles().has('arp'));
+assert.equal(meta.state.notes, 412, 'shop costs must be deducted from the note wallet');
+const roundTrippedMeta = new MetaStore(storage);
+assert.equal(roundTrippedMeta.state.version, 2);
+assert.equal(roundTrippedMeta.state.notes, 412, 'the v2 note wallet should round-trip');
+assert.deepEqual(roundTrippedMeta.state.purchases, ['heavyAmp', 'clap', 'arp'],
+  'shop purchases should round-trip in purchase order');
 const repeatVenueSettlement = meta.settleRun({
   timeS: 0,
   level: 1,
   kills: 0,
+  notesCollected: 0,
   headlinersKilled: 0,
   evolutionsMade: 0,
   milestones: [],
   venuesVisited: ['alley', 'warehouse'],
 });
-assert.equal(repeatVenueSettlement.breakdown.newVenues, 0,
-  'venue reputation should only pay on a career first visit');
-for (let rank = 1; rank <= MAX_TOUR_RANK; rank++) {
-  assert.equal(rankForReputation(reputationAtRank(rank)), rank);
-}
-assert.equal(rankForReputation(Number.MAX_SAFE_INTEGER), MAX_TOUR_RANK,
-  'career display must stop at the authored rank-15 finale');
-assert.deepEqual(rankProgress(Number.MAX_SAFE_INTEGER), {
-  rank: MAX_TOUR_RANK,
-  maxed: true,
-  earnedIntoRank: 0,
-  costToNext: 0,
-  remaining: 0,
-  ratio: 1,
-  nextRewards: [],
-});
+assert.deepEqual(repeatVenueSettlement.newVenues, [],
+  'venue discovery should only be recorded on a career first visit');
+
+const expectedEnemyLabels = {
+  swarmer: 'Shardling',
+  tank: 'Wallstack',
+  darter: 'Needlejack',
+  splitter: 'Crackbox',
+  charger: 'Rail Ram',
+  circler: 'Orbit Leech',
+  shielded: 'Phase Guard',
+  elite: 'Blackout Idol',
+  bat: 'Static Mite',
+  redBat: 'Flare Mite',
+  redBat2: 'Night Mite',
+  zombie: 'Cable Husk',
+  skeleton: 'Jackwalker',
+  ghost: 'Echo Shard',
+  greenMudman: 'Moss Cabinet',
+  grayMudman: 'Cracked Cabinet',
+  flower: 'Mute Bloom',
+  glowingBat: 'Signal Crown',
+  mantis: 'The Shear',
+  batSwarm: 'Static Rush',
+} satisfies Record<EnemyKind, string>;
+assert.deepEqual(ENEMY_LABELS, expectedEnemyLabels,
+  'every simulation archetype needs its complete fresh player-facing identity');
+assert.equal(new Set(Object.values(ENEMY_LABELS)).size, Object.keys(ENEMY_LABELS).length,
+  'enemy display names should be unique');
+assert.equal(
+  Object.values(ENEMY_LABELS).some((label) => /\b(bat|zombie|skeleton|ghost|mudman|mantis)\b/i.test(label)),
+  false,
+  'the fresh roster must not leak an old fantasy enemy name',
+);
 
 const maxTiers = new Map<Role, number>(evolutionRoles.map((role) => [role, 4]));
 const encoreOffers = rollOffers({
@@ -132,6 +203,44 @@ const events: RunEvents = {
   onHit: () => undefined,
   onMinute: (minute) => { minuteSeen = minute; },
 };
+
+const collectedNoteEvents: Array<[value: number, total: number]> = [];
+const noteWorld = new RunWorld(
+  { width: 1280, height: 720 },
+  {
+    ...events,
+    onNoteCollected: (value, total) => collectedNoteEvents.push([value, total]),
+  },
+  { scripted: false, fx: false, rng: () => 0.99 },
+);
+for (let i = 0; i < 7; i++) noteWorld.spawnEnemyAt('bat', 80 + i * 20, 0);
+noteWorld.killVisible();
+assert.equal(noteWorld.musicNotes.length, 1,
+  'ordinary enemies should guarantee a small music-note drop by the seventh dry kill');
+assert.deepEqual(noteWorld.musicNotes[0].tier, 'note');
+assert.equal(noteWorld.musicNotes[0].value, 1);
+noteWorld.player.x = noteWorld.musicNotes[0].x;
+noteWorld.player.y = noteWorld.musicNotes[0].y;
+noteWorld.update(0);
+assert.equal(noteWorld.notesCollected, 1);
+assert.equal(noteWorld.musicNotes.length, 0);
+assert.deepEqual(collectedNoteEvents, [[1, 1]],
+  'walking onto a music note should collect it once and report the run total');
+
+const hatWorld = new RunWorld({ width: 1280, height: 720 }, events, {
+  scripted: false,
+  fx: false,
+  rng: () => 0.5,
+});
+hatWorld.invincible = true;
+hatWorld.addWeapon('hat', 1);
+const weakestEnemy = hatWorld.spawnEnemyAt('bat', 80, 0)!;
+assert.equal(weakestEnemy.hp, 1, 'the Static Mite fixture should remain the 1-HP baseline');
+hatWorld.fireTrigger({ role: 'hat', time: 0, velocity: 1, step: 0, variant: 'closed' });
+for (let i = 0; i < 60 && !weakestEnemy.dead; i++) hatWorld.update(1 / 120);
+assert.equal(weakestEnemy.dead, true,
+  'one base tier-I hi-hat trigger must be able to kill the weakest enemy');
+
 const world = new RunWorld({ width: 1280, height: 720 }, events, {
   rng: () => 0.5,
   fx: false,
@@ -317,4 +426,4 @@ const cornerHpBefore = cornerEnemy.hp;
 ovationWorld.fireTrigger({ role: 'clap', time: 0, velocity: 1, step: 0 });
 assert(cornerEnemy.hp < cornerHpBefore, 'Standing Ovation should reach the visible arena corners');
 
-console.log('systems-check: items, meta, offers, endless director, and all evolutions passed');
+console.log('systems-check: items, note shop, pickups, enemies, endless director, and evolutions passed');

@@ -10,6 +10,7 @@ import {
   type Enemy,
   type FxEvent,
   type Gem,
+  type MusicNotePickup,
   type Projectile,
   type RunWorld,
   type Zone,
@@ -27,6 +28,7 @@ import {
   enemyContext,
   makeEnemyGfx,
   makeGemGfx,
+  makeMusicNoteGfx,
   makePixelGlow,
   makePlayerGfx,
   makeProjectileGfx,
@@ -38,6 +40,7 @@ import {
   refreshProjectileContext,
   type EnemyGfx,
   type GemGfx,
+  type MusicNoteGfx,
   type PlayerGfx,
   type ProjectileGfx,
   type RewardGfx,
@@ -264,9 +267,21 @@ function enemyFrame(enemy: Enemy, timeS: number): number {
     case 'redBat2':
     case 'glowingBat':
     case 'batSwarm':
+    case 'flower':
+    case 'mantis':
+    case 'darter':
+    case 'charger':
       return Math.floor(timeS * 8 + enemy.id * 0.73) & 1;
     case 'zombie':
     case 'skeleton':
+    case 'greenMudman':
+    case 'grayMudman':
+    case 'swarmer':
+    case 'tank':
+    case 'splitter':
+    case 'circler':
+    case 'shielded':
+    case 'elite':
       return Math.floor(timeS * 4 + enemy.id * 0.41) & 1;
     default:
       return 0;
@@ -401,6 +416,7 @@ export class RunView {
   private projectileGfx = new Map<Projectile, ProjectileGfx>();
   private zoneGfx = new Map<Zone, ZoneGfx>();
   private gemGfx = new Map<Gem, GemGfx>();
+  private musicNoteGfx = new Map<MusicNotePickup, MusicNoteGfx>();
   private scenery = new Map<string, SceneryCell>();
   private venueGateGfx = new Map<StructuralVenueGate, VenueGateGfx>();
   private tourCaseGfx = new Map<StructuralTourCase, TourCaseGfx>();
@@ -548,6 +564,7 @@ export class RunView {
     this.drawTourZones(cameraX, cameraY);
     this.drawEnemyTelegraphs(cameraX, cameraY);
     this.syncGems(cameraX, cameraY);
+    this.syncMusicNotes(cameraX, cameraY);
     this.syncEnemies(cameraX, cameraY);
     this.syncProjectiles(cameraX, cameraY);
     this.drawTrails();
@@ -588,6 +605,7 @@ export class RunView {
     this.projectileGfx.clear();
     this.zoneGfx.clear();
     this.gemGfx.clear();
+    this.musicNoteGfx.clear();
     this.scenery.clear();
     this.venueGateGfx.clear();
     this.tourCaseGfx.clear();
@@ -962,6 +980,35 @@ export class RunView {
       if (!this.live.has(gem)) {
         gfx.destroy({ children: true });
         this.gemGfx.delete(gem);
+      }
+    }
+  }
+
+  private syncMusicNotes(cameraX: number, cameraY: number): void {
+    const halfW = this.world.worldW / 2 + 50;
+    const halfH = this.world.worldH / 2 + 50;
+    this.live.clear();
+    for (const note of this.world.musicNotes) {
+      let gfx = this.musicNoteGfx.get(note);
+      if (!gfx || gfx.__tier !== note.tier) {
+        gfx?.destroy({ children: true });
+        gfx = makeMusicNoteGfx(note);
+        this.musicNoteGfx.set(note, gfx);
+        this.gemLayer.addChild(gfx);
+      }
+      const visible = Math.abs(note.x - cameraX) < halfW && Math.abs(note.y - cameraY) < halfH;
+      gfx.renderable = visible;
+      if (visible) {
+        gfx.position.set(snap(note.x), snap(note.y - Math.sin(this.world.timeS * 6 + note.x * 0.02) * 3));
+        const pulse = 1 + 0.08 * Math.sin(this.world.timeS * 7 + note.y * 0.03);
+        gfx.scale.set(pulse);
+      }
+      this.live.add(note);
+    }
+    for (const [note, gfx] of this.musicNoteGfx) {
+      if (!this.live.has(note)) {
+        gfx.destroy({ children: true });
+        this.musicNoteGfx.delete(note);
       }
     }
   }

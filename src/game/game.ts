@@ -6,7 +6,7 @@ import { Application } from 'pixi.js';
 import type { MusicEngine } from '../audio/engine';
 import { SOUNDSET } from '../audio/soundset';
 import { ROLES, type Kit, type Role } from '../audio/kits';
-import { RUN, LEVELUP } from './config';
+import { LEVELUP } from './config';
 import { SLOTS, ownerOfSlot } from './band';
 import { mountTrackOverlay } from './trackoverlay';
 import { Hud } from './hud';
@@ -21,7 +21,9 @@ import { preloadRunArt, RunView, type GroundPickView } from './view';
 import { mountSandboxPanel, type SandboxPanel } from './sandbox';
 import { ITEMS, type EvolutionDefinition } from './items';
 import { MetaStore, type RunSettlement } from './meta';
-import type { AudioSetId } from '../audio/audio-sets';
+import { VENUE_AUDIO_SET } from '../audio/venue-audio';
+import { VENUE_IDS, isVenueId } from './tour';
+import { mulberry32 } from './rng';
 
 type State = 'start' | 'run' | 'end' | 'sandbox';
 
@@ -141,7 +143,7 @@ export async function bootGame(
 
   // Pause overlay: ESC freezes the run behind a dimmed screen; the audio clock
   // stops so no triggers fire, and the game loop skips its world step. A second
-  // ESC resumes. Only the live run pauses.
+  // ESC resumes. Both playable arenas pause; menu screens do not.
   const pauseOverlay = document.createElement('div');
   pauseOverlay.className = 'screen pause-overlay';
   pauseOverlay.style.display = 'none';
@@ -157,7 +159,7 @@ export async function bootGame(
   pauseButton.style.display = 'none';
   root.appendChild(pauseButton);
   function togglePause(): void {
-    if (state !== 'run') return;
+    if (state !== 'run' && state !== 'sandbox') return;
     paused = !paused;
     pauseOverlay.style.display = paused ? '' : 'none';
     pauseButton.textContent = paused ? 'RESUME' : 'PAUSE';
@@ -398,6 +400,40 @@ export async function bootGame(
   }
   hud.setRerollAction(rerollGroundOffers);
 
+  const updateArenaMinute = (minute: number): void => {
+    engine.clock.bpm = SOUNDSET.bpm * (1 + Math.min(0.08, minute * 0.002));
+    if (minute > 0) hud.showToast(`PRESSURE ${minute} · enemies scale up`);
+  };
+
+  const updateArenaVenue = (venue: string): void => {
+    const id = isVenueId(venue) ? venue : 'alley';
+    void engine.setAudioSet(VENUE_AUDIO_SET[id]);
+    hud.showToast(`NEW VENUE · ${venue.replace(/\b\w/g, (letter) => letter.toUpperCase())}`);
+  };
+
+  /** One Pressure Break conductor for the run and the sandbox: it aligns the
+   * muffled hold and stored-hit release to adjacent musical bars. */
+  const schedulePressureBreak = (w: RunWorld, arena: 'run' | 'sandbox'): void => {
+    hud.showToast('PRESSURE FULL · release on the next four-beat section');
+    engine.atNextBar((startAudioTime) => {
+      if (world !== w || state !== arena) return;
+      engine.atAudioTime(startAudioTime, () => {
+        if (world !== w || state !== arena) return;
+        w.beginPressureBreak();
+        engine.setPressureMuffle(true);
+      });
+      engine.atNextBar((releaseAudioTime) => {
+        if (world !== w || state !== arena) return;
+        engine.atAudioTime(releaseAudioTime, () => {
+          if (world !== w || state !== arena) return;
+          const released = w.releasePressureBreak();
+          engine.setPressureMuffle(false);
+          engine.replayPressureRelease(released);
+        });
+      });
+    });
+  };
+
   const events = {
     onLevelUp(level: number): void {
       enqueueUpgrade(level);
@@ -412,8 +448,7 @@ export async function bootGame(
       pushDamageFeedback(hud.flashEl, view);
     },
     onMinute(minute: number): void {
-      engine.clock.bpm = SOUNDSET.bpm * (1 + Math.min(0.08, minute * 0.002));
-      if (minute > 0) hud.showToast(`PRESSURE ${minute} · enemies scale up`);
+      updateArenaMinute(minute);
     },
     onEncoreCase(): void {
       const w = world;
@@ -430,35 +465,13 @@ export async function bootGame(
     onPressureArmed(): void {
       const w = world;
       if (!w) return;
-      hud.showToast('PRESSURE FULL · release on the next four-beat section');
-      engine.atNextBar((startAudioTime) => {
-        if (world !== w || state !== 'run') return;
-        engine.atAudioTime(startAudioTime, () => {
-          if (world !== w || state !== 'run') return;
-          w.beginPressureBreak();
-          engine.setPressureMuffle(true);
-        });
-        engine.atNextBar((releaseAudioTime) => {
-          if (world !== w || state !== 'run') return;
-          engine.atAudioTime(releaseAudioTime, () => {
-            if (world !== w || state !== 'run') return;
-            const released = w.releasePressureBreak();
-            engine.setPressureMuffle(false);
-            engine.replayPressureRelease(released);
-          });
-        });
-      });
+      schedulePressureBreak(w, 'run');
     },
     onPressureBreak(active: boolean): void {
       hud.showToast(active ? 'HOLD THE DROP' : 'PRESSURE RELEASE');
     },
     onVenueChanged(venue: string): void {
-      const palettes: Record<string, AudioSetId> = {
-        alley: 'midnight-warehouse', warehouse: 'midnight-warehouse', rooftop: 'velvet-rooftop',
-        metro: 'acid-circuit', basement: 'acid-circuit', dawn: 'velvet-rooftop',
-      };
-      void engine.setAudioSet(palettes[venue] ?? 'midnight-warehouse');
-      hud.showToast(`NEW VENUE · ${venue.replace(/\b\w/g, (letter) => letter.toUpperCase())}`);
+      updateArenaVenue(venue);
     },
     onMilestone(id: string): void {
       hud.showToast(`MILESTONE · ${id.replace(/([A-Z])/g, ' $1').toUpperCase()}`);
@@ -470,12 +483,42 @@ export async function bootGame(
   const sandboxEvents = {
     onLevelUp(): void {},
     onDeath(): void {
-      if (world) world.player.hp = RUN.playerHp;
+      if (world) world.player.hp = world.playerMaxHp;
       hud.showToast('you would have died — hp refilled');
     },
     onVictory(): void {},
     onHit(): void {
       pushDamageFeedback(hud.flashEl, view);
+    },
+    onMinute(minute: number): void {
+      updateArenaMinute(minute);
+    },
+    onEncoreCase(): void {
+      const w = world;
+      if (!w || state !== 'sandbox') return;
+      const evolution = w.eligibleEvolutions()[0];
+      if (!evolution) {
+        w.applyEncoreChoice('heal');
+        hud.showToast('Encore Case · +15 HP (no recipe ready)');
+        return;
+      }
+      w.evolve(evolution.role);
+      engine.setEvolutionGain(evolution.role, evolution.gainDb);
+      hud.renderBand(w.tiers, undefined, undefined, undefined, w.evolved);
+      hud.showToast(`EVOLVED · ${evolution.name}`);
+    },
+    onPressureArmed(): void {
+      const w = world;
+      if (w) schedulePressureBreak(w, 'sandbox');
+    },
+    onPressureBreak(active: boolean): void {
+      hud.showToast(active ? 'HOLD THE DROP' : 'PRESSURE RELEASE');
+    },
+    onVenueChanged(venue: string): void {
+      updateArenaVenue(venue);
+    },
+    onMilestone(id: string): void {
+      hud.showToast(`MILESTONE · ${id.replace(/([A-Z])/g, ' $1').toUpperCase()}`);
     },
   };
   let sandboxPanel: SandboxPanel | null = null;
@@ -544,13 +587,16 @@ export async function bootGame(
     resetWorld();
     const w: RunWorld = new RunWorld(app.screen, sandboxEvents, {
       scripted: false,
+      rng: mulberry32(0x5eed),
       control: () => playerControl(w),
+      unlockedVenues: VENUE_IDS,
     });
     world = w;
     w.powerMul = SOUNDSET.powerMul;
     w.invincible = true;
     view = new RunView(w, app.screen);
     app.stage.addChild(view.stage);
+    void engine.setAudioSet(VENUE_AUDIO_SET.alley);
     sandboxPanel = mountSandboxPanel(root, engine, w, {
       onLoadout: () => {
         hud.renderBand(w.tiers, undefined, deactivatedRoles, pendingRoles, w.evolved);
@@ -565,7 +611,8 @@ export async function bootGame(
         syncTimeScaleControl(); // resetWorld ran while still 'sandbox'; re-grey now
       },
     });
-    hud.showHud(true);
+    hud.showHud(true, true);
+    pauseButton.style.display = '';
     hud.renderBand(w.tiers, undefined, undefined, undefined, w.evolved);
     state = 'sandbox';
     syncTimeScaleControl(); // arm the timeScale slider for the sandbox
@@ -588,6 +635,7 @@ export async function bootGame(
       timeS: world.timeS,
       level: world.level,
       kills: world.kills,
+      notesCollected: world.notesCollected,
       headlinersKilled: world.headlinersKilled,
       evolutionsMade: world.evolutionsMade,
       milestones: [...world.milestones],
@@ -602,6 +650,7 @@ export async function bootGame(
         timeS: world.timeS,
         kills: world.kills,
         level: world.level,
+        notesCollected: world.notesCollected,
         damageByRole: world.damageByRole,
         killsByRole: world.killsByRole,
       },
@@ -784,10 +833,12 @@ export async function bootGame(
         w.venue,
         w.venueChapter,
         rerollsLeft,
+        w.notesCollected,
       );
+      sandboxPanel?.update();
       const minute = Math.floor(w.timeS / 60);
       const second = w.timeS - minute * 60;
-      if (second >= 57 && lastWarningMinute !== minute) {
+      if (state === 'run' && second >= 57 && lastWarningMinute !== minute) {
         lastWarningMinute = minute;
         hud.showToast('PRESSURE RISES IN 3');
       }

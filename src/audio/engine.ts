@@ -93,6 +93,21 @@ const DUCK_RELEASE = 0.14;
 const SUB_BASS_ROLES: readonly Role[] = ['bass'];
 const EVOLUTION_SATURATION = softClipCurve(2.4);
 
+/** Per-voice mix calibration, applied after both procedural and downloaded
+ * palette samples. The hat's dense chart made its bright transients dominate,
+ * while the chord and arpeggio (the fast sequence of separate notes) were
+ * masked by the drums. Keeping this at the final voice bus makes every venue
+ * palette obey the same musical balance. */
+export const VOICE_MIX_GAIN: Readonly<Partial<Record<Role, number>>> = {
+  hat: 0.708, // -3 dB
+  chord: 1.334, // +2.5 dB
+  arp: 1.413, // +3 dB
+};
+
+function voiceMixGain(role: Role): number {
+  return VOICE_MIX_GAIN[role] ?? 1;
+}
+
 export class MusicEngine {
   readonly ctx: AudioContext;
   readonly clock: Clock;
@@ -162,7 +177,7 @@ export class MusicEngine {
 
     for (const [role, kit] of kits) {
       const gain = ctx.createGain();
-      gain.gain.value = 1;
+      gain.gain.value = voiceMixGain(role);
       // gain -> duck -> weaponsBus -> master: the persistent duck node is unity
       // except when the kick sidechains the bass (design rule 1); the weapons
       // bus is what a level-up dip acts on.
@@ -247,13 +262,25 @@ export class MusicEngine {
     const voice = this.voices.get(role);
     if (!voice) return;
     voice.evolved = true;
-    voice.gain.gain.setTargetAtTime(Math.pow(10, gainDb / 20), this.ctx.currentTime, 0.025);
+    voice.gain.gain.setTargetAtTime(
+      voiceMixGain(role) * Math.pow(10, gainDb / 20),
+      this.ctx.currentTime,
+      0.025,
+    );
+  }
+
+  /** Sandbox before/after switch: restore this voice's calibrated base mix. */
+  clearEvolutionGain(role: Role): void {
+    const voice = this.voices.get(role);
+    if (!voice) return;
+    voice.evolved = false;
+    voice.gain.gain.setTargetAtTime(voiceMixGain(role), this.ctx.currentTime, 0.02);
   }
 
   resetEvolutionMixes(): void {
     for (const voice of this.voices.values()) {
       voice.evolved = false;
-      voice.gain.gain.setTargetAtTime(1, this.ctx.currentTime, 0.02);
+      voice.gain.gain.setTargetAtTime(voiceMixGain(voice.role), this.ctx.currentTime, 0.02);
     }
     this.setPressureMuffle(false);
   }

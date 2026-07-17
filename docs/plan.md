@@ -5,6 +5,10 @@ status: what the design is trying to be, and the constraints that settle
 arguments about how to build it. For what exists right now, read the code and
 the git history.
 
+> **Current player reference:** read
+> [the Infinite Night Field Guide](field-guide.md) for every live system, passive,
+> evolution recipe, venue, enemy, audio palette, and Sandbox tab.
+
 ## The Game in One Sentence
 
 Vampire Survivors, but the weapons are sounds and a good build makes a track.
@@ -22,25 +26,29 @@ music, and the system guarantees the result always sounds decent.
    game, it never excuses a broken one. A muted run has to hold up on its own.
 4. **Combinations over volume.** Depth comes from systems interacting, not
    from content mass.
-5. **A run ends when the crowd wins.** There is no victory timer. Threat rises
-   at every minute mark forever, with authored opening acts flowing into a
-   procedural tour that must eventually overwhelm the player.
-6. **Career progress favors expression over stat grind.** Reputation unlocks
-   weapons, passive items, venues, and a few authored late-career perks. It
-   never becomes an uncapped treadmill of permanent damage, health, or speed.
+5. **A run ends when The Hush overwhelms the stage.** There is no victory
+   timer. Threat rises at every minute mark forever, with authored opening acts
+   flowing into a procedural tour that must eventually overwhelm the player.
+6. **Career progress favors expression over stat grind.** Players collect
+   music notes from enemies and choose weapons, passive items, venues, and a
+   few authored perks in the Afterhours Shop. Nothing unlocks automatically,
+   and the shop never becomes an uncapped treadmill of permanent damage,
+   health, or speed.
 
 Cut, deliberately: a shareable per-run track artifact. No recording,
 rendering, or sharing systems in v1.
 
 ## Run Shape
 
-The first eight minutes are a deliberately authored opening act. After that,
-an endless director recombines enemy families, formation patterns, population
-pressure, elite modifiers, and five-minute Headliner encounters. Every minute
-is a visible threat step: enemy health, damage, speed, rewards, density, and a
-small tempo lift scale together. Scaling is slow enough that a strong build can
-keep finding a new ceiling, but uncapped health and damage ensure every run
-eventually ends.
+The first eight minutes are a deliberately authored opening act. The enemy
+faction is **The Hush**: living interference formed from static, cable, broken
+stage equipment, light, and Soundwood growth rather than borrowed fantasy
+monsters. After the opening, an endless director recombines Hush families,
+formation patterns, population pressure, Amped variants, and five-minute
+Headliner encounters. Every minute is a visible threat step: enemy health,
+damage, speed, rewards, density, and a small tempo lift scale together. Scaling
+is slow enough that a strong build can keep finding a new ceiling, but uncapped
+health and damage ensure every run eventually ends.
 
 Every five minutes the **Infinite Night Tour** moves to a new venue. Before the
 transition, the player walks through one of two stage gates; each offers a
@@ -73,13 +81,15 @@ dead rewards without displacing the authored weapon and item balance.
 
 ## Meta Progression
 
-Death settles reputation from survival, kills, level, evolutions, bosses, and
-new venues. Reputation advances a fifteen-rank career ladder. Rank rewards add
-new choice-space: instruments, passive items, venues, rerolls, an optional
-starting passive, and one late-career second chance. The save is versioned,
-validated at load, and stored locally. The two fixed combat perks are a tier-I
-starting passive and one 30%-health Second Wind; there are no repeatable
-permanent-stat purchases, and the authored ladder ends at rank fifteen.
+Enemies shed collectible music notes during a run. Notes only enter the career
+wallet when the run ends, then the player spends them in the Afterhours Shop.
+Purchases unlock new choice-space: instruments, passive items, venues,
+rerolls, an optional starting passive, one 30%-health Second Wind, and a final
+cosmetic palette. Later shelves open after enough earlier purchases, but no
+survival result, kill total, or hidden rank grants an unlock automatically.
+The save is versioned, validated at load, and stored locally. Purchases are
+finite and authored; there are no repeatable permanent damage, health, or
+speed upgrades.
 
 ## Core Architecture
 
