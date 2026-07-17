@@ -148,6 +148,19 @@ export function mountPlayground(
         };
         barBtns.push(b);
       }
+
+      // Per-voice volume: live mix control while sculpting, to the right of the
+      // bars control. Editable mount only (the read-only in-game overlay is not
+      // a mixing surface).
+      const volWrap = el('label', 'pg-vol', head, 'vol');
+      const vol = el('input', '', volWrap) as HTMLInputElement;
+      vol.type = 'range';
+      vol.min = '0';
+      vol.max = '100';
+      vol.value = '100';
+      vol.title = 'this voice’s volume in the mix';
+      vol.oninput = () => engine.setVoiceGain(role, Number(vol.value) / 100);
+
       resetBtn = el('button', 'pg-reset', head, 'reset chart') as HTMLButtonElement;
       resetBtn.title = 'discard edits, restore the shipped chart';
       resetBtn.onclick = () => {

@@ -51,7 +51,7 @@ export class Input {
 
   /** Rooms that navigate without a page reload must not accumulate global
    * keyboard listeners. The normal game lives for the page lifetime and may
-   * ignore this disposer; the living lab calls it on exit. */
+   * ignore this disposer; callers that tear down mid-page call it on exit. */
   destroy(): void {
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keyup', this.onKeyUp);

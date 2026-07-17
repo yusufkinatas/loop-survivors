@@ -204,34 +204,46 @@ export class Hud {
     const devToggle = el('button', 'small start-dev-toggle', dev, 'dev tools');
     const row = el('div', 'start-dev-row', dev);
     row.style.display = 'none';
+
+    // The two standalone playtest surfaces (boss fights and the full-track
+    // Track Lab) share their own nested "experiments" disclosure.
+    const experimentsToggle = el('button', 'small start-dev-toggle', row, 'experiments');
+    const sandboxBtn = el('button', 'small', row, 'sandbox');
+    const roomBtn = el('button', 'small', row, 'rehearsal room');
+    const experimentsRow = el('div', 'start-dev-row', dev);
+    experimentsRow.style.display = 'none';
+    const bossBtn = el('button', 'small', experimentsRow, 'boss fights');
+    const tracksBtn = el('button', 'small', experimentsRow, 'full tracks');
+
     devToggle.onclick = () => {
-      row.style.display = row.style.display === 'none' ? '' : 'none';
-      devToggle.classList.toggle('on', row.style.display !== 'none');
+      const open = row.style.display === 'none';
+      row.style.display = open ? '' : 'none';
+      devToggle.classList.toggle('on', open);
+      // Collapsing dev tools also collapses the nested experiments group.
+      if (!open) {
+        experimentsRow.style.display = 'none';
+        experimentsToggle.classList.remove('on');
+      }
       (devToggle as HTMLButtonElement).blur();
     };
-    const livingLabBtn = el('button', 'small start-lab-btn', row, 'living lab');
-    livingLabBtn.onclick = () => {
-      const url = new URL(location.href);
-      url.hash = '';
-      url.searchParams.set('lab', 'hub');
-      location.assign(`${url.pathname}${url.search}`);
+    experimentsToggle.onclick = () => {
+      const open = experimentsRow.style.display === 'none';
+      experimentsRow.style.display = open ? '' : 'none';
+      experimentsToggle.classList.toggle('on', open);
+      (experimentsToggle as HTMLButtonElement).blur();
     };
-    const bossBtn = el('button', 'small', row, 'boss fights');
     bossBtn.onclick = () => {
       location.hash = '#boss';
     };
-    const sandboxBtn = el('button', 'small', row, 'sandbox');
+    tracksBtn.onclick = () => {
+      location.hash = '#tracklab';
+    };
     sandboxBtn.onclick = () => {
       this.closeScreen();
       onSandbox();
     };
-    const roomBtn = el('button', 'small', row, 'rehearsal room');
     roomBtn.onclick = () => {
       location.hash = '#rehearsal';
-    };
-    const labBtn = el('button', 'small', row, 'experimentation room');
-    labBtn.onclick = () => {
-      location.hash = '#tracklab';
     };
   }
 
