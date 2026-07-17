@@ -148,9 +148,10 @@ export async function bootGame(
   pauseOverlay.className = 'screen pause-overlay';
   pauseOverlay.style.display = 'none';
   pauseOverlay.innerHTML =
-    '<h1>Paused</h1><div class="pause-rack"></div><button class="pause-resume">RESUME SET</button><p class="hint">Escape also resumes.</p>';
+    '<h1>Paused</h1><div class="pause-rack"></div><div class="pause-items"></div><button class="pause-resume">RESUME SET</button><p class="hint">Escape also resumes.</p>';
   root.appendChild(pauseOverlay);
   const pauseRack = pauseOverlay.querySelector('.pause-rack') as HTMLElement;
+  const pauseItems = pauseOverlay.querySelector('.pause-items') as HTMLElement;
   const resumeButton = pauseOverlay.querySelector('.pause-resume') as HTMLButtonElement;
   const pauseButton = document.createElement('button');
   pauseButton.className = 'pause-live';
@@ -168,7 +169,10 @@ export async function bootGame(
       engine.clock.pause();
       engine.holdTransport();
       // Show the current band while paused (the same rack the HUD draws).
-      if (world) hud.renderBand(world.tiers, pauseRack, deactivatedRoles, pendingRoles, world.evolved);
+      if (world) {
+        hud.renderBand(world.tiers, pauseRack, deactivatedRoles, pendingRoles, world.evolved);
+        hud.renderItemDetails(world.items, pauseItems);
+      }
     } else {
       engine.releaseTransport();
       engine.clock.resume();
@@ -273,7 +277,12 @@ export async function bootGame(
       const option = options[i];
       const deg = LEVELUP.angles[i % LEVELUP.angles.length];
       const rad = (deg * Math.PI) / 180;
-      const x = cx + Math.cos(rad) * LEVELUP.itemRadius;
+      // Portrait screens have less visible world width than the authored
+      // triangle. Clamp the horizontal offset far enough inside the camera for
+      // the 168-unit name/effect plate to stay fully readable, while retaining
+      // more than the fixed 40-unit walk-to-collect distance.
+      const horizontalRoom = Math.max(LEVELUP.itemPickupRadius + 4, w.worldW / 2 - 92);
+      const x = cx + Math.max(-horizontalRoom, Math.min(horizontalRoom, Math.cos(rad) * LEVELUP.itemRadius));
       const y = cy + Math.sin(rad) * LEVELUP.itemRadius;
       items.push({ x, y, option });
       if (option.kind === 'weapon') {
@@ -283,8 +292,9 @@ export async function bootGame(
       } else if (option.kind === 'item') {
         const definition = ITEMS[option.item];
         const previous = w.items.get(option.item) ?? 0;
-        payload.push({ x, y, role: definition.evolutionPartner, color: definition.color,
-          name: definition.name, level: previous > 0 ? `${previous} → ${option.tier}` : '1' });
+        payload.push({ x, y, glyph: definition.glyph, color: definition.color,
+          name: definition.name, level: previous > 0 ? `${previous} → ${option.tier}` : '1',
+          effect: definition.levelLines[option.tier - 1] });
       } else if (option.kind === 'encore') {
         const role: Role = option.encore === 'heal' ? 'clap' : option.encore === 'damage' ? 'bass' : option.encore === 'move' ? 'kick' : 'chord';
         const label = option.encore === 'heal' ? 'Emergency Water' : option.encore === 'damage' ? 'Hotter Signal' : option.encore === 'move' ? 'Quick Change' : 'Wider Stage';
@@ -327,7 +337,8 @@ export async function bootGame(
     clearGroundPicks();
     if (option.kind === 'item') {
       w.addItem(option.item, option.tier);
-      hud.showToast(`${ITEMS[option.item].name} ${option.tier}`);
+      const definition = ITEMS[option.item];
+      hud.showToast(`${definition.name} ${option.tier} · ${definition.levelLines[option.tier - 1]}`);
       hud.levelPulse();
       view?.flourish(w.player.x, w.player.y);
       presentNextUpgrade();
@@ -712,7 +723,10 @@ export async function bootGame(
     if (!world) return;
     hud.renderBand(world.tiers, undefined, deactivatedRoles, pendingRoles, world.evolved);
     // The pause menu mirrors the same rack; keep it truthful if it's open.
-    if (paused) hud.renderBand(world.tiers, pauseRack, deactivatedRoles, pendingRoles, world.evolved);
+    if (paused) {
+      hud.renderBand(world.tiers, pauseRack, deactivatedRoles, pendingRoles, world.evolved);
+      hud.renderItemDetails(world.items, pauseItems);
+    }
     refreshTrackOverlay();
   }
   function toggleRoleActive(role: Role): void {

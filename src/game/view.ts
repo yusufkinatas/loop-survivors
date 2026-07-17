@@ -143,14 +143,19 @@ export async function preloadRunArt(): Promise<void> {
   await preloadSoundwoodFloor();
 }
 
-export interface GroundPickView {
+interface GroundPickBase {
   x: number;
   y: number;
-  role: Role;
   color: number;
   name: string;
   level: string;
+  effect?: string;
 }
+
+export type GroundPickView = GroundPickBase & (
+  | { role: Role; glyph?: never }
+  | { role?: never; glyph: string }
+);
 
 interface Pop {
   gfx: Graphics;

@@ -8,7 +8,7 @@ import type { Role } from '../audio/kits';
 import { AUDIO_SET_LIST } from '../audio/audio-sets';
 import { AFTERHOURS_ROLES, AFTERHOURS_VARIANTS } from '../audio/kits/afterhours';
 import { VOICE_MIX_GAIN } from '../audio/engine';
-import { EVOLUTIONS, ITEM_IDS, deriveBuildMods, type ItemId } from './items';
+import { EVOLUTIONS, ITEM_IDS, ITEMS, deriveBuildMods, type ItemId } from './items';
 import {
   CORE_ITEMS,
   CORE_VENUES,
@@ -48,11 +48,16 @@ assert.equal(mods.bounceCount, 3);
 assert.equal(mods.damageMul, 1.25);
 assert.equal(mods.maxHpBonus, 40);
 assert.equal(mods.armorBonus, 2);
+assert.equal(mods.hpRegenPerSecond, 0.5);
 
 const evolutionRoles = Object.values(EVOLUTIONS).map(({ role }) => role);
 assert.equal(new Set(evolutionRoles).size, 9, 'every evolution must have a unique weapon');
-assert.equal(new Set(Object.values(EVOLUTIONS).map(({ item }) => item)).size, 9,
-  'every passive should complete one evolution recipe');
+const recipeItems = new Set(Object.values(EVOLUTIONS).map(({ item }) => item));
+const pairedItems = new Set(ITEM_IDS.filter((id) => ITEMS[id].evolutionPartner !== undefined));
+assert.deepEqual(recipeItems, pairedItems,
+  'every paired passive should complete exactly one evolution recipe');
+assert.equal(ITEMS.recoveryTape.evolutionPartner, undefined,
+  'Recovery Tape should remain a standalone passive with no evolution recipe');
 assert.deepEqual(new Set(SANDBOX_ENEMY_CATALOG), new Set(ALL_ENEMY_KINDS),
   'the sandbox must expose every opening, endless, child, event, and boss enemy');
 assert.deepEqual(new Set(SANDBOX_ITEM_CATALOG), new Set(ITEM_IDS),
@@ -136,6 +141,11 @@ assert.equal(roundTrippedMeta.state.version, 2);
 assert.equal(roundTrippedMeta.state.notes, 412, 'the v2 note wallet should round-trip');
 assert.deepEqual(roundTrippedMeta.state.purchases, ['heavyAmp', 'clap', 'arp'],
   'shop purchases should round-trip in purchase order');
+const recoveryMeta = new MetaStore(new MemoryStorage());
+recoveryMeta.grantNotes(50);
+assert(recoveryMeta.purchase('recoveryTape'), 'Recovery Tape should be buyable from the first shop shelf');
+assert(recoveryMeta.unlockedItemIds().has('recoveryTape'),
+  'buying Recovery Tape should add it to the passive offer pool');
 const repeatVenueSettlement = meta.settleRun({
   timeS: 0,
   level: 1,
@@ -203,6 +213,25 @@ const events: RunEvents = {
   onHit: () => undefined,
   onMinute: (minute) => { minuteSeen = minute; },
 };
+
+const recoveryWorld = new RunWorld(
+  { width: 1280, height: 720 },
+  events,
+  { scripted: false, fx: false, rng: () => 0.99 },
+);
+recoveryWorld.player.hp = 50;
+recoveryWorld.addItem('recoveryTape', 5);
+recoveryWorld.update(2);
+assert.equal(recoveryWorld.player.hp, 51,
+  'max-level Recovery Tape should restore 0.5 HP each second');
+recoveryWorld.player.hp = recoveryWorld.playerMaxHp - 0.25;
+recoveryWorld.update(2);
+assert.equal(recoveryWorld.player.hp, recoveryWorld.playerMaxHp,
+  'passive regeneration must clamp at maximum health');
+recoveryWorld.player.hp = 0;
+recoveryWorld.update(2);
+assert.equal(recoveryWorld.player.hp, 0,
+  'passive regeneration must never revive a defeated player');
 
 const collectedNoteEvents: Array<[value: number, total: number]> = [];
 const noteWorld = new RunWorld(

@@ -782,6 +782,7 @@ button.big {
 .pause-overlay {
   gap: var(--sp-3);
   z-index: 8;
+  overflow-y: auto;
 }
 
 .pause-overlay .hint {
@@ -1539,9 +1540,97 @@ button.big {
   font-size: var(--fs-sm);
 }
 
+.pause-items {
+  width: min(92vw, 760px);
+  padding: 10px;
+  background: rgba(6, 10, 15, 0.84);
+  border: 1px solid #315a45;
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.62);
+  text-align: left;
+}
+
+.pause-items-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  color: var(--signal);
+  font: 800 10px/1 var(--font-mono);
+  letter-spacing: 0.1em;
+}
+
+.pause-items-head span {
+  color: var(--ink-faint);
+  font-size: 9px;
+}
+
+.pause-items-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.pause-item {
+  --item-color: var(--signal);
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  min-height: 46px;
+  padding: 6px 8px;
+  background: #0b111a;
+  border: 1px solid color-mix(in srgb, var(--item-color) 46%, #24303a);
+  border-left: 4px solid var(--item-color);
+}
+
+.pause-item-glyph {
+  color: var(--item-color);
+  font: 900 22px/1 var(--font-mono);
+  text-align: center;
+}
+
+.pause-item-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.pause-item-copy strong {
+  overflow: hidden;
+  color: #f1fff8;
+  font: 800 11px/1.1 var(--font-mono);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pause-item-copy span,
+.pause-items-empty {
+  margin: 0;
+  color: #b5c9bf;
+  font: 700 10px/1.25 var(--font-mono);
+}
+
+.sb-enemy-stats.passive-copy {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
 /* Phones: shrink the rack to a compact slot+pip strip so it never covers the
    arena or the HUD panel. */
 @media (max-width: 640px) {
+  .pause-overlay {
+    justify-content: flex-start;
+    padding-block: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-bottom));
+  }
+  .pause-overlay h1 { font-size: 28px; }
+  .pause-rack { margin-block: 0 4px; }
+  .pause-items { width: 96vw; padding: 7px; }
+  .pause-items-grid { gap: 4px; }
+  .pause-item { grid-template-columns: 22px minmax(0, 1fr); gap: 5px; min-height: 42px; padding: 5px; }
+  .pause-item-glyph { font-size: 17px; }
+  .pause-item-copy strong { font-size: 9px; }
+  .pause-item-copy span { font-size: 8px; }
   .band-rack {
     max-width: 96vw;
     gap: 2px;

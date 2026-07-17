@@ -616,14 +616,19 @@ export function makePlayerGfx(radius: number): PlayerGfx {
   return root;
 }
 
-export interface RewardSpec {
+interface RewardBase {
   x: number;
   y: number;
-  role: Role;
   color: number;
   name: string;
   level: string;
+  effect?: string;
 }
+
+export type RewardSpec = RewardBase & (
+  | { role: Role; glyph?: never }
+  | { role?: never; glyph: string }
+);
 
 export interface RewardGfx extends Container {
   __beam: Graphics;
@@ -644,6 +649,21 @@ const REWARD_LEVEL = new TextStyle({
   fontWeight: '700',
   fill: 0xe8f5ed,
   stroke: { color: SOUNDWOOD.ink, width: 4, join: 'round' },
+});
+const REWARD_EFFECT = new TextStyle({
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  fontSize: 11,
+  fontWeight: '800',
+  fill: 0xffffff,
+  letterSpacing: 0.25,
+  stroke: { color: SOUNDWOOD.ink, width: 3, join: 'round' },
+});
+const REWARD_GLYPH = new TextStyle({
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  fontSize: 32,
+  fontWeight: '900',
+  fill: 0xffffff,
+  stroke: { color: SOUNDWOOD.ink, width: 5, join: 'round' },
 });
 
 export function makeRewardGfx(spec: RewardSpec): RewardGfx {
@@ -667,21 +687,36 @@ export function makeRewardGfx(spec: RewardSpec): RewardGfx {
     const a = i * Math.PI / 2;
     platform.rect(snap(Math.cos(a) * 34 - 3), snap(Math.sin(a) * 34 - 3), 6, 6).fill(0xffffff);
   }
-  const icon = pixelGraphics(cachedPixelShape('reward-icon:' + spec.role, (g) => drawWeaponIcon(g, spec.role, 18)));
+  const role = spec.role;
+  const icon = role
+    ? pixelGraphics(cachedPixelShape('reward-icon:' + role, (g) => drawWeaponIcon(g, role, 18)))
+    : new Text({ text: spec.glyph ?? '•', style: REWARD_GLYPH, roundPixels: true });
+  if (icon instanceof Text) icon.anchor.set(0.5);
   icon.tint = spec.color;
   const labelPlate = new Graphics({ roundPixels: true });
-  labelPlate.roundRect(-68, 42, 136, 45, 6).fill({ color: SOUNDWOOD.ink, alpha: 0.9 });
-  labelPlate.rect(-62, 42, 124, 2).fill({ color: spec.color, alpha: 0.8 });
+  const plateHeight = spec.effect ? 66 : 45;
+  labelPlate.roundRect(-84, 42, 168, plateHeight, 6).fill({ color: SOUNDWOOD.ink, alpha: 0.92 });
+  labelPlate.rect(-78, 42, 156, 2).fill({ color: spec.color, alpha: 0.8 });
   const name = new Text({ text: spec.name.toUpperCase(), style: REWARD_NAME, roundPixels: true });
   name.anchor.set(0.5);
   name.position.set(0, 55);
   name.tint = spec.color;
+  if (name.width > 154) name.scale.x = 154 / name.width;
   const level = new Text({ text: 'LEVEL ' + spec.level, style: REWARD_LEVEL, roundPixels: true });
   level.anchor.set(0.5);
   level.position.set(0, 75);
+  const effect = spec.effect
+    ? new Text({ text: spec.effect.toUpperCase(), style: REWARD_EFFECT, roundPixels: true })
+    : null;
+  if (effect) {
+    effect.anchor.set(0.5);
+    effect.position.set(0, 96);
+    if (effect.width > 154) effect.scale.x = 154 / effect.width;
+  }
   root.__beam = beam;
   root.__platform = platform;
   root.addChild(beam, glow, platform, icon, labelPlate, name, level);
+  if (effect) root.addChild(effect);
   return root;
 }
 

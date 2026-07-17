@@ -1265,6 +1265,7 @@ export class RunWorld {
     this.timeS += dt;
     this.updateMinuteSystems(dt);
     this.updateVenue(dt);
+    this.updatePassiveRecovery(dt);
     this.movePlayer(dt);
     this.updateNeonLoopRecording(dt);
     if (this.scripted) {
@@ -1296,6 +1297,12 @@ export class RunWorld {
   }
 
   // ---- player ----
+
+  private updatePassiveRecovery(dt: number): void {
+    const rate = this.buildMods.hpRegenPerSecond;
+    if (rate <= 0 || this.player.hp <= 0 || this.player.hp >= this.playerMaxHp) return;
+    this.player.hp = Math.min(this.playerMaxHp, this.player.hp + rate * dt);
+  }
 
   private movePlayer(dt: number): void {
     const a = this.control();

@@ -13,6 +13,7 @@ export const ITEM_IDS = [
   'extensionCable',
   'magnetLanyard',
   'paddedJacket',
+  'recoveryTape',
 ] as const;
 
 export type ItemId = (typeof ITEM_IDS)[number];
@@ -28,7 +29,8 @@ export interface ItemDefinition {
   glyph: string;
   description: string;
   levelLines: readonly [string, string, string, string, string];
-  evolutionPartner: Role;
+  /** Omitted for utility passives that deliberately do not form a recipe. */
+  evolutionPartner?: Role;
 }
 
 export const ITEMS: Record<ItemId, ItemDefinition> = {
@@ -40,7 +42,7 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
   fastForward: {
     id: 'fastForward', name: 'Fast Forward', shortName: 'Shot Speed', color: 0x58dcff, glyph: '»',
     description: 'Moving projectiles travel faster.', evolutionPartner: 'snare',
-    levelLines: ['+10% projectile speed', '+20% total speed', '+30% total speed', '+40% total speed', '+50% total speed'],
+    levelLines: ['+10% projectile speed', '+20% total projectile speed', '+30% total projectile speed', '+40% total projectile speed', '+50% total projectile speed'],
   },
   needleTips: {
     id: 'needleTips', name: 'Needle Tips', shortName: 'Pierce', color: 0xffd65a, glyph: '◆',
@@ -50,12 +52,12 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
   mirrorball: {
     id: 'mirrorball', name: 'Mirrorball', shortName: 'Bounce', color: 0xb997ff, glyph: '◇',
     description: 'Moving projectiles rebound from arena rails.', evolutionPartner: 'hat',
-    levelLines: ['1 bounce at 65% power', '1 bounce at 75%', '2 bounces at 75%', '2 bounces at 85%', '3 bounces at 85%'],
+    levelLines: ['1 bounce, retains 65% power', '1 bounce, retains 75% power', '2 bounces, retain 75% power', '2 bounces, retain 85% power', '3 bounces, retain 85% power'],
   },
   wideLens: {
     id: 'wideLens', name: 'Wide Lens', shortName: 'Area', color: 0x79ff90, glyph: '◉',
     description: 'Attacks cover more ground; orbiters travel slightly wider.', evolutionPartner: 'chord',
-    levelLines: ['+6% area', '+12% total area', '+18% total area', '+24% total area', '+30% total area'],
+    levelLines: ['+6% attack area', '+12% total attack area', '+18% total attack area', '+24% total attack area', '+30% total attack area'],
   },
   heavyAmp: {
     id: 'heavyAmp', name: 'Heavy Amp', shortName: 'Might', color: 0xff7b65, glyph: '▲',
@@ -65,7 +67,7 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
   extensionCable: {
     id: 'extensionCable', name: 'Extension Cable', shortName: 'Duration', color: 0x60e8d2, glyph: '∞',
     description: 'Projectiles, zones, and orbiters stay active longer.', evolutionPartner: 'arp',
-    levelLines: ['+8% duration', '+16% total duration', '+24% total duration', '+32% total duration', '+40% total duration'],
+    levelLines: ['+8% attack duration', '+16% total attack duration', '+24% total attack duration', '+32% total attack duration', '+40% total attack duration'],
   },
   magnetLanyard: {
     id: 'magnetLanyard', name: 'Magnet Lanyard', shortName: 'Pickup', color: 0x66baff, glyph: '✦',
@@ -76,6 +78,11 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     id: 'paddedJacket', name: 'Padded Jacket', shortName: 'Guard', color: 0xff91b9, glyph: '▣',
     description: 'Raises maximum health, heals immediately, and adds armor.', evolutionPartner: 'clap',
     levelLines: ['+8 max HP and heal 8', '+16 total max HP', '+24 max HP, +1 armor', '+32 total max HP', '+40 max HP, +2 armor'],
+  },
+  recoveryTape: {
+    id: 'recoveryTape', name: 'Recovery Tape', shortName: 'Regen', color: 0x72f5a4, glyph: '✚',
+    description: 'Slowly restores missing health throughout the run.',
+    levelLines: ['+0.1 HP/sec regeneration', '+0.2 HP/sec regeneration', '+0.3 HP/sec regeneration', '+0.4 HP/sec regeneration', '+0.5 HP/sec regeneration'],
   },
 };
 
@@ -97,6 +104,7 @@ export interface BuildMods {
   pullMul: number;
   maxHpBonus: number;
   armorBonus: number;
+  hpRegenPerSecond: number;
 }
 
 export const BASE_BUILD_MODS: Readonly<BuildMods> = {
@@ -115,6 +123,7 @@ export const BASE_BUILD_MODS: Readonly<BuildMods> = {
   pullMul: 1,
   maxHpBonus: 0,
   armorBonus: 0,
+  hpRegenPerSecond: 0,
 };
 
 export function itemLevel(items: ReadonlyMap<ItemId, number>, id: ItemId): number {
@@ -131,6 +140,7 @@ export function deriveBuildMods(items: ReadonlyMap<ItemId, number>): BuildMods {
   const cable = itemLevel(items, 'extensionCable');
   const magnet = itemLevel(items, 'magnetLanyard');
   const jacket = itemLevel(items, 'paddedJacket');
+  const recovery = itemLevel(items, 'recoveryTape');
   const needlePierce = [0, 1, 1, 2, 2, 3][needle];
   const needleDamage = [1, 1, 1.06, 1.06, 1.12, 1.12][needle];
   const bounceCount = [0, 1, 1, 2, 2, 3][bounce];
@@ -151,6 +161,7 @@ export function deriveBuildMods(items: ReadonlyMap<ItemId, number>): BuildMods {
     pullMul: 1 + magnet * 0.08,
     maxHpBonus: jacket * 8,
     armorBonus: jacket >= 5 ? 2 : jacket >= 3 ? 1 : 0,
+    hpRegenPerSecond: recovery * 0.1,
   };
 }
 

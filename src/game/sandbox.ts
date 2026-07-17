@@ -282,7 +282,13 @@ export function mountSandboxPanel(
     const info = el('div', 'sb-enemy-info', row);
     const name = el('span', 'sb-loadout-label', info, `${item.glyph} ${item.name}`);
     name.title = item.description;
-    el('span', 'sb-enemy-stats', info, `evolves ${ROLE_META[item.evolutionPartner].name}`);
+    const partner = item.evolutionPartner;
+    el(
+      'span',
+      'sb-enemy-stats passive-copy',
+      info,
+      `${item.description} · ${partner ? `evolves ${ROLE_META[partner].name}` : 'standalone · no evolution'}`,
+    );
     const controls = el('div', 'sb-btns', row);
     const choices: ChoiceButtons<number> = { value: () => world.items.get(id) ?? 0, options: [] };
     for (let level = 0; level <= ITEM_MAX_LEVEL; level++) {
@@ -470,7 +476,7 @@ export function mountSandboxPanel(
     const next = Math.max(0, Math.min(ITEM_MAX_LEVEL, Math.floor(level)));
     world.setItemLevelForSandbox(id, next);
     const partner = ITEMS[id].evolutionPartner;
-    if (next < ITEM_MAX_LEVEL) clearEvolution(partner);
+    if (partner && next < ITEM_MAX_LEVEL) clearEvolution(partner);
     opts.onLoadout?.();
   }
 
@@ -558,7 +564,8 @@ export function mountSandboxPanel(
     buildReadout.textContent =
       `build: move ×${mods.moveMul.toFixed(2)} · damage ×${mods.damageMul.toFixed(2)}` +
       ` · speed ×${mods.projectileSpeedMul.toFixed(2)} · pierce +${mods.extraPierce}` +
-      ` · bounce ${mods.bounceCount} · area ×${mods.areaMul.toFixed(2)}`;
+      ` · bounce ${mods.bounceCount} · area ×${mods.areaMul.toFixed(2)}` +
+      ` · regen ${mods.hpRegenPerSecond.toFixed(1)} HP/s`;
     for (const [id, venueButton] of venueButtons) venueButton.classList.toggle('on', world.venue === id);
     const venue = VENUES[world.venue];
     venueReadout.textContent = `${venue.ruleName}: ${venue.ruleDescription}`;

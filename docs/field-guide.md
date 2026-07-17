@@ -17,8 +17,10 @@ Three instrument names used below may be unfamiliar:
 Move with WASD, the arrow keys, or the touch joystick. Weapons fire
 automatically in time with the track: one heard hit creates one gameplay
 attack. Blue gems give experience. A level-up drops three physical reward
-pedestals around the player; walk into one to take it. A build can hold one
-weapon in each of seven band positions and up to six passive items.
+pedestals around the player; item pedestals print the exact next-tier effect in
+one line, and the pause screen lists every current passive total. Walk into one
+pedestal to take it. A build can hold one weapon in each of seven band
+positions and up to six passive items.
 
 There is no victory timer. The first eight minutes are an authored opening
 act; from minute eight onward, the endless director combines enemy families
@@ -66,7 +68,7 @@ Midnight Warehouse, and Velvet Rooftop.
 
 | Shelf opens after | Purchases available |
 | --- | --- |
-| 0 owned | First Reroll (35), Heavy Amp (45), Clap (55) |
+| 0 owned | First Reroll (35), Heavy Amp (45), Recovery Tape (50), Clap (55) |
 | 2 owned | Arp (90), Needle Tips (65), Last Metro (110) |
 | 5 owned | Lead (130), Extension Cable (75), Padded Jacket (85), Acid Basement (140) |
 | 8 owned | Bell (180), Magnet Lanyard (110), Second Wind (160), Tour Loadout (150) |
@@ -94,10 +96,12 @@ level-up reward pedestals, Encore Cases, and venue gates alone because those
 are player choices rather than loose resources. It is also separate from the
 permanent **Magnet Lanyard** passive.
 
-## The nine passive items
+## The ten passive items
 
 Every passive has five levels. The table shows its recognizable purpose and
-its total effect at level five.
+its total effect at level five. Nine passives complete weapon recipes; Recovery
+Tape is deliberately standalone, so a useful item does not always need to be
+an evolution ingredient.
 
 | Passive | Level-five effect | Evolution partner |
 | --- | --- | --- |
@@ -110,6 +114,7 @@ its total effect at level five.
 | Extension Cable | +40% projectile, zone, and orbiter duration | Arp |
 | Magnet Lanyard | +100% pickup range and +40% pull speed | Bell |
 | Padded Jacket | +40 maximum health, immediate healing as it levels, and +2 armor | Clap |
+| Recovery Tape | Restores 0.5 HP per second while below maximum health | None — standalone |
 
 ## The nine weapon evolutions
 
@@ -243,7 +248,7 @@ altering the player's career.
 - **Combat:** set threat/player level; spawn all 20 enemy fixtures near the
   player, in groups of eight, or as rings; create a Headliner or complete
   minute wave; toggle invulnerability; clear the arena.
-- **Build:** set every live weapon tier and all nine passive levels; assemble or
+- **Build:** set every live weapon tier and all ten passive levels; assemble or
   clear a full loadout; toggle each of the nine complete evolution recipes;
   inspect the live combined modifiers.
 - **Tour:** switch among all six venues, open the real walk-through route-gate
@@ -251,5 +256,5 @@ altering the player's career.
   install or clear a figure-eight Neon Loop.
 - **Career:** use a disposable in-memory note wallet; create physical notes,
   XP pickup fields, and Stage Magnets; trigger the full-screen vacuum; grant
-  testing currency; exercise the real gated 17-offer Afterhours Shop. Nothing
+  testing currency; exercise the real gated 18-offer Afterhours Shop. Nothing
   in this tab touches the player save.

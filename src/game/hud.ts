@@ -5,7 +5,7 @@
 
 import { type Kit, type Role } from '../audio/kits';
 import { SLOTS, SLOT_LABEL, ownerOfSlot, supportedRoster } from './band';
-import { EVOLUTION_BY_ROLE, ITEMS, type ItemId } from './items';
+import { EVOLUTION_BY_ROLE, ITEM_IDS, ITEMS, type ItemId } from './items';
 import type { MetaStore, RunSettlement } from './meta';
 import { VENUES, isVenueId } from './tour';
 
@@ -137,7 +137,35 @@ export class Hud {
       el('span', 'item-glyph', socket, item.glyph);
       el('span', 'item-name', socket, item.shortName);
       el('span', 'item-tier', socket, String(level));
-      socket.title = `${item.name} ${level}: ${item.levelLines[level - 1]}`;
+      const itemSummary = `${item.name} ${level}: ${item.levelLines[level - 1]}. ${item.description}`;
+      socket.title = itemSummary;
+      socket.setAttribute('aria-label', itemSummary);
+    }
+  }
+
+  /** Plain-language passive details for the pause screen. The compact live
+   * rack cannot carry readable copy on phones, so pausing is the reliable
+   * in-run reference for both the current total and the item's core purpose. */
+  renderItemDetails(items: ReadonlyMap<ItemId, number>, into: HTMLElement): void {
+    into.replaceChildren();
+    const head = el('div', 'pause-items-head', into);
+    const countCopy = items.size > 6 ? `${items.size} ACTIVE · RUN CAP 6` : `${items.size}/6`;
+    el('strong', '', head, `PASSIVE ITEMS · ${countCopy}`);
+    el('span', '', head, 'CURRENT TOTALS');
+    if (items.size === 0) {
+      el('p', 'pause-items-empty', into, 'No passive items yet. Walk into an item reward pedestal to take one.');
+      return;
+    }
+    const grid = el('div', 'pause-items-grid', into);
+    for (const [id, level] of items) {
+      const item = ITEMS[id];
+      const row = el('div', 'pause-item', grid);
+      row.style.setProperty('--item-color', `#${item.color.toString(16).padStart(6, '0')}`);
+      el('span', 'pause-item-glyph', row, item.glyph);
+      const copy = el('div', 'pause-item-copy', row);
+      el('strong', '', copy, `${item.name} · LV ${level}`);
+      el('span', '', copy, item.levelLines[level - 1]);
+      row.setAttribute('aria-label', `${item.name}, level ${level}: ${item.levelLines[level - 1]}`);
     }
   }
 
@@ -302,7 +330,7 @@ export class Hud {
 
       const collection = el('div', 'collection-strip', profile);
       el('span', '', collection, `${meta.state.unlockedWeapons.length}/9 WEAPONS`);
-      el('span', '', collection, `${meta.state.unlockedItems.length}/9 PASSIVES`);
+      el('span', '', collection, `${meta.state.unlockedItems.length}/${ITEM_IDS.length} PASSIVES`);
       el('span', '', collection, `${meta.state.unlockedVenues.length}/6 VENUES`);
       el('span', '', collection, `${meta.state.rerolls} REROLLS`);
 

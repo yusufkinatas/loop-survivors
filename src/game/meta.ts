@@ -39,6 +39,7 @@ export const SHOP_OFFER_IDS = [
   'clap',
   'arp',
   'needleTips',
+  'recoveryTape',
   'metro',
   'lead',
   'extensionCable',
@@ -72,6 +73,8 @@ export const SHOP_OFFERS: readonly ShopOffer[] = [
     description: 'Refresh one ordinary level-up offer per run.' },
   { id: 'heavyAmp', kind: 'item', contentId: 'heavyAmp', name: 'Heavy Amp', cost: 45, minOwned: 0,
     description: 'More damage and shove; completes the Bass evolution recipe.' },
+  { id: 'recoveryTape', kind: 'item', contentId: 'recoveryTape', name: 'Recovery Tape', cost: 50, minOwned: 0,
+    description: 'Slow health regeneration; a standalone passive with no evolution.' },
   { id: 'clap', kind: 'weapon', contentId: 'clap', name: 'Clap', cost: 55, minOwned: 0,
     description: 'A close circular blast that controls the crowd.' },
 
