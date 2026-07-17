@@ -1,7 +1,6 @@
 // The music engine: fire control and arranger at once (docs/plan.md,
-// Coupling Model A). In M1 sub-phase A it only makes sound; sub-phase B
-// attaches damage to the same triggers. It is a pure function of build
-// (which voices are on) and grid (the clock's steps): no stage input exists.
+// Coupling Model A). It is a pure function of build (which voices are on) and
+// grid (the clock's steps): no stage input exists.
 
 import { Clock } from './clock';
 import { chartEventsAtStep } from './arranger';

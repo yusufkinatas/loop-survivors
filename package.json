@@ -7,8 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "check": "tsc --noEmit",
-    "check:mad-forest": "tsx scripts/madforest-check.ts"
+    "check": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/node": "^26.1.0",

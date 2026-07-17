@@ -1,9 +1,9 @@
 # Track Lab cover samples
 
-Proof-of-concept assets for the M3 Track Lab (`#tracklab`). The cover
+Proof-of-concept assets for the Track Lab (`#tracklab`). The cover
 *arrangements* reference real tracks and are demo scaffolding only — they do
-not ship. Per `docs/plan.md` ship checklist, anything that ships is replaced
-by original compositions and license-verified samples.
+not ship. Anything that ships must be replaced by original compositions and
+license-verified samples.
 
 Sample sources:
 

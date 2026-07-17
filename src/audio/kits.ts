@@ -19,13 +19,12 @@ export type Role =
   | 'tom'
   | 'arp'
   | 'crash'
-  // The band, sub-phase B — the first damage hires (docs/phases/the-band.md).
+  // The first damage hires.
   | 'shaker'
   | 'acid'
   | 'pluck'
   | 'rhodes'
-  // The band, sub-phase C — the last hires + the auto-dash utility weapon
-  // (riser). See docs/phases/the-band.md.
+  // The last hires + the auto-dash utility weapon (riser).
   | 'riser'
   | 'bell';
 
@@ -494,8 +493,8 @@ async function renderBass(rootHz: number): Promise<AudioBuffer> {
 // minor-pentatonic root stay inside the note set when the chart shifts the
 // whole sample to the other allowed chord roots (0, +5, +7), which a triad
 // would not.
-// The bass ladder's weight variant (M2 spec: "fatter variants"). "Fat" is the
-// same line with more grit and a slower filter close.
+// The bass ladder's weight variant. "Fat" is the same line with more grit and
+// a slower filter close.
 async function renderBassFat(rootHz: number): Promise<AudioBuffer> {
   const ctx = offline(0.8);
   const osc = ctx.createOscillator();
@@ -758,10 +757,10 @@ export const ROLE_META: Record<Role, RoleMeta> = {
   bell: { name: 'Bell', color: '#ffd76b', pitched: true, choke: false, variants: ['bell'] },
 };
 
-/** Load a real sample file and decode it. The files are pre-corrected at build
- *  time (scripts/build-samples.mjs: ffmpeg strips silence, caps length, fades
- *  the tail, and peak-normalizes), so the runtime just plays them — no trimming
- *  or level fixing in code. The fix lives in the asset, not the game. */
+/** Load a real sample file and decode it. The files are pre-corrected offline
+ *  at asset-build time (ffmpeg strips silence, caps length, fades the tail, and
+ *  peak-normalizes), so the runtime just plays them — no trimming or level
+ *  fixing in code. The fix lives in the asset, not the game. */
 export async function loadSample(url: string): Promise<AudioBuffer> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`sample ${url}: ${res.status}`);

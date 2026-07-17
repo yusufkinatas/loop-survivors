@@ -1,7 +1,6 @@
 // The rehearsal room: a no-pressure mode to sculpt every voice's chart by
 // hand while the loop plays, toggle voices in and out of the mix, mix their
-// volume, and listen. First-class deliverable of M1 sub-phase A
-// (docs/phases/m1-demo.md).
+// volume, and listen.
 
 import { MusicEngine } from '../audio/engine';
 import { type Role } from '../audio/kits';

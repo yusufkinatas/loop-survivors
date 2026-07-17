@@ -4,7 +4,7 @@
 // supplies a ladder for; every other role is never offered and never voiced.
 //
 // The soundset drops instruments it does not suit, including whole band slots
-// (see docs/game/band.ts). What remains still has to clear the playability
+// (see src/game/band.ts). What remains still has to clear the playability
 // floor below: a beat, a low end, a tick, and a melodic voice — so a full
 // build always sounds like a track.
 //

@@ -24,7 +24,7 @@ import {
 const TRAIL_ROLES = new Set<Role>(['snare', 'lead']);
 const TRAIL_LEN = 6; // points kept per trail
 
-// Shared geometry (M2 sub-phase C, frame rate above ~2000 alive): every
+// Shared geometry (frame-rate hot path above ~2000 alive): every
 // enemy of a (kind, band) is the same shape, so all their Graphics share
 // one prebuilt GraphicsContext instead of each owning geometry — the GPU
 // batches them. Cached at module level; contexts are tiny and survive

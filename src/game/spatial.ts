@@ -1,4 +1,4 @@
-// Per-frame spatial hash over circles (docs/phases/m1-demo.md, collision).
+// Per-frame spatial hash over circles (collision).
 // Rebuilt every frame; queries return candidates whose cells overlap a
 // circle. No physics engine, circle-versus-circle only.
 
@@ -30,7 +30,7 @@ export class SpatialHash<T extends Circle> {
 
   /** One cell per item (its center). Multi-cell insertion needed a dedup
    *  scan on every query — quadratic inside a packed horde bucket, and the
-   *  frame's hot spot above ~2000 alive (M2 sub-phase C). */
+   *  frame's hot spot above ~2000 alive. */
   insert(item: T): void {
     const k = SpatialHash.key(Math.floor(item.x / CELL), Math.floor(item.y / CELL));
     let bucket = this.cells.get(k);
