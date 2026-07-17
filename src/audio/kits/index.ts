@@ -1,77 +1,129 @@
 // The soundset kit: the voicing of the instrument catalog the engine plays.
-// The synthesized voices are built by buildSoundsetKit (below); the signature
-// drums (and the sub-bass) are real one-shots overlaid on top, since drums
-// carry a kit's identity in a way one synth engine cannot.
+// The nine live voices are freshly rendered by buildSoundsetKit (below); one
+// selected drum palette overlays its signature hits. Pitched/melodic voices
+// stay procedural so every palette remains locked to the same allowed notes.
 //
 // OfflineAudioContext work happens only inside builder functions, never at
 // module load. Only browser code (engine.ts) imports here.
 
-import { loadSample, makeKit, type Kit, type Role } from '../kits';
-import { buildHouseKit } from './house';
-
-// Real signature-drum samples that override the synthesized drums, plus the
-// sampled sub-bass. Each entry: role -> [variantId, fileBase]. Files live at
-// public/samples/house/<fileBase>.wav and are pre-corrected offline at
-// asset-build time, so nothing about them is fixed up here.
-type SampleSpec = [variant: string, file: string];
-
-const DIR = 'house';
-
-const SAMPLE_OVERLAY: Partial<Record<Role, SampleSpec[]>> = {
-  kick: [['hard', 'kick']],
-  clap: [['clap', 'clap']],
-  hat: [['closed', 'hat_closed'], ['open', 'hat_open']],
-  shaker: [['shaker', 'shaker']],
-  crash: [['crash', 'crash']],
-  riser: [['riser', 'riser']],
-  bass: [['bass', 'bass'], ['fat', 'bass_fat']], // pitched — see SAMPLE_TUNE
-};
-
-// Semitone tune for PITCHED sampled roles: aligns the sample's recorded root to
-// the engine's A reference (note 0). The bass hits are C2 (~64 Hz, +3 semis
-// above A1), so -3 seats them in the synth bass's octave.
-const SAMPLE_TUNE: Partial<Record<Role, number>> = {
-  bass: -3,
-};
+import { loadSample, makeKit, offline, type Kit, type Role } from '../kits';
+import {
+  DEFAULT_AUDIO_SET_ID,
+  getAudioSet,
+  type AudioSetId,
+  type AudioSetSample,
+} from '../audio-sets';
+import { buildAfterhoursKit } from './afterhours';
 
 /** The roles that are sample-backed (their own real voicing). The dev-only
  *  ★ custom badge marks these on offers so they are easy to focus on. */
-export function sampledRoles(): Set<Role> {
-  return new Set(Object.keys(SAMPLE_OVERLAY) as Role[]);
-}
-
-/** Overlay the real drum/bass samples onto the synth kit. A role whose every
- *  variant loads is replaced by the sampled kit; if any file fails to load
- *  (offline, 404), that role keeps its synthesized voice (never silent). */
-async function overlaySamples(kit: Map<Role, Kit>): Promise<void> {
-  await Promise.all(
-    (Object.entries(SAMPLE_OVERLAY) as [Role, SampleSpec[]][]).map(async ([role, specs]) => {
-      try {
-        const entries = await Promise.all(
-          specs.map(async ([variant, file]) =>
-            [variant, await loadSample(`/samples/${DIR}/${file}.wav`)] as const,
-          ),
-        );
-        kit.set(role, makeKit(role, new Map(entries), SAMPLE_TUNE[role] ?? 0));
-      } catch (e) {
-        console.warn(`[kits] ${role} sample load failed, keeping synth voice:`, e);
-      }
-    }),
+export function sampledRoles(setId: AudioSetId | string = DEFAULT_AUDIO_SET_ID): Set<Role> {
+  return new Set(
+    (Object.keys(getAudioSet(setId).samples) as Role[]).filter((role) => role !== 'shaker'),
   );
 }
 
-// The soundset kit is rendered once, on first use, then reused. The promise is
-// cached (not the resolved map) so concurrent callers share one render pass.
-let cache: Promise<Map<Role, Kit>> | null = null;
+/** Blend the palette's extra percussion accent under its kick. The accent is
+ * intentionally not a tenth weapon: it makes every one of the 18 sourced
+ * files audible while keeping the nine-weapon arrangement coherent. */
+async function mixKickTexture(kick: AudioBuffer, texture: AudioBuffer): Promise<AudioBuffer> {
+  const textureDelay = 0.012;
+  const ctx = offline(Math.max(kick.duration, textureDelay + texture.duration) + 0.02);
+  const kickSource = ctx.createBufferSource();
+  kickSource.buffer = kick;
+  const kickGain = ctx.createGain();
+  kickGain.gain.value = 0.9;
+  kickSource.connect(kickGain).connect(ctx.destination);
 
-/** The soundset voicing of the catalog: the synth kit with its real drum/bass
- *  samples overlaid. Built lazily and cached. */
-export function buildSoundsetKit(rootHz: number): Promise<Map<Role, Kit>> {
-  if (!cache) {
-    cache = buildHouseKit(rootHz).then(async (kit) => {
-      await overlaySamples(kit);
-      return kit;
-    });
+  const textureSource = ctx.createBufferSource();
+  textureSource.buffer = texture;
+  const textureGain = ctx.createGain();
+  textureGain.gain.value = 0.2;
+  textureSource.connect(textureGain).connect(ctx.destination);
+  kickSource.start(0);
+  textureSource.start(textureDelay);
+  return ctx.startRendering();
+}
+
+async function layerPercussionTexture(
+  kit: Map<Role, Kit>,
+  setId: AudioSetId | string,
+): Promise<void> {
+  const set = getAudioSet(setId);
+  const spec = set.samples.shaker?.[0];
+  const kick = kit.get('kick');
+  const kickBuffer = kick?.samples.get('hard');
+  if (!spec || !kick || !kickBuffer) return;
+  try {
+    const texture = await loadSample(`${set.sampleRoot}/${spec.file}`);
+    const mixed = await mixKickTexture(kickBuffer, texture);
+    const samples = new Map(kick.samples);
+    samples.set('hard', mixed);
+    kit.set('kick', makeKit('kick', samples));
+  } catch (e) {
+    console.warn(`[kits] ${set.id} percussion texture failed, keeping clean kick:`, e);
   }
-  return cache;
+}
+
+/** Overlay one palette's real drum/percussion samples onto the synth kit. A
+ *  role whose every variant loads is replaced atomically; if any file fails
+ *  (offline, 404), that role is left unchanged. Roles absent from this partial
+ *  kit fall back to the engine's builtin procedural buffers (never silent). */
+async function overlaySamples(
+  kit: Map<Role, Kit>,
+  setId: AudioSetId | string,
+): Promise<void> {
+  const set = getAudioSet(setId);
+  await Promise.all(
+    (Object.entries(set.samples) as [Role, readonly AudioSetSample[]][]).map(async ([role, specs]) => {
+      if (role === 'shaker') return;
+      try {
+        const entries = await Promise.all(
+          specs.map(async ({ variant, file }) =>
+            [variant, await loadSample(`${set.sampleRoot}/${file}`)] as const,
+          ),
+        );
+        kit.set(role, makeKit(role, new Map(entries)));
+      } catch (e) {
+        console.warn(
+          `[kits] ${set.id}/${role} sample load failed, keeping procedural voice:`,
+          e,
+        );
+      }
+    }),
+  );
+  await layerPercussionTexture(kit, set.id);
+}
+
+// Each palette/root pair renders once, then reuses the in-flight/resolved
+// promise. Separate palette keys prevent an unlock/selection from returning
+// whichever kit happened to load first.
+const cache = new Map<string, Promise<Map<Role, Kit>>>();
+
+/** The complete live soundset: nine fresh procedural voices with the selected
+ *  real drum palette overlaid. Existing callers may omit `setId` and receive
+ *  the default palette. Built lazily and cached. */
+export function buildSoundsetKit(
+  rootHz: number,
+  setId: AudioSetId | string = DEFAULT_AUDIO_SET_ID,
+): Promise<Map<Role, Kit>> {
+  const set = getAudioSet(setId);
+  const key = `${set.id}:${rootHz}`;
+  let pending = cache.get(key);
+  if (!pending) {
+    pending = buildAfterhoursKit(rootHz)
+      .then(async (kit) => {
+        await overlaySamples(kit, set.id);
+        return kit;
+      })
+      .catch((error: unknown) => {
+        // Keep a run playable if a browser cannot create an offline render.
+        // Deleting the failed promise lets a later palette change retry.
+        cache.delete(key);
+        console.warn('[kits] Afterhours render failed; keeping emergency voices:', error);
+        return new Map<Role, Kit>();
+      });
+    cache.set(key, pending);
+  }
+  return pending;
 }

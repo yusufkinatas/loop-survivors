@@ -22,9 +22,64 @@ music, and the system guarantees the result always sounds decent.
    game, it never excuses a broken one. A muted run has to hold up on its own.
 4. **Combinations over volume.** Depth comes from systems interacting, not
    from content mass.
+5. **A run ends when the crowd wins.** There is no victory timer. Threat rises
+   at every minute mark forever, with authored opening acts flowing into a
+   procedural tour that must eventually overwhelm the player.
+6. **Career progress favors expression over stat grind.** Reputation unlocks
+   weapons, passive items, venues, and a few authored late-career perks. It
+   never becomes an uncapped treadmill of permanent damage, health, or speed.
 
 Cut, deliberately: a shareable per-run track artifact. No recording,
 rendering, or sharing systems in v1.
+
+## Run Shape
+
+The first eight minutes are a deliberately authored opening act. After that,
+an endless director recombines enemy families, formation patterns, population
+pressure, elite modifiers, and five-minute Headliner encounters. Every minute
+is a visible threat step: enemy health, damage, speed, rewards, density, and a
+small tempo lift scale together. Scaling is slow enough that a strong build can
+keep finding a new ceiling, but uncapped health and damage ensure every run
+eventually ends.
+
+Every five minutes the **Infinite Night Tour** moves to a new venue. Before the
+transition, the player walks through one of two stage gates; each offers a
+legible benefit and danger. Venues change the arena art, sampled drum palette,
+and a bounded combat rule without rewriting the build's composition.
+
+Two run systems reward movement and mounting danger:
+
+- **Neon Loop** remembers the player's path at the end of each minute, then
+  turns it into a temporary glowing rail that slows enemies and reflects moving
+  attacks.
+- **Pressure Break** fills from close calls and close-range kills. When full,
+  it banks one short four-beat section (four steady counts of the music),
+  briefly muffles the track and slows moving attacks, then replays the stored
+  sounds and attacks as one amplified burst.
+
+## Build Progression
+
+A build has weapons and up to six passive items. Passives change recognizable
+combat verbs—movement speed, projectile speed, piercing, wall bounces, size,
+damage, duration, pickup reach, and protection—so combinations are useful even
+with the sound muted. Once a weapon and its paired passive are both maxed, the
+next Headliner drops an evolution case. The evolved weapon receives a new
+name, visuals, audio processing, damage profile, and attack pattern; evolution
+is a qualitative transformation rather than another percentage level.
+
+After all normal build slots and levels are complete, level-ups become Encore
+picks. Encore bonuses are small, diminishing run-only improvements, preventing
+dead rewards without displacing the authored weapon and item balance.
+
+## Meta Progression
+
+Death settles reputation from survival, kills, level, evolutions, bosses, and
+new venues. Reputation advances a fifteen-rank career ladder. Rank rewards add
+new choice-space: instruments, passive items, venues, rerolls, an optional
+starting passive, and one late-career second chance. The save is versioned,
+validated at load, and stored locally. The two fixed combat perks are a tier-I
+starting passive and one 30%-health Second Wind; there are no repeatable
+permanent-stat purchases, and the authored ladder ends at rank fifteen.
 
 ## Core Architecture
 
@@ -53,9 +108,10 @@ at once. It is the main engine of the game.
 - Each weapon is a distinct gameplay archetype (aura pulses, piercing bolts,
   sprays, melee arcs, orbiters, homing seekers, thrown zones, and so on), so a
   muted build already plays like a varied survivors-like. All weapons draw from
-  one shared soundset — a single fixed voicing of the instrument catalog, one
-  tempo, one set of hand-authored patterns. The soundset is fixed, not
-  player-selectable.
+  one shared soundset at a time — one coherent voicing of the instrument
+  catalog and one set of hand-authored patterns. The venue may rotate among
+  curated drum palettes; this changes texture, not notes, charts, or build
+  power, and is never presented as a player theory decision.
 - Atomic unit: a **sound kit** plus a **music chart**. A kit is a small family
   of related samples per weapon (soft and hard variants, open and closed,
   multiple notes for pitched instruments). A chart says when, which variant,

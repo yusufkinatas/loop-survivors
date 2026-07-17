@@ -5,6 +5,8 @@
 
 import { type Kit, type Role } from '../audio/kits';
 import { SLOTS, SLOT_LABEL, ownerOfSlot, supportedRoster } from './band';
+import { EVOLUTION_BY_ROLE, ITEMS, type ItemId } from './items';
+import type { MetaStore, RunSettlement } from './meta';
 
 import { TIER_COUNT } from '../audio/charts';
 /** Tier numerals used by the band rack. */
@@ -32,6 +34,12 @@ export class Hud {
   private pulse: HTMLElement;
   private toastStack: HTMLElement;
   private rack: HTMLElement;
+  private itemRack: HTMLElement;
+  private pressureFill: HTMLElement;
+  private pressureLabel: HTMLElement;
+  private venueLabel: HTMLElement;
+  private rerollButton: HTMLButtonElement;
+  private runInfoKey = '';
   private screen: HTMLElement | null = null;
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
   private kits: Map<Role, Kit>;
@@ -48,11 +56,15 @@ export class Hud {
     const top = el('div', 'hud-top', this.bar);
     this.timer = el('span', 'hud-timer', top, '0:00');
     this.levelEl = el('span', 'hud-level', top, 'LV 1');
+    this.venueLabel = el('span', 'hud-venue', top, 'NEON ALLEY');
     const hp = el('div', 'meter hp', this.bar);
     this.hpFill = el('div', 'fill', hp);
     el('span', 'meter-cap', hp, 'HP');
     const xp = el('div', 'meter xp', this.bar);
     this.xpFill = el('div', 'fill', xp);
+    const pressure = el('div', 'meter pressure', this.bar);
+    this.pressureFill = el('div', 'fill', pressure);
+    this.pressureLabel = el('span', 'meter-cap pressure-cap', pressure, 'PRESSURE 0%');
     this.bar.style.display = 'none';
 
     this.flash = el('div', 'hit-flash', root);
@@ -61,11 +73,64 @@ export class Hud {
     // The band rack: seven sockets, one per band position, empty until hired.
     this.rack = el('div', 'band-rack', root);
     this.rack.style.display = 'none';
+    this.itemRack = el('div', 'item-rack', root);
+    this.itemRack.style.display = 'none';
+    this.rerollButton = el('button', 'reroll-live', root, 'REROLL') as HTMLButtonElement;
+    this.rerollButton.style.display = 'none';
   }
 
   showHud(show: boolean): void {
     this.bar.style.display = show ? '' : 'none';
     this.rack.style.display = show ? '' : 'none';
+    this.itemRack.style.display = show ? '' : 'none';
+    this.rerollButton.style.display = show ? '' : 'none';
+  }
+
+  setRerollAction(action: () => void): void {
+    this.rerollButton.onclick = action;
+  }
+
+  setRunInfo(
+    items: ReadonlyMap<ItemId, number>,
+    evolved: ReadonlySet<Role>,
+    pressureHeat: number,
+    pressureState: string,
+    venue: string,
+    chapter: number,
+    rerolls: number,
+  ): void {
+    const itemPart = [...items].map(([id, level]) => `${id}:${level}`).join('|');
+    const evolvedPart = [...evolved].join('|');
+    const key = `${itemPart}/${evolvedPart}/${Math.round(pressureHeat)}/${pressureState}/${venue}/${chapter}/${rerolls}`;
+    if (key === this.runInfoKey) return;
+    this.runInfoKey = key;
+    this.venueLabel.textContent = `${venue.replace(/([A-Z])/g, ' $1').toUpperCase()} · SET ${chapter + 1}`;
+    this.pressureFill.style.width = `${Math.max(0, Math.min(100, pressureHeat))}%`;
+    this.pressureLabel.textContent = pressureState === 'break'
+      ? 'HOLD THE DROP'
+      : pressureState === 'armed'
+        ? 'PRESSURE ARMED'
+        : `PRESSURE ${Math.round(pressureHeat)}%`;
+    this.pressureLabel.classList.toggle('armed', pressureState === 'armed' || pressureState === 'break');
+    this.pressureFill.classList.toggle('armed', pressureState === 'armed' || pressureState === 'break');
+    this.rerollButton.textContent = `REROLL ×${rerolls}`;
+    this.rerollButton.disabled = rerolls <= 0;
+    this.itemRack.replaceChildren();
+    for (let slot = 0; slot < 6; slot++) {
+      const entry = [...items][slot];
+      const socket = el('div', `item-socket ${entry ? 'filled' : 'empty'}`, this.itemRack);
+      if (!entry) {
+        el('span', 'item-glyph', socket, '·');
+        continue;
+      }
+      const [id, level] = entry;
+      const item = ITEMS[id];
+      socket.style.setProperty('--item-color', `#${item.color.toString(16).padStart(6, '0')}`);
+      el('span', 'item-glyph', socket, item.glyph);
+      el('span', 'item-name', socket, item.shortName);
+      el('span', 'item-tier', socket, String(level));
+      socket.title = `${item.name} ${level}: ${item.levelLines[level - 1]}`;
+    }
   }
 
   /** The band rack: seven typed sockets in rack
@@ -81,6 +146,7 @@ export class Hud {
     into: HTMLElement = this.rack,
     deactivated?: ReadonlySet<Role>,
     pending?: ReadonlySet<Role>,
+    evolved?: ReadonlySet<Role>,
   ): void {
     into.replaceChildren();
     for (const slot of SLOTS) {
@@ -96,6 +162,7 @@ export class Hud {
         // a settled-off socket with no pending change just sits dimmed.
         if (pend) cls += off ? ' pending-on' : ' pending-off';
         else if (off) cls += ' deactivated';
+        if (evolved?.has(owner)) cls += ' evolved';
       }
       const socket = el('div', `band-socket ${cls}`, into);
       el('span', 'socket-slot', socket, SLOT_LABEL[slot]);
@@ -116,9 +183,7 @@ export class Hud {
     this.hpFill.style.width = `${Math.max(0, hp01) * 100}%`;
     this.xpFill.style.width = `${xp01 * 100}%`;
     this.levelEl.textContent = `LV ${level}`;
-    const m = Math.floor(timeS / 60);
-    const s = Math.floor(timeS % 60);
-    this.timer.textContent = `${m}:${String(s).padStart(2, '0')}`;
+    this.timer.textContent = formatTime(timeS);
   }
 
   /** The `.hit-flash` edge-tint element. The shared damage-feedback helper
@@ -146,7 +211,7 @@ export class Hud {
     this.debugRow = el('div', 'debug-row', wrap);
     const gear = el('button', 'small debug-btn debug-gear', wrap, '⚙');
     gear.title = 'dev tools';
-    let open = localStorage.getItem(KEY) === '1';
+    let open = localStorage.getItem(KEY) === '1' && !matchMedia('(max-width: 720px)').matches;
     const paint = (): void => {
       this.debugRow!.style.display = open ? '' : 'none';
       gear.classList.toggle('on', open);
@@ -190,15 +255,91 @@ export class Hud {
   showStart(
     onStart: (role: Role) => void,
     onSandbox: () => void,
+    meta?: MetaStore,
   ): void {
     const s = this.newScreen();
-    el('h1', '', s, 'Loop Survivors');
-    el('p', 'sub', s, 'WASD or touch to move. Survive 8 minutes.');
-    const startBtn = el('button', 'start-btn', s, 'start');
+    s.classList.add('start-screen');
+    const hero = el('div', 'start-hero', s);
+    const art = document.createElement('img');
+    art.className = 'title-art';
+    art.src = '/art/soundwood-title.png';
+    art.alt = 'A neon pixel-art DJ stage hidden in a haunted forest';
+    hero.appendChild(art);
+    const title = el('div', 'title-lockup', hero);
+    el('span', 'eyebrow', title, 'THE INFINITE NIGHT TOUR');
+    el('h1', '', title, 'LOOP SURVIVORS');
+    el('p', 'sub', title, 'Build the track. Draw the arena. Survive until the crowd wins.');
+
+    if (meta) {
+      const profile = el('div', 'career-panel', s);
+      const progress = meta.progress();
+      const head = el('div', 'career-head', profile);
+      el('strong', 'career-rank', head, `TOUR RANK ${progress.rank}`);
+      el('span', 'career-rep', head, `${meta.state.reputation} REPUTATION`);
+      const bar = el('div', 'rank-meter', profile);
+      const fill = el('div', 'rank-meter-fill', bar);
+      fill.style.width = `${progress.ratio * 100}%`;
+      el('span', 'rank-meter-copy', bar, progress.maxed
+        ? 'COLLECTION COMPLETE'
+        : `${progress.earnedIntoRank} / ${progress.costToNext}`);
+      const rewards = el('div', 'next-reward', profile);
+      el('span', 'eyebrow', rewards, progress.nextRewards.length ? `NEXT UNLOCK · ${progress.remaining} REP` : 'HEADLINER STATUS');
+      el('strong', '', rewards, progress.nextRewards.length
+        ? progress.nextRewards.map((reward) => reward.name).join(' + ')
+        : 'Every venue and evolution recipe is in the collection.');
+      if (progress.nextRewards.length) {
+        el('span', 'reward-copy', rewards, progress.nextRewards.map((reward) => reward.description).join(' '));
+      }
+
+      const collection = el('div', 'collection-strip', profile);
+      el('span', '', collection, `${meta.state.unlockedWeapons.length}/9 WEAPONS`);
+      el('span', '', collection, `${meta.state.unlockedItems.length}/9 PASSIVES`);
+      el('span', '', collection, `${meta.state.unlockedVenues.length}/6 VENUES`);
+      el('span', '', collection, `${meta.state.rerolls} REROLLS`);
+
+      if (meta.rank() >= 12) {
+        const loadout = el('div', 'start-loadout', profile);
+        el('span', 'eyebrow', loadout, 'STARTING PASSIVE');
+        const choices = el('div', 'loadout-choices', loadout);
+        const noneButton = el(
+          'button',
+          `loadout-chip ${meta.state.startItem === undefined ? 'selected' : ''}`,
+          choices,
+          'NO PASSIVE',
+        ) as HTMLButtonElement;
+        noneButton.onclick = () => {
+          meta.selectStartItem(undefined);
+          this.showStart(onStart, onSandbox, meta);
+        };
+        for (const id of meta.state.unlockedItems) {
+          const item = ITEMS[id];
+          const button = el('button', `loadout-chip ${meta.state.startItem === id ? 'selected' : ''}`, choices,
+            `${item.glyph} ${item.name}`) as HTMLButtonElement;
+          button.onclick = () => {
+            meta.selectStartItem(id);
+            this.showStart(onStart, onSandbox, meta);
+          };
+        }
+      }
+
+      const mastery = Object.entries(meta.state.mastery) as [Role, { damage: number; kills: number; evolutions: number }][];
+      const revealed = mastery.filter(([, value]) => value.damage >= 100_000);
+      if (revealed.length > 0) {
+        const hints = el('div', 'recipe-hints', profile);
+        el('span', 'eyebrow', hints, 'MASTERY REVEALED');
+        for (const [role] of revealed.slice(0, 3)) {
+          const recipe = EVOLUTION_BY_ROLE[role];
+          if (recipe) el('span', 'recipe-chip', hints, `${this.kits.get(role)?.name ?? role} + ${ITEMS[recipe.item].name} → ${recipe.name}`);
+        }
+      }
+    }
+
+    const startBtn = el('button', 'start-btn', s, 'ENTER THE SOUNDWOOD');
     startBtn.onclick = () => {
       this.closeScreen();
       onStart('kick');
     };
+    el('p', 'start-hint', s, 'WASD / arrow keys / touch to move · walk onto reward pedestals · R rerolls');
     // Below the primary CTA, two menu buttons: sandbox launches directly,
     // experiments is a disclosure for the standalone playtest surfaces (boss
     // fights, full tracks, rehearsal room — mirrors src/experiments/).
@@ -251,7 +392,7 @@ export class Hud {
   /** End screen. Weapon chips lead with damage share, kills in parentheses:
    *  kill counts flatter AoE last hits and hide single-target work on tanks. */
   showEnd(
-    victory: boolean,
+    _victory: boolean,
     stats: {
       timeS: number;
       kills: number;
@@ -260,12 +401,67 @@ export class Hud {
       killsByRole: Partial<Record<Role, number>>;
     },
     onRetry: () => void,
+    settlement?: RunSettlement,
   ): void {
     const s = this.newScreen();
-    el('h1', '', s, victory ? 'You survived.' : 'You died.');
-    const m = Math.floor(stats.timeS / 60);
-    const sec = Math.floor(stats.timeS % 60);
-    el('p', 'sub', s, `${m}:${String(sec).padStart(2, '0')} · ${stats.kills} kills · level ${stats.level}`);
+    s.classList.add('end-screen');
+    el('span', 'eyebrow', s, 'THE CROWD FINALLY WON');
+    el('h1', '', s, 'SET ENDED');
+    el('p', 'sub run-summary', s, `${formatTime(stats.timeS)} · ${stats.kills} kills · level ${stats.level}`);
+
+    if (settlement) {
+      const rep = el('section', 'settlement-panel', s);
+      const earned = el('div', 'rep-earned', rep);
+      el('span', 'eyebrow', earned, 'REPUTATION EARNED');
+      el('strong', '', earned, `+${settlement.breakdown.total}`);
+      const breakdown = el('div', 'rep-breakdown', rep);
+      for (const [label, amount] of [
+        ['SURVIVAL', settlement.breakdown.survival],
+        ['LEVELS', settlement.breakdown.level],
+        ['KILLS', settlement.breakdown.kills],
+        ['HEADLINERS', settlement.breakdown.headliners],
+        ['EVOLUTIONS', settlement.breakdown.evolutions],
+        ['MILESTONES', settlement.breakdown.milestones],
+        ['NEW VENUES', settlement.breakdown.newVenues],
+        ['FIRST NIGHT', settlement.breakdown.firstRun],
+      ] as const) {
+        if (amount <= 0) continue;
+        const row = el('div', 'rep-row', breakdown);
+        el('span', '', row, label);
+        el('strong', '', row, `+${amount}`);
+      }
+      const rank = el('div', 'end-rank', rep);
+      el('strong', '', rank, `TOUR RANK ${settlement.rankAfter}`);
+      const meter = el('div', 'rank-meter', rank);
+      const fill = el('div', 'rank-meter-fill', meter);
+      fill.style.width = `${settlement.progress.ratio * 100}%`;
+      el('span', 'rank-meter-copy', meter, settlement.progress.maxed
+        ? 'COLLECTION COMPLETE'
+        : `${settlement.progress.earnedIntoRank} / ${settlement.progress.costToNext}`);
+      if (settlement.rankAfter > settlement.rankBefore) {
+        el('div', 'rank-up-banner', rep, `RANK UP · ${settlement.rankBefore} → ${settlement.rankAfter}`);
+      }
+      if (settlement.unlockedRewards.length > 0) {
+        const unlocks = el('div', 'unlock-grid', rep);
+        for (const reward of settlement.unlockedRewards) {
+          const card = el('div', 'unlock-card', unlocks);
+          el('span', 'eyebrow', card, 'NEW UNLOCK');
+          el('strong', '', card, reward.name);
+          el('span', '', card, reward.description);
+        }
+      }
+      if (settlement.newMilestones.length > 0) {
+        el('p', 'milestone-line', rep,
+          `MILESTONES · ${settlement.newMilestones.map((id) => id.replace(/([A-Z])/g, ' $1')).join(' · ')}`);
+      }
+      const next = el('div', 'next-reward end-next', rep);
+      el('span', 'eyebrow', next, settlement.progress.nextRewards.length
+        ? `NEXT UNLOCK · ${settlement.progress.remaining} REP TO GO`
+        : 'FULL TOUR COLLECTION');
+      el('strong', '', next, settlement.progress.nextRewards.length
+        ? settlement.progress.nextRewards.map((reward) => reward.name).join(' + ')
+        : 'Headliner Gold unlocked');
+    }
     const byDamage = (Object.entries(stats.damageByRole) as [Role, number][]).sort(
       (a, b) => b[1] - a[1],
     );
@@ -280,7 +476,7 @@ export class Hud {
         chip.style.setProperty('--voice-color', kit.color);
       }
     }
-    const btn = el('button', 'big', s, 'run it back');
+    const btn = el('button', 'big retry-btn', s, 'ONE MORE SET');
     btn.onclick = () => {
       this.closeScreen();
       onRetry();
@@ -309,4 +505,14 @@ function el(tag: string, className: string, parent: HTMLElement, text = ''): HTM
   if (text) node.textContent = text;
   parent.appendChild(node);
   return node;
+}
+
+function formatTime(timeS: number): string {
+  const whole = Math.max(0, Math.floor(timeS));
+  const hours = Math.floor(whole / 3600);
+  const minutes = Math.floor((whole % 3600) / 60);
+  const seconds = whole % 60;
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+    : `${minutes}:${String(seconds).padStart(2, '0')}`;
 }

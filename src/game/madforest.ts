@@ -23,8 +23,7 @@ export type StageEvent =
 export const STAGE_STARTING_SPAWNS = 30;
 export const STAGE_STARTING_KIND: EnemyKind = 'redBat2';
 
-/** The user's run remains the locked eight-minute arc, so rows 0:00-7:59
- * are reproduced one-for-one rather than compressing thirty minutes. */
+/** The authored opening act. Endless procedural rows take over at minute 8. */
 export const STAGE_WAVES: readonly StageWave[] = [
   { atS: 0, pattern: ['redBat2'], minimum: 45, intervalS: 1 },
   { atS: 60, pattern: ['zombie', 'bat'], minimum: 90, intervalS: 1 },

@@ -8,8 +8,12 @@ import { TIER_COUNT, type Chart, type ChartEvent } from './charts';
 import { getChart } from './chartstore';
 import { SOUNDSET } from './soundset';
 import { SKELETON, STEPS_PER_BAR, STEPS_PER_PHRASE, semitonesToRate } from './scale';
-import type { Kit, Role } from './kits';
+import { softClipCurve, type Kit, type Role } from './kits';
 import { buildSoundsetKit } from './kits/index';
+import {
+  DEFAULT_AUDIO_SET_ID,
+  type AudioSetId,
+} from './audio-sets';
 
 interface VoiceHit {
   src: AudioBufferSourceNode;
@@ -37,6 +41,7 @@ export interface Voice {
   override: AudioBuffer | null;
   /** The most recent trigger's nodes, so choked kits can cut it. */
   lastHit: VoiceHit | null;
+  evolved: boolean;
 }
 
 /** A trigger that has been scheduled. Dispatched to listeners by update()
@@ -50,6 +55,12 @@ export interface ScheduledTrigger {
   step: number;
   variant?: string;
   note?: number;
+}
+
+export interface PressureReplayTrigger {
+  trigger: ScheduledTrigger;
+  /** Stored overflow strength, from 1x through 3x. */
+  power: number;
 }
 
 export type TriggerListener = (t: ScheduledTrigger) => void;
@@ -80,6 +91,7 @@ const DUCK_RELEASE = 0.14;
 // The Bass-slot sub-bass instruments the kick ducks. A build owns at most one
 // (they share the Bass slot), so this ducks whichever is present.
 const SUB_BASS_ROLES: readonly Role[] = ['bass'];
+const EVOLUTION_SATURATION = softClipCurve(2.4);
 
 export class MusicEngine {
   readonly ctx: AudioContext;
@@ -95,6 +107,10 @@ export class MusicEngine {
    *  dip the whole soundtrack for its slow-mo moment while the level cue,
    *  which rides master directly, rings out over the dip. */
   private weaponsBus: GainNode;
+  /** Pressure Break filter: normally fully open, briefly closes over the
+   * weapon bus to make the synchronized release physically obvious. */
+  private pressureFilter: BiquadFilterNode;
+  private audioSetId: AudioSetId;
   /** Independent transport gate: intentional game pauses mute immediately
    * while AudioContext.suspend() crosses the browser control boundary. */
   private transport: GainNode;
@@ -110,13 +126,22 @@ export class MusicEngine {
   private stepMarkers: { step: number; time: number }[] = [];
   private lastDueStep = 0;
 
-  constructor(ctx: AudioContext, kits: Map<Role, Kit>) {
+  constructor(
+    ctx: AudioContext,
+    kits: Map<Role, Kit>,
+    audioSetId: AudioSetId = DEFAULT_AUDIO_SET_ID,
+  ) {
     this.ctx = ctx;
+    this.audioSetId = audioSetId;
     this.master = ctx.createGain();
     this.master.gain.value = 0.8;
     this.weaponsBus = ctx.createGain();
     this.weaponsBus.gain.value = 1;
-    this.weaponsBus.connect(this.master);
+    this.pressureFilter = ctx.createBiquadFilter();
+    this.pressureFilter.type = 'lowpass';
+    this.pressureFilter.frequency.value = 22_000;
+    this.pressureFilter.Q.value = 0.35;
+    this.weaponsBus.connect(this.pressureFilter).connect(this.master);
     this.transport = ctx.createGain();
     this.transport.gain.value = 1;
     // Soft-knee limiter on the master so any build stays clean (Pillar 2:
@@ -159,6 +184,7 @@ export class MusicEngine {
         tune: 0,
         override: null,
         lastHit: null,
+        evolved: false,
       });
     }
 
@@ -177,8 +203,10 @@ export class MusicEngine {
    *  (kits/index.ts), rendered once and cached. Async: the kit renders on first
    *  use and the swap takes effect on each voice's next trigger. A role the
    *  soundset kit does not cover keeps the default builtin buffers. */
-  private async applySoundsetKit(): Promise<void> {
-    const kit = await buildSoundsetKit(SKELETON.rootHz);
+  private async applySoundsetKit(setId: AudioSetId = this.audioSetId): Promise<void> {
+    const kit = await buildSoundsetKit(SKELETON.rootHz, setId);
+    // A newer async selection wins if two palettes were requested quickly.
+    if (setId !== this.audioSetId) return;
     for (const voice of this.voices.values()) {
       const k = kit.get(voice.role);
       voice.activeSamples = k?.samples ?? voice.kit.samples;
@@ -186,6 +214,48 @@ export class MusicEngine {
       // the A reference; synth kits and drums are 0.
       voice.tune = k?.tune ?? 0;
     }
+  }
+
+  /** Swap the complete drum/percussion palette without changing charts,
+   * timing, or pitched notes. Existing tails finish; the next hits use it. */
+  async setAudioSet(setId: AudioSetId): Promise<void> {
+    this.audioSetId = setId;
+    await this.applySoundsetKit(setId);
+  }
+
+  get selectedAudioSet(): AudioSetId {
+    return this.audioSetId;
+  }
+
+  /** Close/open the Pressure Break low-pass. A low-pass lets only low
+   * frequencies through, making one four-beat section sound deliberately
+   * muffled before the stored attacks burst back. */
+  setPressureMuffle(on: boolean): void {
+    const now = this.ctx.currentTime;
+    const target = on ? 820 : 22_000;
+    this.pressureFilter.frequency.cancelScheduledValues(now);
+    this.pressureFilter.frequency.setValueAtTime(
+      Math.max(20, this.pressureFilter.frequency.value),
+      now,
+    );
+    this.pressureFilter.frequency.exponentialRampToValueAtTime(target, now + (on ? 0.055 : 0.012));
+  }
+
+  /** Evolution voices stay in the same musical lane; a few dense weapons are
+   * trimmed in decibels so their extra geometry does not become extra loudness. */
+  setEvolutionGain(role: Role, gainDb: number): void {
+    const voice = this.voices.get(role);
+    if (!voice) return;
+    voice.evolved = true;
+    voice.gain.gain.setTargetAtTime(Math.pow(10, gainDb / 20), this.ctx.currentTime, 0.025);
+  }
+
+  resetEvolutionMixes(): void {
+    for (const voice of this.voices.values()) {
+      voice.evolved = false;
+      voice.gain.gain.setTargetAtTime(1, this.ctx.currentTime, 0.02);
+    }
+    this.setPressureMuffle(false);
   }
 
   /** RMS of the current output window, 0..~1. Debug metering. */
@@ -509,6 +579,30 @@ export class MusicEngine {
     this.trigger(voice, ev, this.ctx.currentTime);
   }
 
+  /** Re-voice the stored Pressure Break attacks without dispatching gameplay a
+   * second time. Dense releases receive equal-power mix compensation so a
+   * seven-voice build lands as one punch rather than clipping the limiter. */
+  replayPressureRelease(
+    stored: readonly PressureReplayTrigger[],
+    delayS = 0.012,
+  ): void {
+    if (stored.length === 0) return;
+    const time = this.ctx.currentTime + Math.max(0.005, delayS);
+    const densityGain = Math.max(0.2, Math.min(1, 2.1 / Math.sqrt(stored.length)));
+    for (const { trigger, power } of stored) {
+      const voice = this.voices.get(trigger.role);
+      if (!voice) continue;
+      const event: ChartEvent = {
+        step: trigger.step,
+        velocity: trigger.velocity,
+        variant: trigger.variant,
+        note: trigger.note,
+      };
+      const overflowAccent = 1 + 0.12 * Math.max(0, Math.min(2, power - 1));
+      this.trigger(voice, event, time, -1, false, densityGain * overflowAccent);
+    }
+  }
+
   private onStep(step: number, time: number): void {
     if (step === 0) this.lastDueStep = 0;
     this.stepMarkers.push({ step, time });
@@ -529,7 +623,14 @@ export class MusicEngine {
     }
   }
 
-  private trigger(voice: Voice, ev: ChartEvent, time: number, phraseStep = -1): void {
+  private trigger(
+    voice: Voice,
+    ev: ChartEvent,
+    time: number,
+    phraseStep = -1,
+    dispatchGameplay = true,
+    gainMul = 1,
+  ): void {
     const variant = ev.variant ?? voice.kit.defaultVariant;
     const buffer =
       voice.override ??
@@ -550,8 +651,28 @@ export class MusicEngine {
 
     const g = this.ctx.createGain();
     const humanized = ev.velocity * (1 + (Math.random() * 2 - 1) * HUMANIZE_GAIN);
-    g.gain.value = Math.max(0.01, humanized);
-    src.connect(g).connect(voice.gain);
+    g.gain.value = Math.max(0.01, humanized * Math.max(0, gainMul));
+    if (voice.evolved) {
+      // The same chart trigger receives a newly processed timbre: one source,
+      // no doubled instrument. Bright roles get a sharper presence band while
+      // low roles gain controlled saturation and weight.
+      const filter = this.ctx.createBiquadFilter();
+      const lowRole = voice.role === 'kick' || voice.role === 'bass';
+      filter.type = lowRole ? 'lowshelf' : 'peaking';
+      filter.frequency.value = lowRole ? 120 : voice.role === 'hat' ? 8_200 : 2_400;
+      filter.gain.value = lowRole ? 4 : 3;
+      filter.Q.value = lowRole ? 0.55 : 1.15;
+      if (voice.role === 'kick' || voice.role === 'bass' || voice.role === 'clap' || voice.role === 'snare') {
+        const saturation = this.ctx.createWaveShaper();
+        saturation.curve = EVOLUTION_SATURATION;
+        saturation.oversample = '2x';
+        src.connect(filter).connect(saturation).connect(g).connect(voice.gain);
+      } else {
+        src.connect(filter).connect(g).connect(voice.gain);
+      }
+    } else {
+      src.connect(g).connect(voice.gain);
+    }
     src.start(time);
 
     // Kick ducks bass (design rule 1): schedule the dip at the kick's future
@@ -581,19 +702,21 @@ export class MusicEngine {
       voice.lastHit = { src, gain: g };
     }
 
-    this.pending.push({
-      source: src,
-      voice,
-      chokedPrevious,
-      trigger: {
-        role: voice.role,
-        time,
-        velocity: ev.velocity,
-        step: phraseStep,
-        variant: ev.variant,
-        note: ev.note,
-      },
-    });
+    if (dispatchGameplay) {
+      this.pending.push({
+        source: src,
+        voice,
+        chokedPrevious,
+        trigger: {
+          role: voice.role,
+          time,
+          velocity: ev.velocity,
+          step: phraseStep,
+          variant: ev.variant,
+          note: ev.note,
+        },
+      });
+    }
     // If no consumer is draining (hidden tab pauses rAF), drop stale entries
     // so the queue cannot grow unboundedly while audio keeps scheduling.
     if (this.pending.length > 64) {

@@ -6,8 +6,6 @@
 import type { Role } from '../audio/kits';
 
 export const RUN = {
-  /** The 8-minute run. */
-  durationS: 480,
   /** Antonio baseline: 100 base HP +20 character bonus, +1 Armor. */
   playerHp: 120,
   playerArmor: 1,
@@ -335,15 +333,16 @@ export const ENEMY_LABELS: Partial<Record<EnemyKind, string>> = {
   batSwarm: 'sweeping bat',
 };
 
-/** Spawn-time stats. Mad Forest has no invented global time ramp: only the
- * documented HP x Level units multiply health by player level. */
+/** Base spawn-time stats before endless-minute scaling. Contact `damage` is
+ * deliberately raw Power: RunWorld subtracts the player's current armor at
+ * collision time so Padded Jacket also protects against enemies already alive. */
 export function madForestEnemyStats(kind: EnemyKind, playerLevel: number) {
   const conf = ENEMIES[kind];
   return {
     radius: conf.radius,
     hp: conf.hp * (conf.hpPerLevel ? Math.max(1, playerLevel) : 1),
     speed: conf.speed,
-    damage: conf.power === undefined ? conf.damage : Math.max(1, conf.power - RUN.playerArmor),
+    damage: conf.power ?? conf.damage,
     xp: conf.xp,
     color: conf.color,
     knockback: conf.knockback ?? 1,
