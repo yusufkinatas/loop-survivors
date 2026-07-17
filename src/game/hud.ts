@@ -209,13 +209,6 @@ export class Hud {
       devToggle.classList.toggle('on', row.style.display !== 'none');
       (devToggle as HTMLButtonElement).blur();
     };
-    const livingLabBtn = el('button', 'small start-lab-btn', row, 'living lab');
-    livingLabBtn.onclick = () => {
-      const url = new URL(location.href);
-      url.hash = '';
-      url.searchParams.set('lab', 'hub');
-      location.assign(`${url.pathname}${url.search}`);
-    };
     const bossBtn = el('button', 'small', row, 'boss fights');
     bossBtn.onclick = () => {
       location.hash = '#boss';

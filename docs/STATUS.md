@@ -2,7 +2,35 @@
 
 Last updated: July 15, 2026
 
-## Latest change (July 15, 2026) — remove unreachable sound variants
+## Latest change (July 17, 2026) — Living Lab removed
+
+At the developer's direction, the **Living Lab** (the in-game documentation
+suite: Movement & Space Gym, Enemy Zoo, Instrument Zoo, Systems Museum) is
+removed entirely. It was additive tooling and never gated a phase.
+
+Removed: `src/lab/` (`page.ts`, `context.ts`); the `#lab` / `?lab=<room>` /
+`VITE_LOOP_LAB_ROOM` route parsing (`src/dev.ts` deleted, plus its
+`requestedLabRoom` import and boot branch in `src/main.ts`); the homepage
+**living lab** button inside the collapsed dev-tools disclosure
+(`src/game/hud.ts`); the Living Lab CSS block (`src/style.css`); the
+`check:lab` npm script and its driver (`scripts/lab-check.mjs`); the
+`VITE_LOOP_LAB_ROOM` env declaration (`src/vite-env.d.ts`); and the practical
+guide (`docs/tools/living-lab.md`).
+
+Untouched: the **Track Lab / Experimentation room** (`#tracklab`,
+`src/tracklab/`) and the **rehearsal room** (`#rehearsal`, `src/rehearsal/`) are
+separate surfaces and remain. The one incidental Living-Lab mention in the
+`src/game/input.ts` disposer comment was reworded off the removed tool.
+
+Note: the locked spec `docs/phases/instrument-deactivate.md` still names "the
+Living Lab browser drive" in its (still-pending) engineering gate. That
+reference is now stale; it is left unchanged pending the developer's sign-off,
+per the spec-locking rule.
+
+Verification: `tsc --noEmit` clean; `vite build` clean (766 modules, was 771).
+No developer gate advanced; this is a tooling scope removal.
+
+## Previous change (July 15, 2026) — remove unreachable sound variants
 
 At the developer's direction, the three sound variants that exist in code but are
 never selected by the four-tune (the house ladders) are removed everywhere:
