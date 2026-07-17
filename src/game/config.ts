@@ -1,12 +1,12 @@
-// Every tuning number in one place. Sub-phase C's rough balance pass edits
-// this file, not the systems. Weapon numbers are per-trigger: charts decide
-// rate, so a kit's DPS = chart density x per-trigger damage (docs/plan.md,
-// tempo and damage). M2: one stat block per tier, indexed [tier - 1].
+// Every tuning number in one place; balance edits land here, not in the
+// systems. Weapon numbers are per-trigger: charts decide rate, so a kit's
+// DPS = chart density x per-trigger damage (docs/plan.md, tempo and damage).
+// One stat block per tier, indexed [tier - 1].
 
 import type { Role } from '../audio/kits';
 
 export const RUN = {
-  /** M2: the 8-minute arc. */
+  /** The 8-minute run. */
   durationS: 480,
   /** Antonio baseline: 100 base HP +20 character bonus, +1 Armor. */
   playerHp: 120,
@@ -736,7 +736,7 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
 };
 
 /** The one honest gameplay-effect line on each pick card ([tier-1]). Terse
- *  VS-style, zero music description (docs/phases/m2-the-arc.md): the sound
+ *  VS-style, zero music description: the sound
  *  change is discovered by ear. Lines state what the chart + stat change
  *  actually does. */
 export const TIER_LINES: Partial<Record<Role, string[]>> = {
@@ -828,7 +828,7 @@ export const SHOVE_S = 0.12;
 /** Per-weapon knock distance applied on hit (Feature 3). Absent = no shove. */
 export const WEAPON_SHOVE: Partial<Record<Role, number>> = { snare: 8, clap: 12, bass: 6 };
 
-// ---- sub-phase C: the shatter weapon ----
+// ---- the shatter weapon ----
 
 /** Bell shatter: per-tier shard count, and the shard projectiles' stats. Shards
  *  fly out radially from the first hit; each is a small, short-lived bell shot

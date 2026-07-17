@@ -11,8 +11,8 @@ import { buildHouseKit } from './house';
 
 // Real signature-drum samples that override the synthesized drums, plus the
 // sampled sub-bass. Each entry: role -> [variantId, fileBase]. Files live at
-// public/samples/house/<fileBase>.wav and are pre-corrected at build time
-// (scripts/build-house-kit.mjs), so nothing about them is fixed up here.
+// public/samples/house/<fileBase>.wav and are pre-corrected offline at
+// asset-build time, so nothing about them is fixed up here.
 type SampleSpec = [variant: string, file: string];
 
 const DIR = 'house';

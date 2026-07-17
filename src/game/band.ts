@@ -4,7 +4,7 @@
 // build is a complete band — seven voices, each in its own frequency lane and
 // rhythmic job. Slots cap OWNERSHIP (filling one permanently retires its other
 // roster members from the pick pool), which is what keeps a full build sounding
-// like a track instead of a pile of voices. See docs/phases/the-band.md.
+// like a track instead of a pile of voices. See docs/plan.md.
 //
 // NOTE: `role` (from kits.ts) is the atomic weapon id. A `Slot` is the band
 // position several weapons can compete for. Do not conflate the two.

@@ -1,7 +1,7 @@
 // The pick economy's one source of truth. Offers are a weighted draw over new
 // and upgraded weapons and take three. The pool is built in a fixed order.
 //
-// The band (docs/phases/the-band.md) shapes the pool and the draw: filling a
+// The band (docs/plan.md) shapes the pool and the draw: filling a
 // slot permanently retires its other roster members (a fresh weapon is offered
 // only while its slot is empty), an offer never shows two candidates for the
 // same slot, and the weapon draw leans early toward the drum slots. All of it

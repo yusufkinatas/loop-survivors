@@ -1,5 +1,5 @@
 // All game UI is plain DOM overlaid on the canvas, cheap enough to throw
-// away at M4 (docs/phases/m1-demo.md). Start screen, HUD, end screens, and
+// away and rebuild later. Start screen, HUD, end screens, and
 // the hit flash. Level-up picks are now dropped in-world (see game.ts /
 // view.ts), not a DOM screen.
 
@@ -68,7 +68,7 @@ export class Hud {
     this.rack.style.display = show ? '' : 'none';
   }
 
-  /** The band rack (docs/phases/the-band.md): seven typed sockets in rack
+  /** The band rack: seven typed sockets in rack
    *  order, empty ones asking to be filled, filled ones showing the hired
    *  instrument (its color + name) and its tier as pips. Rebuilt on every pick
    *  (cheap: 7 sockets). Renders into the HUD rack by default, or any supplied

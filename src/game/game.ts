@@ -621,7 +621,7 @@ export async function bootGame(
   });
 
   // debug controls: one set of actions behind both the hotkeys and the
-  // on-screen buttons (docs/phases/m1-demo.md, developer tools)
+  // on-screen buttons (developer tools)
   const debugActions = {
     mute: {
       label: 'mute',

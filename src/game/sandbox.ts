@@ -1,4 +1,4 @@
-// The sandbox (M2 spec, developer tools): the real game arena with the
+// The sandbox (developer tools): the real game arena with the
 // stage script switched off. Enemies are watched, weapons tested, and
 // balance gates run under reproducible conditions here. The rehearsal room
 // is for listening; the sandbox is for watching and testing.

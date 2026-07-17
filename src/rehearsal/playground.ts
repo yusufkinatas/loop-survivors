@@ -1,4 +1,4 @@
-// The chart playground (M2 spec, developer tools): one row per sound in a
+// The chart playground (developer tools): one row per sound in a
 // kit, one column per grid step across the full 4-bar phrase, a playhead
 // sweeping in time, cells lighting as they fire. Charts of all voices stack
 // vertically — the whole arrangement at a glance.
@@ -6,7 +6,7 @@
 // In the rehearsal room it is fully editable and the loop keeps playing
 // while editing, so every change is heard instantly: this is where tier
 // charts are sculpted by ear. Mounted read-only it becomes the in-game
-// debug overlay (wired up in sub-phase C).
+// debug overlay.
 
 import { MusicEngine } from '../audio/engine';
 import type { Chart, ChartEvent } from '../audio/charts';

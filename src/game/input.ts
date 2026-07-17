@@ -1,5 +1,5 @@
-// Movement is the only player verb: continuous, unquantized, silent
-// (docs/phases/m1-demo.md). WASD/arrows on keyboard; on touch devices the
+// Movement is the only player verb: continuous, unquantized, silent.
+// WASD/arrows on keyboard; on touch devices the
 // floating joystick (joystick.ts) writes into touchAxis and wins while a
 // finger is down. The joystick vector is analog: partial deflection walks.
 

@@ -1,5 +1,5 @@
-/* Deliberately ugly but not feedback-dead (docs/phases/m1-demo.md): flat
-   shapes on dark, one color per weapon, all UI plain DOM. */
+/* Deliberately ugly but not feedback-dead: flat shapes on dark, one color
+   per weapon, all UI plain DOM. */
 
 :root {
   color-scheme: dark;
@@ -1320,9 +1320,9 @@ button.big {
   }
 }
 
-/* The band rack (docs/phases/the-band.md): the VS-style build row of eight
-   typed sockets, top-center. Empty sockets ask to be filled; filled ones carry
-   the hired instrument's color, name, and tier as pips. */
+/* The band rack: the VS-style build row of seven typed sockets, top-center.
+   Empty sockets ask to be filled; filled ones carry the hired instrument's
+   color, name, and tier as pips. */
 .band-rack {
   position: absolute;
   top: max(12px, env(safe-area-inset-top));

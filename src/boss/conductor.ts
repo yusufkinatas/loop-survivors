@@ -1,5 +1,5 @@
 // The boss conductor: a boss makes the music, and the music's structure IS
-// the fight's rhythm (the boss-fight pivot — see docs/phases/boss-fights.md).
+// the fight's rhythm (the boss-fight pivot).
 // This wraps the Track Lab's LabEngine (the ear-approved track player) and
 // walks a fixed ARRANGEMENT: an ordered list of {section, bars} the song plays
 // through, auto-switching sections on the bar. Each beat it hands the boss AI a

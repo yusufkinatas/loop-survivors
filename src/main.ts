@@ -30,7 +30,7 @@ async function boot(): Promise<void> {
     engine.resumeContextIfAllowed();
   });
 
-  // Developer console handle (docs/phases/m1-demo.md, developer tools):
+  // Developer console handle (developer tools):
   // poke the engine from the browser console, e.g. loop.engine.outputLevel(),
   // or dump playground edits: copy(loop.charts.exportEdits()).
   (window as unknown as { loop: object }).loop = { engine, kits, charts };
@@ -44,7 +44,7 @@ async function boot(): Promise<void> {
     mountTrackLab(root, ctx);
   } else if (location.hash === '#boss') {
     // Standalone Boss Fight area (not wired into the run — a separate
-    // playtest surface). See docs/phases/boss-fights.md.
+    // playtest surface).
     await mountBossFight(root, ctx);
   } else {
     await bootGame(root, engine, kits);
