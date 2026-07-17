@@ -311,14 +311,19 @@ export async function bootGame(
     startLevelMoment(cx, cy);
   }
 
-  /** The satisfying beat: slowScale slow-mo + weapon-volume duck for up to
-   *  momentS, plus a bright cue and a screen pulse. Everything snaps back when
-   *  the player collects a pick, or when momentS elapses, whichever is first. */
+  /** The satisfying beat: normally slowScale slow-mo + a short mix dip. An
+   * earned or live Pressure Drop keeps full momentum, so a reward arriving in
+   * the scheduler's lookahead window cannot weaken the opening downbeat. */
   function startLevelMoment(cx: number, cy: number): void {
-    momentT = LEVELUP.momentS;
-    momentScale = LEVELUP.slowScale;
-    applyClockRate();
-    engine.duckWeapons(LEVELUP.duckDepth, LEVELUP.momentS);
+    if (world?.pressureState === 'armed' || world?.pressureState === 'drop') {
+      endLevelMoment();
+      engine.restoreWeapons(0.025);
+    } else {
+      momentT = LEVELUP.momentS;
+      momentScale = LEVELUP.slowScale;
+      applyClockRate();
+      engine.duckWeapons(LEVELUP.duckDepth, LEVELUP.momentS);
+    }
     engine.playLevelCue();
     hud.levelPulse();
     view?.levelBurst(cx, cy);
@@ -422,26 +427,63 @@ export async function bootGame(
     hud.showToast(`NEW VENUE · ${venue.replace(/\b\w/g, (letter) => letter.toUpperCase())}`);
   };
 
-  /** One Pressure Break conductor for the run and the sandbox: it aligns the
-   * muffled hold and stored-hit release to adjacent musical bars. */
-  const schedulePressureBreak = (w: RunWorld, arena: 'run' | 'sandbox'): void => {
-    hud.showToast('PRESSURE FULL · release on the next four-beat section');
-    engine.atNextBar((startAudioTime) => {
-      if (world !== w || state !== arena) return;
+  /** One Pressure Drop conductor for the run and Sandbox. Full pressure waits
+   * without a penalty, then the positive buff spans exactly one heard phrase:
+   * actions precede same-time weapon triggers at bars 1-4 and at the exit. */
+  const schedulePressureDrop = (w: RunWorld, arena: 'run' | 'sandbox'): void => {
+    const conductorToken = w.newPressureConductor();
+    const conductorIsLive = (): boolean =>
+      world === w && state === arena && w.pressureConductorIsCurrent(conductorToken);
+    hud.showToast('PRESSURE FULL · DROP ON NEXT PHRASE');
+    engine.atNextPhrase((startAudioTime) => {
+      if (!conductorIsLive()) return;
+      // The scheduler is looking ahead. Restore tempo/mix now so the first
+      // Drop downbeat itself cannot be pre-scheduled through a reward dip.
+      endLevelMoment();
+      engine.restoreWeapons(0.025);
+      engine.setPressureDropLift(true, startAudioTime);
+      engine.playPressureDropBar(1, startAudioTime);
       engine.atAudioTime(startAudioTime, () => {
-        if (world !== w || state !== arena) return;
-        w.beginPressureBreak();
-        engine.setPressureMuffle(true);
+        if (!conductorIsLive()) return;
+        // Defend the heard boundary too: any later UI path that introduced a
+        // transient duck after lookahead scheduling is canceled at impact.
+        endLevelMoment();
+        engine.restoreWeapons(0.025);
+        w.beginPressureDrop();
+        w.pulsePressureDropBar(1);
       });
-      engine.atNextBar((releaseAudioTime) => {
-        if (world !== w || state !== arena) return;
-        engine.atAudioTime(releaseAudioTime, () => {
-          if (world !== w || state !== arena) return;
-          const released = w.releasePressureBreak();
-          engine.setPressureMuffle(false);
-          engine.replayPressureRelease(released);
+
+      const queueBarPulse = (bar: number): void => {
+        engine.atNextBar((barAudioTime) => {
+          if (
+            !conductorIsLive() ||
+            (w.pressureState !== 'armed' && w.pressureState !== 'drop')
+          ) return;
+          // A delayed scheduler may catch up past several grid lines. Advance
+          // world state in timestamp order, but never pile missed accents onto
+          // the first audible instant after the stall.
+          if (barAudioTime > engine.ctx.currentTime + 1e-6) {
+            engine.playPressureDropBar(bar, barAudioTime);
+          }
+          engine.atAudioTime(barAudioTime, () => {
+            if (!conductorIsLive() || w.pressureState !== 'drop') return;
+            w.pulsePressureDropBar(bar);
+          });
+          if (bar < 4) queueBarPulse(bar + 1);
         });
-      });
+      };
+      queueBarPulse(2);
+
+      // Registered from inside the phrase-start flush, so this necessarily
+      // lands on the following phrase boundary: exactly four complete bars.
+      engine.atNextPhrase((finishAudioTime) => {
+        if (!conductorIsLive()) return;
+        engine.setPressureDropLift(false, finishAudioTime);
+        engine.atAudioTime(finishAudioTime, () => {
+          if (!conductorIsLive()) return;
+          w.finishPressureDrop();
+        });
+      }, startAudioTime, true);
     });
   };
 
@@ -476,10 +518,12 @@ export async function bootGame(
     onPressureArmed(): void {
       const w = world;
       if (!w) return;
-      schedulePressureBreak(w, 'run');
+      schedulePressureDrop(w, 'run');
     },
     onPressureBreak(active: boolean): void {
-      hud.showToast(active ? 'HOLD THE DROP' : 'PRESSURE RELEASE');
+      hud.showToast(active
+        ? 'DROP · DAMAGE +50% · AREA/SHOVE +25% · SHOT SPEED +20% · MOVE +15%'
+        : 'DROP COMPLETE · RECHARGING');
     },
     onStageMagnet(result: VacuumResult): void {
       engine.playStageMagnetCue();
@@ -527,10 +571,12 @@ export async function bootGame(
     },
     onPressureArmed(): void {
       const w = world;
-      if (w) schedulePressureBreak(w, 'sandbox');
+      if (w) schedulePressureDrop(w, 'sandbox');
     },
     onPressureBreak(active: boolean): void {
-      hud.showToast(active ? 'HOLD THE DROP' : 'PRESSURE RELEASE');
+      hud.showToast(active
+        ? 'DROP · DAMAGE +50% · AREA/SHOVE +25% · SHOT SPEED +20% · MOVE +15%'
+        : 'DROP COMPLETE · RECHARGING');
     },
     onStageMagnet(result: VacuumResult): void {
       engine.playStageMagnetCue();
@@ -858,6 +904,7 @@ export async function bootGame(
         w.evolved,
         w.pressureHeat,
         w.pressureState,
+        w.pressureDropBar,
         w.venue,
         w.venueChapter,
         rerollsLeft,

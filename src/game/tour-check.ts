@@ -10,13 +10,11 @@ import {
   VENUES,
   addPressureCloseKill,
   applyPressureHit,
-  beginPressureBreak,
+  beginPressureDrop,
   buildNeonLoopRail,
   createNeonLoopSamples,
   createPressureBreakState,
-  createPressureTriggerBank,
   crossedGateNumbers,
-  drainPressureTriggerBank,
   endlessScale,
   firstRailIntersection,
   gateOptions,
@@ -26,16 +24,13 @@ import {
   neonLoopCrossesItself,
   pressureHeatRate,
   pressureRadius,
-  pushPressureTrigger,
   resolveGateChoice,
   sampleNeonLoopPoint,
-  schedulePressureRelease,
   segmentIntersection,
   simplifyNeonLoop,
   updatePressureBreak,
   waveRecipe,
   type Point2,
-  type PressureTriggerBank,
   type Segment2,
 } from './tour';
 
@@ -242,65 +237,69 @@ export function runTourChecks(): void {
   near(pressure.state.heat, 100);
   check(pressure.state.phase === 'armed' && pressure.state.armPending, 'full heat did not queue');
   const hitWhileArmed = applyPressureHit(pressure.state);
-  check(hitWhileArmed.phase === 'armed', 'queued break was cancelled by a hit');
-  near(hitWhileArmed.heat, 70);
-  const manualBreak = beginPressureBreak(pressure.state, 0);
-  check(manualBreak.state.phase === 'break', 'manual boundary start failed');
-  near(manualBreak.existingProjectileSpeedMul, 0.15);
-  near(manualBreak.existingProjectileAgeMul, 0.15);
-  const duplicateBoundary = updatePressureBreak(manualBreak.state, {
+  check(hitWhileArmed === pressure.state, 'a hit changed an earned Drop');
+  near(hitWhileArmed.heat, 100);
+
+  const manualDrop = beginPressureDrop(pressure.state, 7);
+  check(manualDrop.state.phase === 'drop', 'manual phrase-boundary start failed');
+  same(manualDrop.events, ['drop-started'], 'Drop start event drifted');
+  check(manualDrop.isDropActive, 'Drop did not become active immediately');
+  near(manualDrop.damageMul, PRESSURE_BREAK_CONFIG.dropDamageMul);
+  near(manualDrop.areaMul, PRESSURE_BREAK_CONFIG.dropAreaMul);
+  near(manualDrop.projectileSpeedMul, PRESSURE_BREAK_CONFIG.dropProjectileSpeedMul);
+  near(manualDrop.moveMul, PRESSURE_BREAK_CONFIG.dropMoveMul);
+  near(manualDrop.knockbackMul, PRESSURE_BREAK_CONFIG.dropKnockbackMul);
+  check(
+    manualDrop.damageMul > 1 &&
+      manualDrop.areaMul > 1 &&
+      manualDrop.projectileSpeedMul > 1 &&
+      manualDrop.moveMul > 1 &&
+      manualDrop.knockbackMul > 1,
+    'the Drop contains a non-positive gameplay modifier',
+  );
+  check(PRESSURE_BREAK_CONFIG.dropBars === 4, 'Drop must span exactly four bars');
+  near(PRESSURE_BREAK_CONFIG.openingShoveRadius, 220);
+
+  const duplicateBoundary = updatePressureBreak(manualDrop.state, {
     dtS: 0,
     closeEnemyCount: 20,
-    fourBeatBoundary: 0,
+    phraseBoundary: 7,
   });
-  check(duplicateBoundary.state.phase === 'break', 'same boundary produced a zero-section break');
+  check(duplicateBoundary.state.phase === 'drop', 'duplicate start boundary ended the Drop');
+  check(duplicateBoundary.isDropActive, 'duplicate boundary removed active buffs');
+
+  const beforeEndingBoundary = updatePressureBreak(duplicateBoundary.state, {
+    // Wall time never decides a musical reward's length. Without the next
+    // phrase boundary, even a large frame must leave all four-bar buffs live.
+    dtS: 60,
+    closeEnemyCount: 0,
+  });
+  check(beforeEndingBoundary.state.phase === 'drop', 'Drop ended between phrase boundaries');
+  check(beforeEndingBoundary.isDropActive, 'Drop buffs expired before the phrase ended');
+
   pressure = updatePressureBreak(pressure.state, {
     dtS: 0,
     closeEnemyCount: 20,
-    fourBeatBoundary: 0,
+    phraseBoundary: 7,
   });
-  check(pressure.state.phase === 'break', 'queued break missed its boundary');
-  near(pressure.existingProjectileSpeedMul, 0.15);
-  near(pressure.existingProjectileAgeMul, 0.15);
-  pressure = updatePressureBreak(pressure.state, { dtS: 10, closeEnemyCount: 20 });
-  check(pressure.state.phase === 'break', 'break ended before a four-beat boundary');
+  check(pressure.state.phase === 'drop', 'queued Drop missed its phrase boundary');
+  check(pressure.isDropActive, 'phrase entry did not apply buffs immediately');
   pressure = updatePressureBreak(pressure.state, {
     dtS: 0,
     closeEnemyCount: 20,
-    fourBeatBoundary: 1,
+    phraseBoundary: 8,
   });
-  check(pressure.state.phase === 'cooldown', 'one-section break did not release');
+  check(pressure.state.phase === 'cooldown', 'four-bar Drop did not end at the next phrase');
+  same(pressure.events, ['drop-finished'], 'Drop finish event drifted');
+  check(!pressure.isDropActive, 'positive modifiers leaked into cooldown');
+  near(pressure.damageMul, 1);
+  near(pressure.areaMul, 1);
+  near(pressure.projectileSpeedMul, 1);
+  near(pressure.moveMul, 1);
+  near(pressure.knockbackMul, 1);
   near(pressure.state.cooldownRemainingS, 45);
   pressure = updatePressureBreak(pressure.state, { dtS: 45, closeEnemyCount: 0 });
   check(pressure.state.phase === 'charging', '45-second cooldown drifted');
-
-  type TestRole = 'kick' | 'hat';
-  let bank: PressureTriggerBank<TestRole, string> =
-    createPressureTriggerBank<TestRole, string>(3);
-  const firstPush = pushPressureTrigger(bank, 'kick', 0, 'k0');
-  bank = firstPush.bank;
-  check(firstPush.entry !== bank.byRole.kick?.[0], 'bank push exposed stored metadata by alias');
-  check(
-    Object.isFrozen(firstPush.entry) &&
-      Object.isFrozen(bank) &&
-      Object.isFrozen(bank.byRole) &&
-      Object.isFrozen(bank.byRole.kick),
-    'pressure bank metadata is mutable',
-  );
-  bank = pushPressureTrigger(bank, 'kick', 1, 'k1').bank;
-  bank = pushPressureTrigger(bank, 'kick', 2, 'k2').bank;
-  for (let i = 0; i < 8; i++) bank = pushPressureTrigger(bank, 'kick', 3 + i, `overflow-${i}`).bank;
-  check(bank.total === 3, 'per-role bank exceeded its bound');
-  const kickEntries = bank.byRole.kick ?? [];
-  near(kickEntries[kickEntries.length - 1].power, 3);
-  bank = pushPressureTrigger(bank, 'hat', 20, 'h0').bank;
-  const drained = drainPressureTriggerBank(bank);
-  same(drained.triggers.map((entry) => entry.trigger), ['k0', 'k1', 'k2', 'h0'], 'drain order changed');
-  check(drained.bank.total === 0, 'drain did not empty the bank');
-  const release = schedulePressureRelease(drained.triggers, 30);
-  check(release.every((entry) => entry.releaseAtS === 30), 'release was not simultaneous');
-  near(release[0].damageMul, PRESSURE_BREAK_CONFIG.releaseDamageMul);
-  near(release[2].damageMul, PRESSURE_BREAK_CONFIG.releaseDamageMul * 3);
 }
 
 runTourChecks();

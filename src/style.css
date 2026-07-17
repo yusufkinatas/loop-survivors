@@ -1747,13 +1747,54 @@ button.big {
   background: repeating-linear-gradient(90deg, #834f9f 0 8px, #d257a5 8px 16px, #ffca65 16px 24px);
 }
 
-.meter.pressure .fill.armed {
-  background: #fff;
-  box-shadow: 0 0 14px #fff;
-  animation: pressure-armed 0.4s steps(2, end) infinite;
+.meter.pressure .fill.ready {
+  background: #ffd45c;
+}
+
+.meter.pressure .fill.drop {
+  background: #21162e;
+}
+
+.pressure-segments {
+  position: absolute;
+  z-index: 1;
+  inset: 1px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 2px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.meter.pressure.ready .pressure-segments,
+.meter.pressure.drop .pressure-segments {
+  opacity: 1;
+}
+
+.pressure-segment {
+  min-width: 0;
+  background: #30253c;
+  border-inline: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.pressure-segment.ready {
+  background: linear-gradient(90deg, #ffb94a, #ffe978);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.38);
+}
+
+.pressure-segment.on {
+  background: linear-gradient(90deg, #46f7ff, #e35dff 54%, #ffd45c);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.48);
+}
+
+.pressure-segment.current {
+  background: linear-gradient(90deg, #64f8ff, #ff68d8 58%, #ffe36e);
+  box-shadow: inset 0 0 0 1px #fff, 0 0 8px rgba(100, 248, 255, 0.72);
+  animation: pressure-segment-hit 0.44s ease-out 1;
 }
 
 .pressure-cap {
+  z-index: 2;
   left: 50%;
   transform: translate(-50%, -50%);
   color: #fff;
@@ -1762,13 +1803,37 @@ button.big {
   white-space: nowrap;
 }
 
-.pressure-cap.armed {
+.meter.pressure.ready .pressure-cap {
   color: #07120f;
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.62);
 }
 
-@keyframes pressure-armed {
-  50% { opacity: 0.48; }
+.pressure-cap.energized {
+  letter-spacing: 0.08em;
+}
+
+.meter.pressure.drop .pressure-cap {
+  color: #fff;
+  padding: 0 5px;
+  line-height: 11px;
+  background: rgba(5, 7, 13, 0.78);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.22);
+  text-shadow: 1px 1px 0 #000, 0 0 5px #000;
+}
+
+.meter.pressure.phase-hit {
+  animation: pressure-phase-hit 0.48s ease-out 1;
+}
+
+@keyframes pressure-phase-hit {
+  0% { box-shadow: 0 0 0 2px #fff, 0 0 18px rgba(70, 247, 255, 0.92); }
+  48% { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.65), 0 0 10px rgba(227, 93, 255, 0.62); }
+  100% { box-shadow: 0 0 0 0 transparent, 0 0 0 transparent; }
+}
+
+@keyframes pressure-segment-hit {
+  0% { filter: brightness(1.5); }
+  100% { filter: brightness(1); }
 }
 
 .band-socket,
@@ -2403,8 +2468,15 @@ button.big {
   .band-socket.pending-off,
   .band-socket.pending-on,
   .tr-row.pending-off,
-  .tr-row.pending-on {
+  .tr-row.pending-on,
+  .meter.pressure.phase-hit,
+  .pressure-segment.current {
     animation: none;
+  }
+  .band-socket.pending-off,
+  .band-socket.pending-on,
+  .tr-row.pending-off,
+  .tr-row.pending-on {
     opacity: 0.7;
   }
 }

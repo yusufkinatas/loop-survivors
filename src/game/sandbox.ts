@@ -194,7 +194,7 @@ export function mountSandboxPanel(
   button(fixtureControls, 'CLEAR ALL', () => {
     engine.clearBarQueue();
     world.clearSandboxEntities();
-    engine.setPressureMuffle(false);
+    engine.setPressureDropLift(false);
   });
 
   section(combat, 'complete enemy catalog');
@@ -338,32 +338,46 @@ export function mountSandboxPanel(
   button(venueGrid, 'ROUTE GATE DEMO', () => world.installSandboxVenueGate());
   const venueReadout = el('div', 'sb-hint', tour);
 
-  section(tour, 'pressure break');
+  section(tour, 'pressure drop · four bars');
   const pressureControls = el('div', 'sb-btns sb-controls', tour);
   pressureControls.style.marginLeft = '0';
-  button(pressureControls, 'ARM', () => {
+  pressureControls.style.flexWrap = 'wrap';
+  const pressureArmButton = button(pressureControls, 'ARM', () => {
+    world.cancelPressureConductor();
+    engine.cancelPressureDropAudio();
     world.pressureHeat = 100;
     world.pressureState = 'armed';
+    world.pressureDropBar = 0;
   });
-  button(pressureControls, 'BEGIN', () => {
-    engine.clearBarQueue();
+  const startPressureDrop = (): void => {
+    world.cancelPressureConductor();
+    engine.cancelPressureDropAudio();
     if (world.pressureState !== 'armed') {
       world.pressureHeat = 100;
       world.pressureState = 'armed';
+      world.pressureDropBar = 0;
     }
-    world.beginPressureBreak();
-    engine.setPressureMuffle(true);
-  });
-  button(pressureControls, 'RELEASE', () => {
-    engine.clearBarQueue();
-    const released = world.releasePressureBreak();
-    engine.setPressureMuffle(false);
-    engine.replayPressureRelease(released);
+    world.beginPressureDrop();
+    engine.setPressureDropLift(true);
+  };
+  const pressureStartButton = button(pressureControls, 'START DROP', startPressureDrop);
+  const pressureBarButtons = new Map<number, HTMLButtonElement>();
+  for (let bar = 1; bar <= 4; bar++) {
+    pressureBarButtons.set(bar, button(pressureControls, `BAR ${bar}`, () => {
+      if (world.pressureState !== 'drop') startPressureDrop();
+      world.pulsePressureDropBar(bar);
+      engine.playPressureDropBar(bar);
+    }));
+  }
+  const pressureEndButton = button(pressureControls, 'END DROP', () => {
+    world.cancelPressureConductor();
+    world.finishPressureDrop();
+    engine.cancelPressureDropAudio();
   });
   button(pressureControls, 'RESET', () => {
     engine.clearBarQueue();
     world.clearSandboxEntities();
-    engine.setPressureMuffle(false);
+    engine.setPressureDropLift(false);
   });
   const pressureReadout = el('div', 'sb-hint', tour);
 
@@ -569,9 +583,19 @@ export function mountSandboxPanel(
     for (const [id, venueButton] of venueButtons) venueButton.classList.toggle('on', world.venue === id);
     const venue = VENUES[world.venue];
     venueReadout.textContent = `${venue.ruleName}: ${venue.ruleDescription}`;
-    pressureReadout.textContent =
-      `${world.pressureState.toUpperCase()} · heat ${Math.round(world.pressureHeat)}%` +
-      (world.pressureState === 'cooldown' ? ` · ${world.pressureCooldownT.toFixed(1)}s cooldown` : '');
+    const dropBar = Math.max(0, Math.min(4, Math.floor(world.pressureDropBar)));
+    pressureArmButton.classList.toggle('on', world.pressureState === 'armed');
+    pressureStartButton.classList.toggle('on', world.pressureState === 'drop');
+    pressureEndButton.classList.toggle('on', world.pressureState === 'cooldown');
+    for (const [bar, control] of pressureBarButtons) {
+      control.classList.toggle('on', world.pressureState === 'drop' && dropBar === bar);
+    }
+    pressureReadout.textContent = world.pressureState === 'drop'
+      ? `DROP ${Math.max(1, dropBar)}/4 · +50% damage · +25% area/knockback · +20% projectile speed · +15% movement`
+      : world.pressureState === 'armed'
+        ? 'DROP READY · starts on the next complete four-bar phrase'
+        : `${world.pressureState.toUpperCase()} · heat ${Math.round(world.pressureHeat)}%` +
+          (world.pressureState === 'cooldown' ? ` · ${world.pressureCooldownT.toFixed(1)}s cooldown` : '');
     neonReadout.textContent = world.neonRail
       ? `${world.neonRail.phase.toUpperCase()} rail · ${world.neonRail.points.length} points · ${world.neonRail.lifeS.toFixed(1)}s`
       : 'No active rail.';
@@ -584,8 +608,8 @@ export function mountSandboxPanel(
   return {
     update: refresh,
     destroy(): void {
-      // Never allow a sandbox Pressure filter to leak back to the title/run.
-      engine.setPressureMuffle(false);
+      // Never allow a sandbox Pressure mix lift to leak back to the title/run.
+      engine.setPressureDropLift(false);
       panel.remove();
     },
   };

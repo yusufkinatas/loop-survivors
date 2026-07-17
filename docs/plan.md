@@ -60,10 +60,12 @@ Two run systems reward movement and mounting danger:
 - **Neon Loop** remembers the player's path at the end of each minute, then
   turns it into a temporary glowing rail that slows enemies and reflects moving
   attacks.
-- **Pressure Break** fills from close calls and close-range kills. When full,
-  it banks one short four-beat section (four steady counts of the music),
-  briefly muffles the track and slows moving attacks, then replays the stored
-  sounds and attacks as one amplified burst.
+- **Pressure Drop** fills from close calls and close-range kills. At 100% it
+  becomes ready, then starts on the next complete four-bar phrase—the next
+  block of four repeating musical measures. An opening shove clears breathing
+  room, and all four bars add +50% damage, +25% attack area and knockback,
+  +20% projectile speed, and +15% movement speed. The track and normal attacks
+  continue throughout; the Drop is a purely positive power window.
 
 A rare one-use **Stage Magnet** can fall from a defeated enemy. Walking onto
 it vacuums every freely collectible experience gem and music note currently

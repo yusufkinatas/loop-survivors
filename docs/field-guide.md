@@ -166,15 +166,22 @@ but gaining a little lifetime; later reflections consume normal Mirrorball
 bounces. Crossing the recorded path over itself creates especially useful
 rail geometry and records a career milestone.
 
-### Pressure Break
+### Pressure Drop
 
 Pressure rises while enemies crowd within the player's body radius plus 130
 units and gains an extra two points from close-range kills. Empty space drains
-it; taking a hit removes 30 points. At 100%, the next four-beat section — four
-steady counts of the track — is banked instead of firing normally. The music
-muffles and moving attacks slow almost to a stop. At the following boundary,
-the stored sounds and attacks replay together at 15% extra damage, followed by
-a 45-second cooldown.
+it; taking a hit removes 30 points only while it is still charging. Once the
+HUD reads **DROP READY**, the earned reward cannot be canceled. The next
+complete **four-bar phrase**—the next block of four repeating musical
+measures—opens with a 220-unit shove that clears space around the player. For
+all four bars, the player gains **+50% damage**, **+25% area** (how much ground
+attacks cover), **+25% knockback** (how far hits push enemies), **+20%
+projectile speed**, and **+15% movement speed**. The HUD counts **DROP 1/4**
+through **DROP 4/4**, while the ordinary track and attacks continue normally.
+Each bar opens with its own impact cue and arena pulse; the first lands deepest,
+the fourth adds a rising sweep, and the weapon mix gets a small clean lift for
+the whole phrase. The fourth bar ends the power window and starts a 45-second
+cooldown.
 
 ### Headliners and Encore Cases
 
@@ -252,8 +259,8 @@ altering the player's career.
   clear a full loadout; toggle each of the nine complete evolution recipes;
   inspect the live combined modifiers.
 - **Tour:** switch among all six venues, open the real walk-through route-gate
-  demo, and read their rules; arm, begin, release, or reset Pressure Break;
-  install or clear a figure-eight Neon Loop.
+  demo, and read their rules; arm or start Pressure Drop, pulse each of its four
+  bars, end/reset it, and install or clear a figure-eight Neon Loop.
 - **Career:** use a disposable in-memory note wallet; create physical notes,
   XP pickup fields, and Stage Magnets; trigger the full-screen vacuum; grant
   testing currency; exercise the real gated 18-offer Afterhours Shop. Nothing

@@ -57,12 +57,6 @@ export interface ScheduledTrigger {
   note?: number;
 }
 
-export interface PressureReplayTrigger {
-  trigger: ScheduledTrigger;
-  /** Stored overflow strength, from 1x through 3x. */
-  power: number;
-}
-
 export type TriggerListener = (t: ScheduledTrigger) => void;
 
 interface TimedAction {
@@ -76,6 +70,32 @@ interface PendingTrigger {
   source: AudioBufferSourceNode;
   voice: Voice;
   chokedPrevious: VoiceHit | null;
+}
+
+/** Find a phrase-zero step that the scheduler has prepared but the listener
+ * has not heard yet. `afterAudioTime` reserves a strictly later phrase. */
+export function nextUnheardPhraseTime(
+  markers: readonly { step: number; time: number }[],
+  currentTime: number,
+  afterAudioTime = currentTime,
+): number | null {
+  const threshold = Math.max(currentTime, afterAudioTime) + 1e-6;
+  return markers.find(
+    (marker) => marker.time > threshold && marker.step % STEPS_PER_PHRASE === 0,
+  )?.time ?? null;
+}
+
+/** Decide whether a queued phrase callback owns this boundary. Starts wait
+ * through overdue catch-up steps for the next genuinely unheard phrase;
+ * phrase-end callbacks may opt into the first elapsed boundary after start. */
+export function canDispatchPhraseBoundary(
+  boundaryTime: number,
+  currentTime: number,
+  afterAudioTime: number,
+  acceptOverdue = false,
+): boolean {
+  return boundaryTime > afterAudioTime + 1e-6 &&
+    (acceptOverdue || boundaryTime > currentTime + 1e-6);
 }
 
 // Free per-hit engine nudges: the first of the three variation layers.
@@ -122,9 +142,12 @@ export class MusicEngine {
    *  dip the whole soundtrack for its slow-mo moment while the level cue,
    *  which rides master directly, rings out over the dip. */
   private weaponsBus: GainNode;
-  /** Pressure Break filter: normally fully open, briefly closes over the
-   * weapon bus to make the synchronized release physically obvious. */
-  private pressureFilter: BiquadFilterNode;
+  /** Positive mix lift for the four-bar Pressure Drop. It is separate
+   * from weaponsBus because level-up moments own that bus's gain automation. */
+  private pressureDropLift: GainNode;
+  /** Drop accents are scheduled ahead on the audio grid. Keep their sources
+   * so a run reset can cancel an unheard cue instead of leaking it to menus. */
+  private pressureDropSources = new Set<AudioScheduledSourceNode>();
   private audioSetId: AudioSetId;
   /** Independent transport gate: intentional game pauses mute immediately
    * while AudioContext.suspend() crosses the browser control boundary. */
@@ -136,6 +159,11 @@ export class MusicEngine {
   private activeSources = new Set<AudioBufferSourceNode>();
   private listeners: TriggerListener[] = [];
   private barQueue: ((audioTime: number) => void)[] = [];
+  private phraseQueue: Array<{
+    fn: (audioTime: number) => void;
+    afterAudioTime: number;
+    acceptOverdue: boolean;
+  }> = [];
   private timedActions: TimedAction[] = [];
   private nextTimedActionSeq = 0;
   private stepMarkers: { step: number; time: number }[] = [];
@@ -152,11 +180,11 @@ export class MusicEngine {
     this.master.gain.value = 0.8;
     this.weaponsBus = ctx.createGain();
     this.weaponsBus.gain.value = 1;
-    this.pressureFilter = ctx.createBiquadFilter();
-    this.pressureFilter.type = 'lowpass';
-    this.pressureFilter.frequency.value = 22_000;
-    this.pressureFilter.Q.value = 0.35;
-    this.weaponsBus.connect(this.pressureFilter).connect(this.master);
+    this.pressureDropLift = ctx.createGain();
+    this.pressureDropLift.gain.value = 1;
+    this.weaponsBus
+      .connect(this.pressureDropLift)
+      .connect(this.master);
     this.transport = ctx.createGain();
     this.transport.gain.value = 1;
     // Soft-knee limiter on the master so any build stays clean (Pillar 2:
@@ -242,18 +270,117 @@ export class MusicEngine {
     return this.audioSetId;
   }
 
-  /** Close/open the Pressure Break low-pass. A low-pass lets only low
-   * frequencies through, making one four-beat section sound deliberately
-   * muffled before the stored attacks burst back. */
-  setPressureMuffle(on: boolean): void {
-    const now = this.ctx.currentTime;
-    const target = on ? 820 : 22_000;
-    this.pressureFilter.frequency.cancelScheduledValues(now);
-    this.pressureFilter.frequency.setValueAtTime(
-      Math.max(20, this.pressureFilter.frequency.value),
-      now,
+  /** Lift the complete weapon mix for one Drop phrase without competing with
+   * the level-up duck on weaponsBus. The limiter downstream keeps a full band
+   * clean; 1.18 is roughly +1.4 dB, enough to read without flattening it. */
+  setPressureDropLift(on: boolean, audioTime = this.ctx.currentTime): void {
+    const when = Math.max(this.ctx.currentTime, audioTime);
+    const gain = this.pressureDropLift.gain;
+    if (typeof gain.cancelAndHoldAtTime === 'function') {
+      gain.cancelAndHoldAtTime(when);
+    } else {
+      const held = gain.value;
+      gain.cancelScheduledValues(when);
+      gain.setValueAtTime(held, when);
+    }
+    gain.linearRampToValueAtTime(on ? 1.18 : 1, when + (on ? 0.045 : 0.16));
+  }
+
+  /** A bounded, synthesized downbeat marker for each of the Drop's four bars.
+   * Sources are registered before start so resetWorld can cancel lookahead
+   * audio that has been scheduled but not heard yet. */
+  playPressureDropBar(bar: number, audioTime = this.ctx.currentTime): void {
+    if (this.masterTarget <= 0) return;
+    const index = Math.max(1, Math.min(4, Math.floor(bar)));
+    const when = Math.max(this.ctx.currentTime + 0.003, audioTime);
+    const impactS = index === 1 ? 0.62 : index === 4 ? 0.46 : 0.28;
+    // Sub impact: the first bar lands deepest, then the pitch climbs across
+    // the phrase so bars remain countable without a spoken UI cue.
+    const sub = this.ctx.createOscillator();
+    sub.type = 'sine';
+    const subStart = [0, 66, 73.4, 82.4, 98][index];
+    sub.frequency.setValueAtTime(subStart, when);
+    sub.frequency.exponentialRampToValueAtTime(Math.max(34, subStart * 0.52), when + impactS);
+    const subEnv = this.ctx.createGain();
+    const subPeak = index === 1 ? 0.24 : index === 4 ? 0.17 : 0.12;
+    subEnv.gain.setValueAtTime(0.0001, when);
+    subEnv.gain.exponentialRampToValueAtTime(subPeak, when + 0.008);
+    subEnv.gain.exponentialRampToValueAtTime(0.0001, when + impactS);
+    sub.connect(subEnv).connect(this.master);
+    this.trackPressureDropSource(sub);
+    sub.start(when);
+    sub.stop(when + impactS + 0.02);
+
+    // Short A-minor-family tone: a little brighter on each bar, with a wider
+    // opening/final accent while the middle two stay out of the weapon mix.
+    const tone = this.ctx.createOscillator();
+    tone.type = 'triangle';
+    tone.frequency.value = [0, 110, 130.81, 146.83, 164.81][index];
+    const toneEnv = this.ctx.createGain();
+    const toneS = index === 1 || index === 4 ? 0.24 : 0.14;
+    toneEnv.gain.setValueAtTime(0.0001, when);
+    toneEnv.gain.exponentialRampToValueAtTime(index === 1 ? 0.105 : 0.065, when + 0.006);
+    toneEnv.gain.exponentialRampToValueAtTime(0.0001, when + toneS);
+    tone.connect(toneEnv).connect(this.master);
+    this.trackPressureDropSource(tone);
+    tone.start(when);
+    tone.stop(when + toneS + 0.02);
+
+    // A crisp transient gives small speakers a readable hit. Bar one gets a
+    // longer crash; bar four also starts a restrained rise into the exit.
+    const noiseS = index === 1 ? 0.72 : index === 4
+      ? Math.max(0.7, Math.min(3.2, this.clock.stepDuration * STEPS_PER_BAR))
+      : 0.07;
+    const noiseBuffer = this.ctx.createBuffer(
+      1,
+      Math.ceil(this.ctx.sampleRate * noiseS),
+      this.ctx.sampleRate,
     );
-    this.pressureFilter.frequency.exponentialRampToValueAtTime(target, now + (on ? 0.055 : 0.012));
+    const samples = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < samples.length; i++) samples[i] = Math.random() * 2 - 1;
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = noiseBuffer;
+    const noiseFilter = this.ctx.createBiquadFilter();
+    noiseFilter.type = index === 4 ? 'bandpass' : 'highpass';
+    noiseFilter.Q.value = index === 4 ? 0.75 : 0.4;
+    noiseFilter.frequency.setValueAtTime(index === 4 ? 650 : 4_600, when);
+    if (index === 4) {
+      noiseFilter.frequency.exponentialRampToValueAtTime(8_500, when + noiseS);
+    }
+    const noiseEnv = this.ctx.createGain();
+    noiseEnv.gain.setValueAtTime(0.0001, when);
+    if (index === 4) {
+      noiseEnv.gain.exponentialRampToValueAtTime(0.065, when + noiseS * 0.86);
+      noiseEnv.gain.exponentialRampToValueAtTime(0.0001, when + noiseS);
+    } else {
+      const peak = index === 1 ? 0.095 : 0.035;
+      noiseEnv.gain.exponentialRampToValueAtTime(peak, when + 0.004);
+      noiseEnv.gain.exponentialRampToValueAtTime(0.0001, when + noiseS);
+    }
+    noise.connect(noiseFilter).connect(noiseEnv).connect(this.master);
+    this.trackPressureDropSource(noise);
+    noise.start(when);
+    noise.stop(when + noiseS + 0.02);
+  }
+
+  private trackPressureDropSource(source: AudioScheduledSourceNode): void {
+    this.pressureDropSources.add(source);
+    source.addEventListener('ended', () => this.pressureDropSources.delete(source), { once: true });
+  }
+
+  private resetPressureDropAudio(): void {
+    const now = this.ctx.currentTime;
+    const gain = this.pressureDropLift.gain;
+    gain.cancelScheduledValues(now);
+    gain.setValueAtTime(1, now);
+    for (const source of this.pressureDropSources) {
+      try {
+        source.stop(now);
+      } catch {
+        // It may have ended between iteration and stop().
+      }
+    }
+    this.pressureDropSources.clear();
   }
 
   /** Evolution voices stay in the same musical lane; a few dense weapons are
@@ -282,7 +409,7 @@ export class MusicEngine {
       voice.evolved = false;
       voice.gain.gain.setTargetAtTime(voiceMixGain(voice.role), this.ctx.currentTime, 0.02);
     }
-    this.setPressureMuffle(false);
+    this.resetPressureDropAudio();
   }
 
   /** RMS of the current output window, 0..~1. Debug metering. */
@@ -557,6 +684,30 @@ export class MusicEngine {
     this.barQueue.push(fn);
   }
 
+  /** Run fn while scheduling the next unheard four-bar phrase downbeat.
+   * Unlike the ordinary bar API, this can claim a phrase-zero step already in
+   * the 120 ms lookahead window, so filling Pressure just before the heard
+   * downbeat never adds an accidental four-bar wait. `afterAudioTime` reserves
+   * a strictly later phrase (used to end a Drop exactly four bars later).
+   * `acceptOverdue` is reserved for phrase-end cleanup: it dispatches the
+   * intended boundary after a main-thread stall instead of extending a buff. */
+  atNextPhrase(
+    fn: (audioTime: number) => void,
+    afterAudioTime = this.ctx.currentTime,
+    acceptOverdue = false,
+  ): void {
+    const scheduledTime = nextUnheardPhraseTime(
+      this.stepMarkers,
+      this.ctx.currentTime,
+      afterAudioTime,
+    );
+    if (scheduledTime !== null) {
+      fn(scheduledTime);
+      return;
+    }
+    this.phraseQueue.push({ fn, afterAudioTime, acceptOverdue });
+  }
+
   /** Queue non-audio state for an exact audio-clock instant. update() merges
    *  these actions with due triggers chronologically; actions run before a
    *  trigger at the same timestamp, but never before an older trigger. */
@@ -564,10 +715,19 @@ export class MusicEngine {
     this.timedActions.push({ time, fn, seq: this.nextTimedActionSeq++ });
   }
 
-  /** Drop queued next-bar changes (a run ended before they landed). */
+  /** Drop queued musical changes (a run ended before they landed) and cancel
+   * scheduled Drop accents/lift so no lookahead audio leaks to the next screen. */
   clearBarQueue(): void {
     this.barQueue = [];
+    this.phraseQueue = [];
     this.timedActions = [];
+    this.resetPressureDropAudio();
+  }
+
+  /** Cancel only the Drop's lookahead accents and mix lift. Sandbox pressure
+   * controls use this instead of clearing unrelated next-bar loadout changes. */
+  cancelPressureDropAudio(): void {
+    this.resetPressureDropAudio();
   }
 
   /** Stop and forget the scheduler's temporary audio state. Top-level
@@ -587,10 +747,12 @@ export class MusicEngine {
     this.activeSources.clear();
     this.pending = [];
     this.barQueue = [];
+    this.phraseQueue = [];
     this.timedActions = [];
     this.stepMarkers = [];
     this.lastDueStep = 0;
     this.nextTimedActionSeq = 0;
+    this.resetPressureDropAudio();
     for (const voice of this.voices.values()) {
       voice.lastHit = null;
       voice.duck.gain.cancelScheduledValues(now);
@@ -603,8 +765,10 @@ export class MusicEngine {
       this.activeSources.size === 0 &&
       this.pending.length === 0 &&
       this.barQueue.length === 0 &&
+      this.phraseQueue.length === 0 &&
       this.timedActions.length === 0 &&
-      this.stepMarkers.length === 0
+      this.stepMarkers.length === 0 &&
+      this.pressureDropSources.size === 0
     );
   }
 
@@ -669,30 +833,6 @@ export class MusicEngine {
     this.trigger(voice, ev, this.ctx.currentTime);
   }
 
-  /** Re-voice the stored Pressure Break attacks without dispatching gameplay a
-   * second time. Dense releases receive equal-power mix compensation so a
-   * seven-voice build lands as one punch rather than clipping the limiter. */
-  replayPressureRelease(
-    stored: readonly PressureReplayTrigger[],
-    delayS = 0.012,
-  ): void {
-    if (stored.length === 0) return;
-    const time = this.ctx.currentTime + Math.max(0.005, delayS);
-    const densityGain = Math.max(0.2, Math.min(1, 2.1 / Math.sqrt(stored.length)));
-    for (const { trigger, power } of stored) {
-      const voice = this.voices.get(trigger.role);
-      if (!voice) continue;
-      const event: ChartEvent = {
-        step: trigger.step,
-        velocity: trigger.velocity,
-        variant: trigger.variant,
-        note: trigger.note,
-      };
-      const overflowAccent = 1 + 0.12 * Math.max(0, Math.min(2, power - 1));
-      this.trigger(voice, event, time, -1, false, densityGain * overflowAccent);
-    }
-  }
-
   private onStep(step: number, time: number): void {
     if (step === 0) this.lastDueStep = 0;
     this.stepMarkers.push({ step, time });
@@ -704,6 +844,21 @@ export class MusicEngine {
       const queue = this.barQueue;
       this.barQueue = [];
       for (const fn of queue) fn(time);
+    }
+    if (phraseStep === 0 && this.phraseQueue.length > 0) {
+      const retained: typeof this.phraseQueue = [];
+      const due: typeof this.phraseQueue = [];
+      for (const entry of this.phraseQueue) {
+        if (canDispatchPhraseBoundary(
+          time,
+          this.ctx.currentTime,
+          entry.afterAudioTime,
+          entry.acceptOverdue,
+        )) due.push(entry);
+        else retained.push(entry);
+      }
+      this.phraseQueue = retained;
+      for (const entry of due) entry.fn(time);
     }
     for (const voice of this.voices.values()) {
       if (!voice.enabled) continue;

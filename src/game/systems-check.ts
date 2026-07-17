@@ -7,7 +7,11 @@ import { fileURLToPath } from 'node:url';
 import type { Role } from '../audio/kits';
 import { AUDIO_SET_LIST } from '../audio/audio-sets';
 import { AFTERHOURS_ROLES, AFTERHOURS_VARIANTS } from '../audio/kits/afterhours';
-import { VOICE_MIX_GAIN } from '../audio/engine';
+import {
+  VOICE_MIX_GAIN,
+  canDispatchPhraseBoundary,
+  nextUnheardPhraseTime,
+} from '../audio/engine';
 import { EVOLUTIONS, ITEM_IDS, ITEMS, deriveBuildMods, type ItemId } from './items';
 import {
   CORE_ITEMS,
@@ -78,6 +82,23 @@ assert.equal(
 );
 assert.equal(VOICE_MIX_GAIN.hat, 0.708,
   'the dense hi-hat voice needs a calibrated cut after every palette swap');
+const phraseMarkers = [
+  { step: 0, time: 10 },
+  { step: 16, time: 12 },
+  { step: 64, time: 18 },
+];
+assert.equal(nextUnheardPhraseTime(phraseMarkers, 9.95), 10,
+  'Pressure armed inside lookahead must claim the next unheard phrase');
+assert.equal(nextUnheardPhraseTime(phraseMarkers, 9.95, 10), 18,
+  'the Drop finish must reserve the strictly following phrase');
+assert.equal(nextUnheardPhraseTime(phraseMarkers, 18), null,
+  'a heard phrase boundary must never be reused');
+assert.equal(canDispatchPhraseBoundary(10, 10.5, 9), false,
+  'an overdue catch-up boundary must not start a Drop');
+assert.equal(canDispatchPhraseBoundary(18, 17.95, 9), true,
+  'the next genuinely unheard boundary should start a queued Drop');
+assert.equal(canDispatchPhraseBoundary(10, 10.5, 9, true), true,
+  'phrase-end cleanup must accept its intended elapsed boundary after a stall');
 assert((VOICE_MIX_GAIN.chord ?? 0) > 1 && (VOICE_MIX_GAIN.arp ?? 0) > 1,
   'chord and arp voices need calibrated lifts at the shared voice bus');
 const hatDamageLadder = WEAPONS.hat!.map(({ damage }) => damage);
@@ -501,20 +522,132 @@ pressureWorld.spawnEnemyAt('bat', 25, 0);
 pressureWorld.fireTrigger({ role: 'kick', time: 0, velocity: 1, step: 0 });
 pressureWorld.update(1 / 60);
 assert.equal(pressureWorld.pressureHeat, 0,
-  'close kills must not recharge Pressure Break during cooldown');
-pressureWorld.pressureState = 'break';
+  'close kills must not recharge Pressure Drop during cooldown');
+pressureWorld.clearSandboxEntities();
+pressureWorld.pressureState = 'armed';
+pressureWorld.pressureHeat = 100;
+const shovedByDrop = pressureWorld.spawnEnemyAt('zombie', 40, 0)!;
+shovedByDrop.speed = 0;
+pressureWorld.beginPressureDrop();
+assert.equal(pressureWorld.pressureState, 'drop');
+pressureWorld.update(0.12);
+assert(Math.hypot(shovedByDrop.x - pressureWorld.player.x, shovedByDrop.y - pressureWorld.player.y) >= 220,
+  'the Drop opening should create breathing room without dealing damage');
+assert.equal(shovedByDrop.dead, false, 'the opening shove must not become free damage');
+assert.equal(pressureWorld.buildMods.damageMul, 1,
+  'weapon damage is lifted once at impact, not duplicated in build transforms');
+assert.equal(pressureWorld.buildMods.moveMul, 1.15);
+assert.equal(pressureWorld.buildMods.areaMul, 1.25);
+assert.equal(pressureWorld.buildMods.projectileSpeedMul, 1,
+  'the Drop speed lift is resolved live so in-flight projectiles benefit');
+assert.equal(pressureWorld.buildMods.knockbackMul, 1,
+  'the Drop shove lift is resolved at impact so existing attacks benefit');
 pressureWorld.addWeapon('snare', 1);
 pressureWorld.fireTrigger({ role: 'snare', time: 2, velocity: 0.9, step: 4 });
-assert.equal(pressureWorld.projectiles.length, 0,
-  'Pressure Break should bank gameplay before its release');
-const pressureRelease = pressureWorld.releasePressureBreak();
-assert.equal(pressureRelease.length, 1);
-assert.deepEqual(pressureRelease[0], {
-  trigger: { role: 'snare', time: 2, velocity: 0.9, step: 4 },
-  power: 1,
-});
 assert.equal(pressureWorld.projectiles.length, 1,
-  'the returned audio replay metadata must accompany one released gameplay attack');
+  'weapons must keep firing immediately throughout the Drop');
+assert.equal(pressureWorld.projectiles[0].speed, 650,
+  'temporary projectile speed must not be baked in past the Drop boundary');
+pressureWorld.pulsePressureDropBar(4);
+assert.equal(pressureWorld.pressureDropBar, 4);
+pressureWorld.finishPressureDrop();
+assert.equal(pressureWorld.pressureState, 'cooldown');
+assert.equal(pressureWorld.pressureDropBar, 0);
+assert.equal(pressureWorld.pressureCooldownT, 45);
+assert.equal(pressureWorld.buildMods.moveMul, 1,
+  'temporary Drop modifiers must leave no residue after the phrase');
+
+function snareTravelDuringPressure(state: 'charging' | 'drop'): number {
+  const probe = new RunWorld({ width: 1280, height: 720 }, events, {
+    scripted: false,
+    fx: false,
+    rng: () => 0.5,
+  });
+  probe.invincible = true;
+  probe.pressureState = state;
+  probe.addWeapon('snare', 1);
+  probe.fireTrigger({ role: 'snare', time: 0, velocity: 1, step: 0 });
+  const projectile = probe.projectiles[0];
+  const startX = projectile.x;
+  const startY = projectile.y;
+  probe.update(0.05);
+  return Math.hypot(projectile.x - startX, projectile.y - startY);
+}
+const regularSnareTravel = snareTravelDuringPressure('charging');
+const dropSnareTravel = snareTravelDuringPressure('drop');
+assert(Math.abs(dropSnareTravel / regularSnareTravel - 1.2) < 1e-9,
+  'all moving projectiles should travel exactly 20% faster during the Drop');
+
+function snareDamageDuringPressure(state: 'charging' | 'drop'): number {
+  const probe = new RunWorld({ width: 1280, height: 720 }, events, {
+    scripted: false,
+    fx: false,
+    rng: () => 0.5,
+  });
+  probe.invincible = true;
+  probe.pressureState = state;
+  probe.addWeapon('snare', 1);
+  const target = probe.spawnEnemyAt('zombie', 300, 0)!;
+  target.hp = 1000;
+  target.speed = 0;
+  target.damage = 0;
+  probe.fireTrigger({ role: 'snare', time: 0, velocity: 1, step: 0 });
+  for (let i = 0; i < 120 && target.hp === 1000; i++) probe.update(1 / 120);
+  return 1000 - target.hp;
+}
+const regularSnareDamage = snareDamageDuringPressure('charging');
+const dropSnareDamage = snareDamageDuringPressure('drop');
+assert(regularSnareDamage > 0, 'the Pressure damage fixture must land its control hit');
+assert.equal(dropSnareDamage, regularSnareDamage * 1.5,
+  'weapon impacts during the Drop should deal exactly 50% more damage');
+
+function subquakeRadiusDuringPressure(state: 'charging' | 'drop'): number {
+  const probe = new RunWorld({ width: 1280, height: 720 }, events, {
+    scripted: false,
+    fx: false,
+    rng: () => 0.5,
+  });
+  probe.pressureState = state;
+  probe.addWeapon('bass', 4);
+  probe.addItem('heavyAmp', 5);
+  assert(probe.evolve('bass'));
+  probe.fireTrigger({ role: 'bass', time: 0, velocity: 1, step: 0, variant: 'fat' });
+  return probe.shockwaves[0].maxRadius;
+}
+const regularSubquakeRadius = subquakeRadiusDuringPressure('charging');
+const dropSubquakeRadius = subquakeRadiusDuringPressure('drop');
+assert.equal(dropSubquakeRadius, regularSubquakeRadius * 1.25,
+  'Subquake must inherit the full Drop area bonus despite its authored radius');
+
+function bellShardRadiusDuringPressure(state: 'charging' | 'drop'): number {
+  const probe = new RunWorld({ width: 1280, height: 720 }, events, {
+    scripted: false,
+    fx: false,
+    rng: () => 0.5,
+  });
+  probe.invincible = true;
+  probe.pressureState = state;
+  probe.addWeapon('bell', 1);
+  const target = probe.spawnEnemyAt('zombie', 100, 0)!;
+  target.hp = 1000;
+  target.speed = 0;
+  target.damage = 0;
+  probe.fireTrigger({ role: 'bell', time: 0, velocity: 1, step: 0 });
+  for (let i = 0; i < 120 && !probe.projectiles.some(({ shard }) => shard); i++) {
+    probe.update(1 / 120);
+  }
+  return probe.projectiles.find(({ shard }) => shard)!.radius;
+}
+const regularBellShardRadius = bellShardRadiusDuringPressure('charging');
+const dropBellShardRadius = bellShardRadiusDuringPressure('drop');
+assert.equal(dropBellShardRadius, regularBellShardRadius * 1.25,
+  'Bell shards spawned during the Drop must inherit its area bonus');
+
+const pressureConductorToken = pressureWorld.newPressureConductor();
+assert.equal(pressureWorld.pressureConductorIsCurrent(pressureConductorToken), true);
+pressureWorld.cancelPressureConductor();
+assert.equal(pressureWorld.pressureConductorIsCurrent(pressureConductorToken), false,
+  'manual Sandbox controls must invalidate only their queued Pressure conductor');
 
 const redlineWorld = new RunWorld({ width: 1280, height: 720 }, events, {
   scripted: false,

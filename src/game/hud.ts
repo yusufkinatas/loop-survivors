@@ -37,8 +37,12 @@ export class Hud {
   private toastStack: HTMLElement;
   private rack: HTMLElement;
   private itemRack: HTMLElement;
+  private pressureMeter: HTMLElement;
   private pressureFill: HTMLElement;
   private pressureLabel: HTMLElement;
+  private pressureSegments: HTMLElement[] = [];
+  private lastPressureState = '';
+  private lastPressureDropBar = 0;
   private venueLabel: HTMLElement;
   private rerollButton: HTMLButtonElement;
   private runInfoKey = '';
@@ -65,9 +69,13 @@ export class Hud {
     el('span', 'meter-cap', hp, 'HP');
     const xp = el('div', 'meter xp', this.bar);
     this.xpFill = el('div', 'fill', xp);
-    const pressure = el('div', 'meter pressure', this.bar);
-    this.pressureFill = el('div', 'fill', pressure);
-    this.pressureLabel = el('span', 'meter-cap pressure-cap', pressure, 'PRESSURE 0%');
+    this.pressureMeter = el('div', 'meter pressure', this.bar);
+    this.pressureFill = el('div', 'fill', this.pressureMeter);
+    const pressureSegments = el('div', 'pressure-segments', this.pressureMeter);
+    for (let i = 0; i < 4; i++) {
+      this.pressureSegments.push(el('span', 'pressure-segment', pressureSegments));
+    }
+    this.pressureLabel = el('span', 'meter-cap pressure-cap', this.pressureMeter, 'PRESSURE 0%');
     this.bar.style.display = 'none';
 
     this.flash = el('div', 'hit-flash', root);
@@ -100,6 +108,7 @@ export class Hud {
     evolved: ReadonlySet<Role>,
     pressureHeat: number,
     pressureState: string,
+    pressureDropBar: number,
     venue: string,
     chapter: number,
     rerolls: number,
@@ -107,19 +116,48 @@ export class Hud {
   ): void {
     const itemPart = [...items].map(([id, level]) => `${id}:${level}`).join('|');
     const evolvedPart = [...evolved].join('|');
-    const key = `${itemPart}/${evolvedPart}/${Math.round(pressureHeat)}/${pressureState}/${venue}/${chapter}/${rerolls}/${notesCollected}`;
+    const dropBar = Math.max(0, Math.min(4, Math.floor(pressureDropBar)));
+    const key = `${itemPart}/${evolvedPart}/${Math.round(pressureHeat)}/${pressureState}:${dropBar}/${venue}/${chapter}/${rerolls}/${notesCollected}`;
     if (key === this.runInfoKey) return;
     this.runInfoKey = key;
     const venueName = isVenueId(venue) ? VENUES[venue].name : venue.replace(/([A-Z])/g, ' $1');
     this.venueLabel.textContent = `${venueName.toUpperCase()} · SET ${chapter + 1}`;
-    this.pressureFill.style.width = `${Math.max(0, Math.min(100, pressureHeat))}%`;
-    this.pressureLabel.textContent = pressureState === 'break'
-      ? 'HOLD THE DROP'
-      : pressureState === 'armed'
-        ? 'PRESSURE ARMED'
+    const isReady = pressureState === 'armed';
+    const isDrop = pressureState === 'drop';
+    const pressureChanged = pressureState !== this.lastPressureState ||
+      (isDrop && dropBar !== this.lastPressureDropBar);
+    const label = isDrop
+      ? `DROP ${Math.max(1, dropBar)}/4 · POWER MODE`
+      : isReady
+        ? 'DROP READY · NEXT PHRASE'
         : `PRESSURE ${Math.round(pressureHeat)}%`;
-    this.pressureLabel.classList.toggle('armed', pressureState === 'armed' || pressureState === 'break');
-    this.pressureFill.classList.toggle('armed', pressureState === 'armed' || pressureState === 'break');
+    this.pressureFill.style.width = `${isReady || isDrop ? 100 : Math.max(0, Math.min(100, pressureHeat))}%`;
+    this.pressureLabel.textContent = label;
+    this.pressureMeter.setAttribute('aria-label', isDrop
+      ? `${label}; damage plus 50 percent, area and shove plus 25 percent, ` +
+        'projectile speed plus 20 percent, movement plus 15 percent'
+      : label);
+    this.pressureMeter.classList.toggle('ready', isReady);
+    this.pressureMeter.classList.toggle('drop', isDrop);
+    this.pressureFill.classList.toggle('ready', isReady);
+    this.pressureFill.classList.toggle('drop', isDrop);
+    this.pressureLabel.classList.toggle('energized', isReady || isDrop);
+    for (let i = 0; i < this.pressureSegments.length; i++) {
+      const segment = this.pressureSegments[i];
+      const bar = i + 1;
+      segment.classList.toggle('ready', isReady);
+      segment.classList.toggle('on', isDrop && bar <= Math.max(1, dropBar));
+      segment.classList.toggle('current', isDrop && bar === Math.max(1, dropBar));
+    }
+    if (pressureChanged && (isReady || isDrop)) {
+      this.pressureMeter.classList.remove('phase-hit');
+      // Restart one short phase/bar hit; active Drop styling itself is static,
+      // so the HUD never becomes a permanent full-screen strobe.
+      void this.pressureMeter.offsetWidth;
+      this.pressureMeter.classList.add('phase-hit');
+    }
+    this.lastPressureState = pressureState;
+    this.lastPressureDropBar = dropBar;
     this.rerollButton.textContent = `REROLL ×${rerolls}`;
     this.rerollButton.disabled = rerolls <= 0;
     this.noteEl.textContent = `♫ ${notesCollected}`;

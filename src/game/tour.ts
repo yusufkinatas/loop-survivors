@@ -1,7 +1,7 @@
 // Pure data and simulation helpers for the endless Midnight Tour and its two
 // reactive set-pieces. This module deliberately has no renderer, browser, or
-// audio imports: RunWorld owns effects, game.ts owns flow, and the audio engine
-// decides how a banked trigger is ultimately voiced.
+// audio imports: RunWorld owns effects, game.ts owns phrase-accurate flow, and
+// the audio engine owns the Drop's mix lift and accents.
 
 // ---------------------------------------------------------------------------
 // Venues and five-minute tour gates
@@ -832,9 +832,9 @@ export function intersectAndReflect(
 }
 
 // ---------------------------------------------------------------------------
-// Pressure Break: pure state machine and bounded trigger bank
+// Pressure Drop: pure phrase-boundary state machine
 
-export type PressureBreakPhase = 'charging' | 'armed' | 'break' | 'cooldown';
+export type PressureBreakPhase = 'charging' | 'armed' | 'drop' | 'cooldown';
 
 export interface PressureBreakConfig {
   maxHeat: number;
@@ -844,17 +844,17 @@ export interface PressureBreakConfig {
   emptyDecayPerS: number;
   closeKillHeat: number;
   hitHeatLoss: number;
-  bankSections: 1;
-  existingProjectileSpeedMul: number;
-  existingProjectileAgeMul: number;
-  releaseDamageMul: number;
+  dropBars: 4;
+  dropDamageMul: number;
+  dropAreaMul: number;
+  dropProjectileSpeedMul: number;
+  dropMoveMul: number;
+  dropKnockbackMul: number;
+  openingShoveRadius: number;
   cooldownS: number;
-  maxTriggersPerRole: number;
-  overflowPowerStep: number;
-  maxMergedPower: number;
 }
 
-/** Locked Pressure Break contract. A "section" is exactly four beats. */
+/** Locked Pressure Drop contract. One Drop is one complete four-bar phrase. */
 export const PRESSURE_BREAK_CONFIG: Readonly<PressureBreakConfig> = Object.freeze({
   maxHeat: 100,
   proximityPadding: 130,
@@ -863,50 +863,52 @@ export const PRESSURE_BREAK_CONFIG: Readonly<PressureBreakConfig> = Object.freez
   emptyDecayPerS: 3,
   closeKillHeat: 2,
   hitHeatLoss: 30,
-  bankSections: 1,
-  existingProjectileSpeedMul: 0.15,
-  existingProjectileAgeMul: 0.15,
-  releaseDamageMul: 1.15,
+  dropBars: 4,
+  dropDamageMul: 1.5,
+  dropAreaMul: 1.25,
+  dropProjectileSpeedMul: 1.2,
+  dropMoveMul: 1.15,
+  dropKnockbackMul: 1.25,
+  openingShoveRadius: 220,
   cooldownS: 45,
-  maxTriggersPerRole: 16,
-  overflowPowerStep: 0.25,
-  maxMergedPower: 3,
 });
 
 export interface PressureBreakState {
   phase: PressureBreakPhase;
   heat: number;
-  /** Heat is full and the break is queued for the next four-beat boundary. */
+  /** Heat is full and the Drop is queued for the next four-bar phrase. */
   armPending: boolean;
   cooldownRemainingS: number;
   cycle: number;
-  /** Monotonic section id last consumed; duplicate callbacks are ignored. */
-  lastBoundarySerial: number;
-  /** Section where banking began, or null outside a live break. */
-  breakStartedBoundarySerial: number | null;
+  /** Monotonic phrase id last consumed; duplicate callbacks are ignored. */
+  lastPhraseSerial: number;
+  /** Phrase where the Drop began, or null outside the four-bar power window. */
+  dropStartedPhraseSerial: number | null;
 }
 
 export type PressureBreakEvent =
   | 'armed'
-  | 'break-started'
-  | 'release-fired'
+  | 'drop-started'
+  | 'drop-finished'
   | 'cooled-down';
 
 export interface PressureBreakUpdate {
   state: PressureBreakState;
   events: readonly PressureBreakEvent[];
   heatRatePerS: number;
-  shouldBankTriggers: boolean;
-  /** Apply to already-flying projectiles while the break phase is active. */
-  existingProjectileSpeedMul: number;
-  existingProjectileAgeMul: number;
+  isDropActive: boolean;
+  damageMul: number;
+  areaMul: number;
+  projectileSpeedMul: number;
+  moveMul: number;
+  knockbackMul: number;
 }
 
 export interface PressureBreakInput {
   dtS: number;
   closeEnemyCount: number;
-  /** Monotonic id of a crossed four-beat boundary; omit between boundaries. */
-  fourBeatBoundary?: number;
+  /** Monotonic id of a crossed four-bar phrase boundary; omit between boundaries. */
+  phraseBoundary?: number;
 }
 
 export function createPressureBreakState(): PressureBreakState {
@@ -916,8 +918,8 @@ export function createPressureBreakState(): PressureBreakState {
     armPending: false,
     cooldownRemainingS: 0,
     cycle: 0,
-    lastBoundarySerial: -1,
-    breakStartedBoundarySerial: null,
+    lastPhraseSerial: -1,
+    dropStartedPhraseSerial: null,
   };
 }
 
@@ -950,49 +952,50 @@ export function addPressureCloseKill(
   return { ...previous, heat, armPending: heat >= PRESSURE_BREAK_CONFIG.maxHeat };
 }
 
-/** Taking a hit removes 30 heat. A queued/live break survives, matching RunWorld. */
+/** Taking a hit removes 30 heat while charging. Ready/live Drops never become
+ * weaker: once earned, the complete four-bar reward is guaranteed. */
 export function applyPressureHit(previous: PressureBreakState): PressureBreakState {
+  if (previous.phase !== 'charging') return previous;
   const heat = Math.max(0, previous.heat - PRESSURE_BREAK_CONFIG.hitHeatLoss);
   return {
     ...previous,
     heat,
-    armPending: previous.phase === 'charging'
-      ? heat >= PRESSURE_BREAK_CONFIG.maxHeat
-      : previous.armPending,
+    armPending: heat >= PRESSURE_BREAK_CONFIG.maxHeat,
   };
 }
 
-/** Begin banking at an armed boundary. Reusing that boundary id is a no-op. */
-export function beginPressureBreak(
+/** Begin the power window at an armed phrase boundary. Nothing was withheld
+ * beforehand; this transition only adds positive modifiers. */
+export function beginPressureDrop(
   previous: PressureBreakState,
-  boundarySerial: number,
+  phraseSerial: number,
 ): PressureBreakUpdate {
-  const serial = pressureBoundarySerial(boundarySerial);
-  if (previous.phase !== 'armed' || serial <= previous.lastBoundarySerial) {
+  const serial = pressureBoundarySerial(phraseSerial);
+  if (previous.phase !== 'armed' || serial <= previous.lastPhraseSerial) {
     return pressureUpdateResult(previous, [], 0);
   }
   const state: PressureBreakState = {
     ...previous,
-    phase: 'break',
+    phase: 'drop',
     armPending: false,
     cycle: previous.cycle + 1,
-    lastBoundarySerial: serial,
-    breakStartedBoundarySerial: serial,
+    lastPhraseSerial: serial,
+    dropStartedPhraseSerial: serial,
   };
-  return pressureUpdateResult(state, ['break-started'], 0);
+  return pressureUpdateResult(state, ['drop-started'], 0);
 }
 
-/** Release the stored section at its ending boundary and start 45s cooldown. */
-export function releasePressureBreak(
+/** End the Drop at the next phrase boundary and only then start cooldown. */
+export function finishPressureDrop(
   previous: PressureBreakState,
-  boundarySerial: number,
+  phraseSerial: number,
 ): PressureBreakUpdate {
-  const serial = pressureBoundarySerial(boundarySerial);
+  const serial = pressureBoundarySerial(phraseSerial);
   if (
-    previous.phase !== 'break' ||
-    previous.breakStartedBoundarySerial === null ||
-    serial <= previous.breakStartedBoundarySerial ||
-    serial <= previous.lastBoundarySerial
+    previous.phase !== 'drop' ||
+    previous.dropStartedPhraseSerial === null ||
+    serial <= previous.dropStartedPhraseSerial ||
+    serial <= previous.lastPhraseSerial
   ) {
     return pressureUpdateResult(previous, [], 0);
   }
@@ -1002,28 +1005,28 @@ export function releasePressureBreak(
     heat: 0,
     armPending: false,
     cooldownRemainingS: PRESSURE_BREAK_CONFIG.cooldownS,
-    lastBoundarySerial: serial,
-    breakStartedBoundarySerial: null,
+    lastPhraseSerial: serial,
+    dropStartedPhraseSerial: null,
   };
-  return pressureUpdateResult(state, ['release-fired'], 0);
+  return pressureUpdateResult(state, ['drop-finished'], 0);
 }
 
-/** Consume one unique four-beat boundary and perform its queued transition. */
-export function advancePressureFourBeatBoundary(
+/** Consume one unique phrase boundary and perform its queued transition. */
+export function advancePressurePhraseBoundary(
   previous: PressureBreakState,
-  boundarySerial: number,
+  phraseSerial: number,
 ): PressureBreakUpdate {
-  const serial = pressureBoundarySerial(boundarySerial);
-  if (serial <= previous.lastBoundarySerial) return pressureUpdateResult(previous, [], 0);
-  if (previous.phase === 'armed') return beginPressureBreak(previous, serial);
-  if (previous.phase === 'break') return releasePressureBreak(previous, serial);
-  return pressureUpdateResult({ ...previous, lastBoundarySerial: serial }, [], 0);
+  const serial = pressureBoundarySerial(phraseSerial);
+  if (serial <= previous.lastPhraseSerial) return pressureUpdateResult(previous, [], 0);
+  if (previous.phase === 'armed') return beginPressureDrop(previous, serial);
+  if (previous.phase === 'drop') return finishPressureDrop(previous, serial);
+  return pressureUpdateResult({ ...previous, lastPhraseSerial: serial }, [], 0);
 }
 
 /**
- * Advance heat/cooldown and consume four-beat boundaries. Full heat enters the
- * armed/queued phase immediately; the next boundary starts banking and the
- * following boundary releases, guaranteeing exactly one four-beat section.
+ * Advance heat/cooldown and consume phrase boundaries. Full heat enters the
+ * armed/queued phase immediately; the next phrase boundary starts a positive
+ * power window and the following boundary ends it, guaranteeing four bars.
  */
 export function updatePressureBreak(
   previous: PressureBreakState,
@@ -1040,11 +1043,11 @@ export function updatePressureBreak(
       state = { ...state, cooldownRemainingS };
     } else {
       const leftoverS = Math.max(0, dtS - state.cooldownRemainingS);
-      const lastBoundarySerial = state.lastBoundarySerial;
+      const lastPhraseSerial = state.lastPhraseSerial;
       state = {
         ...createPressureBreakState(),
         cycle: previous.cycle,
-        lastBoundarySerial,
+        lastPhraseSerial,
       };
       events.push('cooled-down');
       if (leftoverS > 0) {
@@ -1063,155 +1066,12 @@ export function updatePressureBreak(
     state = { ...state, phase: 'armed', heat: PRESSURE_BREAK_CONFIG.maxHeat };
     events.push('armed');
   }
-  if (input.fourBeatBoundary !== undefined) {
-    const boundaryUpdate = advancePressureFourBeatBoundary(state, input.fourBeatBoundary);
+  if (input.phraseBoundary !== undefined) {
+    const boundaryUpdate = advancePressurePhraseBoundary(state, input.phraseBoundary);
     state = boundaryUpdate.state;
     events.push(...boundaryUpdate.events);
   }
   return pressureUpdateResult(state, events, heatRatePerS);
-}
-
-export interface PressureBankedTrigger<RoleId extends string, Trigger> {
-  readonly role: RoleId;
-  readonly capturedAtS: number;
-  readonly sequence: number;
-  /** Overflow folds into the newest role hit, from 1x up to exactly 3x. */
-  readonly power: number;
-  readonly trigger: Trigger;
-}
-
-export interface PressureTriggerBank<RoleId extends string, Trigger> {
-  readonly byRole: Readonly<Partial<Record<RoleId, readonly PressureBankedTrigger<RoleId, Trigger>[]>>>;
-  readonly total: number;
-  readonly maxPerRole: number;
-  readonly overflowPowerStep: number;
-  readonly maxMergedPower: number;
-  readonly nextSequence: number;
-}
-
-export interface PressureBankPush<RoleId extends string, Trigger> {
-  readonly bank: PressureTriggerBank<RoleId, Trigger>;
-  readonly merged: boolean;
-  readonly entry: PressureBankedTrigger<RoleId, Trigger>;
-}
-
-export function createPressureTriggerBank<RoleId extends string, Trigger>(
-  maxPerRole = PRESSURE_BREAK_CONFIG.maxTriggersPerRole,
-  overflowPowerStep = PRESSURE_BREAK_CONFIG.overflowPowerStep,
-  maxMergedPower = PRESSURE_BREAK_CONFIG.maxMergedPower,
-): PressureTriggerBank<RoleId, Trigger> {
-  const byRole = Object.freeze({}) as Partial<
-      Record<RoleId, readonly PressureBankedTrigger<RoleId, Trigger>[]>
-    >;
-  return Object.freeze({
-    byRole,
-    total: 0,
-    maxPerRole: Math.max(1, Math.floor(finiteOr(maxPerRole, 16))),
-    overflowPowerStep: Math.max(0, finiteOr(overflowPowerStep, 0.25)),
-    maxMergedPower: Math.max(1, finiteOr(maxMergedPower, 3)),
-    nextSequence: 0,
-  });
-}
-
-/**
- * Add one trigger without exceeding 16 stored hits for that role. Overflow
- * strengthens the role's newest stored attack by 0.25, capped at 3x, instead
- * of allocating an unbounded event.
- */
-export function pushPressureTrigger<RoleId extends string, Trigger>(
-  bank: PressureTriggerBank<RoleId, Trigger>,
-  role: RoleId,
-  capturedAtS: number,
-  trigger: Trigger,
-): PressureBankPush<RoleId, Trigger> {
-  const byRole: Partial<Record<RoleId, readonly PressureBankedTrigger<RoleId, Trigger>[]>> = {
-    ...bank.byRole,
-  };
-  let entry: PressureBankedTrigger<RoleId, Trigger> = Object.freeze({
-    role,
-    capturedAtS: Math.max(0, finiteOr(capturedAtS, 0)),
-    sequence: bank.nextSequence,
-    power: 1,
-    trigger,
-  });
-  const own = [...(byRole[role] ?? [])];
-  let merged = false;
-  if (own.length < bank.maxPerRole) {
-    own.push(entry);
-  } else {
-    const lastIndex = own.length - 1;
-    const previous = own[lastIndex];
-    entry = Object.freeze({
-      ...previous,
-      power: Math.min(bank.maxMergedPower, previous.power + bank.overflowPowerStep),
-    });
-    own[lastIndex] = entry;
-    merged = true;
-  }
-  byRole[role] = Object.freeze(own);
-  Object.freeze(byRole);
-  const entries = orderedEntriesFromRecord(byRole);
-  return Object.freeze({
-    bank: Object.freeze({
-      byRole,
-      total: entries.length,
-      maxPerRole: bank.maxPerRole,
-      overflowPowerStep: bank.overflowPowerStep,
-      maxMergedPower: bank.maxMergedPower,
-      nextSequence: bank.nextSequence + 1,
-    }),
-    merged,
-    // A detached frozen metadata object prevents callers from aliasing the
-    // stored entry while still preserving the caller-owned trigger payload.
-    entry: Object.freeze({ ...entry }),
-  });
-}
-
-export interface PressureBankDrain<RoleId extends string, Trigger> {
-  readonly bank: PressureTriggerBank<RoleId, Trigger>;
-  readonly triggers: readonly PressureBankedTrigger<RoleId, Trigger>[];
-}
-
-/** Drain in original cross-role capture order and preserve the configured bounds. */
-export function drainPressureTriggerBank<RoleId extends string, Trigger>(
-  bank: PressureTriggerBank<RoleId, Trigger>,
-): PressureBankDrain<RoleId, Trigger> {
-  const byRole = Object.freeze({}) as Partial<
-        Record<RoleId, readonly PressureBankedTrigger<RoleId, Trigger>[]>
-      >;
-  return Object.freeze({
-    bank: Object.freeze({
-      byRole,
-      total: 0,
-      maxPerRole: bank.maxPerRole,
-      overflowPowerStep: bank.overflowPowerStep,
-      maxMergedPower: bank.maxMergedPower,
-      nextSequence: bank.nextSequence,
-    }),
-    triggers: Object.freeze(orderedBankEntries(bank)),
-  });
-}
-
-export interface ScheduledPressureTrigger<RoleId extends string, Trigger>
-  extends PressureBankedTrigger<RoleId, Trigger> {
-  readonly releaseAtS: number;
-  readonly damageMul: number;
-}
-
-/** Release together by default at 1.15 damage, multiplied by overflow power. */
-export function schedulePressureRelease<RoleId extends string, Trigger>(
-  triggers: readonly PressureBankedTrigger<RoleId, Trigger>[],
-  startsAtS: number,
-  spreadS = 0,
-): readonly ScheduledPressureTrigger<RoleId, Trigger>[] {
-  const start = Math.max(0, finiteOr(startsAtS, 0));
-  const spread = Math.max(0, finiteOr(spreadS, 0));
-  const ordered = [...triggers].sort((a, b) => a.sequence - b.sequence);
-  return Object.freeze(ordered.map((entry, index) => Object.freeze({
-      ...entry,
-      releaseAtS: start + (ordered.length <= 1 ? 0 : (index / (ordered.length - 1)) * spread),
-      damageMul: PRESSURE_BREAK_CONFIG.releaseDamageMul * entry.power,
-    })));
 }
 
 // ---------------------------------------------------------------------------
@@ -1378,18 +1238,18 @@ function pressureBoundarySerial(serial: number): number {
 }
 
 function sanitizePressureState(state: PressureBreakState): PressureBreakState {
-  const lastBoundarySerial = Math.max(-1, Math.floor(finiteOr(state.lastBoundarySerial, -1)));
-  const breakStartedBoundarySerial = state.breakStartedBoundarySerial === null
+  const lastPhraseSerial = Math.max(-1, Math.floor(finiteOr(state.lastPhraseSerial, -1)));
+  const dropStartedPhraseSerial = state.dropStartedPhraseSerial === null
     ? null
-    : Math.max(0, Math.floor(finiteOr(state.breakStartedBoundarySerial, 0)));
+    : Math.max(0, Math.floor(finiteOr(state.dropStartedPhraseSerial, 0)));
   return {
     phase: state.phase,
     heat: clampHeat(state.heat),
     armPending: state.armPending === true,
     cooldownRemainingS: Math.max(0, finiteOr(state.cooldownRemainingS, 0)),
     cycle: Math.max(0, Math.floor(finiteOr(state.cycle, 0))),
-    lastBoundarySerial,
-    breakStartedBoundarySerial,
+    lastPhraseSerial,
+    dropStartedPhraseSerial,
   };
 }
 
@@ -1398,32 +1258,16 @@ function pressureUpdateResult(
   events: readonly PressureBreakEvent[],
   heatRatePerS: number,
 ): PressureBreakUpdate {
+  const isDropActive = state.phase === 'drop';
   return {
     state,
     events,
     heatRatePerS,
-    shouldBankTriggers: state.phase === 'break',
-    existingProjectileSpeedMul: state.phase === 'break'
-      ? PRESSURE_BREAK_CONFIG.existingProjectileSpeedMul
-      : 1,
-    existingProjectileAgeMul: state.phase === 'break'
-      ? PRESSURE_BREAK_CONFIG.existingProjectileAgeMul
-      : 1,
+    isDropActive,
+    damageMul: isDropActive ? PRESSURE_BREAK_CONFIG.dropDamageMul : 1,
+    areaMul: isDropActive ? PRESSURE_BREAK_CONFIG.dropAreaMul : 1,
+    projectileSpeedMul: isDropActive ? PRESSURE_BREAK_CONFIG.dropProjectileSpeedMul : 1,
+    moveMul: isDropActive ? PRESSURE_BREAK_CONFIG.dropMoveMul : 1,
+    knockbackMul: isDropActive ? PRESSURE_BREAK_CONFIG.dropKnockbackMul : 1,
   };
-}
-
-function orderedEntriesFromRecord<RoleId extends string, Trigger>(
-  byRole: Readonly<Partial<Record<RoleId, readonly PressureBankedTrigger<RoleId, Trigger>[]>>>,
-): PressureBankedTrigger<RoleId, Trigger>[] {
-  const entries: PressureBankedTrigger<RoleId, Trigger>[] = [];
-  for (const role of Object.keys(byRole) as RoleId[]) {
-    entries.push(...(byRole[role] ?? []));
-  }
-  return entries.sort((a, b) => a.sequence - b.sequence);
-}
-
-function orderedBankEntries<RoleId extends string, Trigger>(
-  bank: PressureTriggerBank<RoleId, Trigger>,
-): PressureBankedTrigger<RoleId, Trigger>[] {
-  return orderedEntriesFromRecord(bank.byRole);
 }

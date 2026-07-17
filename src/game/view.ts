@@ -113,7 +113,8 @@ interface StructuralTourWorld {
   venueGates?: StructuralVenueGate[];
   neonRail?: StructuralNeonRail | null;
   pressureHeat?: number;
-  pressureState?: 'charging' | 'armed' | 'break' | 'cooldown';
+  pressureState?: 'charging' | 'armed' | 'drop' | 'cooldown';
+  pressureDropBar?: number;
   trainLane?: { y: number; warningT: number; activeT: number } | null;
   shockwaves?: StructuralShockwave[];
   gravityWells?: StructuralGravityWell[];
@@ -190,6 +191,8 @@ interface Floater {
   t: number;
   dur: number;
   vy: number;
+  baseScale?: number;
+  staticMotion?: boolean;
 }
 
 interface ZoneGfx extends Graphics {
@@ -440,11 +443,15 @@ export class RunView {
   private flashes: { start: number; dur: number; color: number; alpha: number }[] = [];
   private trails = new Map<Projectile, number[]>();
   private chapter = -1;
+  private readonly reducedMotion: boolean;
 
   constructor(world: RunWorld, view: { width: number; height: number }) {
     this.world = world;
     this.view = view;
     this.stage = new Container();
+    this.reducedMotion = typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.playerGfx = makePlayerGfx(RUN.playerRadius);
 
     this.tiledGroundLayer.addChild(this.floorFallback, this.floorTileLayer, this.floorShade);
@@ -1216,8 +1223,8 @@ export class RunView {
     this.playerGfx.__halo.scale.set(pulse);
     this.playerGfx.__halo.alpha = Math.min(1, (evolvedCount(this.world) > 0 ? 1 : 0.78) + heat * 0.16);
     this.playerGfx.__marker.scale.set(1 + Math.sin(this.world.timeS * 6) * 0.06);
-    this.playerGfx.__marker.tint = tour.pressureState === 'break'
-      ? SOUNDWOOD.magenta
+    this.playerGfx.__marker.tint = tour.pressureState === 'drop'
+      ? SOUNDWOOD.cyanHot
       : tour.pressureState === 'armed' ? SOUNDWOOD.amber : 0xffffff;
     this.playerGfx.__body.alpha = player.iframesT > 0 && Math.floor(this.world.timeS * 18) % 2 === 0 ? 0.42 : 1;
     // Marker and halo never flicker: even during damage the player stays findable.
@@ -1312,6 +1319,65 @@ export class RunView {
     this.pushShake(evolution ? 8 : 4, evolution ? 0.55 : 0.3);
   }
 
+  /** One short, readable hit at each bar of the four-bar Pressure Drop. The
+   * geometry, flash, and shake all expire; the Drop's persistent energy stays
+   * in the segmented HUD and edge color instead of becoming a screen strobe. */
+  private spawnPressureDropPulse(label: string, x: number, y: number, bar: number, color: number): void {
+    const gfx = new Graphics({ roundPixels: true });
+    gfx.poly(regularPixelPoly(12, 58, Math.PI / 12))
+      .stroke({ width: 5, color: 0xffffff, alpha: 0.9 });
+    gfx.poly(regularPixelPoly(8, 36, Math.PI / 8))
+      .stroke({ width: 3, color: 0xffffff, alpha: 0.62 });
+    for (let i = 0; i < 4; i++) {
+      const angle = i * Math.PI / 2;
+      pixelDiamond(
+        gfx,
+        Math.cos(angle) * 76,
+        Math.sin(angle) * 76,
+        i < bar ? 6 : 3,
+        0xffffff,
+        i < bar ? 0.96 : 0.32,
+      );
+    }
+    gfx.tint = color;
+    gfx.position.set(snap(x), snap(y));
+    gfx.scale.set(this.reducedMotion ? 1 : 0.28);
+    gfx.blendMode = 'add';
+    this.fxLayer.addChild(gfx);
+    this.pops.push({
+      gfx,
+      t: 0,
+      dur: 0.68,
+      fromScale: this.reducedMotion ? 1 : 0.28,
+      toScale: this.reducedMotion ? 1 : 1.95,
+    });
+
+    const text = new Text({ text: label.toUpperCase(), style: BANNER_STYLE, roundPixels: true });
+    text.anchor.set(0.5);
+    text.tint = color;
+    // Keep the complete bar subtitle (especially "· FINALE") inside a phone
+    // viewport after the world layer's height-normalized camera scale.
+    const bannerScale = Math.min(1, Math.max(0.68, (this.world.worldW - 32) / text.width));
+    text.scale.set(bannerScale);
+    const textY = snap(y - 58);
+    text.position.set(snap(x), textY);
+    this.floaterLayer.addChild(text);
+    this.floaters.push({
+      txt: text,
+      x: snap(x),
+      y: textY,
+      t: 0,
+      dur: 0.82,
+      vy: 13,
+      baseScale: bannerScale,
+      staticMotion: this.reducedMotion,
+    });
+    if (!this.reducedMotion) {
+      this.flashes.push({ start: this.world.timeS, dur: 0.26, color, alpha: 0.1 + bar * 0.012 });
+      this.pushShake(3 + bar * 0.55, 0.22);
+    }
+  }
+
   private spawnFx(fx: FxEvent): void {
     switch (fx.type) {
       case 'ring': {
@@ -1329,10 +1395,16 @@ export class RunView {
         }
         gfx.tint = fx.color;
         gfx.position.set(snap(fx.x), snap(fx.y));
-        gfx.scale.set(0.2);
+        gfx.scale.set(this.reducedMotion ? 1 : 0.2);
         if (!fx.soft) gfx.blendMode = 'add';
         this.fxLayer.addChild(gfx);
-        this.pops.push({ gfx, t: 0, dur: fx.dur, fromScale: 0.2, toScale: 1 });
+        this.pops.push({
+          gfx,
+          t: 0,
+          dur: fx.dur,
+          fromScale: this.reducedMotion ? 1 : 0.2,
+          toScale: 1,
+        });
         break;
       }
       case 'vacuum': {
@@ -1462,9 +1534,12 @@ export class RunView {
         this.pops.push({ gfx, t: 0, dur: 0.24, fromScale: 1, toScale: 1.04 });
         break;
       }
-      case 'pressure':
-        this.spawnWorldBanner(fx.label, fx.x, fx.y, fx.color, false);
+      case 'pressure': {
+        const dropBar = /^DROP\s+([1-4])\/4\b/i.exec(fx.label);
+        if (dropBar) this.spawnPressureDropPulse(fx.label, fx.x, fx.y, Number(dropBar[1]), fx.color);
+        else this.spawnWorldBanner(fx.label, fx.x, fx.y, fx.color, false);
         break;
+      }
       case 'evolution':
         this.spawnWorldBanner(fx.label, fx.x, fx.y, fx.color, true);
         break;
@@ -1550,14 +1625,19 @@ export class RunView {
         this.floaters.splice(i, 1);
         continue;
       }
-      floater.y -= floater.vy * dt;
+      if (!floater.staticMotion) floater.y -= floater.vy * dt;
       floater.txt.position.set(floater.x, snap(floater.y));
       floater.txt.alpha = progress < 0.4 ? 1 : 1 - (progress - 0.4) / 0.6;
-      floater.txt.scale.set(1 + Math.sin(progress * Math.PI) * 0.12);
+      floater.txt.scale.set((floater.baseScale ?? 1) * (floater.staticMotion
+        ? 1
+        : 1 + Math.sin(progress * Math.PI) * 0.12));
     }
   }
 
   private chapterBurst(x: number, y: number, chapter: number): void {
+    // Pressure Drop owns the center-screen celebration lane for its four bars;
+    // the minute toast still reports scaling without burying the finale.
+    if (tourWorld(this.world).pressureState === 'drop') return;
     const palette = venuePalette(this.world);
     const color = chapter % 2 === 0 ? palette.accent : palette.secondary;
     for (const [radius, sides] of [[110, 12], [165, 16], [225, 8]] as const) {
@@ -1634,14 +1714,18 @@ export class RunView {
 
     const tour = tourWorld(this.world);
     const heat = Math.max(0, Math.min(1, tour.pressureHeat ?? 0));
-    if (heat > 0.04) {
-      const pressureColor = tour.pressureState === 'break'
-        ? SOUNDWOOD.magenta
+    const dropActive = tour.pressureState === 'drop';
+    const visualHeat = dropActive || tour.pressureState === 'armed' ? 1 : heat;
+    if (visualHeat > 0.04) {
+      const pressureColor = dropActive
+        ? SOUNDWOOD.cyanHot
         : tour.pressureState === 'armed' ? SOUNDWOOD.amber : SOUNDWOOD.coral;
-      const pressureAlpha = (0.08 + heat * 0.26) * (0.78 + Math.sin(this.world.timeS * 9) * 0.22);
+      const pressureAlpha = dropActive
+        ? 0.3
+        : (0.08 + visualHeat * 0.26) * (0.78 + Math.sin(this.world.timeS * 9) * 0.22);
       const blocks = 12;
       for (let i = 0; i < blocks; i++) {
-        if (i / blocks > heat) continue;
+        if (i / blocks > visualHeat) continue;
         const y = top + height - 22 - i * Math.max(10, (height - 70) / blocks);
         const blockH = Math.max(4, Math.min(12, height / blocks - 5));
         gfx.rect(snap(left + 6), snap(y), 8 + (i % 3) * 4, snap(blockH))
@@ -1649,7 +1733,7 @@ export class RunView {
         gfx.rect(snap(left + width - 14 - (i % 3) * 4), snap(y), 8 + (i % 3) * 4, snap(blockH))
           .fill({ color: pressureColor, alpha: pressureAlpha });
       }
-      const corner = 42 + heat * 22;
+      const corner = 42 + visualHeat * 22;
       for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
         const x = sx < 0 ? left + 5 : left + width - 5;
         const y = sy < 0 ? top + 5 : top + height - 5;

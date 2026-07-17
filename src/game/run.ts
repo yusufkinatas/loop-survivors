@@ -55,6 +55,7 @@ import {
   type ItemId,
 } from './items';
 import {
+  PRESSURE_BREAK_CONFIG,
   endlessScale,
   gateOptions,
   isVenueId,
@@ -359,11 +360,6 @@ export interface EncoreCase {
   color: number;
 }
 
-export interface PressureReleaseTrigger {
-  trigger: ScheduledTrigger;
-  power: number;
-}
-
 export interface NeonRail {
   points: Array<{ x: number; y: number }>;
   phase: 'recording' | 'preview' | 'solid';
@@ -539,7 +535,9 @@ export class RunWorld {
   venueTransitionT = 0;
   neonRail: NeonRail | null = null;
   pressureHeat = 0;
-  pressureState: 'charging' | 'armed' | 'break' | 'cooldown' = 'charging';
+  pressureState: 'charging' | 'armed' | 'drop' | 'cooldown' = 'charging';
+  /** One-based bar inside the active four-bar Drop; zero outside it. */
+  pressureDropBar = 0;
   pressureCooldownT = 0;
   trainLane: { y: number; warningT: number; activeT: number } | null = null;
   secondWindReady = false;
@@ -581,8 +579,6 @@ export class RunWorld {
   private clapHealMinute = -1;
   private clapHealThisMinute = 0;
   private triggerCounts: Partial<Record<Role, number>> = {};
-  private pressureBank = new Map<Role, Array<{ trigger: ScheduledTrigger; power: number }>>();
-  private pressureReplay = false;
   private encoreDamageBonus = 0;
   private encoreMoveBonus = 0;
   private encoreAreaBonus = 0;
@@ -590,6 +586,9 @@ export class RunWorld {
   private tourSeed = 0;
   private lastGateChapter = -1;
   private pendingVenue: VenueId | null = null;
+  /** Invalidates one queued phrase conductor without touching other musical
+   * actions. Primarily used by the Sandbox's manual Drop controls. */
+  private pressureConductorToken = 0;
   private lastVenueTransitionChapter = 0;
   private dawnHealT = 0;
   private lastTrainCycle = -1;
@@ -641,11 +640,14 @@ export class RunWorld {
 
   get buildMods(): BuildMods {
     const mods = deriveBuildMods(this.items);
+    const drop = this.pressureState === 'drop';
     return {
       ...mods,
       damageMul: mods.damageMul * (1 + this.encoreDamageBonus),
-      moveMul: mods.moveMul * (1 + this.encoreMoveBonus),
-      areaMul: mods.areaMul * (1 + this.encoreAreaBonus),
+      moveMul: mods.moveMul * (1 + this.encoreMoveBonus) *
+        (drop ? PRESSURE_BREAK_CONFIG.dropMoveMul : 1),
+      areaMul: mods.areaMul * (1 + this.encoreAreaBonus) *
+        (drop ? PRESSURE_BREAK_CONFIG.dropAreaMul : 1),
     };
   }
 
@@ -729,16 +731,9 @@ export class RunWorld {
 
   /** The coupling point: a scheduled trigger fires this kit's weapon at the
    *  owned tier. Variant peaks (chord pad) scale the same weapon. */
-  fireTrigger(t: ScheduledTrigger, releasePower = 1): void {
+  fireTrigger(t: ScheduledTrigger): void {
     const tier = this.tiers.get(t.role);
     if (!tier) return;
-    if (this.pressureState === 'break' && !this.pressureReplay) {
-      const bank = this.pressureBank.get(t.role) ?? [];
-      if (bank.length < 16) bank.push({ trigger: { ...t }, power: 1 });
-      else bank[bank.length - 1].power = Math.min(3, bank[bank.length - 1].power + 0.25);
-      this.pressureBank.set(t.role, bank);
-      return;
-    }
     // WEAPONS is keyed on the supported catalog; a trigger only ever fires for
     // an owned (hence supported) role, so the entry is always present.
     let conf: WeaponConf = WEAPONS[t.role]![tier - 1];
@@ -758,7 +753,6 @@ export class RunWorld {
     // Single build-transform pipeline (D1): tempo compensation, folded in one
     // place — balance code multiplies here.
     conf = this.applyBuild(t.role, conf);
-    if (releasePower !== 1) conf = { ...conf, damage: conf.damage * releasePower };
     this.triggerCounts[t.role] = (this.triggerCounts[t.role] ?? 0) + 1;
     const evolved = this.evolved.has(t.role);
 
@@ -947,33 +941,63 @@ export class RunWorld {
     };
   }
 
-  beginPressureBreak(): void {
-    if (this.pressureState !== 'armed') return;
-    this.pressureState = 'break';
-    this.pressureBank.clear();
-    this.markMilestone('pressureBreak');
-    this.events.onPressureBreak?.(true);
-    this.fx?.push({ type: 'pressure', x: this.player.x, y: this.player.y, color: 0xffffff, label: 'HOLD THE DROP' });
+  /** Open a scoped phrase conductor; later manual controls can invalidate its
+   * queued callbacks without clearing unrelated musical actions. */
+  newPressureConductor(): number {
+    this.pressureConductorToken += 1;
+    return this.pressureConductorToken;
   }
 
-  releasePressureBreak(): PressureReleaseTrigger[] {
-    if (this.pressureState !== 'break') return [];
-    const released = [...this.pressureBank.values()].flatMap((bank) =>
-      bank.map(({ trigger, power }) => ({ trigger: { ...trigger }, power })),
+  pressureConductorIsCurrent(token: number): boolean {
+    return token === this.pressureConductorToken;
+  }
+
+  cancelPressureConductor(): void {
+    this.pressureConductorToken += 1;
+  }
+
+  /** Start the earned four-bar power phrase. No attack is withheld or slowed. */
+  beginPressureDrop(): void {
+    if (this.pressureState !== 'armed') return;
+    this.pressureState = 'drop';
+    this.pressureDropBar = 0;
+    this.markMilestone('pressureBreak');
+    this.events.onPressureBreak?.(true);
+    this.shoveEnemiesOut(
+      this.player.x,
+      this.player.y,
+      PRESSURE_BREAK_CONFIG.openingShoveRadius,
     );
-    this.pressureReplay = true;
-    for (const bank of this.pressureBank.values()) {
-      for (const stored of bank) this.fireTrigger(stored.trigger, 1.15 * stored.power);
-    }
-    this.pressureReplay = false;
-    this.pressureBank.clear();
+  }
+
+  /** Mark one of the four Drop downbeats for HUD and bounded visual feedback. */
+  pulsePressureDropBar(bar: number): void {
+    if (this.pressureState !== 'drop') return;
+    const next = Math.max(1, Math.min(PRESSURE_BREAK_CONFIG.dropBars, Math.floor(bar)));
+    if (next < this.pressureDropBar) return;
+    this.pressureDropBar = next;
+    const colors = [0xffffff, 0x5ff7ff, 0xff70dc, 0xffe36e] as const;
+    const labels = ['DROP 1/4 · IMPACT', 'DROP 2/4 · LIFT', 'DROP 3/4 · PEAK', 'DROP 4/4 · FINALE'] as const;
+    const radii = [420, 320, 360, 460] as const;
+    const index = next - 1;
+    this.fx?.push({
+      type: 'pressure',
+      x: this.player.x,
+      y: this.player.y,
+      color: colors[index],
+      label: labels[index],
+    });
+    this.spawnRing(this.player.x, this.player.y, radii[index], colors[index], next === 4 ? 0.8 : 0.55, true);
+  }
+
+  /** Finish after bar four; the 45-second recharge begins only now. */
+  finishPressureDrop(): void {
+    if (this.pressureState !== 'drop') return;
     this.pressureState = 'cooldown';
-    this.pressureCooldownT = 45;
+    this.pressureDropBar = 0;
+    this.pressureCooldownT = PRESSURE_BREAK_CONFIG.cooldownS;
     this.pressureHeat = 0;
     this.events.onPressureBreak?.(false);
-    this.fx?.push({ type: 'pressure', x: this.player.x, y: this.player.y, color: 0xffffff, label: 'PRESSURE RELEASE' });
-    this.spawnRing(this.player.x, this.player.y, 420, 0xffffff, 0.75);
-    return released;
   }
 
   private markMilestone(id: 'first5m' | 'fullBand' | 'firstEvolution' | 'hitlessHeadliner' | 'loopCross' | 'pressureBreak'): void {
@@ -1211,7 +1235,9 @@ export class RunWorld {
     const landed = armorApplies ? Math.max(1, Math.ceil(amount - this.playerArmor)) : Math.max(1, Math.ceil(amount));
     this.player.hp = Math.max(0, this.player.hp - landed);
     this.player.iframesT = DAMAGE_FEEDBACK.iframesS;
-    this.pressureHeat = Math.max(0, this.pressureHeat - 30);
+    if (this.pressureState === 'charging') {
+      this.pressureHeat = Math.max(0, this.pressureHeat - PRESSURE_BREAK_CONFIG.hitHeatLoss);
+    }
     if (this.enemies.some((enemy) => !enemy.dead && enemy.headliner)) this.headlinerHitTaken = true;
     this.events.onHit();
     if (this.player.hp > 0) return;
@@ -1228,6 +1254,9 @@ export class RunWorld {
 
   /** Push an enemy away from a point, sharing the weapon knock channel. */
   private shove(e: Enemy, fromX: number, fromY: number, dist: number): void {
+    // Resolve the phrase lift here so even a shockwave created before the Drop
+    // receives the stronger shove when it reaches an enemy during the Drop.
+    if (this.pressureState === 'drop') dist *= PRESSURE_BREAK_CONFIG.dropKnockbackMul;
     dist *= e.knockbackMul;
     if (dist <= 0) return;
     const dx = e.x - fromX;
@@ -1712,6 +1741,7 @@ export class RunWorld {
   /** Reset every transient sandbox entity without touching the player, loadout,
    *  clock, level, or stage director. No delayed strike/pickup pointer survives. */
   clearSandboxEntities(): void {
+    this.cancelPressureConductor();
     this.enemies.length = 0;
     this.projectiles.length = 0;
     this.zones.length = 0;
@@ -1732,9 +1762,9 @@ export class RunWorld {
     this.neonRail = null;
     this.venueGates = [];
     this.trainLane = null;
-    this.pressureBank.clear();
     this.pressureHeat = 0;
     this.pressureState = 'charging';
+    this.pressureDropBar = 0;
     this.pressureCooldownT = 0;
     this.hash.clear();
     this.queryBuf.length = 0;
@@ -1904,6 +1934,12 @@ export class RunWorld {
 
   private damageEnemy(e: Enemy, amount: number, source?: Role): void {
     if (e.dead) return;
+    // The Drop multiplier is resolved at impact, so projectiles, zones, and
+    // orbiters already in flight when the phrase begins all receive the lift.
+    // Environment and venue hazards omit a weapon source and stay unchanged.
+    if (source && this.pressureState === 'drop') {
+      amount *= PRESSURE_BREAK_CONFIG.dropDamageMul;
+    }
     if (this.venue === 'warehouse' && this.inVenueLight(e.x, e.y)) amount *= 1.20;
     // Floating damage number (view-only). Weapon-colored,
     // rounded; sub-1 ticks and instakills (Infinity) don't get a number.
@@ -2148,11 +2184,12 @@ export class RunWorld {
   }
 
   private spawnSubquake(conf: WeaponConf, color: number, velocity: number, fat: boolean): void {
+    const area = this.buildMods.areaMul;
     this.shockwaves.push({
       x: this.player.x,
       y: this.player.y,
       radius: 40,
-      maxRadius: fat ? 480 : 360,
+      maxRadius: (fat ? 480 : 360) * area,
       age: 0,
       lifeS: 1.2,
       damage: conf.damage * 1.55 * (fat ? 1.2 : 1) * (0.8 + 0.4 * velocity),
@@ -2164,11 +2201,10 @@ export class RunWorld {
   }
 
   private updateShockwaves(dt: number): void {
-    const slowedDt = this.pressureState === 'break' ? dt * 0.15 : dt;
     for (let i = this.shockwaves.length - 1; i >= 0; i--) {
       const wave = this.shockwaves[i];
-      wave.age += slowedDt;
-      wave.lifeS -= slowedDt;
+      wave.age += dt;
+      wave.lifeS -= dt;
       wave.radius = 40 + (wave.maxRadius - 40) * Math.min(1, wave.age / 1.2);
       for (const enemy of this.enemies) {
         if (enemy.dead || wave.hit.has(enemy)) continue;
@@ -2364,26 +2400,32 @@ export class RunWorld {
     gravity = false,
   ): void {
     const base = this.rng() * Math.PI * 2;
+    const mods = this.buildMods;
+    const shardRadius = BELL.shardRadius * mods.areaMul;
+    const shardLifeS = BELL.shardLifeS * mods.durationMul;
+    const shardPierce = BELL.shardPierce + mods.extraPierce;
+    const shardSpeed = BELL.shardSpeed * mods.projectileSpeedMul;
     for (let i = 0; i < count; i++) {
       const activeShards = this.projectiles.filter((projectile) => projectile.role === 'bell' && projectile.shard);
       if (activeShards.length >= 36) {
         const oldest = activeShards[0];
         oldest.damage = Math.min(oldest.damage * 1.08, damage * 3);
-        oldest.lifeS = Math.max(oldest.lifeS, BELL.shardLifeS);
+        oldest.lifeS = Math.max(oldest.lifeS, shardLifeS);
         continue;
       }
       const a = base + (i / count) * Math.PI * 2;
       const pr = this.baseProjectile(
         'bell',
-        { damage, radius: BELL.shardRadius, lifetimeS: BELL.shardLifeS, pierce: BELL.shardPierce },
+        { damage, radius: shardRadius, lifetimeS: shardLifeS, pierce: shardPierce },
         color,
         damage,
       );
       pr.damage = damage;
       pr.x = x;
       pr.y = y;
-      pr.vx = Math.cos(a) * BELL.shardSpeed;
-      pr.vy = Math.sin(a) * BELL.shardSpeed;
+      pr.speed = shardSpeed;
+      pr.vx = Math.cos(a) * shardSpeed;
+      pr.vy = Math.sin(a) * shardSpeed;
       pr.shard = true;
       if (gravity) {
         pr.homing = true;
@@ -2497,8 +2539,9 @@ export class RunWorld {
   private reverseForKick(e: Enemy, fromX: number, fromY: number): void {
     if (e.knockbackMul <= 0) return;
     if (e.lastMoveX !== 0 || e.lastMoveY !== 0) {
-      e.knockX = -e.lastMoveX * e.knockbackMul;
-      e.knockY = -e.lastMoveY * e.knockbackMul;
+      const dropMul = this.pressureState === 'drop' ? PRESSURE_BREAK_CONFIG.dropKnockbackMul : 1;
+      e.knockX = -e.lastMoveX * e.knockbackMul * dropMul;
+      e.knockY = -e.lastMoveY * e.knockbackMul * dropMul;
       e.knockT = SHOVE_S;
       return;
     }
@@ -2542,7 +2585,10 @@ export class RunWorld {
     const p = this.player;
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const pr = this.projectiles[i];
-      const step = this.pressureState === 'break' ? dt * 0.15 : dt;
+      const step = dt;
+      const travelStep = step * (this.pressureState === 'drop'
+        ? PRESSURE_BREAK_CONFIG.dropProjectileSpeedMul
+        : 1);
       pr.age += step;
       pr.lifeS -= step;
 
@@ -2586,8 +2632,8 @@ export class RunWorld {
             pr.vy = Math.sin(next) * pr.speed;
           }
         }
-        pr.x += pr.vx * step;
-        pr.y += pr.vy * step;
+        pr.x += pr.vx * travelStep;
+        pr.y += pr.vy * travelStep;
         this.reflectProjectileFromRail(pr, old);
         this.reflectProjectileFromArena(pr);
       }
@@ -2606,7 +2652,7 @@ export class RunWorld {
         if (pr.role === 'bell' && pr.shatter > 0) {
           if (pr.gravity) {
             this.gravityWells.push({
-              x: pr.x, y: pr.y, radius: 130, lifeS: 1.1, pullSpeed: 140,
+              x: pr.x, y: pr.y, radius: 130 * this.buildMods.areaMul, lifeS: 1.1, pullSpeed: 140,
               color: pr.color, burstT: 0.35, burstDamage: pr.damage * 0.65, burst: false,
             });
           } else {
