@@ -8,12 +8,12 @@
 // charts are sculpted by ear. Mounted read-only it becomes the in-game
 // debug overlay.
 
-import { MusicEngine } from '../audio/engine';
-import type { Chart, ChartEvent } from '../audio/charts';
-import { getChart, isEdited, resetChart, saveChart } from '../audio/chartstore';
-import { type Role, type Kit } from '../audio/kits';
-import { STEPS_PER_BAR, STEPS_PER_PHRASE } from '../audio/scale';
-import { supportedRoles } from '../audio/soundset';
+import { MusicEngine } from '../../audio/engine';
+import type { Chart, ChartEvent } from '../../audio/charts';
+import { getChart, isEdited, resetChart, saveChart } from '../../audio/chartstore';
+import { type Role, type Kit } from '../../audio/kits';
+import { STEPS_PER_BAR, STEPS_PER_PHRASE } from '../../audio/scale';
+import { supportedRoles } from '../../audio/soundset';
 
 export interface PlaygroundOptions {
   editable: boolean;

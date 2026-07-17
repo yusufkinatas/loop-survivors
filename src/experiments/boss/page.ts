@@ -6,14 +6,14 @@
 
 import { Application } from 'pixi.js';
 import { LabEngine } from '../tracklab/labengine';
-import { Input } from '../game/input';
-import { mountJoystick } from '../game/joystick';
+import { Input } from '../../game/input';
+import { mountJoystick } from '../../game/joystick';
 import { BossConductor, type BossTransport } from './conductor';
 import { Mp3Engine } from './mp3engine';
 import { BOSSES, type BossDef } from './bosses';
 import { ARENA, BossWorld } from './world';
 import { BossView } from './view';
-import { pushDamageFeedback } from '../game/damage-feedback';
+import { pushDamageFeedback } from '../../game/damage-feedback';
 
 type State = 'select' | 'loading' | 'fight' | 'end';
 

@@ -2,10 +2,10 @@
 // hand while the loop plays, toggle voices in and out of the mix, mix their
 // volume, and listen.
 
-import { MusicEngine } from '../audio/engine';
-import { type Role } from '../audio/kits';
-import { SKELETON, STEPS_PER_BAR, STEPS_PER_PHRASE, BARS_PER_PHRASE } from '../audio/scale';
-import { supportedRoles } from '../audio/soundset';
+import { MusicEngine } from '../../audio/engine';
+import { type Role } from '../../audio/kits';
+import { SKELETON, STEPS_PER_BAR, STEPS_PER_PHRASE, BARS_PER_PHRASE } from '../../audio/scale';
+import { supportedRoles } from '../../audio/soundset';
 import { mountPlayground, type Playground } from './playground';
 
 export function mountRehearsalRoom(root: HTMLElement, engine: MusicEngine): void {

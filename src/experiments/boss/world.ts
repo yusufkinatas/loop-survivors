@@ -5,7 +5,7 @@
 // the beat; the boss cannot be hurt, it dies when its song ends (see
 // conductor.ts). Pure simulation: rendering lives in view.ts.
 
-import { DAMAGE_FEEDBACK } from '../game/config';
+import { DAMAGE_FEEDBACK } from '../../game/config';
 
 /** Fixed arena, world units, centered on (0,0). The view letterboxes it into
  *  whatever window it gets, so the whole box is always visible. */

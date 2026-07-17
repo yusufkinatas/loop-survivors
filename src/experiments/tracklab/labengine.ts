@@ -11,8 +11,8 @@
 //   - sections: named sets of charts, switched on a bar boundary
 //   - sidechain pump: kick-tagged voices duck the rest (the "produced" glue)
 
-import { Clock } from '../audio/clock';
-import { semitonesToRate } from '../audio/scale';
+import { Clock } from '../../audio/clock';
+import { semitonesToRate } from '../../audio/scale';
 import type { LabChartEvent, LabTrack, LabVoiceDef } from './tracks/types';
 
 const STEPS_PER_BAR = 16;
@@ -51,7 +51,7 @@ export class LabEngine {
   private pending: LabTrigger[] = [];
   private listeners: LabTriggerListener[] = [];
   private sectionListeners: ((id: string) => void)[] = [];
-  /** Absolute-step observers. The boss fight (src/boss) drives its arrangement
+  /** Absolute-step observers. The boss fight (src/experiments/boss) drives its arrangement
    *  walk and beat-locked attacks off these; the lab itself registers none, so
    *  this is a no-op for the audition surface. Fired at schedule time (a hair
    *  before the audio), which reads as a natural telegraph lead. */

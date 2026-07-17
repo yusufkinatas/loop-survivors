@@ -199,48 +199,35 @@ export class Hud {
       this.closeScreen();
       onStart('kick');
     };
-    // Auxiliary entrances share one small, collapsed disclosure.
+    // Below the primary CTA, two menu buttons: sandbox launches directly,
+    // experiments is a disclosure for the standalone playtest surfaces (boss
+    // fights, full tracks, rehearsal room — mirrors src/experiments/).
     const dev = el('div', 'start-dev', s);
-    const devToggle = el('button', 'small start-dev-toggle', dev, 'dev tools');
-    const row = el('div', 'start-dev-row', dev);
-    row.style.display = 'none';
+    const menuRow = el('div', 'start-dev-row', dev);
+    const sandboxBtn = el('button', 'small start-dev-toggle', menuRow, 'sandbox');
+    const experimentsToggle = el('button', 'small start-dev-toggle', menuRow, 'experiments');
 
-    // The two standalone playtest surfaces (boss fights and the full-track
-    // Track Lab) share their own nested "experiments" disclosure.
-    const experimentsToggle = el('button', 'small start-dev-toggle', row, 'experiments');
-    const sandboxBtn = el('button', 'small', row, 'sandbox');
-    const roomBtn = el('button', 'small', row, 'rehearsal room');
     const experimentsRow = el('div', 'start-dev-row', dev);
     experimentsRow.style.display = 'none';
     const bossBtn = el('button', 'small', experimentsRow, 'boss fights');
     const tracksBtn = el('button', 'small', experimentsRow, 'full tracks');
+    const roomBtn = el('button', 'small', experimentsRow, 'rehearsal room');
 
-    devToggle.onclick = () => {
-      const open = row.style.display === 'none';
-      row.style.display = open ? '' : 'none';
-      devToggle.classList.toggle('on', open);
-      // Collapsing dev tools also collapses the nested experiments group.
-      if (!open) {
-        experimentsRow.style.display = 'none';
-        experimentsToggle.classList.remove('on');
-      }
-      (devToggle as HTMLButtonElement).blur();
-    };
     experimentsToggle.onclick = () => {
       const open = experimentsRow.style.display === 'none';
       experimentsRow.style.display = open ? '' : 'none';
       experimentsToggle.classList.toggle('on', open);
       (experimentsToggle as HTMLButtonElement).blur();
     };
+    sandboxBtn.onclick = () => {
+      this.closeScreen();
+      onSandbox();
+    };
     bossBtn.onclick = () => {
       location.hash = '#boss';
     };
     tracksBtn.onclick = () => {
       location.hash = '#tracklab';
-    };
-    sandboxBtn.onclick = () => {
-      this.closeScreen();
-      onSandbox();
     };
     roomBtn.onclick = () => {
       location.hash = '#rehearsal';
