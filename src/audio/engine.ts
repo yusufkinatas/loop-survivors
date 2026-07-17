@@ -356,6 +356,69 @@ export class MusicEngine {
     }
   }
 
+  /** Stage Magnet pickup: one short suction sweep and two confirmation clicks.
+   * It rides the master like the level cue, so mute is respected and a
+   * level-up weapons duck cannot swallow the feedback. */
+  playStageMagnetCue(): void {
+    if (this.masterTarget <= 0) return;
+    const now = this.ctx.currentTime;
+    const out = this.ctx.createGain();
+    out.gain.value = 1;
+    out.connect(this.master);
+
+    const duration = 0.46;
+    const noiseBuffer = this.ctx.createBuffer(
+      1,
+      Math.ceil(this.ctx.sampleRate * duration),
+      this.ctx.sampleRate,
+    );
+    const samples = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < samples.length; i++) {
+      const fade = 1 - i / samples.length;
+      samples[i] = (Math.random() * 2 - 1) * fade;
+    }
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = noiseBuffer;
+    const sweep = this.ctx.createBiquadFilter();
+    sweep.type = 'bandpass';
+    sweep.Q.value = 0.8;
+    sweep.frequency.setValueAtTime(420, now);
+    sweep.frequency.exponentialRampToValueAtTime(3600, now + duration);
+    const noiseEnv = this.ctx.createGain();
+    noiseEnv.gain.setValueAtTime(0.0001, now);
+    noiseEnv.gain.exponentialRampToValueAtTime(0.13, now + 0.035);
+    noiseEnv.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+    noise.connect(sweep).connect(noiseEnv).connect(out);
+    noise.start(now);
+    noise.stop(now + duration);
+
+    const lift = this.ctx.createOscillator();
+    lift.type = 'triangle';
+    lift.frequency.setValueAtTime(150, now);
+    lift.frequency.exponentialRampToValueAtTime(760, now + 0.38);
+    const liftEnv = this.ctx.createGain();
+    liftEnv.gain.setValueAtTime(0.0001, now);
+    liftEnv.gain.exponentialRampToValueAtTime(0.08, now + 0.025);
+    liftEnv.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
+    lift.connect(liftEnv).connect(out);
+    lift.start(now);
+    lift.stop(now + 0.44);
+
+    for (let i = 0; i < 2; i++) {
+      const t0 = now + 0.33 + i * 0.065;
+      const click = this.ctx.createOscillator();
+      click.type = 'square';
+      click.frequency.value = i === 0 ? 1568 : 2093;
+      const clickEnv = this.ctx.createGain();
+      clickEnv.gain.setValueAtTime(0.0001, t0);
+      clickEnv.gain.exponentialRampToValueAtTime(0.045, t0 + 0.004);
+      clickEnv.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.055);
+      click.connect(clickEnv).connect(out);
+      click.start(t0);
+      click.stop(t0 + 0.06);
+    }
+  }
+
   /** Freeze already-scheduled lookahead audio at an intentional game pause.
    * Suspending the AudioContext also freezes currentTime, so pending gameplay
    * triggers remain paired with their sounds instead of leaking through a

@@ -13,6 +13,7 @@ import {
   type MusicNotePickup,
   type Projectile,
   type RunWorld,
+  type StageMagnetPickup,
   type Zone,
 } from './run';
 import {
@@ -36,6 +37,7 @@ import {
   makeTourCaseGfx,
   makeVenueGateGfx,
   makeSceneryCell,
+  makeStageMagnetGfx,
   makeZoneGfx,
   refreshProjectileContext,
   type EnemyGfx,
@@ -45,6 +47,7 @@ import {
   type ProjectileGfx,
   type RewardGfx,
   type SceneryCell,
+  type StageMagnetGfx,
   type TourCaseGfx,
   type VenueGateGfx,
 } from './soundwood-shapes';
@@ -387,6 +390,7 @@ export class RunView {
   private attackLayer = new Container();
   private playerLayer = new Container();
   private rewardLayer = new Container();
+  private rarePickupLayer = new Container();
   private foregroundLayer = new Container();
   private flashLayer = new Container();
 
@@ -417,6 +421,7 @@ export class RunView {
   private zoneGfx = new Map<Zone, ZoneGfx>();
   private gemGfx = new Map<Gem, GemGfx>();
   private musicNoteGfx = new Map<MusicNotePickup, MusicNoteGfx>();
+  private stageMagnetGfx = new Map<StageMagnetPickup, StageMagnetGfx>();
   private scenery = new Map<string, SceneryCell>();
   private venueGateGfx = new Map<StructuralVenueGate, VenueGateGfx>();
   private tourCaseGfx = new Map<StructuralTourCase, TourCaseGfx>();
@@ -448,7 +453,7 @@ export class RunView {
       this.floaterLayer,
     );
     this.playerLayer.addChild(this.playerGfx);
-    this.rewardLayer.addChild(this.rewardSafeGfx, this.tourRewardLayer);
+    this.rewardLayer.addChild(this.rarePickupLayer, this.rewardSafeGfx, this.tourRewardLayer);
     this.foregroundLayer.addChild(this.foregroundGfx);
     this.flashLayer.addChild(this.flashGfx);
     this.stage.addChild(
@@ -565,6 +570,7 @@ export class RunView {
     this.drawEnemyTelegraphs(cameraX, cameraY);
     this.syncGems(cameraX, cameraY);
     this.syncMusicNotes(cameraX, cameraY);
+    this.syncStageMagnets(cameraX, cameraY);
     this.syncEnemies(cameraX, cameraY);
     this.syncProjectiles(cameraX, cameraY);
     this.drawTrails();
@@ -606,6 +612,7 @@ export class RunView {
     this.zoneGfx.clear();
     this.gemGfx.clear();
     this.musicNoteGfx.clear();
+    this.stageMagnetGfx.clear();
     this.scenery.clear();
     this.venueGateGfx.clear();
     this.tourCaseGfx.clear();
@@ -1013,6 +1020,44 @@ export class RunView {
     }
   }
 
+  private syncStageMagnets(cameraX: number, cameraY: number): void {
+    const halfW = this.world.worldW / 2 + 70;
+    const halfH = this.world.worldH / 2 + 70;
+    this.live.clear();
+    for (const magnet of this.world.stageMagnets) {
+      let gfx = this.stageMagnetGfx.get(magnet);
+      if (!gfx) {
+        gfx = makeStageMagnetGfx(magnet);
+        this.stageMagnetGfx.set(magnet, gfx);
+        this.rarePickupLayer.addChild(gfx);
+      }
+      const visible = Math.abs(magnet.x - cameraX) < halfW && Math.abs(magnet.y - cameraY) < halfH;
+      gfx.renderable = visible;
+      if (visible) {
+        const t = this.world.timeS;
+        const bob = Math.sin(t * 4.8 + magnet.x * 0.02) * 2;
+        const pulse = 1 + Math.sin(t * 5.6) * 0.045;
+        const expiring = magnet.lifeS < 6;
+        gfx.position.set(snap(magnet.x), snap(magnet.y + bob));
+        gfx.scale.set(pulse);
+        gfx.alpha = expiring && Math.floor(t * 9) % 2 === 0 ? 0.48 : 1;
+        gfx.__beam.rotation = t * 0.42;
+        gfx.__beam.alpha = 0.32 + Math.sin(t * 3.2) * 0.12;
+        gfx.__field.position.x = snap(Math.sin(t * 7) * 3);
+        gfx.__field.alpha = 0.55 + Math.sin(t * 8) * 0.35;
+        gfx.__leftPole.alpha = 0.76 + Math.sin(t * 6) * 0.24;
+        gfx.__rightPole.alpha = 0.76 - Math.sin(t * 6) * 0.24;
+      }
+      this.live.add(magnet);
+    }
+    for (const [magnet, gfx] of this.stageMagnetGfx) {
+      if (!this.live.has(magnet)) {
+        gfx.destroy({ children: true });
+        this.stageMagnetGfx.delete(magnet);
+      }
+    }
+  }
+
   private syncEnemies(cameraX: number, cameraY: number): void {
     const halfW = this.world.worldW / 2 + 100;
     const halfH = this.world.worldH / 2 + 100;
@@ -1283,6 +1328,27 @@ export class RunView {
         if (!fx.soft) gfx.blendMode = 'add';
         this.fxLayer.addChild(gfx);
         this.pops.push({ gfx, t: 0, dur: fx.dur, fromScale: 0.2, toScale: 1 });
+        break;
+      }
+      case 'vacuum': {
+        const colors = [SOUNDWOOD.cyanHot, SOUNDWOOD.magenta];
+        for (let i = 0; i < colors.length; i++) {
+          const gfx = new Graphics({ roundPixels: true });
+          gfx.poly(regularPixelPoly(16, fx.radius, Math.PI / 16 + i * Math.PI / 16))
+            .stroke({ width: i === 0 ? 5 : 3, color: 0xffffff, alpha: 0.72 });
+          for (let p = 0; p < 12; p++) {
+            const angle = p * Math.PI / 6 + i * Math.PI / 12;
+            pixelDiamond(gfx, Math.cos(angle) * fx.radius, Math.sin(angle) * fx.radius, 4, 0xffffff, 0.8);
+          }
+          gfx.tint = colors[i];
+          gfx.position.set(snap(fx.x), snap(fx.y));
+          gfx.scale.set(1);
+          gfx.blendMode = 'add';
+          this.fxLayer.addChild(gfx);
+          this.pops.push({ gfx, t: -i * 0.07, dur: 0.52, fromScale: 1, toScale: 0.06 });
+        }
+        this.flashes.push({ start: this.world.timeS, dur: 0.34, color: SOUNDWOOD.violet, alpha: 0.22 });
+        this.pushShake(5, 0.36);
         break;
       }
       case 'arc': {

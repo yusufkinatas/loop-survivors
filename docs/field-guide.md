@@ -78,6 +78,22 @@ cosmetic gold treatment for venues, enemies, and evolutions; it grants no
 combat power. There are no repeatable permanent damage, health, or speed
 purchases.
 
+## Rare floor pickup: Stage Magnet
+
+Every eligible enemy kill has a 0.12% chance to drop a **Stage Magnet**. Bad
+luck cannot last forever: the 700th eligible kill without one guarantees the
+drop. Only one can wait on the floor, another cannot drop for 90 seconds, and
+a missed magnet fades after 45 seconds.
+
+Walk onto it to snapshot every blue/green/red experience gem and gold music
+note currently visible on the screen. They surge into the player at high speed
+through their normal collection rules, so experience multipliers, queued
+level-ups, note values, and pickup bonuses remain correct. New drops created
+after the activation are not pulled. The Stage Magnet deliberately leaves
+level-up reward pedestals, Encore Cases, and venue gates alone because those
+are player choices rather than loose resources. It is also separate from the
+permanent **Magnet Lanyard** passive.
+
 ## The nine passive items
 
 Every passive has five levels. The table shows its recognizable purpose and
@@ -233,6 +249,7 @@ altering the player's career.
 - **Tour:** switch among all six venues, open the real walk-through route-gate
   demo, and read their rules; arm, begin, release, or reset Pressure Break;
   install or clear a figure-eight Neon Loop.
-- **Career:** use a disposable in-memory note wallet; create physical note
-  drops or a note shower; grant testing currency; exercise the real gated
-  17-offer Afterhours Shop. Nothing in this tab touches the player save.
+- **Career:** use a disposable in-memory note wallet; create physical notes,
+  XP pickup fields, and Stage Magnets; trigger the full-screen vacuum; grant
+  testing currency; exercise the real gated 17-offer Afterhours Shop. Nothing
+  in this tab touches the player save.

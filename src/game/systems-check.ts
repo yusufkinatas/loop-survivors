@@ -17,7 +17,7 @@ import {
   MetaStore,
   SHOP_OFFERS,
 } from './meta';
-import { ALL_ENEMY_KINDS, ENEMY_LABELS, WEAPONS, type EnemyKind } from './config';
+import { ALL_ENEMY_KINDS, ENEMY_LABELS, RUN, STAGE_MAGNET, WEAPONS, type EnemyKind } from './config';
 import { rollOffers } from './picks';
 import { RunWorld, type RunEvents } from './run';
 import {
@@ -227,6 +227,99 @@ assert.equal(noteWorld.musicNotes.length, 0);
 assert.deepEqual(collectedNoteEvents, [[1, 1]],
   'walking onto a music note should collect it once and report the run total');
 
+assert.equal(STAGE_MAGNET.dropChance, 0.0012, 'Stage Magnet should remain a rare 0.12% drop');
+assert.equal(STAGE_MAGNET.pityKills, 700, 'rare pickup bad-luck protection must stay finite');
+const vacuumEvents: Array<{ gems: number; notes: number }> = [];
+const magnetWorld = new RunWorld(
+  { width: 1280, height: 720 },
+  {
+    ...events,
+    onStageMagnet: (result) => vacuumEvents.push(result),
+  },
+  { scripted: false, fx: false, rng: () => 0.99, stageMagnetRng: () => 0 },
+);
+magnetWorld.spawnEnemyAt('bat', 80, 0);
+magnetWorld.killVisible();
+assert.equal(magnetWorld.stageMagnets.length, 1,
+  'an independently forced rare-drop roll should create one Stage Magnet');
+magnetWorld.stageMagnets[0].x = magnetWorld.player.x;
+magnetWorld.stageMagnets[0].y = magnetWorld.player.y;
+magnetWorld.spawnGemAt(120, 0, 1);
+magnetWorld.spawnMusicNoteAt(-120, 0, 3);
+const offscreenX = magnetWorld.player.x + magnetWorld.worldW;
+magnetWorld.spawnGemAt(offscreenX, 0, 2);
+magnetWorld.spawnMusicNoteAt(offscreenX, 30, 1);
+magnetWorld.encoreCases.push({ x: 100, y: 0, minute: 0, color: 0xffd45c });
+magnetWorld.update(0);
+assert.equal(magnetWorld.stageMagnets.length, 0, 'walking onto a Stage Magnet should consume it once');
+assert.deepEqual(vacuumEvents, [{ gems: 2, notes: 1 }],
+  'the vacuum snapshot should include only currently visible loose resources');
+assert.equal(magnetWorld.encoreCases.length, 1,
+  'Stage Magnet must not auto-collect the decision-bearing Encore Case');
+const laterGem = { x: 160, y: 0, xp: 1, tier: 'blue' as const };
+const laterNote = { x: -160, y: 0, value: 1, tier: 'note' as const };
+magnetWorld.gems.push(laterGem);
+magnetWorld.musicNotes.push(laterNote);
+for (let i = 0; i < 120; i++) magnetWorld.update(1 / 120);
+assert.equal(magnetWorld.xp, 2, 'vacuumed XP must pass through ordinary XP accounting');
+assert.equal(magnetWorld.notesCollected, 3, 'vacuumed notes must preserve their exact value');
+assert.equal(magnetWorld.gems.includes(laterGem), true,
+  'a gem created after the snapshot must not be vacuumed');
+assert.equal(magnetWorld.musicNotes.includes(laterNote), true,
+  'a note created after the snapshot must not be vacuumed');
+assert.equal(magnetWorld.gems.some((gem) => gem.vacuumed), false,
+  'all marked visible gems should arrive within the vacuum window');
+assert.equal(magnetWorld.musicNotes.some((note) => note.vacuumed), false,
+  'all marked visible notes should arrive within the vacuum window');
+
+const overflowSnapshotWorld = new RunWorld({ width: 1280, height: 720 }, events, {
+  scripted: false,
+  fx: false,
+  rng: () => 0.5,
+});
+for (let i = 0; i < RUN.maxGems; i++) {
+  overflowSnapshotWorld.spawnGemAt((i % 20) - 10, Math.floor(i / 20) - 10, 1);
+}
+for (let i = 0; i < RUN.maxMusicNotes; i++) {
+  overflowSnapshotWorld.spawnMusicNoteAt((i % 18) - 9, Math.floor(i / 18) - 5, 1);
+}
+overflowSnapshotWorld.vacuumVisiblePickups();
+overflowSnapshotWorld.spawnGemAt(180, 0, 2);
+overflowSnapshotWorld.spawnMusicNoteAt(-180, 0, 3);
+const postSnapshotGem = overflowSnapshotWorld.gems[overflowSnapshotWorld.gems.length - 1];
+const postSnapshotNote = overflowSnapshotWorld.musicNotes[overflowSnapshotWorld.musicNotes.length - 1];
+assert.equal(overflowSnapshotWorld.gems.length, RUN.maxGems + 1,
+  'a capped all-inbound gem field needs one bounded post-snapshot overflow object');
+assert.equal(overflowSnapshotWorld.musicNotes.length, RUN.maxMusicNotes + 1,
+  'a capped all-inbound note field needs one bounded post-snapshot overflow object');
+assert.equal(postSnapshotGem.vacuumed, undefined,
+  'a gem dropped after activation must not merge into a vacuumed overflow gem');
+assert.equal(postSnapshotNote.vacuumed, undefined,
+  'a note dropped after activation must not merge into a vacuumed overflow note');
+assert.equal(postSnapshotGem.xp, 2);
+assert.equal(postSnapshotNote.value, 3);
+
+magnetWorld.spawnStageMagnetAt(200, 0);
+magnetWorld.clearSandboxEntities();
+assert.equal(magnetWorld.stageMagnets.length, 0, 'Sandbox reset must clear Stage Magnets');
+
+const pityWorld = new RunWorld({ width: 1280, height: 720 }, events, {
+  scripted: false,
+  fx: false,
+  rng: () => 0.99,
+  stageMagnetRng: () => 1,
+});
+for (let i = 0; i < STAGE_MAGNET.pityKills - 1; i++) {
+  pityWorld.spawnEnemyAt('bat', 80, 0);
+  pityWorld.killVisible();
+  pityWorld.update(0);
+}
+assert.equal(pityWorld.stageMagnets.length, 0, 'pity should not fire one kill early');
+pityWorld.spawnEnemyAt('bat', 80, 0);
+pityWorld.killVisible();
+assert.equal(pityWorld.stageMagnets.length, 1,
+  'the 700th eligible dry kill must guarantee a Stage Magnet');
+
 const hatWorld = new RunWorld({ width: 1280, height: 720 }, events, {
   scripted: false,
   fx: false,
@@ -426,4 +519,4 @@ const cornerHpBefore = cornerEnemy.hp;
 ovationWorld.fireTrigger({ role: 'clap', time: 0, velocity: 1, step: 0 });
 assert(cornerEnemy.hp < cornerHpBefore, 'Standing Ovation should reach the visible arena corners');
 
-console.log('systems-check: items, note shop, pickups, enemies, endless director, and evolutions passed');
+console.log('systems-check: items, note shop, Stage Magnet, enemies, endless director, and evolutions passed');

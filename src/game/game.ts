@@ -15,7 +15,7 @@ import { createGreedyMover, createKiter, type AutoMover } from './auto-move';
 import { autoMove, Input, type AutoMoveMode } from './input';
 import { mountJoystick } from './joystick';
 import { rollOffers, type AnyPickOption } from './picks';
-import { RunWorld, KIT_COLORS } from './run';
+import { RunWorld, KIT_COLORS, type VacuumResult } from './run';
 import { SIM_DT } from './timing';
 import { preloadRunArt, RunView, type GroundPickView } from './view';
 import { mountSandboxPanel, type SandboxPanel } from './sandbox';
@@ -470,6 +470,13 @@ export async function bootGame(
     onPressureBreak(active: boolean): void {
       hud.showToast(active ? 'HOLD THE DROP' : 'PRESSURE RELEASE');
     },
+    onStageMagnet(result: VacuumResult): void {
+      engine.playStageMagnetCue();
+      const total = result.gems + result.notes;
+      hud.showToast(total > 0
+        ? `STAGE MAGNET · ${total} PICKUPS INBOUND`
+        : 'STAGE MAGNET · FLOOR CLEAR');
+    },
     onVenueChanged(venue: string): void {
       updateArenaVenue(venue);
     },
@@ -513,6 +520,13 @@ export async function bootGame(
     },
     onPressureBreak(active: boolean): void {
       hud.showToast(active ? 'HOLD THE DROP' : 'PRESSURE RELEASE');
+    },
+    onStageMagnet(result: VacuumResult): void {
+      engine.playStageMagnetCue();
+      const total = result.gems + result.notes;
+      hud.showToast(total > 0
+        ? `STAGE MAGNET · ${total} PICKUPS INBOUND`
+        : 'STAGE MAGNET · FLOOR CLEAR');
     },
     onVenueChanged(venue: string): void {
       updateArenaVenue(venue);

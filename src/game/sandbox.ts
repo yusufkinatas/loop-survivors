@@ -387,8 +387,8 @@ export function mountSandboxPanel(
   button(careerControls, '+1000 NOTES', () => career.grantNotes(1000));
   button(careerControls, '+5000 NOTES', () => career.grantNotes(5000));
 
-  section(careerPage, 'physical note pickups');
-  const noteControls = el('div', 'sb-btns sb-controls', careerPage);
+  section(careerPage, 'physical pickups');
+  const noteControls = el('div', 'sb-btns sb-controls sb-pickup-controls', careerPage);
   noteControls.style.marginLeft = '0';
   button(noteControls, 'DROP ♫1', () => dropNote(1, 100));
   button(noteControls, 'DROP ♫3', () => dropNote(3, 125));
@@ -403,6 +403,19 @@ export function mountSandboxPanel(
       );
     }
   });
+  button(noteControls, 'DROP STAGE MAGNET', () => {
+    world.spawnStageMagnetAt(world.player.x + 115, world.player.y);
+  });
+  button(noteControls, 'PICKUP FIELD', () => {
+    for (let i = 0; i < 18; i++) {
+      const angle = (i / 18) * Math.PI * 2;
+      const x = world.player.x + Math.cos(angle) * 210;
+      const y = world.player.y + Math.sin(angle) * 135;
+      if (i % 3 === 0) world.spawnMusicNoteAt(x, y, i === 0 ? 3 : 1);
+      else world.spawnGemAt(x, y, i % 5 === 0 ? 3 : 1);
+    }
+  });
+  button(noteControls, 'TRIGGER VACUUM', () => world.vacuumVisiblePickups());
   const pickupReadout = el('div', 'sb-hint', careerPage);
 
   section(careerPage, 'afterhours shop');
@@ -506,7 +519,9 @@ export function mountSandboxPanel(
     const collection = career.collection();
     walletReadout.textContent = `♫ ${career.state.notes} · ${collection.owned}/${collection.total} shop unlocks`;
     pickupReadout.textContent =
-      `${world.notesCollected} collected this sandbox · ${world.musicNotes.length} on the floor`;
+      `${world.gems.length} XP gems · ${world.musicNotes.length} notes · ` +
+      `${world.stageMagnets.length} Stage Magnet${world.stageMagnets.length === 1 ? '' : 's'} on floor · ` +
+      `${world.notesCollected} notes collected`;
     const states = new Map(career.shop().map((state) => [state.offer.id, state]));
     for (const offer of SHOP_OFFERS) {
       const state = states.get(offer.id)!;

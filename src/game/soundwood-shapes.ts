@@ -3,7 +3,7 @@
 
 import { Container, Graphics, GraphicsContext, Text, TextStyle } from 'pixi.js';
 import type { Role } from '../audio/kits';
-import type { Enemy, Gem, MusicNotePickup, Projectile, Zone } from './run';
+import type { Enemy, Gem, MusicNotePickup, Projectile, StageMagnetPickup, Zone } from './run';
 import { SOUNDWOOD, hash2, regularPixelPoly, snap } from './soundwood-art';
 import { drawWeaponIcon } from './weaponicons';
 
@@ -502,6 +502,72 @@ export function makeMusicNoteGfx(note: MusicNotePickup): MusicNoteGfx {
   result.addChild(glow, body);
   result.position.set(snap(note.x), snap(note.y));
   return result;
+}
+
+export interface StageMagnetGfx extends Container {
+  __beam: Graphics;
+  __field: Graphics;
+  __leftPole: Graphics;
+  __rightPole: Graphics;
+}
+
+/** Rare screen-vacuum pickup. The open center, cyan/magenta poles, and violet
+ * scan field keep it distinct from XP diamonds and gold career notes. */
+export function makeStageMagnetGfx(pickup: StageMagnetPickup): StageMagnetGfx {
+  const root = new Container() as StageMagnetGfx;
+  const glow = makePixelGlow(29, SOUNDWOOD.violet, 0.38);
+  const beam = pixelGraphics(cachedPixelShape('stage-magnet:beam', (g) => {
+    g.poly(regularPixelPoly(12, 37, Math.PI / 12))
+      .stroke({ width: 2, color: 0xffffff, alpha: 0.5 });
+    g.poly(regularPixelPoly(12, 27, Math.PI / 12))
+      .stroke({ width: 1, color: 0xffffff, alpha: 0.28 });
+    for (let i = 0; i < 8; i++) {
+      const angle = i * Math.PI / 4;
+      pixelDiamond(g, Math.cos(angle) * 36, Math.sin(angle) * 36, 2, 0xffffff);
+    }
+  }));
+  beam.tint = SOUNDWOOD.violet;
+  beam.blendMode = 'add';
+
+  const body = pixelGraphics(cachedPixelShape('stage-magnet:body', (g) => {
+    // Chunky U silhouette with a fully open center rather than a dark fill.
+    box(g, -17, -13, 11, 25, SOUNDWOOD.ink);
+    box(g, 6, -13, 11, 25, SOUNDWOOD.ink);
+    box(g, -17, 4, 34, 12, SOUNDWOOD.ink);
+    box(g, -13, -7, 5, 17, 0xffffff);
+    box(g, 8, -7, 5, 17, 0xffffff);
+    box(g, -12, 7, 24, 5, 0xffffff);
+    // Visible stage-hardware rivets.
+    box(g, -11, 2, 3, 3, SOUNDWOOD.violet);
+    box(g, 8, 2, 3, 3, SOUNDWOOD.violet);
+    box(g, -2, 8, 4, 3, SOUNDWOOD.violet);
+  }));
+
+  const leftPole = pixelGraphics(cachedPixelShape('stage-magnet:left-pole', (g) => {
+    box(g, -18, -16, 13, 10, SOUNDWOOD.ink);
+    box(g, -14, -13, 7, 6, 0xffffff);
+  }));
+  leftPole.tint = SOUNDWOOD.cyanHot;
+  const rightPole = pixelGraphics(cachedPixelShape('stage-magnet:right-pole', (g) => {
+    box(g, 5, -16, 13, 10, SOUNDWOOD.ink);
+    box(g, 7, -13, 7, 6, 0xffffff);
+  }));
+  rightPole.tint = SOUNDWOOD.magenta;
+
+  const field = pixelGraphics(cachedPixelShape('stage-magnet:field', (g) => {
+    pixelDiamond(g, -5, -11, 2, SOUNDWOOD.cyanHot);
+    pixelDiamond(g, 0, -11, 2, 0xffffff);
+    pixelDiamond(g, 5, -11, 2, SOUNDWOOD.magenta);
+  }));
+  field.blendMode = 'add';
+
+  root.__beam = beam;
+  root.__field = field;
+  root.__leftPole = leftPole;
+  root.__rightPole = rightPole;
+  root.addChild(glow, beam, body, leftPole, rightPole, field);
+  root.position.set(snap(pickup.x), snap(pickup.y));
+  return root;
 }
 
 export interface PlayerGfx extends Container {

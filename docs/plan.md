@@ -65,6 +65,11 @@ Two run systems reward movement and mounting danger:
   briefly muffles the track and slows moving attacks, then replays the stored
   sounds and attacks as one amplified burst.
 
+A rare one-use **Stage Magnet** can fall from a defeated enemy. Walking onto
+it vacuums every freely collectible experience gem and music note currently
+visible, while decision-bearing reward pedestals, evolution cases, and route
+gates remain deliberate walk-to-choose interactions.
+
 ## Build Progression
 
 A build has weapons and up to six passive items. Passives change recognizable

@@ -22,6 +22,22 @@ export const RUN = {
   maxMusicNotes: 180,
 };
 
+/** Rare one-use arena pickup. This is deliberately separate from Magnet
+ * Lanyard, the passive item that increases ordinary pickup reach. */
+export const STAGE_MAGNET = {
+  /** Per eligible enemy kill: rare in a horde, but visible in a healthy run. */
+  dropChance: 0.0012,
+  /** Bad-luck protection. The next eligible kill drops one at this count. */
+  pityKills: 700,
+  /** Prevent lucky streaks from filling the floor with vacuum pickups. */
+  dropCooldownS: 90,
+  /** A missed magnet eventually clears so another can drop later. */
+  lifetimeS: 45,
+  pickupRadius: 28,
+  /** Marked gems and notes cross a full viewport in well under a second. */
+  vacuumSpeed: 1800,
+} as const;
+
 /** Player take-damage feedback, shared by every arena (normal run, sandbox,
  *  and boss) through damage-feedback.ts. One place for the whole feel: the
  *  recovery window, the red edge tint, and the hit screenshake. The flash

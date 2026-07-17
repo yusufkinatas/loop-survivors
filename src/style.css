@@ -967,6 +967,15 @@ button.big {
   padding: 5px 0;
 }
 
+/* The Career pickup lab has descriptive actions rather than compact numeric
+ * tiers. Let this one group wrap so Stage Magnet controls never widen the
+ * panel or create a horizontal scrollbar on desktop or phones. */
+.sb-pickup-controls {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  margin-left: 0;
+}
+
 .sandbox-panel > .sb-controls {
   position: sticky;
   top: -12px;

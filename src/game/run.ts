@@ -21,6 +21,7 @@ import {
   MAX_ALIVE_HARD,
   ORBIT_REHIT_S,
   RUN,
+  STAGE_MAGNET,
   SHIELDED,
   SHOVE_S,
   SPLITTER,
@@ -43,7 +44,7 @@ import {
   STAGE_WAVES,
   type StageWave,
 } from './madforest';
-import type { Rng } from './rng';
+import { mulberry32, type Rng } from './rng';
 import { SpatialHash, circlesOverlap } from './spatial';
 import {
   deriveBuildMods,
@@ -385,6 +386,8 @@ export interface Gem {
   y: number;
   xp: number;
   tier: 'blue' | 'green' | 'red';
+  /** Set only by a collected Stage Magnet; later drops remain unaffected. */
+  vacuumed?: boolean;
 }
 
 export interface MusicNotePickup {
@@ -392,11 +395,26 @@ export interface MusicNotePickup {
   y: number;
   value: number;
   tier: 'note' | 'phrase' | 'anthem';
+  /** Set only by a collected Stage Magnet; later drops remain unaffected. */
+  vacuumed?: boolean;
+}
+
+export interface StageMagnetPickup {
+  x: number;
+  y: number;
+  /** Seconds remaining before a missed pickup fades away. */
+  lifeS: number;
+}
+
+export interface VacuumResult {
+  gems: number;
+  notes: number;
 }
 
 /** Fire-and-forget visuals the world requests and the view renders. */
 export type FxEvent =
   | { type: 'ring'; x: number; y: number; radius: number; color: number; dur: number; soft?: boolean }
+  | { type: 'vacuum'; x: number; y: number; radius: number }
   | { type: 'death'; x: number; y: number; radius: number; color: number; elite: boolean }
   | { type: 'whip'; x: number; y: number; side: 1 | -1; area: number; color: number }
   | {
@@ -425,6 +443,7 @@ export interface RunEvents {
   onPressureArmed?(): void;
   onPressureBreak?(active: boolean): void;
   onNoteCollected?(value: number, runTotal: number): void;
+  onStageMagnet?(result: VacuumResult): void;
   onVenueChanged?(venue: string): void;
   onMilestone?(id: 'first5m' | 'fullBand' | 'firstEvolution' | 'hitlessHeadliner' | 'loopCross' | 'pressureBreak'): void;
 }
@@ -453,6 +472,8 @@ export interface RunWorldOpts {
   scripted?: boolean;
   /** Optional seeded randomness for deterministic development fixtures. */
   rng?: Rng;
+  /** Independent rare-drop stream; injectable only for deterministic checks. */
+  stageMagnetRng?: Rng;
   /** Movement axis provider (magnitude 0..1). */
   control?: () => { x: number; y: number };
   /** False for non-visual fixtures that do not consume effects. */
@@ -505,6 +526,7 @@ export class RunWorld {
   readonly zones: Zone[] = [];
   readonly gems: Gem[] = [];
   readonly musicNotes: MusicNotePickup[] = [];
+  readonly stageMagnets: StageMagnetPickup[] = [];
   readonly shockwaves: Shockwave[] = [];
   readonly gravityWells: GravityWell[] = [];
   readonly encoreCases: EncoreCase[] = [];
@@ -548,6 +570,9 @@ export class RunWorld {
   private overflowGem: Gem | null = null;
   private overflowMusicNote: MusicNotePickup | null = null;
   private noteDropPity = 0;
+  private readonly stageMagnetRng: Rng;
+  private stageMagnetDropPity = 0;
+  private nextStageMagnetDropAt = 0;
   private lastMinute = -1;
   private lastRecordedRailMinute = -1;
   private railSamples: Array<{ x: number; y: number }> = [];
@@ -596,6 +621,7 @@ export class RunWorld {
     this.scripted = opts.scripted ?? true;
     this.rng = opts.rng ?? Math.random;
     this.tourSeed = Math.floor(this.rng() * 0x7fffffff);
+    this.stageMagnetRng = opts.stageMagnetRng ?? mulberry32(this.tourSeed ^ 0x4d41474e);
     this.control = opts.control ?? (() => ({ x: 0, y: 0 }));
     this.fx = (opts.fx ?? true) ? [] : null;
     const validVenues = (opts.unlockedVenues ?? []).filter(isVenueId);
@@ -1259,6 +1285,7 @@ export class RunWorld {
     this.updateZones(dt);
     this.updateShockwaves(dt);
     this.updateGravityWells(dt);
+    this.updateStageMagnets(dt);
     this.updateGems(dt);
     this.updateMusicNotes(dt);
     this.updateEncoreCases();
@@ -1683,6 +1710,7 @@ export class RunWorld {
     this.zones.length = 0;
     this.gems.length = 0;
     this.musicNotes.length = 0;
+    this.stageMagnets.length = 0;
     this.encoreCases.length = 0;
     this.shockwaves.length = 0;
     this.gravityWells.length = 0;
@@ -1692,6 +1720,8 @@ export class RunWorld {
     this.overflowGem = null;
     this.overflowMusicNote = null;
     this.noteDropPity = 0;
+    this.stageMagnetDropPity = 0;
+    this.nextStageMagnetDropAt = 0;
     this.neonRail = null;
     this.venueGates = [];
     this.trainLane = null;
@@ -1918,6 +1948,7 @@ export class RunWorld {
       });
       this.spawnGem(e.x, e.y, e.xp);
       this.spawnMusicNoteForEnemy(e);
+      this.spawnStageMagnetForEnemy(e);
       if (e.headliner) {
         this.headlinersKilled += 1;
         const encore: EncoreCase = { x: e.x, y: e.y, minute: e.spawnMinute, color: 0xffd45c };
@@ -2798,15 +2829,25 @@ export class RunWorld {
     // observable reference used by our parity model.
     const dropped = Math.floor((this.rng() + 0.5) * xp);
     if (dropped <= 0) return;
+    this.spawnGemAt(x, y, dropped);
+  }
+
+  /** Public for the Sandbox pickup field. Enemy rewards still pass through
+   * spawnGem(), which preserves their authored random XP roll. */
+  spawnGemAt(x: number, y: number, xp = 1): void {
+    const dropped = Math.max(1, Math.floor(xp));
     const tier: Gem['tier'] = dropped <= 2 ? 'blue' : dropped <= 9 ? 'green' : 'red';
     if (this.gems.length < RUN.maxGems) {
       this.gems.push({ x, y, xp: dropped, tier });
       return;
     }
-    if (!this.overflowGem || !this.gems.includes(this.overflowGem)) {
-      let farthest = this.gems[0];
+    if (!this.overflowGem || !this.gems.includes(this.overflowGem) || this.overflowGem.vacuumed) {
+      let farthest: Gem | null = null;
       let farthestD = -1;
       for (const gem of this.gems) {
+        // A Stage Magnet is a point-in-time snapshot. Never merge a later
+        // reward into an object already travelling in that snapshot.
+        if (gem.vacuumed) continue;
         const dx = gem.x - this.player.x;
         const dy = gem.y - this.player.y;
         const d2 = dx * dx + dy * dy;
@@ -2815,11 +2856,41 @@ export class RunWorld {
           farthest = gem;
         }
       }
+      if (!farthest) {
+        // All capped gems are already inbound. One temporary overflow object
+        // keeps later rewards independent; subsequent drops merge into it.
+        farthest = { x, y, xp: 0, tier: 'red' };
+        this.gems.push(farthest);
+      }
       this.overflowGem = farthest;
       farthest.tier = 'red';
     }
     this.overflowGem.xp += dropped;
     this.overflowGem.tier = 'red';
+  }
+
+  private spawnStageMagnetForEnemy(enemy: Enemy): void {
+    if (this.stageMagnets.length > 0 || this.timeS < this.nextStageMagnetDropAt) return;
+    this.stageMagnetDropPity += 1;
+    const guaranteed = this.stageMagnetDropPity >= STAGE_MAGNET.pityKills;
+    if (!guaranteed && this.stageMagnetRng() >= STAGE_MAGNET.dropChance) return;
+    this.stageMagnetDropPity = 0;
+    this.nextStageMagnetDropAt = this.timeS + STAGE_MAGNET.dropCooldownS;
+    this.spawnStageMagnetAt(
+      enemy.x - enemy.radius * 0.24,
+      enemy.y - enemy.radius * 0.32,
+    );
+  }
+
+  /** Public Sandbox fixture; normal runs receive Stage Magnets only from
+   * enemy deaths. Only one may wait on the floor at a time. */
+  spawnStageMagnetAt(x: number, y: number): StageMagnetPickup {
+    const existing = this.stageMagnets[0];
+    if (existing) return existing;
+    const magnet = { x, y, lifeS: STAGE_MAGNET.lifetimeS };
+    this.stageMagnets.push(magnet);
+    this.fx?.push({ type: 'spark', x, y, color: 0xa06bff, n: 8, spread: 22 });
+    return magnet;
   }
 
   private spawnMusicNoteForEnemy(enemy: Enemy): void {
@@ -2849,10 +2920,11 @@ export class RunWorld {
       this.musicNotes.push({ x, y, value: amount, tier });
       return;
     }
-    if (!this.overflowMusicNote || !this.musicNotes.includes(this.overflowMusicNote)) {
-      let farthest = this.musicNotes[0];
+    if (!this.overflowMusicNote || !this.musicNotes.includes(this.overflowMusicNote) || this.overflowMusicNote.vacuumed) {
+      let farthest: MusicNotePickup | null = null;
       let farthestD = -1;
       for (const note of this.musicNotes) {
+        if (note.vacuumed) continue;
         const dx = note.x - this.player.x;
         const dy = note.y - this.player.y;
         const d2 = dx * dx + dy * dy;
@@ -2861,10 +2933,63 @@ export class RunWorld {
           farthest = note;
         }
       }
+      if (!farthest) {
+        farthest = { x, y, value: 0, tier: 'anthem' };
+        this.musicNotes.push(farthest);
+      }
       this.overflowMusicNote = farthest;
     }
     this.overflowMusicNote.value += amount;
     this.overflowMusicNote.tier = 'anthem';
+  }
+
+  /** Snapshot the current camera rectangle and attract every freely
+   * collectable drop inside it. Decision-bearing rewards intentionally stay
+   * walk-to-choose: level-up pedestals, Encore Cases, and venue gates. */
+  vacuumVisiblePickups(): VacuumResult {
+    const cameraX = this.player.x + PLAYER_FOOT_OFFSET.x;
+    const cameraY = this.player.y + PLAYER_FOOT_OFFSET.y;
+    const halfW = this.worldW / 2;
+    const halfH = this.worldH / 2;
+    const visible = (x: number, y: number): boolean =>
+      Math.abs(x - cameraX) <= halfW && Math.abs(y - cameraY) <= halfH;
+    let gems = 0;
+    let notes = 0;
+    for (const gem of this.gems) {
+      if (!gem.vacuumed && visible(gem.x, gem.y)) {
+        gem.vacuumed = true;
+        gems += 1;
+      }
+    }
+    for (const note of this.musicNotes) {
+      if (!note.vacuumed && visible(note.x, note.y)) {
+        note.vacuumed = true;
+        notes += 1;
+      }
+    }
+    const result = { gems, notes };
+    const radius = Math.hypot(this.worldW, this.worldH) * 0.55;
+    this.fx?.push({ type: 'vacuum', x: cameraX, y: cameraY, radius });
+    this.fx?.push({ type: 'pressure', x: this.player.x, y: this.player.y, color: 0xa06bff, label: 'STAGE MAGNET' });
+    this.events.onStageMagnet?.(result);
+    return result;
+  }
+
+  private updateStageMagnets(dt: number): void {
+    for (let i = this.stageMagnets.length - 1; i >= 0; i--) {
+      const magnet = this.stageMagnets[i];
+      magnet.lifeS -= dt;
+      if (magnet.lifeS <= 0) {
+        this.stageMagnets.splice(i, 1);
+        this.fx?.push({ type: 'spark', x: magnet.x, y: magnet.y, color: 0xa06bff, n: 4, spread: 14 });
+        continue;
+      }
+      const dx = this.player.x - magnet.x;
+      const dy = this.player.y - magnet.y;
+      if (dx * dx + dy * dy > STAGE_MAGNET.pickupRadius * STAGE_MAGNET.pickupRadius) continue;
+      this.stageMagnets.splice(i, 1);
+      this.vacuumVisiblePickups();
+    }
   }
 
   private updateGems(dt: number): void {
@@ -2874,12 +2999,14 @@ export class RunWorld {
       const dx = p.x - g.x;
       const dy = p.y - g.y;
       const d = Math.hypot(dx, dy);
-      if (d < RUN.magnetRadius * this.buildMods.magnetMul) {
-        const pull = RUN.gemPullSpeed * this.buildMods.pullMul * dt;
+      if (g.vacuumed || d < RUN.magnetRadius * this.buildMods.magnetMul) {
+        const speed = g.vacuumed ? STAGE_MAGNET.vacuumSpeed : RUN.gemPullSpeed * this.buildMods.pullMul;
+        const pull = Math.min(d, speed * dt);
         g.x += (dx / (d || 1)) * pull;
         g.y += (dy / (d || 1)) * pull;
       }
-      if (d < RUN.pickupRadius) {
+      const remaining = g.vacuumed ? Math.max(0, d - STAGE_MAGNET.vacuumSpeed * dt) : d;
+      if (remaining < RUN.pickupRadius) {
         this.xp += g.xp * xpPickupMultiplier(this.level);
         this.gems.splice(i, 1);
         if (g === this.overflowGem) this.overflowGem = null;
@@ -2895,12 +3022,16 @@ export class RunWorld {
       const dx = p.x - note.x;
       const dy = p.y - note.y;
       const d = Math.hypot(dx, dy);
-      if (d < RUN.magnetRadius * this.buildMods.magnetMul * 1.15) {
-        const pull = RUN.gemPullSpeed * this.buildMods.pullMul * 1.15 * dt;
+      if (note.vacuumed || d < RUN.magnetRadius * this.buildMods.magnetMul * 1.15) {
+        const speed = note.vacuumed
+          ? STAGE_MAGNET.vacuumSpeed
+          : RUN.gemPullSpeed * this.buildMods.pullMul * 1.15;
+        const pull = Math.min(d, speed * dt);
         note.x += (dx / (d || 1)) * pull;
         note.y += (dy / (d || 1)) * pull;
       }
-      if (d < RUN.pickupRadius + 4) {
+      const remaining = note.vacuumed ? Math.max(0, d - STAGE_MAGNET.vacuumSpeed * dt) : d;
+      if (remaining < RUN.pickupRadius + 4) {
         this.notesCollected += note.value;
         this.events.onNoteCollected?.(note.value, this.notesCollected);
         this.fx?.push({ type: 'spark', x: note.x, y: note.y, color: 0xffd45c, n: 4, spread: 12 });
