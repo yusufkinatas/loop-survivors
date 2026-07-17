@@ -97,8 +97,3 @@ competitive through per-trigger damage rather than special-case compensation.
   specification. The music scheduler is a thin lookahead layer over the audio
   clock. No middleware, no audio-engine building. Live effect chains are
   available, so baked-variant versus live-effect stays an open design choice.
-
-## Platform
-
-iOS and Android are required targets. Desktop is strongly wanted, and nearly
-free on the chosen stack.

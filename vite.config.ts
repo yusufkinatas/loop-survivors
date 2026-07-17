@@ -4,6 +4,7 @@ import { defineConfig } from 'vite';
 // (phone playtests). Dev-only; `vite build` output is unaffected.
 export default defineConfig({
   server: {
+    port: 3200,
     allowedHosts: true,
   },
 });

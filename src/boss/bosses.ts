@@ -364,7 +364,7 @@ const PURSUIT_MP3_BOSS: BossDef = {
   name: 'Pursuit (record)',
   archetype: 'Rhythm survival · real record',
   tagline: 'The same fight — but the boss spins the actual record. Drop pursuit.mp3 in, sync it by ear.',
-  mp3: { url: '/boss/pursuit.mp3', offsetS: 0 },
+  mp3: { url: '/pursuit.mp3', offsetS: 0 },
 };
 
 export const BOSSES: BossDef[] = [METAMORPHOSIS_BOSS, SATISFACTION_BOSS, PURSUIT_BOSS, PURSUIT_MP3_BOSS];
