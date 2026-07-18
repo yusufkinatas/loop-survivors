@@ -4,6 +4,7 @@
 // Desktop mouse input is ignored: only pointerType "touch"/"pen" summons it.
 
 import { autoMove, touchAxis } from './input';
+import type { ViewportTransform } from './viewport';
 
 /** Max knob deflection in px; full deflection = full speed. */
 const STICK_RADIUS = 56;
@@ -14,7 +15,10 @@ export interface JoystickHandle {
   destroy(): void;
 }
 
-export function mountJoystick(root: HTMLElement): JoystickHandle {
+export function mountJoystick(
+  root: HTMLElement,
+  viewport?: () => ViewportTransform,
+): JoystickHandle {
   const base = document.createElement('div');
   base.className = 'joy-base hidden';
   const knob = document.createElement('div');
@@ -25,6 +29,9 @@ export function mountJoystick(root: HTMLElement): JoystickHandle {
   let pointerId: number | null = null;
   let cx = 0;
   let cy = 0;
+
+  const logicalPoint = (e: PointerEvent): { x: number; y: number } =>
+    viewport?.().clientToLogical(e.clientX, e.clientY) ?? { x: e.clientX, y: e.clientY };
 
   const reset = (): void => {
     pointerId = null;
@@ -41,10 +48,13 @@ export function mountJoystick(root: HTMLElement): JoystickHandle {
     if (autoMove.active) return;
     // only arena touches: taps on buttons, cards, and panels stay taps
     if (!(e.target instanceof HTMLCanvasElement)) return;
+    const transform = viewport?.();
+    if (transform && (!transform.supported || !transform.containsClient(e.clientX, e.clientY))) return;
     e.preventDefault();
     pointerId = e.pointerId;
-    cx = e.clientX;
-    cy = e.clientY;
+    const point = logicalPoint(e);
+    cx = point.x;
+    cy = point.y;
     base.style.left = `${cx}px`;
     base.style.top = `${cy}px`;
     knob.style.transform = 'translate(0px, 0px)';
@@ -56,8 +66,13 @@ export function mountJoystick(root: HTMLElement): JoystickHandle {
 
   const onPointerMove = (e: PointerEvent): void => {
     if (e.pointerId !== pointerId) return;
-    let dx = e.clientX - cx;
-    let dy = e.clientY - cy;
+    if (viewport && !viewport().supported) {
+      reset();
+      return;
+    }
+    const point = logicalPoint(e);
+    let dx = point.x - cx;
+    let dy = point.y - cy;
     const mag = Math.hypot(dx, dy);
     if (mag > STICK_RADIUS) {
       dx *= STICK_RADIUS / mag;

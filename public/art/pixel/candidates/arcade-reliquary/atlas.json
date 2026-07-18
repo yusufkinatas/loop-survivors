@@ -1,0 +1,993 @@
+{
+  "frames": {
+    "player": {
+      "frame": {
+        "x": 2,
+        "y": 2,
+        "w": 32,
+        "h": 36,
+        "space": "atlas-pixels"
+      },
+      "nativeSize": {
+        "w": 32,
+        "h": 36,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 16,
+        "y": 33,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "opaqueBounds": {
+        "x": 2,
+        "y": 0,
+        "w": 28,
+        "h": 34,
+        "opaquePixels": 707,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "artLocalPreviewShape": {
+        "shape": "circle",
+        "cx": 16,
+        "cy": 26,
+        "radius": 7,
+        "origin": "native-frame-top-left",
+        "purpose": "candidate-overlay-preview",
+        "space": "native-logical-pixels"
+      },
+      "simulationCollider": {
+        "shape": "circle",
+        "origin": "art-pivot",
+        "offsetX": 0,
+        "offsetY": -14,
+        "space": "simulation-world-units",
+        "derivedUsingWorldToLogical": 0.5,
+        "radius": 14
+      },
+      "simulationAttack": null,
+      "colliderOpaqueCoverage": {
+        "opaquePixels": 149,
+        "totalPixels": 149,
+        "ratio": 1
+      },
+      "category": "actor",
+      "colorBudget": 10,
+      "colorsUsed": 7
+    },
+    "enemy-moth": {
+      "frame": {
+        "x": 36,
+        "y": 2,
+        "w": 20,
+        "h": 18,
+        "space": "atlas-pixels"
+      },
+      "nativeSize": {
+        "w": 20,
+        "h": 18,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 10,
+        "y": 15,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "opaqueBounds": {
+        "x": 0,
+        "y": 1,
+        "w": 20,
+        "h": 17,
+        "opaquePixels": 271,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "artLocalPreviewShape": {
+        "shape": "circle",
+        "cx": 10,
+        "cy": 10,
+        "radius": 5,
+        "origin": "native-frame-top-left",
+        "purpose": "candidate-overlay-preview",
+        "space": "native-logical-pixels"
+      },
+      "simulationCollider": {
+        "shape": "circle",
+        "origin": "art-pivot",
+        "offsetX": 0,
+        "offsetY": -10,
+        "space": "simulation-world-units",
+        "derivedUsingWorldToLogical": 0.5,
+        "radius": 10
+      },
+      "simulationAttack": null,
+      "colliderOpaqueCoverage": {
+        "opaquePixels": 81,
+        "totalPixels": 81,
+        "ratio": 1
+      },
+      "category": "actor",
+      "colorBudget": 9,
+      "colorsUsed": 4
+    },
+    "enemy-humanoid": {
+      "frame": {
+        "x": 58,
+        "y": 2,
+        "w": 26,
+        "h": 30,
+        "space": "atlas-pixels"
+      },
+      "nativeSize": {
+        "w": 26,
+        "h": 30,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 13,
+        "y": 28,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "opaqueBounds": {
+        "x": 0,
+        "y": 0,
+        "w": 26,
+        "h": 30,
+        "opaquePixels": 608,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "artLocalPreviewShape": {
+        "shape": "circle",
+        "cx": 13,
+        "cy": 21,
+        "radius": 7,
+        "origin": "native-frame-top-left",
+        "purpose": "candidate-overlay-preview",
+        "space": "native-logical-pixels"
+      },
+      "simulationCollider": {
+        "shape": "circle",
+        "origin": "art-pivot",
+        "offsetX": 0,
+        "offsetY": -14,
+        "space": "simulation-world-units",
+        "derivedUsingWorldToLogical": 0.5,
+        "radius": 14
+      },
+      "simulationAttack": null,
+      "colliderOpaqueCoverage": {
+        "opaquePixels": 149,
+        "totalPixels": 149,
+        "ratio": 1
+      },
+      "category": "actor",
+      "colorBudget": 10,
+      "colorsUsed": 6
+    },
+    "enemy-heavy": {
+      "frame": {
+        "x": 86,
+        "y": 2,
+        "w": 42,
+        "h": 42,
+        "space": "atlas-pixels"
+      },
+      "nativeSize": {
+        "w": 42,
+        "h": 42,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 21,
+        "y": 39,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "opaqueBounds": {
+        "x": 0,
+        "y": 0,
+        "w": 42,
+        "h": 42,
+        "opaquePixels": 1420,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "artLocalPreviewShape": {
+        "shape": "circle",
+        "cx": 21,
+        "cy": 29,
+        "radius": 11,
+        "origin": "native-frame-top-left",
+        "purpose": "candidate-overlay-preview",
+        "space": "native-logical-pixels"
+      },
+      "simulationCollider": {
+        "shape": "circle",
+        "origin": "art-pivot",
+        "offsetX": 0,
+        "offsetY": -20,
+        "space": "simulation-world-units",
+        "derivedUsingWorldToLogical": 0.5,
+        "radius": 22
+      },
+      "simulationAttack": null,
+      "colliderOpaqueCoverage": {
+        "opaquePixels": 377,
+        "totalPixels": 377,
+        "ratio": 1
+      },
+      "category": "actor",
+      "colorBudget": 11,
+      "colorsUsed": 6
+    },
+    "enemy-boss": {
+      "frame": {
+        "x": 130,
+        "y": 2,
+        "w": 60,
+        "h": 54,
+        "space": "atlas-pixels"
+      },
+      "nativeSize": {
+        "w": 60,
+        "h": 54,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 30,
+        "y": 50,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "opaqueBounds": {
+        "x": 0,
+        "y": 4,
+        "w": 60,
+        "h": 50,
+        "opaquePixels": 2523,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "artLocalPreviewShape": {
+        "shape": "circle",
+        "cx": 30,
+        "cy": 35,
+        "radius": 18,
+        "origin": "native-frame-top-left",
+        "purpose": "candidate-overlay-preview",
+        "space": "native-logical-pixels"
+      },
+      "simulationCollider": {
+        "shape": "circle",
+        "origin": "art-pivot",
+        "offsetX": 0,
+        "offsetY": -30,
+        "space": "simulation-world-units",
+        "derivedUsingWorldToLogical": 0.5,
+        "radius": 36
+      },
+      "simulationAttack": null,
+      "colliderOpaqueCoverage": {
+        "opaquePixels": 1009,
+        "totalPixels": 1009,
+        "ratio": 1
+      },
+      "category": "boss",
+      "colorBudget": 14,
+      "colorsUsed": 5
+    },
+    "pickup-xp": {
+      "frame": {
+        "x": 192,
+        "y": 2,
+        "w": 10,
+        "h": 12,
+        "space": "atlas-pixels"
+      },
+      "nativeSize": {
+        "w": 10,
+        "h": 12,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 5,
+        "y": 10,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "opaqueBounds": {
+        "x": 0,
+        "y": 1,
+        "w": 10,
+        "h": 11,
+        "opaquePixels": 78,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "artLocalPreviewShape": {
+        "shape": "circle",
+        "cx": 5,
+        "cy": 6,
+        "radius": 4,
+        "origin": "native-frame-top-left",
+        "purpose": "candidate-overlay-preview",
+        "space": "native-logical-pixels"
+      },
+      "simulationCollider": {
+        "shape": "circle",
+        "origin": "art-pivot",
+        "offsetX": 0,
+        "offsetY": -8,
+        "space": "simulation-world-units",
+        "derivedUsingWorldToLogical": 0.5,
+        "radius": 8
+      },
+      "simulationAttack": null,
+      "colliderOpaqueCoverage": {
+        "opaquePixels": 49,
+        "totalPixels": 49,
+        "ratio": 1
+      },
+      "category": "pickup",
+      "colorBudget": 6,
+      "colorsUsed": 4
+    },
+    "pickup-music-note": {
+      "frame": {
+        "x": 204,
+        "y": 2,
+        "w": 10,
+        "h": 12,
+        "space": "atlas-pixels"
+      },
+      "nativeSize": {
+        "w": 10,
+        "h": 12,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 4,
+        "y": 10,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "opaqueBounds": {
+        "x": 0,
+        "y": 1,
+        "w": 10,
+        "h": 11,
+        "opaquePixels": 69,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "artLocalPreviewShape": {
+        "shape": "circle",
+        "cx": 4,
+        "cy": 7,
+        "radius": 4,
+        "origin": "native-frame-top-left",
+        "purpose": "candidate-overlay-preview",
+        "space": "native-logical-pixels"
+      },
+      "simulationCollider": {
+        "shape": "circle",
+        "origin": "art-pivot",
+        "offsetX": 0,
+        "offsetY": -6,
+        "space": "simulation-world-units",
+        "derivedUsingWorldToLogical": 0.5,
+        "radius": 8
+      },
+      "simulationAttack": null,
+      "colliderOpaqueCoverage": {
+        "opaquePixels": 41,
+        "totalPixels": 49,
+        "ratio": 0.8367346938775511
+      },
+      "category": "pickup",
+      "colorBudget": 5,
+      "colorsUsed": 3
+    },
+    "pickup-rare": {
+      "frame": {
+        "x": 216,
+        "y": 2,
+        "w": 14,
+        "h": 16,
+        "space": "atlas-pixels"
+      },
+      "nativeSize": {
+        "w": 14,
+        "h": 16,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 7,
+        "y": 14,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "opaqueBounds": {
+        "x": 2,
+        "y": 1,
+        "w": 10,
+        "h": 13,
+        "opaquePixels": 115,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "artLocalPreviewShape": {
+        "shape": "circle",
+        "cx": 7,
+        "cy": 9,
+        "radius": 6,
+        "origin": "native-frame-top-left",
+        "purpose": "candidate-overlay-preview",
+        "space": "native-logical-pixels"
+      },
+      "simulationCollider": {
+        "shape": "circle",
+        "origin": "art-pivot",
+        "offsetX": 0,
+        "offsetY": -10,
+        "space": "simulation-world-units",
+        "derivedUsingWorldToLogical": 0.5,
+        "radius": 12
+      },
+      "simulationAttack": null,
+      "colliderOpaqueCoverage": {
+        "opaquePixels": 93,
+        "totalPixels": 113,
+        "ratio": 0.8230088495575221
+      },
+      "category": "pickup",
+      "colorBudget": 8,
+      "colorsUsed": 5
+    },
+    "pickup-starting-pedestal": {
+      "frame": {
+        "x": 232,
+        "y": 2,
+        "w": 30,
+        "h": 32,
+        "space": "atlas-pixels"
+      },
+      "nativeSize": {
+        "w": 30,
+        "h": 32,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 15,
+        "y": 29,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "opaqueBounds": {
+        "x": 2,
+        "y": 0,
+        "w": 26,
+        "h": 32,
+        "opaquePixels": 677,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "artLocalPreviewShape": {
+        "shape": "circle",
+        "cx": 15,
+        "cy": 23,
+        "radius": 11,
+        "origin": "native-frame-top-left",
+        "purpose": "candidate-overlay-preview",
+        "space": "native-logical-pixels"
+      },
+      "simulationCollider": {
+        "shape": "circle",
+        "origin": "art-pivot",
+        "offsetX": 0,
+        "offsetY": -12,
+        "space": "simulation-world-units",
+        "derivedUsingWorldToLogical": 0.5,
+        "radius": 22
+      },
+      "simulationAttack": null,
+      "colliderOpaqueCoverage": {
+        "opaquePixels": 354,
+        "totalPixels": 377,
+        "ratio": 0.9389920424403183
+      },
+      "category": "pickup",
+      "colorBudget": 8,
+      "colorsUsed": 7
+    },
+    "attack-projectile": {
+      "frame": {
+        "x": 264,
+        "y": 2,
+        "w": 10,
+        "h": 8,
+        "space": "atlas-pixels"
+      },
+      "nativeSize": {
+        "w": 10,
+        "h": 8,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 5,
+        "y": 4,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "opaqueBounds": {
+        "x": 0,
+        "y": 0,
+        "w": 10,
+        "h": 8,
+        "opaquePixels": 78,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "artLocalPreviewShape": {
+        "shape": "circle",
+        "cx": 5,
+        "cy": 4,
+        "radius": 3,
+        "origin": "native-frame-top-left",
+        "purpose": "candidate-overlay-preview",
+        "space": "native-logical-pixels"
+      },
+      "simulationCollider": null,
+      "simulationAttack": {
+        "shape": "circle",
+        "origin": "art-pivot",
+        "offsetX": 0,
+        "offsetY": 0,
+        "space": "simulation-world-units",
+        "derivedUsingWorldToLogical": 0.5,
+        "radius": 6
+      },
+      "colliderOpaqueCoverage": {
+        "opaquePixels": 29,
+        "totalPixels": 29,
+        "ratio": 1
+      },
+      "category": "attack",
+      "colorBudget": 5,
+      "colorsUsed": 3
+    },
+    "attack-melee": {
+      "frame": {
+        "x": 276,
+        "y": 2,
+        "w": 40,
+        "h": 28,
+        "space": "atlas-pixels"
+      },
+      "nativeSize": {
+        "w": 40,
+        "h": 28,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 7,
+        "y": 14,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "opaqueBounds": {
+        "x": 3,
+        "y": 2,
+        "w": 37,
+        "h": 25,
+        "opaquePixels": 616,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "artLocalPreviewShape": {
+        "shape": "sector",
+        "cx": 7,
+        "cy": 14,
+        "radius": 31,
+        "halfAngleDegrees": 42,
+        "origin": "native-frame-top-left",
+        "purpose": "candidate-overlay-preview",
+        "space": "native-logical-pixels"
+      },
+      "simulationCollider": null,
+      "simulationAttack": {
+        "shape": "sector",
+        "origin": "art-pivot",
+        "offsetX": 0,
+        "offsetY": 0,
+        "space": "simulation-world-units",
+        "derivedUsingWorldToLogical": 0.5,
+        "radius": 62,
+        "halfAngleDegrees": 42,
+        "angleSpace": "degrees"
+      },
+      "colliderOpaqueCoverage": null,
+      "category": "attack",
+      "colorBudget": 5,
+      "colorsUsed": 4
+    },
+    "attack-wide-boundary": {
+      "frame": {
+        "x": 318,
+        "y": 2,
+        "w": 112,
+        "h": 76,
+        "space": "atlas-pixels"
+      },
+      "nativeSize": {
+        "w": 112,
+        "h": 76,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 56,
+        "y": 38,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "opaqueBounds": {
+        "x": 4,
+        "y": 4,
+        "w": 105,
+        "h": 69,
+        "opaquePixels": 248,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "artLocalPreviewShape": {
+        "shape": "ellipse",
+        "cx": 56,
+        "cy": 38,
+        "radiusX": 52,
+        "radiusY": 34,
+        "origin": "native-frame-top-left",
+        "purpose": "candidate-overlay-preview",
+        "space": "native-logical-pixels"
+      },
+      "simulationCollider": null,
+      "simulationAttack": {
+        "shape": "ellipse",
+        "origin": "art-pivot",
+        "offsetX": 0,
+        "offsetY": 0,
+        "space": "simulation-world-units",
+        "derivedUsingWorldToLogical": 0.5,
+        "radiusX": 104,
+        "radiusY": 68
+      },
+      "colliderOpaqueCoverage": null,
+      "category": "attack",
+      "colorBudget": 3,
+      "colorsUsed": 2
+    },
+    "fx-impact": {
+      "frame": {
+        "x": 432,
+        "y": 2,
+        "w": 18,
+        "h": 18,
+        "space": "atlas-pixels"
+      },
+      "nativeSize": {
+        "w": 18,
+        "h": 18,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 9,
+        "y": 9,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "opaqueBounds": {
+        "x": 1,
+        "y": 1,
+        "w": 16,
+        "h": 16,
+        "opaquePixels": 59,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "artLocalPreviewShape": {
+        "shape": "circle",
+        "cx": 9,
+        "cy": 9,
+        "radius": 6,
+        "origin": "native-frame-top-left",
+        "purpose": "candidate-overlay-preview",
+        "space": "native-logical-pixels"
+      },
+      "simulationCollider": null,
+      "simulationAttack": null,
+      "colliderOpaqueCoverage": {
+        "opaquePixels": 49,
+        "totalPixels": 113,
+        "ratio": 0.4336283185840708
+      },
+      "category": "effect",
+      "colorBudget": 5,
+      "colorsUsed": 3
+    },
+    "environment-floor-tile": {
+      "frame": {
+        "x": 452,
+        "y": 2,
+        "w": 16,
+        "h": 16,
+        "space": "atlas-pixels"
+      },
+      "nativeSize": {
+        "w": 16,
+        "h": 16,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 0,
+        "y": 0,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "opaqueBounds": {
+        "x": 0,
+        "y": 0,
+        "w": 16,
+        "h": 16,
+        "opaquePixels": 256,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "artLocalPreviewShape": null,
+      "simulationCollider": null,
+      "simulationAttack": null,
+      "colliderOpaqueCoverage": null,
+      "category": "tile",
+      "colorBudget": 4,
+      "colorsUsed": 3
+    },
+    "environment-prop": {
+      "frame": {
+        "x": 470,
+        "y": 2,
+        "w": 24,
+        "h": 28,
+        "space": "atlas-pixels"
+      },
+      "nativeSize": {
+        "w": 24,
+        "h": 28,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 12,
+        "y": 26,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "opaqueBounds": {
+        "x": 1,
+        "y": 0,
+        "w": 22,
+        "h": 28,
+        "opaquePixels": 454,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "artLocalPreviewShape": null,
+      "simulationCollider": null,
+      "simulationAttack": null,
+      "colliderOpaqueCoverage": null,
+      "category": "prop",
+      "colorBudget": 8,
+      "colorsUsed": 6
+    },
+    "ui-passive-icon": {
+      "frame": {
+        "x": 2,
+        "y": 80,
+        "w": 20,
+        "h": 20,
+        "space": "atlas-pixels"
+      },
+      "nativeSize": {
+        "w": 20,
+        "h": 20,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 10,
+        "y": 18,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "opaqueBounds": {
+        "x": 1,
+        "y": 0,
+        "w": 19,
+        "h": 20,
+        "opaquePixels": 317,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "artLocalPreviewShape": null,
+      "simulationCollider": null,
+      "simulationAttack": null,
+      "colliderOpaqueCoverage": null,
+      "category": "icon",
+      "colorBudget": 7,
+      "colorsUsed": 5
+    },
+    "ui-hud-meter-frame": {
+      "frame": {
+        "x": 24,
+        "y": 80,
+        "w": 104,
+        "h": 14,
+        "space": "atlas-pixels"
+      },
+      "nativeSize": {
+        "w": 104,
+        "h": 14,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 0,
+        "y": 0,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "opaqueBounds": {
+        "x": 0,
+        "y": 0,
+        "w": 104,
+        "h": 14,
+        "opaquePixels": 1456,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "artLocalPreviewShape": null,
+      "simulationCollider": null,
+      "simulationAttack": null,
+      "colliderOpaqueCoverage": null,
+      "category": "ui",
+      "colorBudget": 5,
+      "colorsUsed": 4
+    },
+    "ui-hud-meter-fill": {
+      "frame": {
+        "x": 130,
+        "y": 80,
+        "w": 96,
+        "h": 6,
+        "space": "atlas-pixels"
+      },
+      "nativeSize": {
+        "w": 96,
+        "h": 6,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 0,
+        "y": 0,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "opaqueBounds": {
+        "x": 0,
+        "y": 0,
+        "w": 94,
+        "h": 6,
+        "opaquePixels": 480,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "artLocalPreviewShape": null,
+      "simulationCollider": null,
+      "simulationAttack": null,
+      "colliderOpaqueCoverage": null,
+      "category": "ui",
+      "colorBudget": 4,
+      "colorsUsed": 3
+    },
+    "ui-hud-meter-cap": {
+      "frame": {
+        "x": 228,
+        "y": 80,
+        "w": 8,
+        "h": 14,
+        "space": "atlas-pixels"
+      },
+      "nativeSize": {
+        "w": 8,
+        "h": 14,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 0,
+        "y": 0,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "opaqueBounds": {
+        "x": 0,
+        "y": 0,
+        "w": 8,
+        "h": 14,
+        "opaquePixels": 102,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "artLocalPreviewShape": null,
+      "simulationCollider": null,
+      "simulationAttack": null,
+      "colliderOpaqueCoverage": null,
+      "category": "ui",
+      "colorBudget": 5,
+      "colorsUsed": 4
+    },
+    "ui-reward-card-panel": {
+      "frame": {
+        "x": 238,
+        "y": 80,
+        "w": 96,
+        "h": 56,
+        "space": "atlas-pixels"
+      },
+      "nativeSize": {
+        "w": 96,
+        "h": 56,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 48,
+        "y": 28,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "opaqueBounds": {
+        "x": 0,
+        "y": 0,
+        "w": 96,
+        "h": 56,
+        "opaquePixels": 5376,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "artLocalPreviewShape": null,
+      "simulationCollider": null,
+      "simulationAttack": null,
+      "colliderOpaqueCoverage": null,
+      "category": "ui",
+      "colorBudget": 7,
+      "colorsUsed": 6
+    }
+  },
+  "meta": {
+    "app": "Loop Survivors deterministic art-direction candidate builder",
+    "image": "atlas.png",
+    "format": "RGBA8888-hard-alpha",
+    "size": {
+      "w": 512,
+      "h": 192,
+      "space": "atlas-pixels"
+    },
+    "atlasPadding": {
+      "value": 2,
+      "space": "atlas-pixels"
+    },
+    "direction": "arcade-reliquary",
+    "coordinateSpace": "native-logical-pixels",
+    "worldProjection": {
+      "worldToLogical": 0.5,
+      "simulationUnitsPerLogicalPixel": 2
+    }
+  }
+}

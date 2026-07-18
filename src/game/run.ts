@@ -17,6 +17,7 @@ import {
   DAMAGE_FEEDBACK,
   DARTER,
   ENEMIES,
+  LEVELUP,
   MAD_FOREST_FRAMES,
   MAX_ALIVE_HARD,
   ORBIT_REHIT_S,
@@ -43,7 +44,7 @@ import {
   STAGE_WAVES,
   type StageWave,
 } from './madforest';
-import type { Rng } from './rng';
+import { mulberry32, type Rng } from './rng';
 import { SpatialHash, circlesOverlap } from './spatial';
 import {
   deriveBuildMods,
@@ -54,10 +55,34 @@ import {
   type ItemId,
 } from './items';
 import { endlessScale, waveRecipe } from './endless';
+import { MAX360_CAPTURE_FIXTURES } from './live-capture';
+import { WORLD_HEIGHT, WORLD_WIDTH } from './viewport';
+import {
+  nativeActorFrameBounds,
+  nativeActorOpaqueBounds,
+  sandboxMax360VariantPlan,
+  sandboxVisualPresetPlan,
+  type DebugActorGeometry,
+  type DebugActorVisualResolver,
+  type DebugChoiceGeometry,
+  type DebugClapGeometry,
+  type DebugKickGeometry,
+  type DebugPickupGeometry,
+  type DebugProjectileGeometry,
+  type DebugZoneGeometry,
+  type RunDebugGeometrySnapshot,
+  type SandboxPresetState,
+  type SandboxMax360VariantId,
+  type SandboxVisualPresetPlan,
+  type SandboxVisualPresetId,
+} from './visual-debug';
 
 /** Roles that emit a per-hit spark on impact. Bounded to low-count roles so
  *  a 500-enemy event frame never floods the fx queue. */
 const SPARK_HIT_ROLES = new Set<Role>(['snare', 'lead']);
+const CLAP_POINT_BLANK_RADIUS = 34;
+const CLAP_DEBUG_LIFETIME_S = 0.3;
+const NO_DEBUG_OBSTACLES = Object.freeze([]) as readonly [];
 
 /** Circle versus axis-aligned rectangle, exported for parity regression tests. */
 export function circleIntersectsRect(
@@ -171,6 +196,8 @@ export interface Enemy {
 }
 
 export interface Projectile {
+  /** Stable developer-capture identity; absent in production simulation. */
+  captureId?: string;
   role: Role;
   x: number;
   y: number;
@@ -222,9 +249,14 @@ export interface Zone {
   driftSpeed: number;
   damageCap: number;
   slowMul: number;
+  /** Number of evolved zones folded into this live boundary. Debug-only read;
+   * damage/radius merging remains unchanged. */
+  mergedCount: number;
 }
 
 export interface Shockwave {
+  /** Stable developer-capture identity; absent in production simulation. */
+  captureId?: string;
   x: number;
   y: number;
   radius: number;
@@ -262,6 +294,8 @@ interface PendingPulse {
 }
 
 export interface EncoreCase {
+  /** Stable developer-capture identity; absent in production simulation. */
+  captureId?: string;
   x: number;
   y: number;
   minute: number;
@@ -269,6 +303,8 @@ export interface EncoreCase {
 }
 
 export interface Gem {
+  /** Stable developer-capture identity; absent in production simulation. */
+  captureId?: string;
   x: number;
   y: number;
   xp: number;
@@ -276,6 +312,8 @@ export interface Gem {
 }
 
 export interface MusicNotePickup {
+  /** Stable developer-capture identity; absent in production simulation. */
+  captureId?: string;
   x: number;
   y: number;
   value: number;
@@ -403,7 +441,6 @@ export class RunWorld {
   private rng: Rng;
   private control: () => { x: number; y: number };
   private events: RunEvents;
-  private view: { width: number; height: number };
 
   private hash = new SpatialHash<Enemy>();
   private queryBuf: Enemy[] = [];
@@ -448,15 +485,20 @@ export class RunWorld {
      *  hit per enemy across its frames while every new trigger hits fresh. */
     hit: Set<Enemy>;
   }> = [];
+  /** Recent normal Clap collision shapes retained only long enough for the
+   *  developer overlay to show the exact cone and point-blank circle. */
+  private recentClapShapes: Array<DebugClapGeometry & { expiresAt: number }> = [];
+  private sandboxChoiceFixtures: DebugChoiceGeometry[] = [];
+  private sandboxPresetState: SandboxPresetState | null = null;
+  private sandboxCaptureFrozen = false;
   private scripted: boolean;
   private combatStarted: boolean;
 
   constructor(
-    view: { width: number; height: number },
+    _view: { width: number; height: number },
     events: RunEvents,
     opts: RunWorldOpts = {},
   ) {
-    this.view = view;
     this.events = events;
     this.scripted = opts.scripted ?? true;
     // Sandbox and existing simulation fixtures remain live by default. The
@@ -480,6 +522,10 @@ export class RunWorld {
 
   get awaitingStartingWeapon(): boolean {
     return !this.combatStarted;
+  }
+
+  get sandboxVisualPreset(): SandboxPresetState | null {
+    return this.sandboxPresetState;
   }
 
   /** Release the opening gate only after a real weapon has been installed. */
@@ -561,24 +607,205 @@ export class RunWorld {
     return evolution;
   }
 
-  /** Integer camera scale keeps the sprite grid crisp. Ordinary desktop and
-   * mobile windows use 1x; large displays step cleanly to 2x/3x. */
+  /** Simulation scale is fixed. Browser presentation lives in viewport.ts. */
   get zoom(): number {
-    return Math.max(1, Math.floor(this.view.height / 720));
+    return 1;
   }
 
-  /** Visible world extent (screen pixels divided by zoom). */
+  /** Visible simulation extent stays independent of browser resolution. */
   get worldW(): number {
-    return this.view.width / this.zoom;
+    return WORLD_WIDTH;
   }
 
   get worldH(): number {
-    return this.view.height / this.zoom;
+    return WORLD_HEIGHT;
+  }
+
+  /**
+   * One copied, read-only geometry seam for development rendering and checks.
+   * No debug view reaches private strike queues or reconstructs collision
+   * rules independently from the simulation.
+   */
+  debugGeometrySnapshot(resolveActorVisual: DebugActorVisualResolver = () => null): RunDebugGeometrySnapshot {
+    const playerBody = Object.freeze({
+      x: this.player.x,
+      y: this.player.y,
+      radius: this.player.radius,
+    });
+    const playerVisual = resolveActorVisual('player');
+    const missingPlayerBounds = Object.freeze({ x: this.player.x, y: this.player.y, width: 0, height: 0 });
+    const actors: DebugActorGeometry[] = [Object.freeze({
+      id: 'player',
+      kind: 'player',
+      hurtBodyWorld: playerBody,
+      contactBodyWorld: playerBody,
+      rendererAnchorWorld: Object.freeze({ x: this.player.x, y: this.player.y }),
+      groundPivotWorld: Object.freeze(playerVisual ? {
+        x: this.player.x + (playerVisual.groundX - playerVisual.pivotX) * playerVisual.worldUnitsPerNativePixel,
+        y: this.player.y + (playerVisual.groundY - playerVisual.pivotY) * playerVisual.worldUnitsPerNativePixel,
+      } : { x: this.player.x, y: this.player.y }),
+      simulationGroundReferenceWorld: Object.freeze({
+        x: this.player.x + PLAYER_FOOT_OFFSET.x,
+        y: this.player.y + PLAYER_FOOT_OFFSET.y,
+      }),
+      frameBoundsWorld: playerVisual
+        ? nativeActorFrameBounds(this.player.x, this.player.y, playerVisual)
+        : missingPlayerBounds,
+      opaqueVisualBoundsWorld: playerVisual
+        ? nativeActorOpaqueBounds(this.player.x, this.player.y, playerVisual)
+        : missingPlayerBounds,
+      opaqueBoundsSource: playerVisual
+        ? 'production atlas idle/walk/facing union'
+        : 'visual metadata unavailable',
+      headliner: false,
+      amped: false,
+    })];
+    for (const enemy of this.enemies) {
+      if (enemy.dead) continue;
+      const body = Object.freeze({ x: enemy.x, y: enemy.y, radius: enemy.radius });
+      const actorVisual = resolveActorVisual(enemy.kind);
+      const missingBounds = Object.freeze({ x: enemy.x, y: enemy.y, width: 0, height: 0 });
+      actors.push(Object.freeze({
+        id: enemy.id,
+        kind: enemy.kind,
+        hurtBodyWorld: body,
+        contactBodyWorld: body,
+        rendererAnchorWorld: Object.freeze({ x: enemy.x, y: enemy.y }),
+        groundPivotWorld: Object.freeze(actorVisual ? {
+          x: enemy.x + (actorVisual.groundX - actorVisual.pivotX) * actorVisual.worldUnitsPerNativePixel,
+          y: enemy.y + (actorVisual.groundY - actorVisual.pivotY) * actorVisual.worldUnitsPerNativePixel,
+        } : { x: enemy.x, y: enemy.y }),
+        simulationGroundReferenceWorld: Object.freeze({
+          x: enemy.x + enemy.footOffsetX,
+          y: enemy.y + enemy.footOffsetY,
+        }),
+        frameBoundsWorld: actorVisual
+          ? nativeActorFrameBounds(enemy.x, enemy.y, actorVisual)
+          : missingBounds,
+        opaqueVisualBoundsWorld: actorVisual
+          ? nativeActorOpaqueBounds(enemy.x, enemy.y, actorVisual)
+          : missingBounds,
+        opaqueBoundsSource: actorVisual
+          ? 'production atlas idle/walk/facing union'
+          : 'visual metadata unavailable',
+        headliner: enemy.headliner,
+        amped: enemy.amped,
+      }));
+    }
+
+    const projectiles: DebugProjectileGeometry[] = this.projectiles.map((projectile) =>
+      Object.freeze({
+        role: projectile.role,
+        collisionCoreWorld: Object.freeze({
+          x: projectile.x,
+          y: projectile.y,
+          radius: projectile.radius,
+        }),
+        pierce: projectile.pierce,
+        maxPierce: projectile.maxPierce,
+        bounces: projectile.bounces,
+        evolved: projectile.evolved,
+      }),
+    );
+
+    const kickRects: DebugKickGeometry[] = [];
+    for (const strike of this.pendingKick) {
+      if (!strike.started || this.timeS + 1e-9 >= strike.expiresAt) continue;
+      const age = Math.max(0, this.timeS - strike.startedAt);
+      const growth = Math.min(1, age / 0.1);
+      const halfW = (KICK_GEOMETRY.baseWidth * strike.area * growth) / 2;
+      const halfH = (KICK_GEOMETRY.baseHeight * strike.area * growth) / 2;
+      const center = kickStripCenter(strike.x, strike.y, strike.side, halfW);
+      kickRects.push(Object.freeze({
+        rectWorld: Object.freeze({
+          x: center.x - halfW,
+          y: center.y - halfH,
+          width: halfW * 2,
+          height: halfH * 2,
+        }),
+        side: strike.side,
+        growth,
+      }));
+    }
+
+    const clapShapes: DebugClapGeometry[] = this.recentClapShapes
+      .filter((shape) => shape.expiresAt > this.timeS)
+      .map((shape) => Object.freeze({
+        x: shape.x,
+        y: shape.y,
+        angle: shape.angle,
+        halfArc: shape.halfArc,
+        reach: shape.reach,
+        pointBlankRadius: shape.pointBlankRadius,
+      }));
+    const zones: DebugZoneGeometry[] = this.zones.map((zone) => Object.freeze({
+      x: zone.x,
+      y: zone.y,
+      radius: zone.radius,
+      source: zone.source,
+      evolved: zone.evolved,
+      mergedCount: zone.mergedCount,
+      mergedCapRadius: 180,
+    }));
+    const gemMagnet = RUN.magnetRadius * this.buildMods.magnetMul;
+    const noteMagnet = gemMagnet * 1.15;
+    const pickups: DebugPickupGeometry[] = [
+      ...this.gems.map((gem, index) => Object.freeze({
+        id: `xp-${index}`,
+        kind: 'xp' as const,
+        x: gem.x,
+        y: gem.y,
+        collectionRadius: RUN.pickupRadius,
+        magnetRadius: gemMagnet,
+      })),
+      ...this.musicNotes.map((note, index) => Object.freeze({
+        id: `note-${index}`,
+        kind: 'note' as const,
+        x: note.x,
+        y: note.y,
+        collectionRadius: RUN.pickupRadius + 4,
+        magnetRadius: noteMagnet,
+      })),
+      ...this.encoreCases.map((encore, index) => Object.freeze({
+        id: `encore-${index}`,
+        kind: 'encore' as const,
+        x: encore.x,
+        y: encore.y,
+        collectionRadius: 42,
+        magnetRadius: 0,
+      })),
+    ];
+    const choices = this.sandboxChoiceFixtures.map((choice) => Object.freeze({ ...choice }));
+
+    return Object.freeze({
+      timeS: this.timeS,
+      actors: Object.freeze(actors),
+      projectiles: Object.freeze(projectiles),
+      kickRects: Object.freeze(kickRects),
+      clapShapes: Object.freeze(clapShapes),
+      zones: Object.freeze(zones),
+      pickups: Object.freeze(pickups),
+      choices: Object.freeze(choices),
+      playerGemMagnetWorld: Object.freeze({
+        x: this.player.x,
+        y: this.player.y,
+        radius: gemMagnet,
+      }),
+      playerNoteMagnetWorld: Object.freeze({
+        x: this.player.x,
+        y: this.player.y,
+        radius: noteMagnet,
+      }),
+      obstacles: NO_DEBUG_OBSTACLES,
+      obstacleReport: 'none — scenery is decorative and non-colliding',
+      preset: this.sandboxPresetState,
+    });
   }
 
   /** The coupling point: a scheduled trigger fires this kit's weapon at the
    *  owned tier. Variant peaks (chord pad) scale the same weapon. */
   fireTrigger(t: ScheduledTrigger): void {
+    if (this.sandboxCaptureFrozen) return;
     const tier = this.tiers.get(t.role);
     if (!tier) return;
     // WEAPONS is keyed on the supported catalog; a trigger only ever fires for
@@ -647,6 +874,16 @@ export class RunWorld {
         const aim = this.aimDir(0);
         const ang = Math.atan2(aim.y, aim.x);
         const reach = conf.radius! * (0.9 + 0.2 * v);
+        this.recentClapShapes.push({
+          x: p.x,
+          y: p.y,
+          angle: ang,
+          halfArc: conf.arc!,
+          reach,
+          pointBlankRadius: CLAP_POINT_BLANK_RADIUS,
+          expiresAt: this.timeS + CLAP_DEBUG_LIFETIME_S,
+        });
+        if (this.recentClapShapes.length > 8) this.recentClapShapes.shift();
         this.damageCone(p.x, p.y, ang, conf.arc!, reach, conf.damage * (0.85 + 0.3 * v), 'clap', WEAPON_SHOVE.clap);
         this.fx?.push({ type: 'arc', x: p.x, y: p.y, angle: ang, arc: conf.arc!, radius: reach, color });
         break;
@@ -707,6 +944,7 @@ export class RunWorld {
   /** Move the sandbox to a deterministic threat minute without running every
    * preceding frame. Newly spawned enemies use that minute's endless scale. */
   setSandboxThreatMinute(minute: number): void {
+    this.leaveSandboxVisualPreset();
     const next = Math.max(0, Math.floor(minute));
     this.timeS = next * 60 + 0.01;
     this.lastMinute = next - 1;
@@ -817,6 +1055,7 @@ export class RunWorld {
   }
 
   update(dt: number): void {
+    if (this.sandboxCaptureFrozen) return;
     if (!this.combatStarted) {
       // Picking is physical, so movement stays responsive. Nothing else—not
       // even recovery frames—advances before a starting weapon exists.
@@ -824,6 +1063,9 @@ export class RunWorld {
       return;
     }
     this.timeS += dt;
+    for (let i = this.recentClapShapes.length - 1; i >= 0; i--) {
+      if (this.recentClapShapes[i].expiresAt <= this.timeS) this.recentClapShapes.splice(i, 1);
+    }
     this.updateMinuteSystems(dt);
     this.updatePassiveRecovery(dt);
     this.movePlayer(dt);
@@ -1072,6 +1314,7 @@ export class RunWorld {
   /** A ring closing in from all sides at once. Waves get to exceed the
    *  soft cap: a pinned cap must not swallow the designed spikes. */
   spawnRingOf(kind: EnemyKind, count: number): void {
+    this.leaveSandboxVisualPreset();
     const start = this.rng() * Math.PI * 2;
     for (let i = 0; i < count; i++) {
       this.spawnEnemy(kind, start + (i / count) * Math.PI * 2, 1, true);
@@ -1080,6 +1323,7 @@ export class RunWorld {
 
   /** A surge pouring in from one direction in a loose arc. */
   spawnSurgeOf(kind: EnemyKind, count: number): void {
+    this.leaveSandboxVisualPreset();
     const center = this.rng() * Math.PI * 2;
     for (let i = 0; i < count; i++) {
       this.spawnEnemy(kind, center + (this.rng() * 2 - 1) * 0.5, 1 + this.rng() * 0.6, true);
@@ -1087,6 +1331,7 @@ export class RunWorld {
   }
 
   spawnEnemy(kind: EnemyKind, angle?: number, distMul = 1, wave = false): void {
+    this.leaveSandboxVisualPreset();
     if (this.enemies.length >= (wave ? MAX_ALIVE_HARD : ENEMIES.maxAlive)) return;
     const playerFootX = this.player.x + PLAYER_FOOT_OFFSET.x;
     const playerFootY = this.player.y + PLAYER_FOOT_OFFSET.y;
@@ -1127,6 +1372,7 @@ export class RunWorld {
   /** Sandbox/lab helper: construct a real enemy at an explicit world-space
    *  source-feet position, using the same stats/body path as stage spawns. */
   spawnEnemyAt(kind: EnemyKind, x: number, y: number): Enemy | null {
+    this.leaveSandboxVisualPreset();
     const spawnClass = ENEMIES[kind].boss
       ? 'boss'
       : ENEMIES[kind].fixedDirection || kind === 'flower'
@@ -1256,12 +1502,14 @@ export class RunWorld {
 
   /** Sandbox: remove every enemy without kills, gems, or pops. */
   clearEnemies(): void {
+    this.leaveSandboxVisualPreset();
     this.enemies.length = 0;
   }
 
   /** Reset every transient sandbox entity without touching the player, loadout,
    *  clock, level, or stage director. No delayed strike/pickup pointer survives. */
   clearSandboxEntities(): void {
+    this.leaveSandboxVisualPreset();
     this.enemies.length = 0;
     this.projectiles.length = 0;
     this.zones.length = 0;
@@ -1273,11 +1521,177 @@ export class RunWorld {
     if (this.fx) this.fx.length = 0;
     this.pendingKick.length = 0;
     this.pendingPulses.length = 0;
+    this.recentClapShapes.length = 0;
+    this.sandboxChoiceFixtures.length = 0;
     this.overflowGem = null;
     this.overflowMusicNote = null;
     this.noteDropPity = 0;
     this.hash.clear();
     this.queryBuf.length = 0;
+  }
+
+  /** Deterministic, idempotent capture setup for visual QA. These presets are
+   * frozen developer surfaces: no movement, attacks, pickups, or contact can
+   * mutate the named scene until a manual Sandbox action resumes simulation. */
+  applySandboxVisualPreset(id: SandboxVisualPresetId): SandboxPresetState {
+    return this.applySandboxVisualPlan(sandboxVisualPresetPlan(id));
+  }
+
+  applySandboxMax360Variant(
+    id: SandboxMax360VariantId,
+    includeCaptureFixtures = false,
+  ): SandboxPresetState {
+    return this.applySandboxVisualPlan(sandboxMax360VariantPlan(id), includeCaptureFixtures);
+  }
+
+  private applySandboxVisualPlan(
+    plan: SandboxVisualPresetPlan,
+    includeCaptureFixtures = false,
+  ): SandboxPresetState {
+    this.clearSandboxEntities();
+    this.rng = mulberry32(plan.seed);
+    this.nextEnemyId = 1;
+    this.enemyFrameCounters = {};
+    this.level = plan.level;
+    this.xp = 0;
+    this.timeS = plan.minute * 60;
+    this.lastMinute = plan.minute - 1;
+    this.endlessMinute = -1;
+    this.endlessNextSpawnT = this.timeS;
+    // The camera follows the declared player ground point, so this places that
+    // point exactly at world origin for every fixed capture.
+    this.player.x = -PLAYER_FOOT_OFFSET.x;
+    this.player.y = -PLAYER_FOOT_OFFSET.y;
+    this.player.hp = this.playerMaxHp;
+    this.player.iframesT = 0;
+    this.player.facingX = 1;
+
+    for (const fixture of plan.enemies) {
+      const conf = ENEMIES[fixture.kind];
+      const spawnClass = conf.boss
+        ? 'boss'
+        : conf.fixedDirection || fixture.kind === 'flower'
+          ? 'event'
+          : 'regular';
+      const enemy = this.pushEnemy(fixture.kind, fixture.x, fixture.y, spawnClass);
+      if (enemy && fixture.headliner) this.makeHeadliner(enemy);
+    }
+    for (const fixture of plan.pickups) {
+      if (fixture.kind === 'xp') this.spawnGemAt(fixture.x, fixture.y, fixture.value);
+      else if (fixture.kind === 'note') this.spawnMusicNoteAt(fixture.x, fixture.y, fixture.value);
+      else this.encoreCases.push({
+        x: fixture.x,
+        y: fixture.y,
+        minute: plan.minute,
+        color: 0xffd45c,
+      });
+    }
+    if (includeCaptureFixtures && plan.id === 'max360') this.installMax360CaptureFixtures();
+    this.sandboxChoiceFixtures = plan.choices.map((choice) => {
+      const cameraX = this.player.x + PLAYER_FOOT_OFFSET.x;
+      const cameraY = this.player.y + PLAYER_FOOT_OFFSET.y;
+      const visible =
+        Math.abs(choice.x - cameraX) <= this.worldW / 2 - LEVELUP.itemPickupRadius &&
+        Math.abs(choice.y - cameraY) <= this.worldH / 2 - LEVELUP.itemPickupRadius;
+      const outsidePlayer = Math.hypot(choice.x - this.player.x, choice.y - this.player.y) >
+        LEVELUP.itemPickupRadius;
+      return {
+        id: choice.id,
+        mode: choice.mode,
+        x: choice.x,
+        y: choice.y,
+        collectionRadius: LEVELUP.itemPickupRadius,
+        reachable: visible && outsidePlayer,
+      };
+    });
+    // Headliner setup emits a banner request; named captures start without
+    // transient attacks/effects so exact body counts remain the only density.
+    if (this.fx) this.fx.length = 0;
+    this.pendingKick.length = 0;
+    this.pendingPulses.length = 0;
+    this.recentClapShapes.length = 0;
+    this.sandboxPresetState = Object.freeze({
+      id: plan.id,
+      label: plan.label,
+      seed: plan.seed,
+      frozen: plan.freeze,
+    });
+    this.sandboxCaptureFrozen = true;
+    return this.sandboxPresetState;
+  }
+
+  /** Populate the capture packet with real frozen runtime entities. */
+  private installMax360CaptureFixtures(): void {
+    for (const fixture of MAX360_CAPTURE_FIXTURES) {
+      switch (fixture.class) {
+        case 'friendly-projectile': {
+          const conf = WEAPONS.snare![0];
+          const projectile = this.baseProjectile('snare', conf, KIT_COLORS.snare, conf.damage);
+          projectile.captureId = fixture.id;
+          projectile.x = fixture.worldX;
+          projectile.y = fixture.worldY;
+          projectile.vx = conf.speed ?? 0;
+          projectile.vy = 0;
+          this.projectiles.push(projectile);
+          break;
+        }
+        case 'xp':
+          this.gems.push({
+            captureId: fixture.id,
+            x: fixture.worldX,
+            y: fixture.worldY,
+            xp: 3,
+            tier: 'green',
+          });
+          break;
+        case 'music-note':
+          this.musicNotes.push({
+            captureId: fixture.id,
+            x: fixture.worldX,
+            y: fixture.worldY,
+            value: 3,
+            tier: 'phrase',
+          });
+          break;
+        case 'weapon-reward':
+          this.encoreCases.push({
+            captureId: fixture.id,
+            x: fixture.worldX,
+            y: fixture.worldY,
+            minute: Math.floor(this.timeS / 60),
+            color: 0xffd45c,
+          });
+          break;
+        case 'decorative-effect':
+          this.shockwaves.push({
+            captureId: fixture.id,
+            x: fixture.worldX,
+            y: fixture.worldY,
+            radius: 28,
+            maxRadius: 44,
+            age: 0,
+            lifeS: 2,
+            damage: 0,
+            shove: 0,
+            color: KIT_COLORS.clap,
+            source: 'clap',
+            hit: new Set(),
+          });
+          break;
+      }
+    }
+  }
+
+  /** Leave a fixed capture preset and return the existing Sandbox to live
+   * simulation. Loadout and spawned fixtures remain intact. */
+  resumeSandboxSimulation(): void {
+    this.leaveSandboxVisualPreset();
+  }
+
+  private leaveSandboxVisualPreset(): void {
+    this.sandboxCaptureFrozen = false;
+    this.sandboxPresetState = null;
+    this.sandboxChoiceFixtures.length = 0;
   }
 
   private moveEnemies(dt: number): void {
@@ -1542,6 +1956,7 @@ export class RunWorld {
 
   /** Debug helper: grant XP as if picked up. */
   grantXp(amount: number): void {
+    this.leaveSandboxVisualPreset();
     this.xp += amount;
     this.checkLevel();
   }
@@ -1554,6 +1969,7 @@ export class RunWorld {
 
   /** Debug helper: kill everything on screen. */
   killVisible(): void {
+    if (this.sandboxCaptureFrozen) return;
     for (const e of this.enemies) {
       if (
         Math.abs(e.x - this.player.x) < this.worldW / 2 &&
@@ -2044,7 +2460,7 @@ export class RunWorld {
       const dy = e.y - y;
       const d = Math.hypot(dx, dy);
       if (d > reach + e.radius) continue;
-      if (d < 34) {
+      if (d < CLAP_POINT_BLANK_RADIUS) {
         this.damageEnemy(e, damage, source);
         if (shove) this.shove(e, x, y, shove);
         continue;
@@ -2225,6 +2641,7 @@ export class RunWorld {
       driftSpeed: evolved ? 65 : 0,
       damageCap: damage * 3,
       slowMul: evolved ? 0.42 : ZONE_SLOW_MUL,
+      mergedCount: 1,
     });
   }
 
@@ -2292,6 +2709,7 @@ export class RunWorld {
         a.radius = Math.min(180, Math.sqrt(totalArea));
         a.lifeS = Math.min(4.5, Math.max(a.lifeS, b.lifeS) + Math.min(a.lifeS, b.lifeS) * 0.25);
         a.damage = Math.min(a.damageCap, a.damage + b.damage * 0.5);
+        a.mergedCount += b.mergedCount;
         this.zones.splice(j, 1);
         i -= 1;
         break;
@@ -2334,6 +2752,7 @@ export class RunWorld {
   /** Public for the Sandbox pickup field. Enemy rewards still pass through
    * spawnGem(), which preserves their authored random XP roll. */
   spawnGemAt(x: number, y: number, xp = 1): void {
+    this.leaveSandboxVisualPreset();
     const dropped = Math.max(1, Math.floor(xp));
     const tier: Gem['tier'] = dropped <= 2 ? 'blue' : dropped <= 9 ? 'green' : 'red';
     if (this.gems.length < RUN.maxGems) {
@@ -2381,6 +2800,7 @@ export class RunWorld {
 
   /** Public for the sandbox's currency shower; normal runs use enemy drops. */
   spawnMusicNoteAt(x: number, y: number, value = 1): void {
+    this.leaveSandboxVisualPreset();
     const amount = Math.max(1, Math.floor(value));
     const tier: MusicNotePickup['tier'] = amount >= 10 ? 'anthem' : amount >= 3 ? 'phrase' : 'note';
     if (this.musicNotes.length < RUN.maxMusicNotes) {
@@ -2404,6 +2824,13 @@ export class RunWorld {
     }
     this.overflowMusicNote.value += amount;
     this.overflowMusicNote.tier = 'anthem';
+  }
+
+  /** Public visual-QA fixture using the same collection object as a dropped
+   * Headliner reward. */
+  spawnEncoreCaseAt(x: number, y: number, minute = Math.floor(this.timeS / 60)): void {
+    this.leaveSandboxVisualPreset();
+    this.encoreCases.push({ x, y, minute, color: 0xffd45c });
   }
 
   private updateGems(dt: number): void {

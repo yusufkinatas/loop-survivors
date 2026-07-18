@@ -7,6 +7,14 @@ import { type Kit, type Role } from '../audio/kits';
 import { SLOTS, SLOT_LABEL, ownerOfSlot, supportedRoster } from './band';
 import { EVOLUTION_BY_ROLE, ITEM_IDS, ITEMS, type ItemId } from './items';
 import type { MetaStore, RunSettlement } from './meta';
+import {
+  actionIconTextureKey,
+  passiveIconTextureKey,
+  pixelIconCssFrame,
+  pixelTitleBannerUrl,
+  statusIconTextureKey,
+  type PixelIconTextureKey,
+} from './pixel-art';
 
 import { TIER_COUNT } from '../audio/charts';
 /** Tier numerals used by the band rack. */
@@ -16,27 +24,27 @@ type HudPixelIcon = ItemId |
   'heart' | 'xp' | 'note' | 'level' | 'pause' |
   'reroll' | 'shop' | 'evolution' | 'weapon-pedestal' | 'enemy-skull';
 
-const HUD_PIXEL_ICON_INDEX: Record<HudPixelIcon, number> = {
-  highTops: 0,
-  fastForward: 1,
-  needleTips: 2,
-  mirrorball: 3,
-  wideLens: 4,
-  heavyAmp: 5,
-  extensionCable: 6,
-  magnetLanyard: 7,
-  paddedJacket: 8,
-  recoveryTape: 9,
-  heart: 10,
-  xp: 11,
-  note: 12,
-  level: 13,
-  pause: 14,
-  reroll: 15,
-  shop: 16,
-  evolution: 17,
-  'weapon-pedestal': 18,
-  'enemy-skull': 19,
+const HUD_PIXEL_ICON_KEYS: Record<HudPixelIcon, PixelIconTextureKey> = {
+  highTops: passiveIconTextureKey('highTops'),
+  fastForward: passiveIconTextureKey('fastForward'),
+  needleTips: passiveIconTextureKey('needleTips'),
+  mirrorball: passiveIconTextureKey('mirrorball'),
+  wideLens: passiveIconTextureKey('wideLens'),
+  heavyAmp: passiveIconTextureKey('heavyAmp'),
+  extensionCable: passiveIconTextureKey('extensionCable'),
+  magnetLanyard: passiveIconTextureKey('magnetLanyard'),
+  paddedJacket: passiveIconTextureKey('paddedJacket'),
+  recoveryTape: passiveIconTextureKey('recoveryTape'),
+  heart: statusIconTextureKey('heart'),
+  xp: statusIconTextureKey('xp'),
+  note: statusIconTextureKey('note'),
+  level: statusIconTextureKey('level'),
+  pause: statusIconTextureKey('pause'),
+  reroll: actionIconTextureKey('reroll'),
+  shop: actionIconTextureKey('shop'),
+  evolution: actionIconTextureKey('evolution'),
+  'weapon-pedestal': actionIconTextureKey('weapon-pedestal'),
+  'enemy-skull': actionIconTextureKey('enemy-skull'),
 };
 
 export interface DebugAction {
@@ -313,8 +321,8 @@ export class Hud {
     const hero = el('div', 'start-hero', s);
     const art = document.createElement('img');
     art.className = 'title-art';
-    art.src = '/art/pixel/title-banner.png';
-    art.alt = 'A moonlit pixel-art crypt with the hero, monsters, braziers, and ancient stonework';
+    art.src = pixelTitleBannerUrl();
+    art.alt = 'A native pixel-art arcade crypt with the orange hero, monsters, reliquary props, and ancient stonework';
     hero.appendChild(art);
     const title = el('div', 'title-lockup', hero);
     el('span', 'eyebrow', title, 'THE NEON CRYPT');
@@ -615,14 +623,18 @@ function el(tag: string, className: string, parent: HTMLElement, text = ''): HTM
   return node;
 }
 
-/** Crop a frame from the committed 512px UI atlas at an exact 4:1 ratio. */
+/** Crop a stable frame ID from the loaded UI atlas at its declared native 1x
+ * logical scale. No atlas dimensions, cell size, or grid order live in DOM UI. */
 function pixelIcon(parent: HTMLElement, id: HudPixelIcon, className = ''): HTMLElement {
-  const index = HUD_PIXEL_ICON_INDEX[id];
-  const column = index % 5;
-  const row = Math.floor(index / 5);
+  const frame = pixelIconCssFrame(HUD_PIXEL_ICON_KEYS[id]);
+  const scale = frame.logicalScale;
   const node = el('span', `pixel-ui-icon ${className}`.trim(), parent);
-  node.style.setProperty('--pixel-icon-x', `${-(8 + column * 100) / 4}px`);
-  node.style.setProperty('--pixel-icon-y', `${-(8 + row * 100) / 4}px`);
+  node.style.width = `${frame.width * scale}px`;
+  node.style.height = `${frame.height * scale}px`;
+  node.style.flexBasis = `${frame.width * scale}px`;
+  node.style.backgroundImage = `url(${JSON.stringify(frame.imageUrl)})`;
+  node.style.backgroundSize = `${frame.atlasWidth * scale}px ${frame.atlasHeight * scale}px`;
+  node.style.backgroundPosition = `${-frame.x * scale}px ${-frame.y * scale}px`;
   node.setAttribute('aria-hidden', 'true');
   return node;
 }

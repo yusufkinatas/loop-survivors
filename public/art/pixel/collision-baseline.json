@@ -1,0 +1,1140 @@
+{
+  "anchors": {
+    "environment": {
+      "coordinateSpace": "atlas-pixels",
+      "x": 0.5,
+      "y": 0.92
+    },
+    "playerAndEnemy": {
+      "coordinateSpace": "atlas-pixels",
+      "x": 0.5,
+      "y": 0.92
+    },
+    "weaponsPickupsFxAndUi": {
+      "coordinateSpace": "atlas-pixels",
+      "x": 0.5,
+      "y": 0.5
+    }
+  },
+  "attacks": {
+    "bellShards": {
+      "radius": 4
+    },
+    "coordinateSpace": "simulation-world-h800-reference",
+    "evolvedSpecials": {
+      "afterhours": {
+        "configuredRadiusMultiplier": 1.55,
+        "shape": "circle-zone"
+      },
+      "eventHorizon": {
+        "configuredRadiusMultiplier": 1.25,
+        "shape": "circle-projectile"
+      },
+      "gravityBell": {
+        "projectileRadiusMultiplier": 1,
+        "shape": "circle-projectile-and-well",
+        "wellRadius": 130
+      },
+      "railshot": {
+        "halfWidthFormula": "max(7, configuredRadius * 1.25)",
+        "length": 900,
+        "shape": "line"
+      },
+      "redlineStomp": {
+        "halfThicknessFormula": "kickBaseHeight * area * 0.75",
+        "shape": "viewport-relative-cross"
+      },
+      "standingOvation": {
+        "radiusFormula": "hypot(worldW, worldH) * 0.58 * areaMul",
+        "shape": "viewport-relative-circle"
+      },
+      "subquake": {
+        "maxRadius": {
+          "fatVariant": 480,
+          "ordinary": 360
+        },
+        "shape": "expanding-circle",
+        "startRadius": 40
+      }
+    },
+    "kickBase": {
+      "height": 38.59649122807017,
+      "width": 149.12280701754386
+    },
+    "weaponTiers": [
+      {
+        "role": "kick",
+        "tiers": [
+          {
+            "collisionShape": "growing-axis-aligned-strip",
+            "configuredArcRadians": null,
+            "configuredArea": 1,
+            "configuredOrbitRadius": null,
+            "configuredRadius": null,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": 38.59649122807017,
+            "kickFullWidth": 149.12280701754386,
+            "tier": 1
+          },
+          {
+            "collisionShape": "growing-axis-aligned-strip",
+            "configuredArcRadians": null,
+            "configuredArea": 1,
+            "configuredOrbitRadius": null,
+            "configuredRadius": null,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": 38.59649122807017,
+            "kickFullWidth": 149.12280701754386,
+            "tier": 2
+          },
+          {
+            "collisionShape": "growing-axis-aligned-strip",
+            "configuredArcRadians": null,
+            "configuredArea": 1.1,
+            "configuredOrbitRadius": null,
+            "configuredRadius": null,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": 42.45614035087719,
+            "kickFullWidth": 164.03508771929828,
+            "tier": 3
+          },
+          {
+            "collisionShape": "growing-axis-aligned-strip",
+            "configuredArcRadians": null,
+            "configuredArea": 1.2,
+            "configuredOrbitRadius": null,
+            "configuredRadius": null,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": 46.315789473684205,
+            "kickFullWidth": 178.94736842105263,
+            "tier": 4
+          }
+        ]
+      },
+      {
+        "role": "snare",
+        "tiers": [
+          {
+            "collisionShape": "circle-projectile",
+            "configuredArcRadians": null,
+            "configuredArea": null,
+            "configuredOrbitRadius": null,
+            "configuredRadius": 7,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": null,
+            "kickFullWidth": null,
+            "tier": 1
+          },
+          {
+            "collisionShape": "circle-projectile",
+            "configuredArcRadians": null,
+            "configuredArea": null,
+            "configuredOrbitRadius": null,
+            "configuredRadius": 7,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": null,
+            "kickFullWidth": null,
+            "tier": 2
+          },
+          {
+            "collisionShape": "circle-projectile",
+            "configuredArcRadians": null,
+            "configuredArea": null,
+            "configuredOrbitRadius": null,
+            "configuredRadius": 8,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": null,
+            "kickFullWidth": null,
+            "tier": 3
+          },
+          {
+            "collisionShape": "circle-projectile",
+            "configuredArcRadians": null,
+            "configuredArea": null,
+            "configuredOrbitRadius": null,
+            "configuredRadius": 8,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": null,
+            "kickFullWidth": null,
+            "tier": 4
+          }
+        ]
+      },
+      {
+        "role": "hat",
+        "tiers": [
+          {
+            "collisionShape": "circle-projectile",
+            "configuredArcRadians": null,
+            "configuredArea": null,
+            "configuredOrbitRadius": null,
+            "configuredRadius": 3,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": null,
+            "kickFullWidth": null,
+            "tier": 1
+          },
+          {
+            "collisionShape": "circle-projectile",
+            "configuredArcRadians": null,
+            "configuredArea": null,
+            "configuredOrbitRadius": null,
+            "configuredRadius": 3,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": null,
+            "kickFullWidth": null,
+            "tier": 2
+          },
+          {
+            "collisionShape": "circle-projectile",
+            "configuredArcRadians": null,
+            "configuredArea": null,
+            "configuredOrbitRadius": null,
+            "configuredRadius": 3,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": null,
+            "kickFullWidth": null,
+            "tier": 3
+          },
+          {
+            "collisionShape": "circle-projectile",
+            "configuredArcRadians": null,
+            "configuredArea": null,
+            "configuredOrbitRadius": null,
+            "configuredRadius": 3,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": null,
+            "kickFullWidth": null,
+            "tier": 4
+          }
+        ]
+      },
+      {
+        "role": "clap",
+        "tiers": [
+          {
+            "collisionShape": "forward-cone",
+            "configuredArcRadians": 0.65,
+            "configuredArea": null,
+            "configuredOrbitRadius": null,
+            "configuredRadius": 80,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": null,
+            "kickFullWidth": null,
+            "tier": 1
+          },
+          {
+            "collisionShape": "forward-cone",
+            "configuredArcRadians": 0.72,
+            "configuredArea": null,
+            "configuredOrbitRadius": null,
+            "configuredRadius": 88,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": null,
+            "kickFullWidth": null,
+            "tier": 2
+          },
+          {
+            "collisionShape": "forward-cone",
+            "configuredArcRadians": 0.8,
+            "configuredArea": null,
+            "configuredOrbitRadius": null,
+            "configuredRadius": 98,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": null,
+            "kickFullWidth": null,
+            "tier": 3
+          },
+          {
+            "collisionShape": "forward-cone",
+            "configuredArcRadians": 0.9,
+            "configuredArea": null,
+            "configuredOrbitRadius": null,
+            "configuredRadius": 108,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": null,
+            "kickFullWidth": null,
+            "tier": 4
+          }
+        ]
+      },
+      {
+        "role": "bass",
+        "tiers": [
+          {
+            "collisionShape": "circle-projectile",
+            "configuredArcRadians": null,
+            "configuredArea": null,
+            "configuredOrbitRadius": null,
+            "configuredRadius": 22,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": null,
+            "kickFullWidth": null,
+            "tier": 1
+          },
+          {
+            "collisionShape": "circle-projectile",
+            "configuredArcRadians": null,
+            "configuredArea": null,
+            "configuredOrbitRadius": null,
+            "configuredRadius": 28,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": null,
+            "kickFullWidth": null,
+            "tier": 2
+          },
+          {
+            "collisionShape": "circle-projectile",
+            "configuredArcRadians": null,
+            "configuredArea": null,
+            "configuredOrbitRadius": null,
+            "configuredRadius": 34,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": null,
+            "kickFullWidth": null,
+            "tier": 3
+          },
+          {
+            "collisionShape": "circle-projectile",
+            "configuredArcRadians": null,
+            "configuredArea": null,
+            "configuredOrbitRadius": null,
+            "configuredRadius": 42,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": null,
+            "kickFullWidth": null,
+            "tier": 4
+          }
+        ]
+      },
+      {
+        "role": "chord",
+        "tiers": [
+          {
+            "collisionShape": "circle-zone",
+            "configuredArcRadians": null,
+            "configuredArea": null,
+            "configuredOrbitRadius": null,
+            "configuredRadius": 48,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": null,
+            "kickFullWidth": null,
+            "tier": 1
+          },
+          {
+            "collisionShape": "circle-zone",
+            "configuredArcRadians": null,
+            "configuredArea": null,
+            "configuredOrbitRadius": null,
+            "configuredRadius": 56,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": null,
+            "kickFullWidth": null,
+            "tier": 2
+          },
+          {
+            "collisionShape": "circle-zone",
+            "configuredArcRadians": null,
+            "configuredArea": null,
+            "configuredOrbitRadius": null,
+            "configuredRadius": 64,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": null,
+            "kickFullWidth": null,
+            "tier": 3
+          },
+          {
+            "collisionShape": "circle-zone",
+            "configuredArcRadians": null,
+            "configuredArea": null,
+            "configuredOrbitRadius": null,
+            "configuredRadius": 76,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": null,
+            "kickFullWidth": null,
+            "tier": 4
+          }
+        ]
+      },
+      {
+        "role": "arp",
+        "tiers": [
+          {
+            "collisionShape": "circle-projectile",
+            "configuredArcRadians": null,
+            "configuredArea": null,
+            "configuredOrbitRadius": 80,
+            "configuredRadius": 8,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": null,
+            "kickFullWidth": null,
+            "tier": 1
+          },
+          {
+            "collisionShape": "circle-projectile",
+            "configuredArcRadians": null,
+            "configuredArea": null,
+            "configuredOrbitRadius": 92,
+            "configuredRadius": 8,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": null,
+            "kickFullWidth": null,
+            "tier": 2
+          },
+          {
+            "collisionShape": "circle-projectile",
+            "configuredArcRadians": null,
+            "configuredArea": null,
+            "configuredOrbitRadius": 106,
+            "configuredRadius": 9,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": null,
+            "kickFullWidth": null,
+            "tier": 3
+          },
+          {
+            "collisionShape": "circle-projectile",
+            "configuredArcRadians": null,
+            "configuredArea": null,
+            "configuredOrbitRadius": 122,
+            "configuredRadius": 10,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": null,
+            "kickFullWidth": null,
+            "tier": 4
+          }
+        ]
+      },
+      {
+        "role": "lead",
+        "tiers": [
+          {
+            "collisionShape": "circle-projectile",
+            "configuredArcRadians": null,
+            "configuredArea": null,
+            "configuredOrbitRadius": null,
+            "configuredRadius": 6,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": null,
+            "kickFullWidth": null,
+            "tier": 1
+          },
+          {
+            "collisionShape": "circle-projectile",
+            "configuredArcRadians": null,
+            "configuredArea": null,
+            "configuredOrbitRadius": null,
+            "configuredRadius": 6,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": null,
+            "kickFullWidth": null,
+            "tier": 2
+          },
+          {
+            "collisionShape": "circle-projectile",
+            "configuredArcRadians": null,
+            "configuredArea": null,
+            "configuredOrbitRadius": null,
+            "configuredRadius": 6,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": null,
+            "kickFullWidth": null,
+            "tier": 3
+          },
+          {
+            "collisionShape": "circle-projectile",
+            "configuredArcRadians": null,
+            "configuredArea": null,
+            "configuredOrbitRadius": null,
+            "configuredRadius": 7,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": null,
+            "kickFullWidth": null,
+            "tier": 4
+          }
+        ]
+      },
+      {
+        "role": "bell",
+        "tiers": [
+          {
+            "collisionShape": "circle-projectile",
+            "configuredArcRadians": null,
+            "configuredArea": null,
+            "configuredOrbitRadius": null,
+            "configuredRadius": 6,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": null,
+            "kickFullWidth": null,
+            "tier": 1
+          },
+          {
+            "collisionShape": "circle-projectile",
+            "configuredArcRadians": null,
+            "configuredArea": null,
+            "configuredOrbitRadius": null,
+            "configuredRadius": 6,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": null,
+            "kickFullWidth": null,
+            "tier": 2
+          },
+          {
+            "collisionShape": "circle-projectile",
+            "configuredArcRadians": null,
+            "configuredArea": null,
+            "configuredOrbitRadius": null,
+            "configuredRadius": 7,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": null,
+            "kickFullWidth": null,
+            "tier": 3
+          },
+          {
+            "collisionShape": "circle-projectile",
+            "configuredArcRadians": null,
+            "configuredArea": null,
+            "configuredOrbitRadius": null,
+            "configuredRadius": 7,
+            "coordinateSpace": "simulation-world-h800-reference",
+            "kickFullHeight": null,
+            "kickFullWidth": null,
+            "tier": 4
+          }
+        ]
+      }
+    ]
+  },
+  "baselinePolicy": {
+    "note": "Records canonical simulation values plus a fixed Phase 0 snapshot of renderer-private anchors/scales; it does not assert that sprite opaque bounds align with collision bodies.",
+    "revision": "phase-0-head-baseline"
+  },
+  "coordinateSpaces": [
+    {
+      "definition": "Simulation units normalized against the legacy 800-high reference world.",
+      "id": "simulation-world-h800-reference"
+    },
+    {
+      "definition": "Untrimmed 96x96 atlas cell coordinates.",
+      "id": "atlas-pixels"
+    },
+    {
+      "definition": "Pixi logical pixels before device-pixel-ratio density.",
+      "id": "logical-render-pixels"
+    }
+  ],
+  "enemies": [
+    {
+      "bodyVariants": [
+        {
+          "footOffset": {
+            "x": -2.2807017543859662,
+            "y": 17.89473684210526
+          },
+          "radius": 12.280701754385964,
+          "source": "legacy-frame",
+          "sourceFrame": {
+            "height": 21,
+            "width": 19
+          },
+          "variant": 0
+        }
+      ],
+      "collisionCenter": "enemy.x/enemy.y",
+      "coordinateSpace": "simulation-world-h800-reference",
+      "id": "bat",
+      "rendererAppliesFootOffset": false,
+      "spritePosition": "enemy.x/enemy.y"
+    },
+    {
+      "bodyVariants": [
+        {
+          "footOffset": {
+            "x": -4.385964912280701,
+            "y": 15.789473684210526
+          },
+          "radius": 17.543859649122805,
+          "source": "legacy-frame",
+          "sourceFrame": {
+            "height": 24,
+            "width": 25
+          },
+          "variant": 0
+        }
+      ],
+      "collisionCenter": "enemy.x/enemy.y",
+      "coordinateSpace": "simulation-world-h800-reference",
+      "id": "redBat",
+      "rendererAppliesFootOffset": false,
+      "spritePosition": "enemy.x/enemy.y"
+    },
+    {
+      "bodyVariants": [
+        {
+          "footOffset": {
+            "x": -5.263157894736842,
+            "y": 15.789473684210526
+          },
+          "radius": 21.052631578947366,
+          "source": "legacy-frame",
+          "sourceFrame": {
+            "height": 27,
+            "width": 30
+          },
+          "variant": 0
+        }
+      ],
+      "collisionCenter": "enemy.x/enemy.y",
+      "coordinateSpace": "simulation-world-h800-reference",
+      "id": "redBat2",
+      "rendererAppliesFootOffset": false,
+      "spritePosition": "enemy.x/enemy.y"
+    },
+    {
+      "bodyVariants": [
+        {
+          "footOffset": {
+            "x": -4.736842105263157,
+            "y": 25.964912280701753
+          },
+          "radius": 21.052631578947366,
+          "source": "legacy-frame",
+          "sourceFrame": {
+            "height": 33,
+            "width": 31
+          },
+          "variant": 0
+        },
+        {
+          "footOffset": {
+            "x": -4.736842105263157,
+            "y": 25.964912280701753
+          },
+          "radius": 21.052631578947366,
+          "source": "legacy-frame",
+          "sourceFrame": {
+            "height": 33,
+            "width": 31
+          },
+          "variant": 1
+        },
+        {
+          "footOffset": {
+            "x": -4.736842105263157,
+            "y": 25.964912280701753
+          },
+          "radius": 21.052631578947366,
+          "source": "legacy-frame",
+          "sourceFrame": {
+            "height": 33,
+            "width": 31
+          },
+          "variant": 2
+        }
+      ],
+      "collisionCenter": "enemy.x/enemy.y",
+      "coordinateSpace": "simulation-world-h800-reference",
+      "id": "zombie",
+      "rendererAppliesFootOffset": false,
+      "spritePosition": "enemy.x/enemy.y"
+    },
+    {
+      "bodyVariants": [
+        {
+          "footOffset": {
+            "x": -4.5614035087719325,
+            "y": 28.7719298245614
+          },
+          "radius": 19.298245614035086,
+          "source": "legacy-frame",
+          "sourceFrame": {
+            "height": 33,
+            "width": 28
+          },
+          "variant": 0
+        },
+        {
+          "footOffset": {
+            "x": -4.210526315789474,
+            "y": 25.614035087719298
+          },
+          "radius": 21.052631578947366,
+          "source": "legacy-frame",
+          "sourceFrame": {
+            "height": 33,
+            "width": 32
+          },
+          "variant": 1
+        },
+        {
+          "footOffset": {
+            "x": -4.210526315789474,
+            "y": 25.614035087719298
+          },
+          "radius": 21.052631578947366,
+          "source": "legacy-frame",
+          "sourceFrame": {
+            "height": 33,
+            "width": 32
+          },
+          "variant": 2
+        },
+        {
+          "footOffset": {
+            "x": -4.912280701754387,
+            "y": 23.157894736842103
+          },
+          "radius": 22.807017543859647,
+          "source": "legacy-frame",
+          "sourceFrame": {
+            "height": 33,
+            "width": 34
+          },
+          "variant": 3
+        },
+        {
+          "footOffset": {
+            "x": -4.210526315789474,
+            "y": 25.614035087719298
+          },
+          "radius": 21.052631578947366,
+          "source": "legacy-frame",
+          "sourceFrame": {
+            "height": 33,
+            "width": 32
+          },
+          "variant": 4
+        },
+        {
+          "footOffset": {
+            "x": -4.912280701754387,
+            "y": 23.157894736842103
+          },
+          "radius": 22.807017543859647,
+          "source": "legacy-frame",
+          "sourceFrame": {
+            "height": 33,
+            "width": 34
+          },
+          "variant": 5
+        }
+      ],
+      "collisionCenter": "enemy.x/enemy.y",
+      "coordinateSpace": "simulation-world-h800-reference",
+      "id": "skeleton",
+      "rendererAppliesFootOffset": false,
+      "spritePosition": "enemy.x/enemy.y"
+    },
+    {
+      "bodyVariants": [
+        {
+          "footOffset": {
+            "x": -4.035087719298247,
+            "y": 26.666666666666664
+          },
+          "radius": 19.298245614035086,
+          "source": "legacy-frame",
+          "sourceFrame": {
+            "height": 32,
+            "width": 29
+          },
+          "variant": 0
+        }
+      ],
+      "collisionCenter": "enemy.x/enemy.y",
+      "coordinateSpace": "simulation-world-h800-reference",
+      "id": "ghost",
+      "rendererAppliesFootOffset": false,
+      "spritePosition": "enemy.x/enemy.y"
+    },
+    {
+      "bodyVariants": [
+        {
+          "footOffset": {
+            "x": -4.912280701754387,
+            "y": 24.912280701754383
+          },
+          "radius": 22.807017543859647,
+          "source": "legacy-frame",
+          "sourceFrame": {
+            "height": 34,
+            "width": 34
+          },
+          "variant": 0
+        }
+      ],
+      "collisionCenter": "enemy.x/enemy.y",
+      "coordinateSpace": "simulation-world-h800-reference",
+      "id": "greenMudman",
+      "rendererAppliesFootOffset": false,
+      "spritePosition": "enemy.x/enemy.y"
+    },
+    {
+      "bodyVariants": [
+        {
+          "footOffset": {
+            "x": -4.912280701754387,
+            "y": 24.912280701754383
+          },
+          "radius": 22.807017543859647,
+          "source": "legacy-frame",
+          "sourceFrame": {
+            "height": 34,
+            "width": 34
+          },
+          "variant": 0
+        }
+      ],
+      "collisionCenter": "enemy.x/enemy.y",
+      "coordinateSpace": "simulation-world-h800-reference",
+      "id": "grayMudman",
+      "rendererAppliesFootOffset": false,
+      "spritePosition": "enemy.x/enemy.y"
+    },
+    {
+      "bodyVariants": [
+        {
+          "footOffset": {
+            "x": -3.8596491228070176,
+            "y": 18.94736842105263
+          },
+          "radius": 17.543859649122805,
+          "source": "legacy-frame",
+          "sourceFrame": {
+            "height": 26,
+            "width": 26
+          },
+          "variant": 0
+        },
+        {
+          "footOffset": {
+            "x": -4.210526315789474,
+            "y": 23.859649122807017
+          },
+          "radius": 21.052631578947366,
+          "source": "legacy-frame",
+          "sourceFrame": {
+            "height": 32,
+            "width": 32
+          },
+          "variant": 1
+        }
+      ],
+      "collisionCenter": "enemy.x/enemy.y",
+      "coordinateSpace": "simulation-world-h800-reference",
+      "id": "flower",
+      "rendererAppliesFootOffset": false,
+      "spritePosition": "enemy.x/enemy.y"
+    },
+    {
+      "bodyVariants": [
+        {
+          "footOffset": {
+            "x": -3.333333333333334,
+            "y": 16.842105263157897
+          },
+          "radius": 17.543859649122805,
+          "source": "legacy-frame",
+          "sourceFrame": {
+            "height": 25,
+            "width": 27
+          },
+          "variant": 0
+        }
+      ],
+      "collisionCenter": "enemy.x/enemy.y",
+      "coordinateSpace": "simulation-world-h800-reference",
+      "id": "glowingBat",
+      "rendererAppliesFootOffset": false,
+      "spritePosition": "enemy.x/enemy.y"
+    },
+    {
+      "bodyVariants": [
+        {
+          "footOffset": {
+            "x": -8.070175438596493,
+            "y": 32.28070175438596
+          },
+          "radius": 33.33333333333333,
+          "source": "legacy-frame",
+          "sourceFrame": {
+            "height": 47,
+            "width": 48
+          },
+          "variant": 0
+        }
+      ],
+      "collisionCenter": "enemy.x/enemy.y",
+      "coordinateSpace": "simulation-world-h800-reference",
+      "id": "mantis",
+      "rendererAppliesFootOffset": false,
+      "spritePosition": "enemy.x/enemy.y"
+    },
+    {
+      "bodyVariants": [
+        {
+          "footOffset": {
+            "x": -2.2807017543859662,
+            "y": 17.89473684210526
+          },
+          "radius": 12.280701754385964,
+          "source": "legacy-frame",
+          "sourceFrame": {
+            "height": 21,
+            "width": 19
+          },
+          "variant": 0
+        },
+        {
+          "footOffset": {
+            "x": -4.385964912280701,
+            "y": 15.789473684210526
+          },
+          "radius": 17.543859649122805,
+          "source": "legacy-frame",
+          "sourceFrame": {
+            "height": 24,
+            "width": 25
+          },
+          "variant": 1
+        },
+        {
+          "footOffset": {
+            "x": -5.263157894736842,
+            "y": 15.789473684210526
+          },
+          "radius": 21.052631578947366,
+          "source": "legacy-frame",
+          "sourceFrame": {
+            "height": 27,
+            "width": 30
+          },
+          "variant": 2
+        }
+      ],
+      "collisionCenter": "enemy.x/enemy.y",
+      "coordinateSpace": "simulation-world-h800-reference",
+      "id": "batSwarm",
+      "rendererAppliesFootOffset": false,
+      "spritePosition": "enemy.x/enemy.y"
+    },
+    {
+      "bodyVariants": [
+        {
+          "footOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "radius": 9,
+          "source": "configured-radius",
+          "sourceFrame": null,
+          "variant": 0
+        }
+      ],
+      "collisionCenter": "enemy.x/enemy.y",
+      "coordinateSpace": "simulation-world-h800-reference",
+      "id": "swarmer",
+      "rendererAppliesFootOffset": false,
+      "spritePosition": "enemy.x/enemy.y"
+    },
+    {
+      "bodyVariants": [
+        {
+          "footOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "radius": 22,
+          "source": "configured-radius",
+          "sourceFrame": null,
+          "variant": 0
+        }
+      ],
+      "collisionCenter": "enemy.x/enemy.y",
+      "coordinateSpace": "simulation-world-h800-reference",
+      "id": "tank",
+      "rendererAppliesFootOffset": false,
+      "spritePosition": "enemy.x/enemy.y"
+    },
+    {
+      "bodyVariants": [
+        {
+          "footOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "radius": 8,
+          "source": "configured-radius",
+          "sourceFrame": null,
+          "variant": 0
+        }
+      ],
+      "collisionCenter": "enemy.x/enemy.y",
+      "coordinateSpace": "simulation-world-h800-reference",
+      "id": "darter",
+      "rendererAppliesFootOffset": false,
+      "spritePosition": "enemy.x/enemy.y"
+    },
+    {
+      "bodyVariants": [
+        {
+          "footOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "radius": 14,
+          "source": "configured-radius",
+          "sourceFrame": null,
+          "variant": 0
+        }
+      ],
+      "collisionCenter": "enemy.x/enemy.y",
+      "coordinateSpace": "simulation-world-h800-reference",
+      "id": "splitter",
+      "rendererAppliesFootOffset": false,
+      "spritePosition": "enemy.x/enemy.y"
+    },
+    {
+      "bodyVariants": [
+        {
+          "footOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "radius": 12,
+          "source": "configured-radius",
+          "sourceFrame": null,
+          "variant": 0
+        }
+      ],
+      "collisionCenter": "enemy.x/enemy.y",
+      "coordinateSpace": "simulation-world-h800-reference",
+      "id": "charger",
+      "rendererAppliesFootOffset": false,
+      "spritePosition": "enemy.x/enemy.y"
+    },
+    {
+      "bodyVariants": [
+        {
+          "footOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "radius": 10,
+          "source": "configured-radius",
+          "sourceFrame": null,
+          "variant": 0
+        }
+      ],
+      "collisionCenter": "enemy.x/enemy.y",
+      "coordinateSpace": "simulation-world-h800-reference",
+      "id": "circler",
+      "rendererAppliesFootOffset": false,
+      "spritePosition": "enemy.x/enemy.y"
+    },
+    {
+      "bodyVariants": [
+        {
+          "footOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "radius": 16,
+          "source": "configured-radius",
+          "sourceFrame": null,
+          "variant": 0
+        }
+      ],
+      "collisionCenter": "enemy.x/enemy.y",
+      "coordinateSpace": "simulation-world-h800-reference",
+      "id": "shielded",
+      "rendererAppliesFootOffset": false,
+      "spritePosition": "enemy.x/enemy.y"
+    },
+    {
+      "bodyVariants": [
+        {
+          "footOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "radius": 34,
+          "source": "configured-radius",
+          "sourceFrame": null,
+          "variant": 0
+        }
+      ],
+      "collisionCenter": "enemy.x/enemy.y",
+      "coordinateSpace": "simulation-world-h800-reference",
+      "id": "elite",
+      "rendererAppliesFootOffset": false,
+      "spritePosition": "enemy.x/enemy.y"
+    }
+  ],
+  "generator": {
+    "checkCommand": "node --import tsx scripts/measure-pixel-art.mjs --check",
+    "command": "node --import tsx scripts/measure-pixel-art.mjs",
+    "inputs": [
+      "src/game/config.ts",
+      "src/game/pixel-art.ts",
+      "src/game/run.ts",
+      "src/game/view.ts",
+      "src/game/visual-catalog.ts"
+    ]
+  },
+  "pickups": {
+    "coordinateSpace": "simulation-world-h800-reference",
+    "groundRewardCollectionRadius": 40,
+    "groundRewardSpawnRadius": 150,
+    "magnetAttractionRadius": 53,
+    "musicNoteCollectionRadius": 20,
+    "xpCollectionRadius": 16
+  },
+  "player": {
+    "collisionCenter": "player.x/player.y",
+    "collisionRadius": 15.789473684210526,
+    "coordinateSpace": "simulation-world-h800-reference",
+    "footOffset": {
+      "x": 1.7543859649122806,
+      "y": 12.280701754385964
+    },
+    "rendererAppliesFootOffset": false,
+    "spritePosition": "player.x/player.y"
+  },
+  "runtimeScales": {
+    "coordinateSpace": "logical-render-pixels",
+    "domMeterIconAdditionalTransform": 0.5,
+    "domUiAtlas": 0.25,
+    "encoreCase": 0.62,
+    "enemyDefault": 0.5,
+    "enemyElite": 0.6,
+    "enemyHeadliner": 0.72,
+    "enemyMantis": 0.6,
+    "environment": 0.5,
+    "musicNote": {
+      "anthem": 0.66,
+      "note": 0.46,
+      "phrase": 0.55
+    },
+    "player": 0.5,
+    "playerFootMarker": {
+      "high": 0.36,
+      "low": 0.32
+    },
+    "projectileBase": {
+      "arp": 0.27,
+      "bass": 0.34,
+      "bell": 0.32,
+      "hat": 0.25,
+      "lead": 0.27,
+      "snare": 0.28
+    },
+    "projectileScaleQuantization": "nearest 1/8 step",
+    "rewardPassiveIcon": 0.27,
+    "rewardPedestal": 0.62,
+    "rewardWeaponIcon": 0.31,
+    "titleBannerSourceUpscale": 4,
+    "xpGem": 0.5
+  },
+  "schemaVersion": 1
+}

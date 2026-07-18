@@ -3,11 +3,12 @@
 This document describes the game and the rules it obeys. It is the design
 contract used to settle implementation decisions. For a concise description of
 everything a player can currently encounter, read the
-[Neon Crypt Field Guide](field-guide.md).
+[Loop Survivors Field Guide](field-guide.md).
 
-The current pixel-art implementation is scheduled for a ground-up replacement.
-Its autonomous production workflow and the only two player decision gates live
-in the [Pixel-Art Overhaul handoff](pixelart-overhaul.md).
+The selected pixel-art direction is **Arcade Reliquary**. Its binding visual
+rules live in the [pixel-art bible](pixel-art-bible.md); its autonomous
+production workflow and two player decision gates live in the
+[Pixel-Art Overhaul handoff](pixelart-overhaul.md).
 
 ## The game in one sentence
 
@@ -32,9 +33,10 @@ dark-fantasy horde finally overwhelms the player.
 6. **Career progress expands choices, not permanent raw power.** Music notes buy
    a finite set of authored weapons, passives, perks, and cosmetics. Nothing is
    awarded automatically by an invisible rank.
-7. **The Neon Crypt is genuine pixel art.** Actors, attacks, pickups, effects,
-   and icons use coherent raster sprites with hard transparency,
-   nearest-neighbor sampling, integer-friendly scale, and readable silhouettes.
+7. **Arcade Reliquary is genuine pixel art.** Actors, attacks, pickups,
+   effects, scenery, and icons are authored on their native logical-pixel grids
+   with hard transparency, nearest-neighbor sampling, whole-number display
+   scale, and readable silhouettes.
 
 Deliberately out of scope for v1: recording, rendering, or sharing a completed
 track as a separate artifact.
@@ -162,7 +164,7 @@ evolutions. Selecting one consumes that case. If no recipe is ready, collection
 immediately restores 15 health. Cases are never swept up by ordinary pickup
 range and cannot be rerolled.
 
-## Neon Crypt enemies and visual language
+## Enemies and Arcade Reliquary visual language
 
 The roster contains 20 distinct named enemies. Twelve drive the authored
 opening and its events; seventeen participate in endless recipes; the remaining
@@ -172,17 +174,23 @@ their proven stats and behavior while the player sees the new Neon Crypt names
 and coherent dark-fantasy sprites. The full bestiary is in the
 [field guide](field-guide.md#neon-crypt-bestiary).
 
-The committed pixel-art system uses two transparent PNG atlases:
+The committed Arcade Reliquary system packs **108 physical frame keys** across
+three transparent PNG atlases: 72 gameplay frames, 20 UI frames, and 16
+environment frames. The generated catalog also enumerates **239 semantic
+requirements** spanning the full roster, weapon behaviors, pickups, effects,
+icons, environment, and UI surfaces, and records how they map to physical art.
+Frames use category-appropriate native dimensions rather than a shared
+96-pixel cell; actors retain two mapped animation states while attacks,
+pickups, effects, icons, and props keep their own native footprints.
 
-- a 72-cell gameplay atlas with two-frame player and enemy animations, normal
-  and evolved attacks for all nine weapons, pickups, impacts, explosions, and
-  collection effects;
-- a 20-cell UI atlas with all passive and status/action icons.
-
-Every cell is 96 × 96 pixels. The asset builder removes the chroma background,
-normalizes fully transparent pixels, permits only hard alpha, and validates
-frame borders and mappings. PixiJS forces nearest-neighbor sampling globally.
-Original source boards and licensing are recorded in
+Every frame records native size, integer pivot, opaque bounds, semantic tags,
+transparent margin, and a renderer scale of 1 logical screen pixel per native
+pixel. The code-authored builder draws directly on those native grids, permits
+only hard alpha, normalizes fully transparent pixels to RGBA `(0, 0, 0, 0)`,
+enforces the 16-color master palette and padding rules, and checks exact catalog
+coverage. The arena floor is a seamless 16 × 16 native tile and the title art
+is a text-free 320 × 180 native composition. PixiJS forces nearest-neighbor
+sampling globally. Canonical source and licensing are recorded in
 [`public/art/pixel/SOURCE_AND_LICENSE.md`](../public/art/pixel/SOURCE_AND_LICENSE.md).
 
 Visual priority is semantic separation: the player reads first, hostile bodies

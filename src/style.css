@@ -1,5 +1,6 @@
-/* Deliberately ugly but not feedback-dead: flat shapes on dark, one color
-   per weapon, all UI plain DOM. */
+/* Arcade Reliquary: the DOM remains accessible live text, while its color,
+   stepped corners, hard shadows, and compact meter grammar match the native
+   production pixel art. */
 
 :root {
   color-scheme: dark;
@@ -9,30 +10,33 @@
   --font-disp: var(--font-mono); /* titles reuse mono, differ by weight+tracking */
 
   /* surfaces (bg-0 also drives the Pixi arena clear color) */
-  --bg-0: #0a0b0f; /* void / arena */
-  --bg-1: #101218; /* base */
-  --bg-2: #171a22; /* raised panel / card */
-  --bg-3: #1e222c; /* control, hover */
-  --line: #2a2f3b; /* hairline */
-  --line-2: #3a4150; /* strong hairline / focus */
+  --bg-0: #03070d; /* void / arena */
+  --bg-1: #07111f; /* base / floor */
+  --bg-2: #111425; /* raised panel */
+  --bg-3: #202238; /* control / shadow */
+  --line: #4b4e70; /* structural line */
+  --line-2: #8d92b6; /* focus / highlight line */
 
   /* ink */
-  --ink: #e6e8f0;
-  --ink-dim: #9aa0b4; /* == swarmer band-0, deliberate */
-  --ink-faint: #5c6274;
+  --ink: #f5f3ff;
+  --ink-dim: #8d92b6;
+  --ink-faint: #4b4e70;
 
   /* signal + status (signal == existing xp cyan, promoted to brand) */
-  --signal: #59ffd1;
-  --signal-dim: #2c8f79;
-  --hp: #ff4d5e;
-  --hp-dim: #7a2630;
-  --warn: #ffc93c; /* == snare, reused as gold/warn */
+  --signal: #20e4ff;
+  --signal-dim: #106b86;
+  --hp: #f23880;
+  --hp-dim: #701a48;
+  --warn: #ffc33d;
+  --arcade-accent: #ff31ad;
+  --arcade-danger: #a83aff;
+  --arcade-attack: #ff8b18;
 
   /* radii */
-  --r-sm: 4px;
-  --r-md: 8px;
-  --r-lg: 14px;
-  --r-pill: 999px;
+  --r-sm: 1px;
+  --r-md: 2px;
+  --r-lg: 3px;
+  --r-pill: 2px;
 
   /* type scale */
   --fs-disp: clamp(30px, 7vw, 46px);
@@ -80,6 +84,15 @@ body {
   -webkit-touch-callout: none;
 }
 
+/* The default game is a fixed logical surface. Keep browser scroll ownership
+   out of the page; long menus scroll inside their 640×360 screen instead. */
+html.game-mounted,
+body.game-mounted {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
 button,
 input {
   /* taps act immediately; double-tap never zooms a control */
@@ -107,7 +120,7 @@ button {
 }
 
 button:hover {
-  background: #232833;
+  background: #2b2e4b;
   border-color: var(--line-2);
 }
 
@@ -453,17 +466,83 @@ input[type='range'] {
   margin: 0;
   padding: 0;
   overflow: hidden;
+  background:
+    radial-gradient(ellipse at center, rgba(30, 38, 58, 0.28), transparent 58%),
+    #03050a;
   /* the game owns every gesture on the arena: no scroll, no pinch */
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
+  --fs-disp: 30px;
 }
 
-#app.game-root canvas {
+.game-surface {
+  position: absolute;
+  width: 640px;
+  height: 360px;
+  overflow: hidden;
+  transform-origin: 0 0;
+  isolation: isolate;
+  contain: layout paint size;
+}
+
+/* Visual-QA capture mode covers Pixi and every DOM overlay on the fixed
+   surface; viewport scaling remains the sole transform on the element. */
+.game-surface.grayscale {
+  filter: grayscale(1);
+}
+
+.game-surface[hidden],
+.viewport-notice[hidden] {
+  display: none !important;
+}
+
+#app.game-root .game-surface canvas {
   display: block;
+  width: 100%;
+  height: 100%;
   touch-action: none;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
+}
+
+.viewport-notice {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  color: #eafff8;
+  text-align: center;
+  background:
+    repeating-linear-gradient(135deg, transparent 0 18px, rgba(89, 255, 209, 0.025) 18px 20px),
+    radial-gradient(circle at 50% 45%, #131a29 0, #070a11 72%);
+  z-index: 100;
+}
+
+.viewport-notice-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(420px, 100%);
+  padding: 22px 26px;
+  border: 2px solid rgba(89, 255, 209, 0.48);
+  background: rgba(8, 10, 18, 0.94);
+  box-shadow: 6px 6px 0 rgba(0, 0, 0, 0.55);
+  font-family: var(--font-mono);
+}
+
+.viewport-notice-card strong {
+  color: var(--signal);
+  font: 900 18px/1.2 var(--font-disp);
+  letter-spacing: 0.12em;
+}
+
+.viewport-notice-card span {
+  color: var(--ink-dim);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 /* the floating touch joystick */
@@ -554,11 +633,11 @@ input[type='range'] {
 }
 
 .meter.hp .fill {
-  background: linear-gradient(90deg, var(--hp-dim), var(--hp));
+  background: repeating-linear-gradient(90deg, var(--hp-dim) 0 8px, var(--hp) 8px 16px);
 }
 
 .meter.xp .fill {
-  background: linear-gradient(90deg, var(--signal-dim), var(--signal));
+  background: repeating-linear-gradient(90deg, var(--signal-dim) 0 8px, var(--signal) 8px 16px);
   width: 0;
 }
 
@@ -583,7 +662,7 @@ input[type='range'] {
 .hit-flash {
   position: absolute;
   inset: 0;
-  box-shadow: inset 0 0 clamp(70px, 15vmin, 200px) clamp(12px, 3.5vmin, 50px)
+  box-shadow: inset 0 0 90px 16px
     var(--hit-flash-color, rgba(255, 77, 94, 0.55));
   opacity: 0;
   pointer-events: none;
@@ -610,7 +689,7 @@ input[type='range'] {
 .level-pulse {
   position: absolute;
   inset: 0;
-  box-shadow: inset 0 0 clamp(70px, 15vmin, 200px) clamp(12px, 3.5vmin, 50px)
+  box-shadow: inset 0 0 90px 16px
     rgba(89, 255, 209, 0.5);
   opacity: 0;
   pointer-events: none;
@@ -647,12 +726,18 @@ input[type='range'] {
   align-items: center;
   justify-content: center;
   gap: var(--sp-5);
-  background: radial-gradient(120% 90% at 50% 12%, rgba(20, 24, 34, 0.72), rgba(8, 9, 13, 0.94));
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  background:
+    repeating-linear-gradient(135deg, transparent 0 14px, rgba(32, 228, 255, 0.025) 14px 16px),
+    rgba(3, 7, 13, 0.97);
   text-align: center;
   padding: var(--sp-5);
   z-index: 2;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
 }
 
 .screen h1 {
@@ -717,6 +802,7 @@ button.big {
   gap: 8px;
   z-index: 6;
   pointer-events: none;
+  width: calc(100% - 24px);
 }
 
 .toast {
@@ -725,7 +811,7 @@ button.big {
   border-left: 3px solid var(--signal);
   border-radius: var(--r-md);
   padding: 8px 16px;
-  max-width: min(80vw, 480px);
+  max-width: min(480px, 100%);
   text-align: center;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
   backdrop-filter: blur(6px);
@@ -751,7 +837,7 @@ button.big {
   position: absolute;
   bottom: max(48px, calc(env(safe-area-inset-bottom) + 38px));
   right: max(12px, env(safe-area-inset-right));
-  max-width: min(70vw, 560px);
+  max-width: 560px;
   text-align: right;
   font-size: var(--fs-sm);
   color: var(--ink-dim);
@@ -836,7 +922,7 @@ button.big {
   position: absolute;
   top: max(12px, env(safe-area-inset-top));
   right: max(12px, env(safe-area-inset-right));
-  max-height: calc(100dvh - 76px);
+  max-height: calc(100% - 76px);
   overflow-y: auto;
   scrollbar-color: #315a45 #080a12;
   background: rgba(8, 12, 19, 0.965);
@@ -849,6 +935,7 @@ button.big {
   flex-direction: column;
   gap: 6px;
   font-size: var(--fs-sm);
+  touch-action: pan-y;
 }
 
 .sb-head {
@@ -865,7 +952,7 @@ button.big {
 }
 
 .sandbox-panel.collapsed {
-  width: min(250px, calc(100vw - 24px)) !important;
+  width: min(250px, calc(100% - 24px)) !important;
   max-height: none;
   overflow: hidden;
 }
@@ -970,6 +1057,33 @@ button.big {
 .sb-controls {
   gap: 4px;
   padding: 5px 0;
+}
+
+.sb-visual-controls,
+.sb-preset-controls {
+  display: grid;
+  margin-left: 0;
+}
+
+.sb-visual-controls {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.sb-preset-controls {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.sb-visual-controls .small,
+.sb-preset-controls .small {
+  width: 100%;
+  min-width: 0;
+}
+
+.sb-visual-readout {
+  padding: 5px 6px;
+  border: 1px solid rgba(89, 255, 209, 0.24);
+  background: rgba(89, 255, 209, 0.04);
+  overflow-wrap: anywhere;
 }
 
 /* Career pickup controls use descriptive actions, so this group may wrap. */
@@ -1163,7 +1277,7 @@ button.big {
 
 @media (max-width: 600px) {
   .hud {
-    width: 46vw;
+    width: 46%;
     padding: var(--sp-2);
   }
 
@@ -1191,7 +1305,7 @@ button.big {
     top: auto;
     right: max(6px, env(safe-area-inset-right));
     bottom: calc(max(6px, env(safe-area-inset-bottom)) + 50px);
-    max-height: min(50dvh, 470px);
+    max-height: 180px;
     padding: 9px;
     font-size: 10px;
   }
@@ -1211,7 +1325,7 @@ button.big {
   }
 
   .track-overlay {
-    width: min(280px, calc(100vw - 24px));
+    width: min(280px, calc(100% - 24px));
   }
 }
 
@@ -1425,7 +1539,7 @@ button.big {
   flex-wrap: wrap;
   justify-content: center;
   gap: var(--sp-1);
-  max-width: min(94vw, 720px);
+  max-width: 600px;
   pointer-events: none;
   z-index: 2;
 }
@@ -1530,7 +1644,7 @@ button.big {
   flex-wrap: wrap;
   justify-content: center;
   gap: var(--sp-2);
-  max-width: min(90vw, 760px);
+  max-width: 600px;
   margin: var(--sp-2) 0 var(--sp-3);
 }
 .pause-rack .band-socket {
@@ -1543,7 +1657,8 @@ button.big {
 }
 
 .pause-items {
-  width: min(92vw, 760px);
+  width: 600px;
+  max-width: 100%;
   padding: 10px;
   background: rgba(6, 10, 15, 0.84);
   border: 1px solid #315a45;
@@ -1627,14 +1742,14 @@ button.big {
   }
   .pause-overlay h1 { font-size: 28px; }
   .pause-rack { margin-block: 0 4px; }
-  .pause-items { width: 96vw; padding: 7px; }
+  .pause-items { width: calc(100% - 18px); padding: 7px; }
   .pause-items-grid { gap: 4px; }
   .pause-item { grid-template-columns: 22px minmax(0, 1fr); gap: 5px; min-height: 42px; padding: 5px; }
   .pause-item-glyph { font-size: 17px; }
   .pause-item-copy strong { font-size: 9px; }
   .pause-item-copy span { font-size: 8px; }
   .band-rack {
-    max-width: 96vw;
+    max-width: calc(100% - 12px);
     gap: 2px;
   }
   .band-rack .band-socket {
@@ -1676,13 +1791,13 @@ button.big {
   }
 }
 
-/* ---- Neon Crypt pixel-art chrome ---- */
+/* ---- Arcade Reliquary pixel-art chrome ---- */
 
 #app.game-root {
-  --panel-ink: rgba(8, 10, 18, 0.92);
-  --panel-line: rgba(128, 225, 210, 0.32);
-  --gold: #ffd45c;
-  --violet: #b38cff;
+  --panel-ink: rgba(17, 20, 37, 0.94);
+  --panel-line: rgba(32, 228, 255, 0.42);
+  --gold: #ffc33d;
+  --violet: #a83aff;
 }
 
 .hud {
@@ -1692,7 +1807,7 @@ button.big {
   background: var(--panel-ink);
   border: 2px solid var(--panel-line);
   border-radius: 3px;
-  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.48), inset 0 0 24px rgba(89, 255, 209, 0.035);
+  box-shadow: 4px 4px 0 #020307, inset 0 -2px rgba(255, 49, 173, 0.12);
   clip-path: polygon(0 7px, 7px 7px, 7px 0, calc(100% - 7px) 0, calc(100% - 7px) 7px, 100% 7px, 100% calc(100% - 7px), calc(100% - 7px) calc(100% - 7px), calc(100% - 7px) 100%, 7px 100%, 7px calc(100% - 7px), 0 calc(100% - 7px));
 }
 
@@ -1736,8 +1851,9 @@ button.big {
   height: 24px;
   background-image: url('/art/pixel/ui.png');
   background-repeat: no-repeat;
-  background-size: 128px 128px;
-  background-position: var(--pixel-icon-x) var(--pixel-icon-y);
+  /* pixelIcon() supplies live atlas dimensions and native frame offsets. */
+  background-size: auto;
+  background-position: 0 0;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
 }
@@ -1753,13 +1869,18 @@ button.big {
 }
 
 .meter-icon {
-  margin-right: -12px;
-  transform: scale(0.5);
-  transform-origin: left center;
+  margin-right: 0;
 }
 
 .meter {
   border-radius: 1px;
+}
+
+/* Status art is authored for a 24px native frame. Keep it at exact 1x like
+   the Pixi sprites instead of downsampling it inside the old 10px meters. */
+.meter.hp,
+.meter.xp {
+  height: 24px;
 }
 
 .band-socket,
@@ -1865,19 +1986,30 @@ button.big {
   overflow-x: hidden;
   overflow-y: auto;
   padding: max(16px, env(safe-area-inset-top)) 18px max(24px, env(safe-area-inset-bottom));
-  background: rgba(5, 8, 14, 0.96);
+  background:
+    repeating-linear-gradient(135deg, transparent 0 14px, rgba(32, 228, 255, 0.025) 14px 16px),
+    rgba(3, 7, 13, 0.98);
   image-rendering: pixelated;
 }
 
+/* The primary route stays in the first logical screenful; the longer career
+   and shop inspector follows below inside the screen's own scroller. */
+.start-screen .start-hero { order: 0; }
+.start-screen > .start-btn { order: 1; }
+.start-screen > .start-hint { order: 2; }
+.start-screen > .start-dev { order: 3; }
+.start-screen > .career-panel { order: 4; }
+
 .start-hero {
   position: relative;
-  width: min(920px, 96vw);
-  min-height: clamp(180px, 39vh, 390px);
+  width: min(320px, 100%);
+  min-height: 180px;
+  flex: 0 0 180px;
   overflow: hidden;
-  border: 3px solid #315a45;
+  border: 3px solid #4b4e70;
   border-bottom-color: var(--signal);
-  background: #080a12;
-  box-shadow: 7px 7px 0 #020305, 0 0 32px rgba(89, 255, 209, 0.18);
+  background: #03070d;
+  box-shadow: 7px 7px 0 #020307, 0 0 26px rgba(32, 228, 255, 0.2);
 }
 
 .title-art {
@@ -1888,30 +2020,42 @@ button.big {
   object-fit: cover;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
-  filter: saturate(0.94) brightness(0.78);
+  filter: none;
 }
 
 .start-hero::after {
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, rgba(5, 8, 14, 0.92), rgba(5, 8, 14, 0.18) 68%, rgba(5, 8, 14, 0.35));
+  background: linear-gradient(90deg, rgba(3, 7, 13, 0.94), rgba(3, 7, 13, 0.08) 68%, rgba(3, 7, 13, 0.32));
 }
 
 .title-lockup {
   position: absolute;
   z-index: 1;
-  left: clamp(18px, 5vw, 58px);
-  bottom: clamp(18px, 5vh, 52px);
-  max-width: min(520px, 74%);
+  left: 14px;
+  bottom: 12px;
+  width: calc(100% - 28px);
+  max-width: calc(100% - 28px);
+  padding: 7px 8px 8px;
   text-align: left;
+  background: rgba(3, 7, 13, 0.84);
+  border-left: 2px solid var(--signal);
+  box-shadow: 3px 3px 0 #020307;
 }
 
 .title-lockup h1 {
   color: #f3fff9;
-  font-size: clamp(29px, 6vw, 64px);
+  font-size: 27px;
   line-height: 0.94;
-  text-shadow: 4px 4px 0 #080a12, 0 0 18px rgba(89, 255, 209, 0.58);
+  text-shadow: 4px 4px 0 #020307, 0 0 16px rgba(32, 228, 255, 0.62);
+}
+
+.title-lockup .sub {
+  margin-top: 4px;
+  color: #c9cedf;
+  font-size: 10px;
+  line-height: 1.25;
 }
 
 .eyebrow {
@@ -1925,7 +2069,7 @@ button.big {
 
 .career-panel,
 .settlement-panel {
-  width: min(760px, 94vw);
+  width: min(596px, 100%);
   padding: 14px;
   text-align: left;
   background: rgba(13, 19, 28, 0.96);
@@ -2329,7 +2473,7 @@ button.big {
 .end-next { margin-top: 10px; }
 
 .kill-row {
-  max-width: min(760px, 94vw);
+  max-width: min(596px, 100%);
 }
 
 @media (any-pointer: coarse) {
@@ -2357,7 +2501,7 @@ button.big {
   .hud {
     top: calc(max(6px, env(safe-area-inset-top)) + 48px);
     left: 7px;
-    width: min(50vw, 190px);
+    width: 190px;
     padding: 7px;
   }
   .hud-timer { font-size: 18px; }
@@ -2385,7 +2529,7 @@ button.big {
   }
   .toast-stack { top: calc(env(safe-area-inset-top) + 204px); }
   .pause-live { display: flex; align-items: center; justify-content: center; }
-  .start-hero { min-height: 220px; }
+  .start-hero { min-height: 180px; }
   .title-lockup { max-width: 88%; }
   .title-lockup .sub { font-size: 11px; }
   .career-panel,

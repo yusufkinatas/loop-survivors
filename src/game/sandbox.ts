@@ -25,6 +25,20 @@ import {
 import { MetaStore, SHOP_OFFERS, type ShopOfferId } from './meta';
 import type { RunWorld } from './run';
 import { endlessScale } from './endless';
+import {
+  EMPTY_VISUAL_DEBUG_FLAGS,
+  SANDBOX_MAX_360_VARIANTS,
+  SANDBOX_VISUAL_PRESET_IDS,
+  formatSandboxSeed,
+  sandboxVisualPresetPlan,
+  type SandboxMax360VariantId,
+  type SandboxVisualPresetId,
+  type VisualDebugFlags,
+} from './visual-debug';
+import {
+  SANDBOX_VISION_MODES,
+  type SandboxVisionMode,
+} from './vision-review';
 
 /** Exported coverage catalogs keep the no-test-framework verification script
  * able to prove that future content cannot silently disappear from the panel. */
@@ -40,6 +54,9 @@ type TabId = 'combat' | 'build' | 'career';
 export interface SandboxPanel {
   /** Refresh readouts after the world has taken its fixed steps for this frame. */
   update(): void;
+  readonly visionMode: SandboxVisionMode;
+  setVisionMode(mode: SandboxVisionMode): void;
+  applyMax360Variant(id: SandboxMax360VariantId, includeCaptureFixtures?: boolean): void;
   destroy(): void;
 }
 
@@ -47,6 +64,10 @@ export interface SandboxOpts {
   onExit: () => void;
   /** The loadout changed (force-assembly): keep the rack and track overlay in sync. */
   onLoadout?: () => void;
+  onVisualDebugChange?: (flags: VisualDebugFlags) => void;
+  onVisionModeChange?: (mode: SandboxVisionMode) => void;
+  viewportReadout?: () => string;
+  performanceSummary?: () => string;
 }
 
 interface ChoiceButtons<T> {
@@ -71,6 +92,9 @@ export function mountSandboxPanel(
   let activeTab: TabId = 'combat';
   let collapsed = false;
   let lastStatsKey = '';
+  let visualDebug: VisualDebugFlags = { ...EMPTY_VISUAL_DEBUG_FLAGS };
+  let visionMode: SandboxVisionMode = 'normal';
+  let visualSeed = 0x5eed;
 
   const panel = document.createElement('div');
   panel.className = 'sandbox-panel';
@@ -150,6 +174,55 @@ export function mountSandboxPanel(
   // -----------------------------------------------------------------------
   // Combat: exact threat minute, complete enemy catalog, repeatable fixtures.
 
+  section(combat, 'visual truth overlays');
+  const visualControls = el('div', 'sb-btns sb-controls sb-visual-controls', combat);
+  visualControls.style.marginLeft = '0';
+  const visualButtons = new Map<keyof VisualDebugFlags, HTMLButtonElement>();
+  const visualLabels: Array<[keyof VisualDebugFlags, string]> = [
+    ['bodies', 'BODIES'],
+    ['pivotsBounds', 'PIVOTS/BOUNDS'],
+    ['attacks', 'ATTACKS'],
+    ['pickups', 'PICKUPS'],
+  ];
+  for (const [key, label] of visualLabels) {
+    visualButtons.set(key, button(visualControls, label, () => {
+      visualDebug = { ...visualDebug, [key]: !visualDebug[key] };
+      opts.onVisualDebugChange?.(visualDebug);
+    }));
+  }
+  const visionButtons = new Map<SandboxVisionMode, HTMLButtonElement>();
+  for (const mode of SANDBOX_VISION_MODES) {
+    visionButtons.set(mode.id, button(visualControls, mode.label, () => {
+      visionMode = mode.id;
+      opts.onVisionModeChange?.(visionMode);
+    }));
+  }
+
+  section(combat, 'fixed capture presets');
+  const presetControls = el('div', 'sb-btns sb-controls sb-preset-controls', combat);
+  presetControls.style.marginLeft = '0';
+  const presetButtons = new Map<SandboxVisualPresetId, HTMLButtonElement>();
+  for (const id of SANDBOX_VISUAL_PRESET_IDS) {
+    const plan = sandboxVisualPresetPlan(id);
+    presetButtons.set(id, button(presetControls, plan.label, () => {
+      engine.clearBarQueue();
+      visualSeed = plan.seed;
+      world.applySandboxVisualPreset(id);
+    }));
+  }
+  const maxVariantControls = el('div', 'sb-btns sb-controls sb-max-variant-controls', combat);
+  maxVariantControls.style.marginLeft = '0';
+  const maxVariantButtons = new Map<SandboxMax360VariantId, HTMLButtonElement>();
+  for (const variant of SANDBOX_MAX_360_VARIANTS) {
+    maxVariantButtons.set(variant.id, button(maxVariantControls, variant.label, () => {
+      engine.clearBarQueue();
+      visualSeed = variant.seed;
+      world.applySandboxMax360Variant(variant.id);
+    }));
+  }
+  const visualReadout = el('div', 'sb-hint sb-visual-readout', combat);
+  const performanceReadout = el('div', 'sb-hint sb-performance-readout', combat);
+
   section(combat, 'threat minute');
   const threatChoices = [0, 5, 8, 12, 20, 30] as const;
   const threatRow = el('div', 'sb-enemy', combat);
@@ -176,6 +249,7 @@ export function mountSandboxPanel(
     options: levelChoices.map((level) => ({
       value: level,
       button: button(levelButtons, String(level), () => {
+        world.resumeSandboxSimulation();
         world.level = level;
       }),
     })),
@@ -189,6 +263,7 @@ export function mountSandboxPanel(
     // Deterministic visual/combat fixture that does not depend on the browser
     // granting Web Audio autoplay. It uses the same RunWorld trigger seam as
     // the heard arrangement, so normal and evolved patterns stay testable.
+    world.resumeSandboxSimulation();
     for (const role of SANDBOX_WEAPON_CATALOG) {
       world.fireTrigger({ role, time: 0, velocity: 1, step: 0 });
     }
@@ -235,6 +310,7 @@ export function mountSandboxPanel(
   const bandControls = el('div', 'sb-btns sb-controls', build);
   bandControls.style.marginLeft = '0';
   button(bandControls, 'FULL BAND IV', () => {
+    world.resumeSandboxSimulation();
     for (const role of SANDBOX_WEAPON_CATALOG) {
       engine.setVoiceTier(role, 4);
       engine.setVoiceEnabled(role, true);
@@ -361,12 +437,7 @@ export function mountSandboxPanel(
     }
   });
   button(noteControls, 'DROP ENCORE CASE', () => {
-    world.encoreCases.push({
-      x: world.player.x + 135,
-      y: world.player.y,
-      minute: Math.floor(world.timeS / 60),
-      color: 0xffd45c,
-    });
+    world.spawnEncoreCaseAt(world.player.x + 135, world.player.y);
   });
   button(noteControls, 'PICKUP FIELD', () => {
     for (let i = 0; i < 18; i++) {
@@ -413,6 +484,7 @@ export function mountSandboxPanel(
   }
 
   function setWeaponTier(role: Role, tier: number): void {
+    world.resumeSandboxSimulation();
     const next = Math.max(0, Math.min(4, Math.floor(tier)));
     if (next === 0) {
       clearEvolution(role);
@@ -428,6 +500,7 @@ export function mountSandboxPanel(
   }
 
   function setItemLevel(id: ItemId, level: number): void {
+    world.resumeSandboxSimulation();
     const next = Math.max(0, Math.min(ITEM_MAX_LEVEL, Math.floor(level)));
     world.setItemLevelForSandbox(id, next);
     const partner = ITEMS[id].evolutionPartner;
@@ -436,6 +509,7 @@ export function mountSandboxPanel(
   }
 
   function toggleEvolution(evolution: EvolutionDefinition): void {
+    world.resumeSandboxSimulation();
     if (world.evolved.has(evolution.role)) {
       clearEvolution(evolution.role);
       opts.onLoadout?.();
@@ -505,6 +579,37 @@ export function mountSandboxPanel(
 
   function refresh(): void {
     setTab(activeTab);
+    for (const [key, control] of visualButtons) {
+      control.classList.toggle('on', visualDebug[key]);
+      control.setAttribute('aria-pressed', String(visualDebug[key]));
+    }
+    for (const [id, control] of visionButtons) {
+      const selected = visionMode === id;
+      control.classList.toggle('on', selected);
+      control.setAttribute('aria-pressed', String(selected));
+    }
+    const capture = world.sandboxVisualPreset;
+    for (const [id, control] of presetButtons) {
+      const selected = capture?.id === id;
+      control.classList.toggle('on', selected);
+      control.setAttribute('aria-pressed', String(selected));
+    }
+    for (const variant of SANDBOX_MAX_360_VARIANTS) {
+      const control = maxVariantButtons.get(variant.id)!;
+      const selected = capture?.id === 'max360' && capture.seed === variant.seed;
+      control.classList.toggle('on', selected);
+      control.setAttribute('aria-pressed', String(selected));
+    }
+    visualReadout.textContent =
+      `${capture?.label ?? 'LIVE'}${capture?.frozen ? ' FROZEN' : ''}` +
+      ` · seed ${formatSandboxSeed(capture?.seed ?? visualSeed)}` +
+      ` · minute ${Math.floor(world.timeS / 60)} · level ${world.level}` +
+      ` · enemies ${world.enemies.filter((enemy) => !enemy.dead).length}` +
+      ` · ${opts.viewportReadout?.() ?? 'logical 640×360 · world 1280×720 @ 0.5'}` +
+      ' · obstacles 0 (scenery is decorative only)' +
+      ' · bounds: purple native frame + cyan idle/walk/facing union' +
+      ' · pivots: gold art pivot / green art ground reference / orange simulation ground';
+    performanceReadout.textContent = opts.performanceSummary?.() ?? 'perf sampling unavailable';
     syncChoice(threatChoice);
     syncChoice(levelChoice);
     for (const choice of weaponButtons.values()) syncChoice(choice);
@@ -532,8 +637,27 @@ export function mountSandboxPanel(
   refresh();
 
   return {
+    get visionMode(): SandboxVisionMode {
+      return visionMode;
+    },
     update: refresh,
+    setVisionMode(mode: SandboxVisionMode): void {
+      if (!SANDBOX_VISION_MODES.some((candidate) => candidate.id === mode)) return;
+      visionMode = mode;
+      opts.onVisionModeChange?.(visionMode);
+      refresh();
+    },
+    applyMax360Variant(id: SandboxMax360VariantId, includeCaptureFixtures = false): void {
+      const variant = SANDBOX_MAX_360_VARIANTS.find((candidate) => candidate.id === id);
+      if (!variant) return;
+      engine.clearBarQueue();
+      visualSeed = variant.seed;
+      world.applySandboxMax360Variant(id, includeCaptureFixtures);
+      refresh();
+    },
     destroy(): void {
+      opts.onVisualDebugChange?.(EMPTY_VISUAL_DEBUG_FLAGS);
+      opts.onVisionModeChange?.('normal');
       panel.remove();
     },
   };

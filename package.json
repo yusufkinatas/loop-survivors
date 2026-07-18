@@ -8,7 +8,20 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "check": "tsc --noEmit",
-    "verify": "npm run check && node scripts/build-pixel-art.mjs verify && node --import tsx src/game/endless-check.ts && node --import tsx src/game/starting-weapons-check.ts && node --import tsx src/game/meta-migration-check.ts && node --import tsx src/game/systems-check.ts"
+    "art:candidates": "node scripts/build-art-direction-candidates.mjs",
+    "art:candidates:check": "node scripts/build-art-direction-candidates.mjs --check",
+    "art:manifest": "node --import tsx scripts/generate-asset-manifest.ts",
+    "art:manifest:check": "node --import tsx src/game/asset-manifest-check.ts",
+    "art:metrics": "node --import tsx scripts/measure-pixel-art.mjs",
+    "art:metrics:check": "node --import tsx scripts/measure-pixel-art.mjs --check",
+    "ui:check": "node scripts/check-ui-contrast.mjs",
+    "production-art:check": "node --import tsx src/experiments/productionart/check.ts",
+    "visual-read:check": "node --import tsx src/experiments/visualread/protocol-check.ts",
+    "clarity:plan": "node --import tsx scripts/clarity-packet.ts plan",
+    "clarity:assemble": "node --import tsx scripts/clarity-packet.ts assemble",
+    "clarity:check": "node --import tsx scripts/clarity-packet.ts check",
+    "visual-read:results": "node --import tsx src/experiments/visualread/results-check.ts",
+    "verify": "npm run check && node scripts/build-pixel-art.mjs verify && npm run art:manifest:check && npm run art:metrics:check && npm run art:candidates:check && npm run ui:check && npm run production-art:check && npm run visual-read:check && node --import tsx src/game/viewport-check.ts && node --import tsx src/game/visual-debug-check.ts && node --import tsx src/game/endless-check.ts && node --import tsx src/game/starting-weapons-check.ts && node --import tsx src/game/meta-migration-check.ts && node --import tsx src/game/systems-check.ts"
   },
   "devDependencies": {
     "@types/node": "^26.1.0",

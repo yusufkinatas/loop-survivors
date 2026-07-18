@@ -1,4 +1,4 @@
-# Loop Survivors: Neon Crypt Field Guide
+# Loop Survivors Field Guide
 
 This is the concise “everything new and how it works” reference for the live
 game. [`plan.md`](plan.md) contains the deeper design rules.
@@ -32,10 +32,11 @@ but it never supplies a weapon or skips the opening choice.
 
 ## Experience and ordinary level-ups
 
-Blue, green, and red gems give XP. When you level up, enemies near the player
-are pushed away and up to three physical reward pickups appear. The action
-briefly slows and the weapon mix becomes quieter so the choice is readable.
-Walk into one reward; the others disappear.
+Small, medium, and large faceted cyan diamonds give XP; internal split marks
+distinguish their values without relying on color. When you level up, enemies
+near the player are pushed away and up to three physical reward pickups
+appear. The action briefly slows and the weapon mix becomes quieter so the
+choice is readable. Walk into one reward; the others disappear.
 
 Ordinary rewards include:
 
@@ -229,22 +230,30 @@ silhouettes and behaviors.
 | **Crypt Spider** | Huge 500-base-health boss that cannot be knocked back. |
 | **Dusk Swarm** | One-health bodies that sweep across the screen in a fixed direction. |
 
-## Pixel-art presentation
+## Arcade Reliquary pixel-art presentation
 
-The player, all 20 enemies, nine normal and nine evolved weapon attacks, XP,
-music notes, reward objects, impacts, explosions, collection effects, and UI
-icons now come from coherent transparent PNG sprite atlases rather than smooth
-engine-drawn actor shapes.
+Arcade Reliquary renders the player, all 20 enemies, nine normal and nine
+evolved weapon families, XP, music notes, rewards, effects, UI icons, and
+environment props as coherent transparent PNG sprite atlases. Its deep navy
+field, chunky relic silhouettes, cyan player rim, magenta/violet hostile cores,
+orange attack language, and stepped UI follow one locked 16-color palette.
 
-The gameplay atlas contains 72 exact 96 × 96 cells; the UI atlas contains 20.
-Actors have separate idle and walk frames. Transparent pixels are normalized to
-transparent black, alpha is hard rather than blurry, and PixiJS uses
-nearest-neighbor sampling so sprites stay crisp. Bright outlines, identity
-colors, and different pickup silhouettes keep the player, enemies, attacks,
-XP, currency, and deliberate rewards readable in a crowd.
+The atlases contain **108 physical frame keys**: 72 gameplay, 20 UI, and 16
+environment frames. The generated catalog also enumerates **239 semantic
+requirements** and records their mappings and explicit use decisions. Each
+asset uses an appropriate native frame size instead of a shared 96 × 96 cell;
+metadata records its integer pivot, opaque bounds, transparent margin,
+semantic role, and a renderer scale of 1. Actors have distinct idle and walk
+frames. The seamless floor is 16 × 16 native pixels, and the text-free title
+composition is 320 × 180 native pixels.
 
-The art is original, generated specifically for this repository, with no paid
-or third-party sprite pack. Source boards, rebuild instructions, and licensing
+The production art is original repository-authored construction drawn directly
+on its final native grids. Fully transparent pixels are transparent black,
+alpha is hard rather than blurry, and PixiJS uses nearest-neighbor sampling so
+sprites stay crisp. Identity colors and distinct pickup silhouettes keep the
+player, enemies, attacks, XP, currency, and deliberate rewards readable in a
+crowd. AI-generated direction images remain concept-only and are not sampled by
+the production builder. Canonical source, rebuild instructions, and provenance
 are recorded in
 [`public/art/pixel/SOURCE_AND_LICENSE.md`](../public/art/pixel/SOURCE_AND_LICENSE.md).
 

@@ -2,494 +2,1622 @@
   "frames": {
     "ui/items/highTops": {
       "frame": {
-        "x": 8,
-        "y": 8,
-        "w": 96,
-        "h": 96
+        "x": 2,
+        "y": 2,
+        "w": 32,
+        "h": 32,
+        "space": "atlas-pixels"
       },
       "rotated": false,
       "trimmed": false,
       "spriteSourceSize": {
         "x": 0,
         "y": 0,
-        "w": 96,
-        "h": 96
+        "w": 32,
+        "h": 32,
+        "space": "native-logical-pixels"
       },
       "sourceSize": {
-        "w": 96,
-        "h": 96
+        "w": 32,
+        "h": 32,
+        "space": "native-logical-pixels"
+      },
+      "nativeSize": {
+        "w": 32,
+        "h": 32,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 16,
+        "y": 16,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
       },
       "anchor": {
         "x": 0.5,
-        "y": 0.5
+        "y": 0.5,
+        "space": "normalized-native-frame"
+      },
+      "opaqueBounds": {
+        "x": 5,
+        "y": 11,
+        "w": 21,
+        "h": 15,
+        "opaquePixels": 215,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "semantic": {
+        "class": "ui-icon",
+        "tags": [
+          "ui",
+          "items",
+          "highTops"
+        ]
+      },
+      "transparentMargin": {
+        "top": 11,
+        "right": 6,
+        "bottom": 6,
+        "left": 5,
+        "minimumRequired": 2,
+        "space": "native-logical-pixels"
+      },
+      "rendererScale": {
+        "value": 1,
+        "space": "logical-screen-pixels-per-native-pixel"
+      },
+      "colorBudget": 8,
+      "colorsUsed": 3,
+      "targetVisibleFootprint": {
+        "value": 20,
+        "tolerance": 2,
+        "measure": "maximum-opaque-dimension",
+        "space": "native-logical-pixels"
       }
     },
     "ui/items/fastForward": {
       "frame": {
-        "x": 108,
-        "y": 8,
-        "w": 96,
-        "h": 96
+        "x": 36,
+        "y": 2,
+        "w": 32,
+        "h": 32,
+        "space": "atlas-pixels"
       },
       "rotated": false,
       "trimmed": false,
       "spriteSourceSize": {
         "x": 0,
         "y": 0,
-        "w": 96,
-        "h": 96
+        "w": 32,
+        "h": 32,
+        "space": "native-logical-pixels"
       },
       "sourceSize": {
-        "w": 96,
-        "h": 96
+        "w": 32,
+        "h": 32,
+        "space": "native-logical-pixels"
+      },
+      "nativeSize": {
+        "w": 32,
+        "h": 32,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 16,
+        "y": 16,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
       },
       "anchor": {
         "x": 0.5,
-        "y": 0.5
+        "y": 0.5,
+        "space": "normalized-native-frame"
+      },
+      "opaqueBounds": {
+        "x": 5,
+        "y": 9,
+        "w": 21,
+        "h": 15,
+        "opaquePixels": 237,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "semantic": {
+        "class": "ui-icon",
+        "tags": [
+          "ui",
+          "items",
+          "fastForward"
+        ]
+      },
+      "transparentMargin": {
+        "top": 9,
+        "right": 6,
+        "bottom": 8,
+        "left": 5,
+        "minimumRequired": 2,
+        "space": "native-logical-pixels"
+      },
+      "rendererScale": {
+        "value": 1,
+        "space": "logical-screen-pixels-per-native-pixel"
+      },
+      "colorBudget": 8,
+      "colorsUsed": 3,
+      "targetVisibleFootprint": {
+        "value": 20,
+        "tolerance": 2,
+        "measure": "maximum-opaque-dimension",
+        "space": "native-logical-pixels"
       }
     },
     "ui/items/needleTips": {
       "frame": {
-        "x": 208,
-        "y": 8,
-        "w": 96,
-        "h": 96
+        "x": 70,
+        "y": 2,
+        "w": 32,
+        "h": 32,
+        "space": "atlas-pixels"
       },
       "rotated": false,
       "trimmed": false,
       "spriteSourceSize": {
         "x": 0,
         "y": 0,
-        "w": 96,
-        "h": 96
+        "w": 32,
+        "h": 32,
+        "space": "native-logical-pixels"
       },
       "sourceSize": {
-        "w": 96,
-        "h": 96
+        "w": 32,
+        "h": 32,
+        "space": "native-logical-pixels"
+      },
+      "nativeSize": {
+        "w": 32,
+        "h": 32,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 16,
+        "y": 16,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
       },
       "anchor": {
         "x": 0.5,
-        "y": 0.5
+        "y": 0.5,
+        "space": "normalized-native-frame"
+      },
+      "opaqueBounds": {
+        "x": 6,
+        "y": 6,
+        "w": 20,
+        "h": 21,
+        "opaquePixels": 271,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "semantic": {
+        "class": "ui-icon",
+        "tags": [
+          "ui",
+          "items",
+          "needleTips"
+        ]
+      },
+      "transparentMargin": {
+        "top": 6,
+        "right": 6,
+        "bottom": 5,
+        "left": 6,
+        "minimumRequired": 2,
+        "space": "native-logical-pixels"
+      },
+      "rendererScale": {
+        "value": 1,
+        "space": "logical-screen-pixels-per-native-pixel"
+      },
+      "colorBudget": 8,
+      "colorsUsed": 3,
+      "targetVisibleFootprint": {
+        "value": 20,
+        "tolerance": 2,
+        "measure": "maximum-opaque-dimension",
+        "space": "native-logical-pixels"
       }
     },
     "ui/items/mirrorball": {
       "frame": {
-        "x": 308,
-        "y": 8,
-        "w": 96,
-        "h": 96
+        "x": 104,
+        "y": 2,
+        "w": 32,
+        "h": 32,
+        "space": "atlas-pixels"
       },
       "rotated": false,
       "trimmed": false,
       "spriteSourceSize": {
         "x": 0,
         "y": 0,
-        "w": 96,
-        "h": 96
+        "w": 32,
+        "h": 32,
+        "space": "native-logical-pixels"
       },
       "sourceSize": {
-        "w": 96,
-        "h": 96
+        "w": 32,
+        "h": 32,
+        "space": "native-logical-pixels"
+      },
+      "nativeSize": {
+        "w": 32,
+        "h": 32,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 16,
+        "y": 16,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
       },
       "anchor": {
         "x": 0.5,
-        "y": 0.5
+        "y": 0.5,
+        "space": "normalized-native-frame"
+      },
+      "opaqueBounds": {
+        "x": 7,
+        "y": 5,
+        "w": 19,
+        "h": 21,
+        "opaquePixels": 280,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "semantic": {
+        "class": "ui-icon",
+        "tags": [
+          "ui",
+          "items",
+          "mirrorball",
+          "facets",
+          "hanger"
+        ]
+      },
+      "transparentMargin": {
+        "top": 5,
+        "right": 6,
+        "bottom": 6,
+        "left": 7,
+        "minimumRequired": 2,
+        "space": "native-logical-pixels"
+      },
+      "rendererScale": {
+        "value": 1,
+        "space": "logical-screen-pixels-per-native-pixel"
+      },
+      "colorBudget": 8,
+      "colorsUsed": 5,
+      "targetVisibleFootprint": {
+        "value": 20,
+        "tolerance": 2,
+        "measure": "maximum-opaque-dimension",
+        "space": "native-logical-pixels"
       }
     },
     "ui/items/wideLens": {
       "frame": {
-        "x": 408,
-        "y": 8,
-        "w": 96,
-        "h": 96
+        "x": 138,
+        "y": 2,
+        "w": 32,
+        "h": 32,
+        "space": "atlas-pixels"
       },
       "rotated": false,
       "trimmed": false,
       "spriteSourceSize": {
         "x": 0,
         "y": 0,
-        "w": 96,
-        "h": 96
+        "w": 32,
+        "h": 32,
+        "space": "native-logical-pixels"
       },
       "sourceSize": {
-        "w": 96,
-        "h": 96
+        "w": 32,
+        "h": 32,
+        "space": "native-logical-pixels"
+      },
+      "nativeSize": {
+        "w": 32,
+        "h": 32,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 16,
+        "y": 16,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
       },
       "anchor": {
         "x": 0.5,
-        "y": 0.5
+        "y": 0.5,
+        "space": "normalized-native-frame"
+      },
+      "opaqueBounds": {
+        "x": 6,
+        "y": 6,
+        "w": 20,
+        "h": 20,
+        "opaquePixels": 255,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "semantic": {
+        "class": "ui-icon",
+        "tags": [
+          "ui",
+          "items",
+          "wideLens"
+        ]
+      },
+      "transparentMargin": {
+        "top": 6,
+        "right": 6,
+        "bottom": 6,
+        "left": 6,
+        "minimumRequired": 2,
+        "space": "native-logical-pixels"
+      },
+      "rendererScale": {
+        "value": 1,
+        "space": "logical-screen-pixels-per-native-pixel"
+      },
+      "colorBudget": 8,
+      "colorsUsed": 3,
+      "targetVisibleFootprint": {
+        "value": 20,
+        "tolerance": 2,
+        "measure": "maximum-opaque-dimension",
+        "space": "native-logical-pixels"
       }
     },
     "ui/items/heavyAmp": {
       "frame": {
-        "x": 8,
-        "y": 108,
-        "w": 96,
-        "h": 96
+        "x": 172,
+        "y": 2,
+        "w": 32,
+        "h": 32,
+        "space": "atlas-pixels"
       },
       "rotated": false,
       "trimmed": false,
       "spriteSourceSize": {
         "x": 0,
         "y": 0,
-        "w": 96,
-        "h": 96
+        "w": 32,
+        "h": 32,
+        "space": "native-logical-pixels"
       },
       "sourceSize": {
-        "w": 96,
-        "h": 96
+        "w": 32,
+        "h": 32,
+        "space": "native-logical-pixels"
+      },
+      "nativeSize": {
+        "w": 32,
+        "h": 32,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 16,
+        "y": 16,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
       },
       "anchor": {
         "x": 0.5,
-        "y": 0.5
+        "y": 0.5,
+        "space": "normalized-native-frame"
+      },
+      "opaqueBounds": {
+        "x": 6,
+        "y": 5,
+        "w": 20,
+        "h": 22,
+        "opaquePixels": 440,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "semantic": {
+        "class": "ui-icon",
+        "tags": [
+          "ui",
+          "items",
+          "heavyAmp"
+        ]
+      },
+      "transparentMargin": {
+        "top": 5,
+        "right": 6,
+        "bottom": 5,
+        "left": 6,
+        "minimumRequired": 2,
+        "space": "native-logical-pixels"
+      },
+      "rendererScale": {
+        "value": 1,
+        "space": "logical-screen-pixels-per-native-pixel"
+      },
+      "colorBudget": 8,
+      "colorsUsed": 4,
+      "targetVisibleFootprint": {
+        "value": 20,
+        "tolerance": 2,
+        "measure": "maximum-opaque-dimension",
+        "space": "native-logical-pixels"
       }
     },
     "ui/items/extensionCable": {
       "frame": {
-        "x": 108,
-        "y": 108,
-        "w": 96,
-        "h": 96
+        "x": 206,
+        "y": 2,
+        "w": 32,
+        "h": 32,
+        "space": "atlas-pixels"
       },
       "rotated": false,
       "trimmed": false,
       "spriteSourceSize": {
         "x": 0,
         "y": 0,
-        "w": 96,
-        "h": 96
+        "w": 32,
+        "h": 32,
+        "space": "native-logical-pixels"
       },
       "sourceSize": {
-        "w": 96,
-        "h": 96
+        "w": 32,
+        "h": 32,
+        "space": "native-logical-pixels"
+      },
+      "nativeSize": {
+        "w": 32,
+        "h": 32,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 16,
+        "y": 16,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
       },
       "anchor": {
         "x": 0.5,
-        "y": 0.5
+        "y": 0.5,
+        "space": "normalized-native-frame"
+      },
+      "opaqueBounds": {
+        "x": 5,
+        "y": 7,
+        "w": 22,
+        "h": 20,
+        "opaquePixels": 256,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "semantic": {
+        "class": "ui-icon",
+        "tags": [
+          "ui",
+          "items",
+          "extensionCable",
+          "plug",
+          "loop"
+        ]
+      },
+      "transparentMargin": {
+        "top": 7,
+        "right": 5,
+        "bottom": 5,
+        "left": 5,
+        "minimumRequired": 2,
+        "space": "native-logical-pixels"
+      },
+      "rendererScale": {
+        "value": 1,
+        "space": "logical-screen-pixels-per-native-pixel"
+      },
+      "colorBudget": 8,
+      "colorsUsed": 4,
+      "targetVisibleFootprint": {
+        "value": 20,
+        "tolerance": 2,
+        "measure": "maximum-opaque-dimension",
+        "space": "native-logical-pixels"
       }
     },
     "ui/items/magnetLanyard": {
       "frame": {
-        "x": 208,
-        "y": 108,
-        "w": 96,
-        "h": 96
+        "x": 2,
+        "y": 36,
+        "w": 32,
+        "h": 32,
+        "space": "atlas-pixels"
       },
       "rotated": false,
       "trimmed": false,
       "spriteSourceSize": {
         "x": 0,
         "y": 0,
-        "w": 96,
-        "h": 96
+        "w": 32,
+        "h": 32,
+        "space": "native-logical-pixels"
       },
       "sourceSize": {
-        "w": 96,
-        "h": 96
+        "w": 32,
+        "h": 32,
+        "space": "native-logical-pixels"
+      },
+      "nativeSize": {
+        "w": 32,
+        "h": 32,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 16,
+        "y": 16,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
       },
       "anchor": {
         "x": 0.5,
-        "y": 0.5
+        "y": 0.5,
+        "space": "normalized-native-frame"
+      },
+      "opaqueBounds": {
+        "x": 6,
+        "y": 6,
+        "w": 20,
+        "h": 21,
+        "opaquePixels": 321,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "semantic": {
+        "class": "ui-icon",
+        "tags": [
+          "ui",
+          "items",
+          "magnetLanyard"
+        ]
+      },
+      "transparentMargin": {
+        "top": 6,
+        "right": 6,
+        "bottom": 5,
+        "left": 6,
+        "minimumRequired": 2,
+        "space": "native-logical-pixels"
+      },
+      "rendererScale": {
+        "value": 1,
+        "space": "logical-screen-pixels-per-native-pixel"
+      },
+      "colorBudget": 8,
+      "colorsUsed": 3,
+      "targetVisibleFootprint": {
+        "value": 20,
+        "tolerance": 2,
+        "measure": "maximum-opaque-dimension",
+        "space": "native-logical-pixels"
       }
     },
     "ui/items/paddedJacket": {
       "frame": {
-        "x": 308,
-        "y": 108,
-        "w": 96,
-        "h": 96
+        "x": 36,
+        "y": 36,
+        "w": 32,
+        "h": 32,
+        "space": "atlas-pixels"
       },
       "rotated": false,
       "trimmed": false,
       "spriteSourceSize": {
         "x": 0,
         "y": 0,
-        "w": 96,
-        "h": 96
+        "w": 32,
+        "h": 32,
+        "space": "native-logical-pixels"
       },
       "sourceSize": {
-        "w": 96,
-        "h": 96
+        "w": 32,
+        "h": 32,
+        "space": "native-logical-pixels"
+      },
+      "nativeSize": {
+        "w": 32,
+        "h": 32,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 16,
+        "y": 16,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
       },
       "anchor": {
         "x": 0.5,
-        "y": 0.5
+        "y": 0.5,
+        "space": "normalized-native-frame"
+      },
+      "opaqueBounds": {
+        "x": 5,
+        "y": 7,
+        "w": 22,
+        "h": 20,
+        "opaquePixels": 336,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "semantic": {
+        "class": "ui-icon",
+        "tags": [
+          "ui",
+          "items",
+          "paddedJacket"
+        ]
+      },
+      "transparentMargin": {
+        "top": 7,
+        "right": 5,
+        "bottom": 5,
+        "left": 5,
+        "minimumRequired": 2,
+        "space": "native-logical-pixels"
+      },
+      "rendererScale": {
+        "value": 1,
+        "space": "logical-screen-pixels-per-native-pixel"
+      },
+      "colorBudget": 8,
+      "colorsUsed": 3,
+      "targetVisibleFootprint": {
+        "value": 20,
+        "tolerance": 2,
+        "measure": "maximum-opaque-dimension",
+        "space": "native-logical-pixels"
       }
     },
     "ui/items/recoveryTape": {
       "frame": {
-        "x": 408,
-        "y": 108,
-        "w": 96,
-        "h": 96
+        "x": 70,
+        "y": 36,
+        "w": 32,
+        "h": 32,
+        "space": "atlas-pixels"
       },
       "rotated": false,
       "trimmed": false,
       "spriteSourceSize": {
         "x": 0,
         "y": 0,
-        "w": 96,
-        "h": 96
+        "w": 32,
+        "h": 32,
+        "space": "native-logical-pixels"
       },
       "sourceSize": {
-        "w": 96,
-        "h": 96
+        "w": 32,
+        "h": 32,
+        "space": "native-logical-pixels"
+      },
+      "nativeSize": {
+        "w": 32,
+        "h": 32,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 16,
+        "y": 16,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
       },
       "anchor": {
         "x": 0.5,
-        "y": 0.5
+        "y": 0.5,
+        "space": "normalized-native-frame"
+      },
+      "opaqueBounds": {
+        "x": 6,
+        "y": 6,
+        "w": 20,
+        "h": 19,
+        "opaquePixels": 372,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "semantic": {
+        "class": "ui-icon",
+        "tags": [
+          "ui",
+          "items",
+          "recoveryTape",
+          "two-reel-holes"
+        ]
+      },
+      "transparentMargin": {
+        "top": 6,
+        "right": 6,
+        "bottom": 7,
+        "left": 6,
+        "minimumRequired": 2,
+        "space": "native-logical-pixels"
+      },
+      "rendererScale": {
+        "value": 1,
+        "space": "logical-screen-pixels-per-native-pixel"
+      },
+      "colorBudget": 8,
+      "colorsUsed": 5,
+      "targetVisibleFootprint": {
+        "value": 20,
+        "tolerance": 2,
+        "measure": "maximum-opaque-dimension",
+        "space": "native-logical-pixels"
       }
     },
     "ui/status/heart": {
       "frame": {
-        "x": 8,
-        "y": 208,
-        "w": 96,
-        "h": 96
+        "x": 104,
+        "y": 36,
+        "w": 24,
+        "h": 24,
+        "space": "atlas-pixels"
       },
       "rotated": false,
       "trimmed": false,
       "spriteSourceSize": {
         "x": 0,
         "y": 0,
-        "w": 96,
-        "h": 96
+        "w": 24,
+        "h": 24,
+        "space": "native-logical-pixels"
       },
       "sourceSize": {
-        "w": 96,
-        "h": 96
+        "w": 24,
+        "h": 24,
+        "space": "native-logical-pixels"
+      },
+      "nativeSize": {
+        "w": 24,
+        "h": 24,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 12,
+        "y": 12,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
       },
       "anchor": {
         "x": 0.5,
-        "y": 0.5
+        "y": 0.5,
+        "space": "normalized-native-frame"
+      },
+      "opaqueBounds": {
+        "x": 4,
+        "y": 6,
+        "w": 16,
+        "h": 15,
+        "opaquePixels": 194,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "semantic": {
+        "class": "ui-icon",
+        "tags": [
+          "ui",
+          "status",
+          "heart",
+          "stepped-heart",
+          "pink"
+        ]
+      },
+      "transparentMargin": {
+        "top": 6,
+        "right": 4,
+        "bottom": 3,
+        "left": 4,
+        "minimumRequired": 2,
+        "space": "native-logical-pixels"
+      },
+      "rendererScale": {
+        "value": 1,
+        "space": "logical-screen-pixels-per-native-pixel"
+      },
+      "colorBudget": 8,
+      "colorsUsed": 4,
+      "targetVisibleFootprint": {
+        "value": 16,
+        "tolerance": 2,
+        "measure": "maximum-opaque-dimension",
+        "space": "native-logical-pixels"
       }
     },
     "ui/status/xp": {
       "frame": {
-        "x": 108,
-        "y": 208,
-        "w": 96,
-        "h": 96
+        "x": 130,
+        "y": 36,
+        "w": 24,
+        "h": 24,
+        "space": "atlas-pixels"
       },
       "rotated": false,
       "trimmed": false,
       "spriteSourceSize": {
         "x": 0,
         "y": 0,
-        "w": 96,
-        "h": 96
+        "w": 24,
+        "h": 24,
+        "space": "native-logical-pixels"
       },
       "sourceSize": {
-        "w": 96,
-        "h": 96
+        "w": 24,
+        "h": 24,
+        "space": "native-logical-pixels"
+      },
+      "nativeSize": {
+        "w": 24,
+        "h": 24,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 12,
+        "y": 12,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
       },
       "anchor": {
         "x": 0.5,
-        "y": 0.5
+        "y": 0.5,
+        "space": "normalized-native-frame"
+      },
+      "opaqueBounds": {
+        "x": 3,
+        "y": 4,
+        "w": 18,
+        "h": 17,
+        "opaquePixels": 194,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "semantic": {
+        "class": "ui-icon",
+        "tags": [
+          "ui",
+          "status",
+          "xp",
+          "cyan-diamond"
+        ]
+      },
+      "transparentMargin": {
+        "top": 4,
+        "right": 3,
+        "bottom": 3,
+        "left": 3,
+        "minimumRequired": 2,
+        "space": "native-logical-pixels"
+      },
+      "rendererScale": {
+        "value": 1,
+        "space": "logical-screen-pixels-per-native-pixel"
+      },
+      "colorBudget": 8,
+      "colorsUsed": 4,
+      "targetVisibleFootprint": {
+        "value": 16,
+        "tolerance": 2,
+        "measure": "maximum-opaque-dimension",
+        "space": "native-logical-pixels"
       }
     },
     "ui/status/note": {
       "frame": {
-        "x": 208,
-        "y": 208,
-        "w": 96,
-        "h": 96
+        "x": 156,
+        "y": 36,
+        "w": 24,
+        "h": 24,
+        "space": "atlas-pixels"
       },
       "rotated": false,
       "trimmed": false,
       "spriteSourceSize": {
         "x": 0,
         "y": 0,
-        "w": 96,
-        "h": 96
+        "w": 24,
+        "h": 24,
+        "space": "native-logical-pixels"
       },
       "sourceSize": {
-        "w": 96,
-        "h": 96
+        "w": 24,
+        "h": 24,
+        "space": "native-logical-pixels"
+      },
+      "nativeSize": {
+        "w": 24,
+        "h": 24,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 12,
+        "y": 12,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
       },
       "anchor": {
         "x": 0.5,
-        "y": 0.5
+        "y": 0.5,
+        "space": "normalized-native-frame"
+      },
+      "opaqueBounds": {
+        "x": 4,
+        "y": 5,
+        "w": 16,
+        "h": 17,
+        "opaquePixels": 139,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "semantic": {
+        "class": "ui-icon",
+        "tags": [
+          "ui",
+          "status",
+          "note"
+        ]
+      },
+      "transparentMargin": {
+        "top": 5,
+        "right": 4,
+        "bottom": 2,
+        "left": 4,
+        "minimumRequired": 2,
+        "space": "native-logical-pixels"
+      },
+      "rendererScale": {
+        "value": 1,
+        "space": "logical-screen-pixels-per-native-pixel"
+      },
+      "colorBudget": 8,
+      "colorsUsed": 3,
+      "targetVisibleFootprint": {
+        "value": 16,
+        "tolerance": 2,
+        "measure": "maximum-opaque-dimension",
+        "space": "native-logical-pixels"
       }
     },
     "ui/status/level": {
       "frame": {
-        "x": 308,
-        "y": 208,
-        "w": 96,
-        "h": 96
+        "x": 182,
+        "y": 36,
+        "w": 24,
+        "h": 24,
+        "space": "atlas-pixels"
       },
       "rotated": false,
       "trimmed": false,
       "spriteSourceSize": {
         "x": 0,
         "y": 0,
-        "w": 96,
-        "h": 96
+        "w": 24,
+        "h": 24,
+        "space": "native-logical-pixels"
       },
       "sourceSize": {
-        "w": 96,
-        "h": 96
+        "w": 24,
+        "h": 24,
+        "space": "native-logical-pixels"
+      },
+      "nativeSize": {
+        "w": 24,
+        "h": 24,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 12,
+        "y": 12,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
       },
       "anchor": {
         "x": 0.5,
-        "y": 0.5
+        "y": 0.5,
+        "space": "normalized-native-frame"
+      },
+      "opaqueBounds": {
+        "x": 4,
+        "y": 4,
+        "w": 17,
+        "h": 17,
+        "opaquePixels": 184,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "semantic": {
+        "class": "ui-icon",
+        "tags": [
+          "ui",
+          "status",
+          "level"
+        ]
+      },
+      "transparentMargin": {
+        "top": 4,
+        "right": 3,
+        "bottom": 3,
+        "left": 4,
+        "minimumRequired": 2,
+        "space": "native-logical-pixels"
+      },
+      "rendererScale": {
+        "value": 1,
+        "space": "logical-screen-pixels-per-native-pixel"
+      },
+      "colorBudget": 8,
+      "colorsUsed": 3,
+      "targetVisibleFootprint": {
+        "value": 16,
+        "tolerance": 2,
+        "measure": "maximum-opaque-dimension",
+        "space": "native-logical-pixels"
       }
     },
     "ui/status/pause": {
       "frame": {
-        "x": 408,
-        "y": 208,
-        "w": 96,
-        "h": 96
+        "x": 208,
+        "y": 36,
+        "w": 24,
+        "h": 24,
+        "space": "atlas-pixels"
       },
       "rotated": false,
       "trimmed": false,
       "spriteSourceSize": {
         "x": 0,
         "y": 0,
-        "w": 96,
-        "h": 96
+        "w": 24,
+        "h": 24,
+        "space": "native-logical-pixels"
       },
       "sourceSize": {
-        "w": 96,
-        "h": 96
+        "w": 24,
+        "h": 24,
+        "space": "native-logical-pixels"
+      },
+      "nativeSize": {
+        "w": 24,
+        "h": 24,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 12,
+        "y": 12,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
       },
       "anchor": {
         "x": 0.5,
-        "y": 0.5
+        "y": 0.5,
+        "space": "normalized-native-frame"
+      },
+      "opaqueBounds": {
+        "x": 5,
+        "y": 4,
+        "w": 15,
+        "h": 17,
+        "opaquePixels": 239,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "semantic": {
+        "class": "ui-icon",
+        "tags": [
+          "ui",
+          "status",
+          "pause"
+        ]
+      },
+      "transparentMargin": {
+        "top": 4,
+        "right": 4,
+        "bottom": 3,
+        "left": 5,
+        "minimumRequired": 2,
+        "space": "native-logical-pixels"
+      },
+      "rendererScale": {
+        "value": 1,
+        "space": "logical-screen-pixels-per-native-pixel"
+      },
+      "colorBudget": 8,
+      "colorsUsed": 3,
+      "targetVisibleFootprint": {
+        "value": 16,
+        "tolerance": 2,
+        "measure": "maximum-opaque-dimension",
+        "space": "native-logical-pixels"
       }
     },
     "ui/actions/reroll": {
       "frame": {
-        "x": 8,
-        "y": 308,
-        "w": 96,
-        "h": 96
+        "x": 2,
+        "y": 70,
+        "w": 24,
+        "h": 24,
+        "space": "atlas-pixels"
       },
       "rotated": false,
       "trimmed": false,
       "spriteSourceSize": {
         "x": 0,
         "y": 0,
-        "w": 96,
-        "h": 96
+        "w": 24,
+        "h": 24,
+        "space": "native-logical-pixels"
       },
       "sourceSize": {
-        "w": 96,
-        "h": 96
+        "w": 24,
+        "h": 24,
+        "space": "native-logical-pixels"
+      },
+      "nativeSize": {
+        "w": 24,
+        "h": 24,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 12,
+        "y": 12,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
       },
       "anchor": {
         "x": 0.5,
-        "y": 0.5
+        "y": 0.5,
+        "space": "normalized-native-frame"
+      },
+      "opaqueBounds": {
+        "x": 3,
+        "y": 4,
+        "w": 18,
+        "h": 18,
+        "opaquePixels": 243,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "semantic": {
+        "class": "ui-icon",
+        "tags": [
+          "ui",
+          "actions",
+          "reroll"
+        ]
+      },
+      "transparentMargin": {
+        "top": 4,
+        "right": 3,
+        "bottom": 2,
+        "left": 3,
+        "minimumRequired": 2,
+        "space": "native-logical-pixels"
+      },
+      "rendererScale": {
+        "value": 1,
+        "space": "logical-screen-pixels-per-native-pixel"
+      },
+      "colorBudget": 8,
+      "colorsUsed": 3,
+      "targetVisibleFootprint": {
+        "value": 16,
+        "tolerance": 2,
+        "measure": "maximum-opaque-dimension",
+        "space": "native-logical-pixels"
       }
     },
     "ui/actions/shop": {
       "frame": {
-        "x": 108,
-        "y": 308,
-        "w": 96,
-        "h": 96
+        "x": 28,
+        "y": 70,
+        "w": 24,
+        "h": 24,
+        "space": "atlas-pixels"
       },
       "rotated": false,
       "trimmed": false,
       "spriteSourceSize": {
         "x": 0,
         "y": 0,
-        "w": 96,
-        "h": 96
+        "w": 24,
+        "h": 24,
+        "space": "native-logical-pixels"
       },
       "sourceSize": {
-        "w": 96,
-        "h": 96
+        "w": 24,
+        "h": 24,
+        "space": "native-logical-pixels"
+      },
+      "nativeSize": {
+        "w": 24,
+        "h": 24,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 12,
+        "y": 12,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
       },
       "anchor": {
         "x": 0.5,
-        "y": 0.5
+        "y": 0.5,
+        "space": "normalized-native-frame"
+      },
+      "opaqueBounds": {
+        "x": 4,
+        "y": 4,
+        "w": 17,
+        "h": 17,
+        "opaquePixels": 266,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "semantic": {
+        "class": "ui-icon",
+        "tags": [
+          "ui",
+          "actions",
+          "shop"
+        ]
+      },
+      "transparentMargin": {
+        "top": 4,
+        "right": 3,
+        "bottom": 3,
+        "left": 4,
+        "minimumRequired": 2,
+        "space": "native-logical-pixels"
+      },
+      "rendererScale": {
+        "value": 1,
+        "space": "logical-screen-pixels-per-native-pixel"
+      },
+      "colorBudget": 8,
+      "colorsUsed": 4,
+      "targetVisibleFootprint": {
+        "value": 16,
+        "tolerance": 2,
+        "measure": "maximum-opaque-dimension",
+        "space": "native-logical-pixels"
       }
     },
     "ui/actions/evolution": {
       "frame": {
-        "x": 208,
-        "y": 308,
-        "w": 96,
-        "h": 96
+        "x": 54,
+        "y": 70,
+        "w": 24,
+        "h": 24,
+        "space": "atlas-pixels"
       },
       "rotated": false,
       "trimmed": false,
       "spriteSourceSize": {
         "x": 0,
         "y": 0,
-        "w": 96,
-        "h": 96
+        "w": 24,
+        "h": 24,
+        "space": "native-logical-pixels"
       },
       "sourceSize": {
-        "w": 96,
-        "h": 96
+        "w": 24,
+        "h": 24,
+        "space": "native-logical-pixels"
+      },
+      "nativeSize": {
+        "w": 24,
+        "h": 24,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 12,
+        "y": 12,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
       },
       "anchor": {
         "x": 0.5,
-        "y": 0.5
+        "y": 0.5,
+        "space": "normalized-native-frame"
+      },
+      "opaqueBounds": {
+        "x": 5,
+        "y": 5,
+        "w": 16,
+        "h": 15,
+        "opaquePixels": 187,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "semantic": {
+        "class": "ui-icon",
+        "tags": [
+          "ui",
+          "actions",
+          "evolution",
+          "chevron-crown"
+        ]
+      },
+      "transparentMargin": {
+        "top": 5,
+        "right": 3,
+        "bottom": 4,
+        "left": 5,
+        "minimumRequired": 2,
+        "space": "native-logical-pixels"
+      },
+      "rendererScale": {
+        "value": 1,
+        "space": "logical-screen-pixels-per-native-pixel"
+      },
+      "colorBudget": 8,
+      "colorsUsed": 4,
+      "targetVisibleFootprint": {
+        "value": 16,
+        "tolerance": 2,
+        "measure": "maximum-opaque-dimension",
+        "space": "native-logical-pixels"
       }
     },
     "ui/actions/weapon-pedestal": {
       "frame": {
-        "x": 308,
-        "y": 308,
-        "w": 96,
-        "h": 96
+        "x": 80,
+        "y": 70,
+        "w": 24,
+        "h": 24,
+        "space": "atlas-pixels"
       },
       "rotated": false,
       "trimmed": false,
       "spriteSourceSize": {
         "x": 0,
         "y": 0,
-        "w": 96,
-        "h": 96
+        "w": 24,
+        "h": 24,
+        "space": "native-logical-pixels"
       },
       "sourceSize": {
-        "w": 96,
-        "h": 96
+        "w": 24,
+        "h": 24,
+        "space": "native-logical-pixels"
+      },
+      "nativeSize": {
+        "w": 24,
+        "h": 24,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 12,
+        "y": 12,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
       },
       "anchor": {
         "x": 0.5,
-        "y": 0.5
+        "y": 0.5,
+        "space": "normalized-native-frame"
+      },
+      "opaqueBounds": {
+        "x": 3,
+        "y": 5,
+        "w": 18,
+        "h": 16,
+        "opaquePixels": 178,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "semantic": {
+        "class": "ui-icon",
+        "tags": [
+          "ui",
+          "actions",
+          "weapon-pedestal",
+          "grounded-plinth"
+        ]
+      },
+      "transparentMargin": {
+        "top": 5,
+        "right": 3,
+        "bottom": 3,
+        "left": 3,
+        "minimumRequired": 2,
+        "space": "native-logical-pixels"
+      },
+      "rendererScale": {
+        "value": 1,
+        "space": "logical-screen-pixels-per-native-pixel"
+      },
+      "colorBudget": 8,
+      "colorsUsed": 5,
+      "targetVisibleFootprint": {
+        "value": 16,
+        "tolerance": 2,
+        "measure": "maximum-opaque-dimension",
+        "space": "native-logical-pixels"
       }
     },
     "ui/actions/enemy-skull": {
       "frame": {
-        "x": 408,
-        "y": 308,
-        "w": 96,
-        "h": 96
+        "x": 106,
+        "y": 70,
+        "w": 24,
+        "h": 24,
+        "space": "atlas-pixels"
       },
       "rotated": false,
       "trimmed": false,
       "spriteSourceSize": {
         "x": 0,
         "y": 0,
-        "w": 96,
-        "h": 96
+        "w": 24,
+        "h": 24,
+        "space": "native-logical-pixels"
       },
       "sourceSize": {
-        "w": 96,
-        "h": 96
+        "w": 24,
+        "h": 24,
+        "space": "native-logical-pixels"
+      },
+      "nativeSize": {
+        "w": 24,
+        "h": 24,
+        "space": "native-logical-pixels"
+      },
+      "pivot": {
+        "x": 12,
+        "y": 12,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
       },
       "anchor": {
         "x": 0.5,
-        "y": 0.5
+        "y": 0.5,
+        "space": "normalized-native-frame"
+      },
+      "opaqueBounds": {
+        "x": 4,
+        "y": 2,
+        "w": 17,
+        "h": 18,
+        "opaquePixels": 234,
+        "origin": "native-frame-top-left",
+        "space": "native-logical-pixels"
+      },
+      "semantic": {
+        "class": "ui-icon",
+        "tags": [
+          "ui",
+          "actions",
+          "enemy-skull"
+        ]
+      },
+      "transparentMargin": {
+        "top": 2,
+        "right": 3,
+        "bottom": 4,
+        "left": 4,
+        "minimumRequired": 2,
+        "space": "native-logical-pixels"
+      },
+      "rendererScale": {
+        "value": 1,
+        "space": "logical-screen-pixels-per-native-pixel"
+      },
+      "colorBudget": 8,
+      "colorsUsed": 4,
+      "targetVisibleFootprint": {
+        "value": 16,
+        "tolerance": 2,
+        "measure": "maximum-opaque-dimension",
+        "space": "native-logical-pixels"
       }
     }
   },
   "meta": {
-    "app": "Loop Survivors deterministic pixel-art builder",
-    "version": "1.0",
+    "app": "Loop Survivors native-grid production builder",
+    "version": "2.0",
+    "direction": "arcade-reliquary",
+    "source": "art-src/pixel-production/arcade-reliquary.mjs",
     "image": "ui.png",
-    "format": "RGBA8888",
+    "format": "RGBA8888-hard-alpha",
     "size": {
-      "w": 512,
-      "h": 512
+      "w": 256,
+      "h": 256,
+      "space": "atlas-pixels"
     },
-    "scale": "1"
+    "scale": "1",
+    "rendererScale": {
+      "value": 1,
+      "space": "logical-screen-pixels-per-native-pixel"
+    },
+    "atlasPadding": {
+      "value": 2,
+      "space": "atlas-pixels"
+    },
+    "masterPalette": [
+      {
+        "name": "void",
+        "hex": "#03070d"
+      },
+      {
+        "name": "floor",
+        "hex": "#07111f"
+      },
+      {
+        "name": "floorDetail",
+        "hex": "#10264a"
+      },
+      {
+        "name": "outline",
+        "hex": "#020307"
+      },
+      {
+        "name": "shadow",
+        "hex": "#202238"
+      },
+      {
+        "name": "mid",
+        "hex": "#4b4e70"
+      },
+      {
+        "name": "light",
+        "hex": "#8d92b6"
+      },
+      {
+        "name": "highlight",
+        "hex": "#f5f3ff"
+      },
+      {
+        "name": "accent",
+        "hex": "#ff31ad"
+      },
+      {
+        "name": "focal",
+        "hex": "#20e4ff"
+      },
+      {
+        "name": "danger",
+        "hex": "#a83aff"
+      },
+      {
+        "name": "attack",
+        "hex": "#ff8b18"
+      },
+      {
+        "name": "xp",
+        "hex": "#2bdeff"
+      },
+      {
+        "name": "currency",
+        "hex": "#ffc33d"
+      },
+      {
+        "name": "health",
+        "hex": "#f23880"
+      },
+      {
+        "name": "panel",
+        "hex": "#111425"
+      }
+    ],
+    "frameCount": 20
   }
 }

@@ -1,0 +1,109 @@
+#app.visual-read-root {
+  position: fixed;
+  inset: 0;
+  width: auto;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  color: #f5f3ff;
+  background: #03070d;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.visual-read-surface {
+  position: absolute;
+  width: 640px;
+  height: 360px;
+  overflow: hidden;
+  transform-origin: 0 0;
+}
+
+.visual-read-stage,
+.visual-read-stage > img,
+.visual-read-mask {
+  position: absolute;
+  inset: 0;
+  width: 640px;
+  height: 360px;
+}
+
+.visual-read-stage > img {
+  object-fit: fill;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.visual-read-mask {
+  background:
+    repeating-conic-gradient(#07111f 0 25%, #111425 0 50%) 0 0 / 16px 16px;
+}
+
+.visual-read-prompt {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: grid;
+  width: 430px;
+  gap: 10px;
+  padding: 16px;
+  color: #8d92b6;
+  text-align: center;
+  background: #111425;
+  border: 2px solid #20e4ff;
+  box-shadow: 6px 6px 0 #020307;
+  transform: translate(-50%, -50%);
+}
+
+.visual-read-prompt strong {
+  color: #f5f3ff;
+  font-size: 15px;
+  letter-spacing: 0.08em;
+}
+
+.visual-read-prompt span {
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.visual-read-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.visual-read-actions button {
+  min-height: 32px;
+  padding: 6px 10px;
+  color: #f5f3ff;
+  background: #202238;
+  border: 1px solid #4b4e70;
+  border-radius: 1px;
+  font: 800 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.visual-read-actions button:focus-visible,
+.visual-read-actions button:hover {
+  color: #03070d;
+  background: #20e4ff;
+  border-color: #f5f3ff;
+}
+
+.visual-read-notice {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #20e4ff;
+  background: #03070d;
+  font: 800 14px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.visual-read-surface[hidden],
+.visual-read-notice[hidden],
+.visual-read-stage > img[hidden],
+.visual-read-mask[hidden],
+.visual-read-prompt[hidden] {
+  display: none !important;
+}

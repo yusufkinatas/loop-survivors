@@ -1,0 +1,5468 @@
+{
+  "atlases": [
+    {
+      "frameCount": 16,
+      "frames": [
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.8
+          },
+          "atlasRect": {
+            "h": 30,
+            "space": "atlas-pixels",
+            "w": 44,
+            "x": 388,
+            "y": 2
+          },
+          "colorRatio": 0.005146,
+          "dimensions": {
+            "height": 30,
+            "width": 44
+          },
+          "frameKey": "environment/bones",
+          "opaqueBounds": {
+            "height": 20,
+            "width": 39,
+            "x": 3,
+            "y": 5
+          },
+          "opaqueColorCount": 3,
+          "opaquePixels": 583,
+          "pixelSha256": "b1af95218a88f66805624352603eb2a019e33bf4f18666e5d92171a4619de800",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 30,
+            "space": "native-logical-pixels",
+            "w": 44
+          },
+          "transparentPixels": 737,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 583
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.892857
+          },
+          "atlasRect": {
+            "h": 56,
+            "space": "atlas-pixels",
+            "w": 44,
+            "x": 2,
+            "y": 2
+          },
+          "colorRatio": 0.003433,
+          "dimensions": {
+            "height": 56,
+            "width": 44
+          },
+          "frameKey": "environment/broken-pillar",
+          "opaqueBounds": {
+            "height": 46,
+            "width": 32,
+            "x": 6,
+            "y": 5
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 1165,
+          "pixelSha256": "f5007edd583728e1a063e6110ca4b956e80295e70bf457f734bc6d4ed97c2036",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 56,
+            "space": "native-logical-pixels",
+            "w": 44
+          },
+          "transparentPixels": 1299,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 1165
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.842105
+          },
+          "atlasRect": {
+            "h": 38,
+            "space": "atlas-pixels",
+            "w": 46,
+            "x": 200,
+            "y": 66
+          },
+          "colorRatio": 0.00431,
+          "dimensions": {
+            "height": 38,
+            "width": 46
+          },
+          "frameKey": "environment/campfire",
+          "opaqueBounds": {
+            "height": 29,
+            "width": 36,
+            "x": 6,
+            "y": 6
+          },
+          "opaqueColorCount": 3,
+          "opaquePixels": 696,
+          "pixelSha256": "c818a70b9749376372774d376312f4ed16cf908c05385d71a9dff82f853709a2",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 38,
+            "space": "native-logical-pixels",
+            "w": 46
+          },
+          "transparentPixels": 1052,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 696
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.875
+          },
+          "atlasRect": {
+            "h": 48,
+            "space": "atlas-pixels",
+            "w": 40,
+            "x": 96,
+            "y": 2
+          },
+          "colorRatio": 0.00487,
+          "dimensions": {
+            "height": 48,
+            "width": 40
+          },
+          "frameKey": "environment/cyan-brazier",
+          "opaqueBounds": {
+            "height": 37,
+            "width": 26,
+            "x": 7,
+            "y": 6
+          },
+          "opaqueColorCount": 3,
+          "opaquePixels": 616,
+          "pixelSha256": "2f5f5f54c4384cc103ea90bcf3d012b2243e84fd8340d6dffacd7c701d287aee",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 48,
+            "space": "native-logical-pixels",
+            "w": 40
+          },
+          "transparentPixels": 1304,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 616
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.875
+          },
+          "atlasRect": {
+            "h": 48,
+            "space": "atlas-pixels",
+            "w": 48,
+            "x": 104,
+            "y": 66
+          },
+          "colorRatio": 0.006309,
+          "dimensions": {
+            "height": 48,
+            "width": 48
+          },
+          "frameKey": "environment/cyan-crystals",
+          "opaqueBounds": {
+            "height": 37,
+            "width": 39,
+            "x": 5,
+            "y": 6
+          },
+          "opaqueColorCount": 6,
+          "opaquePixels": 951,
+          "pixelSha256": "2eeda09bc0426325283baaf4b13c9d97129925b7a22ca3b5c4cec244cacad98f",
+          "singletonPixelCount": 2,
+          "singletonRatio": 0.002103,
+          "sourceSize": {
+            "h": 48,
+            "space": "native-logical-pixels",
+            "w": 48
+          },
+          "transparentPixels": 1353,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 951
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.875
+          },
+          "atlasRect": {
+            "h": 48,
+            "space": "atlas-pixels",
+            "w": 40,
+            "x": 138,
+            "y": 2
+          },
+          "colorRatio": 0.00487,
+          "dimensions": {
+            "height": 48,
+            "width": 40
+          },
+          "frameKey": "environment/gold-brazier",
+          "opaqueBounds": {
+            "height": 37,
+            "width": 26,
+            "x": 7,
+            "y": 6
+          },
+          "opaqueColorCount": 3,
+          "opaquePixels": 616,
+          "pixelSha256": "49e98629595c57d7b15257da5446b0898ea0285e9c7dea48093c2a298c8d3165",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 48,
+            "space": "native-logical-pixels",
+            "w": 40
+          },
+          "transparentPixels": 1304,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 616
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.869565
+          },
+          "atlasRect": {
+            "h": 46,
+            "space": "atlas-pixels",
+            "w": 40,
+            "x": 62,
+            "y": 66
+          },
+          "colorRatio": 0.003807,
+          "dimensions": {
+            "height": 46,
+            "width": 40
+          },
+          "frameKey": "environment/gravestone",
+          "opaqueBounds": {
+            "height": 34,
+            "width": 30,
+            "x": 5,
+            "y": 7
+          },
+          "opaqueColorCount": 3,
+          "opaquePixels": 788,
+          "pixelSha256": "6d23f19271bb696961598096553073aaf22ea566d0cede13a4605cee7d8ad03c",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 46,
+            "space": "native-logical-pixels",
+            "w": 40
+          },
+          "transparentPixels": 1052,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 788
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.9
+          },
+          "atlasRect": {
+            "h": 60,
+            "space": "atlas-pixels",
+            "w": 48,
+            "x": 284,
+            "y": 2
+          },
+          "colorRatio": 0.003197,
+          "dimensions": {
+            "height": 60,
+            "width": 48
+          },
+          "frameKey": "environment/hooded-statue",
+          "opaqueBounds": {
+            "height": 51,
+            "width": 34,
+            "x": 7,
+            "y": 4
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 1251,
+          "pixelSha256": "7b49d69fc885e62501ab096d23c5caf352d0a63d2b333a15f9ec81654d53e58c",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 60,
+            "space": "native-logical-pixels",
+            "w": 48
+          },
+          "transparentPixels": 1629,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 1251
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.903226
+          },
+          "atlasRect": {
+            "h": 62,
+            "space": "atlas-pixels",
+            "w": 52,
+            "x": 334,
+            "y": 2
+          },
+          "colorRatio": 0.002722,
+          "dimensions": {
+            "height": 62,
+            "width": 52
+          },
+          "frameKey": "environment/knight-statue",
+          "opaqueBounds": {
+            "height": 52,
+            "width": 43,
+            "x": 5,
+            "y": 5
+          },
+          "opaqueColorCount": 5,
+          "opaquePixels": 1837,
+          "pixelSha256": "24a66c509a67d6e105aaff7a437fafe865316d3b0c7e492520efe74b6cbdf103",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 62,
+            "space": "native-logical-pixels",
+            "w": 52
+          },
+          "transparentPixels": 1387,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 1837
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.823529
+          },
+          "atlasRect": {
+            "h": 34,
+            "space": "atlas-pixels",
+            "w": 42,
+            "x": 434,
+            "y": 2
+          },
+          "colorRatio": 0.004539,
+          "dimensions": {
+            "height": 34,
+            "width": 42
+          },
+          "frameKey": "environment/mushrooms",
+          "opaqueBounds": {
+            "height": 24,
+            "width": 36,
+            "x": 3,
+            "y": 5
+          },
+          "opaqueColorCount": 3,
+          "opaquePixels": 661,
+          "pixelSha256": "d3941f13a2ccd4d20f0bb7447481e8999f512f928fb6030fd5c2979f80787f0d",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 34,
+            "space": "native-logical-pixels",
+            "w": 42
+          },
+          "transparentPixels": 767,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 661
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.896552
+          },
+          "atlasRect": {
+            "h": 58,
+            "space": "atlas-pixels",
+            "w": 44,
+            "x": 154,
+            "y": 66
+          },
+          "colorRatio": 0.004205,
+          "dimensions": {
+            "height": 58,
+            "width": 44
+          },
+          "frameKey": "environment/purple-banner",
+          "opaqueBounds": {
+            "height": 52,
+            "width": 36,
+            "x": 5,
+            "y": 3
+          },
+          "opaqueColorCount": 5,
+          "opaquePixels": 1189,
+          "pixelSha256": "5bea3a1ded9b0cd6dbb430278322c888b29a46a6e43b6134983038ef08cd091c",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 58,
+            "space": "native-logical-pixels",
+            "w": 44
+          },
+          "transparentPixels": 1363,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 1189
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.8125
+          },
+          "atlasRect": {
+            "h": 32,
+            "space": "atlas-pixels",
+            "w": 52,
+            "x": 180,
+            "y": 2
+          },
+          "colorRatio": 0.005769,
+          "dimensions": {
+            "height": 32,
+            "width": 52
+          },
+          "frameKey": "environment/rubble",
+          "opaqueBounds": {
+            "height": 16,
+            "width": 42,
+            "x": 5,
+            "y": 10
+          },
+          "opaqueColorCount": 3,
+          "opaquePixels": 520,
+          "pixelSha256": "86e5f376c15149a721ffaee2583376ae42b6658ccb80317d26d8cf52b9e76a84",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 32,
+            "space": "native-logical-pixels",
+            "w": 52
+          },
+          "transparentPixels": 1144,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 520
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.842105
+          },
+          "atlasRect": {
+            "h": 38,
+            "space": "atlas-pixels",
+            "w": 62,
+            "x": 248,
+            "y": 66
+          },
+          "colorRatio": 0.006826,
+          "dimensions": {
+            "height": 38,
+            "width": 62
+          },
+          "frameKey": "environment/rune-dais",
+          "opaqueBounds": {
+            "height": 21,
+            "width": 53,
+            "x": 5,
+            "y": 15
+          },
+          "opaqueColorCount": 6,
+          "opaquePixels": 879,
+          "pixelSha256": "f46fc860fa16de120284b6a0a9b884d6d7749f1c1e584bf530409fcb3b8844c3",
+          "singletonPixelCount": 1,
+          "singletonRatio": 0.001138,
+          "sourceSize": {
+            "h": 38,
+            "space": "native-logical-pixels",
+            "w": 62
+          },
+          "transparentPixels": 1477,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 879
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.896552
+          },
+          "atlasRect": {
+            "h": 58,
+            "space": "atlas-pixels",
+            "w": 46,
+            "x": 48,
+            "y": 2
+          },
+          "colorRatio": 0.002841,
+          "dimensions": {
+            "height": 58,
+            "width": 46
+          },
+          "frameKey": "environment/rune-pillar",
+          "opaqueBounds": {
+            "height": 48,
+            "width": 34,
+            "x": 6,
+            "y": 5
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 1408,
+          "pixelSha256": "6718dfbba72b86142ff9e0a72e01522bfcc103d65741d8f844f0b17aebd62079",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 58,
+            "space": "native-logical-pixels",
+            "w": 46
+          },
+          "transparentPixels": 1260,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 1408
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.892857
+          },
+          "atlasRect": {
+            "h": 56,
+            "space": "atlas-pixels",
+            "w": 48,
+            "x": 234,
+            "y": 2
+          },
+          "colorRatio": 0.002661,
+          "dimensions": {
+            "height": 56,
+            "width": 48
+          },
+          "frameKey": "environment/sarcophagus",
+          "opaqueBounds": {
+            "height": 46,
+            "width": 36,
+            "x": 6,
+            "y": 4
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 1503,
+          "pixelSha256": "63e401941d89c10e5206d38b03d6209f1f673f4116f8ab0f3c92841c82d3524e",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 56,
+            "space": "native-logical-pixels",
+            "w": 48
+          },
+          "transparentPixels": 1185,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 1503
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.842105
+          },
+          "atlasRect": {
+            "h": 38,
+            "space": "atlas-pixels",
+            "w": 58,
+            "x": 2,
+            "y": 66
+          },
+          "colorRatio": 0.002885,
+          "dimensions": {
+            "height": 38,
+            "width": 58
+          },
+          "frameKey": "environment/thorn-vines",
+          "opaqueBounds": {
+            "height": 29,
+            "width": 52,
+            "x": 4,
+            "y": 6
+          },
+          "opaqueColorCount": 3,
+          "opaquePixels": 1040,
+          "pixelSha256": "69425435aed835ef4315ce5d4f58903d59d4622d7be53957248c01fe80024eda",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 38,
+            "space": "native-logical-pixels",
+            "w": 58
+          },
+          "transparentPixels": 1164,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 1040
+        }
+      ],
+      "id": "environment",
+      "image": {
+        "alpha": {
+          "distinctValues": [
+            0,
+            255
+          ],
+          "maximum": 255,
+          "minimum": 0,
+          "softPixelCount": 0
+        },
+        "colorRatio": 0.000637,
+        "dimensions": {
+          "height": 256,
+          "width": 512
+        },
+        "fileSha256": "07540d96d7354bea504b6a350aea6121957a94c81681f10576fa56e771f1e75d",
+        "opaqueBounds": {
+          "height": 115,
+          "width": 467,
+          "x": 6,
+          "y": 6
+        },
+        "opaqueColorCount": 10,
+        "opaquePixels": 15703,
+        "pixelSha256": "fdffeed26de3528cb0fc3e78f610d3b2f010ab218e0002527579018514628879",
+        "png": {
+          "bitDepth": 8,
+          "colorType": "RGBA",
+          "interlace": 0
+        },
+        "singletonPixelCount": 0,
+        "singletonRatio": 0,
+        "transparentPixels": 115369,
+        "transparentRgbNonZeroPixels": 0,
+        "visiblePixels": 15703
+      },
+      "imagePath": "public/art/pixel/environment.png",
+      "jsonPath": "public/art/pixel/environment.json"
+    },
+    {
+      "frameCount": 72,
+      "frames": [
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.785714
+          },
+          "atlasRect": {
+            "h": 28,
+            "space": "atlas-pixels",
+            "w": 30,
+            "x": 822,
+            "y": 2
+          },
+          "colorRatio": 0.013699,
+          "dimensions": {
+            "height": 28,
+            "width": 30
+          },
+          "frameKey": "actors/enemies/bat/idle",
+          "opaqueBounds": {
+            "height": 18,
+            "width": 20,
+            "x": 5,
+            "y": 3
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 292,
+          "pixelSha256": "7b592a93107866d65914ba63fabc422f3ff2a3f7add9d5fff33e74eadca84c00",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 28,
+            "space": "native-logical-pixels",
+            "w": 30
+          },
+          "transparentPixels": 548,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 292
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.785714
+          },
+          "atlasRect": {
+            "h": 28,
+            "space": "atlas-pixels",
+            "w": 30,
+            "x": 854,
+            "y": 2
+          },
+          "colorRatio": 0.01487,
+          "dimensions": {
+            "height": 28,
+            "width": 30
+          },
+          "frameKey": "actors/enemies/bat/walk",
+          "opaqueBounds": {
+            "height": 16,
+            "width": 20,
+            "x": 5,
+            "y": 5
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 269,
+          "pixelSha256": "c6e189c39dcb31533013f542b9308c3ffc22c9de7b3a0bc716410747a4455e33",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 28,
+            "space": "native-logical-pixels",
+            "w": 30
+          },
+          "transparentPixels": 571,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 269
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.823529
+          },
+          "atlasRect": {
+            "h": 34,
+            "space": "atlas-pixels",
+            "w": 38,
+            "x": 854,
+            "y": 58
+          },
+          "colorRatio": 0.00969,
+          "dimensions": {
+            "height": 34,
+            "width": 38
+          },
+          "frameKey": "actors/enemies/batSwarm/idle",
+          "opaqueBounds": {
+            "height": 22,
+            "width": 28,
+            "x": 5,
+            "y": 6
+          },
+          "opaqueColorCount": 5,
+          "opaquePixels": 516,
+          "pixelSha256": "9d9d1a58a617792c5aa43976a5ab67ebcf2ac9ba2b9854276c467ddda4e6586b",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 34,
+            "space": "native-logical-pixels",
+            "w": 38
+          },
+          "transparentPixels": 776,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 516
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.823529
+          },
+          "atlasRect": {
+            "h": 34,
+            "space": "atlas-pixels",
+            "w": 38,
+            "x": 894,
+            "y": 58
+          },
+          "colorRatio": 0.009766,
+          "dimensions": {
+            "height": 34,
+            "width": 38
+          },
+          "frameKey": "actors/enemies/batSwarm/walk",
+          "opaqueBounds": {
+            "height": 22,
+            "width": 28,
+            "x": 5,
+            "y": 6
+          },
+          "opaqueColorCount": 5,
+          "opaquePixels": 512,
+          "pixelSha256": "6d8230410399b9cade042684f13a7da0471e9a128f0ab15dcac92178d810221b",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 34,
+            "space": "native-logical-pixels",
+            "w": 38
+          },
+          "transparentPixels": 780,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 512
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.863636
+          },
+          "atlasRect": {
+            "h": 44,
+            "space": "atlas-pixels",
+            "w": 52,
+            "x": 422,
+            "y": 2
+          },
+          "colorRatio": 0.005297,
+          "dimensions": {
+            "height": 44,
+            "width": 52
+          },
+          "frameKey": "actors/enemies/charger/idle",
+          "opaqueBounds": {
+            "height": 30,
+            "width": 40,
+            "x": 8,
+            "y": 8
+          },
+          "opaqueColorCount": 5,
+          "opaquePixels": 944,
+          "pixelSha256": "f4985bcae3c76e474f5a2e0591c0d7c24bf5a429f5c44969a576a56bcff47989",
+          "singletonPixelCount": 1,
+          "singletonRatio": 0.001059,
+          "sourceSize": {
+            "h": 44,
+            "space": "native-logical-pixels",
+            "w": 52
+          },
+          "transparentPixels": 1344,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 944
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.863636
+          },
+          "atlasRect": {
+            "h": 44,
+            "space": "atlas-pixels",
+            "w": 52,
+            "x": 476,
+            "y": 2
+          },
+          "colorRatio": 0.005291,
+          "dimensions": {
+            "height": 44,
+            "width": 52
+          },
+          "frameKey": "actors/enemies/charger/walk",
+          "opaqueBounds": {
+            "height": 30,
+            "width": 40,
+            "x": 8,
+            "y": 8
+          },
+          "opaqueColorCount": 5,
+          "opaquePixels": 945,
+          "pixelSha256": "86c176405a4b4e2980fd30b0ae7ff7adc3c3baf2f6f238750968647c10cfba57",
+          "singletonPixelCount": 1,
+          "singletonRatio": 0.001058,
+          "sourceSize": {
+            "h": 44,
+            "space": "native-logical-pixels",
+            "w": 52
+          },
+          "transparentPixels": 1343,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 945
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.842105
+          },
+          "atlasRect": {
+            "h": 38,
+            "space": "atlas-pixels",
+            "w": 38,
+            "x": 530,
+            "y": 2
+          },
+          "colorRatio": 0.009653,
+          "dimensions": {
+            "height": 38,
+            "width": 38
+          },
+          "frameKey": "actors/enemies/circler/idle",
+          "opaqueBounds": {
+            "height": 29,
+            "width": 27,
+            "x": 5,
+            "y": 4
+          },
+          "opaqueColorCount": 5,
+          "opaquePixels": 518,
+          "pixelSha256": "80cbf60938e0151464d44976bf8d2e0eac3da72e2fc3877eaaf0d81366e33acb",
+          "singletonPixelCount": 1,
+          "singletonRatio": 0.001931,
+          "sourceSize": {
+            "h": 38,
+            "space": "native-logical-pixels",
+            "w": 38
+          },
+          "transparentPixels": 926,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 518
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.842105
+          },
+          "atlasRect": {
+            "h": 38,
+            "space": "atlas-pixels",
+            "w": 38,
+            "x": 570,
+            "y": 2
+          },
+          "colorRatio": 0.009328,
+          "dimensions": {
+            "height": 38,
+            "width": 38
+          },
+          "frameKey": "actors/enemies/circler/walk",
+          "opaqueBounds": {
+            "height": 29,
+            "width": 28,
+            "x": 5,
+            "y": 4
+          },
+          "opaqueColorCount": 5,
+          "opaquePixels": 536,
+          "pixelSha256": "9d21bcba3ab34916c7b1dcf6b8a48917dc5278863b7ed212ab0df1247536416c",
+          "singletonPixelCount": 1,
+          "singletonRatio": 0.001866,
+          "sourceSize": {
+            "h": 38,
+            "space": "native-logical-pixels",
+            "w": 38
+          },
+          "transparentPixels": 908,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 536
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.8
+          },
+          "atlasRect": {
+            "h": 30,
+            "space": "atlas-pixels",
+            "w": 34,
+            "x": 254,
+            "y": 2
+          },
+          "colorRatio": 0.009153,
+          "dimensions": {
+            "height": 30,
+            "width": 34
+          },
+          "frameKey": "actors/enemies/darter/idle",
+          "opaqueBounds": {
+            "height": 18,
+            "width": 28,
+            "x": 3,
+            "y": 7
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 437,
+          "pixelSha256": "23f9bcdb131c4081e5da7e303b770c4ab1385d6a507b1bb1a5aab749f04292dd",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 30,
+            "space": "native-logical-pixels",
+            "w": 34
+          },
+          "transparentPixels": 583,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 437
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.8
+          },
+          "atlasRect": {
+            "h": 30,
+            "space": "atlas-pixels",
+            "w": 34,
+            "x": 290,
+            "y": 2
+          },
+          "colorRatio": 0.009029,
+          "dimensions": {
+            "height": 30,
+            "width": 34
+          },
+          "frameKey": "actors/enemies/darter/walk",
+          "opaqueBounds": {
+            "height": 19,
+            "width": 28,
+            "x": 3,
+            "y": 6
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 443,
+          "pixelSha256": "4d79a407f396dd6273dc187370ae7e3952e7ec330582c116f5ebb32ff44a74c7",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 30,
+            "space": "native-logical-pixels",
+            "w": 34
+          },
+          "transparentPixels": 577,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 443
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.888889
+          },
+          "atlasRect": {
+            "h": 54,
+            "space": "atlas-pixels",
+            "w": 54,
+            "x": 710,
+            "y": 2
+          },
+          "colorRatio": 0.004027,
+          "dimensions": {
+            "height": 54,
+            "width": 54
+          },
+          "frameKey": "actors/enemies/elite/idle",
+          "opaqueBounds": {
+            "height": 44,
+            "width": 43,
+            "x": 5,
+            "y": 4
+          },
+          "opaqueColorCount": 6,
+          "opaquePixels": 1490,
+          "pixelSha256": "61a31769271bae1b720fe5e2261745535f75b3e371152c49dbb7b28749ca1c68",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 54,
+            "space": "native-logical-pixels",
+            "w": 54
+          },
+          "transparentPixels": 1426,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 1490
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.888889
+          },
+          "atlasRect": {
+            "h": 54,
+            "space": "atlas-pixels",
+            "w": 54,
+            "x": 766,
+            "y": 2
+          },
+          "colorRatio": 0.004013,
+          "dimensions": {
+            "height": 54,
+            "width": 54
+          },
+          "frameKey": "actors/enemies/elite/walk",
+          "opaqueBounds": {
+            "height": 44,
+            "width": 43,
+            "x": 5,
+            "y": 4
+          },
+          "opaqueColorCount": 6,
+          "opaquePixels": 1495,
+          "pixelSha256": "dfbfa280628f26987ac831f24a3c8687e2c7834b944527bdc193ed9ecb5e7622",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 54,
+            "space": "native-logical-pixels",
+            "w": 54
+          },
+          "transparentPixels": 1421,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 1495
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.857143
+          },
+          "atlasRect": {
+            "h": 42,
+            "space": "atlas-pixels",
+            "w": 42,
+            "x": 486,
+            "y": 58
+          },
+          "colorRatio": 0.008347,
+          "dimensions": {
+            "height": 42,
+            "width": 42
+          },
+          "frameKey": "actors/enemies/flower/idle",
+          "opaqueBounds": {
+            "height": 29,
+            "width": 29,
+            "x": 6,
+            "y": 7
+          },
+          "opaqueColorCount": 5,
+          "opaquePixels": 599,
+          "pixelSha256": "5908929b9df11b44b1775f901cbacec7241898f00fc9072be39a2b8d1dd89848",
+          "singletonPixelCount": 1,
+          "singletonRatio": 0.001669,
+          "sourceSize": {
+            "h": 42,
+            "space": "native-logical-pixels",
+            "w": 42
+          },
+          "transparentPixels": 1165,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 599
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.857143
+          },
+          "atlasRect": {
+            "h": 42,
+            "space": "atlas-pixels",
+            "w": 42,
+            "x": 530,
+            "y": 58
+          },
+          "colorRatio": 0.008078,
+          "dimensions": {
+            "height": 42,
+            "width": 42
+          },
+          "frameKey": "actors/enemies/flower/walk",
+          "opaqueBounds": {
+            "height": 29,
+            "width": 31,
+            "x": 5,
+            "y": 7
+          },
+          "opaqueColorCount": 5,
+          "opaquePixels": 619,
+          "pixelSha256": "fc6687e72565d2d3d81ac8906f045fee7ce99bb8b882d5c7abe323415f85b3e6",
+          "singletonPixelCount": 1,
+          "singletonRatio": 0.001616,
+          "sourceSize": {
+            "h": 42,
+            "space": "native-logical-pixels",
+            "w": 42
+          },
+          "transparentPixels": 1145,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 619
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.857143
+          },
+          "atlasRect": {
+            "h": 42,
+            "space": "atlas-pixels",
+            "w": 38,
+            "x": 198,
+            "y": 58
+          },
+          "colorRatio": 0.008726,
+          "dimensions": {
+            "height": 42,
+            "width": 38
+          },
+          "frameKey": "actors/enemies/ghost/idle",
+          "opaqueBounds": {
+            "height": 30,
+            "width": 26,
+            "x": 6,
+            "y": 5
+          },
+          "opaqueColorCount": 5,
+          "opaquePixels": 573,
+          "pixelSha256": "e3e57e7979eefd24dc4c9d281d8c5c017f0f64678e661dab855befd2795269b2",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 42,
+            "space": "native-logical-pixels",
+            "w": 38
+          },
+          "transparentPixels": 1023,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 573
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.857143
+          },
+          "atlasRect": {
+            "h": 42,
+            "space": "atlas-pixels",
+            "w": 38,
+            "x": 238,
+            "y": 58
+          },
+          "colorRatio": 0.008741,
+          "dimensions": {
+            "height": 42,
+            "width": 38
+          },
+          "frameKey": "actors/enemies/ghost/walk",
+          "opaqueBounds": {
+            "height": 30,
+            "width": 26,
+            "x": 6,
+            "y": 5
+          },
+          "opaqueColorCount": 5,
+          "opaquePixels": 572,
+          "pixelSha256": "6ec95e77d1083916cb3c1fb5d5f75a420c234fa260d8b8d07ff261117d797bd1",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 42,
+            "space": "native-logical-pixels",
+            "w": 38
+          },
+          "transparentPixels": 1024,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 572
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.9
+          },
+          "atlasRect": {
+            "h": 60,
+            "space": "atlas-pixels",
+            "w": 66,
+            "x": 574,
+            "y": 58
+          },
+          "colorRatio": 0.003431,
+          "dimensions": {
+            "height": 60,
+            "width": 66
+          },
+          "frameKey": "actors/enemies/glowingBat/idle",
+          "opaqueBounds": {
+            "height": 48,
+            "width": 54,
+            "x": 6,
+            "y": 5
+          },
+          "opaqueColorCount": 6,
+          "opaquePixels": 1749,
+          "pixelSha256": "8db041fbbdd5c2f233e7b1f5d513c128b5de265ed156267cf852cc234e9a740b",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 60,
+            "space": "native-logical-pixels",
+            "w": 66
+          },
+          "transparentPixels": 2211,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 1749
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.9
+          },
+          "atlasRect": {
+            "h": 60,
+            "space": "atlas-pixels",
+            "w": 66,
+            "x": 642,
+            "y": 58
+          },
+          "colorRatio": 0.003734,
+          "dimensions": {
+            "height": 60,
+            "width": 66
+          },
+          "frameKey": "actors/enemies/glowingBat/walk",
+          "opaqueBounds": {
+            "height": 48,
+            "width": 54,
+            "x": 6,
+            "y": 5
+          },
+          "opaqueColorCount": 6,
+          "opaquePixels": 1607,
+          "pixelSha256": "47dfbda4b351132eadb88a28cdd0ea8c31e43811d3a60c0ad2a6d4cb44467941",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 60,
+            "space": "native-logical-pixels",
+            "w": 66
+          },
+          "transparentPixels": 2353,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 1607
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.88
+          },
+          "atlasRect": {
+            "h": 50,
+            "space": "atlas-pixels",
+            "w": 50,
+            "x": 382,
+            "y": 58
+          },
+          "colorRatio": 0.004409,
+          "dimensions": {
+            "height": 50,
+            "width": 50
+          },
+          "frameKey": "actors/enemies/grayMudman/idle",
+          "opaqueBounds": {
+            "height": 41,
+            "width": 34,
+            "x": 8,
+            "y": 3
+          },
+          "opaqueColorCount": 5,
+          "opaquePixels": 1134,
+          "pixelSha256": "0f43ad7109fd87aee03a5425782753e1543152f21422d07aef0927c1c7617d19",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 50,
+            "space": "native-logical-pixels",
+            "w": 50
+          },
+          "transparentPixels": 1366,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 1134
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.88
+          },
+          "atlasRect": {
+            "h": 50,
+            "space": "atlas-pixels",
+            "w": 50,
+            "x": 434,
+            "y": 58
+          },
+          "colorRatio": 0.004216,
+          "dimensions": {
+            "height": 50,
+            "width": 50
+          },
+          "frameKey": "actors/enemies/grayMudman/walk",
+          "opaqueBounds": {
+            "height": 41,
+            "width": 36,
+            "x": 7,
+            "y": 3
+          },
+          "opaqueColorCount": 5,
+          "opaquePixels": 1186,
+          "pixelSha256": "b7f8ba1ccca2f20621f1b2c097f1c15e8fccdbe6e96ba71f0d138e9e82bf188c",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 50,
+            "space": "native-logical-pixels",
+            "w": 50
+          },
+          "transparentPixels": 1314,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 1186
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.88
+          },
+          "atlasRect": {
+            "h": 50,
+            "space": "atlas-pixels",
+            "w": 50,
+            "x": 278,
+            "y": 58
+          },
+          "colorRatio": 0.004823,
+          "dimensions": {
+            "height": 50,
+            "width": 50
+          },
+          "frameKey": "actors/enemies/greenMudman/idle",
+          "opaqueBounds": {
+            "height": 40,
+            "width": 43,
+            "x": 3,
+            "y": 4
+          },
+          "opaqueColorCount": 6,
+          "opaquePixels": 1244,
+          "pixelSha256": "94c69ec456dc385beba3f2a5aa4ccaf55738cae49092840b845e2e162269e20e",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 50,
+            "space": "native-logical-pixels",
+            "w": 50
+          },
+          "transparentPixels": 1256,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 1244
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.88
+          },
+          "atlasRect": {
+            "h": 50,
+            "space": "atlas-pixels",
+            "w": 50,
+            "x": 330,
+            "y": 58
+          },
+          "colorRatio": 0.004781,
+          "dimensions": {
+            "height": 50,
+            "width": 50
+          },
+          "frameKey": "actors/enemies/greenMudman/walk",
+          "opaqueBounds": {
+            "height": 40,
+            "width": 43,
+            "x": 3,
+            "y": 4
+          },
+          "opaqueColorCount": 6,
+          "opaquePixels": 1255,
+          "pixelSha256": "3f851643776b739d43dd47157383efb193cae90415b627a66375061347df3924",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 50,
+            "space": "native-logical-pixels",
+            "w": 50
+          },
+          "transparentPixels": 1245,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 1255
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.903226
+          },
+          "atlasRect": {
+            "h": 62,
+            "space": "atlas-pixels",
+            "w": 70,
+            "x": 710,
+            "y": 58
+          },
+          "colorRatio": 0.002897,
+          "dimensions": {
+            "height": 62,
+            "width": 70
+          },
+          "frameKey": "actors/enemies/mantis/idle",
+          "opaqueBounds": {
+            "height": 53,
+            "width": 62,
+            "x": 4,
+            "y": 4
+          },
+          "opaqueColorCount": 6,
+          "opaquePixels": 2071,
+          "pixelSha256": "6455d46c3e2ae5f1ba74e70a59ab81a70df52f39d277815efcdfca3175d481df",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 62,
+            "space": "native-logical-pixels",
+            "w": 70
+          },
+          "transparentPixels": 2269,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 2071
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.903226
+          },
+          "atlasRect": {
+            "h": 62,
+            "space": "atlas-pixels",
+            "w": 70,
+            "x": 782,
+            "y": 58
+          },
+          "colorRatio": 0.003057,
+          "dimensions": {
+            "height": 62,
+            "width": 70
+          },
+          "frameKey": "actors/enemies/mantis/walk",
+          "opaqueBounds": {
+            "height": 53,
+            "width": 60,
+            "x": 5,
+            "y": 4
+          },
+          "opaqueColorCount": 6,
+          "opaquePixels": 1963,
+          "pixelSha256": "d82a941def017ee1d76b4b30421d73a815bfd0e0fb0459cdb0ef7ab8697c3839",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 62,
+            "space": "native-logical-pixels",
+            "w": 70
+          },
+          "transparentPixels": 2377,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 1963
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.8
+          },
+          "atlasRect": {
+            "h": 30,
+            "space": "atlas-pixels",
+            "w": 32,
+            "x": 886,
+            "y": 2
+          },
+          "colorRatio": 0.009524,
+          "dimensions": {
+            "height": 30,
+            "width": 32
+          },
+          "frameKey": "actors/enemies/redBat/idle",
+          "opaqueBounds": {
+            "height": 21,
+            "width": 26,
+            "x": 3,
+            "y": 3
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 420,
+          "pixelSha256": "312a6b43278ce33b8866e1416706c3ff27939bfee0bb470f58bfc3d22111c65c",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 30,
+            "space": "native-logical-pixels",
+            "w": 32
+          },
+          "transparentPixels": 540,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 420
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.8
+          },
+          "atlasRect": {
+            "h": 30,
+            "space": "atlas-pixels",
+            "w": 32,
+            "x": 920,
+            "y": 2
+          },
+          "colorRatio": 0.00995,
+          "dimensions": {
+            "height": 30,
+            "width": 32
+          },
+          "frameKey": "actors/enemies/redBat/walk",
+          "opaqueBounds": {
+            "height": 19,
+            "width": 26,
+            "x": 3,
+            "y": 5
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 402,
+          "pixelSha256": "b5c65d3a510c921df3c53720c175d5c65a27998b11b7ac28620e81d0353f20da",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 30,
+            "space": "native-logical-pixels",
+            "w": 32
+          },
+          "transparentPixels": 558,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 402
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.8125
+          },
+          "atlasRect": {
+            "h": 32,
+            "space": "atlas-pixels",
+            "w": 34,
+            "x": 954,
+            "y": 2
+          },
+          "colorRatio": 0.009346,
+          "dimensions": {
+            "height": 32,
+            "width": 34
+          },
+          "frameKey": "actors/enemies/redBat2/idle",
+          "opaqueBounds": {
+            "height": 20,
+            "width": 27,
+            "x": 4,
+            "y": 5
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 428,
+          "pixelSha256": "a9fc71b207959b4dd037bcfd3ccbd71cce8c99d9f817d95a5f441892d5f5afe0",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 32,
+            "space": "native-logical-pixels",
+            "w": 34
+          },
+          "transparentPixels": 660,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 428
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.8125
+          },
+          "atlasRect": {
+            "h": 32,
+            "space": "atlas-pixels",
+            "w": 34,
+            "x": 2,
+            "y": 58
+          },
+          "colorRatio": 0.009029,
+          "dimensions": {
+            "height": 32,
+            "width": 34
+          },
+          "frameKey": "actors/enemies/redBat2/walk",
+          "opaqueBounds": {
+            "height": 20,
+            "width": 27,
+            "x": 4,
+            "y": 5
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 443,
+          "pixelSha256": "e71f99bb5ba965e3eb2f18c2c4b43cb1b237519910755fa627459e324375f66a",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 32,
+            "space": "native-logical-pixels",
+            "w": 34
+          },
+          "transparentPixels": 645,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 443
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.88
+          },
+          "atlasRect": {
+            "h": 50,
+            "space": "atlas-pixels",
+            "w": 48,
+            "x": 610,
+            "y": 2
+          },
+          "colorRatio": 0.006567,
+          "dimensions": {
+            "height": 50,
+            "width": 48
+          },
+          "frameKey": "actors/enemies/shielded/idle",
+          "opaqueBounds": {
+            "height": 40,
+            "width": 38,
+            "x": 5,
+            "y": 5
+          },
+          "opaqueColorCount": 7,
+          "opaquePixels": 1066,
+          "pixelSha256": "24d8c1c11d5a93b8a1499f3316159792c23d0b557f1be014719ae49ef95b5dce",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 50,
+            "space": "native-logical-pixels",
+            "w": 48
+          },
+          "transparentPixels": 1334,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 1066
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.88
+          },
+          "atlasRect": {
+            "h": 50,
+            "space": "atlas-pixels",
+            "w": 48,
+            "x": 660,
+            "y": 2
+          },
+          "colorRatio": 0.006404,
+          "dimensions": {
+            "height": 50,
+            "width": 48
+          },
+          "frameKey": "actors/enemies/shielded/walk",
+          "opaqueBounds": {
+            "height": 40,
+            "width": 37,
+            "x": 6,
+            "y": 5
+          },
+          "opaqueColorCount": 7,
+          "opaquePixels": 1093,
+          "pixelSha256": "795f50658a514a572b28a993fc4718484a173e272f60384550cf5d16c57e972e",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 50,
+            "space": "native-logical-pixels",
+            "w": 48
+          },
+          "transparentPixels": 1307,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 1093
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.857143
+          },
+          "atlasRect": {
+            "h": 42,
+            "space": "atlas-pixels",
+            "w": 38,
+            "x": 118,
+            "y": 58
+          },
+          "colorRatio": 0.007949,
+          "dimensions": {
+            "height": 42,
+            "width": 38
+          },
+          "frameKey": "actors/enemies/skeleton/idle",
+          "opaqueBounds": {
+            "height": 31,
+            "width": 28,
+            "x": 6,
+            "y": 6
+          },
+          "opaqueColorCount": 5,
+          "opaquePixels": 629,
+          "pixelSha256": "e0f7d02151437a9500bfa48985b0b19c274f491fa452a0a843a9e9ae53ae76bb",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 42,
+            "space": "native-logical-pixels",
+            "w": 38
+          },
+          "transparentPixels": 967,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 629
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.857143
+          },
+          "atlasRect": {
+            "h": 42,
+            "space": "atlas-pixels",
+            "w": 38,
+            "x": 158,
+            "y": 58
+          },
+          "colorRatio": 0.007634,
+          "dimensions": {
+            "height": 42,
+            "width": 38
+          },
+          "frameKey": "actors/enemies/skeleton/walk",
+          "opaqueBounds": {
+            "height": 31,
+            "width": 28,
+            "x": 4,
+            "y": 6
+          },
+          "opaqueColorCount": 5,
+          "opaquePixels": 655,
+          "pixelSha256": "cb97d6fbefaedbf93d21ff4c86f462f73526ed73735d7b83f900fb31881d2458",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 42,
+            "space": "native-logical-pixels",
+            "w": 38
+          },
+          "transparentPixels": 941,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 655
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.875
+          },
+          "atlasRect": {
+            "h": 48,
+            "space": "atlas-pixels",
+            "w": 46,
+            "x": 326,
+            "y": 2
+          },
+          "colorRatio": 0.006188,
+          "dimensions": {
+            "height": 48,
+            "width": 46
+          },
+          "frameKey": "actors/enemies/splitter/idle",
+          "opaqueBounds": {
+            "height": 36,
+            "width": 34,
+            "x": 6,
+            "y": 6
+          },
+          "opaqueColorCount": 5,
+          "opaquePixels": 808,
+          "pixelSha256": "174bbff3eed4017a5340377c993a80525938075bc024339adcf013e980c34dbb",
+          "singletonPixelCount": 1,
+          "singletonRatio": 0.001238,
+          "sourceSize": {
+            "h": 48,
+            "space": "native-logical-pixels",
+            "w": 46
+          },
+          "transparentPixels": 1400,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 808
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.875
+          },
+          "atlasRect": {
+            "h": 48,
+            "space": "atlas-pixels",
+            "w": 46,
+            "x": 374,
+            "y": 2
+          },
+          "colorRatio": 0.006188,
+          "dimensions": {
+            "height": 48,
+            "width": 46
+          },
+          "frameKey": "actors/enemies/splitter/walk",
+          "opaqueBounds": {
+            "height": 36,
+            "width": 34,
+            "x": 6,
+            "y": 6
+          },
+          "opaqueColorCount": 5,
+          "opaquePixels": 808,
+          "pixelSha256": "9a08501228d5039228d8cb34609af67ad24958d693c1d1b2337df1be8cb39703",
+          "singletonPixelCount": 1,
+          "singletonRatio": 0.001238,
+          "sourceSize": {
+            "h": 48,
+            "space": "native-logical-pixels",
+            "w": 46
+          },
+          "transparentPixels": 1400,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 808
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.769231
+          },
+          "atlasRect": {
+            "h": 26,
+            "space": "atlas-pixels",
+            "w": 28,
+            "x": 86,
+            "y": 2
+          },
+          "colorRatio": 0.021739,
+          "dimensions": {
+            "height": 26,
+            "width": 28
+          },
+          "frameKey": "actors/enemies/swarmer/idle",
+          "opaqueBounds": {
+            "height": 14,
+            "width": 17,
+            "x": 5,
+            "y": 5
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 184,
+          "pixelSha256": "0266f2b29bd189d6243473a1c3fb8e052d249e44e5ddda7e6cae8fc7f6e76ce4",
+          "singletonPixelCount": 1,
+          "singletonRatio": 0.005435,
+          "sourceSize": {
+            "h": 26,
+            "space": "native-logical-pixels",
+            "w": 28
+          },
+          "transparentPixels": 544,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 184
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.769231
+          },
+          "atlasRect": {
+            "h": 26,
+            "space": "atlas-pixels",
+            "w": 28,
+            "x": 116,
+            "y": 2
+          },
+          "colorRatio": 0.022857,
+          "dimensions": {
+            "height": 26,
+            "width": 28
+          },
+          "frameKey": "actors/enemies/swarmer/walk",
+          "opaqueBounds": {
+            "height": 14,
+            "width": 17,
+            "x": 5,
+            "y": 5
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 175,
+          "pixelSha256": "5a6c23b9fea36344980c580492d8aabb7e033010db6775318cc4aa1dc42790ac",
+          "singletonPixelCount": 1,
+          "singletonRatio": 0.005714,
+          "sourceSize": {
+            "h": 26,
+            "space": "native-logical-pixels",
+            "w": 28
+          },
+          "transparentPixels": 553,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 175
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.884615
+          },
+          "atlasRect": {
+            "h": 52,
+            "space": "atlas-pixels",
+            "w": 52,
+            "x": 146,
+            "y": 2
+          },
+          "colorRatio": 0.003771,
+          "dimensions": {
+            "height": 52,
+            "width": 52
+          },
+          "frameKey": "actors/enemies/tank/idle",
+          "opaqueBounds": {
+            "height": 42,
+            "width": 44,
+            "x": 4,
+            "y": 5
+          },
+          "opaqueColorCount": 5,
+          "opaquePixels": 1326,
+          "pixelSha256": "72cb38c30302a315b2ffab49d8f2f3d079e182d674b3d4a6b31a767e187186f2",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 52,
+            "space": "native-logical-pixels",
+            "w": 52
+          },
+          "transparentPixels": 1378,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 1326
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.884615
+          },
+          "atlasRect": {
+            "h": 52,
+            "space": "atlas-pixels",
+            "w": 52,
+            "x": 200,
+            "y": 2
+          },
+          "colorRatio": 0.003745,
+          "dimensions": {
+            "height": 52,
+            "width": 52
+          },
+          "frameKey": "actors/enemies/tank/walk",
+          "opaqueBounds": {
+            "height": 42,
+            "width": 44,
+            "x": 4,
+            "y": 5
+          },
+          "opaqueColorCount": 5,
+          "opaquePixels": 1335,
+          "pixelSha256": "942213f52402f3776858f7d5c3cb299895baf18fe97e0ac58d26376266a61805",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 52,
+            "space": "native-logical-pixels",
+            "w": 52
+          },
+          "transparentPixels": 1369,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 1335
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.857143
+          },
+          "atlasRect": {
+            "h": 42,
+            "space": "atlas-pixels",
+            "w": 38,
+            "x": 38,
+            "y": 58
+          },
+          "colorRatio": 0.008446,
+          "dimensions": {
+            "height": 42,
+            "width": 38
+          },
+          "frameKey": "actors/enemies/zombie/idle",
+          "opaqueBounds": {
+            "height": 30,
+            "width": 26,
+            "x": 5,
+            "y": 6
+          },
+          "opaqueColorCount": 5,
+          "opaquePixels": 592,
+          "pixelSha256": "d8b534eb9e604069bd7240d4a60ee7f096c3c686619fab5d52d7243c4e06324c",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 42,
+            "space": "native-logical-pixels",
+            "w": 38
+          },
+          "transparentPixels": 1004,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 592
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.857143
+          },
+          "atlasRect": {
+            "h": 42,
+            "space": "atlas-pixels",
+            "w": 38,
+            "x": 78,
+            "y": 58
+          },
+          "colorRatio": 0.008375,
+          "dimensions": {
+            "height": 42,
+            "width": 38
+          },
+          "frameKey": "actors/enemies/zombie/walk",
+          "opaqueBounds": {
+            "height": 30,
+            "width": 25,
+            "x": 5,
+            "y": 6
+          },
+          "opaqueColorCount": 5,
+          "opaquePixels": 597,
+          "pixelSha256": "3605d90e299df1275704f712b1cf0e5c3817d4486fd48b6bb7c4736077254f84",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 42,
+            "space": "native-logical-pixels",
+            "w": 38
+          },
+          "transparentPixels": 999,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 597
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.863636
+          },
+          "atlasRect": {
+            "h": 44,
+            "space": "atlas-pixels",
+            "w": 40,
+            "x": 2,
+            "y": 2
+          },
+          "colorRatio": 0.008197,
+          "dimensions": {
+            "height": 44,
+            "width": 40
+          },
+          "frameKey": "actors/player/idle",
+          "opaqueBounds": {
+            "height": 34,
+            "width": 30,
+            "x": 5,
+            "y": 4
+          },
+          "opaqueColorCount": 6,
+          "opaquePixels": 732,
+          "pixelSha256": "d33fac5814266d193557f10c484c7276df29f58097ba2c86a98c951fce6b7a11",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 44,
+            "space": "native-logical-pixels",
+            "w": 40
+          },
+          "transparentPixels": 1028,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 732
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.863636
+          },
+          "atlasRect": {
+            "h": 44,
+            "space": "atlas-pixels",
+            "w": 40,
+            "x": 44,
+            "y": 2
+          },
+          "colorRatio": 0.008253,
+          "dimensions": {
+            "height": 44,
+            "width": 40
+          },
+          "frameKey": "actors/player/walk",
+          "opaqueBounds": {
+            "height": 34,
+            "width": 30,
+            "x": 5,
+            "y": 4
+          },
+          "opaqueColorCount": 6,
+          "opaquePixels": 727,
+          "pixelSha256": "6f4109a4cdec34ac205a264671c21a8662c73e4b7c9e933a121791e30fad6793",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 44,
+            "space": "native-logical-pixels",
+            "w": 40
+          },
+          "transparentPixels": 1033,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 727
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 50,
+            "space": "atlas-pixels",
+            "w": 52,
+            "x": 562,
+            "y": 200
+          },
+          "colorRatio": 0.011111,
+          "dimensions": {
+            "height": 50,
+            "width": 52
+          },
+          "frameKey": "fx/celebration",
+          "opaqueBounds": {
+            "height": 38,
+            "width": 41,
+            "x": 6,
+            "y": 6
+          },
+          "opaqueColorCount": 6,
+          "opaquePixels": 540,
+          "pixelSha256": "e96d30fdc149801d01a33c913502ce18a239808165b09beaeabb82b9b325e7a7",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 50,
+            "space": "native-logical-pixels",
+            "w": 52
+          },
+          "transparentPixels": 2060,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 540
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 46,
+            "space": "atlas-pixels",
+            "w": 46,
+            "x": 478,
+            "y": 200
+          },
+          "colorRatio": 0.005772,
+          "dimensions": {
+            "height": 46,
+            "width": 46
+          },
+          "frameKey": "fx/death",
+          "opaqueBounds": {
+            "height": 32,
+            "width": 34,
+            "x": 9,
+            "y": 7
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 693,
+          "pixelSha256": "10d8bbed1d958b13d3a8d22012384d42e69054b7d43412bd814132d9087b254e",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 46,
+            "space": "native-logical-pixels",
+            "w": 46
+          },
+          "transparentPixels": 1423,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 693
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 48,
+            "space": "atlas-pixels",
+            "w": 48,
+            "x": 428,
+            "y": 200
+          },
+          "colorRatio": 0.003918,
+          "dimensions": {
+            "height": 48,
+            "width": 48
+          },
+          "frameKey": "fx/explosion",
+          "opaqueBounds": {
+            "height": 40,
+            "width": 37,
+            "x": 6,
+            "y": 4
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 1021,
+          "pixelSha256": "912fc2bb9700c38278ca6f5b3630b67b6427b4edc17cfa4ec3c4663a299fa25b",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 48,
+            "space": "native-logical-pixels",
+            "w": 48
+          },
+          "transparentPixels": 1283,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 1021
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 30,
+            "space": "atlas-pixels",
+            "w": 30,
+            "x": 358,
+            "y": 200
+          },
+          "colorRatio": 0.009677,
+          "dimensions": {
+            "height": 30,
+            "width": 30
+          },
+          "frameKey": "fx/impact-cyan",
+          "opaqueBounds": {
+            "height": 23,
+            "width": 23,
+            "x": 4,
+            "y": 4
+          },
+          "opaqueColorCount": 3,
+          "opaquePixels": 310,
+          "pixelSha256": "ca0e712a868939841a3c1b4dd5244638a3ef2fce4fd092d3026c30c09a476d3f",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 30,
+            "space": "native-logical-pixels",
+            "w": 30
+          },
+          "transparentPixels": 590,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 310
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 36,
+            "space": "atlas-pixels",
+            "w": 36,
+            "x": 390,
+            "y": 200
+          },
+          "colorRatio": 0.007042,
+          "dimensions": {
+            "height": 36,
+            "width": 36
+          },
+          "frameKey": "fx/impact-gold",
+          "opaqueBounds": {
+            "height": 29,
+            "width": 29,
+            "x": 4,
+            "y": 4
+          },
+          "opaqueColorCount": 3,
+          "opaquePixels": 426,
+          "pixelSha256": "fed5e3aeb5a2400f39fb35b8c4639cc8db8cf47eeb21529eae020dfb34a69472",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 36,
+            "space": "native-logical-pixels",
+            "w": 36
+          },
+          "transparentPixels": 870,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 426
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 38,
+            "space": "atlas-pixels",
+            "w": 34,
+            "x": 526,
+            "y": 200
+          },
+          "colorRatio": 0.013201,
+          "dimensions": {
+            "height": 38,
+            "width": 34
+          },
+          "frameKey": "fx/xp-collect",
+          "opaqueBounds": {
+            "height": 24,
+            "width": 21,
+            "x": 6,
+            "y": 7
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 303,
+          "pixelSha256": "ae08d5bc4ca8ae38cef1e063c60da4d12efd2c2a076e665a6383a4f63782f984",
+          "singletonPixelCount": 1,
+          "singletonRatio": 0.0033,
+          "sourceSize": {
+            "h": 38,
+            "space": "native-logical-pixels",
+            "w": 34
+          },
+          "transparentPixels": 989,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 303
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 44,
+            "space": "atlas-pixels",
+            "w": 46,
+            "x": 310,
+            "y": 200
+          },
+          "colorRatio": 0.005671,
+          "dimensions": {
+            "height": 44,
+            "width": 46
+          },
+          "frameKey": "pickups/evolution-chest",
+          "opaqueBounds": {
+            "height": 33,
+            "width": 36,
+            "x": 5,
+            "y": 5
+          },
+          "opaqueColorCount": 6,
+          "opaquePixels": 1058,
+          "pixelSha256": "4cc7ad695dd15f5b9dad11e0abb2b34e6588608f0da55c2a00d08cef3f696dfa",
+          "singletonPixelCount": 1,
+          "singletonRatio": 0.000945,
+          "sourceSize": {
+            "h": 44,
+            "space": "native-logical-pixels",
+            "w": 46
+          },
+          "transparentPixels": 966,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 1058
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 24,
+            "space": "atlas-pixels",
+            "w": 22,
+            "x": 242,
+            "y": 200
+          },
+          "colorRatio": 0.028369,
+          "dimensions": {
+            "height": 24,
+            "width": 22
+          },
+          "frameKey": "pickups/music-note",
+          "opaqueBounds": {
+            "height": 14,
+            "width": 15,
+            "x": 4,
+            "y": 6
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 141,
+          "pixelSha256": "6581fd5732f577f6d323b81406e214625e937f810a96dd83bd1c4a0b4406681a",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 24,
+            "space": "native-logical-pixels",
+            "w": 22
+          },
+          "transparentPixels": 387,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 141
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 44,
+            "space": "atlas-pixels",
+            "w": 42,
+            "x": 266,
+            "y": 200
+          },
+          "colorRatio": 0.008065,
+          "dimensions": {
+            "height": 44,
+            "width": 42
+          },
+          "frameKey": "pickups/reward-pedestal",
+          "opaqueBounds": {
+            "height": 34,
+            "width": 28,
+            "x": 7,
+            "y": 5
+          },
+          "opaqueColorCount": 6,
+          "opaquePixels": 744,
+          "pixelSha256": "799906c33381e56635c9fdf19de9dd972e010cd9f84e55e63efcc51916bc232c",
+          "singletonPixelCount": 1,
+          "singletonRatio": 0.001344,
+          "sourceSize": {
+            "h": 44,
+            "space": "native-logical-pixels",
+            "w": 42
+          },
+          "transparentPixels": 1104,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 744
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 20,
+            "space": "atlas-pixels",
+            "w": 20,
+            "x": 170,
+            "y": 200
+          },
+          "colorRatio": 0.045455,
+          "dimensions": {
+            "height": 20,
+            "width": 20
+          },
+          "frameKey": "pickups/xp-blue",
+          "opaqueBounds": {
+            "height": 9,
+            "width": 10,
+            "x": 5,
+            "y": 6
+          },
+          "opaqueColorCount": 3,
+          "opaquePixels": 66,
+          "pixelSha256": "0c62d46236758bb643f95f327e45c7043cb2adb9b764ebcb72d733edbbc684a8",
+          "singletonPixelCount": 1,
+          "singletonRatio": 0.015152,
+          "sourceSize": {
+            "h": 20,
+            "space": "native-logical-pixels",
+            "w": 20
+          },
+          "transparentPixels": 334,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 66
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 22,
+            "space": "atlas-pixels",
+            "w": 22,
+            "x": 192,
+            "y": 200
+          },
+          "colorRatio": 0.054348,
+          "dimensions": {
+            "height": 22,
+            "width": 22
+          },
+          "frameKey": "pickups/xp-green",
+          "opaqueBounds": {
+            "height": 11,
+            "width": 12,
+            "x": 5,
+            "y": 6
+          },
+          "opaqueColorCount": 5,
+          "opaquePixels": 92,
+          "pixelSha256": "dfa0b31ab3251f69c2f926cfba9a43e8501c5da453fdf16eba3e38204df5d66b",
+          "singletonPixelCount": 2,
+          "singletonRatio": 0.021739,
+          "sourceSize": {
+            "h": 22,
+            "space": "native-logical-pixels",
+            "w": 22
+          },
+          "transparentPixels": 392,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 92
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 24,
+            "space": "atlas-pixels",
+            "w": 24,
+            "x": 216,
+            "y": 200
+          },
+          "colorRatio": 0.032787,
+          "dimensions": {
+            "height": 24,
+            "width": 24
+          },
+          "frameKey": "pickups/xp-red",
+          "opaqueBounds": {
+            "height": 13,
+            "width": 14,
+            "x": 5,
+            "y": 6
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 122,
+          "pixelSha256": "4e61eb10e2a853e596f1e8aee7596f20885dfdf6a3916d28f4eaee14d51b98a6",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 24,
+            "space": "native-logical-pixels",
+            "w": 24
+          },
+          "transparentPixels": 454,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 122
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 56,
+            "space": "atlas-pixels",
+            "w": 56,
+            "x": 876,
+            "y": 122
+          },
+          "colorRatio": 0.003828,
+          "dimensions": {
+            "height": 56,
+            "width": 56
+          },
+          "frameKey": "weapons/arp/evolved",
+          "opaqueBounds": {
+            "height": 33,
+            "width": 46,
+            "x": 5,
+            "y": 7
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 1045,
+          "pixelSha256": "df1525df18fe27291d44ade6b2bd43fa58f28a3a69460aef266c88f6ffc98276",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 56,
+            "space": "native-logical-pixels",
+            "w": 56
+          },
+          "transparentPixels": 2091,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 1045
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 46,
+            "space": "atlas-pixels",
+            "w": 46,
+            "x": 284,
+            "y": 122
+          },
+          "colorRatio": 0.005425,
+          "dimensions": {
+            "height": 46,
+            "width": 46
+          },
+          "frameKey": "weapons/arp/normal",
+          "opaqueBounds": {
+            "height": 37,
+            "width": 38,
+            "x": 4,
+            "y": 5
+          },
+          "opaqueColorCount": 3,
+          "opaquePixels": 553,
+          "pixelSha256": "08dec671827e24a2689582b358066ede2f8b1f359af40d113711e9192522f7c5",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 46,
+            "space": "native-logical-pixels",
+            "w": 46
+          },
+          "transparentPixels": 1563,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 553
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 76,
+            "space": "atlas-pixels",
+            "w": 124,
+            "x": 700,
+            "y": 122
+          },
+          "colorRatio": 0.004934,
+          "dimensions": {
+            "height": 76,
+            "width": 124
+          },
+          "frameKey": "weapons/bass/evolved",
+          "opaqueBounds": {
+            "height": 28,
+            "width": 110,
+            "x": 7,
+            "y": 25
+          },
+          "opaqueColorCount": 3,
+          "opaquePixels": 608,
+          "pixelSha256": "051c40e131443391cc21b3dc02f20bbc5f8e5342caae0545c14e229c73d93829",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 76,
+            "space": "native-logical-pixels",
+            "w": 124
+          },
+          "transparentPixels": 8816,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 608
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 68,
+            "space": "atlas-pixels",
+            "w": 116,
+            "x": 128,
+            "y": 122
+          },
+          "colorRatio": 0.005277,
+          "dimensions": {
+            "height": 68,
+            "width": 116
+          },
+          "frameKey": "weapons/bass/normal",
+          "opaqueBounds": {
+            "height": 20,
+            "width": 102,
+            "x": 7,
+            "y": 25
+          },
+          "opaqueColorCount": 2,
+          "opaquePixels": 379,
+          "pixelSha256": "03ee74e170407a62ca5587c94f182913d24f72177401f0cf368c1493078becc7",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 68,
+            "space": "native-logical-pixels",
+            "w": 116
+          },
+          "transparentPixels": 7509,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 379
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 48,
+            "space": "atlas-pixels",
+            "w": 48,
+            "x": 120,
+            "y": 200
+          },
+          "colorRatio": 0.003839,
+          "dimensions": {
+            "height": 48,
+            "width": 48
+          },
+          "frameKey": "weapons/bell/evolved",
+          "opaqueBounds": {
+            "height": 38,
+            "width": 40,
+            "x": 4,
+            "y": 5
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 1042,
+          "pixelSha256": "e4c39d48efd32b55c00ae840f90f2d775b0cbf93ee5b475ae9216b8fd2e3e788",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 48,
+            "space": "native-logical-pixels",
+            "w": 48
+          },
+          "transparentPixels": 1262,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 1042
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 36,
+            "space": "atlas-pixels",
+            "w": 36,
+            "x": 434,
+            "y": 122
+          },
+          "colorRatio": 0.00471,
+          "dimensions": {
+            "height": 36,
+            "width": 36
+          },
+          "frameKey": "weapons/bell/normal",
+          "opaqueBounds": {
+            "height": 29,
+            "width": 29,
+            "x": 4,
+            "y": 5
+          },
+          "opaqueColorCount": 3,
+          "opaquePixels": 637,
+          "pixelSha256": "6f4ff00dbf1ac01e80c7ee22f65bdf86f369e65ed25afbe20aea5bd36c3b3250",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 36,
+            "space": "native-logical-pixels",
+            "w": 36
+          },
+          "transparentPixels": 659,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 637
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 76,
+            "space": "atlas-pixels",
+            "w": 116,
+            "x": 2,
+            "y": 200
+          },
+          "colorRatio": 0.001631,
+          "dimensions": {
+            "height": 76,
+            "width": 116
+          },
+          "frameKey": "weapons/chord/evolved",
+          "opaqueBounds": {
+            "height": 62,
+            "width": 106,
+            "x": 5,
+            "y": 7
+          },
+          "opaqueColorCount": 5,
+          "opaquePixels": 3065,
+          "pixelSha256": "e2f2aaccd16bf72ebb8d6bbd997bd396736fa411f93e3860a772301a65400d0c",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 76,
+            "space": "native-logical-pixels",
+            "w": 116
+          },
+          "transparentPixels": 5751,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 3065
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 68,
+            "space": "atlas-pixels",
+            "w": 100,
+            "x": 332,
+            "y": 122
+          },
+          "colorRatio": 0.001927,
+          "dimensions": {
+            "height": 68,
+            "width": 100
+          },
+          "frameKey": "weapons/chord/normal",
+          "opaqueBounds": {
+            "height": 58,
+            "width": 90,
+            "x": 5,
+            "y": 5
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 2076,
+          "pixelSha256": "3c0c491301019d6fadb6c6c9059214f1b7a9663459b2f43faa5cf3bf60586120",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 68,
+            "space": "native-logical-pixels",
+            "w": 100
+          },
+          "transparentPixels": 4724,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 2076
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 44,
+            "space": "atlas-pixels",
+            "w": 66,
+            "x": 538,
+            "y": 122
+          },
+          "colorRatio": 0.003306,
+          "dimensions": {
+            "height": 44,
+            "width": 66
+          },
+          "frameKey": "weapons/clap/evolved",
+          "opaqueBounds": {
+            "height": 33,
+            "width": 53,
+            "x": 7,
+            "y": 6
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 1210,
+          "pixelSha256": "312114633ba66208fe0f0098dd8914565926f8a734f6b1a83afd50fbfc5287bb",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 44,
+            "space": "native-logical-pixels",
+            "w": 66
+          },
+          "transparentPixels": 1694,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 1210
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 36,
+            "space": "atlas-pixels",
+            "w": 52,
+            "x": 2,
+            "y": 122
+          },
+          "colorRatio": 0.00554,
+          "dimensions": {
+            "height": 36,
+            "width": 52
+          },
+          "frameKey": "weapons/clap/normal",
+          "opaqueBounds": {
+            "height": 24,
+            "width": 46,
+            "x": 3,
+            "y": 6
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 722,
+          "pixelSha256": "49562607497634a47f29fe1b74e1b9e47ac874375185b29dd5802b2474a0a73b",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 36,
+            "space": "native-logical-pixels",
+            "w": 52
+          },
+          "transparentPixels": 1150,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 722
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 38,
+            "space": "atlas-pixels",
+            "w": 46,
+            "x": 652,
+            "y": 122
+          },
+          "colorRatio": 0.005997,
+          "dimensions": {
+            "height": 38,
+            "width": 46
+          },
+          "frameKey": "weapons/hat/evolved",
+          "opaqueBounds": {
+            "height": 32,
+            "width": 41,
+            "x": 2,
+            "y": 3
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 667,
+          "pixelSha256": "62d9565bc5f7372d1b6ba4bbe36c4b6399710ad1bed6ffd1aa7fe47a325c3b42",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 38,
+            "space": "native-logical-pixels",
+            "w": 46
+          },
+          "transparentPixels": 1081,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 667
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 30,
+            "space": "atlas-pixels",
+            "w": 34,
+            "x": 92,
+            "y": 122
+          },
+          "colorRatio": 0.009677,
+          "dimensions": {
+            "height": 30,
+            "width": 34
+          },
+          "frameKey": "weapons/hat/normal",
+          "opaqueBounds": {
+            "height": 15,
+            "width": 30,
+            "x": 2,
+            "y": 8
+          },
+          "opaqueColorCount": 3,
+          "opaquePixels": 310,
+          "pixelSha256": "730a8194384ebfddcedda6b820657f73884cdc47d19f58a27bb885c7ab818484",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 30,
+            "space": "native-logical-pixels",
+            "w": 34
+          },
+          "transparentPixels": 710,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 310
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 42,
+            "space": "atlas-pixels",
+            "w": 64,
+            "x": 472,
+            "y": 122
+          },
+          "colorRatio": 0.003623,
+          "dimensions": {
+            "height": 42,
+            "width": 64
+          },
+          "frameKey": "weapons/kick/evolved",
+          "opaqueBounds": {
+            "height": 35,
+            "width": 54,
+            "x": 5,
+            "y": 3
+          },
+          "opaqueColorCount": 5,
+          "opaquePixels": 1380,
+          "pixelSha256": "8315d6f68b42c4484efc1cd8efb794a7d1b7884c3f7fd623f759ea7d746f918e",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 42,
+            "space": "native-logical-pixels",
+            "w": 64
+          },
+          "transparentPixels": 1308,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 1380
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 34,
+            "space": "atlas-pixels",
+            "w": 52,
+            "x": 934,
+            "y": 58
+          },
+          "colorRatio": 0.004601,
+          "dimensions": {
+            "height": 34,
+            "width": 52
+          },
+          "frameKey": "weapons/kick/normal",
+          "opaqueBounds": {
+            "height": 23,
+            "width": 44,
+            "x": 4,
+            "y": 6
+          },
+          "opaqueColorCount": 3,
+          "opaquePixels": 652,
+          "pixelSha256": "5a747217c84fa4d300bc29cadafbec9da0759c21b6823ba03965e56a3d2802f2",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 34,
+            "space": "native-logical-pixels",
+            "w": 52
+          },
+          "transparentPixels": 1116,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 652
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 38,
+            "space": "atlas-pixels",
+            "w": 48,
+            "x": 826,
+            "y": 122
+          },
+          "colorRatio": 0.007394,
+          "dimensions": {
+            "height": 38,
+            "width": 48
+          },
+          "frameKey": "weapons/lead/evolved",
+          "opaqueBounds": {
+            "height": 25,
+            "width": 41,
+            "x": 3,
+            "y": 6
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 541,
+          "pixelSha256": "2ea6176bd7acebeb2ebd0b00d90e0582cc9dbc33c8376e9d086acfb6efcdfa5c",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 38,
+            "space": "native-logical-pixels",
+            "w": 48
+          },
+          "transparentPixels": 1283,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 541
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 30,
+            "space": "atlas-pixels",
+            "w": 36,
+            "x": 246,
+            "y": 122
+          },
+          "colorRatio": 0.008902,
+          "dimensions": {
+            "height": 30,
+            "width": 36
+          },
+          "frameKey": "weapons/lead/normal",
+          "opaqueBounds": {
+            "height": 18,
+            "width": 27,
+            "x": 4,
+            "y": 6
+          },
+          "opaqueColorCount": 3,
+          "opaquePixels": 337,
+          "pixelSha256": "cc9dc8361d3968afed2328791f137f89abfff901aca07f80c4c2f282c4402170",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 30,
+            "space": "native-logical-pixels",
+            "w": 36
+          },
+          "transparentPixels": 743,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 337
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 38,
+            "space": "atlas-pixels",
+            "w": 44,
+            "x": 606,
+            "y": 122
+          },
+          "colorRatio": 0.00659,
+          "dimensions": {
+            "height": 38,
+            "width": 44
+          },
+          "frameKey": "weapons/snare/evolved",
+          "opaqueBounds": {
+            "height": 21,
+            "width": 36,
+            "x": 4,
+            "y": 9
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 607,
+          "pixelSha256": "2e401440e7d2fdcb63cae8e96805571b48fa6388a43d09588cb4f6eb0d381a78",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 38,
+            "space": "native-logical-pixels",
+            "w": 44
+          },
+          "transparentPixels": 1065,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 607
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 30,
+            "space": "atlas-pixels",
+            "w": 34,
+            "x": 56,
+            "y": 122
+          },
+          "colorRatio": 0.018605,
+          "dimensions": {
+            "height": 30,
+            "width": 34
+          },
+          "frameKey": "weapons/snare/normal",
+          "opaqueBounds": {
+            "height": 15,
+            "width": 25,
+            "x": 5,
+            "y": 11
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 215,
+          "pixelSha256": "431766c518d4503ce96d937964c7be5d7cec6c30b1b85ff7f6cf925603ce8a4a",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 30,
+            "space": "native-logical-pixels",
+            "w": 34
+          },
+          "transparentPixels": 805,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 215
+        }
+      ],
+      "id": "gameplay",
+      "image": {
+        "alpha": {
+          "distinctValues": [
+            0,
+            255
+          ],
+          "maximum": 255,
+          "minimum": 0,
+          "softPixelCount": 0
+        },
+        "colorRatio": 0.000228,
+        "dimensions": {
+          "height": 512,
+          "width": 1024
+        },
+        "fileSha256": "999ef6e2910a580f2fafdb153b588f709c567562a126a83e1ff7c1cc3390a641",
+        "opaqueBounds": {
+          "height": 264,
+          "width": 980,
+          "x": 5,
+          "y": 5
+        },
+        "opaqueColorCount": 13,
+        "opaquePixels": 56951,
+        "pixelSha256": "91d6b4e2893353ca48b43d88ecdc3bd8b58a19916950c62d06e24b9f7881a152",
+        "png": {
+          "bitDepth": 8,
+          "colorType": "RGBA",
+          "interlace": 0
+        },
+        "singletonPixelCount": 0,
+        "singletonRatio": 0,
+        "transparentPixels": 467337,
+        "transparentRgbNonZeroPixels": 0,
+        "visiblePixels": 56951
+      },
+      "imagePath": "public/art/pixel/gameplay.png",
+      "jsonPath": "public/art/pixel/gameplay.json"
+    },
+    {
+      "frameCount": 20,
+      "frames": [
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 24,
+            "space": "atlas-pixels",
+            "w": 24,
+            "x": 106,
+            "y": 70
+          },
+          "colorRatio": 0.017094,
+          "dimensions": {
+            "height": 24,
+            "width": 24
+          },
+          "frameKey": "ui/actions/enemy-skull",
+          "opaqueBounds": {
+            "height": 18,
+            "width": 17,
+            "x": 4,
+            "y": 2
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 234,
+          "pixelSha256": "a05716bdc7b60a066292d3544b4f0d1d1e79d82166e4086b144c4db1f3886fc5",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 24,
+            "space": "native-logical-pixels",
+            "w": 24
+          },
+          "transparentPixels": 342,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 234
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 24,
+            "space": "atlas-pixels",
+            "w": 24,
+            "x": 54,
+            "y": 70
+          },
+          "colorRatio": 0.02139,
+          "dimensions": {
+            "height": 24,
+            "width": 24
+          },
+          "frameKey": "ui/actions/evolution",
+          "opaqueBounds": {
+            "height": 15,
+            "width": 16,
+            "x": 5,
+            "y": 5
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 187,
+          "pixelSha256": "15253814741763c9ee134711e312d5cae7fa0f6e2cd9702d9f262b20dddcf3a5",
+          "singletonPixelCount": 1,
+          "singletonRatio": 0.005348,
+          "sourceSize": {
+            "h": 24,
+            "space": "native-logical-pixels",
+            "w": 24
+          },
+          "transparentPixels": 389,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 187
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 24,
+            "space": "atlas-pixels",
+            "w": 24,
+            "x": 2,
+            "y": 70
+          },
+          "colorRatio": 0.012346,
+          "dimensions": {
+            "height": 24,
+            "width": 24
+          },
+          "frameKey": "ui/actions/reroll",
+          "opaqueBounds": {
+            "height": 18,
+            "width": 18,
+            "x": 3,
+            "y": 4
+          },
+          "opaqueColorCount": 3,
+          "opaquePixels": 243,
+          "pixelSha256": "4ce3514778eb2b16e9174a2db9d1556c252395f32ab0b1c7d45b158846d8cee3",
+          "singletonPixelCount": 1,
+          "singletonRatio": 0.004115,
+          "sourceSize": {
+            "h": 24,
+            "space": "native-logical-pixels",
+            "w": 24
+          },
+          "transparentPixels": 333,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 243
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 24,
+            "space": "atlas-pixels",
+            "w": 24,
+            "x": 28,
+            "y": 70
+          },
+          "colorRatio": 0.015038,
+          "dimensions": {
+            "height": 24,
+            "width": 24
+          },
+          "frameKey": "ui/actions/shop",
+          "opaqueBounds": {
+            "height": 17,
+            "width": 17,
+            "x": 4,
+            "y": 4
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 266,
+          "pixelSha256": "f5f4510df726f49511ec389b07d01ade5c495c46e6cd06a1f2ff0fd182d24510",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 24,
+            "space": "native-logical-pixels",
+            "w": 24
+          },
+          "transparentPixels": 310,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 266
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 24,
+            "space": "atlas-pixels",
+            "w": 24,
+            "x": 80,
+            "y": 70
+          },
+          "colorRatio": 0.02809,
+          "dimensions": {
+            "height": 24,
+            "width": 24
+          },
+          "frameKey": "ui/actions/weapon-pedestal",
+          "opaqueBounds": {
+            "height": 16,
+            "width": 18,
+            "x": 3,
+            "y": 5
+          },
+          "opaqueColorCount": 5,
+          "opaquePixels": 178,
+          "pixelSha256": "c75c0d45ff9a21ea9b4c0bdb71ef35fffb15da6ae96480041e5ac0774f564e8c",
+          "singletonPixelCount": 1,
+          "singletonRatio": 0.005618,
+          "sourceSize": {
+            "h": 24,
+            "space": "native-logical-pixels",
+            "w": 24
+          },
+          "transparentPixels": 398,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 178
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 32,
+            "space": "atlas-pixels",
+            "w": 32,
+            "x": 206,
+            "y": 2
+          },
+          "colorRatio": 0.015625,
+          "dimensions": {
+            "height": 32,
+            "width": 32
+          },
+          "frameKey": "ui/items/extensionCable",
+          "opaqueBounds": {
+            "height": 20,
+            "width": 22,
+            "x": 5,
+            "y": 7
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 256,
+          "pixelSha256": "383d83f9b956d5d72934d9fdd2155f99b5e80b54a6ffd6bcdc7eb7828b4c471d",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 32,
+            "space": "native-logical-pixels",
+            "w": 32
+          },
+          "transparentPixels": 768,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 256
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 32,
+            "space": "atlas-pixels",
+            "w": 32,
+            "x": 36,
+            "y": 2
+          },
+          "colorRatio": 0.012658,
+          "dimensions": {
+            "height": 32,
+            "width": 32
+          },
+          "frameKey": "ui/items/fastForward",
+          "opaqueBounds": {
+            "height": 15,
+            "width": 21,
+            "x": 5,
+            "y": 9
+          },
+          "opaqueColorCount": 3,
+          "opaquePixels": 237,
+          "pixelSha256": "e326a72d72c27f320a225d7951a23695be0987af0ef90f09666dd49b5e079c79",
+          "singletonPixelCount": 1,
+          "singletonRatio": 0.004219,
+          "sourceSize": {
+            "h": 32,
+            "space": "native-logical-pixels",
+            "w": 32
+          },
+          "transparentPixels": 787,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 237
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 32,
+            "space": "atlas-pixels",
+            "w": 32,
+            "x": 172,
+            "y": 2
+          },
+          "colorRatio": 0.009091,
+          "dimensions": {
+            "height": 32,
+            "width": 32
+          },
+          "frameKey": "ui/items/heavyAmp",
+          "opaqueBounds": {
+            "height": 22,
+            "width": 20,
+            "x": 6,
+            "y": 5
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 440,
+          "pixelSha256": "3b0763567905beefdd19cdab5b290a252980f0fbebee76b34b4ae3ea3e080b64",
+          "singletonPixelCount": 1,
+          "singletonRatio": 0.002273,
+          "sourceSize": {
+            "h": 32,
+            "space": "native-logical-pixels",
+            "w": 32
+          },
+          "transparentPixels": 584,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 440
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 32,
+            "space": "atlas-pixels",
+            "w": 32,
+            "x": 2,
+            "y": 2
+          },
+          "colorRatio": 0.013953,
+          "dimensions": {
+            "height": 32,
+            "width": 32
+          },
+          "frameKey": "ui/items/highTops",
+          "opaqueBounds": {
+            "height": 15,
+            "width": 21,
+            "x": 5,
+            "y": 11
+          },
+          "opaqueColorCount": 3,
+          "opaquePixels": 215,
+          "pixelSha256": "73f0cbf7273a92a669ffeb2515c20ad79362203f6cf545c6e55f67d2051b61bf",
+          "singletonPixelCount": 1,
+          "singletonRatio": 0.004651,
+          "sourceSize": {
+            "h": 32,
+            "space": "native-logical-pixels",
+            "w": 32
+          },
+          "transparentPixels": 809,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 215
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 32,
+            "space": "atlas-pixels",
+            "w": 32,
+            "x": 2,
+            "y": 36
+          },
+          "colorRatio": 0.009346,
+          "dimensions": {
+            "height": 32,
+            "width": 32
+          },
+          "frameKey": "ui/items/magnetLanyard",
+          "opaqueBounds": {
+            "height": 21,
+            "width": 20,
+            "x": 6,
+            "y": 6
+          },
+          "opaqueColorCount": 3,
+          "opaquePixels": 321,
+          "pixelSha256": "a6245c537c699aa133290a1569b632efe737f33ca1ace48c78e087e492c16ae4",
+          "singletonPixelCount": 1,
+          "singletonRatio": 0.003115,
+          "sourceSize": {
+            "h": 32,
+            "space": "native-logical-pixels",
+            "w": 32
+          },
+          "transparentPixels": 703,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 321
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 32,
+            "space": "atlas-pixels",
+            "w": 32,
+            "x": 104,
+            "y": 2
+          },
+          "colorRatio": 0.017857,
+          "dimensions": {
+            "height": 32,
+            "width": 32
+          },
+          "frameKey": "ui/items/mirrorball",
+          "opaqueBounds": {
+            "height": 21,
+            "width": 19,
+            "x": 7,
+            "y": 5
+          },
+          "opaqueColorCount": 5,
+          "opaquePixels": 280,
+          "pixelSha256": "7351929803e2346cba74256a7632ece1b9dda6f741fd7da7d52a0a93620bcd14",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 32,
+            "space": "native-logical-pixels",
+            "w": 32
+          },
+          "transparentPixels": 744,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 280
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 32,
+            "space": "atlas-pixels",
+            "w": 32,
+            "x": 70,
+            "y": 2
+          },
+          "colorRatio": 0.01107,
+          "dimensions": {
+            "height": 32,
+            "width": 32
+          },
+          "frameKey": "ui/items/needleTips",
+          "opaqueBounds": {
+            "height": 21,
+            "width": 20,
+            "x": 6,
+            "y": 6
+          },
+          "opaqueColorCount": 3,
+          "opaquePixels": 271,
+          "pixelSha256": "782bb24ccb70a384b89067e55f5e33a6f481564ffcdac79dd74370ebf4002970",
+          "singletonPixelCount": 1,
+          "singletonRatio": 0.00369,
+          "sourceSize": {
+            "h": 32,
+            "space": "native-logical-pixels",
+            "w": 32
+          },
+          "transparentPixels": 753,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 271
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 32,
+            "space": "atlas-pixels",
+            "w": 32,
+            "x": 36,
+            "y": 36
+          },
+          "colorRatio": 0.008929,
+          "dimensions": {
+            "height": 32,
+            "width": 32
+          },
+          "frameKey": "ui/items/paddedJacket",
+          "opaqueBounds": {
+            "height": 20,
+            "width": 22,
+            "x": 5,
+            "y": 7
+          },
+          "opaqueColorCount": 3,
+          "opaquePixels": 336,
+          "pixelSha256": "2b7c0c90f2b36f849ba51e741a47a12864682d7aeafe7bd4fccd1e0228bc6e90",
+          "singletonPixelCount": 1,
+          "singletonRatio": 0.002976,
+          "sourceSize": {
+            "h": 32,
+            "space": "native-logical-pixels",
+            "w": 32
+          },
+          "transparentPixels": 688,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 336
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 32,
+            "space": "atlas-pixels",
+            "w": 32,
+            "x": 70,
+            "y": 36
+          },
+          "colorRatio": 0.013441,
+          "dimensions": {
+            "height": 32,
+            "width": 32
+          },
+          "frameKey": "ui/items/recoveryTape",
+          "opaqueBounds": {
+            "height": 19,
+            "width": 20,
+            "x": 6,
+            "y": 6
+          },
+          "opaqueColorCount": 5,
+          "opaquePixels": 372,
+          "pixelSha256": "b1e4af74ec5d2bc57e0361f710afde5909524ec69cc157792ff3d59e8627b8eb",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 32,
+            "space": "native-logical-pixels",
+            "w": 32
+          },
+          "transparentPixels": 652,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 372
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 32,
+            "space": "atlas-pixels",
+            "w": 32,
+            "x": 138,
+            "y": 2
+          },
+          "colorRatio": 0.011765,
+          "dimensions": {
+            "height": 32,
+            "width": 32
+          },
+          "frameKey": "ui/items/wideLens",
+          "opaqueBounds": {
+            "height": 20,
+            "width": 20,
+            "x": 6,
+            "y": 6
+          },
+          "opaqueColorCount": 3,
+          "opaquePixels": 255,
+          "pixelSha256": "ba92db1e503edf5cf3be4b2d5d89dbf45a158f1207b6c9fb4814e9a8f984f34d",
+          "singletonPixelCount": 1,
+          "singletonRatio": 0.003922,
+          "sourceSize": {
+            "h": 32,
+            "space": "native-logical-pixels",
+            "w": 32
+          },
+          "transparentPixels": 769,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 255
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 24,
+            "space": "atlas-pixels",
+            "w": 24,
+            "x": 104,
+            "y": 36
+          },
+          "colorRatio": 0.020619,
+          "dimensions": {
+            "height": 24,
+            "width": 24
+          },
+          "frameKey": "ui/status/heart",
+          "opaqueBounds": {
+            "height": 15,
+            "width": 16,
+            "x": 4,
+            "y": 6
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 194,
+          "pixelSha256": "69da00d27a762219c7339be0d02417ec0bb919f77420ef93e742c97e5960c330",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 24,
+            "space": "native-logical-pixels",
+            "w": 24
+          },
+          "transparentPixels": 382,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 194
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 24,
+            "space": "atlas-pixels",
+            "w": 24,
+            "x": 182,
+            "y": 36
+          },
+          "colorRatio": 0.016304,
+          "dimensions": {
+            "height": 24,
+            "width": 24
+          },
+          "frameKey": "ui/status/level",
+          "opaqueBounds": {
+            "height": 17,
+            "width": 17,
+            "x": 4,
+            "y": 4
+          },
+          "opaqueColorCount": 3,
+          "opaquePixels": 184,
+          "pixelSha256": "430d7736c21a3a76dc6e2451f5380caff8d50cc122f6bd4756c1654e86e47875",
+          "singletonPixelCount": 1,
+          "singletonRatio": 0.005435,
+          "sourceSize": {
+            "h": 24,
+            "space": "native-logical-pixels",
+            "w": 24
+          },
+          "transparentPixels": 392,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 184
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 24,
+            "space": "atlas-pixels",
+            "w": 24,
+            "x": 156,
+            "y": 36
+          },
+          "colorRatio": 0.021583,
+          "dimensions": {
+            "height": 24,
+            "width": 24
+          },
+          "frameKey": "ui/status/note",
+          "opaqueBounds": {
+            "height": 17,
+            "width": 16,
+            "x": 4,
+            "y": 5
+          },
+          "opaqueColorCount": 3,
+          "opaquePixels": 139,
+          "pixelSha256": "e85e1192e90290346d3c2f40db5a1e12dd071a21d608d25ddb26dea6433d1dc5",
+          "singletonPixelCount": 1,
+          "singletonRatio": 0.007194,
+          "sourceSize": {
+            "h": 24,
+            "space": "native-logical-pixels",
+            "w": 24
+          },
+          "transparentPixels": 437,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 139
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 24,
+            "space": "atlas-pixels",
+            "w": 24,
+            "x": 208,
+            "y": 36
+          },
+          "colorRatio": 0.012552,
+          "dimensions": {
+            "height": 24,
+            "width": 24
+          },
+          "frameKey": "ui/status/pause",
+          "opaqueBounds": {
+            "height": 17,
+            "width": 15,
+            "x": 5,
+            "y": 4
+          },
+          "opaqueColorCount": 3,
+          "opaquePixels": 239,
+          "pixelSha256": "bb0894d87ce05a868166771f8af4ea0083ac32fba1993a7da1c7caf0e857ab9f",
+          "singletonPixelCount": 1,
+          "singletonRatio": 0.004184,
+          "sourceSize": {
+            "h": 24,
+            "space": "native-logical-pixels",
+            "w": 24
+          },
+          "transparentPixels": 337,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 239
+        },
+        {
+          "alpha": {
+            "distinctValues": [
+              0,
+              255
+            ],
+            "maximum": 255,
+            "minimum": 0,
+            "softPixelCount": 0
+          },
+          "anchor": {
+            "space": "normalized-native-frame",
+            "x": 0.5,
+            "y": 0.5
+          },
+          "atlasRect": {
+            "h": 24,
+            "space": "atlas-pixels",
+            "w": 24,
+            "x": 130,
+            "y": 36
+          },
+          "colorRatio": 0.020619,
+          "dimensions": {
+            "height": 24,
+            "width": 24
+          },
+          "frameKey": "ui/status/xp",
+          "opaqueBounds": {
+            "height": 17,
+            "width": 18,
+            "x": 3,
+            "y": 4
+          },
+          "opaqueColorCount": 4,
+          "opaquePixels": 194,
+          "pixelSha256": "0936ffa3fd2d75c12ef6ff4430bb24e2c0325d845a17206ac7bd532e48974592",
+          "singletonPixelCount": 0,
+          "singletonRatio": 0,
+          "sourceSize": {
+            "h": 24,
+            "space": "native-logical-pixels",
+            "w": 24
+          },
+          "transparentPixels": 382,
+          "transparentRgbNonZeroPixels": 0,
+          "visiblePixels": 194
+        }
+      ],
+      "id": "ui",
+      "image": {
+        "alpha": {
+          "distinctValues": [
+            0,
+            255
+          ],
+          "maximum": 255,
+          "minimum": 0,
+          "softPixelCount": 0
+        },
+        "colorRatio": 0.001785,
+        "dimensions": {
+          "height": 256,
+          "width": 256
+        },
+        "fileSha256": "320276ac2562e07b23ab460a3926f82738fdea1ccec5210f582dd394f7ecbc34",
+        "opaqueBounds": {
+          "height": 85,
+          "width": 228,
+          "x": 5,
+          "y": 7
+        },
+        "opaqueColorCount": 9,
+        "opaquePixels": 5041,
+        "pixelSha256": "7029a19d11bddb3c6913de2858fe7f435601e6a146bc6c4f2b9b48c700088e2a",
+        "png": {
+          "bitDepth": 8,
+          "colorType": "RGBA",
+          "interlace": 0
+        },
+        "singletonPixelCount": 0,
+        "singletonRatio": 0,
+        "transparentPixels": 60495,
+        "transparentRgbNonZeroPixels": 0,
+        "visiblePixels": 5041
+      },
+      "imagePath": "public/art/pixel/ui.png",
+      "jsonPath": "public/art/pixel/ui.json"
+    }
+  ],
+  "generator": {
+    "checkCommand": "node --import tsx scripts/measure-pixel-art.mjs --check",
+    "command": "node --import tsx scripts/measure-pixel-art.mjs",
+    "inputs": [
+      "public/art/pixel/arena-floor.png",
+      "public/art/pixel/environment.json",
+      "public/art/pixel/environment.png",
+      "public/art/pixel/gameplay.json",
+      "public/art/pixel/gameplay.png",
+      "public/art/pixel/title-banner.png",
+      "public/art/pixel/ui.json",
+      "public/art/pixel/ui.png"
+    ]
+  },
+  "metricDefinitions": {
+    "colorRatio": "opaqueColorCount divided by visiblePixels, rounded to six decimals.",
+    "opaqueBounds": "Smallest local rectangle containing pixels with alpha greater than zero.",
+    "opaqueColorCount": "Number of distinct RGB values among pixels with alpha greater than zero.",
+    "pixelSha256": "SHA-256 of row-major raw RGBA bytes for the measured rectangle.",
+    "singletonRatio": "Visible pixels whose RGB occurs exactly once divided by visiblePixels, rounded to six decimals.",
+    "softAlpha": "Alpha values from 1 through 254.",
+    "transparentRgbNonZeroPixels": "Alpha-zero pixels whose RGB channels are not all zero."
+  },
+  "schemaVersion": 1,
+  "standaloneImages": [
+    {
+      "alpha": {
+        "distinctValues": [
+          255
+        ],
+        "maximum": 255,
+        "minimum": 255,
+        "softPixelCount": 0
+      },
+      "colorRatio": 0.011719,
+      "dimensions": {
+        "height": 16,
+        "width": 16
+      },
+      "fileSha256": "177fba291eacf1e54c456a5b5f51c4db72bd3584da0caa5424d4b93183d34ea4",
+      "id": "arena-floor",
+      "imagePath": "public/art/pixel/arena-floor.png",
+      "opaqueBounds": {
+        "height": 16,
+        "width": 16,
+        "x": 0,
+        "y": 0
+      },
+      "opaqueColorCount": 3,
+      "opaquePixels": 256,
+      "pixelSha256": "a671a641219e92f8876ec2fd40e25747368696389e4ecff5a3100d429d95995c",
+      "png": {
+        "bitDepth": 8,
+        "colorType": "RGBA",
+        "interlace": 0
+      },
+      "seamMismatches": {
+        "horizontalEdgePixels": 0,
+        "verticalEdgePixels": 0
+      },
+      "singletonPixelCount": 0,
+      "singletonRatio": 0,
+      "transparentPixels": 0,
+      "transparentRgbNonZeroPixels": 0,
+      "visiblePixels": 256
+    },
+    {
+      "alpha": {
+        "distinctValues": [
+          255
+        ],
+        "maximum": 255,
+        "minimum": 255,
+        "softPixelCount": 0
+      },
+      "colorRatio": 0.00026,
+      "dimensions": {
+        "height": 180,
+        "width": 320
+      },
+      "fileSha256": "9224d7ee9ee6fe16df769ee9d618942b470f95e82d158a8ba70d9f74ebcc514d",
+      "id": "title-banner",
+      "imagePath": "public/art/pixel/title-banner.png",
+      "logicalProjection": {
+        "alpha": {
+          "distinctValues": [
+            255
+          ],
+          "maximum": 255,
+          "minimum": 255,
+          "softPixelCount": 0
+        },
+        "blockMismatchPixels": 17395,
+        "colorRatio": 0.004167,
+        "dimensions": {
+          "height": 45,
+          "width": 80
+        },
+        "exactScale": 4,
+        "opaqueBounds": {
+          "height": 45,
+          "width": 80,
+          "x": 0,
+          "y": 0
+        },
+        "opaqueColorCount": 15,
+        "opaquePixels": 3600,
+        "pixelSha256": "c035516b255fa7e626b8d342825eadbdf9e8d3ddb2219a136d7a3c7a402ef1bf",
+        "singletonPixelCount": 0,
+        "singletonRatio": 0,
+        "transparentPixels": 0,
+        "transparentRgbNonZeroPixels": 0,
+        "visiblePixels": 3600
+      },
+      "opaqueBounds": {
+        "height": 180,
+        "width": 320,
+        "x": 0,
+        "y": 0
+      },
+      "opaqueColorCount": 15,
+      "opaquePixels": 57600,
+      "pixelSha256": "06176b175019286e777fc2cbbfb8fd5518d51fb41112f5a4e87b47a3fa5642fe",
+      "png": {
+        "bitDepth": 8,
+        "colorType": "RGBA",
+        "interlace": 0
+      },
+      "singletonPixelCount": 0,
+      "singletonRatio": 0,
+      "transparentPixels": 0,
+      "transparentRgbNonZeroPixels": 0,
+      "visiblePixels": 57600
+    }
+  ],
+  "summary": {
+    "atlasCount": 3,
+    "atlasFrameCount": 108,
+    "averageFrameColorRatio": 0.00965,
+    "averageFrameSingletonRatio": 0.00116,
+    "maximumFrameColorRatio": 0.054348,
+    "maximumFrameSingletonRatio": 0.021739,
+    "minimumFrameColorRatio": 0.001631,
+    "minimumFrameSingletonRatio": 0,
+    "softAlphaPixelCount": 0,
+    "standaloneImageCount": 2,
+    "transparentRgbNonZeroPixels": 0
+  }
+}

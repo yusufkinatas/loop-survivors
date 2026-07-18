@@ -19,6 +19,26 @@ import { RunWorld, KIT_COLORS } from './run';
 import { SIM_DT } from './timing';
 import { preloadRunArt, RunView, type GroundPickView } from './view';
 import { mountSandboxPanel, type SandboxPanel } from './sandbox';
+import { pixelArtTextureMemoryEstimate } from './pixel-art';
+import {
+  liveCaptureRequest,
+  liveCaptureVisualPhase,
+  type LiveCaptureOffsetId,
+} from './live-capture';
+import {
+  SandboxPerformanceSampler,
+  formatSandboxPerformanceSummary,
+  readPixiDrawCalls,
+  type SandboxPerformanceContext,
+  type SandboxPerformanceCounts,
+  type SandboxPerformanceSnapshot,
+} from './sandbox-performance';
+import {
+  installWholeSurfaceVisionReview,
+  sandboxVisionPngDataUrl,
+  type SandboxVisionMode,
+} from './vision-review';
+import type { SandboxMax360VariantId } from './visual-debug';
 import { ITEMS, type EvolutionDefinition } from './items';
 import { MetaStore, type RunSettlement } from './meta';
 import { mulberry32 } from './rng';
@@ -27,6 +47,14 @@ import {
   createStartingWeaponSelection,
   type StartingWeaponSelection,
 } from './starting-weapons';
+import {
+  LOGICAL_HEIGHT,
+  LOGICAL_WIDTH,
+  ViewportTransform,
+  WorldProjection,
+  WORLD_HEIGHT,
+  WORLD_WIDTH,
+} from './viewport';
 
 type State = 'start' | 'run' | 'end' | 'sandbox';
 
@@ -36,27 +64,67 @@ export async function bootGame(
   kits: Map<Role, Kit>,
 ): Promise<void> {
   await preloadRunArt();
+  const captureRequest = liveCaptureRequest();
+  document.documentElement.classList.add('game-mounted');
+  document.body.classList.add('game-mounted');
+  root.classList.add('game-root');
+
+  let viewport = new ViewportTransform(
+    window.innerWidth,
+    window.innerHeight,
+    window.devicePixelRatio || 1,
+  );
+  const projection = new WorldProjection();
+  const surface = document.createElement('div');
+  surface.className = 'game-surface';
+  const viewportNotice = document.createElement('div');
+  viewportNotice.className = 'viewport-notice';
+  viewportNotice.setAttribute('role', 'status');
+  viewportNotice.setAttribute('aria-live', 'polite');
+  viewportNotice.innerHTML =
+    '<div class="viewport-notice-card"><strong>MAKE ROOM FOR THE SET</strong>' +
+    '<span>Rotate to landscape or enlarge this window until the 640 × 360 grid fits cleanly.</span></div>';
+  surface.hidden = !viewport.supported;
+  viewportNotice.hidden = viewport.supported;
+  root.append(surface, viewportNotice);
+  const visionReview = installWholeSurfaceVisionReview(root, surface);
+
   const app = new Application();
   await app.init({
     background: 0x080a12,
-    resizeTo: window,
+    width: LOGICAL_WIDTH,
+    height: LOGICAL_HEIGHT,
     antialias: false,
-    // crisp on phone screens; capped so high-dpr devices don't pay 3x pixels
-    resolution: Math.min(window.devicePixelRatio || 1, 2),
+    resolution: viewport.backingScale,
     autoDensity: true,
   });
-  root.appendChild(app.canvas);
-  root.classList.add('game-root');
+  surface.appendChild(app.canvas);
+
+  function paintViewportLayout(): void {
+    surface.style.width = `${viewport.logicalWidth}px`;
+    surface.style.height = `${viewport.logicalHeight}px`;
+    surface.style.left = `${viewport.offsetCssX}px`;
+    surface.style.top = `${viewport.offsetCssY}px`;
+    surface.style.transform = `scale(${viewport.cssScale})`;
+    surface.hidden = !viewport.supported;
+    surface.setAttribute('aria-hidden', String(!viewport.supported));
+    viewportNotice.hidden = viewport.supported;
+    root.classList.toggle('viewport-blocked', !viewport.supported);
+    if (viewport.unsupportedReason) root.dataset.viewportReason = viewport.unsupportedReason;
+    else delete root.dataset.viewportReason;
+  }
+  paintViewportLayout();
+
   // Camera-independent arena darkening: a DOM vignette above the canvas but
   // below the HUD/screens/toasts (which own z-index >= 2).
   const arenaVignette = document.createElement('div');
   arenaVignette.className = 'arena-vignette';
-  root.appendChild(arenaVignette);
+  surface.appendChild(arenaVignette);
   // touch play: floating joystick on the arena; kill the long-press menu
-  mountJoystick(root);
+  mountJoystick(surface, () => viewport);
   root.addEventListener('contextmenu', (e) => e.preventDefault());
 
-  const hud = new Hud(root, kits);
+  const hud = new Hud(surface, kits);
   const meta = new MetaStore();
   const input = new Input();
   let state: State = 'start';
@@ -64,7 +132,134 @@ export async function bootGame(
   let view: RunView | null = null;
   let muted = false;
   let paused = false;
+  let viewportBlocked = !viewport.supported;
   let lastWarningMinute = -1;
+  const performanceSampler = new SandboxPerformanceSampler();
+  const atlasMemory = pixelArtTextureMemoryEstimate();
+  const emptyPerformanceCounts: SandboxPerformanceCounts = Object.freeze({
+    live: Object.freeze({}),
+    transient: Object.freeze({}),
+  });
+  let captureFramesRemaining = 0;
+  let captureQueued = false;
+  let captureImage: HTMLImageElement | null = null;
+  let captureMetadataElement: HTMLScriptElement | null = null;
+  let captureOffsetId = captureRequest.offsetId;
+  let captureOffsetS = captureRequest.offsetS;
+  let captureVisionMode = captureRequest.visionMode;
+  let captureTargetId = captureRequest.targetId;
+
+  function syncViewCaptureConfiguration(): void {
+    view?.configureCapture({
+      offsetId: captureOffsetId,
+      offsetS: captureOffsetS,
+      visionMode: captureVisionMode,
+      requestedTargetId: captureTargetId,
+    });
+  }
+
+  function performanceContext(): SandboxPerformanceContext {
+    return Object.freeze({
+      drawCalls: readPixiDrawCalls(app.renderer),
+      atlasTextureBytes: atlasMemory.bytes,
+      atlasTextureMebibytes: atlasMemory.mebibytes,
+      counts: view?.performanceCounts() ?? emptyPerformanceCounts,
+    });
+  }
+
+  function sandboxPerformanceSnapshot(): SandboxPerformanceSnapshot {
+    return performanceSampler.snapshot(performanceContext());
+  }
+
+  function sandboxPerformanceSummary(): string {
+    return formatSandboxPerformanceSummary(performanceSampler.summary(performanceContext()));
+  }
+
+  function armLosslessCapture(settleFrames = captureRequest.settleFrames): void {
+    captureFramesRemaining = Math.max(1, Math.min(120, Math.floor(settleFrames)));
+    captureQueued = false;
+    surface.dataset.captureReady = '0';
+  }
+
+  function exportLosslessCapture(): void {
+    if (!view || state !== 'sandbox') return;
+    const scene = view.captureSceneMetadata();
+    captureImage ??= document.createElement('img');
+    captureImage.className = 'sandbox-capture-image';
+    captureImage.hidden = true;
+    captureImage.alt = 'Lossless Sandbox Pixi capture';
+    if (!captureImage.parentElement) surface.appendChild(captureImage);
+    captureImage.src = sandboxVisionPngDataUrl(
+      app.canvas,
+      scene.visionMode,
+      LOGICAL_WIDTH,
+      LOGICAL_HEIGHT,
+    );
+
+    captureMetadataElement ??= document.createElement('script');
+    captureMetadataElement.type = 'application/json';
+    captureMetadataElement.className = 'sandbox-capture-metadata';
+    captureMetadataElement.hidden = true;
+    if (!captureMetadataElement.parentElement) surface.appendChild(captureMetadataElement);
+    captureMetadataElement.textContent = JSON.stringify({
+      ...scene,
+      imageMimeType: 'image/png',
+      visionMatrixBakedIntoPng: true,
+      encodedPixelWidth: LOGICAL_WIDTH,
+      encodedPixelHeight: LOGICAL_HEIGHT,
+      logicalCanvas: { width: LOGICAL_WIDTH, height: LOGICAL_HEIGHT },
+    });
+
+    surface.dataset.captureReady = '1';
+    surface.dataset.captureSeed = scene.seed === null ? 'live' : String(scene.seed >>> 0);
+    surface.dataset.captureTimeS = String(scene.timeS);
+    surface.dataset.captureOffsetS = String(scene.offsetS);
+    surface.dataset.captureVision = scene.visionMode;
+    surface.dataset.captureImageWidth = String(LOGICAL_WIDTH);
+    surface.dataset.captureImageHeight = String(LOGICAL_HEIGHT);
+    surface.dataset.capturePlayerX = String(scene.player.logicalX);
+    surface.dataset.capturePlayerY = String(scene.player.logicalY);
+    surface.dataset.capturePlayerRadius = String(scene.player.logicalRadius);
+    surface.dataset.captureTargetCount = String(scene.targets.length);
+    if (scene.selectedTarget) surface.dataset.captureSelectedTarget = scene.selectedTarget.id;
+    else delete surface.dataset.captureSelectedTarget;
+  }
+
+  if (captureRequest.enabled) surface.dataset.captureMode = 'lossless-png';
+
+  function refreshViewport(): void {
+    const next = new ViewportTransform(
+      window.innerWidth,
+      window.innerHeight,
+      window.devicePixelRatio || 1,
+    );
+    const wasBlocked = viewportBlocked;
+    if (next.backingScale !== viewport.backingScale) {
+      app.renderer.resize(LOGICAL_WIDTH, LOGICAL_HEIGHT, next.backingScale);
+    }
+    viewport = next;
+    viewportBlocked = !viewport.supported;
+    paintViewportLayout();
+
+    if (!wasBlocked && viewportBlocked && (state === 'run' || state === 'sandbox')) {
+      engine.clock.pause();
+      engine.holdTransport();
+    } else if (wasBlocked && !viewportBlocked && !paused) {
+      engine.releaseTransport();
+      if ((state === 'run' || state === 'sandbox') && !world?.awaitingStartingWeapon) {
+        engine.clock.resume();
+      }
+    }
+  }
+
+  function viewportMetricsChanged(): boolean {
+    return window.innerWidth !== viewport.viewportCssWidth ||
+      window.innerHeight !== viewport.viewportCssHeight ||
+      (window.devicePixelRatio || 1) !== viewport.devicePixelRatio;
+  }
+
+  window.addEventListener('resize', refreshViewport);
+  window.visualViewport?.addEventListener('resize', refreshViewport);
 
   // Global time scale (issue #21): one knob scaling the sim, audio tempo, and
   // world juice together, live mid-run, in run + sandbox only. Continuous
@@ -162,7 +357,7 @@ export async function bootGame(
   pauseOverlay.style.display = 'none';
   pauseOverlay.innerHTML =
     '<h1>Paused</h1><div class="pause-rack"></div><div class="pause-items"></div><button class="pause-resume">RESUME SET</button><p class="hint">Escape also resumes.</p>';
-  root.appendChild(pauseOverlay);
+  surface.appendChild(pauseOverlay);
   const pauseRack = pauseOverlay.querySelector('.pause-rack') as HTMLElement;
   const pauseItems = pauseOverlay.querySelector('.pause-items') as HTMLElement;
   const resumeButton = pauseOverlay.querySelector('.pause-resume') as HTMLButtonElement;
@@ -171,9 +366,10 @@ export async function bootGame(
   pauseButton.textContent = 'PAUSE';
   pauseButton.setAttribute('aria-label', 'Pause the set');
   pauseButton.style.display = 'none';
-  root.appendChild(pauseButton);
+  surface.appendChild(pauseButton);
   function togglePause(): void {
     if (state !== 'run' && state !== 'sandbox') return;
+    if (viewportBlocked) return;
     // The opening gate has not started the musical transport yet. Letting an
     // Escape/pause round-trip call clock.resume() here would silently start it
     // before the player owns a weapon.
@@ -202,7 +398,7 @@ export async function bootGame(
   const overlay = document.createElement('div');
   overlay.className = 'debug-overlay';
   overlay.style.display = 'none';
-  root.appendChild(overlay);
+  surface.appendChild(overlay);
 
   // Every XP threshold and every elite kill grants one upgrade. Several can
   // arrive in the same simulation tick, including while the first pick screen
@@ -396,7 +592,7 @@ export async function bootGame(
       refreshTrackOverlay();
       view?.flourish(w.player.x, w.player.y);
       hud.showToast(`${kits.get(item.option.role)?.name ?? item.option.role} · ROUND BEGINS`);
-      engine.clock.start();
+      if (!viewportBlocked) engine.clock.start();
       return;
     }
     // The player reached a pick before momentS elapsed: snap game speed and
@@ -572,6 +768,10 @@ export async function bootGame(
     pauseButton.textContent = 'PAUSE';
     sandboxPanel?.destroy();
     sandboxPanel = null;
+    visionReview.apply('normal');
+    performanceSampler.reset();
+    captureFramesRemaining = 0;
+    captureQueued = false;
     view?.destroy();
     view = null;
     world = null;
@@ -588,7 +788,7 @@ export async function bootGame(
     // manual keeps the keyboard/joystick.
     // The seam reads playerControl live, so the in-game toggle works too.
     setAutoMode(mode);
-    const w: RunWorld = new RunWorld(app.screen, events, {
+    const w: RunWorld = new RunWorld({ width: WORLD_WIDTH, height: WORLD_HEIGHT }, events, {
       control: () => playerControl(w),
       startingItem: meta.state.startItem,
       awaitingStartingWeapon: true,
@@ -599,7 +799,8 @@ export async function bootGame(
     w.player.hp = w.playerMaxHp;
     rerollsLeft = meta.state.rerolls;
     w.powerMul = SOUNDSET.powerMul;
-    view = new RunView(w, app.screen);
+    view = new RunView(w, projection);
+    syncViewCaptureConfiguration();
     app.stage.addChild(view.stage);
     void engine.setAudioSet('neon-crypt');
     hud.showHud(true);
@@ -608,24 +809,30 @@ export async function bootGame(
     hud.renderBand(w.tiers, undefined, undefined, undefined, w.evolved);
     state = 'run';
     syncTimeScaleControl(); // arm the timeScale slider for the live run
-    void engine.ctx.resume();
+    if (!viewportBlocked) void engine.ctx.resume();
     beginStartingWeaponSelection(w);
   }
 
   function startSandbox(): void {
     resetWorld();
-    const w: RunWorld = new RunWorld(app.screen, sandboxEvents, {
-      scripted: false,
-      rng: mulberry32(0x5eed),
-      control: () => playerControl(w),
-    });
+    performanceSampler.reset();
+    const w: RunWorld = new RunWorld(
+      { width: WORLD_WIDTH, height: WORLD_HEIGHT },
+      sandboxEvents,
+      {
+        scripted: false,
+        rng: mulberry32(0x5eed),
+        control: () => playerControl(w),
+      },
+    );
     world = w;
     w.powerMul = SOUNDSET.powerMul;
     w.invincible = true;
-    view = new RunView(w, app.screen);
+    view = new RunView(w, projection);
+    syncViewCaptureConfiguration();
     app.stage.addChild(view.stage);
     void engine.setAudioSet('neon-crypt');
-    sandboxPanel = mountSandboxPanel(root, engine, w, {
+    sandboxPanel = mountSandboxPanel(surface, engine, w, {
       onLoadout: () => {
         hud.renderBand(w.tiers, undefined, deactivatedRoles, pendingRoles, w.evolved);
         refreshTrackOverlay();
@@ -638,14 +845,35 @@ export async function bootGame(
         state = 'start';
         syncTimeScaleControl(); // resetWorld ran while still 'sandbox'; re-grey now
       },
+      onVisualDebugChange: (flags) => view?.setVisualDebug(flags),
+      onVisionModeChange: (mode) => visionReview.apply(mode),
+      viewportReadout: () =>
+        `logical ${viewport.logicalWidth}×${viewport.logicalHeight}` +
+        ` · world ${projection.worldWidth}×${projection.worldHeight}` +
+        ` @ ${projection.worldToLogicalScale}` +
+        ` · backing ×${viewport.backingScale}` +
+        ` · CSS ×${viewport.cssScale.toFixed(3)}` +
+        ` / DPR ${viewport.devicePixelRatio.toFixed(2)}`,
+      performanceSummary: sandboxPerformanceSummary,
     });
     hud.showHud(true, true);
     pauseButton.style.display = '';
     hud.renderBand(w.tiers, undefined, undefined, undefined, w.evolved);
     state = 'sandbox';
+    if (captureRequest.enabled) {
+      if (captureRequest.preset === 'max360') {
+        sandboxPanel.applyMax360Variant(captureRequest.max360Variant, true);
+      } else {
+        w.applySandboxVisualPreset(captureRequest.preset);
+      }
+      sandboxPanel.setVisionMode(captureVisionMode);
+      armLosslessCapture();
+    }
     syncTimeScaleControl(); // arm the timeScale slider for the sandbox
-    void engine.ctx.resume();
-    engine.clock.start();
+    if (!viewportBlocked) {
+      void engine.ctx.resume();
+      engine.clock.start();
+    }
   }
 
   function endRun(_victory = false): void {
@@ -697,7 +925,7 @@ export async function bootGame(
   const trackOverlayEl = document.createElement('div');
   trackOverlayEl.className = 'track-overlay';
   trackOverlayEl.style.display = 'none';
-  root.appendChild(trackOverlayEl);
+  surface.appendChild(trackOverlayEl);
   const trackOverlay = mountTrackOverlay(trackOverlayEl, engine, kits);
   function refreshTrackOverlay(): void {
     if (trackOverlayEl.style.display === 'none') return;
@@ -775,10 +1003,15 @@ export async function bootGame(
   // one trigger, two outputs: the engine already made the sound; this makes
   // the damage.
   engine.addTriggerListener((t) => {
-    if ((state === 'run' || state === 'sandbox') && world) world.fireTrigger(t);
+    if (!viewportBlocked && (state === 'run' || state === 'sandbox') && world) {
+      world.fireTrigger(t);
+    }
   });
 
   app.ticker.add((ticker) => {
+    if (viewportMetricsChanged()) refreshViewport();
+    if (viewportBlocked) return;
+    if (state === 'sandbox') performanceSampler.recordFrame(ticker.deltaMS);
     engine.update();
     if (paused) return;
     if ((state === 'run' || state === 'sandbox') && world) {
@@ -849,6 +1082,16 @@ export async function bootGame(
       // never resumes with fractional time banked from before the screen opened.
       if (state !== steppingState || world !== w) liveAcc = 0;
       view?.update(visualDt);
+      if (state === 'sandbox' && captureFramesRemaining > 0) {
+        captureFramesRemaining -= 1;
+        if (captureFramesRemaining === 0 && !captureQueued) {
+          captureQueued = true;
+          queueMicrotask(() => {
+            exportLosslessCapture();
+            captureQueued = false;
+          });
+        }
+      }
       hud.setStatus(
         w.player.hp / w.playerMaxHp,
         w.xpProgress(),
@@ -1020,8 +1263,6 @@ export async function bootGame(
     }
   });
 
-  hud.showStart(startRun, startSandbox, meta);
-
   // extend the dev console handle
   Object.assign((window as unknown as { loop: object }).loop, {
     game: {
@@ -1032,6 +1273,41 @@ export async function bootGame(
       get world() {
         return world;
       },
+      sandbox: Object.freeze({
+        performanceSnapshot: sandboxPerformanceSnapshot,
+        applyMax360Variant(id: SandboxMax360VariantId, includeCaptureFixtures = true): void {
+          sandboxPanel?.applyMax360Variant(id, includeCaptureFixtures);
+          if (captureRequest.enabled) armLosslessCapture();
+        },
+        setVisionMode(mode: SandboxVisionMode): void {
+          captureVisionMode = mode;
+          sandboxPanel?.setVisionMode(mode);
+          syncViewCaptureConfiguration();
+          if (captureRequest.enabled) armLosslessCapture();
+        },
+        setCaptureOffset(id: LiveCaptureOffsetId): void {
+          const phase = liveCaptureVisualPhase(id);
+          captureOffsetId = phase.id;
+          captureOffsetS = phase.offsetS;
+          syncViewCaptureConfiguration();
+          if (captureRequest.enabled) armLosslessCapture();
+        },
+        setCaptureTarget(id: string | null): void {
+          captureTargetId = id;
+          syncViewCaptureConfiguration();
+          if (captureRequest.enabled) armLosslessCapture();
+        },
+        captureNow(settleFrames = 2): void {
+          if (state === 'sandbox') armLosslessCapture(settleFrames);
+        },
+        captureSceneMetadata: () => view?.captureSceneMetadata() ?? null,
+        get captureDataUrl(): string | null {
+          return captureImage?.src ?? null;
+        },
+      }),
     },
   });
+
+  if (captureRequest.enabled) startSandbox();
+  else hud.showStart(startRun, startSandbox, meta);
 }

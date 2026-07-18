@@ -1,0 +1,119 @@
+#app.art-review-root {
+  position: fixed;
+  inset: 0;
+  width: auto;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  color: #e9f8f3;
+  background: #03050a;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.art-review-surface {
+  position: absolute;
+  width: 640px;
+  height: 360px;
+  overflow: hidden;
+  transform-origin: 0 0;
+}
+
+.art-review-surface[hidden],
+.art-review-notice[hidden] {
+  display: none !important;
+}
+
+.art-review-surface canvas {
+  display: block;
+  width: 640px;
+  height: 360px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.art-review-notice {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+  background: #070b12;
+}
+
+.art-review-notice strong {
+  color: #75efd0;
+  letter-spacing: 0.12em;
+}
+
+.art-review-notice span {
+  color: #a4b6b1;
+}
+
+.art-review-toolbar {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  z-index: 5;
+  display: grid;
+  width: min(920px, calc(100vw - 24px));
+  padding: 10px;
+  gap: 8px;
+  border: 1px solid #4c766b;
+  background: rgba(5, 9, 15, 0.94);
+  box-shadow: 6px 6px 0 rgba(0, 0, 0, 0.55);
+  transform: translateX(-50%);
+}
+
+.art-review-candidates,
+.art-review-views {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.art-review-toolbar button {
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid #38544e;
+  color: #a8bcb6;
+  background: #111923;
+  font: 700 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.art-review-toolbar button.active {
+  border-color: #75efd0;
+  color: #07120f;
+  background: #75efd0;
+}
+
+.art-review-copy {
+  display: grid;
+  gap: 3px;
+  max-width: 860px;
+  margin-inline: auto;
+  text-align: center;
+}
+
+.art-review-copy strong {
+  color: #f5fffc;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.art-review-copy span {
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.art-review-copy small {
+  color: #9aaca7;
+  font-size: 9px;
+  line-height: 1.3;
+}

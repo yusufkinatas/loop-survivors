@@ -1,46 +1,63 @@
 # Pixel-art sources
 
-Every shipped game image is original art generated specifically for Loop
-Survivors with OpenAI image generation on 2026-07-18. No commercial asset,
-third-party sprite pack, stock image, or copyrighted game artwork is included.
-The generated art therefore has no separate third-party attribution or license;
-it is governed by the same project terms as this repository.
+The shipped Arcade Reliquary pixel art is original, repository-authored work.
+No commercial asset, third-party sprite pack, stock image, or copyrighted game
+art is included. AI image generation was used only for the three clearly
+labeled art-direction concept references; production PNGs are not crops,
+traces, resizes, or chroma-key extractions from those images.
 
-## Source boards
+## Canonical production source
 
-The reproducible source boards live in `art-src/pixel/`:
+`art-src/pixel-production/arcade-reliquary.mjs` is the production master. It
+constructs the gameplay, UI, environment, floor, and title pixels directly on
+their final native logical grids with the locked 16-color Arcade Reliquary
+palette. Per-frame dimensions, pivots, ground or hover references, opaque
+bounds, semantic tags, transparent margins, color budgets, and 1× renderer
+scale are emitted with the atlas metadata.
 
-- `actors-source.png`: the player and the full 20-enemy dark-fantasy bestiary.
-- `combat-source.png`: nine attacks, nine ultimate forms, three XP crystals,
-  music notes, reward objects, impacts, explosions, and collection effects.
-- `ui-source.png`: ten passive-item icons, five status icons, and five action
-  icons in the same palette and pixel density.
-- `environment-source.png`: ruins, statues, braziers, plants, crystals, bones,
-  fire, and a rune dais.
-- `arena-floor-source.png`: midnight-blue rune-cut crypt cobblestones.
+The selected concept and Gate 1 prototypes remain reference-only. The
+production builder does not read, sample, crop, trace, chroma-key, or resize
+them.
 
-## Shipped assets
+## Shipped assets and coverage
 
-`scripts/build-pixel-art.mjs` turns those boards into the files under
+`scripts/build-pixel-art.mjs` deterministically produces these files under
 `public/art/pixel/`:
 
-- `gameplay.png` / `gameplay.json`: 72 transparent 96×96 sprite frames,
-  including two-frame animation for the player and every enemy.
-- `ui.png` / `ui.json`: 20 transparent 96×96 icon frames.
-- `environment.png` / `environment.json`: 16 transparent 96×96 scenery frames.
-- `arena-floor.png`: opaque, seamless 512×512 floor tile.
-- `title-banner.png`: text-free 1280×720 composition built from the same
-  sprites at 320×180 and nearest-neighbour upscaled exactly 4×.
+- `gameplay.png` / `gameplay.json`: 72 variable-size native gameplay frames,
+  including two mapped frames for the player and each of the 20 enemies, all
+  normal/evolved weapon families, pickups, and effects;
+- `ui.png` / `ui.json`: 20 native UI, passive, status, and action icons;
+- `environment.png` / `environment.json`: 16 variable-size native scenery
+  frames;
+- `arena-floor.png`: one opaque, seamless 16 × 16 native floor tile;
+- `title-banner.png`: one text-free 320 × 180 native title composition.
 
-The builder uses hard 0/255 alpha, clears invisible RGB to `(0, 0, 0, 0)`,
-removes the chroma matte, and rejects missing frames, overlap, edge bleed,
-residual key color, broken transparency, non-seamless floor edges, or
-interpolated title pixels. PixiJS then forces nearest-neighbour sampling and
-rounded pixel positions at runtime. Rebuild and verify with:
+The generated `live-catalog.json` records 108 physical atlas frame keys and
+239 semantic requirements. Its coverage report requires the shipped frame and
+animation mappings to match the generated live catalog exactly. A physical
+frame may serve several semantic requirements only when the manifest records
+that mapping explicitly.
+
+## Rebuild and verification
+
+Rebuild the committed outputs with:
+
+```sh
+node scripts/build-pixel-art.mjs build
+```
+
+Verify deterministic regeneration without writing with:
 
 ```sh
 node scripts/build-pixel-art.mjs verify
 ```
 
-The machine-readable frame mappings and full provenance record are in
-`public/art/pixel/SOURCE_AND_LICENSE.md`.
+Verification checks valid native dimensions, hard 0/255 alpha, zero RGB under
+fully transparent pixels, the locked palette and per-frame color budgets,
+minimum transparent margins, atlas separation, stable animation identities and
+ground references, meaningful animation differences, exact 1× metadata, the
+seamless 16 × 16 floor, the 320 × 180 title, and byte-stable output.
+
+The full provenance, transformation policy, and reference-only concept record
+are in `public/art/pixel/SOURCE_AND_LICENSE.md`.

@@ -19,6 +19,32 @@ async function boot(): Promise<void> {
   const root = document.getElementById('app')!;
   root.textContent = 'rendering kits…';
 
+  // The art-direction review is visual-only. Mount it before constructing the
+  // audio engine so reviewing candidate scenes neither waits for rendered
+  // instruments nor creates an unnecessary AudioContext.
+  if (location.hash.startsWith('#art-directions')) {
+    root.textContent = '';
+    const { mountArtDirectionReview } = await import('./experiments/artdirections/page');
+    await mountArtDirectionReview(root);
+    window.addEventListener('hashchange', () => location.reload());
+    return;
+  }
+
+  if (location.hash.startsWith('#production-art')) {
+    root.textContent = '';
+    const { mountProductionArtReview } = await import('./experiments/productionart/page');
+    await mountProductionArtReview(root);
+    return;
+  }
+
+  if (location.hash.startsWith('#visual-read')) {
+    root.textContent = '';
+    const { mountVisualReadReview } = await import('./experiments/visualread/page');
+    await mountVisualReadReview(root);
+    window.addEventListener('hashchange', () => location.reload());
+    return;
+  }
+
   // Keep retired developer-only instruments available, but replace every live
   // weapon before the engine exists. The same cached soundset map powers later
   // sound-set swaps, so the first audible hit can never leak an older rehearsal
