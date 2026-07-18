@@ -2,15 +2,20 @@
 
 ## Shipped Arcade Reliquary production art
 
-- **Creator:** the Loop Survivors project agent team; original work authored
-  specifically for this repository on 2026-07-18.
-- **Production tool:** the repository-authored JavaScript native-grid raster
-  generator in `art-src/pixel-production/arcade-reliquary.mjs`.
+- **Creator:** original work created specifically for the Loop Survivors
+  repository on 2026-07-18 and revised on 2026-07-19.
+- **Production tools:** OpenAI built-in image generation for the dedicated
+  player/enemy raster pose sheets; repository-authored chroma cleanup, palette
+  reduction, nearest-neighbour extraction, and atlas packing; native-grid
+  JavaScript support art in `arcade-reliquary.mjs`.
 - **Design source:** the player-selected Arcade Reliquary direction and the
   binding rules in `docs/pixel-art-bible.md`.
-- **Transformations:** direct native-grid construction, deterministic packing,
-  and PNG encoding. The production tool does not read, crop, sample, trace,
-  chroma-key, or resize a concept image or source board.
+- **Transformations:** the selected concept was supplied only as a style and
+  quality reference for new actor-sheet generations. The generated sheets were
+  placed on a flat chroma background, converted to hard transparency, reduced
+  to reviewed 48/64-color palettes, nearest-neighbour downsampled once to native
+  gameplay sizes, deterministically packed, and PNG encoded. No production
+  sprite is a crop or trace of the concept image.
 - **Runtime status:** shipped production source for gameplay, UI, environment,
   floor, and title art.
 - **License:** governed by the same project terms as this repository. There is
@@ -36,13 +41,15 @@ Gameplay, UI, and environment metadata declare the native frame rectangle,
 integer pivot, normalized anchor, measured opaque bounds, semantic class and
 tags, transparent margin, renderer scale of 1 logical screen pixel per native
 pixel, color budget, colors used, and ground/hover reference where applicable.
-The atlases use the locked 16-color Arcade Reliquary master palette.
+Support frames use the locked 16-color functional palette. Raster-authored
+actors use the reviewed 48/64-color material extension recorded in the pixel-
+art bible; the shipped frame metadata records the measured count per frame.
 
 Run `node scripts/build-pixel-art.mjs build` from the repository root to rebuild
 the committed outputs. Run `node scripts/build-pixel-art.mjs verify` to compare
 a fresh in-memory generation with those outputs. Verification covers exact live
-catalog mappings, valid dimensions, hard 0/255 alpha, zero hidden RGB, palette
-and color budgets, transparent frame margins, atlas separation, stable frame
+catalog mappings, valid dimensions, hard 0/255 alpha, zero hidden RGB, reviewed
+palette and color budgets, transparent frame margins, atlas separation, stable frame
 and animation identities, ground references, animation differences and area
 stability, renderer scale 1, floor seams, title dimensions, and deterministic
 bytes.

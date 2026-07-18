@@ -185,12 +185,15 @@ pickups, effects, icons, and props keep their own native footprints.
 
 Every frame records native size, integer pivot, opaque bounds, semantic tags,
 transparent margin, and a renderer scale of 1 logical screen pixel per native
-pixel. The code-authored builder draws directly on those native grids, permits
-only hard alpha, normalizes fully transparent pixels to RGBA `(0, 0, 0, 0)`,
-enforces the 16-color master palette and padding rules, and checks exact catalog
-coverage. The arena floor is a seamless 16 × 16 native tile and the title art
-is a text-free 320 × 180 native composition. PixiJS forces nearest-neighbor
-sampling globally. Canonical source and licensing are recorded in
+pixel. The player and enemies come from committed transparent raster pose
+sheets authored against the selected concept; the builder only extracts,
+hardens alpha, nearest-neighbour downsamples once to native sizes, and packs
+them. Weapons, pickups, effects, UI, and environment remain deterministic
+native-grid support art. The build normalizes fully transparent pixels to RGBA
+`(0, 0, 0, 0)`, enforces reviewed palette budgets and padding rules, and checks
+exact catalog coverage. The arena floor is a seamless 16 × 16 native tile and
+the title art is a text-free 320 × 180 native composition. PixiJS forces
+nearest-neighbor sampling globally. Canonical source and licensing are recorded in
 [`public/art/pixel/SOURCE_AND_LICENSE.md`](../public/art/pixel/SOURCE_AND_LICENSE.md).
 
 Visual priority is semantic separation: the player reads first, hostile bodies

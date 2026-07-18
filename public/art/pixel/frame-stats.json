@@ -837,7 +837,7 @@
             "x": 822,
             "y": 2
           },
-          "colorRatio": 0.013699,
+          "colorRatio": 0.305882,
           "dimensions": {
             "height": 28,
             "width": 30
@@ -847,21 +847,21 @@
             "height": 18,
             "width": 20,
             "x": 5,
-            "y": 3
+            "y": 4
           },
-          "opaqueColorCount": 4,
-          "opaquePixels": 292,
-          "pixelSha256": "7b592a93107866d65914ba63fabc422f3ff2a3f7add9d5fff33e74eadca84c00",
-          "singletonPixelCount": 0,
-          "singletonRatio": 0,
+          "opaqueColorCount": 52,
+          "opaquePixels": 170,
+          "pixelSha256": "43d5dcc861bb35ef0f4fee2748edb52c2c65ea8fe38644ba7260fa2c8ebce9fe",
+          "singletonPixelCount": 17,
+          "singletonRatio": 0.1,
           "sourceSize": {
             "h": 28,
             "space": "native-logical-pixels",
             "w": 30
           },
-          "transparentPixels": 548,
+          "transparentPixels": 670,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 292
+          "visiblePixels": 170
         },
         {
           "alpha": {
@@ -885,31 +885,31 @@
             "x": 854,
             "y": 2
           },
-          "colorRatio": 0.01487,
+          "colorRatio": 0.307692,
           "dimensions": {
             "height": 28,
             "width": 30
           },
           "frameKey": "actors/enemies/bat/walk",
           "opaqueBounds": {
-            "height": 16,
+            "height": 18,
             "width": 20,
             "x": 5,
-            "y": 5
+            "y": 4
           },
-          "opaqueColorCount": 4,
-          "opaquePixels": 269,
-          "pixelSha256": "c6e189c39dcb31533013f542b9308c3ffc22c9de7b3a0bc716410747a4455e33",
-          "singletonPixelCount": 0,
-          "singletonRatio": 0,
+          "opaqueColorCount": 52,
+          "opaquePixels": 169,
+          "pixelSha256": "670c0b3a623a1e85d5e0ec881a8ec46a6a4ba2a9155feb46d20f02def04b1eea",
+          "singletonPixelCount": 7,
+          "singletonRatio": 0.04142,
           "sourceSize": {
             "h": 28,
             "space": "native-logical-pixels",
             "w": 30
           },
-          "transparentPixels": 571,
+          "transparentPixels": 671,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 269
+          "visiblePixels": 169
         },
         {
           "alpha": {
@@ -933,7 +933,7 @@
             "x": 854,
             "y": 58
           },
-          "colorRatio": 0.00969,
+          "colorRatio": 0.378151,
           "dimensions": {
             "height": 34,
             "width": 38
@@ -941,23 +941,23 @@
           "frameKey": "actors/enemies/batSwarm/idle",
           "opaqueBounds": {
             "height": 22,
-            "width": 28,
-            "x": 5,
+            "width": 20,
+            "x": 9,
             "y": 6
           },
-          "opaqueColorCount": 5,
-          "opaquePixels": 516,
-          "pixelSha256": "9d9d1a58a617792c5aa43976a5ab67ebcf2ac9ba2b9854276c467ddda4e6586b",
-          "singletonPixelCount": 0,
-          "singletonRatio": 0,
+          "opaqueColorCount": 45,
+          "opaquePixels": 119,
+          "pixelSha256": "419eed75d71e9b28b854046bd089e7f78ed56c72b0e13a490e75a79a82890cf2",
+          "singletonPixelCount": 15,
+          "singletonRatio": 0.12605,
           "sourceSize": {
             "h": 34,
             "space": "native-logical-pixels",
             "w": 38
           },
-          "transparentPixels": 776,
+          "transparentPixels": 1173,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 516
+          "visiblePixels": 119
         },
         {
           "alpha": {
@@ -981,7 +981,7 @@
             "x": 894,
             "y": 58
           },
-          "colorRatio": 0.009766,
+          "colorRatio": 0.383178,
           "dimensions": {
             "height": 34,
             "width": 38
@@ -993,19 +993,19 @@
             "x": 5,
             "y": 6
           },
-          "opaqueColorCount": 5,
-          "opaquePixels": 512,
-          "pixelSha256": "6d8230410399b9cade042684f13a7da0471e9a128f0ab15dcac92178d810221b",
-          "singletonPixelCount": 0,
-          "singletonRatio": 0,
+          "opaqueColorCount": 41,
+          "opaquePixels": 107,
+          "pixelSha256": "d057d9c6628bc5ac8decf6a1287dbdaf3dd3d6f4cb90e8ccfd8d66e5c57be92d",
+          "singletonPixelCount": 13,
+          "singletonRatio": 0.121495,
           "sourceSize": {
             "h": 34,
             "space": "native-logical-pixels",
             "w": 38
           },
-          "transparentPixels": 780,
+          "transparentPixels": 1185,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 512
+          "visiblePixels": 107
         },
         {
           "alpha": {
@@ -1029,31 +1029,31 @@
             "x": 422,
             "y": 2
           },
-          "colorRatio": 0.005297,
+          "colorRatio": 0.086053,
           "dimensions": {
             "height": 44,
             "width": 52
           },
           "frameKey": "actors/enemies/charger/idle",
           "opaqueBounds": {
-            "height": 30,
+            "height": 28,
             "width": 40,
-            "x": 8,
-            "y": 8
+            "x": 6,
+            "y": 10
           },
-          "opaqueColorCount": 5,
-          "opaquePixels": 944,
-          "pixelSha256": "f4985bcae3c76e474f5a2e0591c0d7c24bf5a429f5c44969a576a56bcff47989",
-          "singletonPixelCount": 1,
-          "singletonRatio": 0.001059,
+          "opaqueColorCount": 58,
+          "opaquePixels": 674,
+          "pixelSha256": "37252cf8a92378c6bf8f305f5387216a5d49c27a99c0dd0c7b59314e9b039dbe",
+          "singletonPixelCount": 3,
+          "singletonRatio": 0.004451,
           "sourceSize": {
             "h": 44,
             "space": "native-logical-pixels",
             "w": 52
           },
-          "transparentPixels": 1344,
+          "transparentPixels": 1614,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 944
+          "visiblePixels": 674
         },
         {
           "alpha": {
@@ -1077,31 +1077,31 @@
             "x": 476,
             "y": 2
           },
-          "colorRatio": 0.005291,
+          "colorRatio": 0.084948,
           "dimensions": {
             "height": 44,
             "width": 52
           },
           "frameKey": "actors/enemies/charger/walk",
           "opaqueBounds": {
-            "height": 30,
+            "height": 28,
             "width": 40,
-            "x": 8,
-            "y": 8
+            "x": 6,
+            "y": 10
           },
-          "opaqueColorCount": 5,
-          "opaquePixels": 945,
-          "pixelSha256": "86c176405a4b4e2980fd30b0ae7ff7adc3c3baf2f6f238750968647c10cfba57",
+          "opaqueColorCount": 57,
+          "opaquePixels": 671,
+          "pixelSha256": "c59502bc858ef2614eaa469273f202d36f6c0b4dbb1ab09c6ffa5b52fe699236",
           "singletonPixelCount": 1,
-          "singletonRatio": 0.001058,
+          "singletonRatio": 0.00149,
           "sourceSize": {
             "h": 44,
             "space": "native-logical-pixels",
             "w": 52
           },
-          "transparentPixels": 1343,
+          "transparentPixels": 1617,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 945
+          "visiblePixels": 671
         },
         {
           "alpha": {
@@ -1125,31 +1125,31 @@
             "x": 530,
             "y": 2
           },
-          "colorRatio": 0.009653,
+          "colorRatio": 0.163889,
           "dimensions": {
             "height": 38,
             "width": 38
           },
           "frameKey": "actors/enemies/circler/idle",
           "opaqueBounds": {
-            "height": 29,
-            "width": 27,
+            "height": 28,
+            "width": 28,
             "x": 5,
             "y": 4
           },
-          "opaqueColorCount": 5,
-          "opaquePixels": 518,
-          "pixelSha256": "80cbf60938e0151464d44976bf8d2e0eac3da72e2fc3877eaaf0d81366e33acb",
-          "singletonPixelCount": 1,
-          "singletonRatio": 0.001931,
+          "opaqueColorCount": 59,
+          "opaquePixels": 360,
+          "pixelSha256": "b3cedd9350c743bfe5edb8ad49a5ff2f456bf16574707fe0e11e45e8fbf5c8f7",
+          "singletonPixelCount": 8,
+          "singletonRatio": 0.022222,
           "sourceSize": {
             "h": 38,
             "space": "native-logical-pixels",
             "w": 38
           },
-          "transparentPixels": 926,
+          "transparentPixels": 1084,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 518
+          "visiblePixels": 360
         },
         {
           "alpha": {
@@ -1173,31 +1173,31 @@
             "x": 570,
             "y": 2
           },
-          "colorRatio": 0.009328,
+          "colorRatio": 0.164134,
           "dimensions": {
             "height": 38,
             "width": 38
           },
           "frameKey": "actors/enemies/circler/walk",
           "opaqueBounds": {
-            "height": 29,
+            "height": 28,
             "width": 28,
             "x": 5,
             "y": 4
           },
-          "opaqueColorCount": 5,
-          "opaquePixels": 536,
-          "pixelSha256": "9d21bcba3ab34916c7b1dcf6b8a48917dc5278863b7ed212ab0df1247536416c",
-          "singletonPixelCount": 1,
-          "singletonRatio": 0.001866,
+          "opaqueColorCount": 54,
+          "opaquePixels": 329,
+          "pixelSha256": "86253238ca652d85e9a0ce41876bc816ce66c7cabefacfe6f86ee3a8fa3551ed",
+          "singletonPixelCount": 6,
+          "singletonRatio": 0.018237,
           "sourceSize": {
             "h": 38,
             "space": "native-logical-pixels",
             "w": 38
           },
-          "transparentPixels": 908,
+          "transparentPixels": 1115,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 536
+          "visiblePixels": 329
         },
         {
           "alpha": {
@@ -1221,31 +1221,31 @@
             "x": 254,
             "y": 2
           },
-          "colorRatio": 0.009153,
+          "colorRatio": 0.162939,
           "dimensions": {
             "height": 30,
             "width": 34
           },
           "frameKey": "actors/enemies/darter/idle",
           "opaqueBounds": {
-            "height": 18,
-            "width": 28,
-            "x": 3,
-            "y": 7
+            "height": 19,
+            "width": 30,
+            "x": 2,
+            "y": 5
           },
-          "opaqueColorCount": 4,
-          "opaquePixels": 437,
-          "pixelSha256": "23f9bcdb131c4081e5da7e303b770c4ab1385d6a507b1bb1a5aab749f04292dd",
-          "singletonPixelCount": 0,
-          "singletonRatio": 0,
+          "opaqueColorCount": 51,
+          "opaquePixels": 313,
+          "pixelSha256": "9f47f8de0e1117c13ac977ac4671524fece76f3d99f7399631bef92c18e668cb",
+          "singletonPixelCount": 7,
+          "singletonRatio": 0.022364,
           "sourceSize": {
             "h": 30,
             "space": "native-logical-pixels",
             "w": 34
           },
-          "transparentPixels": 583,
+          "transparentPixels": 707,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 437
+          "visiblePixels": 313
         },
         {
           "alpha": {
@@ -1269,7 +1269,7 @@
             "x": 290,
             "y": 2
           },
-          "colorRatio": 0.009029,
+          "colorRatio": 0.170347,
           "dimensions": {
             "height": 30,
             "width": 34
@@ -1277,23 +1277,23 @@
           "frameKey": "actors/enemies/darter/walk",
           "opaqueBounds": {
             "height": 19,
-            "width": 28,
-            "x": 3,
-            "y": 6
+            "width": 30,
+            "x": 2,
+            "y": 5
           },
-          "opaqueColorCount": 4,
-          "opaquePixels": 443,
-          "pixelSha256": "4d79a407f396dd6273dc187370ae7e3952e7ec330582c116f5ebb32ff44a74c7",
-          "singletonPixelCount": 0,
-          "singletonRatio": 0,
+          "opaqueColorCount": 54,
+          "opaquePixels": 317,
+          "pixelSha256": "4861880c543638ce9ffb2de93eca4678d910f7fd8daf7c753bb691665caa16e3",
+          "singletonPixelCount": 8,
+          "singletonRatio": 0.025237,
           "sourceSize": {
             "h": 30,
             "space": "native-logical-pixels",
             "w": 34
           },
-          "transparentPixels": 577,
+          "transparentPixels": 703,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 443
+          "visiblePixels": 317
         },
         {
           "alpha": {
@@ -1317,7 +1317,7 @@
             "x": 710,
             "y": 2
           },
-          "colorRatio": 0.004027,
+          "colorRatio": 0.061508,
           "dimensions": {
             "height": 54,
             "width": 54
@@ -1325,23 +1325,23 @@
           "frameKey": "actors/enemies/elite/idle",
           "opaqueBounds": {
             "height": 44,
-            "width": 43,
+            "width": 44,
             "x": 5,
             "y": 4
           },
-          "opaqueColorCount": 6,
-          "opaquePixels": 1490,
-          "pixelSha256": "61a31769271bae1b720fe5e2261745535f75b3e371152c49dbb7b28749ca1c68",
-          "singletonPixelCount": 0,
-          "singletonRatio": 0,
+          "opaqueColorCount": 62,
+          "opaquePixels": 1008,
+          "pixelSha256": "9eb1b209e4e42250a5e9f8af5f65a72308ba43e0232af7ff35eabf96e589b15a",
+          "singletonPixelCount": 1,
+          "singletonRatio": 0.000992,
           "sourceSize": {
             "h": 54,
             "space": "native-logical-pixels",
             "w": 54
           },
-          "transparentPixels": 1426,
+          "transparentPixels": 1908,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 1490
+          "visiblePixels": 1008
         },
         {
           "alpha": {
@@ -1365,7 +1365,7 @@
             "x": 766,
             "y": 2
           },
-          "colorRatio": 0.004013,
+          "colorRatio": 0.062812,
           "dimensions": {
             "height": 54,
             "width": 54
@@ -1373,23 +1373,23 @@
           "frameKey": "actors/enemies/elite/walk",
           "opaqueBounds": {
             "height": 44,
-            "width": 43,
+            "width": 44,
             "x": 5,
             "y": 4
           },
-          "opaqueColorCount": 6,
-          "opaquePixels": 1495,
-          "pixelSha256": "dfbfa280628f26987ac831f24a3c8687e2c7834b944527bdc193ed9ecb5e7622",
-          "singletonPixelCount": 0,
-          "singletonRatio": 0,
+          "opaqueColorCount": 63,
+          "opaquePixels": 1003,
+          "pixelSha256": "69c3d4e4bb1d34c3b18462bddfaea3355bad4abff119c9e1517b4c1b35311629",
+          "singletonPixelCount": 2,
+          "singletonRatio": 0.001994,
           "sourceSize": {
             "h": 54,
             "space": "native-logical-pixels",
             "w": 54
           },
-          "transparentPixels": 1421,
+          "transparentPixels": 1913,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 1495
+          "visiblePixels": 1003
         },
         {
           "alpha": {
@@ -1413,31 +1413,31 @@
             "x": 486,
             "y": 58
           },
-          "colorRatio": 0.008347,
+          "colorRatio": 0.112108,
           "dimensions": {
             "height": 42,
             "width": 42
           },
           "frameKey": "actors/enemies/flower/idle",
           "opaqueBounds": {
-            "height": 29,
-            "width": 29,
+            "height": 28,
+            "width": 30,
             "x": 6,
-            "y": 7
+            "y": 8
           },
-          "opaqueColorCount": 5,
-          "opaquePixels": 599,
-          "pixelSha256": "5908929b9df11b44b1775f901cbacec7241898f00fc9072be39a2b8d1dd89848",
-          "singletonPixelCount": 1,
-          "singletonRatio": 0.001669,
+          "opaqueColorCount": 50,
+          "opaquePixels": 446,
+          "pixelSha256": "9e796b2810aa950871851fec3645a5e7065675e82942a822d1ab01b1ff2386e7",
+          "singletonPixelCount": 5,
+          "singletonRatio": 0.011211,
           "sourceSize": {
             "h": 42,
             "space": "native-logical-pixels",
             "w": 42
           },
-          "transparentPixels": 1165,
+          "transparentPixels": 1318,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 599
+          "visiblePixels": 446
         },
         {
           "alpha": {
@@ -1461,31 +1461,31 @@
             "x": 530,
             "y": 58
           },
-          "colorRatio": 0.008078,
+          "colorRatio": 0.105381,
           "dimensions": {
             "height": 42,
             "width": 42
           },
           "frameKey": "actors/enemies/flower/walk",
           "opaqueBounds": {
-            "height": 29,
-            "width": 31,
-            "x": 5,
-            "y": 7
+            "height": 28,
+            "width": 30,
+            "x": 6,
+            "y": 8
           },
-          "opaqueColorCount": 5,
-          "opaquePixels": 619,
-          "pixelSha256": "fc6687e72565d2d3d81ac8906f045fee7ce99bb8b882d5c7abe323415f85b3e6",
-          "singletonPixelCount": 1,
-          "singletonRatio": 0.001616,
+          "opaqueColorCount": 47,
+          "opaquePixels": 446,
+          "pixelSha256": "84208eafde7a8f728385722635546217a6ac7174bfd7967771559fb00102b1cf",
+          "singletonPixelCount": 6,
+          "singletonRatio": 0.013453,
           "sourceSize": {
             "h": 42,
             "space": "native-logical-pixels",
             "w": 42
           },
-          "transparentPixels": 1145,
+          "transparentPixels": 1318,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 619
+          "visiblePixels": 446
         },
         {
           "alpha": {
@@ -1509,31 +1509,31 @@
             "x": 198,
             "y": 58
           },
-          "colorRatio": 0.008726,
+          "colorRatio": 0.138514,
           "dimensions": {
             "height": 42,
             "width": 38
           },
           "frameKey": "actors/enemies/ghost/idle",
           "opaqueBounds": {
-            "height": 30,
+            "height": 28,
             "width": 26,
             "x": 6,
-            "y": 5
+            "y": 8
           },
-          "opaqueColorCount": 5,
-          "opaquePixels": 573,
-          "pixelSha256": "e3e57e7979eefd24dc4c9d281d8c5c017f0f64678e661dab855befd2795269b2",
-          "singletonPixelCount": 0,
-          "singletonRatio": 0,
+          "opaqueColorCount": 41,
+          "opaquePixels": 296,
+          "pixelSha256": "e5cea1f5b39afc5c3bc2603f6043c0119f89a0ab4ee1c275d78ee9f16f2a14b8",
+          "singletonPixelCount": 12,
+          "singletonRatio": 0.040541,
           "sourceSize": {
             "h": 42,
             "space": "native-logical-pixels",
             "w": 38
           },
-          "transparentPixels": 1023,
+          "transparentPixels": 1300,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 573
+          "visiblePixels": 296
         },
         {
           "alpha": {
@@ -1557,31 +1557,31 @@
             "x": 238,
             "y": 58
           },
-          "colorRatio": 0.008741,
+          "colorRatio": 0.126214,
           "dimensions": {
             "height": 42,
             "width": 38
           },
           "frameKey": "actors/enemies/ghost/walk",
           "opaqueBounds": {
-            "height": 30,
+            "height": 28,
             "width": 26,
             "x": 6,
-            "y": 5
+            "y": 8
           },
-          "opaqueColorCount": 5,
-          "opaquePixels": 572,
-          "pixelSha256": "6ec95e77d1083916cb3c1fb5d5f75a420c234fa260d8b8d07ff261117d797bd1",
-          "singletonPixelCount": 0,
-          "singletonRatio": 0,
+          "opaqueColorCount": 39,
+          "opaquePixels": 309,
+          "pixelSha256": "6259bbb36d3def74654d9aa9769c7b5db65cb56133bac6226011bdc467441dec",
+          "singletonPixelCount": 9,
+          "singletonRatio": 0.029126,
           "sourceSize": {
             "h": 42,
             "space": "native-logical-pixels",
             "w": 38
           },
-          "transparentPixels": 1024,
+          "transparentPixels": 1287,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 572
+          "visiblePixels": 309
         },
         {
           "alpha": {
@@ -1605,31 +1605,31 @@
             "x": 574,
             "y": 58
           },
-          "colorRatio": 0.003431,
+          "colorRatio": 0.04918,
           "dimensions": {
             "height": 60,
             "width": 66
           },
           "frameKey": "actors/enemies/glowingBat/idle",
           "opaqueBounds": {
-            "height": 48,
+            "height": 49,
             "width": 54,
             "x": 6,
             "y": 5
           },
-          "opaqueColorCount": 6,
-          "opaquePixels": 1749,
-          "pixelSha256": "8db041fbbdd5c2f233e7b1f5d513c128b5de265ed156267cf852cc234e9a740b",
-          "singletonPixelCount": 0,
-          "singletonRatio": 0,
+          "opaqueColorCount": 57,
+          "opaquePixels": 1159,
+          "pixelSha256": "e544bda24ed767c01846f6c43f41db660ea53aaecc900bc9b54d5c8f146e0dd5",
+          "singletonPixelCount": 9,
+          "singletonRatio": 0.007765,
           "sourceSize": {
             "h": 60,
             "space": "native-logical-pixels",
             "w": 66
           },
-          "transparentPixels": 2211,
+          "transparentPixels": 2801,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 1749
+          "visiblePixels": 1159
         },
         {
           "alpha": {
@@ -1653,31 +1653,31 @@
             "x": 642,
             "y": 58
           },
-          "colorRatio": 0.003734,
+          "colorRatio": 0.046064,
           "dimensions": {
             "height": 60,
             "width": 66
           },
           "frameKey": "actors/enemies/glowingBat/walk",
           "opaqueBounds": {
-            "height": 48,
-            "width": 54,
-            "x": 6,
+            "height": 49,
+            "width": 56,
+            "x": 5,
             "y": 5
           },
-          "opaqueColorCount": 6,
-          "opaquePixels": 1607,
-          "pixelSha256": "47dfbda4b351132eadb88a28cdd0ea8c31e43811d3a60c0ad2a6d4cb44467941",
-          "singletonPixelCount": 0,
-          "singletonRatio": 0,
+          "opaqueColorCount": 55,
+          "opaquePixels": 1194,
+          "pixelSha256": "b20f81ba13b76d71e068be994e80d041134f65355b459bf9d85d31a8009ec0d6",
+          "singletonPixelCount": 5,
+          "singletonRatio": 0.004188,
           "sourceSize": {
             "h": 60,
             "space": "native-logical-pixels",
             "w": 66
           },
-          "transparentPixels": 2353,
+          "transparentPixels": 2766,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 1607
+          "visiblePixels": 1194
         },
         {
           "alpha": {
@@ -1701,31 +1701,31 @@
             "x": 382,
             "y": 58
           },
-          "colorRatio": 0.004409,
+          "colorRatio": 0.049281,
           "dimensions": {
             "height": 50,
             "width": 50
           },
           "frameKey": "actors/enemies/grayMudman/idle",
           "opaqueBounds": {
-            "height": 41,
-            "width": 34,
-            "x": 8,
-            "y": 3
+            "height": 40,
+            "width": 36,
+            "x": 7,
+            "y": 4
           },
-          "opaqueColorCount": 5,
-          "opaquePixels": 1134,
-          "pixelSha256": "0f43ad7109fd87aee03a5425782753e1543152f21422d07aef0927c1c7617d19",
-          "singletonPixelCount": 0,
-          "singletonRatio": 0,
+          "opaqueColorCount": 48,
+          "opaquePixels": 974,
+          "pixelSha256": "50ccc67e37508a79ac6646583651b4145b7daaf158789ee52dc7f96744948996",
+          "singletonPixelCount": 2,
+          "singletonRatio": 0.002053,
           "sourceSize": {
             "h": 50,
             "space": "native-logical-pixels",
             "w": 50
           },
-          "transparentPixels": 1366,
+          "transparentPixels": 1526,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 1134
+          "visiblePixels": 974
         },
         {
           "alpha": {
@@ -1749,31 +1749,31 @@
             "x": 434,
             "y": 58
           },
-          "colorRatio": 0.004216,
+          "colorRatio": 0.064356,
           "dimensions": {
             "height": 50,
             "width": 50
           },
           "frameKey": "actors/enemies/grayMudman/walk",
           "opaqueBounds": {
-            "height": 41,
+            "height": 36,
             "width": 36,
             "x": 7,
-            "y": 3
+            "y": 8
           },
-          "opaqueColorCount": 5,
-          "opaquePixels": 1186,
-          "pixelSha256": "b7f8ba1ccca2f20621f1b2c097f1c15e8fccdbe6e96ba71f0d138e9e82bf188c",
-          "singletonPixelCount": 0,
-          "singletonRatio": 0,
+          "opaqueColorCount": 52,
+          "opaquePixels": 808,
+          "pixelSha256": "2295eafd22e742801d23dc133e0746cc051788fdf370d4db9e1533b9f6358c13",
+          "singletonPixelCount": 6,
+          "singletonRatio": 0.007426,
           "sourceSize": {
             "h": 50,
             "space": "native-logical-pixels",
             "w": 50
           },
-          "transparentPixels": 1314,
+          "transparentPixels": 1692,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 1186
+          "visiblePixels": 808
         },
         {
           "alpha": {
@@ -1797,7 +1797,7 @@
             "x": 278,
             "y": 58
           },
-          "colorRatio": 0.004823,
+          "colorRatio": 0.043478,
           "dimensions": {
             "height": 50,
             "width": 50
@@ -1805,23 +1805,23 @@
           "frameKey": "actors/enemies/greenMudman/idle",
           "opaqueBounds": {
             "height": 40,
-            "width": 43,
-            "x": 3,
+            "width": 42,
+            "x": 4,
             "y": 4
           },
-          "opaqueColorCount": 6,
-          "opaquePixels": 1244,
-          "pixelSha256": "94c69ec456dc385beba3f2a5aa4ccaf55738cae49092840b845e2e162269e20e",
-          "singletonPixelCount": 0,
-          "singletonRatio": 0,
+          "opaqueColorCount": 48,
+          "opaquePixels": 1104,
+          "pixelSha256": "1de30714b88c29191339d9207de6cd4e47fa92ac63bf1c22e430fc2c2f7a799c",
+          "singletonPixelCount": 6,
+          "singletonRatio": 0.005435,
           "sourceSize": {
             "h": 50,
             "space": "native-logical-pixels",
             "w": 50
           },
-          "transparentPixels": 1256,
+          "transparentPixels": 1396,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 1244
+          "visiblePixels": 1104
         },
         {
           "alpha": {
@@ -1845,31 +1845,31 @@
             "x": 330,
             "y": 58
           },
-          "colorRatio": 0.004781,
+          "colorRatio": 0.046512,
           "dimensions": {
             "height": 50,
             "width": 50
           },
           "frameKey": "actors/enemies/greenMudman/walk",
           "opaqueBounds": {
-            "height": 40,
-            "width": 43,
-            "x": 3,
-            "y": 4
+            "height": 36,
+            "width": 42,
+            "x": 4,
+            "y": 8
           },
-          "opaqueColorCount": 6,
-          "opaquePixels": 1255,
-          "pixelSha256": "3f851643776b739d43dd47157383efb193cae90415b627a66375061347df3924",
-          "singletonPixelCount": 0,
-          "singletonRatio": 0,
+          "opaqueColorCount": 40,
+          "opaquePixels": 860,
+          "pixelSha256": "0e6a4edb3ad63ccda5ac99557e9577ac2218abc20e1a42752cca787f16b08188",
+          "singletonPixelCount": 4,
+          "singletonRatio": 0.004651,
           "sourceSize": {
             "h": 50,
             "space": "native-logical-pixels",
             "w": 50
           },
-          "transparentPixels": 1245,
+          "transparentPixels": 1640,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 1255
+          "visiblePixels": 860
         },
         {
           "alpha": {
@@ -1893,31 +1893,31 @@
             "x": 710,
             "y": 58
           },
-          "colorRatio": 0.002897,
+          "colorRatio": 0.041264,
           "dimensions": {
             "height": 62,
             "width": 70
           },
           "frameKey": "actors/enemies/mantis/idle",
           "opaqueBounds": {
-            "height": 53,
-            "width": 62,
-            "x": 4,
-            "y": 4
+            "height": 54,
+            "width": 60,
+            "x": 5,
+            "y": 2
           },
-          "opaqueColorCount": 6,
-          "opaquePixels": 2071,
-          "pixelSha256": "6455d46c3e2ae5f1ba74e70a59ab81a70df52f39d277815efcdfca3175d481df",
-          "singletonPixelCount": 0,
-          "singletonRatio": 0,
+          "opaqueColorCount": 64,
+          "opaquePixels": 1551,
+          "pixelSha256": "e423669ddd3dce4695a7bdb2acb6dd6dc66c5aaf746174120c935230ddd644be",
+          "singletonPixelCount": 2,
+          "singletonRatio": 0.001289,
           "sourceSize": {
             "h": 62,
             "space": "native-logical-pixels",
             "w": 70
           },
-          "transparentPixels": 2269,
+          "transparentPixels": 2789,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 2071
+          "visiblePixels": 1551
         },
         {
           "alpha": {
@@ -1941,21 +1941,21 @@
             "x": 782,
             "y": 58
           },
-          "colorRatio": 0.003057,
+          "colorRatio": 0.03995,
           "dimensions": {
             "height": 62,
             "width": 70
           },
           "frameKey": "actors/enemies/mantis/walk",
           "opaqueBounds": {
-            "height": 53,
+            "height": 54,
             "width": 60,
             "x": 5,
-            "y": 4
+            "y": 2
           },
-          "opaqueColorCount": 6,
-          "opaquePixels": 1963,
-          "pixelSha256": "d82a941def017ee1d76b4b30421d73a815bfd0e0fb0459cdb0ef7ab8697c3839",
+          "opaqueColorCount": 64,
+          "opaquePixels": 1602,
+          "pixelSha256": "8c891b4e5a3e2a80f062010d11cf75fa8acefdbd51bf971a8a6950b4b499b943",
           "singletonPixelCount": 0,
           "singletonRatio": 0,
           "sourceSize": {
@@ -1963,9 +1963,9 @@
             "space": "native-logical-pixels",
             "w": 70
           },
-          "transparentPixels": 2377,
+          "transparentPixels": 2738,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 1963
+          "visiblePixels": 1602
         },
         {
           "alpha": {
@@ -1989,31 +1989,31 @@
             "x": 886,
             "y": 2
           },
-          "colorRatio": 0.009524,
+          "colorRatio": 0.171806,
           "dimensions": {
             "height": 30,
             "width": 32
           },
           "frameKey": "actors/enemies/redBat/idle",
           "opaqueBounds": {
-            "height": 21,
-            "width": 26,
-            "x": 3,
-            "y": 3
+            "height": 20,
+            "width": 24,
+            "x": 4,
+            "y": 4
           },
-          "opaqueColorCount": 4,
-          "opaquePixels": 420,
-          "pixelSha256": "312a6b43278ce33b8866e1416706c3ff27939bfee0bb470f58bfc3d22111c65c",
-          "singletonPixelCount": 0,
-          "singletonRatio": 0,
+          "opaqueColorCount": 39,
+          "opaquePixels": 227,
+          "pixelSha256": "d054a4d8b8d7e305f46bbcdaf3e996ab8c93c9ca3b35a435882cdc0f96562d98",
+          "singletonPixelCount": 8,
+          "singletonRatio": 0.035242,
           "sourceSize": {
             "h": 30,
             "space": "native-logical-pixels",
             "w": 32
           },
-          "transparentPixels": 540,
+          "transparentPixels": 733,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 420
+          "visiblePixels": 227
         },
         {
           "alpha": {
@@ -2037,31 +2037,31 @@
             "x": 920,
             "y": 2
           },
-          "colorRatio": 0.00995,
+          "colorRatio": 0.188034,
           "dimensions": {
             "height": 30,
             "width": 32
           },
           "frameKey": "actors/enemies/redBat/walk",
           "opaqueBounds": {
-            "height": 19,
-            "width": 26,
-            "x": 3,
-            "y": 5
+            "height": 20,
+            "width": 24,
+            "x": 4,
+            "y": 4
           },
-          "opaqueColorCount": 4,
-          "opaquePixels": 402,
-          "pixelSha256": "b5c65d3a510c921df3c53720c175d5c65a27998b11b7ac28620e81d0353f20da",
-          "singletonPixelCount": 0,
-          "singletonRatio": 0,
+          "opaqueColorCount": 44,
+          "opaquePixels": 234,
+          "pixelSha256": "78b4fb274b91872c87771d90bf015ced8bbd782b59273fa1530d2bd113712753",
+          "singletonPixelCount": 9,
+          "singletonRatio": 0.038462,
           "sourceSize": {
             "h": 30,
             "space": "native-logical-pixels",
             "w": 32
           },
-          "transparentPixels": 558,
+          "transparentPixels": 726,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 402
+          "visiblePixels": 234
         },
         {
           "alpha": {
@@ -2085,31 +2085,31 @@
             "x": 954,
             "y": 2
           },
-          "colorRatio": 0.009346,
+          "colorRatio": 0.127586,
           "dimensions": {
             "height": 32,
             "width": 34
           },
           "frameKey": "actors/enemies/redBat2/idle",
           "opaqueBounds": {
-            "height": 20,
-            "width": 27,
-            "x": 4,
-            "y": 5
+            "height": 22,
+            "width": 28,
+            "x": 3,
+            "y": 4
           },
-          "opaqueColorCount": 4,
-          "opaquePixels": 428,
-          "pixelSha256": "a9fc71b207959b4dd037bcfd3ccbd71cce8c99d9f817d95a5f441892d5f5afe0",
-          "singletonPixelCount": 0,
-          "singletonRatio": 0,
+          "opaqueColorCount": 37,
+          "opaquePixels": 290,
+          "pixelSha256": "a9d54af1f41de06f56953ad7caebe783d49775df990dac7b361a77543c976a9c",
+          "singletonPixelCount": 11,
+          "singletonRatio": 0.037931,
           "sourceSize": {
             "h": 32,
             "space": "native-logical-pixels",
             "w": 34
           },
-          "transparentPixels": 660,
+          "transparentPixels": 798,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 428
+          "visiblePixels": 290
         },
         {
           "alpha": {
@@ -2133,31 +2133,31 @@
             "x": 2,
             "y": 58
           },
-          "colorRatio": 0.009029,
+          "colorRatio": 0.121622,
           "dimensions": {
             "height": 32,
             "width": 34
           },
           "frameKey": "actors/enemies/redBat2/walk",
           "opaqueBounds": {
-            "height": 20,
-            "width": 27,
-            "x": 4,
-            "y": 5
+            "height": 22,
+            "width": 28,
+            "x": 3,
+            "y": 4
           },
-          "opaqueColorCount": 4,
-          "opaquePixels": 443,
-          "pixelSha256": "e71f99bb5ba965e3eb2f18c2c4b43cb1b237519910755fa627459e324375f66a",
-          "singletonPixelCount": 0,
-          "singletonRatio": 0,
+          "opaqueColorCount": 36,
+          "opaquePixels": 296,
+          "pixelSha256": "219da5708658360c1356fed10f0128eed9e145ed023be2f2001e59ebd20892a8",
+          "singletonPixelCount": 8,
+          "singletonRatio": 0.027027,
           "sourceSize": {
             "h": 32,
             "space": "native-logical-pixels",
             "w": 34
           },
-          "transparentPixels": 645,
+          "transparentPixels": 792,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 443
+          "visiblePixels": 296
         },
         {
           "alpha": {
@@ -2181,31 +2181,31 @@
             "x": 610,
             "y": 2
           },
-          "colorRatio": 0.006567,
+          "colorRatio": 0.072104,
           "dimensions": {
             "height": 50,
             "width": 48
           },
           "frameKey": "actors/enemies/shielded/idle",
           "opaqueBounds": {
-            "height": 40,
+            "height": 42,
             "width": 38,
             "x": 5,
-            "y": 5
+            "y": 2
           },
-          "opaqueColorCount": 7,
-          "opaquePixels": 1066,
-          "pixelSha256": "24d8c1c11d5a93b8a1499f3316159792c23d0b557f1be014719ae49ef95b5dce",
-          "singletonPixelCount": 0,
-          "singletonRatio": 0,
+          "opaqueColorCount": 61,
+          "opaquePixels": 846,
+          "pixelSha256": "b2f9a9ca81c3a95061206e42d4671fbdf62b18fa8903bf539685fe53e8f9f9d1",
+          "singletonPixelCount": 1,
+          "singletonRatio": 0.001182,
           "sourceSize": {
             "h": 50,
             "space": "native-logical-pixels",
             "w": 48
           },
-          "transparentPixels": 1334,
+          "transparentPixels": 1554,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 1066
+          "visiblePixels": 846
         },
         {
           "alpha": {
@@ -2229,31 +2229,31 @@
             "x": 660,
             "y": 2
           },
-          "colorRatio": 0.006404,
+          "colorRatio": 0.079208,
           "dimensions": {
             "height": 50,
             "width": 48
           },
           "frameKey": "actors/enemies/shielded/walk",
           "opaqueBounds": {
-            "height": 40,
-            "width": 37,
-            "x": 6,
-            "y": 5
+            "height": 42,
+            "width": 38,
+            "x": 5,
+            "y": 2
           },
-          "opaqueColorCount": 7,
-          "opaquePixels": 1093,
-          "pixelSha256": "795f50658a514a572b28a993fc4718484a173e272f60384550cf5d16c57e972e",
-          "singletonPixelCount": 0,
-          "singletonRatio": 0,
+          "opaqueColorCount": 64,
+          "opaquePixels": 808,
+          "pixelSha256": "dd3981092aab44c51ebbdac481bc81859a9ab272737db587261c17d87620a516",
+          "singletonPixelCount": 2,
+          "singletonRatio": 0.002475,
           "sourceSize": {
             "h": 50,
             "space": "native-logical-pixels",
             "w": 48
           },
-          "transparentPixels": 1307,
+          "transparentPixels": 1592,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 1093
+          "visiblePixels": 808
         },
         {
           "alpha": {
@@ -2277,31 +2277,31 @@
             "x": 118,
             "y": 58
           },
-          "colorRatio": 0.007949,
+          "colorRatio": 0.137592,
           "dimensions": {
             "height": 42,
             "width": 38
           },
           "frameKey": "actors/enemies/skeleton/idle",
           "opaqueBounds": {
-            "height": 31,
+            "height": 30,
             "width": 28,
-            "x": 6,
+            "x": 5,
             "y": 6
           },
-          "opaqueColorCount": 5,
-          "opaquePixels": 629,
-          "pixelSha256": "e0f7d02151437a9500bfa48985b0b19c274f491fa452a0a843a9e9ae53ae76bb",
-          "singletonPixelCount": 0,
-          "singletonRatio": 0,
+          "opaqueColorCount": 56,
+          "opaquePixels": 407,
+          "pixelSha256": "9a8487bc764791c4288e746a0367d4fa1926fff7f83eb8ed783cfc4087e4a7f8",
+          "singletonPixelCount": 10,
+          "singletonRatio": 0.02457,
           "sourceSize": {
             "h": 42,
             "space": "native-logical-pixels",
             "w": 38
           },
-          "transparentPixels": 967,
+          "transparentPixels": 1189,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 629
+          "visiblePixels": 407
         },
         {
           "alpha": {
@@ -2325,31 +2325,31 @@
             "x": 158,
             "y": 58
           },
-          "colorRatio": 0.007634,
+          "colorRatio": 0.127604,
           "dimensions": {
             "height": 42,
             "width": 38
           },
           "frameKey": "actors/enemies/skeleton/walk",
           "opaqueBounds": {
-            "height": 31,
+            "height": 30,
             "width": 28,
-            "x": 4,
+            "x": 5,
             "y": 6
           },
-          "opaqueColorCount": 5,
-          "opaquePixels": 655,
-          "pixelSha256": "cb97d6fbefaedbf93d21ff4c86f462f73526ed73735d7b83f900fb31881d2458",
-          "singletonPixelCount": 0,
-          "singletonRatio": 0,
+          "opaqueColorCount": 49,
+          "opaquePixels": 384,
+          "pixelSha256": "1095697cfdb0477725d480322202538abe5b24d85fb69e84216caf02a7419d9a",
+          "singletonPixelCount": 5,
+          "singletonRatio": 0.013021,
           "sourceSize": {
             "h": 42,
             "space": "native-logical-pixels",
             "w": 38
           },
-          "transparentPixels": 941,
+          "transparentPixels": 1212,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 655
+          "visiblePixels": 384
         },
         {
           "alpha": {
@@ -2373,31 +2373,31 @@
             "x": 326,
             "y": 2
           },
-          "colorRatio": 0.006188,
+          "colorRatio": 0.073082,
           "dimensions": {
             "height": 48,
             "width": 46
           },
           "frameKey": "actors/enemies/splitter/idle",
           "opaqueBounds": {
-            "height": 36,
-            "width": 34,
-            "x": 6,
-            "y": 6
+            "height": 38,
+            "width": 36,
+            "x": 5,
+            "y": 4
           },
-          "opaqueColorCount": 5,
-          "opaquePixels": 808,
-          "pixelSha256": "174bbff3eed4017a5340377c993a80525938075bc024339adcf013e980c34dbb",
-          "singletonPixelCount": 1,
-          "singletonRatio": 0.001238,
+          "opaqueColorCount": 60,
+          "opaquePixels": 821,
+          "pixelSha256": "078830d964af06b21ab9709410ae6a7569027306347ead1c47827308882b3cf7",
+          "singletonPixelCount": 5,
+          "singletonRatio": 0.00609,
           "sourceSize": {
             "h": 48,
             "space": "native-logical-pixels",
             "w": 46
           },
-          "transparentPixels": 1400,
+          "transparentPixels": 1387,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 808
+          "visiblePixels": 821
         },
         {
           "alpha": {
@@ -2421,31 +2421,31 @@
             "x": 374,
             "y": 2
           },
-          "colorRatio": 0.006188,
+          "colorRatio": 0.077597,
           "dimensions": {
             "height": 48,
             "width": 46
           },
           "frameKey": "actors/enemies/splitter/walk",
           "opaqueBounds": {
-            "height": 36,
-            "width": 34,
-            "x": 6,
-            "y": 6
+            "height": 38,
+            "width": 36,
+            "x": 5,
+            "y": 4
           },
-          "opaqueColorCount": 5,
-          "opaquePixels": 808,
-          "pixelSha256": "9a08501228d5039228d8cb34609af67ad24958d693c1d1b2337df1be8cb39703",
-          "singletonPixelCount": 1,
-          "singletonRatio": 0.001238,
+          "opaqueColorCount": 62,
+          "opaquePixels": 799,
+          "pixelSha256": "03fa395ceea6145f3be312fb09ebc91a433023b25ce9c776f414a9639dc58b85",
+          "singletonPixelCount": 8,
+          "singletonRatio": 0.010013,
           "sourceSize": {
             "h": 48,
             "space": "native-logical-pixels",
             "w": 46
           },
-          "transparentPixels": 1400,
+          "transparentPixels": 1409,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 808
+          "visiblePixels": 799
         },
         {
           "alpha": {
@@ -2469,31 +2469,31 @@
             "x": 86,
             "y": 2
           },
-          "colorRatio": 0.021739,
+          "colorRatio": 0.262136,
           "dimensions": {
             "height": 26,
             "width": 28
           },
           "frameKey": "actors/enemies/swarmer/idle",
           "opaqueBounds": {
-            "height": 14,
-            "width": 17,
-            "x": 5,
+            "height": 15,
+            "width": 16,
+            "x": 6,
             "y": 5
           },
-          "opaqueColorCount": 4,
-          "opaquePixels": 184,
-          "pixelSha256": "0266f2b29bd189d6243473a1c3fb8e052d249e44e5ddda7e6cae8fc7f6e76ce4",
-          "singletonPixelCount": 1,
-          "singletonRatio": 0.005435,
+          "opaqueColorCount": 27,
+          "opaquePixels": 103,
+          "pixelSha256": "5363b65df7188bce1164b2ac52549a9c6845930b7a282b1673182ebd433949a2",
+          "singletonPixelCount": 14,
+          "singletonRatio": 0.135922,
           "sourceSize": {
             "h": 26,
             "space": "native-logical-pixels",
             "w": 28
           },
-          "transparentPixels": 544,
+          "transparentPixels": 625,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 184
+          "visiblePixels": 103
         },
         {
           "alpha": {
@@ -2517,31 +2517,31 @@
             "x": 116,
             "y": 2
           },
-          "colorRatio": 0.022857,
+          "colorRatio": 0.236364,
           "dimensions": {
             "height": 26,
             "width": 28
           },
           "frameKey": "actors/enemies/swarmer/walk",
           "opaqueBounds": {
-            "height": 14,
-            "width": 17,
-            "x": 5,
+            "height": 15,
+            "width": 16,
+            "x": 6,
             "y": 5
           },
-          "opaqueColorCount": 4,
-          "opaquePixels": 175,
-          "pixelSha256": "5a6c23b9fea36344980c580492d8aabb7e033010db6775318cc4aa1dc42790ac",
-          "singletonPixelCount": 1,
-          "singletonRatio": 0.005714,
+          "opaqueColorCount": 26,
+          "opaquePixels": 110,
+          "pixelSha256": "96c4c93b9630c6bcf9be25e2f06175cb5292dbfa0fedb49e8b51e4f7a7bc9a3c",
+          "singletonPixelCount": 7,
+          "singletonRatio": 0.063636,
           "sourceSize": {
             "h": 26,
             "space": "native-logical-pixels",
             "w": 28
           },
-          "transparentPixels": 553,
+          "transparentPixels": 618,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 175
+          "visiblePixels": 110
         },
         {
           "alpha": {
@@ -2565,31 +2565,31 @@
             "x": 146,
             "y": 2
           },
-          "colorRatio": 0.003771,
+          "colorRatio": 0.051895,
           "dimensions": {
             "height": 52,
             "width": 52
           },
           "frameKey": "actors/enemies/tank/idle",
           "opaqueBounds": {
-            "height": 42,
+            "height": 44,
             "width": 44,
             "x": 4,
-            "y": 5
+            "y": 2
           },
-          "opaqueColorCount": 5,
-          "opaquePixels": 1326,
-          "pixelSha256": "72cb38c30302a315b2ffab49d8f2f3d079e182d674b3d4a6b31a767e187186f2",
-          "singletonPixelCount": 0,
-          "singletonRatio": 0,
+          "opaqueColorCount": 63,
+          "opaquePixels": 1214,
+          "pixelSha256": "14ae3225850b6663947dcdb8606e30aa1d984ccdbd29a3f838e759d855a2b604",
+          "singletonPixelCount": 3,
+          "singletonRatio": 0.002471,
           "sourceSize": {
             "h": 52,
             "space": "native-logical-pixels",
             "w": 52
           },
-          "transparentPixels": 1378,
+          "transparentPixels": 1490,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 1326
+          "visiblePixels": 1214
         },
         {
           "alpha": {
@@ -2613,31 +2613,31 @@
             "x": 200,
             "y": 2
           },
-          "colorRatio": 0.003745,
+          "colorRatio": 0.052316,
           "dimensions": {
             "height": 52,
             "width": 52
           },
           "frameKey": "actors/enemies/tank/walk",
           "opaqueBounds": {
-            "height": 42,
+            "height": 44,
             "width": 44,
             "x": 4,
-            "y": 5
+            "y": 2
           },
-          "opaqueColorCount": 5,
-          "opaquePixels": 1335,
-          "pixelSha256": "942213f52402f3776858f7d5c3cb299895baf18fe97e0ac58d26376266a61805",
-          "singletonPixelCount": 0,
-          "singletonRatio": 0,
+          "opaqueColorCount": 61,
+          "opaquePixels": 1166,
+          "pixelSha256": "4d9d44bb9bb43d6f34ec0936950003702ae53c227c6b35712cc3f8c73f5439df",
+          "singletonPixelCount": 4,
+          "singletonRatio": 0.003431,
           "sourceSize": {
             "h": 52,
             "space": "native-logical-pixels",
             "w": 52
           },
-          "transparentPixels": 1369,
+          "transparentPixels": 1538,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 1335
+          "visiblePixels": 1166
         },
         {
           "alpha": {
@@ -2661,31 +2661,31 @@
             "x": 38,
             "y": 58
           },
-          "colorRatio": 0.008446,
+          "colorRatio": 0.097744,
           "dimensions": {
             "height": 42,
             "width": 38
           },
           "frameKey": "actors/enemies/zombie/idle",
           "opaqueBounds": {
-            "height": 30,
-            "width": 26,
-            "x": 5,
-            "y": 6
+            "height": 29,
+            "width": 24,
+            "x": 7,
+            "y": 7
           },
-          "opaqueColorCount": 5,
-          "opaquePixels": 592,
-          "pixelSha256": "d8b534eb9e604069bd7240d4a60ee7f096c3c686619fab5d52d7243c4e06324c",
-          "singletonPixelCount": 0,
-          "singletonRatio": 0,
+          "opaqueColorCount": 39,
+          "opaquePixels": 399,
+          "pixelSha256": "63e2d13dff63131b3c9cb2734fe01b7b8a4cd3bd6a6446abdb02b91e2ec3f5d9",
+          "singletonPixelCount": 5,
+          "singletonRatio": 0.012531,
           "sourceSize": {
             "h": 42,
             "space": "native-logical-pixels",
             "w": 38
           },
-          "transparentPixels": 1004,
+          "transparentPixels": 1197,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 592
+          "visiblePixels": 399
         },
         {
           "alpha": {
@@ -2709,31 +2709,31 @@
             "x": 78,
             "y": 58
           },
-          "colorRatio": 0.008375,
+          "colorRatio": 0.083799,
           "dimensions": {
             "height": 42,
             "width": 38
           },
           "frameKey": "actors/enemies/zombie/walk",
           "opaqueBounds": {
-            "height": 30,
-            "width": 25,
-            "x": 5,
-            "y": 6
+            "height": 29,
+            "width": 24,
+            "x": 7,
+            "y": 7
           },
-          "opaqueColorCount": 5,
-          "opaquePixels": 597,
-          "pixelSha256": "3605d90e299df1275704f712b1cf0e5c3817d4486fd48b6bb7c4736077254f84",
-          "singletonPixelCount": 0,
-          "singletonRatio": 0,
+          "opaqueColorCount": 30,
+          "opaquePixels": 358,
+          "pixelSha256": "75367ca5d07048a84c54ab1e817c98e2cf2ebace469af3865e887688d71f4664",
+          "singletonPixelCount": 5,
+          "singletonRatio": 0.013966,
           "sourceSize": {
             "h": 42,
             "space": "native-logical-pixels",
             "w": 38
           },
-          "transparentPixels": 999,
+          "transparentPixels": 1238,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 597
+          "visiblePixels": 358
         },
         {
           "alpha": {
@@ -2757,7 +2757,7 @@
             "x": 2,
             "y": 2
           },
-          "colorRatio": 0.008197,
+          "colorRatio": 0.11335,
           "dimensions": {
             "height": 44,
             "width": 40
@@ -2765,23 +2765,23 @@
           "frameKey": "actors/player/idle",
           "opaqueBounds": {
             "height": 34,
-            "width": 30,
-            "x": 5,
+            "width": 27,
+            "x": 7,
             "y": 4
           },
-          "opaqueColorCount": 6,
-          "opaquePixels": 732,
-          "pixelSha256": "d33fac5814266d193557f10c484c7276df29f58097ba2c86a98c951fce6b7a11",
-          "singletonPixelCount": 0,
-          "singletonRatio": 0,
+          "opaqueColorCount": 45,
+          "opaquePixels": 397,
+          "pixelSha256": "0e13736273ece9c33d1efb7dc15fa1ac8148faf3ed597868e6d60f2fd7f1e8d2",
+          "singletonPixelCount": 4,
+          "singletonRatio": 0.010076,
           "sourceSize": {
             "h": 44,
             "space": "native-logical-pixels",
             "w": 40
           },
-          "transparentPixels": 1028,
+          "transparentPixels": 1363,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 732
+          "visiblePixels": 397
         },
         {
           "alpha": {
@@ -2805,7 +2805,7 @@
             "x": 44,
             "y": 2
           },
-          "colorRatio": 0.008253,
+          "colorRatio": 0.122093,
           "dimensions": {
             "height": 44,
             "width": 40
@@ -2813,23 +2813,23 @@
           "frameKey": "actors/player/walk",
           "opaqueBounds": {
             "height": 34,
-            "width": 30,
-            "x": 5,
+            "width": 28,
+            "x": 6,
             "y": 4
           },
-          "opaqueColorCount": 6,
-          "opaquePixels": 727,
-          "pixelSha256": "6f4109a4cdec34ac205a264671c21a8662c73e4b7c9e933a121791e30fad6793",
-          "singletonPixelCount": 0,
-          "singletonRatio": 0,
+          "opaqueColorCount": 42,
+          "opaquePixels": 344,
+          "pixelSha256": "d216b3da12157e2ec608ddfafa19d7557e5d718b898fa32772c0900ccd0b6a24",
+          "singletonPixelCount": 2,
+          "singletonRatio": 0.005814,
           "sourceSize": {
             "h": 44,
             "space": "native-logical-pixels",
             "w": 40
           },
-          "transparentPixels": 1033,
+          "transparentPixels": 1416,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 727
+          "visiblePixels": 344
         },
         {
           "alpha": {
@@ -4283,31 +4283,31 @@
           "minimum": 0,
           "softPixelCount": 0
         },
-        "colorRatio": 0.000229,
+        "colorRatio": 0.00382,
         "dimensions": {
           "height": 512,
           "width": 1024
         },
-        "fileSha256": "de44cd46c4fb9724cf27576fd1a2aaebc311b25b4da24233d4411b71a579172e",
+        "fileSha256": "63ecb7985bc7ea16bdedab5bff5183bef4ec6a0666b816df822ca55eba4b40ab",
         "opaqueBounds": {
-          "height": 264,
+          "height": 265,
           "width": 980,
           "x": 5,
-          "y": 5
+          "y": 4
         },
-        "opaqueColorCount": 13,
-        "opaquePixels": 56788,
-        "pixelSha256": "2d9d1c3b857962143368ad5059e11e2248fdb964f78fda1ffe1fa04ad42fcc3b",
+        "opaqueColorCount": 178,
+        "opaquePixels": 46591,
+        "pixelSha256": "f82f89f29f62ee38b9cd5ce236416cbebfc8f9c900258e3da82fdfc4629f018b",
         "png": {
           "bitDepth": 8,
           "colorType": "RGBA",
           "interlace": 0
         },
-        "singletonPixelCount": 0,
-        "singletonRatio": 0,
-        "transparentPixels": 467500,
+        "singletonPixelCount": 1,
+        "singletonRatio": 0.000021,
+        "transparentPixels": 477697,
         "transparentRgbNonZeroPixels": 0,
-        "visiblePixels": 56788
+        "visiblePixels": 46591
       },
       "imagePath": "public/art/pixel/gameplay.png",
       "jsonPath": "public/art/pixel/gameplay.json"
@@ -5392,12 +5392,12 @@
         "minimum": 255,
         "softPixelCount": 0
       },
-      "colorRatio": 0.000243,
+      "colorRatio": 0.002031,
       "dimensions": {
         "height": 180,
         "width": 320
       },
-      "fileSha256": "4f7a08d032bb0a7353ef7bdf817616561a4483cd0dfa42ec47167eed343a218b",
+      "fileSha256": "92857048b9f89e9dd75e903e2ade9fea2810c23a4cd6d82f62cc466515f7edab",
       "id": "title-banner",
       "imagePath": "public/art/pixel/title-banner.png",
       "logicalProjection": {
@@ -5409,8 +5409,8 @@
           "minimum": 255,
           "softPixelCount": 0
         },
-        "blockMismatchPixels": 8313,
-        "colorRatio": 0.003889,
+        "blockMismatchPixels": 9203,
+        "colorRatio": 0.021667,
         "dimensions": {
           "height": 45,
           "width": 80
@@ -5422,11 +5422,11 @@
           "x": 0,
           "y": 0
         },
-        "opaqueColorCount": 14,
+        "opaqueColorCount": 78,
         "opaquePixels": 3600,
-        "pixelSha256": "4265fc430fd4d71fef4a9f4752f9b62243ef4fb72158963a279e84dd6e03b779",
-        "singletonPixelCount": 0,
-        "singletonRatio": 0,
+        "pixelSha256": "0656715508ca1ea8503fa10b17a7f7e49ea0a57360a84c78ae0a2906b7f2c680",
+        "singletonPixelCount": 24,
+        "singletonRatio": 0.006667,
         "transparentPixels": 0,
         "transparentRgbNonZeroPixels": 0,
         "visiblePixels": 3600
@@ -5437,16 +5437,16 @@
         "x": 0,
         "y": 0
       },
-      "opaqueColorCount": 14,
+      "opaqueColorCount": 117,
       "opaquePixels": 57600,
-      "pixelSha256": "0dd861def46f9283883904c99b418858dd03c2375e24bbebf87e004c399f63cf",
+      "pixelSha256": "5a98d3143e75f8afd85590b6e3308755e604ca06cb84e88f5efedf2126d05f51",
       "png": {
         "bitDepth": 8,
         "colorType": "RGBA",
         "interlace": 0
       },
-      "singletonPixelCount": 0,
-      "singletonRatio": 0,
+      "singletonPixelCount": 4,
+      "singletonRatio": 0.000069,
       "transparentPixels": 0,
       "transparentRgbNonZeroPixels": 0,
       "visiblePixels": 57600
@@ -5455,10 +5455,10 @@
   "summary": {
     "atlasCount": 3,
     "atlasFrameCount": 108,
-    "averageFrameColorRatio": 0.009658,
-    "averageFrameSingletonRatio": 0.00116,
-    "maximumFrameColorRatio": 0.054348,
-    "maximumFrameSingletonRatio": 0.021739,
+    "averageFrameColorRatio": 0.056478,
+    "averageFrameSingletonRatio": 0.010735,
+    "maximumFrameColorRatio": 0.383178,
+    "maximumFrameSingletonRatio": 0.135922,
     "minimumFrameColorRatio": 0.001631,
     "minimumFrameSingletonRatio": 0,
     "softAlphaPixelCount": 0,

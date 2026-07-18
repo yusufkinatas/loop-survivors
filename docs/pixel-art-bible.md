@@ -96,11 +96,12 @@ reason.
 
 ## 2. Master palette
 
-Production core art uses the following named colors exactly. Do not introduce
-near-duplicates to fake extra shading. Ordinary actors should use 6–12 colors,
-bosses at most 24 colors including declared effect colors, and compact UI icons
-3–8 colors. Since this master palette has 16 colors, a boss exceeding 16 needs
-a reviewed, asset-specific extension recorded here before export.
+Support art uses the following named functional colors exactly. Raster-authored
+player and enemy sheets use reviewed 48/64-color material palettes derived from
+the same value and role hierarchy; this is the deliberate asset-specific
+extension that preserves stone, cloth, chitin, skin, and rune depth from the
+selected concept. Compact UI icons remain at 3–8 colors. Do not introduce
+near-duplicate colors outside those committed sheets to fake extra shading.
 
 | Name | Hex | Functional role | Restrictions |
 | --- | --- | --- | --- |

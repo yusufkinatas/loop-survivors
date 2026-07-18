@@ -1618,6 +1618,7 @@
         "hex": "#111425"
       }
     ],
+    "palettePolicy": "16-color functional support palette",
     "frameCount": 20
   }
 }

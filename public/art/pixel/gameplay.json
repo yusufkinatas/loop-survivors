@@ -39,11 +39,11 @@
         "space": "normalized-native-frame"
       },
       "opaqueBounds": {
-        "x": 5,
+        "x": 7,
         "y": 4,
-        "w": 30,
+        "w": 27,
         "h": 34,
-        "opaquePixels": 732,
+        "opaquePixels": 397,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -54,14 +54,15 @@
           "focal",
           "actor",
           "animated",
-          "idle"
+          "idle",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
         "top": 4,
-        "right": 5,
+        "right": 6,
         "bottom": 6,
-        "left": 5,
+        "left": 7,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
       },
@@ -69,12 +70,12 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 8,
-      "colorsUsed": 6,
+      "colorBudget": 64,
+      "colorsUsed": 45,
       "targetOpaqueEnvelope": {
-        "w": 28,
+        "w": 27,
         "h": 34,
-        "toleranceW": 2,
+        "toleranceW": 0,
         "toleranceH": 0,
         "space": "native-logical-pixels"
       },
@@ -125,11 +126,11 @@
         "space": "normalized-native-frame"
       },
       "opaqueBounds": {
-        "x": 5,
+        "x": 6,
         "y": 4,
-        "w": 30,
+        "w": 28,
         "h": 34,
-        "opaquePixels": 727,
+        "opaquePixels": 344,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -140,14 +141,15 @@
           "focal",
           "actor",
           "animated",
-          "walk"
+          "walk",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
         "top": 4,
-        "right": 5,
+        "right": 6,
         "bottom": 6,
-        "left": 5,
+        "left": 6,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
       },
@@ -155,12 +157,12 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 8,
-      "colorsUsed": 6,
+      "colorBudget": 64,
+      "colorsUsed": 42,
       "targetOpaqueEnvelope": {
         "w": 28,
         "h": 34,
-        "toleranceW": 2,
+        "toleranceW": 0,
         "toleranceH": 0,
         "space": "native-logical-pixels"
       },
@@ -211,11 +213,11 @@
         "space": "normalized-native-frame"
       },
       "opaqueBounds": {
-        "x": 5,
+        "x": 6,
         "y": 5,
-        "w": 17,
-        "h": 14,
-        "opaquePixels": 184,
+        "w": 16,
+        "h": 15,
+        "opaquePixels": 103,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -228,14 +230,15 @@
           "hovering",
           "actor",
           "animated",
-          "idle"
+          "idle",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
         "top": 5,
         "right": 6,
-        "bottom": 7,
-        "left": 5,
+        "bottom": 6,
+        "left": 6,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
       },
@@ -243,13 +246,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 7,
-      "colorsUsed": 4,
+      "colorBudget": 64,
+      "colorsUsed": 27,
       "targetOpaqueEnvelope": {
         "w": 16,
-        "h": 16,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "h": 15,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -299,11 +302,11 @@
         "space": "normalized-native-frame"
       },
       "opaqueBounds": {
-        "x": 5,
+        "x": 6,
         "y": 5,
-        "w": 17,
-        "h": 14,
-        "opaquePixels": 175,
+        "w": 16,
+        "h": 15,
+        "opaquePixels": 110,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -316,14 +319,15 @@
           "hovering",
           "actor",
           "animated",
-          "walk"
+          "walk",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
         "top": 5,
         "right": 6,
-        "bottom": 7,
-        "left": 5,
+        "bottom": 6,
+        "left": 6,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
       },
@@ -331,13 +335,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 7,
-      "colorsUsed": 4,
+      "colorBudget": 64,
+      "colorsUsed": 26,
       "targetOpaqueEnvelope": {
         "w": 16,
-        "h": 16,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "h": 15,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -388,10 +392,10 @@
       },
       "opaqueBounds": {
         "x": 4,
-        "y": 5,
+        "y": 2,
         "w": 44,
-        "h": 42,
-        "opaquePixels": 1326,
+        "h": 44,
+        "opaquePixels": 1214,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -403,13 +407,14 @@
           "heavy",
           "actor",
           "animated",
-          "idle"
+          "idle",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
-        "top": 5,
+        "top": 2,
         "right": 4,
-        "bottom": 5,
+        "bottom": 6,
         "left": 4,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
@@ -418,13 +423,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 8,
-      "colorsUsed": 5,
+      "colorBudget": 64,
+      "colorsUsed": 63,
       "targetOpaqueEnvelope": {
         "w": 44,
         "h": 44,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -475,10 +480,10 @@
       },
       "opaqueBounds": {
         "x": 4,
-        "y": 5,
+        "y": 2,
         "w": 44,
-        "h": 42,
-        "opaquePixels": 1335,
+        "h": 44,
+        "opaquePixels": 1166,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -490,13 +495,14 @@
           "heavy",
           "actor",
           "animated",
-          "walk"
+          "walk",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
-        "top": 5,
+        "top": 2,
         "right": 4,
-        "bottom": 5,
+        "bottom": 6,
         "left": 4,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
@@ -505,13 +511,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 8,
-      "colorsUsed": 5,
+      "colorBudget": 64,
+      "colorsUsed": 61,
       "targetOpaqueEnvelope": {
         "w": 44,
         "h": 44,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -561,11 +567,11 @@
         "space": "normalized-native-frame"
       },
       "opaqueBounds": {
-        "x": 3,
-        "y": 7,
-        "w": 28,
-        "h": 18,
-        "opaquePixels": 437,
+        "x": 2,
+        "y": 5,
+        "w": 30,
+        "h": 19,
+        "opaquePixels": 313,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -577,14 +583,15 @@
           "dash",
           "actor",
           "animated",
-          "idle"
+          "idle",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
-        "top": 7,
-        "right": 3,
-        "bottom": 5,
-        "left": 3,
+        "top": 5,
+        "right": 2,
+        "bottom": 6,
+        "left": 2,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
       },
@@ -592,13 +599,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 7,
-      "colorsUsed": 4,
+      "colorBudget": 64,
+      "colorsUsed": 51,
       "targetOpaqueEnvelope": {
         "w": 30,
-        "h": 20,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "h": 19,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -648,11 +655,11 @@
         "space": "normalized-native-frame"
       },
       "opaqueBounds": {
-        "x": 3,
-        "y": 6,
-        "w": 28,
+        "x": 2,
+        "y": 5,
+        "w": 30,
         "h": 19,
-        "opaquePixels": 443,
+        "opaquePixels": 317,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -664,14 +671,15 @@
           "dash",
           "actor",
           "animated",
-          "walk"
+          "walk",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
-        "top": 6,
-        "right": 3,
-        "bottom": 5,
-        "left": 3,
+        "top": 5,
+        "right": 2,
+        "bottom": 6,
+        "left": 2,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
       },
@@ -679,13 +687,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 7,
-      "colorsUsed": 4,
+      "colorBudget": 64,
+      "colorsUsed": 54,
       "targetOpaqueEnvelope": {
         "w": 30,
-        "h": 20,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "h": 19,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -735,11 +743,11 @@
         "space": "normalized-native-frame"
       },
       "opaqueBounds": {
-        "x": 6,
-        "y": 6,
-        "w": 34,
-        "h": 36,
-        "opaquePixels": 808,
+        "x": 5,
+        "y": 4,
+        "w": 36,
+        "h": 38,
+        "opaquePixels": 821,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -751,14 +759,15 @@
           "split",
           "actor",
           "animated",
-          "idle"
+          "idle",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
-        "top": 6,
-        "right": 6,
+        "top": 4,
+        "right": 5,
         "bottom": 6,
-        "left": 6,
+        "left": 5,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
       },
@@ -766,13 +775,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 8,
-      "colorsUsed": 5,
+      "colorBudget": 64,
+      "colorsUsed": 60,
       "targetOpaqueEnvelope": {
         "w": 36,
         "h": 38,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -822,11 +831,11 @@
         "space": "normalized-native-frame"
       },
       "opaqueBounds": {
-        "x": 6,
-        "y": 6,
-        "w": 34,
-        "h": 36,
-        "opaquePixels": 808,
+        "x": 5,
+        "y": 4,
+        "w": 36,
+        "h": 38,
+        "opaquePixels": 799,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -838,14 +847,15 @@
           "split",
           "actor",
           "animated",
-          "walk"
+          "walk",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
-        "top": 6,
-        "right": 6,
+        "top": 4,
+        "right": 5,
         "bottom": 6,
-        "left": 6,
+        "left": 5,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
       },
@@ -853,13 +863,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 8,
-      "colorsUsed": 5,
+      "colorBudget": 64,
+      "colorsUsed": 62,
       "targetOpaqueEnvelope": {
         "w": 36,
         "h": 38,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -909,11 +919,11 @@
         "space": "normalized-native-frame"
       },
       "opaqueBounds": {
-        "x": 8,
-        "y": 8,
+        "x": 6,
+        "y": 10,
         "w": 40,
-        "h": 30,
-        "opaquePixels": 944,
+        "h": 28,
+        "opaquePixels": 674,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -925,14 +935,15 @@
           "charge",
           "actor",
           "animated",
-          "idle"
+          "idle",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
-        "top": 8,
-        "right": 4,
+        "top": 10,
+        "right": 6,
         "bottom": 6,
-        "left": 8,
+        "left": 6,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
       },
@@ -940,13 +951,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 8,
-      "colorsUsed": 5,
+      "colorBudget": 64,
+      "colorsUsed": 58,
       "targetOpaqueEnvelope": {
         "w": 40,
         "h": 28,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -996,11 +1007,11 @@
         "space": "normalized-native-frame"
       },
       "opaqueBounds": {
-        "x": 8,
-        "y": 8,
+        "x": 6,
+        "y": 10,
         "w": 40,
-        "h": 30,
-        "opaquePixels": 945,
+        "h": 28,
+        "opaquePixels": 671,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -1012,14 +1023,15 @@
           "charge",
           "actor",
           "animated",
-          "walk"
+          "walk",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
-        "top": 8,
-        "right": 4,
+        "top": 10,
+        "right": 6,
         "bottom": 6,
-        "left": 8,
+        "left": 6,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
       },
@@ -1027,13 +1039,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 8,
-      "colorsUsed": 5,
+      "colorBudget": 64,
+      "colorsUsed": 57,
       "targetOpaqueEnvelope": {
         "w": 40,
         "h": 28,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -1085,9 +1097,9 @@
       "opaqueBounds": {
         "x": 5,
         "y": 4,
-        "w": 27,
-        "h": 29,
-        "opaquePixels": 518,
+        "w": 28,
+        "h": 28,
+        "opaquePixels": 360,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -1100,13 +1112,14 @@
           "hovering",
           "actor",
           "animated",
-          "idle"
+          "idle",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
         "top": 4,
-        "right": 6,
-        "bottom": 5,
+        "right": 5,
+        "bottom": 6,
         "left": 5,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
@@ -1115,13 +1128,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 8,
-      "colorsUsed": 5,
+      "colorBudget": 64,
+      "colorsUsed": 59,
       "targetOpaqueEnvelope": {
         "w": 28,
         "h": 28,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -1174,8 +1187,8 @@
         "x": 5,
         "y": 4,
         "w": 28,
-        "h": 29,
-        "opaquePixels": 536,
+        "h": 28,
+        "opaquePixels": 329,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -1188,13 +1201,14 @@
           "hovering",
           "actor",
           "animated",
-          "walk"
+          "walk",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
         "top": 4,
         "right": 5,
-        "bottom": 5,
+        "bottom": 6,
         "left": 5,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
@@ -1203,13 +1217,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 8,
-      "colorsUsed": 5,
+      "colorBudget": 64,
+      "colorsUsed": 54,
       "targetOpaqueEnvelope": {
         "w": 28,
         "h": 28,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -1260,10 +1274,10 @@
       },
       "opaqueBounds": {
         "x": 5,
-        "y": 5,
+        "y": 2,
         "w": 38,
-        "h": 40,
-        "opaquePixels": 1066,
+        "h": 42,
+        "opaquePixels": 846,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -1275,13 +1289,14 @@
           "shield",
           "actor",
           "animated",
-          "idle"
+          "idle",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
-        "top": 5,
+        "top": 2,
         "right": 5,
-        "bottom": 5,
+        "bottom": 6,
         "left": 5,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
@@ -1290,13 +1305,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 9,
-      "colorsUsed": 7,
+      "colorBudget": 64,
+      "colorsUsed": 61,
       "targetOpaqueEnvelope": {
         "w": 38,
         "h": 42,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -1346,11 +1361,11 @@
         "space": "normalized-native-frame"
       },
       "opaqueBounds": {
-        "x": 6,
-        "y": 5,
-        "w": 37,
-        "h": 40,
-        "opaquePixels": 1093,
+        "x": 5,
+        "y": 2,
+        "w": 38,
+        "h": 42,
+        "opaquePixels": 808,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -1362,14 +1377,15 @@
           "shield",
           "actor",
           "animated",
-          "walk"
+          "walk",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
-        "top": 5,
+        "top": 2,
         "right": 5,
-        "bottom": 5,
-        "left": 6,
+        "bottom": 6,
+        "left": 5,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
       },
@@ -1377,13 +1393,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 9,
-      "colorsUsed": 7,
+      "colorBudget": 64,
+      "colorsUsed": 64,
       "targetOpaqueEnvelope": {
         "w": 38,
         "h": 42,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -1435,9 +1451,9 @@
       "opaqueBounds": {
         "x": 5,
         "y": 4,
-        "w": 43,
+        "w": 44,
         "h": 44,
-        "opaquePixels": 1490,
+        "opaquePixels": 1008,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -1449,12 +1465,13 @@
           "objective",
           "actor",
           "animated",
-          "idle"
+          "idle",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
         "top": 4,
-        "right": 6,
+        "right": 5,
         "bottom": 6,
         "left": 5,
         "minimumRequired": 2,
@@ -1464,13 +1481,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 11,
-      "colorsUsed": 6,
+      "colorBudget": 64,
+      "colorsUsed": 62,
       "targetOpaqueEnvelope": {
         "w": 44,
         "h": 44,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -1522,9 +1539,9 @@
       "opaqueBounds": {
         "x": 5,
         "y": 4,
-        "w": 43,
+        "w": 44,
         "h": 44,
-        "opaquePixels": 1495,
+        "opaquePixels": 1003,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -1536,12 +1553,13 @@
           "objective",
           "actor",
           "animated",
-          "walk"
+          "walk",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
         "top": 4,
-        "right": 6,
+        "right": 5,
         "bottom": 6,
         "left": 5,
         "minimumRequired": 2,
@@ -1551,13 +1569,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 11,
-      "colorsUsed": 6,
+      "colorBudget": 64,
+      "colorsUsed": 63,
       "targetOpaqueEnvelope": {
         "w": 44,
         "h": 44,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -1608,10 +1626,10 @@
       },
       "opaqueBounds": {
         "x": 5,
-        "y": 3,
+        "y": 4,
         "w": 20,
         "h": 18,
-        "opaquePixels": 292,
+        "opaquePixels": 170,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -1624,13 +1642,14 @@
           "notched-wings",
           "actor",
           "animated",
-          "idle"
+          "idle",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
-        "top": 3,
+        "top": 4,
         "right": 5,
-        "bottom": 7,
+        "bottom": 6,
         "left": 5,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
@@ -1639,13 +1658,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 7,
-      "colorsUsed": 4,
+      "colorBudget": 64,
+      "colorsUsed": 52,
       "targetOpaqueEnvelope": {
         "w": 20,
         "h": 18,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -1696,10 +1715,10 @@
       },
       "opaqueBounds": {
         "x": 5,
-        "y": 5,
+        "y": 4,
         "w": 20,
-        "h": 16,
-        "opaquePixels": 269,
+        "h": 18,
+        "opaquePixels": 169,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -1712,13 +1731,14 @@
           "notched-wings",
           "actor",
           "animated",
-          "walk"
+          "walk",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
-        "top": 5,
+        "top": 4,
         "right": 5,
-        "bottom": 7,
+        "bottom": 6,
         "left": 5,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
@@ -1727,13 +1747,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 7,
-      "colorsUsed": 4,
+      "colorBudget": 64,
+      "colorsUsed": 52,
       "targetOpaqueEnvelope": {
         "w": 20,
         "h": 18,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -1783,11 +1803,11 @@
         "space": "normalized-native-frame"
       },
       "opaqueBounds": {
-        "x": 3,
-        "y": 3,
-        "w": 26,
-        "h": 21,
-        "opaquePixels": 420,
+        "x": 4,
+        "y": 4,
+        "w": 24,
+        "h": 20,
+        "opaquePixels": 227,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -1801,14 +1821,15 @@
           "broad-tail",
           "actor",
           "animated",
-          "idle"
+          "idle",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
-        "top": 3,
-        "right": 3,
+        "top": 4,
+        "right": 4,
         "bottom": 6,
-        "left": 3,
+        "left": 4,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
       },
@@ -1816,13 +1837,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 7,
-      "colorsUsed": 4,
+      "colorBudget": 64,
+      "colorsUsed": 39,
       "targetOpaqueEnvelope": {
         "w": 24,
         "h": 20,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -1872,11 +1893,11 @@
         "space": "normalized-native-frame"
       },
       "opaqueBounds": {
-        "x": 3,
-        "y": 5,
-        "w": 26,
-        "h": 19,
-        "opaquePixels": 402,
+        "x": 4,
+        "y": 4,
+        "w": 24,
+        "h": 20,
+        "opaquePixels": 234,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -1890,14 +1911,15 @@
           "broad-tail",
           "actor",
           "animated",
-          "walk"
+          "walk",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
-        "top": 5,
-        "right": 3,
+        "top": 4,
+        "right": 4,
         "bottom": 6,
-        "left": 3,
+        "left": 4,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
       },
@@ -1905,13 +1927,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 7,
-      "colorsUsed": 4,
+      "colorBudget": 64,
+      "colorsUsed": 44,
       "targetOpaqueEnvelope": {
         "w": 24,
         "h": 20,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -1961,11 +1983,11 @@
         "space": "normalized-native-frame"
       },
       "opaqueBounds": {
-        "x": 4,
-        "y": 5,
-        "w": 27,
-        "h": 20,
-        "opaquePixels": 428,
+        "x": 3,
+        "y": 4,
+        "w": 28,
+        "h": 22,
+        "opaquePixels": 290,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -1977,14 +1999,15 @@
           "flying",
           "actor",
           "animated",
-          "idle"
+          "idle",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
-        "top": 5,
+        "top": 4,
         "right": 3,
-        "bottom": 7,
-        "left": 4,
+        "bottom": 6,
+        "left": 3,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
       },
@@ -1992,13 +2015,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 8,
-      "colorsUsed": 4,
+      "colorBudget": 64,
+      "colorsUsed": 37,
       "targetOpaqueEnvelope": {
         "w": 28,
         "h": 22,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -2048,11 +2071,11 @@
         "space": "normalized-native-frame"
       },
       "opaqueBounds": {
-        "x": 4,
-        "y": 5,
-        "w": 27,
-        "h": 20,
-        "opaquePixels": 443,
+        "x": 3,
+        "y": 4,
+        "w": 28,
+        "h": 22,
+        "opaquePixels": 296,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -2064,14 +2087,15 @@
           "flying",
           "actor",
           "animated",
-          "walk"
+          "walk",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
-        "top": 5,
+        "top": 4,
         "right": 3,
-        "bottom": 7,
-        "left": 4,
+        "bottom": 6,
+        "left": 3,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
       },
@@ -2079,13 +2103,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 8,
-      "colorsUsed": 4,
+      "colorBudget": 64,
+      "colorsUsed": 36,
       "targetOpaqueEnvelope": {
         "w": 28,
         "h": 22,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -2135,11 +2159,11 @@
         "space": "normalized-native-frame"
       },
       "opaqueBounds": {
-        "x": 5,
-        "y": 6,
-        "w": 26,
-        "h": 30,
-        "opaquePixels": 592,
+        "x": 7,
+        "y": 7,
+        "w": 24,
+        "h": 29,
+        "opaquePixels": 399,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -2153,14 +2177,15 @@
           "uneven-boots",
           "actor",
           "animated",
-          "idle"
+          "idle",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
-        "top": 6,
+        "top": 7,
         "right": 7,
         "bottom": 6,
-        "left": 5,
+        "left": 7,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
       },
@@ -2168,13 +2193,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 8,
-      "colorsUsed": 5,
+      "colorBudget": 64,
+      "colorsUsed": 39,
       "targetOpaqueEnvelope": {
         "w": 24,
         "h": 29,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -2224,11 +2249,11 @@
         "space": "normalized-native-frame"
       },
       "opaqueBounds": {
-        "x": 5,
-        "y": 6,
-        "w": 25,
-        "h": 30,
-        "opaquePixels": 597,
+        "x": 7,
+        "y": 7,
+        "w": 24,
+        "h": 29,
+        "opaquePixels": 358,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -2242,14 +2267,15 @@
           "uneven-boots",
           "actor",
           "animated",
-          "walk"
+          "walk",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
-        "top": 6,
-        "right": 8,
+        "top": 7,
+        "right": 7,
         "bottom": 6,
-        "left": 5,
+        "left": 7,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
       },
@@ -2257,13 +2283,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 8,
-      "colorsUsed": 5,
+      "colorBudget": 64,
+      "colorsUsed": 30,
       "targetOpaqueEnvelope": {
         "w": 24,
         "h": 29,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -2313,11 +2339,11 @@
         "space": "normalized-native-frame"
       },
       "opaqueBounds": {
-        "x": 6,
+        "x": 5,
         "y": 6,
         "w": 28,
-        "h": 31,
-        "opaquePixels": 629,
+        "h": 30,
+        "opaquePixels": 407,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -2331,14 +2357,15 @@
           "fork-gaps",
           "actor",
           "animated",
-          "idle"
+          "idle",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
         "top": 6,
-        "right": 4,
-        "bottom": 5,
-        "left": 6,
+        "right": 5,
+        "bottom": 6,
+        "left": 5,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
       },
@@ -2346,13 +2373,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 8,
-      "colorsUsed": 5,
+      "colorBudget": 64,
+      "colorsUsed": 56,
       "targetOpaqueEnvelope": {
         "w": 28,
         "h": 30,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -2402,11 +2429,11 @@
         "space": "normalized-native-frame"
       },
       "opaqueBounds": {
-        "x": 4,
+        "x": 5,
         "y": 6,
         "w": 28,
-        "h": 31,
-        "opaquePixels": 655,
+        "h": 30,
+        "opaquePixels": 384,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -2420,14 +2447,15 @@
           "fork-gaps",
           "actor",
           "animated",
-          "walk"
+          "walk",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
         "top": 6,
-        "right": 6,
-        "bottom": 5,
-        "left": 4,
+        "right": 5,
+        "bottom": 6,
+        "left": 5,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
       },
@@ -2435,13 +2463,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 8,
-      "colorsUsed": 5,
+      "colorBudget": 64,
+      "colorsUsed": 49,
       "targetOpaqueEnvelope": {
         "w": 28,
         "h": 30,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -2492,10 +2520,10 @@
       },
       "opaqueBounds": {
         "x": 6,
-        "y": 5,
+        "y": 8,
         "w": 26,
-        "h": 30,
-        "opaquePixels": 573,
+        "h": 28,
+        "opaquePixels": 296,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -2508,13 +2536,14 @@
           "footless-taper",
           "actor",
           "animated",
-          "idle"
+          "idle",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
-        "top": 5,
+        "top": 8,
         "right": 6,
-        "bottom": 7,
+        "bottom": 6,
         "left": 6,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
@@ -2523,13 +2552,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 8,
-      "colorsUsed": 5,
+      "colorBudget": 64,
+      "colorsUsed": 41,
       "targetOpaqueEnvelope": {
         "w": 26,
         "h": 28,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -2580,10 +2609,10 @@
       },
       "opaqueBounds": {
         "x": 6,
-        "y": 5,
+        "y": 8,
         "w": 26,
-        "h": 30,
-        "opaquePixels": 572,
+        "h": 28,
+        "opaquePixels": 309,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -2596,13 +2625,14 @@
           "footless-taper",
           "actor",
           "animated",
-          "walk"
+          "walk",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
-        "top": 5,
+        "top": 8,
         "right": 6,
-        "bottom": 7,
+        "bottom": 6,
         "left": 6,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
@@ -2611,13 +2641,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 8,
-      "colorsUsed": 5,
+      "colorBudget": 64,
+      "colorsUsed": 39,
       "targetOpaqueEnvelope": {
         "w": 26,
         "h": 28,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -2667,11 +2697,11 @@
         "space": "normalized-native-frame"
       },
       "opaqueBounds": {
-        "x": 3,
+        "x": 4,
         "y": 4,
-        "w": 43,
+        "w": 42,
         "h": 40,
-        "opaquePixels": 1244,
+        "opaquePixels": 1104,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -2685,14 +2715,15 @@
           "hanging-fist",
           "actor",
           "animated",
-          "idle"
+          "idle",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
         "top": 4,
         "right": 4,
         "bottom": 6,
-        "left": 3,
+        "left": 4,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
       },
@@ -2700,13 +2731,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 9,
-      "colorsUsed": 6,
+      "colorBudget": 64,
+      "colorsUsed": 48,
       "targetOpaqueEnvelope": {
         "w": 42,
         "h": 40,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -2756,11 +2787,11 @@
         "space": "normalized-native-frame"
       },
       "opaqueBounds": {
-        "x": 3,
-        "y": 4,
-        "w": 43,
-        "h": 40,
-        "opaquePixels": 1255,
+        "x": 4,
+        "y": 8,
+        "w": 42,
+        "h": 36,
+        "opaquePixels": 860,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -2774,14 +2805,15 @@
           "hanging-fist",
           "actor",
           "animated",
-          "walk"
+          "walk",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
-        "top": 4,
+        "top": 8,
         "right": 4,
         "bottom": 6,
-        "left": 3,
+        "left": 4,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
       },
@@ -2789,13 +2821,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 9,
-      "colorsUsed": 6,
+      "colorBudget": 64,
+      "colorsUsed": 40,
       "targetOpaqueEnvelope": {
         "w": 42,
-        "h": 40,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "h": 36,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -2845,11 +2877,11 @@
         "space": "normalized-native-frame"
       },
       "opaqueBounds": {
-        "x": 8,
-        "y": 3,
-        "w": 34,
-        "h": 41,
-        "opaquePixels": 1134,
+        "x": 7,
+        "y": 4,
+        "w": 36,
+        "h": 40,
+        "opaquePixels": 974,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -2862,14 +2894,15 @@
           "stacked-slabs",
           "actor",
           "animated",
-          "idle"
+          "idle",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
-        "top": 3,
-        "right": 8,
+        "top": 4,
+        "right": 7,
         "bottom": 6,
-        "left": 8,
+        "left": 7,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
       },
@@ -2877,13 +2910,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 9,
-      "colorsUsed": 5,
+      "colorBudget": 64,
+      "colorsUsed": 48,
       "targetOpaqueEnvelope": {
         "w": 36,
         "h": 40,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -2934,10 +2967,10 @@
       },
       "opaqueBounds": {
         "x": 7,
-        "y": 3,
+        "y": 8,
         "w": 36,
-        "h": 41,
-        "opaquePixels": 1186,
+        "h": 36,
+        "opaquePixels": 808,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -2950,11 +2983,12 @@
           "stacked-slabs",
           "actor",
           "animated",
-          "walk"
+          "walk",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
-        "top": 3,
+        "top": 8,
         "right": 7,
         "bottom": 6,
         "left": 7,
@@ -2965,13 +2999,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 9,
-      "colorsUsed": 5,
+      "colorBudget": 64,
+      "colorsUsed": 52,
       "targetOpaqueEnvelope": {
         "w": 36,
-        "h": 40,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "h": 36,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -3022,10 +3056,10 @@
       },
       "opaqueBounds": {
         "x": 6,
-        "y": 7,
-        "w": 29,
-        "h": 29,
-        "opaquePixels": 599,
+        "y": 8,
+        "w": 30,
+        "h": 28,
+        "opaquePixels": 446,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -3037,12 +3071,13 @@
           "fixture",
           "actor",
           "animated",
-          "idle"
+          "idle",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
-        "top": 7,
-        "right": 7,
+        "top": 8,
+        "right": 6,
         "bottom": 6,
         "left": 6,
         "minimumRequired": 2,
@@ -3052,13 +3087,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 8,
-      "colorsUsed": 5,
+      "colorBudget": 64,
+      "colorsUsed": 50,
       "targetOpaqueEnvelope": {
         "w": 30,
         "h": 28,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -3108,11 +3143,11 @@
         "space": "normalized-native-frame"
       },
       "opaqueBounds": {
-        "x": 5,
-        "y": 7,
-        "w": 31,
-        "h": 29,
-        "opaquePixels": 619,
+        "x": 6,
+        "y": 8,
+        "w": 30,
+        "h": 28,
+        "opaquePixels": 446,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -3124,14 +3159,15 @@
           "fixture",
           "actor",
           "animated",
-          "walk"
+          "walk",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
-        "top": 7,
+        "top": 8,
         "right": 6,
         "bottom": 6,
-        "left": 5,
+        "left": 6,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
       },
@@ -3139,13 +3175,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 8,
-      "colorsUsed": 5,
+      "colorBudget": 64,
+      "colorsUsed": 47,
       "targetOpaqueEnvelope": {
         "w": 30,
         "h": 28,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -3198,8 +3234,8 @@
         "x": 6,
         "y": 5,
         "w": 54,
-        "h": 48,
-        "opaquePixels": 1749,
+        "h": 49,
+        "opaquePixels": 1159,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -3211,13 +3247,14 @@
           "flying",
           "actor",
           "animated",
-          "idle"
+          "idle",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
         "top": 5,
         "right": 6,
-        "bottom": 7,
+        "bottom": 6,
         "left": 6,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
@@ -3226,13 +3263,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 12,
-      "colorsUsed": 6,
+      "colorBudget": 64,
+      "colorsUsed": 57,
       "targetOpaqueEnvelope": {
-        "w": 56,
-        "h": 50,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "w": 54,
+        "h": 49,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -3282,11 +3319,11 @@
         "space": "normalized-native-frame"
       },
       "opaqueBounds": {
-        "x": 6,
+        "x": 5,
         "y": 5,
-        "w": 54,
-        "h": 48,
-        "opaquePixels": 1607,
+        "w": 56,
+        "h": 49,
+        "opaquePixels": 1194,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -3298,14 +3335,15 @@
           "flying",
           "actor",
           "animated",
-          "walk"
+          "walk",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
         "top": 5,
-        "right": 6,
-        "bottom": 7,
-        "left": 6,
+        "right": 5,
+        "bottom": 6,
+        "left": 5,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
       },
@@ -3313,13 +3351,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 12,
-      "colorsUsed": 6,
+      "colorBudget": 64,
+      "colorsUsed": 55,
       "targetOpaqueEnvelope": {
         "w": 56,
-        "h": 50,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "h": 49,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -3369,11 +3407,11 @@
         "space": "normalized-native-frame"
       },
       "opaqueBounds": {
-        "x": 4,
-        "y": 4,
-        "w": 62,
-        "h": 53,
-        "opaquePixels": 2071,
+        "x": 5,
+        "y": 2,
+        "w": 60,
+        "h": 54,
+        "opaquePixels": 1551,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -3388,14 +3426,15 @@
           "alternating-diagonal-gait",
           "actor",
           "animated",
-          "idle"
+          "idle",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
-        "top": 4,
-        "right": 4,
-        "bottom": 5,
-        "left": 4,
+        "top": 2,
+        "right": 5,
+        "bottom": 6,
+        "left": 5,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
       },
@@ -3403,13 +3442,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 11,
-      "colorsUsed": 6,
+      "colorBudget": 64,
+      "colorsUsed": 64,
       "targetOpaqueEnvelope": {
         "w": 60,
         "h": 54,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -3460,10 +3499,10 @@
       },
       "opaqueBounds": {
         "x": 5,
-        "y": 4,
+        "y": 2,
         "w": 60,
-        "h": 53,
-        "opaquePixels": 1963,
+        "h": 54,
+        "opaquePixels": 1602,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -3478,13 +3517,14 @@
           "alternating-diagonal-gait",
           "actor",
           "animated",
-          "walk"
+          "walk",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
-        "top": 4,
+        "top": 2,
         "right": 5,
-        "bottom": 5,
+        "bottom": 6,
         "left": 5,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
@@ -3493,13 +3533,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 11,
-      "colorsUsed": 6,
+      "colorBudget": 64,
+      "colorsUsed": 64,
       "targetOpaqueEnvelope": {
         "w": 60,
         "h": 54,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -3549,11 +3589,11 @@
         "space": "normalized-native-frame"
       },
       "opaqueBounds": {
-        "x": 5,
+        "x": 9,
         "y": 6,
-        "w": 28,
+        "w": 20,
         "h": 22,
-        "opaquePixels": 516,
+        "opaquePixels": 119,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -3566,14 +3606,15 @@
           "flying",
           "actor",
           "animated",
-          "idle"
+          "idle",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
         "top": 6,
-        "right": 5,
+        "right": 9,
         "bottom": 6,
-        "left": 5,
+        "left": 9,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
       },
@@ -3581,13 +3622,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 9,
-      "colorsUsed": 5,
+      "colorBudget": 64,
+      "colorsUsed": 45,
       "targetOpaqueEnvelope": {
-        "w": 28,
-        "h": 24,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "w": 20,
+        "h": 22,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -3641,7 +3682,7 @@
         "y": 6,
         "w": 28,
         "h": 22,
-        "opaquePixels": 512,
+        "opaquePixels": 107,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -3654,7 +3695,8 @@
           "flying",
           "actor",
           "animated",
-          "walk"
+          "walk",
+          "raster-authored"
         ]
       },
       "transparentMargin": {
@@ -3669,13 +3711,13 @@
         "value": 1,
         "space": "logical-screen-pixels-per-native-pixel"
       },
-      "colorBudget": 9,
-      "colorsUsed": 5,
+      "colorBudget": 64,
+      "colorsUsed": 41,
       "targetOpaqueEnvelope": {
         "w": 28,
-        "h": 24,
-        "toleranceW": 2,
-        "toleranceH": 2,
+        "h": 22,
+        "toleranceW": 0,
+        "toleranceH": 0,
         "space": "native-logical-pixels"
       },
       "groundReference": {
@@ -5898,7 +5940,7 @@
     "app": "Loop Survivors native-grid production builder",
     "version": "2.0",
     "direction": "arcade-reliquary",
-    "source": "art-src/pixel-production/arcade-reliquary.mjs",
+    "source": "art-src/pixel-production/{raster,arcade-reliquary.mjs}",
     "image": "gameplay.png",
     "format": "RGBA8888-hard-alpha",
     "size": {
@@ -5981,6 +6023,7 @@
         "hex": "#111425"
       }
     ],
+    "palettePolicy": "16-color functional support palette plus reviewed 48/64-color raster actor material palettes",
     "frameCount": 72,
     "standaloneSurfaces": {
       "arenaFloor": {

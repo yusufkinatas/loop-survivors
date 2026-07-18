@@ -1,23 +1,25 @@
 # Pixel-art sources
 
-The shipped Arcade Reliquary pixel art is original, repository-authored work.
-No commercial asset, third-party sprite pack, stock image, or copyrighted game
-art is included. AI image generation was used only for the three clearly
-labeled art-direction concept references; production PNGs are not crops,
-traces, resizes, or chroma-key extractions from those images.
+The shipped Arcade Reliquary pixel art is original work created for this
+repository. No commercial asset, third-party sprite pack, stock image, or
+copyrighted game art is included. The production player and enemies were
+generated as dedicated raster pose sheets using the selected Arcade Reliquary
+concept as the project's own style reference, then chroma-keyed, palette-
+reduced, and nearest-neighbour downsampled to native gameplay sizes.
 
 ## Canonical production source
 
-`art-src/pixel-production/arcade-reliquary.mjs` is the production master. It
-constructs the gameplay, UI, environment, floor, and title pixels directly on
-their final native logical grids with the locked 16-color Arcade Reliquary
-palette. Per-frame dimensions, pivots, ground or hover references, opaque
+`art-src/pixel-production/raster/` is the production master for the player and
+20 enemies. It contains the final transparent pose sheets alongside their
+untouched chroma-key sources. `arcade-reliquary.mjs` remains the support-art
+master for weapons, pickups, effects, UI, environment, floor, and title
+composition. Per-frame dimensions, pivots, ground or hover references, opaque
 bounds, semantic tags, transparent margins, color budgets, and 1× renderer
 scale are emitted with the atlas metadata.
 
-The selected concept and Gate 1 prototypes remain reference-only. The
-production builder does not read, sample, crop, trace, chroma-key, or resize
-them.
+The concept PNG is not cropped or traced into production. It served as a visual
+reference for the dedicated actor-sheet generations. The production builder
+reads only the committed pose sheets and native-grid support source.
 
 ## Shipped assets and coverage
 
@@ -54,7 +56,7 @@ node scripts/build-pixel-art.mjs verify
 ```
 
 Verification checks valid native dimensions, hard 0/255 alpha, zero RGB under
-fully transparent pixels, the locked palette and per-frame color budgets,
+fully transparent pixels, reviewed palette and per-frame color budgets,
 minimum transparent margins, atlas separation, stable animation identities and
 ground references, meaningful animation differences, exact 1× metadata, the
 seamless 16 × 16 floor, the 320 × 180 title, and byte-stable output.
