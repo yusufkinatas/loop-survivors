@@ -8,6 +8,7 @@ import {
   type VisualReadPacket,
   type VisualReadPublicSample,
 } from './protocol';
+import { readFileSync } from 'node:fs';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -69,4 +70,10 @@ assert(new Set(first).size === VISUAL_READ_SAMPLE_COUNT, 'randomization must pre
 assert(playerClickResult({ x: 338, y: 180 }, { x: 320, y: 180, radius: 16 }).hit, 'two-pixel tolerance should count');
 assert(!playerClickResult({ x: 339, y: 180 }, { x: 320, y: 180, radius: 16 }).hit, 'outside tolerance should miss');
 
-console.log('visual-read protocol checks passed: 40+40 balanced samples, deterministic reviewer order, exact click tolerance');
+const pageSource = readFileSync(new URL('./page.ts', import.meta.url), 'utf8');
+assert(pageSource.includes("resultElement.className = 'visual-read-result'"),
+  'visual-read page must publish its completed machine-readable result in inert DOM text');
+assert(pageSource.includes("root.dataset.resultReady = '1'"),
+  'visual-read page must expose an explicit DOM result-ready signal');
+
+console.log('visual-read protocol checks passed: 40+40 balanced samples, deterministic reviewer order, exact click tolerance, DOM result export');

@@ -219,6 +219,17 @@ export async function mountVisualReadReview(root: HTMLElement): Promise<void> {
     };
     localStorage.setItem(`loop-survivors:visual-read:${route.reviewer}:${route.mode}`, JSON.stringify(output));
     (window as Window & { __visualReadResult?: unknown }).__visualReadResult = output;
+    // Browser-review tooling intentionally cannot inspect localStorage or page
+    // globals. Publish the same completed object as inert DOM text so an
+    // independent reviewer can export the required per-sample evidence
+    // without access to the hidden answer key or any privileged browser state.
+    const resultElement = document.createElement('script');
+    resultElement.type = 'application/json';
+    resultElement.className = 'visual-read-result';
+    resultElement.hidden = true;
+    resultElement.textContent = JSON.stringify(output);
+    root.appendChild(resultElement);
+    root.dataset.resultReady = '1';
     actions.textContent = '';
     prompt.hidden = false;
     setPrompt(
