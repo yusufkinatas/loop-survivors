@@ -286,6 +286,36 @@ const MAX_360_KINDS = Object.freeze([
 
 export const SANDBOX_MAX_360_KINDS: readonly EnemyKind[] = MAX_360_KINDS;
 
+/**
+ * Maximum-density capture should read like a real late horde, not five equal
+ * wallpaper bands. Small flyers carry half the population, humanoids form the
+ * next clear cohort, heavies are uncommon, and the two largest silhouettes
+ * are sparse landmarks.
+ */
+export const SANDBOX_MAX_360_KIND_COUNTS: Readonly<
+  Record<(typeof MAX_360_KINDS)[number], number>
+> = Object.freeze({
+  bat: 180,
+  zombie: 108,
+  greenMudman: 48,
+  mantis: 12,
+  charger: 12,
+});
+
+/**
+ * One 30-body stratified cycle, repeated twelve times. The mantis and charger
+ * slots are fifteen placements apart; because rows are 24 placements wide,
+ * the sparse large bodies walk diagonally through the field instead of
+ * forming a solid horizontal or vertical band.
+ */
+const MAX_360_WEIGHTED_CYCLE = Object.freeze([
+  'bat', 'bat', 'zombie', 'greenMudman', 'bat', 'zombie',
+  'bat', 'mantis', 'bat', 'zombie', 'bat', 'greenMudman',
+  'zombie', 'bat', 'bat', 'zombie', 'bat', 'zombie',
+  'greenMudman', 'bat', 'bat', 'zombie', 'charger', 'bat',
+  'zombie', 'bat', 'greenMudman', 'bat', 'zombie', 'bat',
+] as const satisfies readonly (typeof MAX_360_KINDS)[number][]);
+
 export const SANDBOX_MAX_360_VARIANTS: readonly SandboxMax360VariantDefinition[] = Object.freeze([
   Object.freeze({ id: 'a', label: 'MAX360 A', seed: 0x5eed0360, offsetX: 0, offsetY: 0, kindOffset: 0 }),
   Object.freeze({ id: 'b', label: 'MAX360 B', seed: 0x5eed1360, offsetX: 12, offsetY: 7, kindOffset: 1 }),
@@ -302,7 +332,9 @@ function max360Enemies(variant: SandboxMax360VariantDefinition): SandboxPresetEn
     const column = index % 24;
     const row = Math.floor(index / 24);
     return {
-      kind: MAX_360_KINDS[(index + variant.kindOffset) % MAX_360_KINDS.length] as EnemyKind,
+      kind: MAX_360_WEIGHTED_CYCLE[
+        (index + variant.kindOffset) % MAX_360_WEIGHTED_CYCLE.length
+      ] as EnemyKind,
       x: (column - 11.5) * 48 + variant.offsetX,
       y: (row - 7) * 42 + variant.offsetY,
     };

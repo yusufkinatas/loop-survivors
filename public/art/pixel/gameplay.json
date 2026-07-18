@@ -4359,10 +4359,10 @@
       },
       "opaqueBounds": {
         "x": 5,
-        "y": 3,
+        "y": 5,
         "w": 54,
-        "h": 35,
-        "opaquePixels": 1380,
+        "h": 32,
+        "opaquePixels": 750,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -4373,13 +4373,14 @@
           "kick",
           "evolved",
           "four-lane",
-          "stamped"
+          "stamped",
+          "orthogonal-cross"
         ]
       },
       "transparentMargin": {
-        "top": 3,
+        "top": 5,
         "right": 5,
-        "bottom": 4,
+        "bottom": 5,
         "left": 5,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
@@ -4644,11 +4645,11 @@
         "space": "normalized-native-frame"
       },
       "opaqueBounds": {
-        "x": 7,
-        "y": 25,
+        "x": 8,
+        "y": 8,
         "w": 110,
-        "h": 28,
-        "opaquePixels": 608,
+        "h": 62,
+        "opaquePixels": 1075,
         "origin": "native-frame-top-left",
         "space": "native-logical-pixels"
       },
@@ -4657,14 +4658,17 @@
         "tags": [
           "attack",
           "bass",
-          "evolved"
+          "evolved",
+          "double-line",
+          "expanding-seismic-ring",
+          "no-slab"
         ]
       },
       "transparentMargin": {
-        "top": 25,
-        "right": 7,
-        "bottom": 23,
-        "left": 7,
+        "top": 8,
+        "right": 6,
+        "bottom": 6,
+        "left": 8,
         "minimumRequired": 2,
         "space": "native-logical-pixels"
       },

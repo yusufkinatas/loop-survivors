@@ -3525,21 +3525,21 @@
             "x": 700,
             "y": 122
           },
-          "colorRatio": 0.004934,
+          "colorRatio": 0.002791,
           "dimensions": {
             "height": 76,
             "width": 124
           },
           "frameKey": "weapons/bass/evolved",
           "opaqueBounds": {
-            "height": 28,
+            "height": 62,
             "width": 110,
-            "x": 7,
-            "y": 25
+            "x": 8,
+            "y": 8
           },
           "opaqueColorCount": 3,
-          "opaquePixels": 608,
-          "pixelSha256": "051c40e131443391cc21b3dc02f20bbc5f8e5342caae0545c14e229c73d93829",
+          "opaquePixels": 1075,
+          "pixelSha256": "5460103bee8c974d62ec485d0ccb13e53657101726c003f673bde2864a1d22d2",
           "singletonPixelCount": 0,
           "singletonRatio": 0,
           "sourceSize": {
@@ -3547,9 +3547,9 @@
             "space": "native-logical-pixels",
             "w": 124
           },
-          "transparentPixels": 8816,
+          "transparentPixels": 8349,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 608
+          "visiblePixels": 1075
         },
         {
           "alpha": {
@@ -4005,21 +4005,21 @@
             "x": 472,
             "y": 122
           },
-          "colorRatio": 0.003623,
+          "colorRatio": 0.006667,
           "dimensions": {
             "height": 42,
             "width": 64
           },
           "frameKey": "weapons/kick/evolved",
           "opaqueBounds": {
-            "height": 35,
+            "height": 32,
             "width": 54,
             "x": 5,
-            "y": 3
+            "y": 5
           },
           "opaqueColorCount": 5,
-          "opaquePixels": 1380,
-          "pixelSha256": "8315d6f68b42c4484efc1cd8efb794a7d1b7884c3f7fd623f759ea7d746f918e",
+          "opaquePixels": 750,
+          "pixelSha256": "ae9141d28bcf31f8a87c882745ef85584f7537e746fba663c067707f1984b283",
           "singletonPixelCount": 0,
           "singletonRatio": 0,
           "sourceSize": {
@@ -4027,9 +4027,9 @@
             "space": "native-logical-pixels",
             "w": 64
           },
-          "transparentPixels": 1308,
+          "transparentPixels": 1938,
           "transparentRgbNonZeroPixels": 0,
-          "visiblePixels": 1380
+          "visiblePixels": 750
         },
         {
           "alpha": {
@@ -4283,12 +4283,12 @@
           "minimum": 0,
           "softPixelCount": 0
         },
-        "colorRatio": 0.000228,
+        "colorRatio": 0.000229,
         "dimensions": {
           "height": 512,
           "width": 1024
         },
-        "fileSha256": "999ef6e2910a580f2fafdb153b588f709c567562a126a83e1ff7c1cc3390a641",
+        "fileSha256": "de44cd46c4fb9724cf27576fd1a2aaebc311b25b4da24233d4411b71a579172e",
         "opaqueBounds": {
           "height": 264,
           "width": 980,
@@ -4296,8 +4296,8 @@
           "y": 5
         },
         "opaqueColorCount": 13,
-        "opaquePixels": 56951,
-        "pixelSha256": "91d6b4e2893353ca48b43d88ecdc3bd8b58a19916950c62d06e24b9f7881a152",
+        "opaquePixels": 56788,
+        "pixelSha256": "2d9d1c3b857962143368ad5059e11e2248fdb964f78fda1ffe1fa04ad42fcc3b",
         "png": {
           "bitDepth": 8,
           "colorType": "RGBA",
@@ -4305,9 +4305,9 @@
         },
         "singletonPixelCount": 0,
         "singletonRatio": 0,
-        "transparentPixels": 467337,
+        "transparentPixels": 467500,
         "transparentRgbNonZeroPixels": 0,
-        "visiblePixels": 56951
+        "visiblePixels": 56788
       },
       "imagePath": "public/art/pixel/gameplay.png",
       "jsonPath": "public/art/pixel/gameplay.json"
@@ -5351,12 +5351,12 @@
         "minimum": 255,
         "softPixelCount": 0
       },
-      "colorRatio": 0.011719,
+      "colorRatio": 0.003906,
       "dimensions": {
         "height": 16,
         "width": 16
       },
-      "fileSha256": "177fba291eacf1e54c456a5b5f51c4db72bd3584da0caa5424d4b93183d34ea4",
+      "fileSha256": "bbd0c9dba3fc3b28b1220ed7076132822bd2cce34c7119f36e1b9e2dcf3b67d9",
       "id": "arena-floor",
       "imagePath": "public/art/pixel/arena-floor.png",
       "opaqueBounds": {
@@ -5365,9 +5365,9 @@
         "x": 0,
         "y": 0
       },
-      "opaqueColorCount": 3,
+      "opaqueColorCount": 1,
       "opaquePixels": 256,
-      "pixelSha256": "a671a641219e92f8876ec2fd40e25747368696389e4ecff5a3100d429d95995c",
+      "pixelSha256": "90eae49efe66d3c27054feddbbdf7c72d0a3a97d7e744849df0ad59a938404ee",
       "png": {
         "bitDepth": 8,
         "colorType": "RGBA",
@@ -5392,12 +5392,12 @@
         "minimum": 255,
         "softPixelCount": 0
       },
-      "colorRatio": 0.00026,
+      "colorRatio": 0.000243,
       "dimensions": {
         "height": 180,
         "width": 320
       },
-      "fileSha256": "9224d7ee9ee6fe16df769ee9d618942b470f95e82d158a8ba70d9f74ebcc514d",
+      "fileSha256": "4f7a08d032bb0a7353ef7bdf817616561a4483cd0dfa42ec47167eed343a218b",
       "id": "title-banner",
       "imagePath": "public/art/pixel/title-banner.png",
       "logicalProjection": {
@@ -5409,8 +5409,8 @@
           "minimum": 255,
           "softPixelCount": 0
         },
-        "blockMismatchPixels": 17395,
-        "colorRatio": 0.004167,
+        "blockMismatchPixels": 8313,
+        "colorRatio": 0.003889,
         "dimensions": {
           "height": 45,
           "width": 80
@@ -5422,9 +5422,9 @@
           "x": 0,
           "y": 0
         },
-        "opaqueColorCount": 15,
+        "opaqueColorCount": 14,
         "opaquePixels": 3600,
-        "pixelSha256": "c035516b255fa7e626b8d342825eadbdf9e8d3ddb2219a136d7a3c7a402ef1bf",
+        "pixelSha256": "4265fc430fd4d71fef4a9f4752f9b62243ef4fb72158963a279e84dd6e03b779",
         "singletonPixelCount": 0,
         "singletonRatio": 0,
         "transparentPixels": 0,
@@ -5437,9 +5437,9 @@
         "x": 0,
         "y": 0
       },
-      "opaqueColorCount": 15,
+      "opaqueColorCount": 14,
       "opaquePixels": 57600,
-      "pixelSha256": "06176b175019286e777fc2cbbfb8fd5518d51fb41112f5a4e87b47a3fa5642fe",
+      "pixelSha256": "0dd861def46f9283883904c99b418858dd03c2375e24bbebf87e004c399f63cf",
       "png": {
         "bitDepth": 8,
         "colorType": "RGBA",
@@ -5455,7 +5455,7 @@
   "summary": {
     "atlasCount": 3,
     "atlasFrameCount": 108,
-    "averageFrameColorRatio": 0.00965,
+    "averageFrameColorRatio": 0.009658,
     "averageFrameSingletonRatio": 0.00116,
     "maximumFrameColorRatio": 0.054348,
     "maximumFrameSingletonRatio": 0.021739,

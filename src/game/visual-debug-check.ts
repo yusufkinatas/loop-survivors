@@ -57,6 +57,7 @@ import {
 } from './capture-metadata';
 import {
   SANDBOX_MAX_360_KINDS,
+  SANDBOX_MAX_360_KIND_COUNTS,
   SANDBOX_MAX_360_VARIANTS,
   SANDBOX_MAX_360_VARIANT_IDS,
   SANDBOX_VISUAL_PRESET_IDS,
@@ -249,18 +250,50 @@ for (const id of SANDBOX_VISUAL_PRESET_IDS) {
 
 const maxPlan = sandboxVisualPresetPlan('max360');
 assert.equal(maxPlan.enemies.length, 360);
-assert.equal(
-  new Set(maxPlan.enemies.map(({ x, y }) => `${x}:${y}`)).size,
-  360,
-  'MAX360 placements must be unique',
-);
-const maxKindCounts = new Map<string, number>();
-for (const enemy of maxPlan.enemies) {
-  maxKindCounts.set(enemy.kind, (maxKindCounts.get(enemy.kind) ?? 0) + 1);
-}
-assert.deepEqual(new Set(maxKindCounts.keys()), new Set(SANDBOX_MAX_360_KINDS));
-for (const kind of SANDBOX_MAX_360_KINDS) {
-  assert.equal(maxKindCounts.get(kind), 72, `MAX360 must contain 72 ${kind} bodies`);
+const expectedMax360KindCounts = Object.freeze({
+  bat: 180,
+  zombie: 108,
+  greenMudman: 48,
+  mantis: 12,
+  charger: 12,
+});
+assert.deepEqual(SANDBOX_MAX_360_KIND_COUNTS, expectedMax360KindCounts);
+for (const variant of SANDBOX_MAX_360_VARIANTS) {
+  const plan = sandboxMax360VariantPlan(variant.id);
+  assert.strictEqual(sandboxMax360VariantPlan(variant.id), plan);
+  assert.equal(plan.seed, variant.seed);
+  assert.equal(plan.enemies.length, 360);
+  assert.equal(
+    new Set(plan.enemies.map(({ x, y }) => `${x}:${y}`)).size,
+    360,
+    `MAX360 ${variant.id} placements must be unique`,
+  );
+  const kindCounts = new Map<string, number>();
+  for (const enemy of plan.enemies) {
+    kindCounts.set(enemy.kind, (kindCounts.get(enemy.kind) ?? 0) + 1);
+  }
+  assert.deepEqual(new Set(kindCounts.keys()), new Set(SANDBOX_MAX_360_KINDS));
+  for (const kind of SANDBOX_MAX_360_KINDS) {
+    assert.equal(
+      kindCounts.get(kind),
+      expectedMax360KindCounts[kind as keyof typeof expectedMax360KindCounts],
+      `MAX360 ${variant.id} has the wrong ${kind} population`,
+    );
+  }
+
+  const sparseLargeBodies = plan.enemies.filter(
+    ({ kind }) => kind === 'mantis' || kind === 'charger',
+  );
+  for (let first = 0; first < sparseLargeBodies.length; first++) {
+    for (let second = first + 1; second < sparseLargeBodies.length; second++) {
+      const a = sparseLargeBodies[first];
+      const b = sparseLargeBodies[second];
+      assert(
+        Math.hypot(a.x - b.x, a.y - b.y) > 100,
+        `MAX360 ${variant.id} sparse large silhouettes must not form a wall`,
+      );
+    }
+  }
 }
 
 const mixed = fixtureWorld();
@@ -760,25 +793,39 @@ for (const variant of SANDBOX_MAX_360_VARIANTS) {
   assert.equal(captureWorld.musicNotes.length, 1);
   assert.equal(captureWorld.encoreCases.length, 1);
   assert.equal(captureWorld.shockwaves.length, 1);
+  const liveKindCounts = new Map<string, number>();
+  for (const enemy of captureWorld.enemies) {
+    liveKindCounts.set(enemy.kind, (liveKindCounts.get(enemy.kind) ?? 0) + 1);
+  }
+  for (const kind of SANDBOX_MAX_360_KINDS) {
+    assert.equal(
+      liveKindCounts.get(kind),
+      expectedMax360KindCounts[kind as keyof typeof expectedMax360KindCounts],
+      `${variant.id} live capture has the wrong ${kind} population`,
+    );
+  }
 
-  const frozenFixtureSignature = JSON.stringify({
-    enemies: enemySignature(captureWorld),
-    projectile: captureWorld.projectiles,
-    xp: captureWorld.gems,
-    notes: captureWorld.musicNotes,
-    rewards: captureWorld.encoreCases,
-    effects: captureWorld.shockwaves.map(({ hit: _hit, ...effect }) => effect),
-  }, (_key, value) => value instanceof Set ? [...value] : value);
+  const captureFixtureBytes = (): string => JSON.stringify(
+    {
+      enemies: enemySignature(captureWorld),
+      projectile: captureWorld.projectiles,
+      xp: captureWorld.gems,
+      notes: captureWorld.musicNotes,
+      rewards: captureWorld.encoreCases,
+      effects: captureWorld.shockwaves.map(({ hit: _hit, ...effect }) => effect),
+    },
+    (_key, value) => value instanceof Set ? [...value] : value,
+  );
+  const frozenFixtureSignature = captureFixtureBytes();
   captureWorld.update(5);
   assert.equal(captureWorld.timeS, 30 * 60);
-  assert.equal(JSON.stringify({
-    enemies: enemySignature(captureWorld),
-    projectile: captureWorld.projectiles,
-    xp: captureWorld.gems,
-    notes: captureWorld.musicNotes,
-    rewards: captureWorld.encoreCases,
-    effects: captureWorld.shockwaves.map(({ hit: _hit, ...effect }) => effect),
-  }, (_key, value) => value instanceof Set ? [...value] : value), frozenFixtureSignature);
+  assert.equal(captureFixtureBytes(), frozenFixtureSignature);
+  assert.deepEqual(captureWorld.applySandboxMax360Variant(variant.id, true), captureState);
+  assert.equal(
+    captureFixtureBytes(),
+    frozenFixtureSignature,
+    `${variant.id} capture reconstruction must be byte-deterministic`,
+  );
 
   for (const phase of LIVE_CAPTURE_VISUAL_PHASES) {
     for (const visionMode of SANDBOX_VISION_MODE_IDS) {

@@ -611,10 +611,11 @@ const WEAPON_STRUCTURE_TAGS = Object.freeze({
   'clap/normal': ['crown-fan'],
   'snare/normal': ['needle-tail'],
   'chord/normal': ['rounded-square-zone'],
-  'kick/evolved': ['four-lane', 'stamped'],
+  'kick/evolved': ['four-lane', 'stamped', 'orthogonal-cross'],
   'clap/evolved': ['bracket-ring'],
   'snare/evolved': ['twin-rail'],
   'hat/evolved': ['linked-orbit', 'rail'],
+  'bass/evolved': ['double-line', 'expanding-seismic-ring', 'no-slab'],
   'lead/evolved': ['segmented-serpent', 'head'],
   'arp/evolved': ['paired-crown', 'central-void'],
   'chord/evolved': ['linked-merged-cell'],
@@ -641,22 +642,24 @@ function drawWeapon(role, evolved) {
   switch (role) {
     case 'kick': {
       if (evolved) {
-        // Four separately stamped lanes communicate the evolved multi-strip
-        // footprint; this is a different structure, not a larger arrow.
-        for (let lane = 0; lane < 4; lane++) {
-          const y = 6 + lane * 8;
-          maskPolygon(shape, [[5, y - 1], [w - 13, y - 1], [w - 13, y - 4], [w - 5, y], [w - 13, y + 4], [w - 13, y + 1], [5, y + 1]]);
-        }
+        // Four cardinal lanes cross at one stamped hub, matching the evolved
+        // runtime's orthogonal kick rather than reading as parallel arrows.
+        maskPolygon(shape, [[cx - 4, cy - 2], [13, cy - 2], [13, cy - 5], [5, cy], [13, cy + 5], [13, cy + 2], [cx - 4, cy + 2]]);
+        maskPolygon(shape, [[cx + 4, cy - 2], [w - 14, cy - 2], [w - 14, cy - 5], [w - 5, cy], [w - 14, cy + 5], [w - 14, cy + 2], [cx + 4, cy + 2]]);
+        maskPolygon(shape, [[cx - 2, cy - 4], [cx - 2, 12], [cx - 5, 12], [cx, 4], [cx + 5, 12], [cx + 2, 12], [cx + 2, cy - 4]]);
+        maskPolygon(shape, [[cx - 2, cy + 4], [cx - 2, h - 13], [cx - 5, h - 13], [cx, h - 5], [cx + 5, h - 13], [cx + 2, h - 13], [cx + 2, cy + 4]]);
+        maskRect(shape, cx - 4, cy - 4, 9, 9);
       } else {
         maskPolygon(shape, [[edge, cy - 5], [w - 14, cy - 5], [w - 14, cy - 10], [w - edge, cy], [w - 14, cy + 10], [w - 14, cy + 5], [edge, cy + 5]]);
       }
       paintShape(out, shape, P.attack);
       if (evolved) {
-        for (let lane = 0; lane < 4; lane++) {
-          const y = 6 + lane * 8;
-          rect(out, 9 + (lane % 2) * 5, y - 1, 6, 2, lane % 2 ? P.currency : P.highlight);
-          rect(out, 25 + (lane % 2) * 4, y - 1, 4, 2, P.panel);
-        }
+        rect(out, 11, cy - 1, 7, 2, P.highlight);
+        rect(out, w - 18, cy - 1, 7, 2, P.currency);
+        rect(out, cx - 1, 8, 2, 6, P.highlight);
+        rect(out, cx - 1, h - 14, 2, 6, P.currency);
+        rect(out, cx - 3, cy - 3, 7, 7, P.panel);
+        rect(out, cx - 1, cy - 1, 3, 3, P.highlight);
       } else line(out, 8, cy - 2, w - 13, cy - 2, P.highlight, 2);
       break;
     }
@@ -741,18 +744,44 @@ function drawWeapon(role, evolved) {
       break;
     }
     case 'bass': {
-      const color = evolved ? P.danger : P.accent;
-      const thickness = evolved ? 3 : 2;
-      const amplitude = evolved ? 23 : 18;
-      for (let x = 5; x < w - 5; x++) {
-        const phase = x % 24;
-        const triangle = phase <= 12 ? phase : 24 - phase;
-        const y = cy - Math.floor((triangle - 6) * amplitude / 12);
-        put(out, x, y, color);
-        for (let t = 1; t < thickness; t++) put(out, x, y + t, color);
-        if (evolved) put(out, x, h - 1 - y, P.focal);
+      if (evolved) {
+        // Two closed, separated wavefronts read as an expanding seismic ring.
+        // They are drawn directly as bright contours: no opaque black slab.
+        const outer = [
+          [6, cy], [13, cy - 12], [28, cy - 23], [47, cy - 28], [cx, cy - 30],
+          [w - 48, cy - 28], [w - 29, cy - 23], [w - 14, cy - 12], [w - 6, cy],
+          [w - 14, cy + 12], [w - 29, cy + 23], [w - 48, cy + 28], [cx, cy + 30],
+          [47, cy + 28], [28, cy + 23], [13, cy + 12], [6, cy],
+        ];
+        const inner = [
+          [15, cy], [24, cy - 9], [39, cy - 17], [cx, cy - 21],
+          [w - 40, cy - 17], [w - 25, cy - 9], [w - 15, cy],
+          [w - 25, cy + 9], [w - 40, cy + 17], [cx, cy + 21],
+          [39, cy + 17], [24, cy + 9], [15, cy],
+        ];
+        for (const [points, color] of [[outer, P.danger], [inner, P.focal]]) {
+          for (let i = 0; i < points.length - 1; i++) {
+            line(out, points[i][0], points[i][1], points[i + 1][0], points[i + 1][1], color, 2);
+          }
+        }
+        // Small connected chevrons on the outer cardinal points establish the
+        // outward expansion direction without filling the ring interior.
+        line(out, 6, cy, 10, cy - 4, P.danger, 2); line(out, 6, cy, 10, cy + 4, P.danger, 2);
+        line(out, w - 6, cy, w - 10, cy - 4, P.danger, 2); line(out, w - 6, cy, w - 10, cy + 4, P.danger, 2);
+        line(out, cx, cy - 30, cx - 4, cy - 26, P.danger, 2); line(out, cx, cy - 30, cx + 4, cy - 26, P.danger, 2);
+        line(out, cx, cy + 30, cx - 4, cy + 26, P.danger, 2); line(out, cx, cy + 30, cx + 4, cy + 26, P.danger, 2);
+        for (const [x, y] of [[6, cy], [w - 6, cy], [cx, cy - 30], [cx, cy + 30]]) put(out, x, y, P.highlight);
+      } else {
+        const amplitude = 18;
+        for (let x = 5; x < w - 5; x++) {
+          const phase = x % 24;
+          const triangle = phase <= 12 ? phase : 24 - phase;
+          const y = cy - Math.floor((triangle - 6) * amplitude / 12);
+          put(out, x, y, P.accent);
+          put(out, x, y + 1, P.accent);
+        }
+        line(out, 6, cy, w - 7, cy, P.attack, 2);
       }
-      line(out, 6, cy, w - 7, cy, evolved ? P.highlight : P.attack, 2);
       break;
     }
     case 'lead': {
@@ -1275,22 +1304,9 @@ export function buildProductionFrames() {
 export function buildArenaFloor() {
   const size = 16;
   const floor = createImage(size, size, P.floor);
-  // Draw one native repeat cell, reserving the last row and column as exact
-  // copies of the first so texture wrapping cannot expose a seam.
-  for (let y = 0; y < size; y++) {
-    const yy = y === size - 1 ? 0 : y;
-    for (let x = 0; x < size; x++) {
-      const xx = x === size - 1 ? 0 : x;
-      const cellX = Math.floor(xx / 16);
-      const cellY = Math.floor(yy / 12);
-      const localX = xx % 16;
-      const localY = yy % 12;
-      const offset = (cellY % 2) * 7;
-      if (localY === 0 && (localX + offset) % 4 !== 0) put(floor, x, y, P.floorDetail);
-      if ((localX + offset) % 16 === 0 && localY >= 2 && localY <= 9) put(floor, x, y, P.floorDetail);
-      if ((cellX * 7 + cellY * 11) % 13 === 0 && localX >= 6 && localX <= 8 && localY === 5) put(floor, x, y, P.shadow);
-    }
-  }
+  // The locked deep-navy Arcade floor swatch carries the material. A uniform
+  // native plane is intentional: zero grid, speckle, seams, or microtexture can
+  // compete with actors when this 16px repeat covers the arena.
   // Re-assert exact seamless edges after drawing the direct native-grid motif.
   for (let y = 0; y < size; y++) {
     const source = pixelOffset(floor, 0, y);

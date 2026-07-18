@@ -111,10 +111,11 @@ const REVISION_FRAME_CONTRACTS = Object.freeze({
   'weapons/clap/normal': Object.freeze({ size: [52, 36], tags: ['crown-fan'] }),
   'weapons/snare/normal': Object.freeze({ size: [34, 30], tags: ['needle-tail'] }),
   'weapons/chord/normal': Object.freeze({ size: [100, 68], tags: ['rounded-square-zone'] }),
-  'weapons/kick/evolved': Object.freeze({ size: [64, 42], tags: ['four-lane', 'stamped'] }),
+  'weapons/kick/evolved': Object.freeze({ size: [64, 42], tags: ['four-lane', 'stamped', 'orthogonal-cross'] }),
   'weapons/clap/evolved': Object.freeze({ size: [66, 44], tags: ['bracket-ring'] }),
   'weapons/snare/evolved': Object.freeze({ size: [44, 38], tags: ['twin-rail'] }),
   'weapons/hat/evolved': Object.freeze({ size: [46, 38], tags: ['linked-orbit', 'rail'] }),
+  'weapons/bass/evolved': Object.freeze({ size: [124, 76], tags: ['double-line', 'expanding-seismic-ring', 'no-slab'] }),
   'weapons/lead/evolved': Object.freeze({ size: [48, 38], tags: ['segmented-serpent', 'head'] }),
   'weapons/arp/evolved': Object.freeze({ size: [56, 56], tags: ['paired-crown', 'central-void'] }),
   'weapons/chord/evolved': Object.freeze({ size: [116, 76], tags: ['linked-merged-cell'] }),
@@ -297,17 +298,6 @@ function alphaAt(image, x, y) {
   return image.data[pixelOffset(image, x, y) + 3];
 }
 
-function alphaRunsInColumn(image, x) {
-  let runs = 0;
-  let opaque = false;
-  for (let y = 0; y < image.height; y++) {
-    const next = alphaAt(image, x, y) === 255;
-    if (next && !opaque) runs++;
-    opaque = next;
-  }
-  return runs;
-}
-
 function opaqueComponentCount(image) {
   const seen = new Uint8Array(image.width * image.height);
   let components = 0;
@@ -368,7 +358,29 @@ function validateRevisionVocabulary(key, image, entry) {
     assert(opaqueComponentCount(image) >= 10, `${key} must remain scattered bar confetti, not a connected pickup silhouette`);
   }
   if (key === 'weapons/kick/evolved') {
-    assert(alphaRunsInColumn(image, entry.pivot.x - 20) === 4, `${key} must expose exactly four separated stamped lanes`);
+    const { x, y } = entry.pivot;
+    for (const [sampleX, sampleY] of [[x - 20, y], [x + 20, y], [x, y - 12], [x, y + 12]]) {
+      assert(alphaAt(image, sampleX, sampleY) === 255, `${key} is missing a cardinal stamped lane at ${sampleX},${sampleY}`);
+    }
+    for (const [sampleX, sampleY] of [[x - 10, y - 10], [x + 10, y - 10], [x - 10, y + 10], [x + 10, y + 10]]) {
+      assert(alphaAt(image, sampleX, sampleY) === 0, `${key} filled a diagonal quadrant instead of retaining an orthogonal cross`);
+    }
+    assert(opaqueComponentCount(image) === 1, `${key} four cardinal lanes must cross as one connected structure`);
+  }
+  if (key === 'weapons/bass/evolved') {
+    const { x, y } = entry.pivot;
+    assert(alphaAt(image, x, y) === 0, `${key} must retain a transparent center with no slab`);
+    for (const [sampleX, sampleY] of [[x - 54, y], [x + 54, y], [x, y - 30], [x, y + 30]]) {
+      assert(alphaAt(image, sampleX, sampleY) === 255, `${key} is missing an outer expanding-ring cardinal at ${sampleX},${sampleY}`);
+    }
+    for (const [sampleX, sampleY] of [[x - 45, y], [x + 45, y], [x, y - 21], [x, y + 21]]) {
+      assert(alphaAt(image, sampleX, sampleY) === 255, `${key} is missing an inner expanding-ring cardinal at ${sampleX},${sampleY}`);
+    }
+    assert(alphaAt(image, x, y - 25) === 0, `${key} seismic contours merged into a duplicated band`);
+    assert(opaqueComponentCount(image) === 2, `${key} must contain exactly two separated expanding ring lines`);
+    const colors = colorSet(image);
+    assert(!colors.has(MASTER_PALETTE.outline) && !colors.has(MASTER_PALETTE.panel),
+      `${key} introduced a black outline/panel slab`);
   }
   if (key === 'weapons/clap/evolved' || key === 'weapons/arp/evolved' || key === 'weapons/chord/normal') {
     assert(alphaAt(image, entry.pivot.x, entry.pivot.y) === 0, `${key} must preserve its structural center void`);
@@ -733,7 +745,24 @@ function validateExactScale(source, scaled, scale, label) {
 function validateFloor(floor) {
   assert(floor.width === FLOOR_SIZE && floor.height === FLOOR_SIZE, `arena floor must be ${FLOOR_SIZE}x${FLOOR_SIZE}`);
   validateHardAlphaAndPalette(floor, 'arena floor', true);
-  assert(colorSet(floor).size <= 3, `arena floor exceeds its 3-color budget`);
+  assert(colorSet(floor).size === 1, `arena floor must remain one quiet material color`);
+  const quietFloorColors = new Set([MASTER_PALETTE.floor]);
+  assert([...colorSet(floor)].every((color) => quietFloorColors.has(color)),
+    'arena floor introduced a high-value or combat-role color');
+  const nonBasePixels = floor.width * floor.height - countColor(floor, MASTER_PALETTE.floor);
+  assert(nonBasePixels === 0, `arena floor introduced ${nonBasePixels} competing texture pixels`);
+  const period = FLOOR_SIZE - 1;
+  let transitions = 0;
+  for (let y = 0; y < period; y++) {
+    for (let x = 0; x < period; x++) {
+      const here = pixelOffset(floor, x, y);
+      const right = pixelOffset(floor, (x + 1) % period, y);
+      const below = pixelOffset(floor, x, (y + 1) % period);
+      if (colorHex(floor, here) !== colorHex(floor, right)) transitions++;
+      if (colorHex(floor, here) !== colorHex(floor, below)) transitions++;
+    }
+  }
+  assert(transitions === 0, `arena floor has ${transitions} toroidal color transitions; expected a quiet uniform plane`);
   for (let y = 0; y < floor.height; y++) {
     const left = pixelOffset(floor, 0, y);
     const right = pixelOffset(floor, floor.width - 1, y);
