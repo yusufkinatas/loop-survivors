@@ -5,6 +5,10 @@ contract used to settle implementation decisions. For a concise description of
 everything a player can currently encounter, read the
 [Neon Crypt Field Guide](field-guide.md).
 
+The current pixel-art implementation is scheduled for a ground-up replacement.
+Its autonomous production workflow and the only two player decision gates live
+in the [Pixel-Art Overhaul handoff](pixelart-overhaul.md).
+
 ## The game in one sentence
 
 A survivors-like in which every weapon is an instrument, every automatic
