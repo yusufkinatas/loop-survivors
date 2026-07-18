@@ -64,6 +64,7 @@ import {
 import { type WorldProjection } from './viewport';
 import {
   EMPTY_VISUAL_DEBUG_FLAGS,
+  nativeActorOpaqueBounds,
   type DebugRectWorld,
   type RunDebugGeometrySnapshot,
   type SandboxPresetState,
@@ -360,11 +361,17 @@ export class RunView {
         this.projection.logicalLengthToWorld(Math.max(native.w, native.h) / 2),
       ));
     }
+    const playerVisualBounds = nativeActorOpaqueBounds(
+      this.world.player.x,
+      this.world.player.y,
+      productionActorDebugMetadata('player', this.projection),
+    );
     return buildRunCaptureSceneMetadata(
       this.world,
       this.projection,
       this.captureConfig,
       Object.freeze(additionalTargets),
+      playerVisualBounds,
     );
   }
 

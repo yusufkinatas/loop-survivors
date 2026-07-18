@@ -28,6 +28,16 @@ export interface CaptureMetadataConfiguration {
   readonly requestedTargetId: string | null;
 }
 
+/** Opaque player-art union in simulation-world coordinates. Capture scoring
+ * uses this visible body rather than the smaller collision circle so a click
+ * on the remembered head or torso is still a truthful player-location hit. */
+export interface CapturePlayerVisualWorldBounds {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
 export interface RunCaptureSceneMetadata {
   readonly seed: number | null;
   readonly timeS: number;
@@ -156,6 +166,7 @@ export function buildRunCaptureSceneMetadata(
   projection: WorldProjection,
   config: CaptureMetadataConfiguration,
   additionalTargets: readonly CaptureTargetCandidate[] = [],
+  playerVisualBounds: CapturePlayerVisualWorldBounds | null = null,
 ): RunCaptureSceneMetadata {
   const cameraX = world.player.x + PLAYER_FOOT_OFFSET.x;
   const cameraY = world.player.y + PLAYER_FOOT_OFFSET.y;
@@ -164,7 +175,16 @@ export function buildRunCaptureSceneMetadata(
     ...additionalTargets,
   ]);
   const selectedTarget = selectLiveCaptureTarget(targets, config.requestedTargetId);
-  const player = projection.worldToLogical(world.player.x, world.player.y, cameraX, cameraY);
+  const playerWorldX = playerVisualBounds === null
+    ? world.player.x
+    : playerVisualBounds.x + playerVisualBounds.width / 2;
+  const playerWorldY = playerVisualBounds === null
+    ? world.player.y
+    : playerVisualBounds.y + playerVisualBounds.height / 2;
+  const playerWorldRadius = playerVisualBounds === null
+    ? world.player.radius
+    : Math.hypot(playerVisualBounds.width, playerVisualBounds.height) / 2;
+  const player = projection.worldToLogical(playerWorldX, playerWorldY, cameraX, cameraY);
   return Object.freeze({
     seed: world.sandboxVisualPreset?.seed ?? null,
     timeS: world.timeS,
@@ -178,7 +198,7 @@ export function buildRunCaptureSceneMetadata(
     player: Object.freeze({
       logicalX: Math.round(player.x),
       logicalY: Math.round(player.y),
-      logicalRadius: Math.max(1, Math.round(projection.worldLengthToLogical(world.player.radius))),
+      logicalRadius: Math.max(1, Math.ceil(projection.worldLengthToLogical(playerWorldRadius))),
     }),
     targets,
   });

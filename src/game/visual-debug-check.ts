@@ -860,6 +860,33 @@ for (const variant of SANDBOX_MAX_360_VARIANTS) {
     visionMode: 'normal',
     requestedTargetId: null,
   });
+  const visiblePlayerMetadata = buildRunCaptureSceneMetadata(
+    captureWorld,
+    captureProjection,
+    {
+      offsetId: 0,
+      offsetS: 0,
+      visionMode: 'normal',
+      requestedTargetId: null,
+    },
+    [],
+    {
+      x: captureWorld.player.x - 30,
+      y: captureWorld.player.y - 60,
+      width: 60,
+      height: 80,
+    },
+  );
+  assert.equal(visiblePlayerMetadata.player.logicalRadius, 25);
+  assert.equal(
+    visiblePlayerMetadata.player.logicalY,
+    Math.round(captureProjection.worldToLogical(
+      captureWorld.player.x,
+      captureWorld.player.y - 20,
+      captureWorld.player.x + PLAYER_FOOT_OFFSET.x,
+      captureWorld.player.y + PLAYER_FOOT_OFFSET.y,
+    ).y),
+  );
   for (const captureClass of LIVE_CAPTURE_TARGET_CLASSES as readonly LiveCaptureTargetClass[]) {
     const targetId: string = MAX360_CAPTURE_TARGET_IDS[captureClass];
     const selected: CaptureTargetCandidate | null = selectLiveCaptureTarget(
