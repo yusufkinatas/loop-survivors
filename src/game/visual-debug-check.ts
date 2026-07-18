@@ -591,6 +591,17 @@ for (const atlas of ['gameplay', 'ui', 'environment'] as const satisfies readonl
 
 const viewPath = fileURLToPath(new URL('./view.ts', import.meta.url));
 const viewSource = readFileSync(viewPath, 'utf8');
+const layerOrderSource = viewSource.slice(
+  viewSource.indexOf('this.stage.addChild('),
+  viewSource.indexOf('  private syncZones'),
+);
+assert(
+  layerOrderSource.indexOf('this.enemyLayer') < layerOrderSource.indexOf('this.pickupLayer') &&
+  layerOrderSource.indexOf('this.pickupLayer') < layerOrderSource.indexOf('this.projectileLayer'),
+  'collectibles must render above enemies and below active projectiles',
+);
+assert(viewSource.includes("this.captureConfig.requestedTargetId === shockwave.captureId"),
+  'the high-priority decorative fixture must appear only in its targeted category capture');
 const scaleWrites = viewSource.split('\n').filter((line) => line.includes('.scale.set('));
 assert.deepEqual(
   scaleWrites.map((line) => line.trim()),

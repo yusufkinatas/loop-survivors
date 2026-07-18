@@ -36,6 +36,7 @@ const category = Array.from({ length: VISUAL_READ_SAMPLE_COUNT }, (_, index) => 
   seed: `seed-${index % 4}`,
   offsetS: index * 0.25,
   vision: visions[index % visions.length],
+  crop: { x: 240, y: 135, w: 160, h: 90, scale: 4 } as const,
 })) satisfies VisualReadPublicSample[];
 
 const packet: VisualReadPacket = {
@@ -66,6 +67,8 @@ const other = randomizedSampleOrder(player, 'reviewer-b', 'player').map(({ id })
 assert(first.join('|') === second.join('|'), 'sample randomization must be deterministic per reviewer');
 assert(first.join('|') !== other.join('|'), 'different reviewers must receive different sample order');
 assert(new Set(first).size === VISUAL_READ_SAMPLE_COUNT, 'randomization must preserve every sample exactly once');
+assert(category.every(({ crop }) => crop.w * crop.scale === 640 && crop.h * crop.scale === 360),
+  'category crops must enlarge to the exact logical review surface');
 
 assert(playerClickResult({ x: 338, y: 180 }, { x: 320, y: 180, radius: 16 }).hit, 'two-pixel tolerance should count');
 assert(!playerClickResult({ x: 339, y: 180 }, { x: 320, y: 180, radius: 16 }).hit, 'outside tolerance should miss');

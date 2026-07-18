@@ -35,7 +35,9 @@ export function liveCaptureVisualPhase(id: LiveCaptureOffsetId): LiveCaptureVisu
 
 export const MAX360_CAPTURE_TARGET_IDS: Readonly<Record<LiveCaptureTargetClass, string>> =
   Object.freeze({
-    enemy: 'enemy-180',
+    // Keep the sampled enemy away from the player focal stack. It remains a
+    // real member of every 360-body capture plan.
+    enemy: 'enemy-128',
     'friendly-projectile': 'friendly-projectile-fixture',
     xp: 'xp-fixture',
     'music-note': 'music-note-fixture',

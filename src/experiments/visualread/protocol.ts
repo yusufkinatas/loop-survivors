@@ -14,12 +14,23 @@ export const VISUAL_READ_CATEGORIES = [
 export type VisualReadMode = 'player' | 'category';
 export type VisualReadCategory = (typeof VISUAL_READ_CATEGORIES)[number];
 
+export interface VisualReadCrop {
+  readonly x: number;
+  readonly y: number;
+  readonly w: 160;
+  readonly h: 90;
+  readonly scale: 4;
+}
+
 export interface VisualReadPublicSample {
   id: string;
   image: string;
   seed: string;
   offsetS: number;
   vision: 'normal' | 'grayscale' | 'protanopia' | 'deuteranopia' | 'tritanopia';
+  /** Category samples show a nearest-neighbour 4x crop from the real stress
+   * frame. Player samples always show the complete 640 x 360 frame. */
+  crop?: VisualReadCrop;
 }
 
 export interface VisualReadPacket {
@@ -111,6 +122,17 @@ export function assertVisualReadPacket(packet: VisualReadPacket, answers: Visual
         throw new Error(`${sample.id} is outside the clarity-frame path`);
       }
       if (!(sample.id in answers[mode])) throw new Error(`${sample.id} has no hidden answer`);
+      if (mode === 'player' && sample.crop !== undefined) {
+        throw new Error(`${sample.id} player sample must show the full frame`);
+      }
+      if (mode === 'category') {
+        const crop = sample.crop;
+        if (
+          !crop || crop.w !== 160 || crop.h !== 90 || crop.scale !== 4 ||
+          !Number.isInteger(crop.x) || !Number.isInteger(crop.y) ||
+          crop.x < 0 || crop.y < 0 || crop.x + crop.w > 640 || crop.y + crop.h > 360
+        ) throw new Error(`${sample.id} category sample has an invalid 160 x 90 native crop`);
+      }
     }
   }
   const seeds = new Set(packet.player.map(({ seed }) => seed));

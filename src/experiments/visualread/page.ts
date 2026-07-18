@@ -131,7 +131,22 @@ export async function mountVisualReadReview(root: HTMLElement): Promise<void> {
     actions.textContent = '';
     prompt.hidden = true;
     mask.hidden = true;
-    frame.src = current().image;
+    const sample = current();
+    const crop = sample.crop;
+    if (route.mode === 'category' && crop) {
+      frame.style.inset = 'auto';
+      frame.style.left = `${-crop.x * crop.scale}px`;
+      frame.style.top = `${-crop.y * crop.scale}px`;
+      frame.style.width = `${LOGICAL_WIDTH * crop.scale}px`;
+      frame.style.height = `${LOGICAL_HEIGHT * crop.scale}px`;
+    } else {
+      frame.style.inset = '0';
+      frame.style.left = '0';
+      frame.style.top = '0';
+      frame.style.width = `${LOGICAL_WIDTH}px`;
+      frame.style.height = `${LOGICAL_HEIGHT}px`;
+    }
+    frame.src = sample.image;
     await frame.decode();
     frame.hidden = false;
     revealStartedAt = performance.now();

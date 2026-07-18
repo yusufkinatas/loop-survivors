@@ -59,6 +59,7 @@ import {
 } from './capture-metadata';
 import {
   LIVE_CAPTURE_ANIMATION_FPS,
+  MAX360_CAPTURE_TARGET_IDS,
   type LiveCaptureBracketGeometry,
 } from './live-capture';
 import { type WorldProjection } from './viewport';
@@ -276,8 +277,10 @@ export class RunView {
       this.floorLayer,
       this.environmentLayer,
       this.zoneLayer,
-      this.pickupLayer,
       this.enemyLayer,
+      // Collectibles retain their full silhouette at stress density instead
+      // of disappearing beneath an opaque horde.
+      this.pickupLayer,
       this.projectileLayer,
       this.effectLayer,
       this.playerLayer,
@@ -761,11 +764,18 @@ export class RunView {
       let visual = this.shockwaveSprites.get(shockwave);
       if (!visual) {
         visual = productionSprite(effectTextureKey('explosion'), this.projection);
-        this.zoneLayer.addChild(visual);
+        const captureFixture =
+          shockwave.captureId === MAX360_CAPTURE_TARGET_IDS['decorative-effect'] &&
+          this.captureConfig.requestedTargetId === shockwave.captureId;
+        (captureFixture ? this.effectLayer : this.zoneLayer).addChild(visual);
         this.shockwaveSprites.set(shockwave, visual);
       }
       visual.position.set(this.snapWorld(shockwave.x), this.snapWorld(shockwave.y));
-      visual.alpha = Math.max(0.08, 0.28 * (1 - shockwave.age / shockwave.lifeS));
+      visual.alpha =
+        shockwave.captureId === MAX360_CAPTURE_TARGET_IDS['decorative-effect'] &&
+        this.captureConfig.requestedTargetId === shockwave.captureId
+        ? 0.9
+        : Math.max(0.08, 0.28 * (1 - shockwave.age / shockwave.lifeS));
     }
     for (const [shockwave, visual] of this.shockwaveSprites) {
       if (shockLive.has(shockwave)) continue;

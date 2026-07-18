@@ -53,6 +53,7 @@ import {
   assertVisualReadPacket,
   type VisualReadAnswers,
   type VisualReadCategory,
+  type VisualReadCrop,
   type VisualReadPacket,
   type VisualReadPublicSample,
 } from '../src/experiments/visualread/protocol';
@@ -126,6 +127,7 @@ interface ValidatedCapture {
   readonly pngInspection: PngInspection;
   readonly playerAnswer: { readonly x: number; readonly y: number; readonly radius: number };
   readonly categoryAnswer: VisualReadCategory | null;
+  readonly categoryCrop: VisualReadCrop | null;
 }
 
 type JsonRecord = Record<string, unknown>;
@@ -494,6 +496,7 @@ function validateLogicalCircle(value: unknown, label: string): { x: number; y: n
 function validateMetadata(sample: CapturePlanSample, raw: unknown): {
   playerAnswer: { x: number; y: number; radius: number };
   categoryAnswer: VisualReadCategory | null;
+  categoryCrop: VisualReadCrop | null;
 } {
   const label = sample.metadataInput;
   const metadata = record(raw, label);
@@ -538,7 +541,7 @@ function validateMetadata(sample: CapturePlanSample, raw: unknown): {
     assert(metadata.requestedTargetId === null, `${label}: player packet must not request a target`);
     assert(metadata.selectedTarget === null && metadata.targetBracket === null,
       `${label}: player packet must not show a target bracket`);
-    return { playerAnswer, categoryAnswer: null };
+    return { playerAnswer, categoryAnswer: null, categoryCrop: null };
   }
 
   assert(sample.targetId !== null && sample.targetClass !== null, `${label}: category plan target is incomplete`);
@@ -546,12 +549,21 @@ function validateMetadata(sample: CapturePlanSample, raw: unknown): {
   const selectedTarget = record(metadata.selectedTarget, `${label}.selectedTarget`);
   assert(selectedTarget.id === sample.targetId, `${label}: selected target ID does not match the plan`);
   assert(selectedTarget.class === sample.targetClass, `${label}: selected target class does not match the plan`);
-  validateLogicalCircle(selectedTarget, `${label}.selectedTarget`);
+  const selectedCircle = validateLogicalCircle(selectedTarget, `${label}.selectedTarget`);
   const targetBracket = record(metadata.targetBracket, `${label}.targetBracket`);
   assert(targetBracket.targetId === sample.targetId, `${label}: bracket does not identify the selected target`);
   assert(numberField(targetBracket, 'gap', `${label}.targetBracket`) >= 2,
     `${label}: target bracket must stay outside the target core`);
-  return { playerAnswer, categoryAnswer: sample.targetClass };
+  const cropWidth = 160;
+  const cropHeight = 90;
+  const categoryCrop: VisualReadCrop = Object.freeze({
+    x: Math.max(0, Math.min(LOGICAL_WIDTH - cropWidth, Math.round(selectedCircle.x - cropWidth / 2))),
+    y: Math.max(0, Math.min(LOGICAL_HEIGHT - cropHeight, Math.round(selectedCircle.y - cropHeight / 2))),
+    w: cropWidth,
+    h: cropHeight,
+    scale: 4,
+  });
+  return { playerAnswer, categoryAnswer: sample.targetClass, categoryCrop };
 }
 
 function validateCapture(sample: CapturePlanSample): ValidatedCapture {
@@ -592,6 +604,7 @@ function publicSample(capture: ValidatedCapture): VisualReadPublicSample {
     seed: String(sample.seed),
     offsetS: sample.offsetS,
     vision: sample.vision,
+    ...(capture.categoryCrop === null ? {} : { crop: capture.categoryCrop }),
   };
 }
 
