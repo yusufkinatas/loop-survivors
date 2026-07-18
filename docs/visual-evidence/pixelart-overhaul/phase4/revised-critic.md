@@ -1,7 +1,8 @@
 # Phase 4 revised-slice independent critique
 
-Date: 2026-07-18  
-Direction: Arcade Reliquary  
+Date: 2026-07-18
+
+Direction: Arcade Reliquary
 Result: **REVISE / FAIL**
 
 This is the preserved second independent review, after the first-pass family

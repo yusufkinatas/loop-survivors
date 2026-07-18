@@ -1,7 +1,8 @@
 # Phase 4 preliminary independent critique
 
-Date: 2026-07-18  
-Direction: Arcade Reliquary  
+Date: 2026-07-18
+
+Direction: Arcade Reliquary
 Result: **REVISE / FAIL**
 
 The independent critic inspected all 29 first-pass lossless 640 × 360 family
