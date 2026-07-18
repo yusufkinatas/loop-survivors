@@ -914,6 +914,14 @@ for (const variant of SANDBOX_MAX_360_VARIANTS) {
     assert(bracket.bounds.right >= selected.logicalX + selected.logicalRadius + LIVE_CAPTURE_BRACKET_GAP);
     assert(bracket.bounds.top <= selected.logicalY - selected.logicalRadius - LIVE_CAPTURE_BRACKET_GAP);
     assert(bracket.bounds.bottom >= selected.logicalY + selected.logicalRadius + LIVE_CAPTURE_BRACKET_GAP);
+    for (const other of baseMetadata.targets) {
+      if (other.id === selected.id) continue;
+      assert(
+        Math.hypot(other.logicalX - selected.logicalX, other.logicalY - selected.logicalY) >=
+          selected.logicalRadius + other.logicalRadius + LIVE_CAPTURE_BRACKET_GAP * 2,
+        `${targetId} highlight must not contain or touch ${other.id}`,
+      );
+    }
     for (const segment of bracket.segments) {
       for (const point of [{ x: segment.x1, y: segment.y1 }, { x: segment.x2, y: segment.y2 }]) {
         assert(

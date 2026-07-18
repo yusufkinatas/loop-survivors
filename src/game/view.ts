@@ -628,7 +628,12 @@ export class RunView {
           aura.alpha = enemy.headliner ? 0.55 : 0.32;
           root.addChildAt(aura, 0);
         }
-        this.enemyLayer.addChild(root);
+        // A category capture still uses a real member of the MAX360 horde,
+        // but its requested target must not be painted over by later rows of
+        // that same horde. The highlight protocol promotes only that one
+        // body, just as it promotes only the requested decorative effect.
+        const captureTarget = `enemy-${enemy.id}` === this.captureConfig.requestedTargetId;
+        (captureTarget ? this.effectLayer : this.enemyLayer).addChild(root);
         visual = { root, body, aura, facing: 1 };
         this.enemySprites.set(enemy, visual);
       }
