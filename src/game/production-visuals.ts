@@ -14,7 +14,6 @@ import {
   PIXEL_STATUS_ICON_IDS,
   PIXEL_WEAPON_ROLES,
   actionIconTextureKey,
-  activePixelArtMode,
   effectTextureKey,
   enemyTextureKey,
   environmentTextureKey,
@@ -181,15 +180,14 @@ export function productionVisualDefinition(key: PixelProductionTextureKey): Prod
  * makes one source pixel land on exactly one logical screen pixel. */
 export function productionWorldUnitsPerNativePixel(
   worldToLogicalScale: number,
-  logicalScale = 1,
 ): number {
   if (!(worldToLogicalScale > 0) || !Number.isFinite(worldToLogicalScale)) {
     throw new Error(`Invalid world-to-logical scale ${worldToLogicalScale}`);
   }
-  const worldScale = logicalScale / worldToLogicalScale;
+  const worldScale = 1 / worldToLogicalScale;
   if (!Number.isInteger(worldScale)) {
     throw new Error(
-      `Native runtime scale must be a whole number; ${logicalScale}/${worldToLogicalScale} = ${worldScale}`,
+      `Native runtime scale must be a whole number; 1/${worldToLogicalScale} = ${worldScale}`,
     );
   }
   return worldScale;
@@ -208,18 +206,12 @@ export function applyProductionSprite(
 ): Sprite {
   const policy = productionVisualDefinition(key);
   const frame = pixelFrameMetadata(key);
-  if (activePixelArtMode() === 'production' && frame.rendererScale !== policy.logicalScale) {
+  if (frame.rendererScale !== policy.logicalScale) {
     throw new Error(
       `Production frame ${key} declares rendererScale ${frame.rendererScale}; expected ${policy.logicalScale}`,
     );
   }
-  const logicalScale = activePixelArtMode() === 'production'
-    ? policy.logicalScale
-    : frame.rendererScale;
-  const worldScale = productionWorldUnitsPerNativePixel(
-    projection.worldToLogicalScale,
-    logicalScale,
-  );
+  const worldScale = productionWorldUnitsPerNativePixel(projection.worldToLogicalScale);
   target.texture = pixelProductionTexture(key);
   target.anchor.set(frame.anchor.x, frame.anchor.y);
   target.scale.set(options.mirrorX ? -worldScale : worldScale, worldScale);
@@ -271,6 +263,6 @@ export function productionActorDebugMetadata(
   }) as unknown as readonly [DebugNativeActorSourceFrame, DebugNativeActorSourceFrame];
   return buildDebugNativeActorVisualMetadata(
     sourceFrames,
-    productionWorldUnitsPerNativePixel(projection.worldToLogicalScale, frames[0].rendererScale),
+    productionWorldUnitsPerNativePixel(projection.worldToLogicalScale),
   );
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Deterministic pixel metrics and collision-baseline generator.
+ * Deterministic production pixel-art metrics generator.
  *
  * Usage:
  *   node --import tsx scripts/measure-pixel-art.mjs
@@ -14,11 +14,8 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inflateSync } from 'node:zlib';
 
-import { COLLISION_BASELINE_SOURCE } from '../src/game/visual-catalog.ts';
-
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const FRAME_STATS_PATH = 'public/art/pixel/frame-stats.json';
-const COLLISION_PATH = 'public/art/pixel/collision-baseline.json';
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
 const ATLAS_INPUTS = [
@@ -380,28 +377,6 @@ function buildFrameStats() {
   };
 }
 
-function buildCollisionBaseline() {
-  return {
-    schemaVersion: 1,
-    generator: {
-      command: 'node --import tsx scripts/measure-pixel-art.mjs',
-      checkCommand: 'node --import tsx scripts/measure-pixel-art.mjs --check',
-      inputs: [
-        'src/game/config.ts',
-        'src/game/pixel-art.ts',
-        'src/game/run.ts',
-        'src/game/view.ts',
-        'src/game/visual-catalog.ts',
-      ],
-    },
-    baselinePolicy: {
-      revision: 'phase-0-head-baseline',
-      note: 'Records canonical simulation values plus a fixed Phase 0 snapshot of renderer-private anchors/scales; it does not assert that sprite opaque bounds align with collision bodies.',
-    },
-    ...COLLISION_BASELINE_SOURCE,
-  };
-}
-
 function canonicalize(value) {
   if (Array.isArray(value)) return value.map(canonicalize);
   if (value !== null && typeof value === 'object') {
@@ -422,7 +397,6 @@ function serialize(value) {
 function generatedFiles() {
   return [
     { path: FRAME_STATS_PATH, contents: serialize(buildFrameStats()) },
-    { path: COLLISION_PATH, contents: serialize(buildCollisionBaseline()) },
   ];
 }
 
@@ -454,11 +428,9 @@ if (args.includes('--check')) {
   if (failures.length > 0) {
     throw new Error(`${failures.join('\n')}; run node --import tsx scripts/measure-pixel-art.mjs`);
   }
-  console.log('pixel-art metrics verified: frame-stats.json and collision-baseline.json are current');
+  console.log('pixel-art metrics verified: frame-stats.json is current');
 } else {
   for (const file of files) writeFileSync(resolve(REPO, file.path), file.contents);
   const frameStats = JSON.parse(files.find((file) => file.path === FRAME_STATS_PATH).contents);
-  console.log(
-    `generated ${FRAME_STATS_PATH} (${frameStats.summary.atlasFrameCount} frames) and ${COLLISION_PATH}`,
-  );
+  console.log(`generated ${FRAME_STATS_PATH} (${frameStats.summary.atlasFrameCount} frames)`);
 }

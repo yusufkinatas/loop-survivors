@@ -1,0 +1,862 @@
+{
+  "schemaVersion": 1,
+  "commit": "3b82f73",
+  "captureCommand": "npm run clarity:plan -- --base-url=http://127.0.0.1:3201/ --settle-frames=4",
+  "logicalCanvas": {
+    "w": 640,
+    "h": 360
+  },
+  "transform": {
+    "viewportCss": {
+      "w": 1280,
+      "h": 720
+    },
+    "dpr": 2,
+    "backingScale": 4,
+    "worldToLogical": 0.5
+  },
+  "player": [
+    {
+      "id": "player-001",
+      "image": "/art/pixel/clarity/frames/player-001.png",
+      "seed": "1592591200",
+      "offsetS": 0,
+      "vision": "normal"
+    },
+    {
+      "id": "player-002",
+      "image": "/art/pixel/clarity/frames/player-002.png",
+      "seed": "1592591200",
+      "offsetS": 0,
+      "vision": "grayscale"
+    },
+    {
+      "id": "player-003",
+      "image": "/art/pixel/clarity/frames/player-003.png",
+      "seed": "1592591200",
+      "offsetS": 0,
+      "vision": "protanopia"
+    },
+    {
+      "id": "player-004",
+      "image": "/art/pixel/clarity/frames/player-004.png",
+      "seed": "1592591200",
+      "offsetS": 0,
+      "vision": "deuteranopia"
+    },
+    {
+      "id": "player-005",
+      "image": "/art/pixel/clarity/frames/player-005.png",
+      "seed": "1592591200",
+      "offsetS": 0,
+      "vision": "tritanopia"
+    },
+    {
+      "id": "player-006",
+      "image": "/art/pixel/clarity/frames/player-006.png",
+      "seed": "1592591200",
+      "offsetS": 0.2,
+      "vision": "normal"
+    },
+    {
+      "id": "player-007",
+      "image": "/art/pixel/clarity/frames/player-007.png",
+      "seed": "1592591200",
+      "offsetS": 0.2,
+      "vision": "grayscale"
+    },
+    {
+      "id": "player-008",
+      "image": "/art/pixel/clarity/frames/player-008.png",
+      "seed": "1592591200",
+      "offsetS": 0.2,
+      "vision": "protanopia"
+    },
+    {
+      "id": "player-009",
+      "image": "/art/pixel/clarity/frames/player-009.png",
+      "seed": "1592591200",
+      "offsetS": 0.2,
+      "vision": "deuteranopia"
+    },
+    {
+      "id": "player-010",
+      "image": "/art/pixel/clarity/frames/player-010.png",
+      "seed": "1592591200",
+      "offsetS": 0.2,
+      "vision": "tritanopia"
+    },
+    {
+      "id": "player-011",
+      "image": "/art/pixel/clarity/frames/player-011.png",
+      "seed": "1592595296",
+      "offsetS": 0,
+      "vision": "normal"
+    },
+    {
+      "id": "player-012",
+      "image": "/art/pixel/clarity/frames/player-012.png",
+      "seed": "1592595296",
+      "offsetS": 0,
+      "vision": "grayscale"
+    },
+    {
+      "id": "player-013",
+      "image": "/art/pixel/clarity/frames/player-013.png",
+      "seed": "1592595296",
+      "offsetS": 0,
+      "vision": "protanopia"
+    },
+    {
+      "id": "player-014",
+      "image": "/art/pixel/clarity/frames/player-014.png",
+      "seed": "1592595296",
+      "offsetS": 0,
+      "vision": "deuteranopia"
+    },
+    {
+      "id": "player-015",
+      "image": "/art/pixel/clarity/frames/player-015.png",
+      "seed": "1592595296",
+      "offsetS": 0,
+      "vision": "tritanopia"
+    },
+    {
+      "id": "player-016",
+      "image": "/art/pixel/clarity/frames/player-016.png",
+      "seed": "1592595296",
+      "offsetS": 0.2,
+      "vision": "normal"
+    },
+    {
+      "id": "player-017",
+      "image": "/art/pixel/clarity/frames/player-017.png",
+      "seed": "1592595296",
+      "offsetS": 0.2,
+      "vision": "grayscale"
+    },
+    {
+      "id": "player-018",
+      "image": "/art/pixel/clarity/frames/player-018.png",
+      "seed": "1592595296",
+      "offsetS": 0.2,
+      "vision": "protanopia"
+    },
+    {
+      "id": "player-019",
+      "image": "/art/pixel/clarity/frames/player-019.png",
+      "seed": "1592595296",
+      "offsetS": 0.2,
+      "vision": "deuteranopia"
+    },
+    {
+      "id": "player-020",
+      "image": "/art/pixel/clarity/frames/player-020.png",
+      "seed": "1592595296",
+      "offsetS": 0.2,
+      "vision": "tritanopia"
+    },
+    {
+      "id": "player-021",
+      "image": "/art/pixel/clarity/frames/player-021.png",
+      "seed": "1592599392",
+      "offsetS": 0,
+      "vision": "normal"
+    },
+    {
+      "id": "player-022",
+      "image": "/art/pixel/clarity/frames/player-022.png",
+      "seed": "1592599392",
+      "offsetS": 0,
+      "vision": "grayscale"
+    },
+    {
+      "id": "player-023",
+      "image": "/art/pixel/clarity/frames/player-023.png",
+      "seed": "1592599392",
+      "offsetS": 0,
+      "vision": "protanopia"
+    },
+    {
+      "id": "player-024",
+      "image": "/art/pixel/clarity/frames/player-024.png",
+      "seed": "1592599392",
+      "offsetS": 0,
+      "vision": "deuteranopia"
+    },
+    {
+      "id": "player-025",
+      "image": "/art/pixel/clarity/frames/player-025.png",
+      "seed": "1592599392",
+      "offsetS": 0,
+      "vision": "tritanopia"
+    },
+    {
+      "id": "player-026",
+      "image": "/art/pixel/clarity/frames/player-026.png",
+      "seed": "1592599392",
+      "offsetS": 0.2,
+      "vision": "normal"
+    },
+    {
+      "id": "player-027",
+      "image": "/art/pixel/clarity/frames/player-027.png",
+      "seed": "1592599392",
+      "offsetS": 0.2,
+      "vision": "grayscale"
+    },
+    {
+      "id": "player-028",
+      "image": "/art/pixel/clarity/frames/player-028.png",
+      "seed": "1592599392",
+      "offsetS": 0.2,
+      "vision": "protanopia"
+    },
+    {
+      "id": "player-029",
+      "image": "/art/pixel/clarity/frames/player-029.png",
+      "seed": "1592599392",
+      "offsetS": 0.2,
+      "vision": "deuteranopia"
+    },
+    {
+      "id": "player-030",
+      "image": "/art/pixel/clarity/frames/player-030.png",
+      "seed": "1592599392",
+      "offsetS": 0.2,
+      "vision": "tritanopia"
+    },
+    {
+      "id": "player-031",
+      "image": "/art/pixel/clarity/frames/player-031.png",
+      "seed": "1592603488",
+      "offsetS": 0,
+      "vision": "normal"
+    },
+    {
+      "id": "player-032",
+      "image": "/art/pixel/clarity/frames/player-032.png",
+      "seed": "1592603488",
+      "offsetS": 0,
+      "vision": "grayscale"
+    },
+    {
+      "id": "player-033",
+      "image": "/art/pixel/clarity/frames/player-033.png",
+      "seed": "1592603488",
+      "offsetS": 0,
+      "vision": "protanopia"
+    },
+    {
+      "id": "player-034",
+      "image": "/art/pixel/clarity/frames/player-034.png",
+      "seed": "1592603488",
+      "offsetS": 0,
+      "vision": "deuteranopia"
+    },
+    {
+      "id": "player-035",
+      "image": "/art/pixel/clarity/frames/player-035.png",
+      "seed": "1592603488",
+      "offsetS": 0,
+      "vision": "tritanopia"
+    },
+    {
+      "id": "player-036",
+      "image": "/art/pixel/clarity/frames/player-036.png",
+      "seed": "1592603488",
+      "offsetS": 0.2,
+      "vision": "normal"
+    },
+    {
+      "id": "player-037",
+      "image": "/art/pixel/clarity/frames/player-037.png",
+      "seed": "1592603488",
+      "offsetS": 0.2,
+      "vision": "grayscale"
+    },
+    {
+      "id": "player-038",
+      "image": "/art/pixel/clarity/frames/player-038.png",
+      "seed": "1592603488",
+      "offsetS": 0.2,
+      "vision": "protanopia"
+    },
+    {
+      "id": "player-039",
+      "image": "/art/pixel/clarity/frames/player-039.png",
+      "seed": "1592603488",
+      "offsetS": 0.2,
+      "vision": "deuteranopia"
+    },
+    {
+      "id": "player-040",
+      "image": "/art/pixel/clarity/frames/player-040.png",
+      "seed": "1592603488",
+      "offsetS": 0.2,
+      "vision": "tritanopia"
+    }
+  ],
+  "category": [
+    {
+      "id": "category-001",
+      "image": "/art/pixel/clarity/frames/category-001.png",
+      "seed": "1592591200",
+      "offsetS": 0,
+      "vision": "normal",
+      "crop": {
+        "x": 136,
+        "y": 182,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-002",
+      "image": "/art/pixel/clarity/frames/category-002.png",
+      "seed": "1592591200",
+      "offsetS": 0,
+      "vision": "grayscale",
+      "crop": {
+        "x": 137,
+        "y": 92,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-003",
+      "image": "/art/pixel/clarity/frames/category-003.png",
+      "seed": "1592591200",
+      "offsetS": 0,
+      "vision": "protanopia",
+      "crop": {
+        "x": 184,
+        "y": 191,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-004",
+      "image": "/art/pixel/clarity/frames/category-004.png",
+      "seed": "1592591200",
+      "offsetS": 0,
+      "vision": "deuteranopia",
+      "crop": {
+        "x": 228,
+        "y": 198,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-005",
+      "image": "/art/pixel/clarity/frames/category-005.png",
+      "seed": "1592591200",
+      "offsetS": 0,
+      "vision": "tritanopia",
+      "crop": {
+        "x": 278,
+        "y": 193,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-006",
+      "image": "/art/pixel/clarity/frames/category-006.png",
+      "seed": "1592591200",
+      "offsetS": 0.2,
+      "vision": "normal",
+      "crop": {
+        "x": 334,
+        "y": 89,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-007",
+      "image": "/art/pixel/clarity/frames/category-007.png",
+      "seed": "1592591200",
+      "offsetS": 0.2,
+      "vision": "grayscale",
+      "crop": {
+        "x": 136,
+        "y": 182,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-008",
+      "image": "/art/pixel/clarity/frames/category-008.png",
+      "seed": "1592591200",
+      "offsetS": 0.2,
+      "vision": "protanopia",
+      "crop": {
+        "x": 137,
+        "y": 92,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-009",
+      "image": "/art/pixel/clarity/frames/category-009.png",
+      "seed": "1592591200",
+      "offsetS": 0.2,
+      "vision": "deuteranopia",
+      "crop": {
+        "x": 184,
+        "y": 191,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-010",
+      "image": "/art/pixel/clarity/frames/category-010.png",
+      "seed": "1592591200",
+      "offsetS": 0.2,
+      "vision": "tritanopia",
+      "crop": {
+        "x": 228,
+        "y": 198,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-011",
+      "image": "/art/pixel/clarity/frames/category-011.png",
+      "seed": "1592595296",
+      "offsetS": 0,
+      "vision": "normal",
+      "crop": {
+        "x": 278,
+        "y": 193,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-012",
+      "image": "/art/pixel/clarity/frames/category-012.png",
+      "seed": "1592595296",
+      "offsetS": 0,
+      "vision": "grayscale",
+      "crop": {
+        "x": 334,
+        "y": 89,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-013",
+      "image": "/art/pixel/clarity/frames/category-013.png",
+      "seed": "1592595296",
+      "offsetS": 0,
+      "vision": "protanopia",
+      "crop": {
+        "x": 139,
+        "y": 193,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-014",
+      "image": "/art/pixel/clarity/frames/category-014.png",
+      "seed": "1592595296",
+      "offsetS": 0,
+      "vision": "deuteranopia",
+      "crop": {
+        "x": 137,
+        "y": 92,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-015",
+      "image": "/art/pixel/clarity/frames/category-015.png",
+      "seed": "1592595296",
+      "offsetS": 0,
+      "vision": "tritanopia",
+      "crop": {
+        "x": 184,
+        "y": 191,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-016",
+      "image": "/art/pixel/clarity/frames/category-016.png",
+      "seed": "1592595296",
+      "offsetS": 0.2,
+      "vision": "normal",
+      "crop": {
+        "x": 228,
+        "y": 198,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-017",
+      "image": "/art/pixel/clarity/frames/category-017.png",
+      "seed": "1592595296",
+      "offsetS": 0.2,
+      "vision": "grayscale",
+      "crop": {
+        "x": 278,
+        "y": 193,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-018",
+      "image": "/art/pixel/clarity/frames/category-018.png",
+      "seed": "1592595296",
+      "offsetS": 0.2,
+      "vision": "protanopia",
+      "crop": {
+        "x": 334,
+        "y": 89,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-019",
+      "image": "/art/pixel/clarity/frames/category-019.png",
+      "seed": "1592595296",
+      "offsetS": 0.2,
+      "vision": "deuteranopia",
+      "crop": {
+        "x": 139,
+        "y": 193,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-020",
+      "image": "/art/pixel/clarity/frames/category-020.png",
+      "seed": "1592595296",
+      "offsetS": 0.2,
+      "vision": "tritanopia",
+      "crop": {
+        "x": 137,
+        "y": 92,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-021",
+      "image": "/art/pixel/clarity/frames/category-021.png",
+      "seed": "1592599392",
+      "offsetS": 0,
+      "vision": "normal",
+      "crop": {
+        "x": 184,
+        "y": 191,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-022",
+      "image": "/art/pixel/clarity/frames/category-022.png",
+      "seed": "1592599392",
+      "offsetS": 0,
+      "vision": "grayscale",
+      "crop": {
+        "x": 228,
+        "y": 198,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-023",
+      "image": "/art/pixel/clarity/frames/category-023.png",
+      "seed": "1592599392",
+      "offsetS": 0,
+      "vision": "protanopia",
+      "crop": {
+        "x": 278,
+        "y": 193,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-024",
+      "image": "/art/pixel/clarity/frames/category-024.png",
+      "seed": "1592599392",
+      "offsetS": 0,
+      "vision": "deuteranopia",
+      "crop": {
+        "x": 334,
+        "y": 89,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-025",
+      "image": "/art/pixel/clarity/frames/category-025.png",
+      "seed": "1592599392",
+      "offsetS": 0,
+      "vision": "tritanopia",
+      "crop": {
+        "x": 126,
+        "y": 191,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-026",
+      "image": "/art/pixel/clarity/frames/category-026.png",
+      "seed": "1592599392",
+      "offsetS": 0.2,
+      "vision": "normal",
+      "crop": {
+        "x": 137,
+        "y": 92,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-027",
+      "image": "/art/pixel/clarity/frames/category-027.png",
+      "seed": "1592599392",
+      "offsetS": 0.2,
+      "vision": "grayscale",
+      "crop": {
+        "x": 184,
+        "y": 191,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-028",
+      "image": "/art/pixel/clarity/frames/category-028.png",
+      "seed": "1592599392",
+      "offsetS": 0.2,
+      "vision": "protanopia",
+      "crop": {
+        "x": 228,
+        "y": 198,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-029",
+      "image": "/art/pixel/clarity/frames/category-029.png",
+      "seed": "1592599392",
+      "offsetS": 0.2,
+      "vision": "deuteranopia",
+      "crop": {
+        "x": 278,
+        "y": 193,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-030",
+      "image": "/art/pixel/clarity/frames/category-030.png",
+      "seed": "1592599392",
+      "offsetS": 0.2,
+      "vision": "tritanopia",
+      "crop": {
+        "x": 334,
+        "y": 89,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-031",
+      "image": "/art/pixel/clarity/frames/category-031.png",
+      "seed": "1592603488",
+      "offsetS": 0,
+      "vision": "normal",
+      "crop": {
+        "x": 145,
+        "y": 183,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-032",
+      "image": "/art/pixel/clarity/frames/category-032.png",
+      "seed": "1592603488",
+      "offsetS": 0,
+      "vision": "grayscale",
+      "crop": {
+        "x": 137,
+        "y": 92,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-033",
+      "image": "/art/pixel/clarity/frames/category-033.png",
+      "seed": "1592603488",
+      "offsetS": 0,
+      "vision": "protanopia",
+      "crop": {
+        "x": 184,
+        "y": 191,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-034",
+      "image": "/art/pixel/clarity/frames/category-034.png",
+      "seed": "1592603488",
+      "offsetS": 0,
+      "vision": "deuteranopia",
+      "crop": {
+        "x": 228,
+        "y": 198,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-035",
+      "image": "/art/pixel/clarity/frames/category-035.png",
+      "seed": "1592603488",
+      "offsetS": 0,
+      "vision": "tritanopia",
+      "crop": {
+        "x": 278,
+        "y": 193,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-036",
+      "image": "/art/pixel/clarity/frames/category-036.png",
+      "seed": "1592603488",
+      "offsetS": 0.2,
+      "vision": "normal",
+      "crop": {
+        "x": 334,
+        "y": 89,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-037",
+      "image": "/art/pixel/clarity/frames/category-037.png",
+      "seed": "1592603488",
+      "offsetS": 0.2,
+      "vision": "grayscale",
+      "crop": {
+        "x": 145,
+        "y": 183,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-038",
+      "image": "/art/pixel/clarity/frames/category-038.png",
+      "seed": "1592603488",
+      "offsetS": 0.2,
+      "vision": "protanopia",
+      "crop": {
+        "x": 137,
+        "y": 92,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-039",
+      "image": "/art/pixel/clarity/frames/category-039.png",
+      "seed": "1592603488",
+      "offsetS": 0.2,
+      "vision": "deuteranopia",
+      "crop": {
+        "x": 184,
+        "y": 191,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    },
+    {
+      "id": "category-040",
+      "image": "/art/pixel/clarity/frames/category-040.png",
+      "seed": "1592603488",
+      "offsetS": 0.2,
+      "vision": "tritanopia",
+      "crop": {
+        "x": 228,
+        "y": 198,
+        "w": 160,
+        "h": 90,
+        "scale": 4
+      }
+    }
+  ]
+}

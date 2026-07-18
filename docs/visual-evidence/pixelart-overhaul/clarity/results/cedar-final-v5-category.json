@@ -1,0 +1,427 @@
+{
+  "schemaVersion": 1,
+  "commit": "3b82f73",
+  "captureCommand": "npm run clarity:plan -- --base-url=http://127.0.0.1:3201/ --settle-frames=4",
+  "reviewer": "cedar-final-v5",
+  "mode": "category",
+  "completedAt": "2026-07-18T20:15:30.049Z",
+  "revealProtocolMs": 500,
+  "transform": {
+    "viewportCss": {
+      "w": 1280,
+      "h": 720
+    },
+    "dpr": 2,
+    "backingScale": 4,
+    "worldToLogical": 0.5
+  },
+  "randomizedOrder": [
+    "category-021",
+    "category-017",
+    "category-025",
+    "category-006",
+    "category-030",
+    "category-002",
+    "category-010",
+    "category-022",
+    "category-013",
+    "category-012",
+    "category-015",
+    "category-037",
+    "category-027",
+    "category-009",
+    "category-033",
+    "category-029",
+    "category-028",
+    "category-003",
+    "category-034",
+    "category-023",
+    "category-008",
+    "category-019",
+    "category-004",
+    "category-016",
+    "category-001",
+    "category-038",
+    "category-031",
+    "category-026",
+    "category-040",
+    "category-011",
+    "category-039",
+    "category-035",
+    "category-005",
+    "category-007",
+    "category-014",
+    "category-032",
+    "category-036",
+    "category-024",
+    "category-018",
+    "category-020"
+  ],
+  "samples": [
+    {
+      "id": "category-021",
+      "seed": "1592599392",
+      "offsetS": 0,
+      "vision": "normal",
+      "revealMs": 501.10000002384186,
+      "category": "xp",
+      "correct": true
+    },
+    {
+      "id": "category-017",
+      "seed": "1592595296",
+      "offsetS": 0.2,
+      "vision": "grayscale",
+      "revealMs": 501.10000002384186,
+      "category": "weapon-reward",
+      "correct": true
+    },
+    {
+      "id": "category-025",
+      "seed": "1592599392",
+      "offsetS": 0,
+      "vision": "tritanopia",
+      "revealMs": 502,
+      "category": "enemy",
+      "correct": true
+    },
+    {
+      "id": "category-006",
+      "seed": "1592591200",
+      "offsetS": 0.2,
+      "vision": "normal",
+      "revealMs": 500.9000000357628,
+      "category": "decorative-effect",
+      "correct": true
+    },
+    {
+      "id": "category-030",
+      "seed": "1592599392",
+      "offsetS": 0.2,
+      "vision": "tritanopia",
+      "revealMs": 501.19999998807907,
+      "category": "decorative-effect",
+      "correct": true
+    },
+    {
+      "id": "category-002",
+      "seed": "1592591200",
+      "offsetS": 0,
+      "vision": "grayscale",
+      "revealMs": 500.7999999523163,
+      "category": "friendly-projectile",
+      "correct": true
+    },
+    {
+      "id": "category-010",
+      "seed": "1592591200",
+      "offsetS": 0.2,
+      "vision": "tritanopia",
+      "revealMs": 501.5,
+      "category": "music-note",
+      "correct": true
+    },
+    {
+      "id": "category-022",
+      "seed": "1592599392",
+      "offsetS": 0,
+      "vision": "grayscale",
+      "revealMs": 501.2999999523163,
+      "category": "music-note",
+      "correct": true
+    },
+    {
+      "id": "category-013",
+      "seed": "1592595296",
+      "offsetS": 0,
+      "vision": "protanopia",
+      "revealMs": 501.39999997615814,
+      "category": "enemy",
+      "correct": true
+    },
+    {
+      "id": "category-012",
+      "seed": "1592595296",
+      "offsetS": 0,
+      "vision": "grayscale",
+      "revealMs": 501,
+      "category": "decorative-effect",
+      "correct": true
+    },
+    {
+      "id": "category-015",
+      "seed": "1592595296",
+      "offsetS": 0,
+      "vision": "tritanopia",
+      "revealMs": 501.80000001192093,
+      "category": "xp",
+      "correct": true
+    },
+    {
+      "id": "category-037",
+      "seed": "1592603488",
+      "offsetS": 0.2,
+      "vision": "grayscale",
+      "revealMs": 501,
+      "category": "enemy",
+      "correct": true
+    },
+    {
+      "id": "category-027",
+      "seed": "1592599392",
+      "offsetS": 0.2,
+      "vision": "grayscale",
+      "revealMs": 501.5,
+      "category": "xp",
+      "correct": true
+    },
+    {
+      "id": "category-009",
+      "seed": "1592591200",
+      "offsetS": 0.2,
+      "vision": "deuteranopia",
+      "revealMs": 501.19999998807907,
+      "category": "xp",
+      "correct": true
+    },
+    {
+      "id": "category-033",
+      "seed": "1592603488",
+      "offsetS": 0,
+      "vision": "protanopia",
+      "revealMs": 501,
+      "category": "xp",
+      "correct": true
+    },
+    {
+      "id": "category-029",
+      "seed": "1592599392",
+      "offsetS": 0.2,
+      "vision": "deuteranopia",
+      "revealMs": 500.5,
+      "category": "weapon-reward",
+      "correct": true
+    },
+    {
+      "id": "category-028",
+      "seed": "1592599392",
+      "offsetS": 0.2,
+      "vision": "protanopia",
+      "revealMs": 501,
+      "category": "music-note",
+      "correct": true
+    },
+    {
+      "id": "category-003",
+      "seed": "1592591200",
+      "offsetS": 0,
+      "vision": "protanopia",
+      "revealMs": 500.89999997615814,
+      "category": "xp",
+      "correct": true
+    },
+    {
+      "id": "category-034",
+      "seed": "1592603488",
+      "offsetS": 0,
+      "vision": "deuteranopia",
+      "revealMs": 500.69999998807907,
+      "category": "music-note",
+      "correct": true
+    },
+    {
+      "id": "category-023",
+      "seed": "1592599392",
+      "offsetS": 0,
+      "vision": "protanopia",
+      "revealMs": 501.60000002384186,
+      "category": "weapon-reward",
+      "correct": true
+    },
+    {
+      "id": "category-008",
+      "seed": "1592591200",
+      "offsetS": 0.2,
+      "vision": "protanopia",
+      "revealMs": 501.69999998807907,
+      "category": "friendly-projectile",
+      "correct": true
+    },
+    {
+      "id": "category-019",
+      "seed": "1592595296",
+      "offsetS": 0.2,
+      "vision": "deuteranopia",
+      "revealMs": 501.80000001192093,
+      "category": "enemy",
+      "correct": true
+    },
+    {
+      "id": "category-004",
+      "seed": "1592591200",
+      "offsetS": 0,
+      "vision": "deuteranopia",
+      "revealMs": 501.5,
+      "category": "music-note",
+      "correct": true
+    },
+    {
+      "id": "category-016",
+      "seed": "1592595296",
+      "offsetS": 0.2,
+      "vision": "normal",
+      "revealMs": 501.19999998807907,
+      "category": "music-note",
+      "correct": true
+    },
+    {
+      "id": "category-001",
+      "seed": "1592591200",
+      "offsetS": 0,
+      "vision": "normal",
+      "revealMs": 501.80000001192093,
+      "category": "enemy",
+      "correct": true
+    },
+    {
+      "id": "category-038",
+      "seed": "1592603488",
+      "offsetS": 0.2,
+      "vision": "protanopia",
+      "revealMs": 501.69999998807907,
+      "category": "friendly-projectile",
+      "correct": true
+    },
+    {
+      "id": "category-031",
+      "seed": "1592603488",
+      "offsetS": 0,
+      "vision": "normal",
+      "revealMs": 501.39999997615814,
+      "category": "enemy",
+      "correct": true
+    },
+    {
+      "id": "category-026",
+      "seed": "1592599392",
+      "offsetS": 0.2,
+      "vision": "normal",
+      "revealMs": 500.9000000357628,
+      "category": "friendly-projectile",
+      "correct": true
+    },
+    {
+      "id": "category-040",
+      "seed": "1592603488",
+      "offsetS": 0.2,
+      "vision": "tritanopia",
+      "revealMs": 500.9000000357628,
+      "category": "music-note",
+      "correct": true
+    },
+    {
+      "id": "category-011",
+      "seed": "1592595296",
+      "offsetS": 0,
+      "vision": "normal",
+      "revealMs": 501.2000000476837,
+      "category": "weapon-reward",
+      "correct": true
+    },
+    {
+      "id": "category-039",
+      "seed": "1592603488",
+      "offsetS": 0.2,
+      "vision": "deuteranopia",
+      "revealMs": 500.89999997615814,
+      "category": "xp",
+      "correct": true
+    },
+    {
+      "id": "category-035",
+      "seed": "1592603488",
+      "offsetS": 0,
+      "vision": "tritanopia",
+      "revealMs": 501.69999998807907,
+      "category": "weapon-reward",
+      "correct": true
+    },
+    {
+      "id": "category-005",
+      "seed": "1592591200",
+      "offsetS": 0,
+      "vision": "tritanopia",
+      "revealMs": 501.10000002384186,
+      "category": "weapon-reward",
+      "correct": true
+    },
+    {
+      "id": "category-007",
+      "seed": "1592591200",
+      "offsetS": 0.2,
+      "vision": "grayscale",
+      "revealMs": 501.30000001192093,
+      "category": "enemy",
+      "correct": true
+    },
+    {
+      "id": "category-014",
+      "seed": "1592595296",
+      "offsetS": 0,
+      "vision": "deuteranopia",
+      "revealMs": 500.69999998807907,
+      "category": "friendly-projectile",
+      "correct": true
+    },
+    {
+      "id": "category-032",
+      "seed": "1592603488",
+      "offsetS": 0,
+      "vision": "grayscale",
+      "revealMs": 500.5999999642372,
+      "category": "friendly-projectile",
+      "correct": true
+    },
+    {
+      "id": "category-036",
+      "seed": "1592603488",
+      "offsetS": 0.2,
+      "vision": "normal",
+      "revealMs": 501.69999998807907,
+      "category": "decorative-effect",
+      "correct": true
+    },
+    {
+      "id": "category-024",
+      "seed": "1592599392",
+      "offsetS": 0,
+      "vision": "deuteranopia",
+      "revealMs": 500.69999998807907,
+      "category": "decorative-effect",
+      "correct": true
+    },
+    {
+      "id": "category-018",
+      "seed": "1592595296",
+      "offsetS": 0.2,
+      "vision": "protanopia",
+      "revealMs": 501.69999998807907,
+      "category": "decorative-effect",
+      "correct": true
+    },
+    {
+      "id": "category-020",
+      "seed": "1592595296",
+      "offsetS": 0.2,
+      "vision": "tritanopia",
+      "revealMs": 501.60000002384186,
+      "category": "friendly-projectile",
+      "correct": true
+    }
+  ],
+  "aggregate": {
+    "correct": 40,
+    "total": 40,
+    "score": 1
+  }
+}

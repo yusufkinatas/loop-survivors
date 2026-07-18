@@ -10,16 +10,10 @@ export const PIXEL_UI_ATLAS_URL = '/art/pixel/ui.json';
 export const PIXEL_ARENA_FLOOR_URL = '/art/pixel/arena-floor.png';
 export const PIXEL_ENVIRONMENT_ATLAS_URL = '/art/pixel/environment.json';
 export const PIXEL_TITLE_BANNER_URL = '/art/pixel/title-banner.png';
-/** Archived baseline constants retained for collision-baseline serialization.
- * Runtime rendering no longer assumes a uniform cell or shared normalized
- * actor anchor; it reads each production frame's native metadata instead. */
-export const PIXEL_FRAME_SIZE = 96;
-export const PIXEL_ACTOR_ANCHOR = Object.freeze({ x: 0.5, y: 0.92 });
 
-export type PixelArtMode = 'production' | 'legacy';
 export type PixelAtlasId = 'gameplay' | 'ui' | 'environment';
 
-export interface PixelArtAssetUrls {
+interface PixelArtAssetUrls {
   readonly gameplay: string;
   readonly ui: string;
   readonly environment: string;
@@ -27,12 +21,7 @@ export interface PixelArtAssetUrls {
   readonly titleBanner: string;
 }
 
-export interface PixelArtLocationLike {
-  readonly search?: string;
-  readonly hash?: string;
-}
-
-const PRODUCTION_PIXEL_ART_URLS: PixelArtAssetUrls = Object.freeze({
+const PIXEL_ART_ASSET_URLS: PixelArtAssetUrls = Object.freeze({
   gameplay: PIXEL_ART_ATLAS_URL,
   ui: PIXEL_UI_ATLAS_URL,
   environment: PIXEL_ENVIRONMENT_ATLAS_URL,
@@ -40,38 +29,8 @@ const PRODUCTION_PIXEL_ART_URLS: PixelArtAssetUrls = Object.freeze({
   titleBanner: PIXEL_TITLE_BANNER_URL,
 });
 
-const LEGACY_PIXEL_ART_URLS: PixelArtAssetUrls = Object.freeze({
-  gameplay: '/art/pixel/legacy/gameplay.json',
-  ui: '/art/pixel/legacy/ui.json',
-  environment: '/art/pixel/legacy/environment.json',
-  arenaFloor: '/art/pixel/legacy/arena-floor.png',
-  titleBanner: '/art/pixel/legacy/title-banner.png',
-});
-
-/** Development-only comparison switch. The production URL set is the default
- * in browsers and in Node checks; `?artMode=legacy` (or the same key in the
- * hash query) is the sole route to the archived pre-overhaul files. */
-export function resolvePixelArtMode(locationLike?: PixelArtLocationLike): PixelArtMode {
-  const source = locationLike ?? (
-    typeof window === 'undefined'
-      ? undefined
-      : { search: window.location.search, hash: window.location.hash }
-  );
-  if (!source) return 'production';
-  const search = new URLSearchParams((source.search ?? '').replace(/^\?/, ''));
-  if (search.get('artMode') === 'legacy') return 'legacy';
-  const hash = source.hash ?? '';
-  const queryStart = hash.indexOf('?');
-  const hashQuery = queryStart >= 0 ? hash.slice(queryStart + 1) : hash.replace(/^#/, '');
-  return new URLSearchParams(hashQuery).get('artMode') === 'legacy' ? 'legacy' : 'production';
-}
-
-export function pixelArtAssetUrls(mode = resolvePixelArtMode()): PixelArtAssetUrls {
-  return mode === 'legacy' ? LEGACY_PIXEL_ART_URLS : PRODUCTION_PIXEL_ART_URLS;
-}
-
-export function pixelTitleBannerUrl(mode = resolvePixelArtMode()): string {
-  return pixelArtAssetUrls(mode).titleBanner;
+export function pixelTitleBannerUrl(): string {
+  return PIXEL_TITLE_BANNER_URL;
 }
 
 export interface NativeLogicalSize {
@@ -246,7 +205,6 @@ export interface PixelArtSheets {
 
 let sheets: PixelArtSheets | undefined;
 let pendingLoad: Promise<PixelArtSheets> | undefined;
-let loadedMode: PixelArtMode | undefined;
 
 export function playerTextureKey(frame: PixelActorFrame): PlayerTextureKey {
   return `actors/player/${frame}`;
@@ -325,9 +283,7 @@ export function validatePixelFrameContract(
   entry: PixelAtlasFrameData,
   key: string,
   atlas: PixelAtlasId,
-  mode: PixelArtMode,
 ): void {
-  if (mode === 'legacy') return;
   void atlas;
   const nativeSize = entry.nativeSize;
   const pivot = entry.pivot;
@@ -433,38 +389,35 @@ function validateNativeFrame(
   sheet: PixelSpritesheet,
   key: string,
   atlas: PixelAtlasId,
-  mode: PixelArtMode,
 ): void {
   const entry = sheet.data.frames[key];
   if (!entry) throw new Error(`Pixel-art ${atlas} atlas is missing metadata for ${JSON.stringify(key)}`);
-  validatePixelFrameContract(entry, key, atlas, mode);
+  validatePixelFrameContract(entry, key, atlas);
 }
 
-function validateSheets(loaded: PixelArtSheets, mode: PixelArtMode): void {
+function validateSheets(loaded: PixelArtSheets): void {
   for (const key of expectedGameplayKeys()) requireTexture(loaded.gameplay, key, 'gameplay');
   for (const key of expectedIconKeys()) requireTexture(loaded.ui, key, 'UI');
   for (const key of expectedEnvironmentKeys()) requireTexture(loaded.environment, key, 'environment');
-  for (const key of expectedGameplayKeys()) validateNativeFrame(loaded.gameplay, key, 'gameplay', mode);
-  for (const key of expectedIconKeys()) validateNativeFrame(loaded.ui, key, 'ui', mode);
-  for (const key of expectedEnvironmentKeys()) validateNativeFrame(loaded.environment, key, 'environment', mode);
-  if (mode === 'production') {
-    for (const [atlas, sheet] of [
-      ['gameplay', loaded.gameplay],
-      ['ui', loaded.ui],
-      ['environment', loaded.environment],
-    ] as const) {
-      const meta = sheet.data.meta;
-      const size = meta.size as (typeof meta.size & { readonly space?: string });
-      if (!size || size.space !== 'atlas-pixels') {
-        throw new Error(`Pixel-art ${atlas} atlas meta.size must declare atlas-pixels`);
-      }
-      if (
-        meta.direction !== 'arcade-reliquary' ||
-        meta.rendererScale?.value !== 1 ||
-        meta.rendererScale.space !== 'logical-screen-pixels-per-native-pixel'
-      ) {
-        throw new Error(`Pixel-art ${atlas} atlas must declare Arcade Reliquary at native logical 1x`);
-      }
+  for (const key of expectedGameplayKeys()) validateNativeFrame(loaded.gameplay, key, 'gameplay');
+  for (const key of expectedIconKeys()) validateNativeFrame(loaded.ui, key, 'ui');
+  for (const key of expectedEnvironmentKeys()) validateNativeFrame(loaded.environment, key, 'environment');
+  for (const [atlas, sheet] of [
+    ['gameplay', loaded.gameplay],
+    ['ui', loaded.ui],
+    ['environment', loaded.environment],
+  ] as const) {
+    const meta = sheet.data.meta;
+    const size = meta.size as (typeof meta.size & { readonly space?: string });
+    if (!size || size.space !== 'atlas-pixels') {
+      throw new Error(`Pixel-art ${atlas} atlas meta.size must declare atlas-pixels`);
+    }
+    if (
+      meta.direction !== 'arcade-reliquary' ||
+      meta.rendererScale?.value !== 1 ||
+      meta.rendererScale.space !== 'logical-screen-pixels-per-native-pixel'
+    ) {
+      throw new Error(`Pixel-art ${atlas} atlas must declare Arcade Reliquary at native logical 1x`);
     }
   }
   const actorAnimations = ['actors/player', ...PIXEL_ENEMY_KINDS.map((kind) => `actors/enemies/${kind}`)];
@@ -472,35 +425,32 @@ function validateSheets(loaded: PixelArtSheets, mode: PixelArtMode): void {
     if (loaded.gameplay.animations[key]?.length !== 2) {
       throw new Error(`Pixel-art gameplay atlas is missing two-frame animation ${JSON.stringify(key)}`);
     }
-    if (mode === 'production') {
-      const frameKeys = loaded.gameplay.data.animations?.[key];
-      if (!frameKeys || frameKeys.length !== 2) {
-        throw new Error(`Pixel-art gameplay atlas JSON is missing animation mapping ${JSON.stringify(key)}`);
-      }
-      const first = loaded.gameplay.data.frames[frameKeys[0]];
-      const second = loaded.gameplay.data.frames[frameKeys[1]];
-      if (
-        !first || !second ||
-        JSON.stringify(first.nativeSize) !== JSON.stringify(second.nativeSize) ||
-        JSON.stringify(first.pivot) !== JSON.stringify(second.pivot) ||
-        !first.groundReference || !second.groundReference ||
-        first.groundReference.kind !== second.groundReference.kind ||
-        Math.abs(first.groundReference.x - second.groundReference.x) > 1 ||
-        Math.abs(first.groundReference.y - second.groundReference.y) > 1
-      ) {
-        throw new Error(`Pixel-art animation ${key} must share nativeSize/pivot and keep ground-reference drift within one pixel`);
-      }
+    const frameKeys = loaded.gameplay.data.animations?.[key];
+    if (!frameKeys || frameKeys.length !== 2) {
+      throw new Error(`Pixel-art gameplay atlas JSON is missing animation mapping ${JSON.stringify(key)}`);
+    }
+    const first = loaded.gameplay.data.frames[frameKeys[0]];
+    const second = loaded.gameplay.data.frames[frameKeys[1]];
+    if (
+      !first || !second ||
+      JSON.stringify(first.nativeSize) !== JSON.stringify(second.nativeSize) ||
+      JSON.stringify(first.pivot) !== JSON.stringify(second.pivot) ||
+      !first.groundReference || !second.groundReference ||
+      first.groundReference.kind !== second.groundReference.kind ||
+      Math.abs(first.groundReference.x - second.groundReference.x) > 1 ||
+      Math.abs(first.groundReference.y - second.groundReference.y) > 1
+    ) {
+      throw new Error(`Pixel-art animation ${key} must share nativeSize/pivot and keep ground-reference drift within one pixel`);
     }
   }
 }
 
-/** Preload both original pixel-art sheets before constructing arena sprites.
+/** Preload every production pixel-art sheet before constructing arena sprites.
  * The source and every derived texture are forced to nearest-neighbour sampling. */
 export function preloadPixelArt(): Promise<PixelArtSheets> {
   if (sheets) return Promise.resolve(sheets);
   if (pendingLoad) return pendingLoad;
-  const mode = resolvePixelArtMode();
-  const urls = pixelArtAssetUrls(mode);
+  const urls = PIXEL_ART_ASSET_URLS;
   TextureStyle.defaultOptions.scaleMode = 'nearest';
   pendingLoad = Promise.all([
     Assets.load<PixelSpritesheet>(urls.gameplay),
@@ -514,9 +464,8 @@ export function preloadPixelArt(): Promise<PixelArtSheets> {
     arenaFloor.source.scaleMode = 'nearest';
     arenaFloor.source.addressMode = 'repeat';
     const loaded = { gameplay, ui, environment, arenaFloor };
-    validateSheets(loaded, mode);
+    validateSheets(loaded);
     sheets = loaded;
-    loadedMode = mode;
     pendingLoad = undefined;
     return loaded;
   }).catch((error: unknown) => {
@@ -528,10 +477,6 @@ export function preloadPixelArt(): Promise<PixelArtSheets> {
 
 export function pixelArtReady(): boolean {
   return sheets !== undefined;
-}
-
-export function activePixelArtMode(): PixelArtMode {
-  return loadedMode ?? resolvePixelArtMode();
 }
 
 function loadedSheets(): PixelArtSheets {
@@ -603,25 +548,15 @@ export function pixelProductionTexture(key: PixelProductionTextureKey): Texture 
   return requireTexture(sheetForAtlas(atlas), key, atlas);
 }
 
-/** Runtime-normalized view of one frame. Production frames are strict native
- * metadata; archived legacy sheets synthesize the same shape from their old
- * sourceSize/anchor fields so the development comparison URL remains usable. */
+/** Runtime-normalized view of one strict native production frame. */
 export function pixelFrameMetadata(key: PixelProductionTextureKey): PixelFrameMetadata {
   const atlas = atlasForKey(key);
   const entry = sheetForAtlas(atlas).data.frames[key];
   if (!entry) throw new Error(`Pixel-art ${atlas} atlas is missing metadata for ${JSON.stringify(key)}`);
-  const nativeSize = entry.nativeSize ?? entry.sourceSize ?? {
-    w: entry.frame.w,
-    h: entry.frame.h,
-    space: 'native-logical-pixels' as const,
-  };
-  const fallbackAnchor = entry.anchor ?? { x: 0.5, y: 0.5 };
-  const pivot = entry.pivot ?? {
-    x: fallbackAnchor.x * nativeSize.w,
-    y: fallbackAnchor.y * nativeSize.h,
-    origin: 'native-frame-top-left' as const,
-    space: 'native-logical-pixels' as const,
-  };
+  const { nativeSize, pivot, rendererScale } = entry;
+  if (!nativeSize || !pivot || !rendererScale) {
+    throw new Error(`Pixel-art ${atlas} frame ${JSON.stringify(key)} is missing native production metadata`);
+  }
   return Object.freeze({
     atlas,
     key,
@@ -629,7 +564,7 @@ export function pixelFrameMetadata(key: PixelProductionTextureKey): PixelFrameMe
     nativeSize,
     pivot,
     anchor: Object.freeze({ x: pivot.x / nativeSize.w, y: pivot.y / nativeSize.h }),
-    rendererScale: entry.rendererScale?.value ?? 1,
+    rendererScale: rendererScale.value,
     opaqueBounds: entry.opaqueBounds ?? null,
     semantic: entry.semantic ?? null,
     groundReference: entry.groundReference
@@ -653,24 +588,21 @@ export interface PixelCssFrame {
   readonly logicalScale: number;
 }
 
-/** Native CSS-sprite crop for the DOM HUD. New production icons are drawn at
- * one CSS logical pixel per source pixel. The archived 96px legacy UI uses its
- * historical exact 4:1 comparison ratio only behind artMode=legacy. */
+/** Native CSS-sprite crop for the DOM HUD at one logical pixel per source pixel. */
 export function pixelIconCssFrame(key: PixelIconTextureKey): PixelCssFrame {
   const sheet = loadedSheets().ui;
   const metadata = pixelFrameMetadata(key);
   const atlasSize = sheet.data.meta.size;
   if (!atlasSize) throw new Error('Pixel-art UI atlas is missing meta.size');
-  const logicalScale = activePixelArtMode() === 'legacy' ? 0.25 : metadata.rendererScale;
   return Object.freeze({
-    imageUrl: pixelArtAssetUrls(activePixelArtMode()).ui.replace(/\.json$/, '.png'),
+    imageUrl: PIXEL_UI_ATLAS_URL.replace(/\.json$/, '.png'),
     atlasWidth: atlasSize.w,
     atlasHeight: atlasSize.h,
     x: metadata.frame.x,
     y: metadata.frame.y,
     width: metadata.nativeSize.w,
     height: metadata.nativeSize.h,
-    logicalScale,
+    logicalScale: metadata.rendererScale,
   });
 }
 

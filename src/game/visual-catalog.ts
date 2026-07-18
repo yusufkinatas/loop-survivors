@@ -9,17 +9,11 @@
 import { supportedRoles } from '../audio/soundset';
 import {
   ALL_ENEMY_KINDS,
-  BELL,
   ENEMIES,
   ENEMY_LABELS,
-  LEVELUP,
-  MAD_FOREST_FRAMES,
-  RUN,
   SPLITTER,
   WEAPONS,
-  legacyEnemyRadius,
   type EnemyKind,
-  type WeaponConf,
 } from './config';
 import { ENDLESS_ENEMY_IDS, ENDLESS_WAVE_ROWS } from './endless';
 import {
@@ -33,11 +27,9 @@ import { ACTIVE_ENEMY_KINDS } from './madforest';
 import { MILESTONE_IDS, SHOP_OFFER_IDS, SHOP_OFFERS } from './meta';
 import {
   PIXEL_ACTION_ICON_IDS,
-  PIXEL_ACTOR_ANCHOR,
   PIXEL_EFFECT_IDS,
   PIXEL_ENEMY_KINDS,
   PIXEL_ENVIRONMENT_IDS,
-  PIXEL_FRAME_SIZE,
   PIXEL_PASSIVE_ICON_IDS,
   PIXEL_PICKUP_IDS,
   PIXEL_STATUS_ICON_IDS,
@@ -961,148 +953,5 @@ export const LIVE_CATALOG_SNAPSHOT = {
       if (!offer) throw new Error(`Missing SHOP_OFFERS entry for ${id}`);
       return { id, kind: offer.kind, contentId: offer.contentId };
     }),
-  },
-} as const;
-
-const LEGACY_WORLD_SCALE = 800 / 456;
-const KICK_BASE_WIDTH = 85 * LEGACY_WORLD_SCALE;
-const KICK_BASE_HEIGHT = 22 * LEGACY_WORLD_SCALE;
-
-function legacyBodyVariants(kind: EnemyKind): Array<{
-  variant: number;
-  source: 'configured-radius' | 'legacy-frame';
-  sourceFrame: { width: number; height: number } | null;
-  radius: number;
-  footOffset: { x: number; y: number };
-}> {
-  const frames = MAD_FOREST_FRAMES[kind];
-  if (!frames || frames.length === 0) {
-    return [{
-      variant: 0,
-      source: 'configured-radius',
-      sourceFrame: null,
-      radius: ENEMIES[kind].radius,
-      footOffset: { x: 0, y: 0 },
-    }];
-  }
-  return frames.map((frame, variant) => {
-    const requestedRadius = frame.width * 0.4;
-    const effectiveRadius = Math.floor(requestedRadius);
-    return {
-      variant,
-      source: 'legacy-frame',
-      sourceFrame: { width: frame.width, height: frame.height },
-      radius: legacyEnemyRadius(frame.width),
-      footOffset: {
-        x: (frame.width / 2 - requestedRadius / 2 - effectiveRadius) * LEGACY_WORLD_SCALE,
-        y: (frame.height - requestedRadius / 2 - effectiveRadius) * LEGACY_WORLD_SCALE,
-      },
-    };
-  });
-}
-
-function attackTier(role: PixelWeaponRole, tier: number, conf: WeaponConf): object {
-  return {
-    tier,
-    coordinateSpace: 'simulation-world-h800-reference',
-    collisionShape: role === 'kick'
-      ? 'growing-axis-aligned-strip'
-      : role === 'clap'
-        ? 'forward-cone'
-        : role === 'chord'
-          ? 'circle-zone'
-          : 'circle-projectile',
-    configuredRadius: conf.radius ?? null,
-    configuredArea: conf.area ?? null,
-    configuredArcRadians: conf.arc ?? null,
-    configuredOrbitRadius: conf.orbitRadius ?? null,
-    kickFullWidth: role === 'kick' ? KICK_BASE_WIDTH * (conf.area ?? 1) : null,
-    kickFullHeight: role === 'kick' ? KICK_BASE_HEIGHT * (conf.area ?? 1) : null,
-  };
-}
-
-/** Values copied from the current renderer where no public runtime registry exists. */
-export const COLLISION_BASELINE_SOURCE = {
-  coordinateSpaces: [
-    {
-      id: 'simulation-world-h800-reference',
-      definition: 'Simulation units normalized against the legacy 800-high reference world.',
-    },
-    {
-      id: 'atlas-pixels',
-      definition: `Untrimmed ${PIXEL_FRAME_SIZE}x${PIXEL_FRAME_SIZE} atlas cell coordinates.`,
-    },
-    {
-      id: 'logical-render-pixels',
-      definition: 'Pixi logical pixels before device-pixel-ratio density.',
-    },
-  ],
-  anchors: {
-    playerAndEnemy: { coordinateSpace: 'atlas-pixels', ...PIXEL_ACTOR_ANCHOR },
-    environment: { coordinateSpace: 'atlas-pixels', ...PIXEL_ACTOR_ANCHOR },
-    weaponsPickupsFxAndUi: { coordinateSpace: 'atlas-pixels', x: 0.5, y: 0.5 },
-  },
-  runtimeScales: {
-    coordinateSpace: 'logical-render-pixels',
-    player: 0.5,
-    playerFootMarker: { low: 0.32, high: 0.36 },
-    enemyDefault: 0.5,
-    enemyElite: 0.6,
-    enemyMantis: 0.6,
-    enemyHeadliner: 0.72,
-    environment: 0.5,
-    xpGem: 0.5,
-    musicNote: { note: 0.46, phrase: 0.55, anthem: 0.66 },
-    encoreCase: 0.62,
-    rewardPedestal: 0.62,
-    rewardWeaponIcon: 0.31,
-    rewardPassiveIcon: 0.27,
-    projectileBase: { snare: 0.28, hat: 0.25, bass: 0.34, lead: 0.27, arp: 0.27, bell: 0.32 },
-    projectileScaleQuantization: 'nearest 1/8 step',
-    domUiAtlas: 0.25,
-    domMeterIconAdditionalTransform: 0.5,
-    titleBannerSourceUpscale: 4,
-  },
-  player: {
-    coordinateSpace: 'simulation-world-h800-reference',
-    collisionRadius: RUN.playerRadius,
-    footOffset: { x: 1 * LEGACY_WORLD_SCALE, y: 7 * LEGACY_WORLD_SCALE },
-    collisionCenter: 'player.x/player.y',
-    spritePosition: 'player.x/player.y',
-    rendererAppliesFootOffset: false,
-  },
-  enemies: ALL_ENEMY_KINDS.map((kind) => ({
-    id: kind,
-    coordinateSpace: 'simulation-world-h800-reference',
-    bodyVariants: legacyBodyVariants(kind),
-    collisionCenter: 'enemy.x/enemy.y',
-    spritePosition: 'enemy.x/enemy.y',
-    rendererAppliesFootOffset: false,
-  })),
-  attacks: {
-    coordinateSpace: 'simulation-world-h800-reference',
-    weaponTiers: LIVE_WEAPON_ROLES.map((role) => ({
-      role,
-      tiers: (WEAPONS[role] ?? []).map((conf, index) => attackTier(role, index + 1, conf)),
-    })),
-    kickBase: { width: KICK_BASE_WIDTH, height: KICK_BASE_HEIGHT },
-    bellShards: { radius: BELL.shardRadius },
-    evolvedSpecials: {
-      redlineStomp: { shape: 'viewport-relative-cross', halfThicknessFormula: 'kickBaseHeight * area * 0.75' },
-      railshot: { shape: 'line', length: 900, halfWidthFormula: 'max(7, configuredRadius * 1.25)' },
-      standingOvation: { shape: 'viewport-relative-circle', radiusFormula: 'hypot(worldW, worldH) * 0.58 * areaMul' },
-      subquake: { shape: 'expanding-circle', startRadius: 40, maxRadius: { ordinary: 360, fatVariant: 480 } },
-      afterhours: { shape: 'circle-zone', configuredRadiusMultiplier: 1.55 },
-      eventHorizon: { shape: 'circle-projectile', configuredRadiusMultiplier: 1.25 },
-      gravityBell: { shape: 'circle-projectile-and-well', projectileRadiusMultiplier: 1.0, wellRadius: 130 },
-    },
-  },
-  pickups: {
-    coordinateSpace: 'simulation-world-h800-reference',
-    magnetAttractionRadius: RUN.magnetRadius,
-    xpCollectionRadius: RUN.pickupRadius,
-    musicNoteCollectionRadius: RUN.pickupRadius + 4,
-    groundRewardCollectionRadius: LEVELUP.itemPickupRadius,
-    groundRewardSpawnRadius: LEVELUP.itemRadius,
   },
 } as const;

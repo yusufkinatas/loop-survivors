@@ -6,13 +6,6 @@
 import type { Role } from '../audio/kits';
 import type { EnemyKind } from './config';
 
-export const LEGACY_ATLAS_FRAME_SIZE = 96;
-export const LEGACY_ACTOR_ANCHOR = Object.freeze({ x: 0.5, y: 0.92 });
-export const LEGACY_PLAYER_RENDER_SCALE = 0.5;
-export const LEGACY_ENEMY_RENDER_SCALE = 0.5;
-export const LEGACY_LARGE_ENEMY_RENDER_SCALE = 0.6;
-export const LEGACY_HEADLINER_RENDER_SCALE = 0.72;
-
 export interface DebugPointWorld {
   readonly x: number;
   readonly y: number;
@@ -425,76 +418,6 @@ const MAX_360_VARIANT_PLANS: Readonly<Record<SandboxMax360VariantId, SandboxVisu
  * offsets. Simulation limits and balance remain untouched. */
 export function sandboxMax360VariantPlan(id: SandboxMax360VariantId): SandboxVisualPresetPlan {
   return MAX_360_VARIANT_PLANS[id];
-}
-
-export function legacyEnemyRenderScale(kind: EnemyKind, headliner: boolean): number {
-  if (headliner) return LEGACY_HEADLINER_RENDER_SCALE;
-  return kind === 'elite' || kind === 'mantis'
-    ? LEGACY_LARGE_ENEMY_RENDER_SCALE
-    : LEGACY_ENEMY_RENDER_SCALE;
-}
-
-export function legacyActorFrameBounds(
-  x: number,
-  y: number,
-  scale: number,
-): DebugRectWorld {
-  const width = LEGACY_ATLAS_FRAME_SIZE * scale;
-  const height = LEGACY_ATLAS_FRAME_SIZE * scale;
-  return Object.freeze({
-    x: x - width * LEGACY_ACTOR_ANCHOR.x,
-    y: y - height * LEGACY_ACTOR_ANCHOR.y,
-    width,
-    height,
-  });
-}
-
-/**
- * Generated from public/art/pixel/frame-stats.json. Each native-pixel box is
- * the union of both actor frames and their horizontal mirrors, so the one
- * simulation snapshot remains truthful even when the renderer changes walk
- * frame or retains its previous facing between fixed steps. The focused check
- * re-derives every entry from the generated JSON and fails if this seam drifts.
- */
-export const LEGACY_ACTOR_OPAQUE_UNION_NATIVE: Readonly<
-  Record<'player' | EnemyKind, DebugRectWorld>
-> = Object.freeze({
-  bat: Object.freeze({ x: 31, y: 51, width: 34, height: 41 }),
-  batSwarm: Object.freeze({ x: 14, y: 31, width: 68, height: 61 }),
-  charger: Object.freeze({ x: 15, y: 23, width: 66, height: 69 }),
-  circler: Object.freeze({ x: 21, y: 35, width: 54, height: 57 }),
-  darter: Object.freeze({ x: 26, y: 45, width: 44, height: 47 }),
-  elite: Object.freeze({ x: 4, y: 9, width: 88, height: 83 }),
-  flower: Object.freeze({ x: 18, y: 34, width: 60, height: 58 }),
-  ghost: Object.freeze({ x: 30, y: 35, width: 36, height: 57 }),
-  glowingBat: Object.freeze({ x: 30, y: 29, width: 36, height: 63 }),
-  grayMudman: Object.freeze({ x: 24, y: 25, width: 48, height: 67 }),
-  greenMudman: Object.freeze({ x: 23, y: 25, width: 50, height: 67 }),
-  mantis: Object.freeze({ x: 4, y: 3, width: 88, height: 89 }),
-  redBat: Object.freeze({ x: 28, y: 46, width: 40, height: 46 }),
-  redBat2: Object.freeze({ x: 28, y: 41, width: 40, height: 51 }),
-  shielded: Object.freeze({ x: 17, y: 23, width: 62, height: 69 }),
-  skeleton: Object.freeze({ x: 25, y: 31, width: 46, height: 61 }),
-  splitter: Object.freeze({ x: 24, y: 29, width: 48, height: 63 }),
-  swarmer: Object.freeze({ x: 35, y: 49, width: 26, height: 43 }),
-  tank: Object.freeze({ x: 12, y: 15, width: 72, height: 77 }),
-  zombie: Object.freeze({ x: 28, y: 33, width: 40, height: 59 }),
-  player: Object.freeze({ x: 13, y: 9, width: 70, height: 83 }),
-});
-
-export function legacyActorOpaqueUnionBounds(
-  kind: 'player' | EnemyKind,
-  x: number,
-  y: number,
-  scale: number,
-): DebugRectWorld {
-  const native = LEGACY_ACTOR_OPAQUE_UNION_NATIVE[kind];
-  return Object.freeze({
-    x: x + (native.x - LEGACY_ATLAS_FRAME_SIZE * LEGACY_ACTOR_ANCHOR.x) * scale,
-    y: y + (native.y - LEGACY_ATLAS_FRAME_SIZE * LEGACY_ACTOR_ANCHOR.y) * scale,
-    width: native.width * scale,
-    height: native.height * scale,
-  });
 }
 
 export function formatSandboxSeed(seed: number): string {

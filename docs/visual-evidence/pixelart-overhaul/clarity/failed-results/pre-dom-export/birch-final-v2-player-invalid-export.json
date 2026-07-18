@@ -1,0 +1,23 @@
+{
+  "reviewer": "birch-final-v2",
+  "packetCommit": "09387b2",
+  "mode": "player",
+  "status": "invalid-export",
+  "visibleResult": {
+    "score": "40/40",
+    "percent": 100,
+    "outcome": "PASS",
+    "message": "machine-readable result is ready."
+  },
+  "exportDiagnostic": {
+    "expression": "window.__visualReadResult",
+    "observedType": "undefined",
+    "waitedAfterCompletionMs": 800,
+    "retryPerformed": false
+  },
+  "categoryRun": {
+    "status": "stopped",
+    "revealedSamples": 1,
+    "answeredSamples": 0
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-07-18",
+  "result": "pass",
+  "referenceMachine": {
+    "model": "MacBook Pro (Mac15,6)",
+    "processor": "Apple M3 Pro",
+    "logicalCores": 11,
+    "memoryGiB": 18,
+    "os": "macOS 26.5.2 (25F84)",
+    "architecture": "arm64"
+  },
+  "browser": {
+    "name": "Codex in-app Chromium",
+    "version": null,
+    "versionNote": "The in-app automation surface does not expose a browser version or user agent."
+  },
+  "settings": {
+    "viewportCss": { "width": 1280, "height": 720 },
+    "devicePixelRatio": 2,
+    "logicalCanvas": { "width": 640, "height": 360 },
+    "backingScale": 4,
+    "seedHex": "0x5eed0360",
+    "seed": 1592591200,
+    "preset": "MAX360 A",
+    "playerLevel": 40,
+    "invulnerable": true,
+    "enemyCount": 360,
+    "weaponsFiring": false,
+    "sampleCapFrames": 36000
+  },
+  "legacy": {
+    "startedAt": "2026-07-18T20:18:38.570Z",
+    "endedAt": "2026-07-18T20:23:51.276Z",
+    "wallSeconds": 312.706,
+    "sampleFrames": 36000,
+    "sampleSeconds": 300.2,
+    "medianFps": 120.5,
+    "onePercentLowFps": 95.3,
+    "drawCalls": null,
+    "drawCallSource": "renderer-stats-unavailable",
+    "atlasTextureMiB": 7.0,
+    "liveObjects": 411,
+    "transientObjects": 4,
+    "transientPolls": [3, 2, 6, 3, 3, 2, 4]
+  },
+  "production": {
+    "startedAt": "2026-07-18T20:24:06.367Z",
+    "endedAt": "2026-07-18T20:29:18.590Z",
+    "wallSeconds": 312.223,
+    "sampleFrames": 36000,
+    "sampleSeconds": 300.1,
+    "medianFps": 120.5,
+    "onePercentLowFps": 97.8,
+    "drawCalls": null,
+    "drawCallSource": "renderer-stats-unavailable",
+    "atlasTextureMiB": 2.75,
+    "liveObjects": 411,
+    "transientObjects": 6,
+    "transientPolls": [4, 5, 3, 5, 7, 5, 2, 6],
+    "atlasPages": [
+      { "name": "gameplay", "width": 1024, "height": 512 },
+      { "name": "environment", "width": 512, "height": 256 },
+      { "name": "ui", "width": 256, "height": 256 }
+    ]
+  },
+  "comparison": {
+    "medianRegressionPercent": 0,
+    "onePercentLowChangePercent": 2.62,
+    "atlasTextureReductionPercent": 60.71,
+    "medianTargetFps": 60,
+    "onePercentLowTargetFps": 45,
+    "maximumAllowedRegressionPercent": 10
+  }
+}

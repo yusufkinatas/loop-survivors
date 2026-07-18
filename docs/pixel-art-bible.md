@@ -542,40 +542,39 @@ padding while preserving visible bounds and pivot-to-ground distance.
 
 ### Stable names
 
-Use lowercase ASCII kebab-case and this path-shaped frame ID:
+Use the stable path families consumed by the live renderer and generated
+catalog:
 
-`{domain}/{asset-id}/{state}/{direction}/{frame}`
+- `actors/player/{idle|walk}`;
+- `actors/enemies/{runtime-kind}/{idle|walk}`;
+- `weapons/{role}/{normal|evolved}`;
+- `pickups/{id}` and `fx/{id}`;
+- `ui/{items|status|actions}/{id}`;
+- `environment/{id}`.
 
-Examples:
-
-- `player/survivor/move/e/003`
-- `enemy/dusk-moth/fly/sw/001`
-- `enemy/aegis-knight/shield-broken/s/000`
-- `weapon/railshot/fire/e/002`
-- `pickup/xp-small/idle/none/000`
-- `ui/passive-heavy-amp/rest/none/000`
-
-Directions are `n`, `ne`, `e`, `se`, `s`, `sw`, `w`, `nw`, or `none`. Frame
-numbers are zero-padded to three digits. Renaming an integrated ID requires a
-manifest migration; aliases do not silently accumulate.
+IDs use the canonical gameplay/config identifier. Most are lowercase
+kebab-case; existing runtime enemy identifiers such as `greenMudman` and
+`batSwarm` retain their established camelCase spelling so art cannot silently
+diverge from simulation catalogs. Authored direction is a runtime transform or
+animation decision in this production set, not a redundant suffix in the
+physical frame key. Renaming an integrated key requires a catalog migration;
+aliases do not silently accumulate.
 
 ### Required metadata
 
-Every frame declares:
+Each atlas frame declares the integer atlas rectangle, untrimmed `sourceSize`
+and `nativeSize`, integer pivot plus normalized compatibility anchor, measured
+opaque bounds and opaque-pixel count, semantic class/tags, transparent margins,
+renderer scale, color budget, and colors used. Grounded and hovering frames
+also declare a planted or projected ground reference. The atlas file itself is
+the page identity; animation membership is the stable idle/walk key pair in the
+generated live catalog.
 
-- atlas page and integer frame rectangle;
-- untrimmed source width/height and integer local pivot;
-- opaque bounds and opaque pixel count;
-- anchor type: ground, hover-ground, projectile-core, area-origin, or UI;
-- animation state, frame duration, direction, loop/hold behavior, and
-  mirror-safety;
-- alpha mode, palette roles used, render layer, and blend group;
-- actor body or attack-geometry ID where applicable.
-
-Actor definitions additionally declare the simulation hurtbox and its offset
-from the art pivot. Attack definitions declare their true simulation geometry.
-The builder derives logical preview geometry with the 0.5 projection instead
-of copying a second stale set of values.
+Simulation hurtboxes, attack geometry, loop timing, layers, and mirror rules
+remain authoritative runtime definitions rather than duplicated frame fields.
+Development overlays join those runtime definitions to atlas pivots and opaque
+bounds through one shared 0.5 world-to-logical projection. This keeps visual
+truth inspectable without introducing a second stale collision specification.
 
 ### Export gates
 
@@ -593,11 +592,11 @@ as production assets:
 
 | Reference | Approved lesson |
 | --- | --- |
-| `public/art/pixel/candidates/arcade-reliquary/truth-scene.png` | Orange player hierarchy, deep navy field, chunky role tokens, upper-left highlights, and restrained interiors at 1× |
-| `public/art/pixel/candidates/arcade-reliquary/silhouettes.png` | Player, flyer, humanoid, heavy, boss, pickup, and attacks separate without interior color |
-| `public/art/pixel/candidates/arcade-reliquary/grayscale.png` | Player and gameplay categories retain a strong value scan |
-| `public/art/pixel/candidates/arcade-reliquary/crowded-combat.png` | The player remains the first focal token while enemy and attack masses stay ordered |
-| `public/art/pixel/candidates/arcade-reliquary/hitbox-overlay.png` | Hurtboxes sit within solid actor mass; projectile core contains its collision circle; wide boundaries describe geometry |
+| `docs/visual-evidence/pixelart-overhaul/gate1/reference/arcade-reliquary/truth-scene.png` | Orange player hierarchy, deep navy field, chunky role tokens, upper-left highlights, and restrained interiors at 1× |
+| `docs/visual-evidence/pixelart-overhaul/gate1/reference/arcade-reliquary/silhouettes.png` | Player, flyer, humanoid, heavy, boss, pickup, and attacks separate without interior color |
+| `docs/visual-evidence/pixelart-overhaul/gate1/reference/arcade-reliquary/grayscale.png` | Player and gameplay categories retain a strong value scan |
+| `docs/visual-evidence/pixelart-overhaul/gate1/reference/arcade-reliquary/crowded-combat.png` | The player remains the first focal token while enemy and attack masses stay ordered |
+| `docs/visual-evidence/pixelart-overhaul/gate1/reference/arcade-reliquary/hitbox-overlay.png` | Hurtboxes sit within solid actor mass; projectile core contains its collision circle; wide boundaries describe geometry |
 | `docs/visual-evidence/pixelart-overhaul/gate1/arcade-reliquary-in-engine-1280x720.png` | The atlas treatment survives live Pixi composition at exact 2× backing scale |
 | `docs/visual-evidence/pixelart-overhaul/gate1/arcade-reliquary-runtime-hitboxes-1280x720.png` | Renderer pivots and live debug geometry can share the same source metadata |
 

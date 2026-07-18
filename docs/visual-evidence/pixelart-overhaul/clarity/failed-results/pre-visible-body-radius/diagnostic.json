@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "status": "invalid-protocol-run-preserved",
+  "packetCommit": "aa4e747",
+  "mode": "player",
+  "revealProtocolMs": 500,
+  "oldHiddenAnswer": {
+    "x": 319,
+    "y": 174,
+    "radius": 8,
+    "source": "simulation collision circle"
+  },
+  "reviewers": [
+    {
+      "reviewer": "alder-final",
+      "displayedAggregate": { "correct": 0, "total": 40, "score": 0 },
+      "reportedExampleViewportClick": { "x": 716, "y": 370 }
+    },
+    {
+      "reviewer": "birch-final",
+      "displayedAggregate": { "correct": 0, "total": 40, "score": 0 },
+      "reportedStageRect": { "x": 77, "y": 26, "width": 1280, "height": 720 },
+      "reportedExampleViewportClick": { "x": 715, "y": 343 },
+      "derivedExampleLogicalClick": { "x": 319, "y": 158.5 },
+      "derivedDistanceFromOldAnswer": 15.5
+    },
+    {
+      "reviewer": "cedar-final",
+      "displayedAggregate": { "correct": 0, "total": 40, "score": 0 }
+    }
+  ],
+  "diagnosis": "The answer key recorded the player's collision-circle center at the feet and its eight-pixel radius. Reviewers correctly clicked the remembered visible torso, which lay outside that scoring circle. The protocol requires the visible body radius, so these aggregates are invalid protocol results rather than art-readability results.",
+  "perSampleResultRecovery": {
+    "available": false,
+    "reason": "The interrupted review surface did not yield its in-page result object before the corrective hot reload. The displayed aggregates and independently reported geometry are preserved without inventing per-sample data."
+  },
+  "fixCommit": "09387b2",
+  "correctedHiddenAnswer": {
+    "x": 319,
+    "y": 157,
+    "radius": 23,
+    "source": "enclosing circle of the production idle/walk opaque-body union"
+  }
+}

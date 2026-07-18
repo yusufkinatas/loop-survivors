@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "status": "invalid-export-run-preserved",
+  "packetCommit": "09387b2",
+  "reviewPageBeforeFix": "09387b2",
+  "mode": "player",
+  "revealProtocolMs": 500,
+  "completedDisplayedPasses": [
+    {
+      "reviewer": "alder-final-v2",
+      "displayedAggregate": { "correct": 40, "total": 40, "score": 1 }
+    },
+    {
+      "reviewer": "birch-final-v2",
+      "displayedAggregate": { "correct": 40, "total": 40, "score": 1 }
+    }
+  ],
+  "diagnosis": "The page completed and scored the formal run, but placed the result only in localStorage and a page-global property. Browser-review tooling intentionally does not expose either surface, so the required per-sample JSON could not be exported without violating the browser safety contract.",
+  "perSampleResultRecovery": {
+    "available": false,
+    "reason": "The export surface was inaccessible and no missing per-sample values were reconstructed."
+  },
+  "fixCommit": "05c7396",
+  "fix": "The completed object is now also emitted as inert application/json text in `.visual-read-result`, guarded by `data-result-ready=1` on the review root.",
+  "smokeTest": {
+    "reviewer": "export-smoke",
+    "samples": 40,
+    "domResultReady": true,
+    "exportedAggregate": { "correct": 40, "total": 40, "score": 1 },
+    "countedAsIndependentReview": false
+  }
+}

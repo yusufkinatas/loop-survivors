@@ -2,7 +2,7 @@
 // node --import tsx src/game/visual-debug-check.ts
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { Role } from '../audio/kits';
 import { ALL_ENEMY_KINDS, LEVELUP, RUN, type EnemyKind } from './config';
@@ -31,8 +31,12 @@ import {
   readPixiDrawCalls,
 } from './sandbox-performance';
 import {
-  pixelArtAssetUrls,
-  resolvePixelArtMode,
+  PIXEL_ARENA_FLOOR_URL,
+  PIXEL_ART_ATLAS_URL,
+  PIXEL_ENVIRONMENT_ATLAS_URL,
+  PIXEL_TITLE_BANNER_URL,
+  PIXEL_UI_ATLAS_URL,
+  pixelTitleBannerUrl,
   validatePixelFrameContract,
   type PixelAtlasId,
   type PixelAtlasFrameData,
@@ -586,7 +590,7 @@ for (const atlas of ['gameplay', 'ui', 'environment'] as const satisfies readonl
   assert.deepEqual(Object.keys(data.frames).sort(), expected, `${atlas} atlas keys must stay stable`);
   assert.equal(data.meta.direction, 'arcade-reliquary');
   assert.equal(data.meta.rendererScale?.value, 1);
-  for (const key of expected) validatePixelFrameContract(data.frames[key], key, atlas, 'production');
+  for (const key of expected) validatePixelFrameContract(data.frames[key], key, atlas);
 }
 
 const viewPath = fileURLToPath(new URL('./view.ts', import.meta.url));
@@ -655,12 +659,52 @@ assert(!hudSource.includes('512px UI atlas'));
 assert(!hudSource.includes('background-size: 128px'));
 assert(hudSource.includes('pixelIconCssFrame(HUD_PIXEL_ICON_KEYS[id])'));
 
-// The archived art comparison is explicit and never becomes the default.
-assert.equal(resolvePixelArtMode({ search: '', hash: '' }), 'production');
-assert.equal(resolvePixelArtMode({ search: '?artMode=legacy', hash: '' }), 'legacy');
-assert.equal(resolvePixelArtMode({ search: '', hash: '#sandbox?artMode=legacy' }), 'legacy');
-assert.equal(pixelArtAssetUrls('production').gameplay, '/art/pixel/gameplay.json');
-assert.equal(pixelArtAssetUrls('legacy').gameplay, '/art/pixel/legacy/gameplay.json');
+// Production assets are the only loadable art path; retired comparison files
+// and their baseline generator must not quietly re-enter the runtime seam.
+assert.deepEqual(
+  [
+    PIXEL_ART_ATLAS_URL,
+    PIXEL_UI_ATLAS_URL,
+    PIXEL_ENVIRONMENT_ATLAS_URL,
+    PIXEL_ARENA_FLOOR_URL,
+    PIXEL_TITLE_BANNER_URL,
+  ],
+  [
+    '/art/pixel/gameplay.json',
+    '/art/pixel/ui.json',
+    '/art/pixel/environment.json',
+    '/art/pixel/arena-floor.png',
+    '/art/pixel/title-banner.png',
+  ],
+);
+assert.equal(pixelTitleBannerUrl(), PIXEL_TITLE_BANNER_URL);
+const pixelArtSource = readFileSync(fileURLToPath(new URL('./pixel-art.ts', import.meta.url)), 'utf8');
+for (const retiredToken of [
+  'PixelArtMode',
+  'resolvePixelArtMode',
+  'activePixelArtMode',
+  'pixelArtAssetUrls',
+  '/art/pixel/legacy/',
+]) {
+  assert(!pixelArtSource.includes(retiredToken), `pixel-art.ts must not retain ${retiredToken}`);
+}
+const visualDebugSource = readFileSync(fileURLToPath(new URL('./visual-debug.ts', import.meta.url)), 'utf8');
+for (const retiredToken of [
+  'LEGACY_ATLAS_FRAME_SIZE',
+  'legacyEnemyRenderScale',
+  'legacyActorFrameBounds',
+  'legacyActorOpaqueUnionBounds',
+]) {
+  assert(!visualDebugSource.includes(retiredToken), `visual-debug.ts must not retain ${retiredToken}`);
+}
+assert(!existsSync(fileURLToPath(new URL('../../public/art/pixel/legacy', import.meta.url))));
+assert(!existsSync(fileURLToPath(new URL('../../public/art/pixel/collision-baseline.json', import.meta.url))));
+const metricsSource = readFileSync(
+  fileURLToPath(new URL('../../scripts/measure-pixel-art.mjs', import.meta.url)),
+  'utf8',
+);
+assert(!metricsSource.includes('collision-baseline'));
+assert(!metricsSource.includes('COLLISION_BASELINE_SOURCE'));
 
 // Whole-surface visual-review modes are a complete, deterministic matrix set.
 assert.deepEqual(

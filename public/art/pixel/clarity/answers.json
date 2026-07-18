@@ -1,0 +1,247 @@
+{
+  "schemaVersion": 1,
+  "player": {
+    "player-001": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-002": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-003": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-004": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-005": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-006": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-007": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-008": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-009": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-010": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-011": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-012": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-013": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-014": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-015": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-016": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-017": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-018": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-019": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-020": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-021": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-022": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-023": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-024": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-025": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-026": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-027": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-028": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-029": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-030": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-031": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-032": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-033": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-034": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-035": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-036": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-037": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-038": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-039": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    },
+    "player-040": {
+      "x": 319,
+      "y": 157,
+      "radius": 23
+    }
+  },
+  "category": {
+    "category-001": "enemy",
+    "category-002": "friendly-projectile",
+    "category-003": "xp",
+    "category-004": "music-note",
+    "category-005": "weapon-reward",
+    "category-006": "decorative-effect",
+    "category-007": "enemy",
+    "category-008": "friendly-projectile",
+    "category-009": "xp",
+    "category-010": "music-note",
+    "category-011": "weapon-reward",
+    "category-012": "decorative-effect",
+    "category-013": "enemy",
+    "category-014": "friendly-projectile",
+    "category-015": "xp",
+    "category-016": "music-note",
+    "category-017": "weapon-reward",
+    "category-018": "decorative-effect",
+    "category-019": "enemy",
+    "category-020": "friendly-projectile",
+    "category-021": "xp",
+    "category-022": "music-note",
+    "category-023": "weapon-reward",
+    "category-024": "decorative-effect",
+    "category-025": "enemy",
+    "category-026": "friendly-projectile",
+    "category-027": "xp",
+    "category-028": "music-note",
+    "category-029": "weapon-reward",
+    "category-030": "decorative-effect",
+    "category-031": "enemy",
+    "category-032": "friendly-projectile",
+    "category-033": "xp",
+    "category-034": "music-note",
+    "category-035": "weapon-reward",
+    "category-036": "decorative-effect",
+    "category-037": "enemy",
+    "category-038": "friendly-projectile",
+    "category-039": "xp",
+    "category-040": "music-note"
+  }
+}

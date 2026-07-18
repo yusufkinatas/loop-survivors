@@ -67,19 +67,19 @@ generated with the built-in OpenAI image-generation tool on 2026-07-18:
 - **License:** governed by the same project terms as this repository; no
   third-party asset attribution is required.
 
-## Gate 1 native-grid prototypes (development only)
+## Archived Gate 1 native-grid references (development only)
 
-`public/art/pixel/candidates/` contains the Gilded Ossuary, Moonlit Tapestry,
-and Arcade Reliquary prototypes created on 2026-07-18. They are original,
-code-authored assets generated deterministically by
-`scripts/build-art-direction-candidates.mjs`. That builder does not read,
-sample, crop, trace, or resize the concept-reference PNGs; it constructs each
-sprite directly on its declared native logical grid.
+`docs/visual-evidence/pixelart-overhaul/gate1/reference/` retains the selected
+Arcade Reliquary truth scene, grayscale view, silhouette view, hitbox overlay,
+and crowded-combat board, plus the five side-by-side comparison boards used at
+the first player decision gate. The comparison boards are ordered Gilded
+Ossuary, Moonlit Tapestry, and Arcade Reliquary from left to right.
 
-The candidate directory is a development review surface, not production input.
-It contains native atlases and metadata plus controlled truth, exact 4×
-nearest-neighbor, silhouette, grayscale, collider/pivot, crowded-combat, and
-side-by-side comparison PNGs. Arcade Reliquary was selected on 2026-07-18 and
-was independently rebuilt in the canonical production module. The two rejected
-directions remain reference-only and are unreachable from the normal game
-route.
+These files are unchanged outputs from the deterministic, code-authored Gate 1
+prototype process completed on 2026-07-18. That process constructed every
+sprite directly on its declared native logical grid and did not read, sample,
+crop, trace, or resize the concept-reference PNGs. The temporary builder,
+runtime review route, atlases, metadata, and rejected-direction working files
+were removed after Arcade Reliquary was selected and independently rebuilt in
+the canonical production module. The archived PNGs are evidence only and are
+not production inputs.
