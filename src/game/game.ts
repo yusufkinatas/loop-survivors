@@ -6,7 +6,7 @@ import { Application } from 'pixi.js';
 import type { MusicEngine } from '../audio/engine';
 import { SOUNDSET } from '../audio/soundset';
 import { ROLES, type Kit, type Role } from '../audio/kits';
-import { LEVELUP } from './config';
+import { groundPickPosition, LEVELUP } from './config';
 import { SLOTS, ownerOfSlot } from './band';
 import { mountTrackOverlay } from './trackoverlay';
 import { Hud } from './hud';
@@ -15,15 +15,18 @@ import { createGreedyMover, createKiter, type AutoMover } from './auto-move';
 import { autoMove, Input, type AutoMoveMode } from './input';
 import { mountJoystick } from './joystick';
 import { rollOffers, type AnyPickOption } from './picks';
-import { RunWorld, KIT_COLORS, type VacuumResult } from './run';
+import { RunWorld, KIT_COLORS } from './run';
 import { SIM_DT } from './timing';
 import { preloadRunArt, RunView, type GroundPickView } from './view';
 import { mountSandboxPanel, type SandboxPanel } from './sandbox';
 import { ITEMS, type EvolutionDefinition } from './items';
 import { MetaStore, type RunSettlement } from './meta';
-import { VENUE_AUDIO_SET } from '../audio/venue-audio';
-import { VENUE_IDS, isVenueId } from './tour';
 import { mulberry32 } from './rng';
+import {
+  chooseStartingWeapon,
+  createStartingWeaponSelection,
+  type StartingWeaponSelection,
+} from './starting-weapons';
 
 type State = 'start' | 'run' | 'end' | 'sandbox';
 
@@ -138,6 +141,16 @@ export async function bootGame(
   }
   /** The player's movement each frame: the active mover, or manual input. */
   function playerControl(w: RunWorld): { x: number; y: number } {
+    // Developer auto-move remains usable during the weaponless opening: walk
+    // to the first offered pedestal before handing control back to its normal
+    // combat strategy. This also makes the full opening flow motion-testable.
+    if (autoMoverFn && w.awaitingStartingWeapon && groundPicks.length > 0) {
+      const target = groundPicks[0];
+      const dx = target.x - w.player.x;
+      const dy = target.y - w.player.y;
+      const distance = Math.hypot(dx, dy);
+      return distance > 0.001 ? { x: dx / distance, y: dy / distance } : { x: 0, y: 0 };
+    }
     return autoMoverFn ? autoMoverFn(w) : input.axis();
   }
 
@@ -161,6 +174,10 @@ export async function bootGame(
   root.appendChild(pauseButton);
   function togglePause(): void {
     if (state !== 'run' && state !== 'sandbox') return;
+    // The opening gate has not started the musical transport yet. Letting an
+    // Escape/pause round-trip call clock.resume() here would silently start it
+    // before the player owns a weapon.
+    if (world?.awaitingStartingWeapon) return;
     paused = !paused;
     pauseOverlay.style.display = paused ? '' : 'none';
     pauseButton.textContent = paused ? 'RESUME' : 'PAUSE';
@@ -208,9 +225,12 @@ export async function bootGame(
     option: ShellPick;
   }
   let groundPicks: GroundItem[] = [];
+  let groundPickMode: 'starting' | 'upgrade' | null = null;
+  let startingWeaponSelection: StartingWeaponSelection | null = null;
 
   function clearGroundPicks(): void {
     if (groundPicks.length > 0) groundPicks = [];
+    groundPickMode = null;
     view?.setGroundPicks([]);
   }
 
@@ -219,6 +239,7 @@ export async function bootGame(
     pendingEvolutionChoices.length = 0;
     pickAwaitingBar = false;
     presentQueuedPickAtAudioT = null;
+    startingWeaponSelection = null;
     clearGroundPicks();
     endLevelMoment();
   }
@@ -234,6 +255,7 @@ export async function bootGame(
   // entered on the next bar (pickAwaitingBar / presentQueuedPickAtAudioT).
   function presentNextUpgrade(): void {
     if (!world || state !== 'run' || pickAwaitingBar || presentQueuedPickAtAudioT !== null) return;
+    if (world.awaitingStartingWeapon) return;
     if (groundPicks.length > 0) return; // one triangle at a time
 
     const w = world;
@@ -266,33 +288,42 @@ export async function bootGame(
     }
   }
 
-  /** Drop the offered options as items in a triangle around the player, shove
-   *  the horde clear of them, and fire the cosmetic level-up moment. */
-  function dropGroundPicks(w: RunWorld, options: ShellPick[]): void {
+  /** Shared physical placement/presentation only. Opening selection and
+   * level-up rewards retain separate state and resolution paths. */
+  function placeGroundPicks(
+    w: RunWorld,
+    options: ShellPick[],
+    mode: 'starting' | 'upgrade',
+  ): void {
     const cx = w.player.x;
     const cy = w.player.y;
     const items: GroundItem[] = [];
     const payload: GroundPickView[] = [];
+    const angles: readonly number[] = options.length === 2
+      ? [0, 180]
+      : options.length === 1
+        ? [0]
+        : LEVELUP.angles;
     for (let i = 0; i < options.length; i++) {
       const option = options[i];
-      const deg = LEVELUP.angles[i % LEVELUP.angles.length];
-      const rad = (deg * Math.PI) / 180;
+      const deg = angles[i % angles.length];
       // Portrait screens have less visible world width than the authored
-      // triangle. Clamp the horizontal offset far enough inside the camera for
-      // the 168-unit name/effect plate to stay fully readable, while retaining
-      // more than the fixed 40-unit walk-to-collect distance.
-      const horizontalRoom = Math.max(LEVELUP.itemPickupRadius + 4, w.worldW / 2 - 92);
-      const x = cx + Math.max(-horizontalRoom, Math.min(horizontalRoom, Math.cos(rad) * LEVELUP.itemRadius));
-      const y = cy + Math.sin(rad) * LEVELUP.itemRadius;
+      // triangle; short landscape screens can also lack vertical room. Clamp
+      // both axes far enough inside the camera for the name/effect plate to
+      // stay readable, while retaining more than the fixed 40-unit walk-to-
+      // collect distance.
+      const { x, y } = groundPickPosition(cx, cy, deg, w.worldW, w.worldH);
       items.push({ x, y, option });
       if (option.kind === 'weapon') {
         const prevTier = w.tiers.get(option.role) ?? 0;
         payload.push({ x, y, role: option.role, color: KIT_COLORS[option.role],
-          name: kits.get(option.role)!.name, level: prevTier > 0 ? `${prevTier} → ${option.tier}` : '1' });
+          name: kits.get(option.role)?.name ?? option.role,
+          level: mode === 'starting' ? 'START' : prevTier > 0 ? `${prevTier} → ${option.tier}` : '1',
+          effect: mode === 'starting' ? 'Collect to begin with this weapon.' : undefined });
       } else if (option.kind === 'item') {
         const definition = ITEMS[option.item];
         const previous = w.items.get(option.item) ?? 0;
-        payload.push({ x, y, glyph: definition.glyph, color: definition.color,
+        payload.push({ x, y, item: option.item, glyph: definition.glyph, color: definition.color,
           name: definition.name, level: previous > 0 ? `${previous} → ${option.tier}` : '1',
           effect: definition.levelLines[option.tier - 1] });
       } else if (option.kind === 'encore') {
@@ -306,24 +337,38 @@ export async function bootGame(
       }
     }
     groundPicks = items;
+    groundPickMode = mode;
     view?.setGroundPicks(payload);
-    w.shoveEnemiesOut(cx, cy, LEVELUP.enemyPushRadius);
-    startLevelMoment(cx, cy);
   }
 
-  /** The satisfying beat: normally slowScale slow-mo + a short mix dip. An
-   * earned or live Pressure Drop keeps full momentum, so a reward arriving in
-   * the scheduler's lookahead window cannot weaken the opening downbeat. */
+  /** Drop an ordinary upgrade reward and grant its breathing-room effect. */
+  function dropGroundPicks(w: RunWorld, options: ShellPick[]): void {
+    placeGroundPicks(w, options, 'upgrade');
+    w.shoveEnemiesOut(w.player.x, w.player.y, LEVELUP.enemyPushRadius);
+    startLevelMoment(w.player.x, w.player.y);
+  }
+
+  /** Dedicated start-of-round weapon selection: never touches XP, level,
+   * pending upgrades, rerolls, or the level-up moment. */
+  function beginStartingWeaponSelection(w: RunWorld): void {
+    startingWeaponSelection = createStartingWeaponSelection(meta.unlockedRoles(), Math.random);
+    const options: ShellPick[] = startingWeaponSelection.offered.map((role) => ({
+      kind: 'weapon',
+      role,
+      tier: 1,
+    }));
+    placeGroundPicks(w, options, 'starting');
+    hud.showToast(options.length >= 3
+      ? 'CHOOSE YOUR STARTING WEAPON · 3 DISTINCT PICKS'
+      : `CHOOSE YOUR STARTING WEAPON · ${options.length} AVAILABLE`);
+  }
+
+  /** The satisfying level-up beat: slow motion, a short mix dip, and a burst. */
   function startLevelMoment(cx: number, cy: number): void {
-    if (world?.pressureState === 'armed' || world?.pressureState === 'drop') {
-      endLevelMoment();
-      engine.restoreWeapons(0.025);
-    } else {
-      momentT = LEVELUP.momentS;
-      momentScale = LEVELUP.slowScale;
-      applyClockRate();
-      engine.duckWeapons(LEVELUP.duckDepth, LEVELUP.momentS);
-    }
+    momentT = LEVELUP.momentS;
+    momentScale = LEVELUP.slowScale;
+    applyClockRate();
+    engine.duckWeapons(LEVELUP.duckDepth, LEVELUP.momentS);
     engine.playLevelCue();
     hud.levelPulse();
     view?.levelBurst(cx, cy);
@@ -335,6 +380,25 @@ export async function bootGame(
   function collectGroundPick(item: GroundItem): void {
     const w = world;
     if (!w) return;
+    if (groundPickMode === 'starting') {
+      const selection = startingWeaponSelection;
+      if (!selection || item.option.kind !== 'weapon') return;
+      const resolved = chooseStartingWeapon(selection, item.option.role);
+      if (!resolved) return;
+      startingWeaponSelection = resolved;
+      clearGroundPicks();
+      engine.setVoiceTier(item.option.role, 1);
+      engine.setVoiceEnabled(item.option.role, true);
+      w.addWeapon(item.option.role, 1);
+      if (!w.beginCombat()) return;
+      pauseButton.style.display = '';
+      hud.renderBand(w.tiers, undefined, deactivatedRoles, pendingRoles, w.evolved);
+      refreshTrackOverlay();
+      view?.flourish(w.player.x, w.player.y);
+      hud.showToast(`${kits.get(item.option.role)?.name ?? item.option.role} · ROUND BEGINS`);
+      engine.clock.start();
+      return;
+    }
     // The player reached a pick before momentS elapsed: snap game speed and
     // weapon volume back now instead of riding out the full slow-mo.
     endLevelMoment();
@@ -394,7 +458,7 @@ export async function bootGame(
 
   function rerollGroundOffers(): void {
     const w = world;
-    if (!w || state !== 'run' || rerollsLeft <= 0 || groundPicks.length === 0) return;
+    if (!w || state !== 'run' || groundPickMode !== 'upgrade' || rerollsLeft <= 0 || groundPicks.length === 0) return;
     if (groundPicks.some((pick) => pick.option.kind === 'evolution')) {
       hud.showToast('Encore Cases cannot be rerolled');
       return;
@@ -418,73 +482,7 @@ export async function bootGame(
 
   const updateArenaMinute = (minute: number): void => {
     engine.clock.bpm = SOUNDSET.bpm * (1 + Math.min(0.08, minute * 0.002));
-    if (minute > 0) hud.showToast(`PRESSURE ${minute} · enemies scale up`);
-  };
-
-  const updateArenaVenue = (venue: string): void => {
-    const id = isVenueId(venue) ? venue : 'alley';
-    void engine.setAudioSet(VENUE_AUDIO_SET[id]);
-    hud.showToast(`NEW VENUE · ${venue.replace(/\b\w/g, (letter) => letter.toUpperCase())}`);
-  };
-
-  /** One Pressure Drop conductor for the run and Sandbox. Full pressure waits
-   * without a penalty, then the positive buff spans exactly one heard phrase:
-   * actions precede same-time weapon triggers at bars 1-4 and at the exit. */
-  const schedulePressureDrop = (w: RunWorld, arena: 'run' | 'sandbox'): void => {
-    const conductorToken = w.newPressureConductor();
-    const conductorIsLive = (): boolean =>
-      world === w && state === arena && w.pressureConductorIsCurrent(conductorToken);
-    hud.showToast('PRESSURE FULL · DROP ON NEXT PHRASE');
-    engine.atNextPhrase((startAudioTime) => {
-      if (!conductorIsLive()) return;
-      // The scheduler is looking ahead. Restore tempo/mix now so the first
-      // Drop downbeat itself cannot be pre-scheduled through a reward dip.
-      endLevelMoment();
-      engine.restoreWeapons(0.025);
-      engine.setPressureDropLift(true, startAudioTime);
-      engine.playPressureDropBar(1, startAudioTime);
-      engine.atAudioTime(startAudioTime, () => {
-        if (!conductorIsLive()) return;
-        // Defend the heard boundary too: any later UI path that introduced a
-        // transient duck after lookahead scheduling is canceled at impact.
-        endLevelMoment();
-        engine.restoreWeapons(0.025);
-        w.beginPressureDrop();
-        w.pulsePressureDropBar(1);
-      });
-
-      const queueBarPulse = (bar: number): void => {
-        engine.atNextBar((barAudioTime) => {
-          if (
-            !conductorIsLive() ||
-            (w.pressureState !== 'armed' && w.pressureState !== 'drop')
-          ) return;
-          // A delayed scheduler may catch up past several grid lines. Advance
-          // world state in timestamp order, but never pile missed accents onto
-          // the first audible instant after the stall.
-          if (barAudioTime > engine.ctx.currentTime + 1e-6) {
-            engine.playPressureDropBar(bar, barAudioTime);
-          }
-          engine.atAudioTime(barAudioTime, () => {
-            if (!conductorIsLive() || w.pressureState !== 'drop') return;
-            w.pulsePressureDropBar(bar);
-          });
-          if (bar < 4) queueBarPulse(bar + 1);
-        });
-      };
-      queueBarPulse(2);
-
-      // Registered from inside the phrase-start flush, so this necessarily
-      // lands on the following phrase boundary: exactly four complete bars.
-      engine.atNextPhrase((finishAudioTime) => {
-        if (!conductorIsLive()) return;
-        engine.setPressureDropLift(false, finishAudioTime);
-        engine.atAudioTime(finishAudioTime, () => {
-          if (!conductorIsLive()) return;
-          w.finishPressureDrop();
-        });
-      }, startAudioTime, true);
-    });
+    if (minute > 0) hud.showToast(`MINUTE ${minute} · ENEMIES SCALE UP`);
   };
 
   const events = {
@@ -514,26 +512,6 @@ export async function bootGame(
       }
       pendingEvolutionChoices.push(choices);
       presentNextUpgrade();
-    },
-    onPressureArmed(): void {
-      const w = world;
-      if (!w) return;
-      schedulePressureDrop(w, 'run');
-    },
-    onPressureBreak(active: boolean): void {
-      hud.showToast(active
-        ? 'DROP · DAMAGE +50% · AREA/SHOVE +25% · SHOT SPEED +20% · MOVE +15%'
-        : 'DROP COMPLETE · RECHARGING');
-    },
-    onStageMagnet(result: VacuumResult): void {
-      engine.playStageMagnetCue();
-      const total = result.gems + result.notes;
-      hud.showToast(total > 0
-        ? `STAGE MAGNET · ${total} PICKUPS INBOUND`
-        : 'STAGE MAGNET · FLOOR CLEAR');
-    },
-    onVenueChanged(venue: string): void {
-      updateArenaVenue(venue);
     },
     onMilestone(id: string): void {
       hud.showToast(`MILESTONE · ${id.replace(/([A-Z])/g, ' $1').toUpperCase()}`);
@@ -569,25 +547,6 @@ export async function bootGame(
       hud.renderBand(w.tiers, undefined, undefined, undefined, w.evolved);
       hud.showToast(`EVOLVED · ${evolution.name}`);
     },
-    onPressureArmed(): void {
-      const w = world;
-      if (w) schedulePressureDrop(w, 'sandbox');
-    },
-    onPressureBreak(active: boolean): void {
-      hud.showToast(active
-        ? 'DROP · DAMAGE +50% · AREA/SHOVE +25% · SHOT SPEED +20% · MOVE +15%'
-        : 'DROP COMPLETE · RECHARGING');
-    },
-    onStageMagnet(result: VacuumResult): void {
-      engine.playStageMagnetCue();
-      const total = result.gems + result.notes;
-      hud.showToast(total > 0
-        ? `STAGE MAGNET · ${total} PICKUPS INBOUND`
-        : 'STAGE MAGNET · FLOOR CLEAR');
-    },
-    onVenueChanged(venue: string): void {
-      updateArenaVenue(venue);
-    },
     onMilestone(id: string): void {
       hud.showToast(`MILESTONE · ${id.replace(/([A-Z])/g, ' $1').toUpperCase()}`);
     },
@@ -617,12 +576,13 @@ export async function bootGame(
     view = null;
     world = null;
     resetDeactivations(); // new run starts with every instrument active
+    engine.clock.stop();
     engine.clearBarQueue();
     engine.resetEvolutionMixes();
     for (const role of ROLES) engine.setVoiceEnabled(role, false);
   }
 
-  function startRun(startingKit: Role, mode: AutoMoveMode = 'off'): void {
+  function startRun(mode: AutoMoveMode = 'off'): void {
     resetWorld();
     // Auto-move hands movement to a kiter or gem-hungry greedy mode;
     // manual keeps the keyboard/joystick.
@@ -631,7 +591,7 @@ export async function bootGame(
     const w: RunWorld = new RunWorld(app.screen, events, {
       control: () => playerControl(w),
       startingItem: meta.state.startItem,
-      unlockedVenues: meta.state.unlockedVenues,
+      awaitingStartingWeapon: true,
       secondWind: meta.state.secondWind,
       headlinerGold: meta.hasGoldPalette(),
     });
@@ -641,17 +601,15 @@ export async function bootGame(
     w.powerMul = SOUNDSET.powerMul;
     view = new RunView(w, app.screen);
     app.stage.addChild(view.stage);
-    void engine.setAudioSet('midnight-warehouse');
-    engine.setVoiceTier(startingKit, 1);
-    engine.setVoiceEnabled(startingKit, true);
-    w.addWeapon(startingKit, 1);
+    void engine.setAudioSet('neon-crypt');
     hud.showHud(true);
-    pauseButton.style.display = '';
+    // Pause becomes available only after the opening weapon starts the clock.
+    pauseButton.style.display = 'none';
     hud.renderBand(w.tiers, undefined, undefined, undefined, w.evolved);
     state = 'run';
     syncTimeScaleControl(); // arm the timeScale slider for the live run
     void engine.ctx.resume();
-    engine.clock.start();
+    beginStartingWeaponSelection(w);
   }
 
   function startSandbox(): void {
@@ -660,14 +618,13 @@ export async function bootGame(
       scripted: false,
       rng: mulberry32(0x5eed),
       control: () => playerControl(w),
-      unlockedVenues: VENUE_IDS,
     });
     world = w;
     w.powerMul = SOUNDSET.powerMul;
     w.invincible = true;
     view = new RunView(w, app.screen);
     app.stage.addChild(view.stage);
-    void engine.setAudioSet(VENUE_AUDIO_SET.alley);
+    void engine.setAudioSet('neon-crypt');
     sandboxPanel = mountSandboxPanel(root, engine, w, {
       onLoadout: () => {
         hud.renderBand(w.tiers, undefined, deactivatedRoles, pendingRoles, w.evolved);
@@ -713,7 +670,6 @@ export async function bootGame(
       damageByRole: world.damageByRole,
       killsByRole: world.killsByRole,
       evolutionsByRole: world.evolutionsByRole,
-      venuesVisited: [...world.venuesVisited],
     });
     hud.showEnd(
       false,
@@ -902,11 +858,6 @@ export async function bootGame(
       hud.setRunInfo(
         w.items,
         w.evolved,
-        w.pressureHeat,
-        w.pressureState,
-        w.pressureDropBar,
-        w.venue,
-        w.venueChapter,
         rerollsLeft,
         w.notesCollected,
       );
@@ -915,7 +866,7 @@ export async function bootGame(
       const second = w.timeS - minute * 60;
       if (state === 'run' && second >= 57 && lastWarningMinute !== minute) {
         lastWarningMinute = minute;
-        hud.showToast('PRESSURE RISES IN 3');
+        hud.showToast('ENEMIES SCALE IN 3');
       }
     }
     if (trackOverlayEl.style.display !== 'none') trackOverlay.tick();

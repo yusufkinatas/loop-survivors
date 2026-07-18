@@ -7,11 +7,37 @@ import { type Kit, type Role } from '../audio/kits';
 import { SLOTS, SLOT_LABEL, ownerOfSlot, supportedRoster } from './band';
 import { EVOLUTION_BY_ROLE, ITEM_IDS, ITEMS, type ItemId } from './items';
 import type { MetaStore, RunSettlement } from './meta';
-import { VENUES, isVenueId } from './tour';
 
 import { TIER_COUNT } from '../audio/charts';
 /** Tier numerals used by the band rack. */
 export const TIER_NUMERALS = ['I', 'II', 'III', 'IV'];
+
+type HudPixelIcon = ItemId |
+  'heart' | 'xp' | 'note' | 'level' | 'pause' |
+  'reroll' | 'shop' | 'evolution' | 'weapon-pedestal' | 'enemy-skull';
+
+const HUD_PIXEL_ICON_INDEX: Record<HudPixelIcon, number> = {
+  highTops: 0,
+  fastForward: 1,
+  needleTips: 2,
+  mirrorball: 3,
+  wideLens: 4,
+  heavyAmp: 5,
+  extensionCable: 6,
+  magnetLanyard: 7,
+  paddedJacket: 8,
+  recoveryTape: 9,
+  heart: 10,
+  xp: 11,
+  note: 12,
+  level: 13,
+  pause: 14,
+  reroll: 15,
+  shop: 16,
+  evolution: 17,
+  'weapon-pedestal': 18,
+  'enemy-skull': 19,
+};
 
 export interface DebugAction {
   label: string;
@@ -37,13 +63,6 @@ export class Hud {
   private toastStack: HTMLElement;
   private rack: HTMLElement;
   private itemRack: HTMLElement;
-  private pressureMeter: HTMLElement;
-  private pressureFill: HTMLElement;
-  private pressureLabel: HTMLElement;
-  private pressureSegments: HTMLElement[] = [];
-  private lastPressureState = '';
-  private lastPressureDropBar = 0;
-  private venueLabel: HTMLElement;
   private rerollButton: HTMLButtonElement;
   private runInfoKey = '';
   private screen: HTMLElement | null = null;
@@ -61,21 +80,22 @@ export class Hud {
     this.bar = el('div', 'hud', root);
     const top = el('div', 'hud-top', this.bar);
     this.timer = el('span', 'hud-timer', top, '0:00');
-    this.levelEl = el('span', 'hud-level', top, 'LV 1');
-    this.venueLabel = el('span', 'hud-venue', top, 'NEON ALLEY');
-    this.noteEl = el('span', 'hud-notes', top, '♫ 0');
+    const levelChip = el('span', 'hud-level', top);
+    pixelIcon(levelChip, 'level', 'hud-status-icon');
+    this.levelEl = el('span', 'hud-level-value', levelChip, 'LV 1');
+    const noteChip = el('span', 'hud-notes', top);
+    pixelIcon(noteChip, 'note', 'hud-status-icon');
+    this.noteEl = el('span', 'hud-note-value', noteChip, '0');
     const hp = el('div', 'meter hp', this.bar);
     this.hpFill = el('div', 'fill', hp);
-    el('span', 'meter-cap', hp, 'HP');
+    const hpCap = el('span', 'meter-cap', hp);
+    pixelIcon(hpCap, 'heart', 'meter-icon');
+    el('span', '', hpCap, 'HP');
     const xp = el('div', 'meter xp', this.bar);
     this.xpFill = el('div', 'fill', xp);
-    this.pressureMeter = el('div', 'meter pressure', this.bar);
-    this.pressureFill = el('div', 'fill', this.pressureMeter);
-    const pressureSegments = el('div', 'pressure-segments', this.pressureMeter);
-    for (let i = 0; i < 4; i++) {
-      this.pressureSegments.push(el('span', 'pressure-segment', pressureSegments));
-    }
-    this.pressureLabel = el('span', 'meter-cap pressure-cap', this.pressureMeter, 'PRESSURE 0%');
+    const xpCap = el('span', 'meter-cap', xp);
+    pixelIcon(xpCap, 'xp', 'meter-icon');
+    el('span', '', xpCap, 'XP');
     this.bar.style.display = 'none';
 
     this.flash = el('div', 'hit-flash', root);
@@ -106,61 +126,17 @@ export class Hud {
   setRunInfo(
     items: ReadonlyMap<ItemId, number>,
     evolved: ReadonlySet<Role>,
-    pressureHeat: number,
-    pressureState: string,
-    pressureDropBar: number,
-    venue: string,
-    chapter: number,
     rerolls: number,
     notesCollected: number,
   ): void {
     const itemPart = [...items].map(([id, level]) => `${id}:${level}`).join('|');
     const evolvedPart = [...evolved].join('|');
-    const dropBar = Math.max(0, Math.min(4, Math.floor(pressureDropBar)));
-    const key = `${itemPart}/${evolvedPart}/${Math.round(pressureHeat)}/${pressureState}:${dropBar}/${venue}/${chapter}/${rerolls}/${notesCollected}`;
+    const key = `${itemPart}/${evolvedPart}/${rerolls}/${notesCollected}`;
     if (key === this.runInfoKey) return;
     this.runInfoKey = key;
-    const venueName = isVenueId(venue) ? VENUES[venue].name : venue.replace(/([A-Z])/g, ' $1');
-    this.venueLabel.textContent = `${venueName.toUpperCase()} · SET ${chapter + 1}`;
-    const isReady = pressureState === 'armed';
-    const isDrop = pressureState === 'drop';
-    const pressureChanged = pressureState !== this.lastPressureState ||
-      (isDrop && dropBar !== this.lastPressureDropBar);
-    const label = isDrop
-      ? `DROP ${Math.max(1, dropBar)}/4 · POWER MODE`
-      : isReady
-        ? 'DROP READY · NEXT PHRASE'
-        : `PRESSURE ${Math.round(pressureHeat)}%`;
-    this.pressureFill.style.width = `${isReady || isDrop ? 100 : Math.max(0, Math.min(100, pressureHeat))}%`;
-    this.pressureLabel.textContent = label;
-    this.pressureMeter.setAttribute('aria-label', isDrop
-      ? `${label}; damage plus 50 percent, area and shove plus 25 percent, ` +
-        'projectile speed plus 20 percent, movement plus 15 percent'
-      : label);
-    this.pressureMeter.classList.toggle('ready', isReady);
-    this.pressureMeter.classList.toggle('drop', isDrop);
-    this.pressureFill.classList.toggle('ready', isReady);
-    this.pressureFill.classList.toggle('drop', isDrop);
-    this.pressureLabel.classList.toggle('energized', isReady || isDrop);
-    for (let i = 0; i < this.pressureSegments.length; i++) {
-      const segment = this.pressureSegments[i];
-      const bar = i + 1;
-      segment.classList.toggle('ready', isReady);
-      segment.classList.toggle('on', isDrop && bar <= Math.max(1, dropBar));
-      segment.classList.toggle('current', isDrop && bar === Math.max(1, dropBar));
-    }
-    if (pressureChanged && (isReady || isDrop)) {
-      this.pressureMeter.classList.remove('phase-hit');
-      // Restart one short phase/bar hit; active Drop styling itself is static,
-      // so the HUD never becomes a permanent full-screen strobe.
-      void this.pressureMeter.offsetWidth;
-      this.pressureMeter.classList.add('phase-hit');
-    }
-    this.lastPressureState = pressureState;
-    this.lastPressureDropBar = dropBar;
     this.rerollButton.textContent = `REROLL ×${rerolls}`;
     this.rerollButton.disabled = rerolls <= 0;
-    this.noteEl.textContent = `♫ ${notesCollected}`;
+    this.noteEl.textContent = String(notesCollected);
     this.itemRack.replaceChildren();
     for (let slot = 0; slot < 6; slot++) {
       const entry = [...items][slot];
@@ -172,7 +148,7 @@ export class Hud {
       const [id, level] = entry;
       const item = ITEMS[id];
       socket.style.setProperty('--item-color', `#${item.color.toString(16).padStart(6, '0')}`);
-      el('span', 'item-glyph', socket, item.glyph);
+      pixelIcon(socket, id, 'item-glyph');
       el('span', 'item-name', socket, item.shortName);
       el('span', 'item-tier', socket, String(level));
       const itemSummary = `${item.name} ${level}: ${item.levelLines[level - 1]}. ${item.description}`;
@@ -199,7 +175,7 @@ export class Hud {
       const item = ITEMS[id];
       const row = el('div', 'pause-item', grid);
       row.style.setProperty('--item-color', `#${item.color.toString(16).padStart(6, '0')}`);
-      el('span', 'pause-item-glyph', row, item.glyph);
+      pixelIcon(row, id, 'pause-item-glyph');
       const copy = el('div', 'pause-item-copy', row);
       el('strong', '', copy, `${item.name} · LV ${level}`);
       el('span', '', copy, item.levelLines[level - 1]);
@@ -324,10 +300,9 @@ export class Hud {
     }
   }
 
-  /** Start screen: every run opens on the kick at tier 1 (non-negotiable for
-   *  now). Runs start manual; auto-move is an in-game toggle (B hotkey). */
+  /** Start screen. Every round begins with a physical three-weapon choice. */
   showStart(
-    onStart: (role: Role) => void,
+    onStart: () => void,
     onSandbox: () => void,
     meta?: MetaStore,
     shopOpen = false,
@@ -338,20 +313,22 @@ export class Hud {
     const hero = el('div', 'start-hero', s);
     const art = document.createElement('img');
     art.className = 'title-art';
-    art.src = '/art/soundwood-title.png';
-    art.alt = 'A neon pixel-art DJ stage surrounded by strange signal creatures in the Soundwood';
+    art.src = '/art/pixel/title-banner.png';
+    art.alt = 'A moonlit pixel-art crypt with the hero, monsters, braziers, and ancient stonework';
     hero.appendChild(art);
     const title = el('div', 'title-lockup', hero);
-    el('span', 'eyebrow', title, 'THE INFINITE NIGHT TOUR');
+    el('span', 'eyebrow', title, 'THE NEON CRYPT');
     el('h1', '', title, 'LOOP SURVIVORS');
-    el('p', 'sub', title, 'Build the track. Draw the arena. Survive until the crowd wins.');
+    el('p', 'sub', title, 'Choose your first weapon. Build the track. Survive the endless crypt.');
 
     if (meta) {
       const profile = el('div', 'career-panel', s);
       const collectionProgress = meta.collection();
       const head = el('div', 'career-head', profile);
       el('strong', 'career-rank', head, 'AFTERHOURS COLLECTION');
-      el('span', 'career-rep', head, `♫ ${meta.state.notes} MUSIC NOTES`);
+      const careerRep = el('span', 'career-rep', head);
+      pixelIcon(careerRep, 'note', 'hud-status-icon');
+      el('span', '', careerRep, `${meta.state.notes} MUSIC NOTES`);
       const bar = el('div', 'rank-meter', profile);
       const fill = el('div', 'rank-meter-fill', bar);
       fill.style.width = `${collectionProgress.ratio * 100}%`;
@@ -364,12 +341,11 @@ export class Hud {
         ? 'Every shelf of the Afterhours Shop is yours.'
         : 'Defeat The Hush, collect its music notes, then choose what unlocks next.');
       el('span', 'reward-copy', rewards,
-        'Collected notes bank when the set ends. Shop purchases unlock new instruments, passives, venues, and perks.');
+        'Collected notes bank when the round ends. Shop purchases unlock new weapons, passives, and perks.');
 
       const collection = el('div', 'collection-strip', profile);
       el('span', '', collection, `${meta.state.unlockedWeapons.length}/9 WEAPONS`);
       el('span', '', collection, `${meta.state.unlockedItems.length}/${ITEM_IDS.length} PASSIVES`);
-      el('span', '', collection, `${meta.state.unlockedVenues.length}/6 VENUES`);
       el('span', '', collection, `${meta.state.rerolls} REROLLS`);
 
       if (meta.hasPurchase('startItem')) {
@@ -388,8 +364,9 @@ export class Hud {
           };
         for (const id of meta.state.unlockedItems) {
           const item = ITEMS[id];
-          const button = el('button', `loadout-chip ${meta.state.startItem === id ? 'selected' : ''}`, choices,
-            `${item.glyph} ${item.name}`) as HTMLButtonElement;
+          const button = el('button', `loadout-chip ${meta.state.startItem === id ? 'selected' : ''}`, choices) as HTMLButtonElement;
+          pixelIcon(button, id, 'loadout-icon');
+          el('span', '', button, item.name);
             button.onclick = () => {
               meta.selectStartItem(id);
               this.showStart(onStart, onSandbox, meta, shopOpen, s.scrollTop);
@@ -417,7 +394,9 @@ export class Hud {
       el('span', 'eyebrow', shopTitle, 'SPEND MUSIC NOTES');
       el('strong', '', shopTitle, 'AFTERHOURS SHOP');
       const shopHeadActions = el('div', 'shop-head-actions', shopHead);
-      el('span', 'shop-wallet', shopHeadActions, `♫ ${meta.state.notes}`);
+      const wallet = el('span', 'shop-wallet', shopHeadActions);
+      pixelIcon(wallet, 'note', 'hud-status-icon');
+      el('span', '', wallet, String(meta.state.notes));
       const shopClose = el('button', 'shop-close', shopHeadActions, 'CLOSE SHOP') as HTMLButtonElement;
       const shopGrid = el('div', 'shop-grid', shop);
       for (const status of meta.shop()) {
@@ -432,7 +411,13 @@ export class Hud {
         const card = el('article', `shop-card ${stateClass}`, shopGrid);
         const cardTop = el('div', 'shop-card-top', card);
         el('span', 'shop-kind', cardTop, offer.kind.toUpperCase());
-        el('span', 'shop-cost', cardTop, status.purchased ? 'OWNED' : `♫ ${offer.cost}`);
+        const cost = el('span', 'shop-cost', cardTop);
+        if (status.purchased) {
+          cost.textContent = 'OWNED';
+        } else {
+          pixelIcon(cost, 'note', 'shop-note-icon');
+          el('span', '', cost, String(offer.cost));
+        }
         el('strong', 'shop-name', card, offer.name);
         el('span', 'shop-copy', card, offer.description);
         const buy = el('button', 'shop-buy', card, status.purchased
@@ -465,13 +450,13 @@ export class Hud {
       };
     }
 
-    const startBtn = el('button', 'start-btn', s, 'ENTER THE SOUNDWOOD');
+    const startBtn = el('button', 'start-btn', s, 'ENTER THE NEON CRYPT');
     startBtn.onclick = () => {
       this.closeScreen();
-      onStart('kick');
+      onStart();
     };
     el('p', 'start-hint', s,
-      'WASD / arrow keys / touch to move · collect blue XP and gold music notes · rare Stage Magnets vacuum the visible floor · walk onto reward pedestals · R rerolls');
+      'WASD / arrow keys / touch to move · choose one of three opening weapons · collect crystal XP and gold music notes · walk onto reward pedestals · R rerolls');
     // Below the primary CTA, two menu buttons: sandbox launches directly,
     // experiments is a disclosure for the standalone playtest surfaces (boss
     // fights, full tracks, rehearsal room — mirrors src/experiments/).
@@ -560,7 +545,6 @@ export class Hud {
       for (const [label, value] of [
         ['COLLECTION', `${settlement.collection.owned} / ${settlement.collection.total}`],
         ['NEW MILESTONES', String(settlement.newMilestones.length)],
-        ['NEW VENUES SEEN', String(settlement.newVenues.length)],
       ] as const) {
         const row = el('div', 'rep-row', breakdown);
         el('span', '', row, label);
@@ -580,7 +564,7 @@ export class Hud {
       }
       const next = el('div', 'next-reward end-next', rep);
       el('span', 'eyebrow', next, settlement.collection.complete
-        ? 'FULL TOUR COLLECTION'
+        ? 'FULL COLLECTION'
         : 'YOUR NEXT UNLOCK IS YOUR CHOICE');
       el('strong', '', next, settlement.collection.complete
         ? 'The Afterhours Shop is sold out.'
@@ -628,6 +612,18 @@ function el(tag: string, className: string, parent: HTMLElement, text = ''): HTM
   node.className = className;
   if (text) node.textContent = text;
   parent.appendChild(node);
+  return node;
+}
+
+/** Crop a frame from the committed 512px UI atlas at an exact 4:1 ratio. */
+function pixelIcon(parent: HTMLElement, id: HudPixelIcon, className = ''): HTMLElement {
+  const index = HUD_PIXEL_ICON_INDEX[id];
+  const column = index % 5;
+  const row = Math.floor(index / 5);
+  const node = el('span', `pixel-ui-icon ${className}`.trim(), parent);
+  node.style.setProperty('--pixel-icon-x', `${-(8 + column * 100) / 4}px`);
+  node.style.setProperty('--pixel-icon-y', `${-(8 + row * 100) / 4}px`);
+  node.setAttribute('aria-hidden', 'true');
   return node;
 }
 

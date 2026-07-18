@@ -1,174 +1,252 @@
 # Loop Survivors: Design Intent
 
-This document describes the game and the rules it obeys. It is intent, not
-status: what the design is trying to be, and the constraints that settle
-arguments about how to build it. For what exists right now, read the code and
-the git history.
+This document describes the game and the rules it obeys. It is the design
+contract used to settle implementation decisions. For a concise description of
+everything a player can currently encounter, read the
+[Neon Crypt Field Guide](field-guide.md).
 
-> **Current player reference:** read
-> [the Infinite Night Field Guide](field-guide.md) for every live system, passive,
-> evolution recipe, venue, enemy, audio palette, and Sandbox tab.
+## The game in one sentence
 
-## The Game in One Sentence
+A survivors-like in which every weapon is an instrument, every automatic
+attack adds to the track, and every run ends only when an endlessly escalating
+dark-fantasy horde finally overwhelms the player.
 
-Vampire Survivors, but the weapons are sounds and a good build makes a track.
+## Pillars
 
-The player never touches music theory. Their gameplay decisions shape the
-music, and the system guarantees the result always sounds decent.
+1. **The things that make sounds are the weapons.** One scheduled trigger
+   produces both the audible hit and its gameplay attack.
+2. **The system owns the music theory.** The player chooses combat behavior;
+   the game keeps the notes and timing compatible. Player-facing copy describes
+   what an attack does, not keys, scales, or production terminology.
+3. **Muted, it is still a good survivors-like.** Movement, targeting, enemy
+   reads, build decisions, and combat feedback must work without audio.
+4. **Combinations over content mass.** A small catalog of strongly different
+   weapons and passives should create more depth than many interchangeable
+   percentage upgrades.
+5. **Every run is endless.** There is no victory timer. Every minute raises the
+   threat, and enemy health and contact damage have no ceiling.
+6. **Career progress expands choices, not permanent raw power.** Music notes buy
+   a finite set of authored weapons, passives, perks, and cosmetics. Nothing is
+   awarded automatically by an invisible rank.
+7. **The Neon Crypt is genuine pixel art.** Actors, attacks, pickups, effects,
+   and icons use coherent raster sprites with hard transparency,
+   nearest-neighbor sampling, integer-friendly scale, and readable silhouettes.
 
-## Pillars (rules that settle future arguments)
+Deliberately out of scope for v1: recording, rendering, or sharing a completed
+track as a separate artifact.
 
-1. **The things that make sounds are the weapons.**
-2. **The system owns the theory.** No player choice can make the mix bad.
-   Nothing the player sees is stated in music-theory terms — never keys,
-   scales, or BPM. Player-facing language is about feel.
-3. **Muted, it's still a good survivors-like.** Music multiplies a working
-   game, it never excuses a broken one. A muted run has to hold up on its own.
-4. **Combinations over volume.** Depth comes from systems interacting, not
-   from content mass.
-5. **A run ends when The Hush overwhelms the stage.** There is no victory
-   timer. Threat rises at every minute mark forever, with authored opening acts
-   flowing into a procedural tour that must eventually overwhelm the player.
-6. **Career progress favors expression over stat grind.** Players collect
-   music notes from enemies and choose weapons, passive items, venues, and a
-   few authored perks in the Afterhours Shop. Nothing unlocks automatically,
-   and the shop never becomes an uncapped treadmill of permanent damage,
-   health, or speed.
+## Round lifecycle
 
-Cut, deliberately: a shareable per-run track artifact. No recording,
-rendering, or sharing systems in v1.
+### 1. Dedicated starting-weapon choice
 
-## Run Shape
+A normal round creates the player at level 1 with zero experience and no
+weapon. The game samples up to three distinct weapons from the unlocked live
+catalog and places their labeled pickups around the player. This is its own
+opening state, not a fake level-up:
 
-The first eight minutes are a deliberately authored opening act. The enemy
-faction is **The Hush**: living interference formed from static, cable, broken
-stage equipment, light, and Soundwood growth rather than borrowed fantasy
-monsters. After the opening, an endless director recombines Hush families,
-formation patterns, population pressure, Amped variants, and five-minute
-Headliner encounters. Every minute is a visible threat step: enemy health,
-damage, speed, rewards, density, and a small tempo lift scale together. Scaling
-is slow enough that a strong build can keep finding a new ceiling, but uncapped
-health and damage ensure every run eventually ends.
+- movement remains responsive, but the combat clock, enemies, recovery, and
+  progression do not advance;
+- only weapons can appear;
+- collecting one installs it at tier I and removes every other opening pickup;
+- the choice grants no experience and does not change the player's level;
+- positions are clamped inside the visible play area, and the enemy director
+  has not started, so every choice is visible and reachable;
+- a profile with fewer than three live weapons receives however many exist;
+  malformed legacy data with none receives one supported fallback weapon.
 
-Every five minutes the **Infinite Night Tour** moves to a new venue. Before the
-transition, the player walks through one of two stage gates; each offers a
-legible benefit and danger. Venues change the arena art, sampled drum palette,
-and a bounded combat rule without rewriting the build's composition.
+The selected weapon starts the clock and releases combat. No normal round may
+advance without a weapon.
 
-Two run systems reward movement and mounting danger:
+### 2. Authored opening act
 
-- **Neon Loop** remembers the player's path at the end of each minute, then
-  turns it into a temporary glowing rail that slows enemies and reflects moving
-  attacks.
-- **Pressure Drop** fills from close calls and close-range kills. At 100% it
-  becomes ready, then starts on the next complete four-bar phrase—the next
-  block of four repeating musical measures. An opening shove clears breathing
-  room, and all four bars add +50% damage, +25% attack area and knockback,
-  +20% projectile speed, and +15% movement speed. The track and normal attacks
-  continue throughout; the Drop is a purely positive power window.
+Minutes 0–7 use authored wave rows, population floors, fixed-direction swarms,
+temporary closing rings, and boss events. This teaches the Neon Crypt roster in
+controlled combinations before the procedural director takes over at 8:00.
 
-A rare one-use **Stage Magnet** can fall from a defeated enemy. Walking onto
-it vacuums every freely collectible experience gem and music note currently
-visible, while decision-bearing reward pedestals, evolution cases, and route
-gates remain deliberate walk-to-choose interactions.
+### 3. Endless director
 
-## Build Progression
+At every whole minute, newly spawned enemies lock in that minute's scale and a
+visible formation announces the step. The track also becomes slightly faster.
+The rules are deterministic and uncapped where they must eventually win:
 
-A build has weapons and up to six passive items. Passives change recognizable
-combat verbs—movement speed, projectile speed, piercing, wall bounces, size,
-damage, duration, pickup reach, protection, and slow regeneration—so
-combinations are useful even with the sound muted. Utility passives may stand
-alone when the tradeoff is interesting; a passive is not required to be an
-evolution ingredient. Once a weapon and its paired passive are both maxed, the
-next Headliner drops an evolution case. The evolved weapon receives a new name,
-visuals, audio processing, damage profile, and attack pattern; evolution is a
-qualitative transformation rather than another percentage level.
+| Value | Minute rule |
+| --- | --- |
+| Enemy health | `1.08 ^ minute` |
+| Contact damage | `1.025 ^ minute` |
+| Movement speed | `1 + 0.0075 × minute`, capped at `1.30` |
+| Experience value | `1 + 0.015 × minute` |
+| Track speed | +0.2% per minute, capped at +8% |
+| Headliner health | +40% of its already-scaled health per completed five-minute step |
 
-After all normal build slots and levels are complete, level-ups become Encore
-picks. Encore bonuses are small, diminishing run-only improvements, preventing
-dead rewards without displacing the authored weapon and item balance.
+Minutes 8–14 each have an authored endless roster. Minute 15 onward combines
+adjacent roster rows cyclically. The population floor rises toward 360, spawn
+intervals slowly shorten toward 0.22 seconds, and every five-minute boundary
+adds Headliners. One appears at first; the count reaches two at minute 15,
+three at minute 30, and four at minute 45 and beyond.
 
-## Meta Progression
+From minute 12, ordinary enemies can spawn as gold-marked **Amped** variants.
+Their chance rises by 1.5 percentage points per minute to an 18% ceiling. They
+have 2.2 times normal health, deal 25% more contact damage, give three times the
+experience, and always leave music-note currency. Speed remains capped for
+readability; health and damage do not, so death is inevitable rather than
+scripted.
 
-Enemies shed collectible music notes during a run. Notes only enter the career
-wallet when the run ends, then the player spends them in the Afterhours Shop.
-Purchases unlock new choice-space: instruments, passive items, venues,
-rerolls, an optional starting passive, one 30%-health Second Wind, and a final
-cosmetic palette. Later shelves open after enough earlier purchases, but no
-survival result, kill total, or hidden rank grants an unlock automatically.
-The save is versioned, validated at load, and stored locally. Purchases are
-finite and authored; there are no repeatable permanent damage, health, or
-speed upgrades.
+### 4. Settlement
 
-## Core Architecture
+Death ends the round. Collected music notes, survival time, kills, Headliners,
+milestones, weapon damage, weapon kills, and evolutions are committed to the
+local career profile. Uncollected floor currency is not banked.
 
-**The dividing rule: the stage conducts the gameplay, the build alone makes
-the music.**
+## Combat rewards and build rules
 
-- The stage script is time and level driven. It owns spawn density, wave
-  pressure, and boss timing. It carries no musical meaning and does not care
-  how successful the build is. Bosses can meet a half-baked build or a monster.
-- The build alone determines the player's music. The stage may act on the
-  music only as a performer or conductor, never as a composer: it gets two
-  narrow hooks (modulating global parameters like tempo, and injecting its own
-  voice such as a boss instrument alongside the mix) and can never touch the
-  build's charts, notes, or arrangement. The "I made a full track" feeling
-  emerges because builds grow across a run: lone starting instrument,
-  thickening arrangement, full sound. The music system is a pure function of
-  build and grid; the stage's two hooks are reserved, not forbidden.
+Experience gems only advance the current round. A level-up rolls up to three
+eligible physical rewards, clears breathing room around the player, briefly
+slows the action and lowers weapon volume, then asks the player to walk into
+one pickup. Item pickups show the exact next-tier effect in one line.
 
-**Coupling (Model A).** Weapons fire on the musical grid. One trigger is one
-event with two outputs: damage in the world and a sound in the mix. The
-sequencer that decides when each weapon triggers is fire control and arranger
-at once. It is the main engine of the game.
+Ordinary rewards can:
 
-**Weapons as sound.**
+- hire or improve one of nine live weapons through tier IV;
+- add or improve one of ten passive items through level five;
+- offer capped, run-only Encore bonuses after the finite build pool is empty.
 
-- Each weapon is a distinct gameplay archetype (aura pulses, piercing bolts,
-  sprays, melee arcs, orbiters, homing seekers, thrown zones, and so on), so a
-  muted build already plays like a varied survivors-like. All weapons draw from
-  one shared soundset at a time — one coherent voicing of the instrument
-  catalog and one set of hand-authored patterns. The venue may rotate among
-  curated drum palettes; this changes texture, not notes, charts, or build
-  power, and is never presented as a player theory decision.
-- Atomic unit: a **sound kit** plus a **music chart**. A kit is a small family
-  of related samples per weapon (soft and hard variants, open and closed,
-  multiple notes for pitched instruments). A chart says when, which variant,
-  how hard, and for pitched weapons which note — so a pitched chart is a melody.
-- Charts are AI-drafted and approved by the developer's ear.
-- Variation is guaranteed at three layers: free per-hit engine nudges to
-  loudness and pitch, baked kit variants, and progression-driven change (richer
-  charts, new notes, new voices, changed character).
+Each of seven band positions holds at most one weapon, so Snare competes with
+Clap and Lead competes with Bell. A build also holds at most six passives. The
+first two minutes gently favor an empty Beat or Snap position, and from player
+level 5 the reward roll includes a passive while fewer than two are owned,
+provided an eligible passive exists. These nudges prevent brittle starts
+without choosing the build for the player.
 
-**The band cap.** Instruments live in typed band-position slots. A build holds
-at most one instrument per slot, and picks are permanent, so a full build is a
-band — one voice per slot, each in its own frequency lane and rhythmic job.
-Filling a slot retires that slot's other candidates from the pick pool. This is
-the structural fix for cacophony by accumulation and role collision: it is what
-keeps a full build sounding like a track instead of a pile of voices. (The
-exact slot count and catalog size are implementation details; read the code.)
+Weapon changes land on the next heard musical bar so sound and gameplay change
+together. Passive effects apply immediately. Rerolls affect ordinary rewards,
+not opening weapons or evolution decisions.
 
-**Coherence skeleton.** Each run locks its set of allowed notes at the start.
-Tempo is a live variable that design events may move. Because content is single
-sounds rather than baked clips, tempo changes are nearly free — no
-time-stretching.
+## Weapons, passives, and evolutions
 
-**Tempo and damage.** Because charts fire on the grid, raising tempo
-mathematically raises trigger rate and therefore damage throughput. This is
-acknowledged, not fought: tempo is one damage lever, and per-trigger damage is
-the other. Slow, hard-hitting builds are a legitimate archetype, so stage
-pressure is tuned against a tempo range, never a constant, and slow builds stay
-competitive through per-trigger damage rather than special-case compensation.
+The live weapon set is Kick, Snare, Hi-hat, Bass, Chord, Clap, Arp, Lead, and
+Bell. Their base behaviors cover facing strips, piercing shots, chip sprays,
+wide waves, thrown slowing zones, close slashes, orbiters, homing seekers, and
+shattering projectiles.
 
-## Tech Stack
+The passive set is High-Tops, Fast Forward, Needle Tips, Mirrorball, Wide Lens,
+Heavy Amp, Extension Cable, Magnet Lanyard, Padded Jacket, and Recovery Tape.
+They modify movement, projectile speed, piercing, boundary bounces, attack
+area, damage and shove, duration, pickup reach, health and armor, or health
+regeneration. Recovery Tape intentionally has no evolution recipe; a useful
+passive does not need to be a recipe tax.
 
-- **TypeScript + PixiJS v8** for rendering. Chosen after research: two-plus
-  years inside AI training data on a stable API, official AI agent skills
-  shipped in the npm package, and a particle system built for dynamic hordes.
-  Phaser 4 was the runner-up, rejected because it shipped April 2026, after
-  model training, with breaking changes exactly where thirteen years of Phaser
-  3 priors would mislead an AI coder.
-- **Web Audio directly** for sound. Sample-accurate scheduled playback by
-  specification. The music scheduler is a thin lookahead layer over the audio
-  clock. No middleware, no audio-engine building. Live effect chains are
-  available, so baked-variant versus live-effect stays an open design choice.
+Nine recipes pair every weapon with one maxed passive. A weapon at tier IV and
+its partner at level five becomes eligible, but it changes only when the player
+collects a Headliner's Encore Case. The resulting evolution must change the
+attack pattern, sprite, effects, audio processing, and damage behavior—not just
+raise a multiplier. The complete recipes and exact effects live in the
+[field guide](field-guide.md#weapon-evolutions).
+
+When ordinary build rewards are exhausted, level-ups offer small run-only
+Encore choices: +15 health, +2% damage up to +20%, +2% movement up to +10%, or
++3% attack area up to +15%. Healing remains available after every stat cap.
+
+## Headliners and Encore Cases
+
+Headliners are gold-highlighted bosses placed at five-minute threat steps.
+Their health receives the additional five-minute multiplier described above.
+A defeated Headliner leaves 25 music notes and one deliberate walk-to-collect
+Encore Case.
+
+If one or more recipes are ready, the case presents up to three eligible
+evolutions. Selecting one consumes that case. If no recipe is ready, collection
+immediately restores 15 health. Cases are never swept up by ordinary pickup
+range and cannot be rerolled.
+
+## Neon Crypt enemies and visual language
+
+The roster contains 20 distinct named enemies. Twelve drive the authored
+opening and its events; seventeen participate in endless recipes; the remaining
+special fixtures keep the Sandbox useful for movement, shield, split, charge,
+orbit, boss, and extreme-density testing. Stable simulation identities preserve
+their proven stats and behavior while the player sees the new Neon Crypt names
+and coherent dark-fantasy sprites. The full bestiary is in the
+[field guide](field-guide.md#neon-crypt-bestiary).
+
+The committed pixel-art system uses two transparent PNG atlases:
+
+- a 72-cell gameplay atlas with two-frame player and enemy animations, normal
+  and evolved attacks for all nine weapons, pickups, impacts, explosions, and
+  collection effects;
+- a 20-cell UI atlas with all passive and status/action icons.
+
+Every cell is 96 × 96 pixels. The asset builder removes the chroma background,
+normalizes fully transparent pixels, permits only hard alpha, and validates
+frame borders and mappings. PixiJS forces nearest-neighbor sampling globally.
+Original source boards and licensing are recorded in
+[`public/art/pixel/SOURCE_AND_LICENSE.md`](../public/art/pixel/SOURCE_AND_LICENSE.md).
+
+Visual priority is semantic separation: the player reads first, hostile bodies
+share a family but retain silhouettes, each weapon keeps its identity color,
+experience and currency cannot be confused, and rewards remain legible through
+dense effects.
+
+## Career progression
+
+Enemies leave gold music notes separately from experience. Notes use normal
+pickup movement and enter the wallet only at round settlement. The Afterhours
+Shop contains 15 finite purchases across five collection shelves: four new
+weapons, six new passives, two rerolls, Second Wind, an optional Starting
+Passive, and a cosmetic gold treatment. The base profile already owns five
+weapons and four passives.
+
+Second Wind revives the player once per round at 30% health. Starting Passive
+lets the player choose one unlocked passive to begin at level one; it never
+replaces the dedicated opening weapon choice. The gold treatment changes
+Headliners and evolution presentation without combat power.
+
+The v3 save schema validates every ID and repairs derived unlock state. Older
+profiles migrate forward, preserve live progression, and receive a one-time
+exact-price refund for purchases whose content no longer exists. The career
+never offers repeatable permanent damage, health, or movement upgrades.
+
+## Music architecture
+
+**The stage conducts gameplay; the build alone composes the track.**
+
+- The director owns time, enemy combinations, density, bosses, and the small
+  global tempo rise. It never edits weapon charts or notes.
+- The build determines which voices exist and which four-tier charts fire.
+- A shared allowed-note set keeps pitched weapons compatible.
+- One sequencer trigger is the coupling point for both audio and combat.
+
+The live soundset is a 122-beat-per-minute house arrangement with nine complete
+voice ladders. “House” here means dance music built on a steady four-count
+beat. Instrument sounds are created with Web Audio, with validated CC0 drum
+one-shots layered where available. Hi-hat, Chord, and Arp receive explicit
+channel calibration so dense ticks do not dominate quieter pitched voices.
+Evolution gain changes multiply those calibrated levels instead of replacing
+them.
+
+Because weapon attacks fire on the musical grid, tempo changes affect damage
+through trigger rate. Per-trigger balance and the bounded tempo rise are tuned
+together; slow, heavy attacks and fast, light attacks remain distinct.
+
+## Sandbox contract
+
+The Sandbox uses the real arena with scripted spawning disabled and an
+in-memory career profile. Its three tabs are permanent coverage surfaces:
+
+- **Combat:** exact threat minute and player level, all 20 enemy kinds, a full
+  endless minute wave, a Headliner, invulnerability, and arena clearing.
+- **Build:** every live weapon tier, every passive level, all nine evolution
+  recipes, full-build and clear controls, and a combined-modifier readout.
+- **Career:** isolated note grants, XP and music-note floor fixtures, a mixed
+  pickup field, an Encore Case, and the real gated 15-offer shop.
+
+Sandbox actions must be reversible and must never read or write the player's
+stored career.
+
+## Technology
+
+- **TypeScript and Vite** for the application and build.
+- **PixiJS v8** for atlas rendering, layered effects, and horde-scale display.
+- **Web Audio** for sample-accurate scheduling and live voice processing.
+- **No test framework:** focused TypeScript verification scripts cover pure
+  systems, migrations, starting choices, atlas integrity, and endless recipes;
+  `npm run check`, `npm run build`, and browser inspection remain release gates.

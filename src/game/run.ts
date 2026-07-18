@@ -21,7 +21,6 @@ import {
   MAX_ALIVE_HARD,
   ORBIT_REHIT_S,
   RUN,
-  STAGE_MAGNET,
   SHIELDED,
   SHOVE_S,
   SPLITTER,
@@ -44,7 +43,7 @@ import {
   STAGE_WAVES,
   type StageWave,
 } from './madforest';
-import { mulberry32, type Rng } from './rng';
+import type { Rng } from './rng';
 import { SpatialHash, circlesOverlap } from './spatial';
 import {
   deriveBuildMods,
@@ -54,14 +53,7 @@ import {
   type EvolutionDefinition,
   type ItemId,
 } from './items';
-import {
-  PRESSURE_BREAK_CONFIG,
-  endlessScale,
-  gateOptions,
-  isVenueId,
-  waveRecipe,
-  type VenueId,
-} from './tour';
+import { endlessScale, waveRecipe } from './endless';
 
 /** Roles that emit a per-hit spark on impact. Bounded to low-count roles so
  *  a 500-enemy event frame never floods the fx queue. */
@@ -115,86 +107,6 @@ export function kickStripCenter(
 
 interface Point { x: number; y: number }
 
-function pointLineDistance(point: Point, a: Point, b: Point): number {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const len2 = dx * dx + dy * dy;
-  if (len2 <= 1e-9) return Math.hypot(point.x - a.x, point.y - a.y);
-  const t = Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / len2));
-  return Math.hypot(point.x - (a.x + dx * t), point.y - (a.y + dy * t));
-}
-
-function simplifyPath(points: Point[], tolerance: number, maxSegments: number): Point[] {
-  if (points.length <= 2) return points.slice();
-  const keep = new Uint8Array(points.length);
-  keep[0] = 1;
-  keep[points.length - 1] = 1;
-  const stack: Array<[number, number]> = [[0, points.length - 1]];
-  while (stack.length > 0) {
-    const [first, last] = stack.pop()!;
-    let furthest = -1;
-    let distance = tolerance;
-    for (let i = first + 1; i < last; i++) {
-      const d = pointLineDistance(points[i], points[first], points[last]);
-      if (d > distance) {
-        distance = d;
-        furthest = i;
-      }
-    }
-    if (furthest >= 0) {
-      keep[furthest] = 1;
-      stack.push([first, furthest], [furthest, last]);
-    }
-  }
-  let out = points.filter((_, i) => keep[i] === 1);
-  while (out.length - 1 > maxSegments) {
-    const reduced: Point[] = [out[0]];
-    for (let i = 2; i < out.length - 1; i += 2) reduced.push(out[i]);
-    reduced.push(out[out.length - 1]);
-    out = reduced;
-  }
-  return out;
-}
-
-function orientation(a: Point, b: Point, c: Point): number {
-  return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
-}
-
-function segmentsCross(a: Point, b: Point, c: Point, d: Point): boolean {
-  const abC = orientation(a, b, c);
-  const abD = orientation(a, b, d);
-  const cdA = orientation(c, d, a);
-  const cdB = orientation(c, d, b);
-  return ((abC > 0 && abD < 0) || (abC < 0 && abD > 0)) &&
-    ((cdA > 0 && cdB < 0) || (cdA < 0 && cdB > 0));
-}
-
-function pathCrossesItself(points: Point[]): boolean {
-  for (let i = 0; i < points.length - 1; i++) {
-    for (let j = i + 2; j < points.length - 1; j++) {
-      if (i === 0 && j === points.length - 2) continue;
-      if (segmentsCross(points[i], points[i + 1], points[j], points[j + 1])) return true;
-    }
-  }
-  return false;
-}
-
-function pathLength(points: Point[]): number {
-  let total = 0;
-  for (let i = 1; i < points.length; i++) total += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
-  return total;
-}
-
-function reflectAcrossSegment(vx: number, vy: number, a: Point, b: Point): { x: number; y: number } {
-  const sx = b.x - a.x;
-  const sy = b.y - a.y;
-  const length = Math.hypot(sx, sy) || 1;
-  const nx = -sy / length;
-  const ny = sx / length;
-  const dot = vx * nx + vy * ny;
-  return { x: vx - 2 * dot * nx, y: vy - 2 * dot * ny };
-}
-
 export interface Enemy {
   id: number;
   kind: EnemyKind;
@@ -221,7 +133,6 @@ export interface Enemy {
   dashing: boolean;
   /** Time left under a chord zone's slow. */
   slowT: number;
-  railSlowT: number;
   zoneSlowMul: number;
   /** Weapon knockback: velocity (px/s) and time left being pushed. While
    *  knockT > 0 the enemy rides this vector instead of chasing. */
@@ -255,8 +166,6 @@ export interface Enemy {
   amped: boolean;
   /** Five-minute boss that drops an Encore Case. */
   headliner: boolean;
-  /** Neon Loop crossing cooldown. */
-  railCooldownT: number;
   prevX: number;
   prevY: number;
 }
@@ -291,7 +200,6 @@ export interface Projectile {
   shard: boolean;
   bounces: number;
   bounceRetention: number;
-  railReflections: number;
   evolved: boolean;
   turnRate: number;
   orbitDir: 1 | -1;
@@ -360,30 +268,11 @@ export interface EncoreCase {
   color: number;
 }
 
-export interface NeonRail {
-  points: Array<{ x: number; y: number }>;
-  phase: 'recording' | 'preview' | 'solid';
-  lifeS: number;
-  crossedItself: boolean;
-}
-
-export interface VenueGate {
-  venue: VenueId;
-  x: number;
-  y: number;
-  side: -1 | 1;
-  selected: boolean;
-  benefit: string;
-  danger: string;
-}
-
 export interface Gem {
   x: number;
   y: number;
   xp: number;
   tier: 'blue' | 'green' | 'red';
-  /** Set only by a collected Stage Magnet; later drops remain unaffected. */
-  vacuumed?: boolean;
 }
 
 export interface MusicNotePickup {
@@ -391,26 +280,11 @@ export interface MusicNotePickup {
   y: number;
   value: number;
   tier: 'note' | 'phrase' | 'anthem';
-  /** Set only by a collected Stage Magnet; later drops remain unaffected. */
-  vacuumed?: boolean;
-}
-
-export interface StageMagnetPickup {
-  x: number;
-  y: number;
-  /** Seconds remaining before a missed pickup fades away. */
-  lifeS: number;
-}
-
-export interface VacuumResult {
-  gems: number;
-  notes: number;
 }
 
 /** Fire-and-forget visuals the world requests and the view renders. */
 export type FxEvent =
   | { type: 'ring'; x: number; y: number; radius: number; color: number; dur: number; soft?: boolean }
-  | { type: 'vacuum'; x: number; y: number; radius: number }
   | { type: 'death'; x: number; y: number; radius: number; color: number; elite: boolean }
   | { type: 'whip'; x: number; y: number; side: 1 | -1; area: number; color: number }
   | {
@@ -426,7 +300,7 @@ export type FxEvent =
   | { type: 'spark'; x: number; y: number; color: number; n: number; spread: number }
   | { type: 'slam'; x: number; y: number; radius: number; color: number }
   | { type: 'beam'; x: number; y: number; x2: number; y2: number; width: number; color: number }
-  | { type: 'pressure'; x: number; y: number; color: number; label: string }
+  | { type: 'banner'; x: number; y: number; color: number; label: string }
   | { type: 'evolution'; x: number; y: number; color: number; label: string };
 
 export interface RunEvents {
@@ -436,12 +310,8 @@ export interface RunEvents {
   onHit(): void;
   onMinute?(minute: number): void;
   onEncoreCase?(encore: EncoreCase): void;
-  onPressureArmed?(): void;
-  onPressureBreak?(active: boolean): void;
   onNoteCollected?(value: number, runTotal: number): void;
-  onStageMagnet?(result: VacuumResult): void;
-  onVenueChanged?(venue: string): void;
-  onMilestone?(id: 'first5m' | 'fullBand' | 'firstEvolution' | 'hitlessHeadliner' | 'loopCross' | 'pressureBreak'): void;
+  onMilestone?(id: 'first5m' | 'fullBand' | 'firstEvolution' | 'hitlessHeadliner'): void;
 }
 
 export const KIT_COLORS: Record<Role, number> = {
@@ -466,16 +336,16 @@ export const KIT_COLORS: Record<Role, number> = {
 export interface RunWorldOpts {
   /** False in the sandbox: no stage script, no waves, no victory timer. */
   scripted?: boolean;
+  /** Opt-in production opening gate. While true, only player movement runs;
+   *  combat, enemies, time, and progression wait for beginCombat(). */
+  awaitingStartingWeapon?: boolean;
   /** Optional seeded randomness for deterministic development fixtures. */
   rng?: Rng;
-  /** Independent rare-drop stream; injectable only for deterministic checks. */
-  stageMagnetRng?: Rng;
   /** Movement axis provider (magnitude 0..1). */
   control?: () => { x: number; y: number };
   /** False for non-visual fixtures that do not consume effects. */
   fx?: boolean;
   startingItem?: ItemId;
-  unlockedVenues?: readonly string[];
   secondWind?: boolean;
   /** Headliner Gold shop reward. Cosmetic only; it never changes combat stats. */
   headlinerGold?: boolean;
@@ -507,7 +377,7 @@ export class RunWorld {
   headlinersKilled = 0;
   /** Shop currency physically collected during this run. */
   notesCollected = 0;
-  readonly milestones = new Set<'first5m' | 'fullBand' | 'firstEvolution' | 'hitlessHeadliner' | 'loopCross' | 'pressureBreak'>();
+  readonly milestones = new Set<'first5m' | 'fullBand' | 'firstEvolution' | 'hitlessHeadliner'>();
   invincible = false;
   /** Tempo damage compensation (docs/plan.md, tempo and damage): more triggers
    *  per second means each hits softer, so per-trigger damage is scaled by this
@@ -522,27 +392,13 @@ export class RunWorld {
   readonly zones: Zone[] = [];
   readonly gems: Gem[] = [];
   readonly musicNotes: MusicNotePickup[] = [];
-  readonly stageMagnets: StageMagnetPickup[] = [];
   readonly shockwaves: Shockwave[] = [];
   readonly gravityWells: GravityWell[] = [];
   readonly encoreCases: EncoreCase[] = [];
   private readonly pendingPulses: PendingPulse[] = [];
 
-  /** Surprise-system state is public and renderer-readable. */
-  venue: VenueId = 'alley';
-  venueChapter = 0;
-  venueGates: VenueGate[] = [];
-  venueTransitionT = 0;
-  neonRail: NeonRail | null = null;
-  pressureHeat = 0;
-  pressureState: 'charging' | 'armed' | 'drop' | 'cooldown' = 'charging';
-  /** One-based bar inside the active four-bar Drop; zero outside it. */
-  pressureDropBar = 0;
-  pressureCooldownT = 0;
-  trainLane: { y: number; warningT: number; activeT: number } | null = null;
   secondWindReady = false;
   readonly headlinerGold: boolean;
-  readonly venuesVisited = new Set<VenueId>(['alley']);
 
   private rng: Rng;
   private control: () => { x: number; y: number };
@@ -552,7 +408,7 @@ export class RunWorld {
   private hash = new SpatialHash<Enemy>();
   private queryBuf: Enemy[] = [];
 
-  /** Mad Forest table state. */
+  /** Scripted stage-table state. */
   private waveIdx = -1;
   private eventIdx = 0;
   private currentWave: StageWave | null = null;
@@ -568,13 +424,7 @@ export class RunWorld {
   private overflowGem: Gem | null = null;
   private overflowMusicNote: MusicNotePickup | null = null;
   private noteDropPity = 0;
-  private readonly stageMagnetRng: Rng;
-  private stageMagnetDropPity = 0;
-  private nextStageMagnetDropAt = 0;
   private lastMinute = -1;
-  private lastRecordedRailMinute = -1;
-  private railSamples: Array<{ x: number; y: number }> = [];
-  private railSampleT = 0;
   private headlinerHitTaken = false;
   private clapHealMinute = -1;
   private clapHealThisMinute = 0;
@@ -582,16 +432,6 @@ export class RunWorld {
   private encoreDamageBonus = 0;
   private encoreMoveBonus = 0;
   private encoreAreaBonus = 0;
-  private unlockedVenues: readonly VenueId[];
-  private tourSeed = 0;
-  private lastGateChapter = -1;
-  private pendingVenue: VenueId | null = null;
-  /** Invalidates one queued phrase conductor without touching other musical
-   * actions. Primarily used by the Sandbox's manual Drop controls. */
-  private pressureConductorToken = 0;
-  private lastVenueTransitionChapter = 0;
-  private dawnHealT = 0;
-  private lastTrainCycle = -1;
   private pendingKick: Array<{
     atS: number;
     x: number;
@@ -609,6 +449,7 @@ export class RunWorld {
     hit: Set<Enemy>;
   }> = [];
   private scripted: boolean;
+  private combatStarted: boolean;
 
   constructor(
     view: { width: number; height: number },
@@ -618,13 +459,12 @@ export class RunWorld {
     this.view = view;
     this.events = events;
     this.scripted = opts.scripted ?? true;
+    // Sandbox and existing simulation fixtures remain live by default. The
+    // normal-run shell opts into the dedicated opening selection explicitly.
+    this.combatStarted = !(opts.awaitingStartingWeapon ?? false);
     this.rng = opts.rng ?? Math.random;
-    this.tourSeed = Math.floor(this.rng() * 0x7fffffff);
-    this.stageMagnetRng = opts.stageMagnetRng ?? mulberry32(this.tourSeed ^ 0x4d41474e);
     this.control = opts.control ?? (() => ({ x: 0, y: 0 }));
     this.fx = (opts.fx ?? true) ? [] : null;
-    const validVenues = (opts.unlockedVenues ?? []).filter(isVenueId);
-    this.unlockedVenues = validVenues.length ? validVenues : ['alley', 'warehouse', 'rooftop'];
     if (opts.startingItem) this.items.set(opts.startingItem, 1);
     this.secondWindReady = opts.secondWind ?? false;
     this.headlinerGold = opts.headlinerGold ?? false;
@@ -638,16 +478,24 @@ export class RunWorld {
     return this.projectiles.length;
   }
 
+  get awaitingStartingWeapon(): boolean {
+    return !this.combatStarted;
+  }
+
+  /** Release the opening gate only after a real weapon has been installed. */
+  beginCombat(): boolean {
+    if (this.tiers.size === 0) return false;
+    this.combatStarted = true;
+    return true;
+  }
+
   get buildMods(): BuildMods {
     const mods = deriveBuildMods(this.items);
-    const drop = this.pressureState === 'drop';
     return {
       ...mods,
       damageMul: mods.damageMul * (1 + this.encoreDamageBonus),
-      moveMul: mods.moveMul * (1 + this.encoreMoveBonus) *
-        (drop ? PRESSURE_BREAK_CONFIG.dropMoveMul : 1),
-      areaMul: mods.areaMul * (1 + this.encoreAreaBonus) *
-        (drop ? PRESSURE_BREAK_CONFIG.dropAreaMul : 1),
+      moveMul: mods.moveMul * (1 + this.encoreMoveBonus),
+      areaMul: mods.areaMul * (1 + this.encoreAreaBonus),
     };
   }
 
@@ -713,11 +561,10 @@ export class RunWorld {
     return evolution;
   }
 
-  /** Height-normalized parity camera: the visible world is always 800 units
-   * tall, so movement, colliders, Whip geometry, and spawn/event ellipses keep
-   * the researched proportions at every desktop resolution. */
+  /** Integer camera scale keeps the sprite grid crisp. Ordinary desktop and
+   * mobile windows use 1x; large displays step cleanly to 2x/3x. */
   get zoom(): number {
-    return Math.max(0.01, this.view.height / 800);
+    return Math.max(1, Math.floor(this.view.height / 720));
   }
 
   /** Visible world extent (screen pixels divided by zoom). */
@@ -865,48 +712,6 @@ export class RunWorld {
     this.lastMinute = next - 1;
     this.endlessMinute = -1;
     this.endlessNextSpawnT = this.timeS;
-    this.lastRecordedRailMinute = -1;
-    this.railSamples = [];
-    this.neonRail = null;
-    this.venueGates = [];
-    this.pendingVenue = null;
-    this.lastGateChapter = Math.floor(this.timeS / 300);
-    this.lastVenueTransitionChapter = Math.floor(this.timeS / 300);
-  }
-
-  setSandboxVenue(venue: VenueId): void {
-    this.venue = venue;
-    this.venuesVisited.add(venue);
-    this.venueGates = [];
-    this.pendingVenue = null;
-    this.trainLane = null;
-    this.venueTransitionT = 0.5;
-    this.events.onVenueChanged?.(venue);
-  }
-
-  /** Put the sandbox twenty seconds before the next tour change and open the
-   * real pair of walk-through route gates. Selection and transition continue
-   * through the normal updateVenue path, so this exercises production logic. */
-  installSandboxVenueGate(): void {
-    const chapter = Math.floor(this.timeS / 300);
-    this.timeS = chapter * 300 + 280.01;
-    this.lastGateChapter = chapter - 1;
-    this.lastVenueTransitionChapter = chapter;
-    this.venueGates = [];
-    this.pendingVenue = null;
-    this.updateVenue(0);
-  }
-
-  installSandboxNeonLoop(): void {
-    const points: Array<{ x: number; y: number }> = [];
-    for (let i = 0; i <= 24; i++) {
-      const t = (i / 24) * Math.PI * 2;
-      points.push({
-        x: this.player.x + Math.sin(t) * 190,
-        y: this.player.y + Math.sin(t * 2) * 105,
-      });
-    }
-    this.neonRail = { points, phase: 'solid', lifeS: 12, crossedItself: true };
   }
 
   spawnSandboxWave(minute = Math.floor(this.timeS / 60)): void {
@@ -941,66 +746,7 @@ export class RunWorld {
     };
   }
 
-  /** Open a scoped phrase conductor; later manual controls can invalidate its
-   * queued callbacks without clearing unrelated musical actions. */
-  newPressureConductor(): number {
-    this.pressureConductorToken += 1;
-    return this.pressureConductorToken;
-  }
-
-  pressureConductorIsCurrent(token: number): boolean {
-    return token === this.pressureConductorToken;
-  }
-
-  cancelPressureConductor(): void {
-    this.pressureConductorToken += 1;
-  }
-
-  /** Start the earned four-bar power phrase. No attack is withheld or slowed. */
-  beginPressureDrop(): void {
-    if (this.pressureState !== 'armed') return;
-    this.pressureState = 'drop';
-    this.pressureDropBar = 0;
-    this.markMilestone('pressureBreak');
-    this.events.onPressureBreak?.(true);
-    this.shoveEnemiesOut(
-      this.player.x,
-      this.player.y,
-      PRESSURE_BREAK_CONFIG.openingShoveRadius,
-    );
-  }
-
-  /** Mark one of the four Drop downbeats for HUD and bounded visual feedback. */
-  pulsePressureDropBar(bar: number): void {
-    if (this.pressureState !== 'drop') return;
-    const next = Math.max(1, Math.min(PRESSURE_BREAK_CONFIG.dropBars, Math.floor(bar)));
-    if (next < this.pressureDropBar) return;
-    this.pressureDropBar = next;
-    const colors = [0xffffff, 0x5ff7ff, 0xff70dc, 0xffe36e] as const;
-    const labels = ['DROP 1/4 · IMPACT', 'DROP 2/4 · LIFT', 'DROP 3/4 · PEAK', 'DROP 4/4 · FINALE'] as const;
-    const radii = [420, 320, 360, 460] as const;
-    const index = next - 1;
-    this.fx?.push({
-      type: 'pressure',
-      x: this.player.x,
-      y: this.player.y,
-      color: colors[index],
-      label: labels[index],
-    });
-    this.spawnRing(this.player.x, this.player.y, radii[index], colors[index], next === 4 ? 0.8 : 0.55, true);
-  }
-
-  /** Finish after bar four; the 45-second recharge begins only now. */
-  finishPressureDrop(): void {
-    if (this.pressureState !== 'drop') return;
-    this.pressureState = 'cooldown';
-    this.pressureDropBar = 0;
-    this.pressureCooldownT = PRESSURE_BREAK_CONFIG.cooldownS;
-    this.pressureHeat = 0;
-    this.events.onPressureBreak?.(false);
-  }
-
-  private markMilestone(id: 'first5m' | 'fullBand' | 'firstEvolution' | 'hitlessHeadliner' | 'loopCross' | 'pressureBreak'): void {
+  private markMilestone(id: 'first5m' | 'fullBand' | 'firstEvolution' | 'hitlessHeadliner'): void {
     if (this.milestones.has(id)) return;
     this.milestones.add(id);
     this.events.onMilestone?.(id);
@@ -1013,221 +759,7 @@ export class RunWorld {
       this.events.onMinute?.(minute);
       if (minute >= 5) this.markMilestone('first5m');
     }
-    if (this.venueTransitionT > 0) this.venueTransitionT = Math.max(0, this.venueTransitionT - dt);
-    if (this.neonRail?.phase === 'solid') {
-      this.neonRail.lifeS -= dt;
-      if (this.neonRail.lifeS <= 0) this.neonRail = null;
-    }
-  }
-
-  /** Moving venue lights are world-space and deterministic, so renderer and
-   * simulation can ask the same question without storing hundreds of props. */
-  venueLightPools(): Array<{ x: number; y: number; radius: number }> {
-    const baseX = Math.round(this.player.x / 420) * 420;
-    const baseY = Math.round(this.player.y / 320) * 320;
-    return [
-      { x: baseX + Math.sin(this.timeS * 0.34) * 170, y: baseY - 95, radius: 125 },
-      { x: baseX + Math.cos(this.timeS * 0.27) * 185, y: baseY + 150, radius: 105 },
-    ];
-  }
-
-  private inVenueLight(x: number, y: number): boolean {
-    return this.venueLightPools().some((light) => Math.hypot(x - light.x, y - light.y) <= light.radius);
-  }
-
-  basementPuddles(): Array<{ x: number; y: number; radius: number }> {
-    const cellX = Math.floor(this.player.x / 480);
-    const cellY = Math.floor(this.player.y / 360);
-    const out: Array<{ x: number; y: number; radius: number }> = [];
-    for (let oy = -1; oy <= 1; oy++) {
-      for (let ox = -1; ox <= 1; ox++) {
-        const gx = cellX + ox;
-        const gy = cellY + oy;
-        const hash = Math.abs((gx * 73856093) ^ (gy * 19349663));
-        out.push({
-          x: gx * 480 + 90 + (hash % 270),
-          y: gy * 360 + 70 + ((hash >> 5) % 190),
-          radius: 58 + (hash % 38),
-        });
-      }
-    }
-    return out;
-  }
-
-  private inBasementPuddle(x: number, y: number): boolean {
-    return this.basementPuddles().some((puddle) => Math.hypot(x - puddle.x, y - puddle.y) <= puddle.radius);
-  }
-
-  private venueCopy(id: VenueId): { benefit: string; danger: string } {
-    const copy: Record<string, { benefit: string; danger: string }> = {
-      alley: { benefit: 'free reflector bounce', danger: '+12% enemy speed' },
-      warehouse: { benefit: 'spotlit enemies take +20%', danger: '-8% move outside light' },
-      rooftop: { benefit: 'wind bends projectiles', danger: '+8% enemy speed' },
-      metro: { benefit: 'trains erase the horde', danger: 'train lanes deal 30 HP' },
-      basement: { benefit: '+20% zone duration', danger: 'puddles slow everyone' },
-      dawn: { benefit: 'light restores health', danger: '+25% contact damage' },
-    };
-    return copy[id] ?? copy.alley;
-  }
-
-  private updateVenue(dt: number): void {
-    const chapter = Math.floor(this.timeS / 300);
-    const chapterTime = this.timeS - chapter * 300;
-    if (chapterTime >= 280 && this.lastGateChapter !== chapter) {
-      this.lastGateChapter = chapter;
-      const options = gateOptions(
-        this.tourSeed,
-        chapter + 1,
-        this.venue,
-        [...this.venuesVisited],
-        2,
-        this.unlockedVenues,
-      );
-      this.venueGates = options.map((option, index) => {
-        const side: -1 | 1 = index === 0 ? -1 : 1;
-        return {
-          venue: option.venueId,
-          x: this.player.x + side * 220,
-          y: this.player.y,
-          side,
-          selected: false,
-          ...this.venueCopy(option.venueId),
-        };
-      });
-      this.pendingVenue = null;
-    }
-    if (this.venueGates.length > 0 && !this.pendingVenue) {
-      const touched = this.venueGates.find((gate) => Math.hypot(this.player.x - gate.x, this.player.y - gate.y) <= 58);
-      if (touched || chapterTime >= 298) {
-        const chosen = touched ?? [...this.venueGates].sort((a, b) =>
-          Math.hypot(this.player.x - a.x, this.player.y - a.y) - Math.hypot(this.player.x - b.x, this.player.y - b.y),
-        )[0];
-        chosen.selected = true;
-        this.pendingVenue = chosen.venue;
-      }
-    }
-    if (chapter > this.lastVenueTransitionChapter) {
-      this.lastVenueTransitionChapter = chapter;
-      this.venueChapter = chapter;
-      this.venue = this.pendingVenue ?? this.venue;
-      this.venuesVisited.add(this.venue);
-      this.pendingVenue = null;
-      this.venueGates = [];
-      this.venueTransitionT = 0.8;
-      this.events.onVenueChanged?.(this.venue);
-    }
-
-    if (this.venue === 'dawn' && this.inVenueLight(this.player.x, this.player.y)) {
-      this.dawnHealT += dt;
-      if (this.dawnHealT >= 2) {
-        this.dawnHealT -= 2;
-        this.player.hp = Math.min(this.playerMaxHp, this.player.hp + 1);
-      }
-    } else {
-      this.dawnHealT = 0;
-    }
-
-    if (this.venue === 'metro' && this.timeS > 5) {
-      const cycle = Math.floor(this.timeS / 40);
-      const phase = this.timeS - cycle * 40;
-      const laneY = Math.round(this.player.y / 160) * 160 + ((cycle % 3) - 1) * 120;
-      this.trainLane = phase >= 36 || phase < 0.8
-        ? { y: laneY, warningT: phase >= 36 ? 40 - phase : 0, activeT: phase < 0.8 ? 0.8 - phase : 0 }
-        : null;
-      if (phase < 0.8 && cycle !== this.lastTrainCycle) {
-        this.lastTrainCycle = cycle;
-        for (const enemy of this.enemies) {
-          if (!enemy.dead && enemy.spawnClass === 'regular' && Math.abs(enemy.y - laneY) < 65) enemy.dead = true;
-        }
-        if (Math.abs(this.player.y - laneY) < 65) this.damagePlayer(30, false);
-      }
-    } else {
-      this.trainLane = null;
-    }
-  }
-
-  private updateNeonLoopRecording(dt: number): void {
-    const minute = Math.floor(this.timeS / 60);
-    const second = this.timeS - minute * 60;
-    if (second >= 50 && second < 56) {
-      if (this.lastRecordedRailMinute !== minute) {
-        this.lastRecordedRailMinute = minute;
-        this.railSamples = [{ x: this.player.x, y: this.player.y }];
-        this.railSampleT = 0;
-        this.neonRail = { points: this.railSamples.slice(), phase: 'recording', lifeS: 0, crossedItself: false };
-      }
-      this.railSampleT += dt;
-      if (this.railSampleT >= 0.1) {
-        this.railSampleT -= 0.1;
-        const last = this.railSamples[this.railSamples.length - 1];
-        if (Math.hypot(this.player.x - last.x, this.player.y - last.y) >= 10) {
-          this.railSamples.push({ x: this.player.x, y: this.player.y });
-          this.neonRail!.points = this.railSamples.slice();
-        }
-      }
-    } else if (second >= 56 && this.neonRail?.phase === 'recording') {
-      let points = simplifyPath(this.railSamples, 6, 48);
-      if (pathLength(points) < 80) {
-        points = [
-          { x: this.player.x, y: this.player.y - 60 },
-          { x: this.player.x, y: this.player.y + 60 },
-        ];
-      }
-      const crossedItself = pathCrossesItself(points);
-      this.neonRail = { points, phase: 'preview', lifeS: 0, crossedItself };
-      if (crossedItself) this.markMilestone('loopCross');
-    } else if (second < 0.25 && this.lastRecordedRailMinute === minute - 1 && this.neonRail?.phase === 'preview') {
-      this.neonRail.phase = 'solid';
-      this.neonRail.lifeS = 24;
-      this.spawnRing(this.player.x, this.player.y, 260, 0xffffff, 0.6, true);
-    }
-  }
-
-  private applyNeonRailToEnemies(dt: number): void {
-    for (const enemy of this.enemies) {
-      enemy.railCooldownT = Math.max(0, enemy.railCooldownT - dt);
-      if (enemy.railSlowT > 0) enemy.railSlowT = Math.max(0, enemy.railSlowT - dt);
-    }
-    const rail = this.neonRail;
-    if (!rail || rail.phase !== 'solid') return;
-    for (const enemy of this.enemies) {
-      if (enemy.dead || enemy.railCooldownT > 0) continue;
-      for (let i = 1; i < rail.points.length; i++) {
-        if (segmentsCross(
-          { x: enemy.prevX, y: enemy.prevY },
-          { x: enemy.x, y: enemy.y },
-          rail.points[i - 1],
-          rail.points[i],
-        )) {
-          enemy.railSlowT = 0.65;
-          enemy.railCooldownT = 0.8;
-          break;
-        }
-      }
-    }
-  }
-
-  private updatePressure(dt: number): void {
-    if (this.pressureState === 'cooldown') {
-      this.pressureCooldownT = Math.max(0, this.pressureCooldownT - dt);
-      if (this.pressureCooldownT <= 0) this.pressureState = 'charging';
-      return;
-    }
-    if (this.pressureState !== 'charging') return;
-    let nearby = 0;
-    const radius = this.player.radius + 130;
-    const radius2 = radius * radius;
-    for (const enemy of this.enemies) {
-      const dx = enemy.x - this.player.x;
-      const dy = enemy.y - this.player.y;
-      if (!enemy.dead && dx * dx + dy * dy <= radius2) nearby += 1;
-    }
-    if (nearby > 0) this.pressureHeat = Math.min(100, this.pressureHeat + Math.min(6, nearby * 0.45) * dt);
-    else this.pressureHeat = Math.max(0, this.pressureHeat - 3 * dt);
-    if (this.pressureHeat >= 100) {
-      this.pressureState = 'armed';
-      this.events.onPressureArmed?.();
-    }
+    void dt;
   }
 
   private damagePlayer(amount: number, armorApplies: boolean): void {
@@ -1235,9 +767,6 @@ export class RunWorld {
     const landed = armorApplies ? Math.max(1, Math.ceil(amount - this.playerArmor)) : Math.max(1, Math.ceil(amount));
     this.player.hp = Math.max(0, this.player.hp - landed);
     this.player.iframesT = DAMAGE_FEEDBACK.iframesS;
-    if (this.pressureState === 'charging') {
-      this.pressureHeat = Math.max(0, this.pressureHeat - PRESSURE_BREAK_CONFIG.hitHeatLoss);
-    }
     if (this.enemies.some((enemy) => !enemy.dead && enemy.headliner)) this.headlinerHitTaken = true;
     this.events.onHit();
     if (this.player.hp > 0) return;
@@ -1246,7 +775,7 @@ export class RunWorld {
       this.player.hp = Math.max(1, Math.ceil(this.playerMaxHp * 0.30));
       this.player.iframesT = 2;
       this.spawnRing(this.player.x, this.player.y, 300, 0xffd875, 1);
-      this.fx?.push({ type: 'pressure', x: this.player.x, y: this.player.y, color: 0xffd875, label: 'SECOND WIND' });
+      this.fx?.push({ type: 'banner', x: this.player.x, y: this.player.y, color: 0xffd875, label: 'SECOND WIND' });
     } else {
       this.events.onDeath();
     }
@@ -1254,9 +783,6 @@ export class RunWorld {
 
   /** Push an enemy away from a point, sharing the weapon knock channel. */
   private shove(e: Enemy, fromX: number, fromY: number, dist: number): void {
-    // Resolve the phrase lift here so even a shockwave created before the Drop
-    // receives the stronger shove when it reaches an enemy during the Drop.
-    if (this.pressureState === 'drop') dist *= PRESSURE_BREAK_CONFIG.dropKnockbackMul;
     dist *= e.knockbackMul;
     if (dist <= 0) return;
     const dx = e.x - fromX;
@@ -1291,18 +817,21 @@ export class RunWorld {
   }
 
   update(dt: number): void {
+    if (!this.combatStarted) {
+      // Picking is physical, so movement stays responsive. Nothing else—not
+      // even recovery frames—advances before a starting weapon exists.
+      this.movePlayer(dt, false);
+      return;
+    }
     this.timeS += dt;
     this.updateMinuteSystems(dt);
-    this.updateVenue(dt);
     this.updatePassiveRecovery(dt);
     this.movePlayer(dt);
-    this.updateNeonLoopRecording(dt);
     if (this.scripted) {
       this.runDirector(dt);
     }
 
     this.moveEnemies(dt);
-    this.applyNeonRailToEnemies(dt);
     this.recycleEnemies();
     this.hash.clear();
     for (const e of this.enemies) if (!e.dead) this.hash.insert(e);
@@ -1315,11 +844,9 @@ export class RunWorld {
     this.updateZones(dt);
     this.updateShockwaves(dt);
     this.updateGravityWells(dt);
-    this.updateStageMagnets(dt);
     this.updateGems(dt);
     this.updateMusicNotes(dt);
     this.updateEncoreCases();
-    this.updatePressure(dt);
     this.contactDamage(dt);
 
     this.reapEnemies();
@@ -1333,17 +860,14 @@ export class RunWorld {
     this.player.hp = Math.min(this.playerMaxHp, this.player.hp + rate * dt);
   }
 
-  private movePlayer(dt: number): void {
+  private movePlayer(dt: number, tickIframes = true): void {
     const a = this.control();
     if (a.x > 0.001) this.player.facingX = 1;
     else if (a.x < -0.001) this.player.facingX = -1;
-    let venueMul = 1;
-    if (this.venue === 'warehouse' && !this.inVenueLight(this.player.x, this.player.y)) venueMul *= 0.92;
-    if (this.venue === 'basement' && this.inBasementPuddle(this.player.x, this.player.y)) venueMul *= 0.90;
-    const speed = RUN.playerSpeed * this.buildMods.moveMul * venueMul;
+    const speed = RUN.playerSpeed * this.buildMods.moveMul;
     this.player.x += a.x * speed * dt;
     this.player.y += a.y * speed * dt;
-    if (this.player.iframesT > 0) this.player.iframesT -= dt;
+    if (tickIframes && this.player.iframesT > 0) this.player.iframesT -= dt;
   }
 
   private contactDamage(dt: number): void {
@@ -1372,8 +896,7 @@ export class RunWorld {
       hitter ??= e;
     }
     if (!hitter || p.iframesT > 0 || this.invincible) return;
-    const venueDamageMul = this.venue === 'dawn' ? 1.25 : 1;
-    this.damagePlayer(hitter.damage * venueDamageMul, true);
+    this.damagePlayer(hitter.damage, true);
   }
 
   // ---- enemies ----
@@ -1387,8 +910,8 @@ export class RunWorld {
       for (let i = 0; i < STAGE_STARTING_SPAWNS; i++) this.spawnEnemy(STAGE_STARTING_KIND);
     }
 
-    // Preserve the authored opening exactly, then hand off to the endlessly
-    // rotating tour director at 8:00. No victory branch exists.
+    // Preserve the authored opening exactly, then hand off to the generic
+    // endless director at 8:00. No victory branch exists.
     if (this.timeS >= 480) {
       this.runEndlessDirector();
       return;
@@ -1471,7 +994,7 @@ export class RunWorld {
     enemy.band = 3;
     enemy.color = 0xffcf5a;
     this.headlinerHitTaken = false;
-    this.fx?.push({ type: 'pressure', x: enemy.x, y: enemy.y, color: 0xffcf5a, label: 'HEADLINER' });
+    this.fx?.push({ type: 'banner', x: enemy.x, y: enemy.y, color: 0xffcf5a, label: 'HEADLINER' });
   }
 
   private aliveCount(): number {
@@ -1673,7 +1196,6 @@ export class RunWorld {
       dashY: 0,
       dashing: false,
       slowT: 0,
-      railSlowT: 0,
       zoneSlowMul: 1,
       knockX: 0,
       knockY: 0,
@@ -1692,7 +1214,6 @@ export class RunWorld {
       spawnMinute: minute,
       amped,
       headliner: false,
-      railCooldownT: 0,
       prevX: x - body.footOffsetX,
       prevY: y - body.footOffsetY,
     };
@@ -1741,13 +1262,11 @@ export class RunWorld {
   /** Reset every transient sandbox entity without touching the player, loadout,
    *  clock, level, or stage director. No delayed strike/pickup pointer survives. */
   clearSandboxEntities(): void {
-    this.cancelPressureConductor();
     this.enemies.length = 0;
     this.projectiles.length = 0;
     this.zones.length = 0;
     this.gems.length = 0;
     this.musicNotes.length = 0;
-    this.stageMagnets.length = 0;
     this.encoreCases.length = 0;
     this.shockwaves.length = 0;
     this.gravityWells.length = 0;
@@ -1757,15 +1276,6 @@ export class RunWorld {
     this.overflowGem = null;
     this.overflowMusicNote = null;
     this.noteDropPity = 0;
-    this.stageMagnetDropPity = 0;
-    this.nextStageMagnetDropAt = 0;
-    this.neonRail = null;
-    this.venueGates = [];
-    this.trainLane = null;
-    this.pressureHeat = 0;
-    this.pressureState = 'charging';
-    this.pressureDropBar = 0;
-    this.pressureCooldownT = 0;
     this.hash.clear();
     this.queryBuf.length = 0;
   }
@@ -1778,16 +1288,13 @@ export class RunWorld {
       e.prevY = e.y;
       e.lastMoveX = 0;
       e.lastMoveY = 0;
-      const venueSpeed = this.venue === 'alley' ? 1.12 : this.venue === 'rooftop' ? 1.08 : 1;
-      let speed = e.speed * venueSpeed;
+      let speed = e.speed;
       if (e.slowT > 0) {
         e.slowT -= dt;
         speed *= e.zoneSlowMul;
       } else {
         e.zoneSlowMul = 1;
       }
-      if (e.railSlowT > 0) speed *= 0.70;
-      if (this.venue === 'basement' && this.inBasementPuddle(e.x, e.y)) speed *= 0.70;
       if (e.flashT > 0) e.flashT -= dt;
 
       // Weapon knockback overrides everything: ride the push, don't chase.
@@ -1934,13 +1441,6 @@ export class RunWorld {
 
   private damageEnemy(e: Enemy, amount: number, source?: Role): void {
     if (e.dead) return;
-    // The Drop multiplier is resolved at impact, so projectiles, zones, and
-    // orbiters already in flight when the phrase begins all receive the lift.
-    // Environment and venue hazards omit a weapon source and stay unchanged.
-    if (source && this.pressureState === 'drop') {
-      amount *= PRESSURE_BREAK_CONFIG.dropDamageMul;
-    }
-    if (this.venue === 'warehouse' && this.inVenueLight(e.x, e.y)) amount *= 1.20;
     // Floating damage number (view-only). Weapon-colored,
     // rounded; sub-1 ticks and instakills (Infinity) don't get a number.
     if (this.fx && Number.isFinite(amount)) {
@@ -1974,12 +1474,6 @@ export class RunWorld {
     if (e.hp <= 0) {
       e.dead = true;
       this.kills++;
-      if (
-        this.pressureState === 'charging' &&
-        Math.hypot(e.x - this.player.x, e.y - this.player.y) <= this.player.radius + 130
-      ) {
-        this.pressureHeat = Math.min(100, this.pressureHeat + 2);
-      }
       if (source) this.killsByRole[source] = (this.killsByRole[source] ?? 0) + 1;
       this.fx?.push({
         type: 'death',
@@ -1991,7 +1485,6 @@ export class RunWorld {
       });
       this.spawnGem(e.x, e.y, e.xp);
       this.spawnMusicNoteForEnemy(e);
-      this.spawnStageMagnetForEnemy(e);
       if (e.headliner) {
         this.headlinersKilled += 1;
         const encore: EncoreCase = { x: e.x, y: e.y, minute: e.spawnMinute, color: 0xffd45c };
@@ -2272,11 +1765,8 @@ export class RunWorld {
       rehitT: 0,
       shatter: 0,
       shard: false,
-      bounces: this.buildMods.bounceCount + (this.venue === 'alley' ? 1 : 0),
-      bounceRetention: this.venue === 'alley'
-        ? Math.max(0.85, this.buildMods.bounceRetention)
-        : this.buildMods.bounceRetention,
-      railReflections: 0,
+      bounces: this.buildMods.bounceCount,
+      bounceRetention: this.buildMods.bounceRetention,
       evolved: this.evolved.has(role),
       turnRate: 10,
       orbitDir: 1,
@@ -2314,7 +1804,6 @@ export class RunWorld {
       pr.vx *= 1.50;
       pr.vy *= 1.50;
     }
-    this.applyRooftopWind(pr);
     this.projectiles.push(pr);
   }
 
@@ -2377,16 +1866,7 @@ export class RunWorld {
       pr.gravity = true;
       pr.shatter = 10;
     }
-    this.applyRooftopWind(pr);
     this.projectiles.push(pr);
-  }
-
-  private applyRooftopWind(projectile: Projectile): void {
-    if (this.venue !== 'rooftop' || projectile.role === 'arp') return;
-    const angle = (this.venueChapter * 1.7 + Math.floor(this.timeS / 20) * 0.37) % (Math.PI * 2);
-    const push = projectile.speed * 0.18;
-    projectile.vx += Math.cos(angle) * push;
-    projectile.vy += Math.sin(angle) * push;
   }
 
   /** Bell's shatter: fling a radial burst of small shard shots from (x,y). Each
@@ -2433,7 +1913,6 @@ export class RunWorld {
         pr.bounces = Math.max(1, pr.bounces);
         pr.shatter = 0;
       }
-      this.applyRooftopWind(pr);
       this.projectiles.push(pr);
     }
   }
@@ -2539,9 +2018,8 @@ export class RunWorld {
   private reverseForKick(e: Enemy, fromX: number, fromY: number): void {
     if (e.knockbackMul <= 0) return;
     if (e.lastMoveX !== 0 || e.lastMoveY !== 0) {
-      const dropMul = this.pressureState === 'drop' ? PRESSURE_BREAK_CONFIG.dropKnockbackMul : 1;
-      e.knockX = -e.lastMoveX * e.knockbackMul * dropMul;
-      e.knockY = -e.lastMoveY * e.knockbackMul * dropMul;
+      e.knockX = -e.lastMoveX * e.knockbackMul;
+      e.knockY = -e.lastMoveY * e.knockbackMul;
       e.knockT = SHOVE_S;
       return;
     }
@@ -2586,9 +2064,6 @@ export class RunWorld {
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const pr = this.projectiles[i];
       const step = dt;
-      const travelStep = step * (this.pressureState === 'drop'
-        ? PRESSURE_BREAK_CONFIG.dropProjectileSpeedMul
-        : 1);
       pr.age += step;
       pr.lifeS -= step;
 
@@ -2605,7 +2080,6 @@ export class RunWorld {
           pr.rehitT = pr.evolved ? 0.45 : ORBIT_REHIT_S;
         }
       } else {
-        const old = { x: pr.x, y: pr.y };
         if (pr.homing) {
           let best: Enemy | null = null;
           let bestD = Infinity;
@@ -2632,9 +2106,8 @@ export class RunWorld {
             pr.vy = Math.sin(next) * pr.speed;
           }
         }
-        pr.x += pr.vx * travelStep;
-        pr.y += pr.vy * travelStep;
-        this.reflectProjectileFromRail(pr, old);
+        pr.x += pr.vx * step;
+        pr.y += pr.vy * step;
         this.reflectProjectileFromArena(pr);
       }
 
@@ -2704,33 +2177,6 @@ export class RunWorld {
     projectile.vy = (dy / d) * speed;
   }
 
-  private reflectProjectileFromRail(projectile: Projectile, old: Point): void {
-    const rail = this.neonRail;
-    if (!rail || rail.phase !== 'solid' || projectile.role === 'arp') return;
-    for (let i = 1; i < rail.points.length; i++) {
-      const a = rail.points[i - 1];
-      const b = rail.points[i];
-      if (!segmentsCross(old, projectile, a, b)) continue;
-      const hasFreeRailReflection = projectile.railReflections < 1;
-      if (!hasFreeRailReflection && projectile.bounces <= 0) return;
-      const reflected = reflectAcrossSegment(projectile.vx, projectile.vy, a, b);
-      projectile.vx = reflected.x;
-      projectile.vy = reflected.y;
-      projectile.x = old.x + projectile.vx * 0.01;
-      projectile.y = old.y + projectile.vy * 0.01;
-      if (hasFreeRailReflection) {
-        projectile.railReflections += 1;
-        projectile.damage *= 0.85;
-        projectile.lifeS += 0.25;
-      } else {
-        projectile.bounces -= 1;
-        projectile.damage *= projectile.bounceRetention;
-      }
-      if (projectile.role === 'hat' && projectile.evolved) this.retargetPrism(projectile);
-      return;
-    }
-  }
-
   private reflectProjectileFromArena(projectile: Projectile): void {
     if (projectile.bounces <= 0 || projectile.role === 'arp') return;
     const minX = this.player.x - this.worldW * 0.52;
@@ -2763,7 +2209,7 @@ export class RunWorld {
     evolved = false,
   ): void {
     const radius = conf.radius! * (evolved ? 1.55 : 1);
-    const life = conf.lifetimeS! * (evolved ? 1.35 : 1) * (this.venue === 'basement' ? 1.20 : 1);
+    const life = conf.lifetimeS! * (evolved ? 1.35 : 1);
     const damage = conf.damage * (evolved ? 1.25 : 1);
     this.zones.push({
       x,
@@ -2894,13 +2340,10 @@ export class RunWorld {
       this.gems.push({ x, y, xp: dropped, tier });
       return;
     }
-    if (!this.overflowGem || !this.gems.includes(this.overflowGem) || this.overflowGem.vacuumed) {
+    if (!this.overflowGem || !this.gems.includes(this.overflowGem)) {
       let farthest: Gem | null = null;
       let farthestD = -1;
       for (const gem of this.gems) {
-        // A Stage Magnet is a point-in-time snapshot. Never merge a later
-        // reward into an object already travelling in that snapshot.
-        if (gem.vacuumed) continue;
         const dx = gem.x - this.player.x;
         const dy = gem.y - this.player.y;
         const d2 = dx * dx + dy * dy;
@@ -2909,41 +2352,12 @@ export class RunWorld {
           farthest = gem;
         }
       }
-      if (!farthest) {
-        // All capped gems are already inbound. One temporary overflow object
-        // keeps later rewards independent; subsequent drops merge into it.
-        farthest = { x, y, xp: 0, tier: 'red' };
-        this.gems.push(farthest);
-      }
+      if (!farthest) return;
       this.overflowGem = farthest;
       farthest.tier = 'red';
     }
     this.overflowGem.xp += dropped;
     this.overflowGem.tier = 'red';
-  }
-
-  private spawnStageMagnetForEnemy(enemy: Enemy): void {
-    if (this.stageMagnets.length > 0 || this.timeS < this.nextStageMagnetDropAt) return;
-    this.stageMagnetDropPity += 1;
-    const guaranteed = this.stageMagnetDropPity >= STAGE_MAGNET.pityKills;
-    if (!guaranteed && this.stageMagnetRng() >= STAGE_MAGNET.dropChance) return;
-    this.stageMagnetDropPity = 0;
-    this.nextStageMagnetDropAt = this.timeS + STAGE_MAGNET.dropCooldownS;
-    this.spawnStageMagnetAt(
-      enemy.x - enemy.radius * 0.24,
-      enemy.y - enemy.radius * 0.32,
-    );
-  }
-
-  /** Public Sandbox fixture; normal runs receive Stage Magnets only from
-   * enemy deaths. Only one may wait on the floor at a time. */
-  spawnStageMagnetAt(x: number, y: number): StageMagnetPickup {
-    const existing = this.stageMagnets[0];
-    if (existing) return existing;
-    const magnet = { x, y, lifeS: STAGE_MAGNET.lifetimeS };
-    this.stageMagnets.push(magnet);
-    this.fx?.push({ type: 'spark', x, y, color: 0xa06bff, n: 8, spread: 22 });
-    return magnet;
   }
 
   private spawnMusicNoteForEnemy(enemy: Enemy): void {
@@ -2973,11 +2387,10 @@ export class RunWorld {
       this.musicNotes.push({ x, y, value: amount, tier });
       return;
     }
-    if (!this.overflowMusicNote || !this.musicNotes.includes(this.overflowMusicNote) || this.overflowMusicNote.vacuumed) {
+    if (!this.overflowMusicNote || !this.musicNotes.includes(this.overflowMusicNote)) {
       let farthest: MusicNotePickup | null = null;
       let farthestD = -1;
       for (const note of this.musicNotes) {
-        if (note.vacuumed) continue;
         const dx = note.x - this.player.x;
         const dy = note.y - this.player.y;
         const d2 = dx * dx + dy * dy;
@@ -2986,63 +2399,11 @@ export class RunWorld {
           farthest = note;
         }
       }
-      if (!farthest) {
-        farthest = { x, y, value: 0, tier: 'anthem' };
-        this.musicNotes.push(farthest);
-      }
+      if (!farthest) return;
       this.overflowMusicNote = farthest;
     }
     this.overflowMusicNote.value += amount;
     this.overflowMusicNote.tier = 'anthem';
-  }
-
-  /** Snapshot the current camera rectangle and attract every freely
-   * collectable drop inside it. Decision-bearing rewards intentionally stay
-   * walk-to-choose: level-up pedestals, Encore Cases, and venue gates. */
-  vacuumVisiblePickups(): VacuumResult {
-    const cameraX = this.player.x + PLAYER_FOOT_OFFSET.x;
-    const cameraY = this.player.y + PLAYER_FOOT_OFFSET.y;
-    const halfW = this.worldW / 2;
-    const halfH = this.worldH / 2;
-    const visible = (x: number, y: number): boolean =>
-      Math.abs(x - cameraX) <= halfW && Math.abs(y - cameraY) <= halfH;
-    let gems = 0;
-    let notes = 0;
-    for (const gem of this.gems) {
-      if (!gem.vacuumed && visible(gem.x, gem.y)) {
-        gem.vacuumed = true;
-        gems += 1;
-      }
-    }
-    for (const note of this.musicNotes) {
-      if (!note.vacuumed && visible(note.x, note.y)) {
-        note.vacuumed = true;
-        notes += 1;
-      }
-    }
-    const result = { gems, notes };
-    const radius = Math.hypot(this.worldW, this.worldH) * 0.55;
-    this.fx?.push({ type: 'vacuum', x: cameraX, y: cameraY, radius });
-    this.fx?.push({ type: 'pressure', x: this.player.x, y: this.player.y, color: 0xa06bff, label: 'STAGE MAGNET' });
-    this.events.onStageMagnet?.(result);
-    return result;
-  }
-
-  private updateStageMagnets(dt: number): void {
-    for (let i = this.stageMagnets.length - 1; i >= 0; i--) {
-      const magnet = this.stageMagnets[i];
-      magnet.lifeS -= dt;
-      if (magnet.lifeS <= 0) {
-        this.stageMagnets.splice(i, 1);
-        this.fx?.push({ type: 'spark', x: magnet.x, y: magnet.y, color: 0xa06bff, n: 4, spread: 14 });
-        continue;
-      }
-      const dx = this.player.x - magnet.x;
-      const dy = this.player.y - magnet.y;
-      if (dx * dx + dy * dy > STAGE_MAGNET.pickupRadius * STAGE_MAGNET.pickupRadius) continue;
-      this.stageMagnets.splice(i, 1);
-      this.vacuumVisiblePickups();
-    }
   }
 
   private updateGems(dt: number): void {
@@ -3052,14 +2413,13 @@ export class RunWorld {
       const dx = p.x - g.x;
       const dy = p.y - g.y;
       const d = Math.hypot(dx, dy);
-      if (g.vacuumed || d < RUN.magnetRadius * this.buildMods.magnetMul) {
-        const speed = g.vacuumed ? STAGE_MAGNET.vacuumSpeed : RUN.gemPullSpeed * this.buildMods.pullMul;
+      if (d < RUN.magnetRadius * this.buildMods.magnetMul) {
+        const speed = RUN.gemPullSpeed * this.buildMods.pullMul;
         const pull = Math.min(d, speed * dt);
         g.x += (dx / (d || 1)) * pull;
         g.y += (dy / (d || 1)) * pull;
       }
-      const remaining = g.vacuumed ? Math.max(0, d - STAGE_MAGNET.vacuumSpeed * dt) : d;
-      if (remaining < RUN.pickupRadius) {
+      if (d < RUN.pickupRadius) {
         this.xp += g.xp * xpPickupMultiplier(this.level);
         this.gems.splice(i, 1);
         if (g === this.overflowGem) this.overflowGem = null;
@@ -3075,16 +2435,13 @@ export class RunWorld {
       const dx = p.x - note.x;
       const dy = p.y - note.y;
       const d = Math.hypot(dx, dy);
-      if (note.vacuumed || d < RUN.magnetRadius * this.buildMods.magnetMul * 1.15) {
-        const speed = note.vacuumed
-          ? STAGE_MAGNET.vacuumSpeed
-          : RUN.gemPullSpeed * this.buildMods.pullMul * 1.15;
+      if (d < RUN.magnetRadius * this.buildMods.magnetMul * 1.15) {
+        const speed = RUN.gemPullSpeed * this.buildMods.pullMul * 1.15;
         const pull = Math.min(d, speed * dt);
         note.x += (dx / (d || 1)) * pull;
         note.y += (dy / (d || 1)) * pull;
       }
-      const remaining = note.vacuumed ? Math.max(0, d - STAGE_MAGNET.vacuumSpeed * dt) : d;
-      if (remaining < RUN.pickupRadius + 4) {
+      if (d < RUN.pickupRadius + 4) {
         this.notesCollected += note.value;
         this.events.onNoteCollected?.(note.value, this.notesCollected);
         this.fx?.push({ type: 'spark', x: note.x, y: note.y, color: 0xffd45c, n: 4, spread: 12 });

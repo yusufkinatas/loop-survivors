@@ -1,147 +1,121 @@
-// Midnight Neon Soundwood run renderer. The simulation stays in run.ts; this
-// file diffs its state into explicit visual layers with cached pixel geometry.
+// Neon Crypt sprite renderer. Runtime geometry is deliberately absent: every
+// actor, pickup, projectile, zone, particle, impact, and arena surface comes
+// from a verified pixel-art PNG atlas and is sampled with nearest-neighbour
+// filtering. The simulation remains entirely in run.ts.
 
-import { Container, Graphics, Sprite, Text, TextStyle, type Texture } from 'pixi.js';
-import type { Role } from '../audio/kits';
-import { RUN } from './config';
 import {
-  KICK_GEOMETRY,
+  Container,
+  Sprite,
+  Text,
+  TextStyle,
+  TilingSprite,
+  type Texture,
+} from 'pixi.js';
+import type { Role } from '../audio/kits';
+import type { ItemId } from './items';
+import {
+  KIT_COLORS,
   PLAYER_FOOT_OFFSET,
   type Enemy,
   type FxEvent,
   type Gem,
+  type GravityWell,
   type MusicNotePickup,
   type Projectile,
   type RunWorld,
-  type StageMagnetPickup,
+  type Shockwave,
   type Zone,
 } from './run';
 import {
-  SOUNDWOOD,
-  hash2,
-  preloadSoundwoodFloor,
-  regularPixelPoly,
-  snap,
-  soundwoodFloorTexture,
-} from './soundwood-art';
-import {
-  animateSceneryCell,
-  enemyContext,
-  makeEnemyGfx,
-  makeGemGfx,
-  makeMusicNoteGfx,
-  makePixelGlow,
-  makePlayerGfx,
-  makeProjectileGfx,
-  makeRewardGfx,
-  makeTourCaseGfx,
-  makeVenueGateGfx,
-  makeSceneryCell,
-  makeStageMagnetGfx,
-  makeZoneGfx,
-  refreshProjectileContext,
-  type EnemyGfx,
-  type GemGfx,
-  type MusicNoteGfx,
-  type PlayerGfx,
-  type ProjectileGfx,
-  type RewardGfx,
-  type SceneryCell,
-  type StageMagnetGfx,
-  type TourCaseGfx,
-  type VenueGateGfx,
-} from './soundwood-shapes';
+  PIXEL_ENVIRONMENT_IDS,
+  PIXEL_WEAPON_ROLES,
+  arenaFloorTexture,
+  effectPixelTexture,
+  enemyPixelFrames,
+  environmentPixelTexture,
+  passiveIconTexture,
+  pickupPixelTexture,
+  playerPixelFrames,
+  preloadPixelArt,
+  weaponPixelTexture,
+  type PixelEnvironmentId,
+  type PixelWeaponRole,
+} from './pixel-art';
 
-const FLOOR_SCALE = 0.5;
-const FLOOR_TILE_SIZE = 1254 * FLOOR_SCALE;
-const SCENERY_CELL_SIZE = 256;
-const TRAIL_ROLES = new Set<Role>(['snare', 'lead']);
-const TRAIL_POINTS = 7;
-const DEATH_BURST_CAP = 80;
-const REGULAR_DEATH_BURST_CAP = 72;
-const DMG_CAP = 100;
-const DMG_DUR = 0.62;
-const DMG_RISE = 38;
-const CHAPTER_TINTS = [0xffffff, 0xe6f5ff, 0xe9fff0, 0xf1e8ff, 0xfff0d7, 0xffdedb];
-
-interface StructuralShockwave {
-  x: number;
-  y: number;
-  radius: number;
-  maxRadius: number;
-  age: number;
-  lifeS: number;
-  color: number;
-}
-
-interface StructuralGravityWell {
-  x: number;
-  y: number;
-  radius: number;
-  lifeS: number;
-  color: number;
-}
-
-interface StructuralTourCase {
-  x: number;
-  y: number;
-  minute: number;
-  color: number;
-}
-
-interface StructuralVenueGate {
-  venue: string;
-  x: number;
-  y: number;
-  side: -1 | 1;
-  selected: boolean;
-  benefit: string;
-  danger: string;
-}
-
-interface StructuralNeonRail {
-  points: Array<{ x: number; y: number }>;
-  phase: 'recording' | 'preview' | 'solid';
-  lifeS: number;
-  crossedItself: boolean;
-}
-
-interface StructuralTourWorld {
-  venue?: string;
-  venueChapter?: number;
-  venueTransitionT?: number;
-  venueGates?: StructuralVenueGate[];
-  neonRail?: StructuralNeonRail | null;
-  pressureHeat?: number;
-  pressureState?: 'charging' | 'armed' | 'drop' | 'cooldown';
-  pressureDropBar?: number;
-  trainLane?: { y: number; warningT: number; activeT: number } | null;
-  shockwaves?: StructuralShockwave[];
-  gravityWells?: StructuralGravityWell[];
-  encoreCases?: StructuralTourCase[];
-}
-
-const VENUE_PALETTES: Record<string, { tint: number; accent: number; secondary: number }> = {
-  alley: { tint: 0xf1ffff, accent: SOUNDWOOD.cyan, secondary: SOUNDWOOD.magenta },
-  warehouse: { tint: 0xffe4dc, accent: SOUNDWOOD.coral, secondary: SOUNDWOOD.amber },
-  rooftop: { tint: 0xffe8fb, accent: SOUNDWOOD.magenta, secondary: SOUNDWOOD.violet },
-  metro: { tint: 0xe1f3ff, accent: SOUNDWOOD.cyanHot, secondary: SOUNDWOOD.coral },
-  basement: { tint: 0xe4ffde, accent: 0xb6ff5a, secondary: SOUNDWOOD.violet },
-  dawn: { tint: 0xffe2bc, accent: SOUNDWOOD.amber, secondary: SOUNDWOOD.coral },
+const ACTOR_SCALE = 0.5;
+const PLAYER_SCALE = 0.5;
+const PICKUP_SCALE = 0.5;
+const PROJECTILE_SCALE: Readonly<Partial<Record<Role, number>>> = {
+  snare: 0.28,
+  hat: 0.25,
+  bass: 0.34,
+  lead: 0.27,
+  arp: 0.27,
+  bell: 0.32,
 };
-const HEADLINER_GOLD_PALETTE = { tint: 0xffefc2, accent: 0xffd45c, secondary: 0xff9d45 } as const;
+const MAX_EFFECTS = 180;
+// Damage is intentionally budgeted and merged below: a dense build should
+// read as combat, not as a wall of overlapping numbers.
+const MAX_FLOATERS = 36;
+const FRAME_RATE = 7;
+const ENVIRONMENT_CELL = 288;
 
-export const GLOW = { alpha: 0.28, scale: 1.8, blend: 'add' as const };
+const LABEL_STYLE = new TextStyle({
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  fontSize: 12,
+  fontWeight: '800',
+  fill: 0xf8fbff,
+  stroke: { color: 0x090b1a, width: 4 },
+  align: 'center',
+  dropShadow: { color: 0x090b1a, alpha: 0.9, blur: 0, angle: Math.PI / 2, distance: 2 },
+});
 
-/** Kept as a public renderer utility for the existing visual contract. */
-export function makeGlow(radius: number, color: number): Graphics {
-  return makePixelGlow(radius, color, GLOW.alpha);
+const SMALL_STYLE = new TextStyle({
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  fontSize: 9,
+  fontWeight: '700',
+  fill: 0xc8d7ec,
+  stroke: { color: 0x090b1a, width: 3 },
+  align: 'center',
+});
+
+const DAMAGE_STYLE = new TextStyle({
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  fontSize: 13,
+  fontWeight: '900',
+  fill: 0xffffff,
+  stroke: { color: 0x090b1a, width: 4 },
+  align: 'center',
+});
+
+function snap(value: number): number {
+  return Math.round(value);
 }
 
-/** Optional integration hook: callers may await this before constructing a
- * run, while RunView also starts the preload itself for backward compatibility. */
+function quantizeScale(value: number): number {
+  return Math.max(0.125, Math.round(value * 8) / 8);
+}
+
+function direction8(vx: number, vy: number): number {
+  if (Math.abs(vx) + Math.abs(vy) < 0.001) return 0;
+  const step = Math.PI / 4;
+  return Math.round(Math.atan2(vy, vx) / step) * step;
+}
+
+function isPixelWeaponRole(role: Role): role is PixelWeaponRole {
+  return (PIXEL_WEAPON_ROLES as readonly Role[]).includes(role);
+}
+
+function sprite(texture: Texture, anchorX = 0.5, anchorY = 0.5): Sprite {
+  const out = new Sprite(texture);
+  out.anchor.set(anchorX, anchorY);
+  out.roundPixels = true;
+  return out;
+}
+
+/** Load all gameplay/UI/environment sheets before constructing the view. */
 export async function preloadRunArt(): Promise<void> {
-  await preloadSoundwoodFloor();
+  await preloadPixelArt();
 }
 
 interface GroundPickBase {
@@ -154,1630 +128,784 @@ interface GroundPickBase {
 }
 
 export type GroundPickView = GroundPickBase & (
-  | { role: Role; glyph?: never }
-  | { role?: never; glyph: string }
+  | { role: Role; item?: never; glyph?: never }
+  | { role?: never; item: ItemId; glyph?: string }
 );
 
-interface Pop {
-  gfx: Graphics;
-  t: number;
-  dur: number;
-  fromScale: number;
-  toScale: number;
-  death?: DeathBurst;
-  holdHalf?: boolean;
-  expandHalf?: boolean;
+interface EnemyVisual {
+  root: Container;
+  body: Sprite;
+  aura?: Sprite;
 }
 
-interface DeathFragment {
-  x: number;
-  y: number;
-  dx: number;
-  dy: number;
-  size: number;
-  shade: number;
+interface GroundPickVisual {
+  root: Container;
+  worldX: number;
+  worldY: number;
+  phase: number;
 }
 
-interface DeathBurst {
-  radius: number;
-  elite: boolean;
-  fragments: DeathFragment[];
-}
-
-interface Floater {
-  txt: Text;
-  x: number;
-  y: number;
-  t: number;
-  dur: number;
-  vy: number;
-  baseScale?: number;
-  staticMotion?: boolean;
-}
-
-interface ZoneGfx extends Graphics {
-  __evolved: boolean;
-}
-
-interface FloorTile {
+interface TimedSprite {
   sprite: Sprite;
-  ix: number;
-  iy: number;
+  age: number;
+  duration: number;
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  vx: number;
+  vy: number;
+  fade: boolean;
 }
 
-const DMG_STYLE = new TextStyle({
-  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-  fontSize: 14,
-  fontWeight: '900',
-  fill: 0xffffff,
-  stroke: { color: SOUNDWOOD.ink, width: 5, join: 'round' },
-});
-
-const BANNER_STYLE = new TextStyle({
-  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-  fontSize: 18,
-  fontWeight: '900',
-  letterSpacing: 2,
-  fill: 0xffffff,
-  stroke: { color: SOUNDWOOD.ink, width: 7, join: 'round' },
-});
-
-function roleIsEvolved(world: RunWorld, role: Role): boolean {
-  const record = world as unknown as Record<string, unknown>;
-  for (const key of ['evolved', 'evolvedWeapons', 'evolutions']) {
-    const value = record[key];
-    if (value instanceof Set) return value.has(role);
-    if (value instanceof Map) return value.has(role) && value.get(role) !== false;
-    if (Array.isArray(value)) return value.includes(role);
-    if (value && typeof value === 'object' && Boolean((value as Record<string, unknown>)[role])) return true;
-  }
-  return false;
+interface FloatingText {
+  text: Text;
+  age: number;
+  duration: number;
+  x: number;
+  y: number;
+  vy: number;
 }
 
-function evolvedCount(world: RunWorld): number {
-  let count = 0;
-  for (const role of world.tiers.keys()) if (roleIsEvolved(world, role)) count++;
-  return count;
-}
-
-function visualChapter(world: RunWorld): number {
-  const record = world as unknown as Record<string, unknown>;
-  const explicit = record.visualChapter ?? record.chapter;
-  if (typeof explicit === 'number' && Number.isFinite(explicit)) return Math.max(0, Math.floor(explicit));
-  return Math.max(0, Math.floor(world.timeS / 60));
-}
-
-function tourWorld(world: RunWorld): StructuralTourWorld {
-  return world as unknown as StructuralTourWorld;
-}
-
-function venuePalette(world: RunWorld): { tint: number; accent: number; secondary: number } {
-  if (world.headlinerGold) return HEADLINER_GOLD_PALETTE;
-  return VENUE_PALETTES[tourWorld(world).venue ?? 'alley'] ?? VENUE_PALETTES.alley;
-}
-
-function mixColor(a: number, b: number, amount: number): number {
-  const t = Math.max(0, Math.min(1, amount));
-  const channel = (shift: number): number => Math.round(
-    ((a >> shift) & 0xff) * (1 - t) + ((b >> shift) & 0xff) * t,
-  );
-  return (channel(16) << 16) | (channel(8) << 8) | channel(0);
-}
-
-function multiplyTint(a: number, b: number): number {
-  const r = Math.round(((a >> 16) & 0xff) * ((b >> 16) & 0xff) / 255);
-  const g = Math.round(((a >> 8) & 0xff) * ((b >> 8) & 0xff) / 255);
-  const blue = Math.round((a & 0xff) * (b & 0xff) / 255);
-  return (r << 16) | (g << 8) | blue;
-}
-
-function enemyFrame(enemy: Enemy, timeS: number): number {
-  switch (enemy.kind) {
-    case 'bat':
-    case 'redBat':
-    case 'redBat2':
-    case 'glowingBat':
-    case 'batSwarm':
-    case 'flower':
-    case 'mantis':
-    case 'darter':
-    case 'charger':
-      return Math.floor(timeS * 8 + enemy.id * 0.73) & 1;
-    case 'zombie':
-    case 'skeleton':
-    case 'greenMudman':
-    case 'grayMudman':
-    case 'swarmer':
-    case 'tank':
-    case 'splitter':
-    case 'circler':
-    case 'shielded':
-    case 'elite':
-      return Math.floor(timeS * 4 + enemy.id * 0.41) & 1;
-    default:
-      return 0;
-  }
-}
-
-function whipDimensions(area: unknown): { width: number; height: number } {
-  if (typeof area === 'number' && Number.isFinite(area)) {
-    const scale = Math.max(0.1, area);
-    return {
-      width: KICK_GEOMETRY.baseWidth * scale,
-      height: KICK_GEOMETRY.baseHeight * scale,
-    };
-  }
-  const data = area && typeof area === 'object' ? area as Record<string, unknown> : {};
-  const finite = (name: string): number | null => {
-    const value = data[name];
-    return typeof value === 'number' && Number.isFinite(value) ? value : null;
-  };
-  return {
-    width: Math.max(24, finite('width') ?? finite('w') ?? finite('reach') ?? 150),
-    height: Math.max(12, finite('height') ?? finite('h') ?? finite('thickness') ?? 42),
-  };
-}
-
-function pixelDiamond(gfx: Graphics, x: number, y: number, radius: number, color: number, alpha = 1): void {
-  const r = snap(radius);
-  gfx.poly([snap(x), snap(y - r), snap(x + r), snap(y), snap(x), snap(y + r), snap(x - r), snap(y)])
-    .fill({ color, alpha });
-}
-
-function makeDeathBurst(
-  radius: number,
-  color: number,
-  elite: boolean,
-  seedX: number,
-  seedY: number,
-): { gfx: Graphics; burst: DeathBurst } {
-  const fragments: DeathFragment[] = [];
-  const count = elite
-    ? Math.min(38, Math.max(26, Math.round(radius)))
-    : Math.min(20, Math.max(11, Math.round(radius * 0.9)));
-  for (let i = 0; i < count; i++) {
-    const angle = hash2(snap(seedX), snap(seedY), i * 37 + 11) * Math.PI * 2;
-    const startR = radius * (0.12 + hash2(snap(seedY), i, 91) * 0.62);
-    const travel = radius * (elite
-      ? 2 + hash2(i, snap(seedX), 127) * 1.7
-      : 1.5 + hash2(i, snap(seedY), 181) * 1.5);
-    fragments.push({
-      x: Math.cos(angle) * startR,
-      y: Math.sin(angle) * startR,
-      dx: Math.cos(angle) * travel,
-      dy: Math.sin(angle) * travel,
-      size: Math.max(2, Math.min(elite ? 8 : 6, radius * (0.18 + hash2(i, 3, 233) * 0.14))),
-      shade: i % 3,
-    });
-  }
-  const burst = { radius, elite, fragments };
-  const gfx = new Graphics({ roundPixels: true });
-  gfx.tint = color;
-  if (elite) gfx.blendMode = 'add';
-  redrawDeathBurst(gfx, burst, 0);
-  return { gfx, burst };
-}
-
-function redrawDeathBurst(gfx: Graphics, burst: DeathBurst, progress: number): void {
-  gfx.clear();
-  const core = Math.max(0, 1 - progress * 1.65);
-  if (core > 0) {
-    const r = burst.radius * core;
-    const cell = Math.max(2, snap(r * 0.46));
-    for (const [x, y] of [[0, 0], [-0.58, 0], [0.58, 0], [0, -0.58], [0, 0.58]] as const) {
-      gfx.rect(snap(x * r - cell / 2), snap(y * r - cell / 2), cell, cell).fill(0xffffff);
-    }
-    gfx.poly(regularPixelPoly(8, r * 1.08, Math.PI / 8))
-      .stroke({ width: burst.elite ? 4 : 2, color: 0xffffff, alpha: 0.76 });
-  }
-  const travel = 1 - (1 - progress) * (1 - progress);
-  for (const fragment of burst.fragments) {
-    const size = Math.max(1, snap(fragment.size * (1 - progress * 0.72)));
-    const x = snap(fragment.x + fragment.dx * travel);
-    const y = snap(fragment.y + fragment.dy * travel);
-    const alpha = fragment.shade === 0 ? 1 : fragment.shade === 1 ? 0.76 : 0.5;
-    gfx.rect(x - Math.floor(size / 2), y - Math.floor(size / 2), size, size)
-      .fill({ color: 0xffffff, alpha });
-  }
+interface Shake {
+  started: number;
+  magnitude: number;
+  duration: number;
 }
 
 export class RunView {
   readonly stage: Container;
 
-  private world: RunWorld;
-  private view: { width: number; height: number };
+  private readonly world: RunWorld;
+  private readonly view: { width: number; height: number };
+  private readonly floorLayer = new Container();
+  private readonly environmentLayer = new Container();
+  private readonly zoneLayer = new Container();
+  private readonly pickupLayer = new Container();
+  private readonly enemyLayer = new Container();
+  private readonly projectileLayer = new Container();
+  private readonly effectLayer = new Container();
+  private readonly playerLayer = new Container();
+  private readonly rewardLayer = new Container();
+  private readonly textLayer = new Container();
+
+  private readonly floor: TilingSprite;
+  private readonly player: Sprite;
+  private readonly playerMarker: Sprite;
+  private readonly playerFrames: readonly [Texture, Texture];
+  private readonly enemySprites = new Map<Enemy, EnemyVisual>();
+  private readonly projectileSprites = new Map<Projectile, Sprite>();
+  private readonly zoneSprites = new Map<Zone, Sprite>();
+  private readonly gemSprites = new Map<Gem, Sprite>();
+  private readonly noteSprites = new Map<MusicNotePickup, Sprite>();
+  private readonly shockwaveSprites = new Map<Shockwave, Sprite>();
+  private readonly gravitySprites = new Map<GravityWell, Sprite>();
+  private readonly encoreSprites = new Map<object, Sprite>();
+  private readonly environmentSprites = new Map<string, Sprite>();
+  private groundPicks: GroundPickVisual[] = [];
+  private timedSprites: TimedSprite[] = [];
+  private floaters: FloatingText[] = [];
+  private shakes: Shake[] = [];
+  private viewTime = 0;
+  private previousPlayerX = 0;
+  private previousPlayerY = 0;
   private destroyed = false;
-
-  // Required visual order. Each dynamic entity is only ever attached to its
-  // own layer, so spawn timing cannot accidentally hide the player or rewards.
-  private tiledGroundLayer = new Container();
-  private environmentLayer = new Container();
-  private zoneLayer = new Container();
-  private gemLayer = new Container();
-  private enemyLayer = new Container();
-  private attackLayer = new Container();
-  private playerLayer = new Container();
-  private rewardLayer = new Container();
-  private rarePickupLayer = new Container();
-  private foregroundLayer = new Container();
-  private flashLayer = new Container();
-
-  private floorFallback = new Graphics({ roundPixels: true });
-  private floorTileLayer = new Container();
-  private floorShade = new Graphics({ roundPixels: true });
-  private venueEnvironmentGfx = new Graphics({ roundPixels: true });
-  private floorTexture: Texture | null = null;
-  private floorTiles: FloorTile[] = [];
-  private floorColumns = 0;
-  private floorRows = 0;
-
-  private telegraphGfx = new Graphics({ roundPixels: true });
-  private systemZoneGfx = new Graphics({ roundPixels: true });
-  private trailGfx = new Graphics({ roundPixels: true });
-  private projectileLayer = new Container();
-  private systemAttackGfx = new Graphics({ roundPixels: true });
-  private fxLayer = new Container();
-  private floaterLayer = new Container();
-  private rewardSafeGfx = new Graphics({ roundPixels: true });
-  private tourRewardLayer = new Container();
-  private foregroundGfx = new Graphics({ roundPixels: true });
-  private flashGfx = new Graphics({ roundPixels: true });
-  private playerGfx: PlayerGfx;
-
-  private enemyGfx = new Map<Enemy, EnemyGfx>();
-  private projectileGfx = new Map<Projectile, ProjectileGfx>();
-  private zoneGfx = new Map<Zone, ZoneGfx>();
-  private gemGfx = new Map<Gem, GemGfx>();
-  private musicNoteGfx = new Map<MusicNotePickup, MusicNoteGfx>();
-  private stageMagnetGfx = new Map<StageMagnetPickup, StageMagnetGfx>();
-  private scenery = new Map<string, SceneryCell>();
-  private venueGateGfx = new Map<StructuralVenueGate, VenueGateGfx>();
-  private tourCaseGfx = new Map<StructuralTourCase, TourCaseGfx>();
-  private groundPickGfx: RewardGfx[] = [];
-  private pops: Pop[] = [];
-  private floaters: Floater[] = [];
-  private live = new Set<object>();
-  private deathBurstCount = 0;
-
-  private shakes: { start: number; mag: number; dur: number }[] = [];
-  private flashes: { start: number; dur: number; color: number; alpha: number }[] = [];
-  private trails = new Map<Projectile, number[]>();
-  private chapter = -1;
-  private readonly reducedMotion: boolean;
 
   constructor(world: RunWorld, view: { width: number; height: number }) {
     this.world = world;
     this.view = view;
     this.stage = new Container();
-    this.reducedMotion = typeof window !== 'undefined' &&
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    this.playerGfx = makePlayerGfx(RUN.playerRadius);
+    this.stage.sortableChildren = false;
 
-    this.tiledGroundLayer.addChild(this.floorFallback, this.floorTileLayer, this.floorShade);
-    this.environmentLayer.addChild(this.venueEnvironmentGfx);
-    this.zoneLayer.addChild(this.systemZoneGfx, this.telegraphGfx);
-    this.attackLayer.addChild(
-      this.trailGfx,
-      this.projectileLayer,
-      this.systemAttackGfx,
-      this.fxLayer,
-      this.floaterLayer,
-    );
-    this.playerLayer.addChild(this.playerGfx);
-    this.rewardLayer.addChild(this.rarePickupLayer, this.rewardSafeGfx, this.tourRewardLayer);
-    this.foregroundLayer.addChild(this.foregroundGfx);
-    this.flashLayer.addChild(this.flashGfx);
+    this.floor = new TilingSprite({
+      texture: arenaFloorTexture(),
+      width: Math.ceil(world.worldW + 512),
+      height: Math.ceil(world.worldH + 512),
+    });
+    this.floor.roundPixels = true;
+    this.floorLayer.addChild(this.floor);
+
+    this.playerFrames = playerPixelFrames();
+    this.playerMarker = sprite(effectPixelTexture('impact-cyan'));
+    this.playerMarker.scale.set(0.34);
+    this.playerMarker.alpha = 0.36;
+    this.player = sprite(this.playerFrames[0], 0.5, 0.92);
+    this.player.scale.set(PLAYER_SCALE);
+    // Both live above attack effects. The small cyan foot marker keeps the
+    // hero locatable without painting a large halo over nearby enemies.
+    this.playerLayer.addChild(this.playerMarker, this.player);
+
     this.stage.addChild(
-      this.tiledGroundLayer,
+      this.floorLayer,
       this.environmentLayer,
       this.zoneLayer,
-      this.gemLayer,
+      this.pickupLayer,
       this.enemyLayer,
-      this.attackLayer,
+      this.projectileLayer,
+      this.effectLayer,
       this.playerLayer,
       this.rewardLayer,
-      this.foregroundLayer,
-      this.flashLayer,
+      this.textLayer,
     );
-
-    const ready = soundwoodFloorTexture();
-    if (ready) this.installFloorTexture(ready);
-    else {
-      void preloadSoundwoodFloor().then((texture) => {
-        if (texture && !this.destroyed) this.installFloorTexture(texture);
-      });
-    }
   }
 
-  pushShake(mag: number, dur: number): void {
-    this.shakes.push({ start: this.world.timeS, mag, dur });
+  pushShake(magnitude: number, duration: number): void {
+    this.shakes.push({ started: this.viewTime, magnitude, duration });
   }
 
   flourish(x: number, y: number): void {
-    const gfx = new Graphics({ roundPixels: true });
-    gfx.poly(regularPixelPoly(12, 30, Math.PI / 12)).stroke({ width: 4, color: 0xffffff });
-    for (let i = 0; i < 8; i++) {
-      const angle = i * Math.PI / 4;
-      pixelDiamond(gfx, Math.cos(angle) * 34, Math.sin(angle) * 34, 3, 0xffffff);
-    }
-    gfx.tint = SOUNDWOOD.cyan;
-    gfx.position.set(snap(x), snap(y));
-    gfx.scale.set(0.2);
-    gfx.blendMode = 'add';
-    this.fxLayer.addChild(gfx);
-    this.pops.push({ gfx, t: 0, dur: 0.7, fromScale: 0.2, toScale: 8.5 });
+    this.addTimedSprite(effectPixelTexture('celebration'), x, y, {
+      duration: 0.7,
+      from: 0.32,
+      to: 1.05,
+      alpha: 0.95,
+    });
   }
 
   levelBurst(x: number, y: number): void {
-    for (let i = 0; i < 3; i++) {
-      const gfx = new Graphics({ roundPixels: true });
-      gfx.poly(regularPixelPoly(i === 1 ? 8 : 12, 28 + i * 8, Math.PI / 8))
-        .stroke({ width: 5 - i, color: 0xffffff, alpha: 0.9 - i * 0.18 });
-      gfx.tint = i === 1 ? SOUNDWOOD.magenta : SOUNDWOOD.cyan;
-      gfx.position.set(snap(x), snap(y));
-      gfx.scale.set(0.18);
-      gfx.blendMode = 'add';
-      this.fxLayer.addChild(gfx);
-      this.pops.push({
-        gfx,
-        t: -i * 0.04,
-        dur: 0.78,
-        fromScale: 0.18,
-        toScale: 7 + i * 2.2,
-      });
-    }
-    this.flashes.push({ start: this.world.timeS, dur: 0.48, color: SOUNDWOOD.cyan, alpha: 0.2 });
+    this.addTimedSprite(effectPixelTexture('celebration'), x, y, {
+      duration: 0.85,
+      from: 0.45,
+      to: 1.55,
+      alpha: 1,
+    });
+    this.addTimedSprite(effectPixelTexture('impact-cyan'), x, y, {
+      duration: 0.55,
+      from: 0.35,
+      to: 1.2,
+      alpha: 0.9,
+    });
   }
 
   setGroundPicks(picks: GroundPickView[]): void {
-    for (const reward of this.groundPickGfx) reward.destroy({ children: true });
-    this.groundPickGfx.length = 0;
-    this.rewardSafeGfx.clear();
+    for (const visual of this.groundPicks) visual.root.destroy({ children: true });
+    this.groundPicks = [];
 
-    if (picks.length > 0) {
-      const centerX = picks.reduce((sum, pick) => sum + pick.x, 0) / picks.length;
-      const centerY = picks.reduce((sum, pick) => sum + pick.y, 0) / picks.length;
-      const safeRadius = 178;
-      this.rewardSafeGfx
-        .poly(regularPixelPoly(16, safeRadius, Math.PI / 16).map((value, i) => snap(value + (i % 2 === 0 ? centerX : centerY))))
-        .fill({ color: SOUNDWOOD.cyan, alpha: 0.035 })
-        .stroke({ width: 3, color: SOUNDWOOD.cyan, alpha: 0.42 });
-      for (let i = 0; i < 16; i++) {
-        const angle = i * Math.PI / 8;
-        pixelDiamond(
-          this.rewardSafeGfx,
-          centerX + Math.cos(angle) * safeRadius,
-          centerY + Math.sin(angle) * safeRadius,
-          i % 2 === 0 ? 5 : 3,
-          i % 2 === 0 ? SOUNDWOOD.cyanHot : SOUNDWOOD.magenta,
-          0.72,
-        );
+    for (let i = 0; i < picks.length; i++) {
+      const pick = picks[i];
+      const root = new Container();
+      const pedestal = sprite(pickupPixelTexture('reward-pedestal'));
+      pedestal.scale.set(0.62);
+      pedestal.alpha = 0.96;
+      root.addChild(pedestal);
+
+      const icon = pick.role !== undefined && isPixelWeaponRole(pick.role)
+        ? sprite(weaponPixelTexture(pick.role, false))
+        : sprite(passiveIconTexture(pick.item as ItemId));
+      icon.scale.set(pick.role !== undefined ? 0.31 : 0.27);
+      icon.position.y = -10;
+      root.addChild(icon);
+
+      const name = new Text({ text: pick.name.toUpperCase(), style: LABEL_STYLE, roundPixels: true });
+      name.anchor.set(0.5, 0);
+      name.position.set(0, 40);
+      const level = new Text({ text: pick.level, style: SMALL_STYLE, roundPixels: true });
+      level.anchor.set(0.5, 0);
+      level.position.set(0, 55);
+      root.addChild(name, level);
+      if (pick.effect) {
+        const effect = new Text({ text: pick.effect, style: SMALL_STYLE, roundPixels: true });
+        effect.anchor.set(0.5, 0);
+        effect.position.set(0, 67);
+        root.addChild(effect);
       }
-    }
-
-    for (const pick of picks) {
-      const reward = makeRewardGfx(pick);
-      this.rewardLayer.addChild(reward);
-      this.groundPickGfx.push(reward);
+      root.position.set(snap(pick.x), snap(pick.y));
+      this.rewardLayer.addChild(root);
+      this.groundPicks.push({ root, worldX: pick.x, worldY: pick.y, phase: i * 1.7 });
     }
   }
 
   update(dt: number): void {
-    for (const fx of this.world.fx ?? []) this.spawnFx(fx);
-    if (this.world.fx) this.world.fx.length = 0;
-
-    const player = this.world.player;
-    const cameraX = player.x + PLAYER_FOOT_OFFSET.x;
-    const cameraY = player.y + PLAYER_FOOT_OFFSET.y;
-    const nextChapter = visualChapter(this.world);
-    if (this.chapter >= 0 && nextChapter !== this.chapter) this.chapterBurst(cameraX, cameraY, nextChapter);
-    this.chapter = nextChapter;
-
+    if (this.destroyed) return;
+    this.viewTime += Math.max(0, Math.min(dt, 0.1));
+    const cameraX = this.world.player.x + PLAYER_FOOT_OFFSET.x;
+    const cameraY = this.world.player.y + PLAYER_FOOT_OFFSET.y;
+    this.updateCamera(cameraX, cameraY);
     this.updateFloor(cameraX, cameraY);
-    this.drawVenueEnvironment(cameraX, cameraY);
-    this.updateScenery(cameraX, cameraY);
-    this.syncZones();
-    this.drawTourZones(cameraX, cameraY);
-    this.drawEnemyTelegraphs(cameraX, cameraY);
-    this.syncGems(cameraX, cameraY);
-    this.syncMusicNotes(cameraX, cameraY);
-    this.syncStageMagnets(cameraX, cameraY);
+    this.syncEnvironment(cameraX, cameraY);
+    this.syncPlayer();
     this.syncEnemies(cameraX, cameraY);
     this.syncProjectiles(cameraX, cameraY);
-    this.drawTrails();
-    this.drawTourAttacks(cameraX, cameraY);
-    this.updatePops(dt);
+    this.syncZones();
+    this.syncPickups();
+    this.syncWorldEffects();
+    this.syncEncoreCases();
+    this.drainFx();
+    this.updateTimedSprites(dt);
     this.updateFloaters(dt);
-    this.updatePlayer();
     this.updateGroundPicks();
-    this.syncTourRewards();
-    this.drawForeground(cameraX, cameraY);
-    this.drawFlash(cameraX, cameraY);
-
-    let shakeAmp = 0;
-    for (let i = this.shakes.length - 1; i >= 0; i--) {
-      const shake = this.shakes[i];
-      const progress = (this.world.timeS - shake.start) / shake.dur;
-      if (progress >= 1 || progress < 0) {
-        this.shakes.splice(i, 1);
-        continue;
-      }
-      shakeAmp = Math.max(shakeAmp, shake.mag * (1 - progress));
-    }
-    const sx = shakeAmp ? Math.sin(this.world.timeS * 151.7) * shakeAmp : 0;
-    const sy = shakeAmp ? Math.cos(this.world.timeS * 197.3) * shakeAmp : 0;
-    const zoom = this.world.zoom;
-    this.stage.scale.set(zoom);
-    this.stage.position.set(
-      snap(this.view.width / 2 - cameraX * zoom + sx),
-      snap(this.view.height / 2 - cameraY * zoom + sy),
-    );
   }
 
   destroy(): void {
+    if (this.destroyed) return;
     this.destroyed = true;
+    this.enemySprites.clear();
+    this.projectileSprites.clear();
+    this.zoneSprites.clear();
+    this.gemSprites.clear();
+    this.noteSprites.clear();
+    this.shockwaveSprites.clear();
+    this.gravitySprites.clear();
+    this.encoreSprites.clear();
+    this.environmentSprites.clear();
+    this.groundPicks = [];
+    this.timedSprites = [];
+    this.floaters = [];
+    this.stage.removeFromParent();
     this.stage.destroy({ children: true });
-    this.floorTiles.length = 0;
-    this.enemyGfx.clear();
-    this.projectileGfx.clear();
-    this.zoneGfx.clear();
-    this.gemGfx.clear();
-    this.musicNoteGfx.clear();
-    this.stageMagnetGfx.clear();
-    this.scenery.clear();
-    this.venueGateGfx.clear();
-    this.tourCaseGfx.clear();
-    this.groundPickGfx.length = 0;
-    this.pops.length = 0;
-    this.floaters.length = 0;
-    this.trails.clear();
-    this.shakes.length = 0;
-    this.flashes.length = 0;
   }
 
-  private installFloorTexture(texture: Texture): void {
-    this.floorTexture = texture;
-    texture.source.scaleMode = 'nearest';
-    this.floorFallback.alpha = 0;
-    this.floorColumns = 0;
-    this.floorRows = 0;
+  private updateCamera(cameraX: number, cameraY: number): void {
+    const zoom = this.world.zoom;
+    let shakeX = 0;
+    let shakeY = 0;
+    for (let i = this.shakes.length - 1; i >= 0; i--) {
+      const shake = this.shakes[i];
+      const age = this.viewTime - shake.started;
+      if (age >= shake.duration) {
+        this.shakes.splice(i, 1);
+        continue;
+      }
+      const strength = shake.magnitude * (1 - age / shake.duration);
+      shakeX += Math.round(Math.sin(age * 97 + i) * strength);
+      shakeY += Math.round(Math.cos(age * 83 + i * 2) * strength);
+    }
+    this.stage.scale.set(zoom);
+    this.stage.position.set(
+      snap(this.view.width / 2 - cameraX * zoom + shakeX),
+      snap(this.view.height / 2 - cameraY * zoom + shakeY),
+    );
   }
 
   private updateFloor(cameraX: number, cameraY: number): void {
-    const width = this.world.worldW;
-    const height = this.world.worldH;
-    const left = cameraX - width / 2;
-    const top = cameraY - height / 2;
-    const texture = this.floorTexture;
-
-    if (!texture) {
-      this.floorFallback.clear();
-      this.floorFallback.rect(snap(left - 80), snap(top - 80), snap(width + 160), snap(height + 160))
-        .fill(SOUNDWOOD.shadow);
-      const cell = 64;
-      const startX = Math.floor((left - 80) / cell) * cell;
-      const startY = Math.floor((top - 80) / cell) * cell;
-      for (let x = startX; x < left + width + 80; x += cell) {
-        for (let y = startY; y < top + height + 80; y += cell) {
-          const value = hash2(Math.floor(x / cell), Math.floor(y / cell), 42);
-          if (value > 0.52) {
-            this.floorFallback.rect(x + snap(value * 31), y + snap(value * 43), 3, 3)
-              .fill({ color: value > 0.82 ? SOUNDWOOD.pineLight : SOUNDWOOD.bark, alpha: 0.42 });
-          }
-        }
-      }
-    } else {
-      const columns = Math.ceil(width / FLOOR_TILE_SIZE) + 3;
-      const rows = Math.ceil(height / FLOOR_TILE_SIZE) + 3;
-      if (columns !== this.floorColumns || rows !== this.floorRows) {
-        for (const tile of this.floorTiles) tile.sprite.destroy();
-        this.floorTiles.length = 0;
-        this.floorTileLayer.removeChildren();
-        this.floorColumns = columns;
-        this.floorRows = rows;
-        for (let i = 0; i < columns * rows; i++) {
-          const sprite = new Sprite({ texture, anchor: 0.5, roundPixels: true });
-          this.floorTileLayer.addChild(sprite);
-          this.floorTiles.push({ sprite, ix: 0, iy: 0 });
-        }
-      }
-      const centerIx = Math.floor(cameraX / FLOOR_TILE_SIZE);
-      const centerIy = Math.floor(cameraY / FLOOR_TILE_SIZE);
-      const firstIx = centerIx - Math.floor(columns / 2);
-      const firstIy = centerIy - Math.floor(rows / 2);
-      const palette = venuePalette(this.world);
-      const tint = multiplyTint(CHAPTER_TINTS[this.chapter % CHAPTER_TINTS.length], palette.tint);
-      let index = 0;
-      for (let row = 0; row < rows; row++) {
-        for (let column = 0; column < columns; column++) {
-          const tile = this.floorTiles[index++];
-          const ix = firstIx + column;
-          const iy = firstIy + row;
-          tile.ix = ix;
-          tile.iy = iy;
-          tile.sprite.position.set(
-            ix * FLOOR_TILE_SIZE + FLOOR_TILE_SIZE / 2,
-            iy * FLOOR_TILE_SIZE + FLOOR_TILE_SIZE / 2,
-          );
-          tile.sprite.scale.set((ix & 1) ? -FLOOR_SCALE : FLOOR_SCALE, (iy & 1) ? -FLOOR_SCALE : FLOOR_SCALE);
-          tile.sprite.tint = tint;
-        }
-      }
-    }
-
-    // A translucent night wash keeps generated detail rich but below enemies.
-    this.floorShade.clear();
-    this.floorShade.rect(snap(left - 80), snap(top - 80), snap(width + 160), snap(height + 160))
-      .fill({ color: SOUNDWOOD.ink, alpha: texture ? 0.39 : 0.08 });
-    const palette = venuePalette(this.world);
-    const chapterColor = this.chapter % 2 === 0 ? palette.accent : palette.secondary;
-    this.floorShade.rect(snap(left - 80), snap(top - 80), snap(width + 160), snap(height + 160))
-      .fill({ color: chapterColor, alpha: Math.min(0.042, 0.008 + this.chapter * 0.003) });
+    const pad = 256;
+    const left = snap(cameraX - this.world.worldW / 2 - pad);
+    const top = snap(cameraY - this.world.worldH / 2 - pad);
+    this.floor.position.set(left, top);
+    this.floor.width = Math.ceil(this.world.worldW + pad * 2);
+    this.floor.height = Math.ceil(this.world.worldH + pad * 2);
+    this.floor.tilePosition.set(-left, -top);
   }
 
-  /** Venue motifs are sparse floor paint and architecture shadows, never
-   * colliders. Their silhouettes change the read of the endless arena while
-   * remaining much dimmer than enemies, pickups, and attack telegraphs. */
-  private drawVenueEnvironment(cameraX: number, cameraY: number): void {
-    const gfx = this.venueEnvironmentGfx;
-    const tour = tourWorld(this.world);
-    const venue = tour.venue ?? 'alley';
-    const palette = venuePalette(this.world);
-    const width = this.world.worldW;
-    const height = this.world.worldH;
-    const left = cameraX - width / 2 - 100;
-    const top = cameraY - height / 2 - 100;
-    const right = left + width + 200;
-    const bottom = top + height + 200;
-    const cell = 224;
-    const minX = Math.floor(left / cell);
-    const maxX = Math.floor(right / cell);
-    const minY = Math.floor(top / cell);
-    const maxY = Math.floor(bottom / cell);
-    gfx.clear();
-
-    if (venue === 'metro') {
-      const railGap = 360;
-      const firstRailY = Math.floor(top / railGap) * railGap;
-      for (let y = firstRailY; y <= bottom; y += railGap) {
-        for (const offset of [-18, 18]) {
-          gfx.moveTo(snap(left), snap(y + offset)).lineTo(snap(right), snap(y + offset))
-            .stroke({ width: 5, color: SOUNDWOOD.ink, alpha: 0.48 });
-          gfx.moveTo(snap(left), snap(y + offset)).lineTo(snap(right), snap(y + offset))
-            .stroke({ width: 2, color: palette.accent, alpha: 0.12 });
-        }
-        for (let x = Math.floor(left / 48) * 48; x < right; x += 48) {
-          gfx.rect(snap(x), snap(y - 27), 5, 54).fill({ color: SOUNDWOOD.barkLight, alpha: 0.16 });
-        }
-      }
-    }
-
-    for (let iy = minY; iy <= maxY; iy++) {
-      for (let ix = minX; ix <= maxX; ix++) {
-        const h = hash2(ix, iy, 4401);
-        if (h < 0.64) continue;
-        const x = ix * cell + cell * (0.25 + hash2(ix, iy, 4403) * 0.5);
-        const y = iy * cell + cell * (0.25 + hash2(ix, iy, 4409) * 0.5);
-        if (venue === 'warehouse') {
-          const w = 48 + snap(h * 28);
-          const hgt = 36 + snap(hash2(ix, iy, 4417) * 34);
-          gfx.rect(snap(x - w / 2), snap(y - hgt / 2), snap(w), snap(hgt))
-            .fill({ color: SOUNDWOOD.ink, alpha: 0.2 })
-            .stroke({ width: 4, color: palette.accent, alpha: 0.09 });
-          for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
-            pixelDiamond(gfx, x + sx * (w / 2 - 7), y + sy * (hgt / 2 - 7), 2, palette.secondary, 0.22);
-          }
-        } else if (venue === 'rooftop') {
-          gfx.rect(snap(x - 34), snap(y - 23), 68, 46)
-            .fill({ color: SOUNDWOOD.ink, alpha: 0.25 })
-            .stroke({ width: 3, color: palette.secondary, alpha: 0.11 });
-          for (let i = 0; i < 5; i++) {
-            gfx.rect(snap(x - 24 + i * 12), snap(y - 13), 4, 26)
-              .fill({ color: palette.accent, alpha: 0.09 });
-          }
-          const wind = hash2(ix, iy, 4421) > 0.5 ? 1 : -1;
-          gfx.poly([x + wind * 47, y, x + wind * 36, y - 7, x + wind * 36, y + 7].map(snap))
-            .fill({ color: palette.accent, alpha: 0.16 });
-        } else if (venue === 'basement') {
-          const puddle = [
-            x - 46, y - 4, x - 23, y - 18, x + 25, y - 14, x + 51, y + 2,
-            x + 23, y + 17, x - 28, y + 14,
-          ].map(snap);
-          gfx.poly(puddle).fill({ color: palette.accent, alpha: 0.055 });
-          gfx.poly(puddle).stroke({ width: 2, color: palette.secondary, alpha: 0.1 });
-          gfx.rect(snap(x - 22), snap(y - 1), 44, 3).fill({ color: palette.accent, alpha: 0.12 });
-        } else if (venue === 'dawn') {
-          const reach = 75 + h * 45;
-          gfx.poly([
-            x - 22, y - reach, x + 12, y - reach, x + 48, y + reach,
-            x - 14, y + reach,
-          ].map(snap)).fill({ color: palette.accent, alpha: 0.032 });
-          pixelDiamond(gfx, x, y, 4, palette.secondary, 0.16);
-        } else if (venue !== 'metro') {
-          // Alley cable loops and drain grates preserve Soundwood's root-like
-          // shapes while making the opening venue feel deliberately urban.
-          gfx.poly(regularPixelPoly(8, 28 + h * 18, Math.PI / 8)
-            .map((value, i) => snap(value + (i % 2 === 0 ? x : y))))
-            .stroke({ width: 4, color: SOUNDWOOD.ink, alpha: 0.24 });
-          gfx.rect(snap(x - 13), snap(y - 8), 26, 16)
-            .stroke({ width: 2, color: palette.accent, alpha: 0.1 });
-        }
-      }
-    }
-  }
-
-  private updateScenery(cameraX: number, cameraY: number): void {
-    const halfW = this.world.worldW / 2 + SCENERY_CELL_SIZE;
-    const halfH = this.world.worldH / 2 + SCENERY_CELL_SIZE;
-    const minX = Math.floor((cameraX - halfW) / SCENERY_CELL_SIZE);
-    const maxX = Math.floor((cameraX + halfW) / SCENERY_CELL_SIZE);
-    const minY = Math.floor((cameraY - halfH) / SCENERY_CELL_SIZE);
-    const maxY = Math.floor((cameraY + halfH) / SCENERY_CELL_SIZE);
+  /**
+   * Populate a deterministic, non-colliding scenery grid around the camera.
+   * Props always sit below combat telegraphs and pickups, so the crypt feels
+   * inhabited without sacrificing silhouettes or creating invisible walls.
+   */
+  private syncEnvironment(cameraX: number, cameraY: number): void {
+    const halfW = this.world.worldW / 2 + ENVIRONMENT_CELL;
+    const halfH = this.world.worldH / 2 + ENVIRONMENT_CELL;
+    const minX = Math.floor((cameraX - halfW) / ENVIRONMENT_CELL);
+    const maxX = Math.ceil((cameraX + halfW) / ENVIRONMENT_CELL);
+    const minY = Math.floor((cameraY - halfH) / ENVIRONMENT_CELL);
+    const maxY = Math.ceil((cameraY + halfH) / ENVIRONMENT_CELL);
     const wanted = new Set<string>();
-    for (let iy = minY; iy <= maxY; iy++) {
-      for (let ix = minX; ix <= maxX; ix++) {
-        const key = ix + ',' + iy;
+
+    for (let cellY = minY; cellY <= maxY; cellY++) {
+      for (let cellX = minX; cellX <= maxX; cellX++) {
+        const hash = this.environmentHash(cellX, cellY);
+        // Scenery is frequent but subdued and always behind gameplay. The
+        // opening clearing below keeps the initial choice uncluttered.
+        if (hash % 5 > 3) continue;
+        const worldX = cellX * ENVIRONMENT_CELL + 56 + ((hash >>> 8) % 176);
+        const worldY = cellY * ENVIRONMENT_CELL + 62 + ((hash >>> 17) % 164);
+        // Every run opens in the same clear circle. The three dedicated
+        // weapon pedestals therefore never overlap decorative scenery.
+        if (Math.hypot(worldX, worldY) < 270) continue;
+
+        const key = `${cellX}:${cellY}`;
         wanted.add(key);
-        let cell = this.scenery.get(key);
-        if (!cell) {
-          cell = makeSceneryCell(ix, iy);
-          cell.position.set(ix * SCENERY_CELL_SIZE + SCENERY_CELL_SIZE / 2, iy * SCENERY_CELL_SIZE + SCENERY_CELL_SIZE / 2);
-          this.scenery.set(key, cell);
-          this.environmentLayer.addChild(cell);
-        }
-        animateSceneryCell(cell, this.world.timeS, this.chapter);
-      }
-    }
-    for (const [key, cell] of this.scenery) {
-      if (!wanted.has(key)) {
-        cell.destroy({ children: true });
-        this.scenery.delete(key);
-      }
-    }
-  }
-
-  private syncZones(): void {
-    this.live.clear();
-    for (const zone of this.world.zones) {
-      const evolved = roleIsEvolved(this.world, zone.source);
-      let gfx = this.zoneGfx.get(zone);
-      if (!gfx || gfx.__evolved !== evolved) {
-        gfx?.destroy();
-        gfx = makeZoneGfx(zone, evolved) as ZoneGfx;
-        gfx.__evolved = evolved;
-        this.zoneGfx.set(zone, gfx);
-        this.zoneLayer.addChild(gfx);
-      }
-      gfx.position.set(snap(zone.x), snap(zone.y));
-      gfx.alpha = Math.min(1, zone.lifeS * 2) * (0.82 + Math.sin(this.world.timeS * 3) * 0.1);
-      this.live.add(zone);
-    }
-    for (const [zone, gfx] of this.zoneGfx) {
-      if (!this.live.has(zone)) {
-        gfx.destroy();
-        this.zoneGfx.delete(zone);
-      }
-    }
-  }
-
-  private drawTourZones(cameraX: number, cameraY: number): void {
-    const gfx = this.systemZoneGfx;
-    const tour = tourWorld(this.world);
-    const palette = venuePalette(this.world);
-    gfx.clear();
-
-    const lane = tour.trainLane;
-    if (lane && (lane.warningT > 0 || lane.activeT > 0)) {
-      const left = cameraX - this.world.worldW / 2 - 30;
-      const right = cameraX + this.world.worldW / 2 + 30;
-      const active = lane.activeT > 0;
-      const pulse = 0.5 + 0.5 * Math.sin(this.world.timeS * (active ? 16 : 8));
-      const bandHalf = active ? 44 : 34;
-      gfx.rect(snap(left), snap(lane.y - bandHalf), snap(right - left), snap(bandHalf * 2))
-        .fill({ color: active ? palette.accent : SOUNDWOOD.coral, alpha: active ? 0.13 : 0.045 + pulse * 0.035 });
-      for (const offset of [-bandHalf, bandHalf]) {
-        gfx.moveTo(snap(left), snap(lane.y + offset)).lineTo(snap(right), snap(lane.y + offset))
-          .stroke({ width: active ? 6 : 3, color: active ? 0xffffff : SOUNDWOOD.coral, alpha: active ? 0.62 : 0.34 + pulse * 0.22 });
-      }
-      for (let x = Math.floor(left / 74) * 74; x < right; x += 74) {
-        const dir = (Math.floor(x / 74) & 1) ? -1 : 1;
-        gfx.poly([
-          x - 13, lane.y - dir * 9,
-          x, lane.y + dir * 6,
-          x + 13, lane.y - dir * 9,
-          x, lane.y - dir * 1,
-        ].map(snap)).fill({ color: active ? 0xffffff : SOUNDWOOD.coral, alpha: active ? 0.44 : 0.24 });
-      }
-    }
-
-    for (const well of tour.gravityWells ?? []) {
-      if (
-        Math.abs(well.x - cameraX) > this.world.worldW / 2 + well.radius ||
-        Math.abs(well.y - cameraY) > this.world.worldH / 2 + well.radius
-      ) continue;
-      const lifePulse = Math.min(1, well.lifeS * 3);
-      gfx.poly(regularPixelPoly(16, well.radius, this.world.timeS * 0.18)
-        .map((value, i) => snap(value + (i % 2 === 0 ? well.x : well.y))))
-        .fill({ color: SOUNDWOOD.ink, alpha: 0.34 * lifePulse })
-        .stroke({ width: 4, color: well.color, alpha: 0.52 * lifePulse });
-      for (let ring = 1; ring <= 3; ring++) {
-        const radius = well.radius * (0.2 + ring * 0.2);
-        gfx.poly(regularPixelPoly(8 + ring * 4, radius, -this.world.timeS * (0.3 + ring * 0.08))
-          .map((value, i) => snap(value + (i % 2 === 0 ? well.x : well.y))))
-          .stroke({ width: Math.max(1, 5 - ring), color: ring === 3 ? well.color : 0xffffff, alpha: (0.42 - ring * 0.07) * lifePulse });
-      }
-      pixelDiamond(gfx, well.x, well.y, Math.max(5, well.radius * 0.12), 0x02040c, 0.95);
-    }
-
-    const rail = tour.neonRail;
-    if (rail && rail.points.length > 1) {
-      const points = rail.points.slice(0, 512);
-      const phaseAlpha = rail.phase === 'recording'
-        ? 0.42
-        : rail.phase === 'preview' ? 0.5 + Math.sin(this.world.timeS * 8) * 0.18 : 0.78;
-      const drawRailStroke = (width: number, color: number, alpha: number): void => {
-        if (rail.phase === 'recording') {
-          for (let i = 1; i < points.length; i++) {
-            if (i % 2 === 0) continue;
-            gfx.moveTo(snap(points[i - 1].x), snap(points[i - 1].y))
-              .lineTo(snap(points[i].x), snap(points[i].y));
-          }
-          gfx.stroke({ width, color, alpha });
-        } else {
-          gfx.moveTo(snap(points[0].x), snap(points[0].y));
-          for (let i = 1; i < points.length; i++) gfx.lineTo(snap(points[i].x), snap(points[i].y));
-          gfx.stroke({ width, color, alpha });
-        }
-      };
-      drawRailStroke(13, SOUNDWOOD.ink, 0.9);
-      drawRailStroke(7, rail.crossedItself ? SOUNDWOOD.magenta : SOUNDWOOD.cyan, phaseAlpha);
-      drawRailStroke(2, 0xffffff, phaseAlpha * 0.8);
-      const markerStep = Math.max(1, Math.floor(points.length / 14));
-      for (let i = 0; i < points.length; i += markerStep) {
-        pixelDiamond(gfx, points[i].x, points[i].y, rail.phase === 'solid' ? 4 : 3, 0xffffff, phaseAlpha * 0.72);
-      }
-    }
-  }
-
-  private drawEnemyTelegraphs(cameraX: number, cameraY: number): void {
-    const gfx = this.telegraphGfx;
-    gfx.clear();
-    const halfW = this.world.worldW / 2 + 80;
-    const halfH = this.world.worldH / 2 + 80;
-    for (const enemy of this.world.enemies) {
-      if (Math.abs(enemy.x - cameraX) > halfW || Math.abs(enemy.y - cameraY) > halfH) continue;
-      if (enemy.kind === 'charger' && enemy.windupT > 0) {
-        let dx = enemy.dashX;
-        let dy = enemy.dashY;
-        const length = Math.hypot(dx, dy);
-        if (length < 0.01) {
-          dx = this.world.player.x - enemy.x;
-          dy = this.world.player.y - enemy.y;
-        }
-        const norm = Math.hypot(dx, dy) || 1;
-        dx /= norm;
-        dy /= norm;
-        const reach = 170;
-        gfx.moveTo(snap(enemy.x), snap(enemy.y))
-          .lineTo(snap(enemy.x + dx * reach), snap(enemy.y + dy * reach))
-          .stroke({ width: 7, color: SOUNDWOOD.coral, alpha: 0.12 });
-        for (let i = 1; i <= 5; i++) {
-          pixelDiamond(gfx, enemy.x + dx * reach * i / 5, enemy.y + dy * reach * i / 5, 3, SOUNDWOOD.coral, 0.6);
+        let visual = this.environmentSprites.get(key);
+        if (!visual) {
+          const id = PIXEL_ENVIRONMENT_IDS[(hash >>> 3) % PIXEL_ENVIRONMENT_IDS.length] as PixelEnvironmentId;
+          visual = sprite(environmentPixelTexture(id), 0.5, 0.92);
+          visual.alpha = 0.58 + ((hash >>> 24) % 3) * 0.05;
+          const scale = 0.5;
+          visual.scale.set((hash & 1) === 0 ? scale : -scale, scale);
+          visual.position.set(snap(worldX), snap(worldY));
+          this.environmentLayer.addChild(visual);
+          this.environmentSprites.set(key, visual);
         }
       }
-      if ((enemy.kind === 'mantis' || enemy.kind === 'glowingBat' || enemy.kind === 'elite') && enemy.spawnClass !== 'regular') {
-        gfx.poly(regularPixelPoly(12, enemy.radius * 1.7, Math.PI / 12)
-          .map((value, i) => snap(value + (i % 2 === 0 ? enemy.x : enemy.y))))
-          .stroke({ width: 2, color: SOUNDWOOD.amber, alpha: 0.26 });
-      }
+    }
+
+    for (const [key, visual] of this.environmentSprites) {
+      if (wanted.has(key)) continue;
+      visual.destroy();
+      this.environmentSprites.delete(key);
     }
   }
 
-  private syncGems(cameraX: number, cameraY: number): void {
-    const halfW = this.world.worldW / 2 + 50;
-    const halfH = this.world.worldH / 2 + 50;
-    this.live.clear();
-    for (const gem of this.world.gems) {
-      let gfx = this.gemGfx.get(gem);
-      if (!gfx || gfx.__tier !== gem.tier) {
-        gfx?.destroy({ children: true });
-        gfx = makeGemGfx(gem);
-        this.gemGfx.set(gem, gfx);
-        this.gemLayer.addChild(gfx);
-      }
-      const visible = Math.abs(gem.x - cameraX) < halfW && Math.abs(gem.y - cameraY) < halfH;
-      gfx.renderable = visible;
-      if (visible) {
-        gfx.position.set(snap(gem.x), snap(gem.y));
-        const pulse = 1 + 0.05 * Math.sin(this.world.timeS * 5 + gem.x * 0.03);
-        gfx.scale.set(pulse);
-      }
-      this.live.add(gem);
-    }
-    for (const [gem, gfx] of this.gemGfx) {
-      if (!this.live.has(gem)) {
-        gfx.destroy({ children: true });
-        this.gemGfx.delete(gem);
-      }
-    }
+  private environmentHash(x: number, y: number): number {
+    let value = Math.imul(x ^ 0x45d9f3b, 0x27d4eb2d) ^ Math.imul(y ^ 0x119de1f3, 0x165667b1);
+    value ^= value >>> 15;
+    value = Math.imul(value, 0x2c1b3c6d);
+    value ^= value >>> 12;
+    return value >>> 0;
   }
 
-  private syncMusicNotes(cameraX: number, cameraY: number): void {
-    const halfW = this.world.worldW / 2 + 50;
-    const halfH = this.world.worldH / 2 + 50;
-    this.live.clear();
-    for (const note of this.world.musicNotes) {
-      let gfx = this.musicNoteGfx.get(note);
-      if (!gfx || gfx.__tier !== note.tier) {
-        gfx?.destroy({ children: true });
-        gfx = makeMusicNoteGfx(note);
-        this.musicNoteGfx.set(note, gfx);
-        this.gemLayer.addChild(gfx);
-      }
-      const visible = Math.abs(note.x - cameraX) < halfW && Math.abs(note.y - cameraY) < halfH;
-      gfx.renderable = visible;
-      if (visible) {
-        gfx.position.set(snap(note.x), snap(note.y - Math.sin(this.world.timeS * 6 + note.x * 0.02) * 3));
-        const pulse = 1 + 0.08 * Math.sin(this.world.timeS * 7 + note.y * 0.03);
-        gfx.scale.set(pulse);
-      }
-      this.live.add(note);
-    }
-    for (const [note, gfx] of this.musicNoteGfx) {
-      if (!this.live.has(note)) {
-        gfx.destroy({ children: true });
-        this.musicNoteGfx.delete(note);
-      }
-    }
+  private syncPlayer(): void {
+    const p = this.world.player;
+    const moved = Math.abs(p.x - this.previousPlayerX) + Math.abs(p.y - this.previousPlayerY) > 0.05;
+    const walkFrame = moved && Math.floor(this.viewTime * FRAME_RATE) % 2 === 1;
+    this.player.texture = this.playerFrames[walkFrame ? 1 : 0];
+    this.player.position.set(snap(p.x), snap(p.y));
+    this.player.scale.set(p.facingX < 0 ? -PLAYER_SCALE : PLAYER_SCALE, PLAYER_SCALE);
+    this.player.alpha = p.iframesT > 0 && Math.floor(this.viewTime * 18) % 2 === 0 ? 0.55 : 1;
+    this.playerMarker.position.set(snap(p.x), snap(p.y + 3));
+    const markerPulse = Math.floor(this.viewTime * 6) % 2 === 0;
+    this.playerMarker.scale.set(markerPulse ? 0.32 : 0.36);
+    this.playerMarker.alpha = p.iframesT > 0 ? 0.56 : markerPulse ? 0.32 : 0.4;
+    this.previousPlayerX = p.x;
+    this.previousPlayerY = p.y;
   }
 
-  private syncStageMagnets(cameraX: number, cameraY: number): void {
-    const halfW = this.world.worldW / 2 + 70;
-    const halfH = this.world.worldH / 2 + 70;
-    this.live.clear();
-    for (const magnet of this.world.stageMagnets) {
-      let gfx = this.stageMagnetGfx.get(magnet);
-      if (!gfx) {
-        gfx = makeStageMagnetGfx(magnet);
-        this.stageMagnetGfx.set(magnet, gfx);
-        this.rarePickupLayer.addChild(gfx);
-      }
-      const visible = Math.abs(magnet.x - cameraX) < halfW && Math.abs(magnet.y - cameraY) < halfH;
-      gfx.renderable = visible;
-      if (visible) {
-        const t = this.world.timeS;
-        const bob = Math.sin(t * 4.8 + magnet.x * 0.02) * 2;
-        const pulse = 1 + Math.sin(t * 5.6) * 0.045;
-        const expiring = magnet.lifeS < 6;
-        gfx.position.set(snap(magnet.x), snap(magnet.y + bob));
-        gfx.scale.set(pulse);
-        gfx.alpha = expiring && Math.floor(t * 9) % 2 === 0 ? 0.48 : 1;
-        gfx.__beam.rotation = t * 0.42;
-        gfx.__beam.alpha = 0.32 + Math.sin(t * 3.2) * 0.12;
-        gfx.__field.position.x = snap(Math.sin(t * 7) * 3);
-        gfx.__field.alpha = 0.55 + Math.sin(t * 8) * 0.35;
-        gfx.__leftPole.alpha = 0.76 + Math.sin(t * 6) * 0.24;
-        gfx.__rightPole.alpha = 0.76 - Math.sin(t * 6) * 0.24;
-      }
-      this.live.add(magnet);
-    }
-    for (const [magnet, gfx] of this.stageMagnetGfx) {
-      if (!this.live.has(magnet)) {
-        gfx.destroy({ children: true });
-        this.stageMagnetGfx.delete(magnet);
-      }
-    }
+  private visible(x: number, y: number, cameraX: number, cameraY: number, margin = 120): boolean {
+    return Math.abs(x - cameraX) <= this.world.worldW / 2 + margin &&
+      Math.abs(y - cameraY) <= this.world.worldH / 2 + margin;
   }
 
   private syncEnemies(cameraX: number, cameraY: number): void {
-    const halfW = this.world.worldW / 2 + 100;
-    const halfH = this.world.worldH / 2 + 100;
-    this.live.clear();
+    const live = new Set(this.world.enemies);
+    const frame = Math.floor(this.viewTime * FRAME_RATE);
     for (const enemy of this.world.enemies) {
-      const frame = enemyFrame(enemy, this.world.timeS);
-      let gfx = this.enemyGfx.get(enemy);
-      if (!gfx) {
-        gfx = makeEnemyGfx(enemy, frame);
-        this.enemyGfx.set(enemy, gfx);
-        this.enemyLayer.addChild(gfx);
+      let visual = this.enemySprites.get(enemy);
+      if (!visual) {
+        const root = new Container();
+        const body = sprite(enemyPixelFrames(enemy.kind)[0], 0.5, 0.92);
+        root.addChild(body);
+        let aura: Sprite | undefined;
+        if (enemy.amped || enemy.headliner || enemy.shieldHp > 0) {
+          aura = sprite(effectPixelTexture(enemy.headliner ? 'impact-gold' : 'impact-cyan'));
+          aura.alpha = enemy.headliner ? 0.55 : 0.32;
+          aura.scale.set(enemy.headliner ? 0.72 : 0.5);
+          root.addChildAt(aura, 0);
+        }
+        this.enemyLayer.addChild(root);
+        visual = { root, body, aura };
+        this.enemySprites.set(enemy, visual);
       }
-      this.live.add(enemy);
-      const visible = Math.abs(enemy.x - cameraX) < halfW && Math.abs(enemy.y - cameraY) < halfH;
-      gfx.renderable = visible;
-      if (!visible) continue;
-
-      const shield = enemy.shieldHp > 0;
-      if (gfx.__frame !== frame || gfx.__shield !== shield) {
-        gfx.context = enemyContext(enemy, shield, frame);
-        gfx.__frame = frame;
-        gfx.__shield = shield;
-      }
-      gfx.position.set(snap(enemy.x), snap(enemy.y));
-      gfx.tint = enemy.flashT > 0
-        ? 0xffffff
-        : this.world.headlinerGold
-          ? mixColor(enemy.color, HEADLINER_GOLD_PALETTE.accent, 0.68)
-          : enemy.color;
-      gfx.rotation = 0;
-      gfx.scale.set(1);
-      if (enemy.kind === 'ghost') gfx.alpha = 0.78 + Math.sin(this.world.timeS * 3 + enemy.id) * 0.08;
-      else gfx.alpha = 1;
-
-      if (enemy.kind === 'batSwarm' && (enemy.moveX !== 0 || enemy.moveY !== 0)) {
-        gfx.rotation = Math.atan2(enemy.moveY, enemy.moveX);
-      } else if ((enemy.kind === 'darter' || enemy.kind === 'charger') && (enemy.dashX !== 0 || enemy.dashY !== 0)) {
-        gfx.rotation = Math.atan2(enemy.dashY, enemy.dashX);
-      } else if (enemy.lastMoveX < -0.01) {
-        gfx.scale.x = -1;
-      }
-      if (enemy.kind === 'charger' && enemy.windupT > 0) {
-        const throb = 1 + 0.08 * (0.5 + 0.5 * Math.sin(this.world.timeS * 18));
-        gfx.scale.x *= throb;
-        gfx.scale.y = throb;
+      const frames = enemyPixelFrames(enemy.kind);
+      visual.body.texture = frames[(frame + enemy.id) % 2];
+      visual.root.position.set(snap(enemy.x), snap(enemy.y));
+      const scale = enemy.headliner ? 0.72 : enemy.kind === 'elite' || enemy.kind === 'mantis' ? 0.6 : ACTOR_SCALE;
+      const facing = enemy.lastMoveX > 0.1 ? -1 : enemy.lastMoveX < -0.1 ? 1 : visual.root.scale.x < 0 ? -1 : 1;
+      visual.root.scale.set(scale * facing, scale);
+      visual.root.renderable = this.visible(enemy.x, enemy.y, cameraX, cameraY, 160);
+      visual.body.tint = enemy.flashT > 0 ? 0xffdfc2 : enemy.headliner ? 0xffe8a3 : 0xffffff;
+      if (visual.aura) {
+        visual.aura.alpha = enemy.shieldHp > 0 ? 0.42 : enemy.headliner ? 0.55 : 0.28;
+        visual.aura.rotation = direction8(Math.cos(this.viewTime), Math.sin(this.viewTime));
       }
     }
-    for (const [enemy, gfx] of this.enemyGfx) {
-      if (!this.live.has(enemy)) {
-        gfx.destroy();
-        this.enemyGfx.delete(enemy);
-      }
+    for (const [enemy, visual] of this.enemySprites) {
+      if (live.has(enemy)) continue;
+      visual.root.destroy({ children: true });
+      this.enemySprites.delete(enemy);
     }
   }
 
   private syncProjectiles(cameraX: number, cameraY: number): void {
-    const halfW = this.world.worldW / 2 + 100;
-    const halfH = this.world.worldH / 2 + 100;
-    this.live.clear();
+    const live = new Set(this.world.projectiles);
     for (const projectile of this.world.projectiles) {
-      const evolved = roleIsEvolved(this.world, projectile.role);
-      let gfx = this.projectileGfx.get(projectile);
-      if (!gfx) {
-        gfx = makeProjectileGfx(projectile, evolved);
-        this.projectileGfx.set(projectile, gfx);
-        this.projectileLayer.addChild(gfx);
-      } else if (gfx.__evolved !== evolved) {
-        refreshProjectileContext(gfx, projectile, evolved);
+      if (!isPixelWeaponRole(projectile.role)) continue;
+      let visual = this.projectileSprites.get(projectile);
+      if (!visual) {
+        visual = sprite(weaponPixelTexture(projectile.role, projectile.evolved));
+        this.projectileLayer.addChild(visual);
+        this.projectileSprites.set(projectile, visual);
       }
-      const visible = Math.abs(projectile.x - cameraX) < halfW && Math.abs(projectile.y - cameraY) < halfH;
-      gfx.renderable = visible;
-      if (visible) {
-        gfx.position.set(snap(projectile.x), snap(projectile.y));
-        if (projectile.role !== 'arp') gfx.rotation = Math.atan2(projectile.vy, projectile.vx);
-        const pulse = evolved ? 1 + Math.sin(this.world.timeS * 9 + projectile.age * 2) * 0.09 : 1;
-        gfx.scale.set(pulse);
-      }
-      this.live.add(projectile);
+      visual.texture = weaponPixelTexture(projectile.role, projectile.evolved);
+      visual.position.set(snap(projectile.x), snap(projectile.y));
+      const base = PROJECTILE_SCALE[projectile.role] ?? 0.28;
+      const large = projectile.radius >= 12 ? 1.25 : projectile.shard ? 0.72 : 1;
+      visual.scale.set(quantizeScale(base * large));
+      visual.rotation = projectile.role === 'arp' || projectile.gravity
+        ? direction8(Math.cos(projectile.orbitAngle), Math.sin(projectile.orbitAngle))
+        : direction8(projectile.vx, projectile.vy);
+      visual.alpha = projectile.shard ? 0.9 : 1;
+      visual.renderable = this.visible(projectile.x, projectile.y, cameraX, cameraY, 100);
     }
-    for (const [projectile, gfx] of this.projectileGfx) {
-      if (!this.live.has(projectile)) {
-        gfx.destroy();
-        this.projectileGfx.delete(projectile);
-      }
+    for (const [projectile, visual] of this.projectileSprites) {
+      if (live.has(projectile)) continue;
+      visual.destroy();
+      this.projectileSprites.delete(projectile);
     }
   }
 
-  private drawTrails(): void {
-    this.trailGfx.clear();
-    const liveTrails = new Set<Projectile>();
-    let evolvedHatTrails = 0;
-    for (const projectile of this.world.projectiles) {
-      const evolvedHat = projectile.role === 'hat' && roleIsEvolved(this.world, 'hat') && evolvedHatTrails++ < 64;
-      if (!TRAIL_ROLES.has(projectile.role) && !evolvedHat) continue;
-      liveTrails.add(projectile);
-      let points = this.trails.get(projectile);
-      if (!points) {
-        points = [];
-        this.trails.set(projectile, points);
+  private syncZones(): void {
+    const live = new Set(this.world.zones);
+    for (const zone of this.world.zones) {
+      let visual = this.zoneSprites.get(zone);
+      if (!visual) {
+        visual = sprite(weaponPixelTexture('chord', zone.evolved));
+        this.zoneLayer.addChild(visual);
+        this.zoneSprites.set(zone, visual);
       }
-      points.push(snap(projectile.x), snap(projectile.y));
-      if (points.length > TRAIL_POINTS * 2) points.splice(0, points.length - TRAIL_POINTS * 2);
-      for (let i = 0; i < points.length; i += 2) {
-        const progress = (i + 2) / points.length;
-        const size = Math.max(1, snap(1 + progress * (evolvedHat ? 2 : 3)));
-        this.trailGfx.rect(points[i] - Math.floor(size / 2), points[i + 1] - Math.floor(size / 2), size, size)
-          .fill({ color: projectile.color, alpha: progress * (evolvedHat ? 0.28 : 0.42) });
+      visual.texture = weaponPixelTexture('chord', zone.evolved);
+      visual.position.set(snap(zone.x), snap(zone.y));
+      visual.scale.set(quantizeScale(Math.min(2.25, (zone.radius * 2) / 82)));
+      visual.alpha = zone.evolved ? 0.18 : 0.14;
+      visual.rotation = direction8(Math.cos(this.viewTime * 0.7), Math.sin(this.viewTime * 0.7));
+    }
+    for (const [zone, visual] of this.zoneSprites) {
+      if (live.has(zone)) continue;
+      visual.destroy();
+      this.zoneSprites.delete(zone);
+    }
+  }
+
+  private syncPickups(): void {
+    const gemLive = new Set(this.world.gems);
+    for (const gem of this.world.gems) {
+      let visual = this.gemSprites.get(gem);
+      if (!visual) {
+        visual = sprite(pickupPixelTexture(`xp-${gem.tier}`));
+        visual.scale.set(PICKUP_SCALE);
+        this.pickupLayer.addChild(visual);
+        this.gemSprites.set(gem, visual);
       }
+      visual.texture = pickupPixelTexture(`xp-${gem.tier}`);
+      visual.position.set(snap(gem.x), snap(gem.y + (Math.floor(this.viewTime * 6 + gem.x) % 2)));
     }
-    for (const projectile of this.trails.keys()) if (!liveTrails.has(projectile)) this.trails.delete(projectile);
-  }
+    for (const [gem, visual] of this.gemSprites) {
+      if (gemLive.has(gem)) continue;
+      visual.destroy();
+      this.gemSprites.delete(gem);
+    }
 
-  private drawTourAttacks(cameraX: number, cameraY: number): void {
-    const gfx = this.systemAttackGfx;
-    const tour = tourWorld(this.world);
-    const halfW = this.world.worldW / 2 + 120;
-    const halfH = this.world.worldH / 2 + 120;
-    gfx.clear();
-    for (const wave of tour.shockwaves ?? []) {
-      if (Math.abs(wave.x - cameraX) > halfW || Math.abs(wave.y - cameraY) > halfH) continue;
-      const progress = Math.min(1, wave.age / Math.max(0.001, wave.lifeS));
-      const alpha = Math.pow(1 - progress, 0.65);
-      const radius = Math.max(4, wave.radius || wave.maxRadius * progress);
-      gfx.poly(regularPixelPoly(20, radius, Math.PI / 20)
-        .map((value, i) => snap(value + (i % 2 === 0 ? wave.x : wave.y))))
-        .stroke({ width: 7, color: SOUNDWOOD.ink, alpha: alpha * 0.56 });
-      gfx.poly(regularPixelPoly(20, radius, Math.PI / 20)
-        .map((value, i) => snap(value + (i % 2 === 0 ? wave.x : wave.y))))
-        .stroke({ width: 3, color: wave.color, alpha: alpha * 0.95 });
-      for (let i = 0; i < 10; i++) {
-        const angle = i * Math.PI / 5;
-        pixelDiamond(
-          gfx,
-          wave.x + Math.cos(angle) * radius,
-          wave.y + Math.sin(angle) * radius,
-          3 + (i & 1),
-          i & 1 ? 0xffffff : wave.color,
-          alpha * 0.82,
-        );
+    const noteLive = new Set(this.world.musicNotes);
+    for (const note of this.world.musicNotes) {
+      let visual = this.noteSprites.get(note);
+      if (!visual) {
+        visual = sprite(pickupPixelTexture('music-note'));
+        this.pickupLayer.addChild(visual);
+        this.noteSprites.set(note, visual);
       }
+      const scale = note.tier === 'anthem' ? 0.66 : note.tier === 'phrase' ? 0.55 : 0.46;
+      visual.scale.set(scale);
+      visual.position.set(snap(note.x), snap(note.y + (Math.floor(this.viewTime * 6 + note.y) % 2)));
+    }
+    for (const [note, visual] of this.noteSprites) {
+      if (noteLive.has(note)) continue;
+      visual.destroy();
+      this.noteSprites.delete(note);
     }
   }
 
-  private updatePlayer(): void {
-    const player = this.world.player;
-    const tour = tourWorld(this.world);
-    const heat = Math.max(0, Math.min(1, tour.pressureHeat ?? 0));
-    this.playerGfx.position.set(snap(player.x), snap(player.y));
-    this.playerGfx.__body.scale.x = player.facingX;
-    const pulse = 1 + Math.sin(this.world.timeS * (3.8 + heat * 5)) * (0.035 + heat * 0.035);
-    this.playerGfx.__halo.scale.set(pulse);
-    this.playerGfx.__halo.alpha = Math.min(1, (evolvedCount(this.world) > 0 ? 1 : 0.78) + heat * 0.16);
-    this.playerGfx.__marker.scale.set(1 + Math.sin(this.world.timeS * 6) * 0.06);
-    this.playerGfx.__marker.tint = tour.pressureState === 'drop'
-      ? SOUNDWOOD.cyanHot
-      : tour.pressureState === 'armed' ? SOUNDWOOD.amber : 0xffffff;
-    this.playerGfx.__body.alpha = player.iframesT > 0 && Math.floor(this.world.timeS * 18) % 2 === 0 ? 0.42 : 1;
-    // Marker and halo never flicker: even during damage the player stays findable.
-    this.playerGfx.__marker.alpha = 1;
-  }
-
-  private updateGroundPicks(): void {
-    const time = this.world.timeS;
-    for (let i = 0; i < this.groundPickGfx.length; i++) {
-      const reward = this.groundPickGfx[i];
-      const pulse = 1 + Math.sin(time * 3.2 + i * 2.1) * 0.035;
-      reward.__platform.scale.set(pulse);
-      reward.__beam.alpha = 0.72 + Math.sin(time * 2.4 + i) * 0.16;
-    }
-    this.rewardSafeGfx.alpha = this.groundPickGfx.length
-      ? 0.72 + Math.sin(time * 2.2) * 0.16
-      : 0;
-  }
-
-  private syncTourRewards(): void {
-    const tour = tourWorld(this.world);
-    const liveGates = new Set<StructuralVenueGate>();
-    const liveCases = new Set<StructuralTourCase>();
-    for (const gate of tour.venueGates ?? []) {
-      let gfx = this.venueGateGfx.get(gate);
-      if (!gfx || gfx.__venue !== gate.venue || gfx.__selected !== gate.selected) {
-        gfx?.destroy({ children: true });
-        gfx = makeVenueGateGfx(gate);
-        this.venueGateGfx.set(gate, gfx);
-        this.tourRewardLayer.addChild(gfx);
+  private syncWorldEffects(): void {
+    const shockLive = new Set(this.world.shockwaves);
+    for (const shockwave of this.world.shockwaves) {
+      let visual = this.shockwaveSprites.get(shockwave);
+      if (!visual) {
+        visual = sprite(effectPixelTexture('explosion'));
+        this.zoneLayer.addChild(visual);
+        this.shockwaveSprites.set(shockwave, visual);
       }
-      gfx.position.set(snap(gate.x), snap(gate.y));
-      const pulse = 1 + Math.sin(this.world.timeS * 3.2 + gate.side) * 0.025;
-      gfx.__arch.scale.set(pulse);
-      gfx.__beam.alpha = gate.selected ? 0.95 : 0.58 + Math.sin(this.world.timeS * 2.4 + gate.side) * 0.14;
-      liveGates.add(gate);
+      visual.position.set(snap(shockwave.x), snap(shockwave.y));
+      visual.scale.set(quantizeScale(Math.min(2.5, (shockwave.radius * 2) / 72)));
+      visual.alpha = Math.max(0.08, 0.28 * (1 - shockwave.age / shockwave.lifeS));
     }
-    for (const [gate, gfx] of this.venueGateGfx) {
-      if (liveGates.has(gate)) continue;
-      gfx.destroy({ children: true });
-      this.venueGateGfx.delete(gate);
+    for (const [shockwave, visual] of this.shockwaveSprites) {
+      if (shockLive.has(shockwave)) continue;
+      visual.destroy();
+      this.shockwaveSprites.delete(shockwave);
     }
 
-    for (const tourCase of tour.encoreCases ?? []) {
-      let gfx = this.tourCaseGfx.get(tourCase);
-      if (!gfx) {
-        gfx = makeTourCaseGfx(tourCase);
-        this.tourCaseGfx.set(tourCase, gfx);
-        this.tourRewardLayer.addChild(gfx);
+    const gravityLive = new Set(this.world.gravityWells);
+    for (const well of this.world.gravityWells) {
+      let visual = this.gravitySprites.get(well);
+      if (!visual) {
+        visual = sprite(weaponPixelTexture('bell', true));
+        this.zoneLayer.addChild(visual);
+        this.gravitySprites.set(well, visual);
       }
-      gfx.position.set(snap(tourCase.x), snap(tourCase.y));
-      const pulse = 1 + Math.sin(this.world.timeS * 4.6 + tourCase.minute) * 0.05;
-      gfx.__case.scale.set(pulse);
-      gfx.__beam.alpha = 0.58 + Math.sin(this.world.timeS * 3 + tourCase.minute) * 0.18;
-      liveCases.add(tourCase);
+      visual.position.set(snap(well.x), snap(well.y));
+      visual.scale.set(quantizeScale(Math.min(2.5, (well.radius * 2) / 84)));
+      visual.alpha = well.burst ? 0.38 : 0.2;
+      visual.rotation = direction8(Math.cos(this.viewTime * 2), Math.sin(this.viewTime * 2));
     }
-    for (const [tourCase, gfx] of this.tourCaseGfx) {
-      if (liveCases.has(tourCase)) continue;
-      gfx.destroy({ children: true });
-      this.tourCaseGfx.delete(tourCase);
-    }
-  }
-
-  private spawnWorldBanner(label: string, x: number, y: number, color: number, evolution: boolean): void {
-    if (evolution && this.world.headlinerGold) color = HEADLINER_GOLD_PALETTE.accent;
-    const gfx = new Graphics({ roundPixels: true });
-    const sides = evolution ? 16 : 12;
-    gfx.poly(regularPixelPoly(sides, evolution ? 86 : 66, Math.PI / sides))
-      .stroke({ width: evolution ? 7 : 5, color: 0xffffff, alpha: 0.92 });
-    gfx.poly(regularPixelPoly(8, evolution ? 48 : 38, Math.PI / 8))
-      .stroke({ width: 3, color: 0xffffff, alpha: 0.56 });
-    for (let i = 0; i < sides; i += 2) {
-      const angle = i * Math.PI * 2 / sides;
-      const radius = evolution ? 96 : 74;
-      pixelDiamond(gfx, Math.cos(angle) * radius, Math.sin(angle) * radius, evolution ? 5 : 4, 0xffffff, 0.84);
-    }
-    gfx.tint = color;
-    gfx.position.set(snap(x), snap(y));
-    gfx.scale.set(0.25);
-    gfx.blendMode = 'add';
-    this.fxLayer.addChild(gfx);
-    this.pops.push({ gfx, t: 0, dur: evolution ? 1.1 : 0.82, fromScale: 0.25, toScale: evolution ? 2.1 : 1.7 });
-
-    const text = new Text({ text: label.toUpperCase(), style: BANNER_STYLE, roundPixels: true });
-    text.anchor.set(0.5);
-    text.tint = color;
-    const textY = snap(y - (evolution ? 72 : 58));
-    text.position.set(snap(x), textY);
-    this.floaterLayer.addChild(text);
-    this.floaters.push({ txt: text, x: snap(x), y: textY, t: 0, dur: evolution ? 1.25 : 0.95, vy: 16 });
-    this.flashes.push({ start: this.world.timeS, dur: evolution ? 0.82 : 0.44, color, alpha: evolution ? 0.28 : 0.16 });
-    this.pushShake(evolution ? 8 : 4, evolution ? 0.55 : 0.3);
-  }
-
-  /** One short, readable hit at each bar of the four-bar Pressure Drop. The
-   * geometry, flash, and shake all expire; the Drop's persistent energy stays
-   * in the segmented HUD and edge color instead of becoming a screen strobe. */
-  private spawnPressureDropPulse(label: string, x: number, y: number, bar: number, color: number): void {
-    const gfx = new Graphics({ roundPixels: true });
-    gfx.poly(regularPixelPoly(12, 58, Math.PI / 12))
-      .stroke({ width: 5, color: 0xffffff, alpha: 0.9 });
-    gfx.poly(regularPixelPoly(8, 36, Math.PI / 8))
-      .stroke({ width: 3, color: 0xffffff, alpha: 0.62 });
-    for (let i = 0; i < 4; i++) {
-      const angle = i * Math.PI / 2;
-      pixelDiamond(
-        gfx,
-        Math.cos(angle) * 76,
-        Math.sin(angle) * 76,
-        i < bar ? 6 : 3,
-        0xffffff,
-        i < bar ? 0.96 : 0.32,
-      );
-    }
-    gfx.tint = color;
-    gfx.position.set(snap(x), snap(y));
-    gfx.scale.set(this.reducedMotion ? 1 : 0.28);
-    gfx.blendMode = 'add';
-    this.fxLayer.addChild(gfx);
-    this.pops.push({
-      gfx,
-      t: 0,
-      dur: 0.68,
-      fromScale: this.reducedMotion ? 1 : 0.28,
-      toScale: this.reducedMotion ? 1 : 1.95,
-    });
-
-    const text = new Text({ text: label.toUpperCase(), style: BANNER_STYLE, roundPixels: true });
-    text.anchor.set(0.5);
-    text.tint = color;
-    // Keep the complete bar subtitle (especially "· FINALE") inside a phone
-    // viewport after the world layer's height-normalized camera scale.
-    const bannerScale = Math.min(1, Math.max(0.68, (this.world.worldW - 32) / text.width));
-    text.scale.set(bannerScale);
-    const textY = snap(y - 58);
-    text.position.set(snap(x), textY);
-    this.floaterLayer.addChild(text);
-    this.floaters.push({
-      txt: text,
-      x: snap(x),
-      y: textY,
-      t: 0,
-      dur: 0.82,
-      vy: 13,
-      baseScale: bannerScale,
-      staticMotion: this.reducedMotion,
-    });
-    if (!this.reducedMotion) {
-      this.flashes.push({ start: this.world.timeS, dur: 0.26, color, alpha: 0.1 + bar * 0.012 });
-      this.pushShake(3 + bar * 0.55, 0.22);
+    for (const [well, visual] of this.gravitySprites) {
+      if (gravityLive.has(well)) continue;
+      visual.destroy();
+      this.gravitySprites.delete(well);
     }
   }
 
-  private spawnFx(fx: FxEvent): void {
-    switch (fx.type) {
-      case 'ring': {
-        const gfx = new Graphics({ roundPixels: true });
-        const sides = fx.soft ? 12 : 16;
-        gfx.poly(regularPixelPoly(sides, fx.radius, Math.PI / sides))
-          .stroke({ width: fx.soft ? 2 : 4, color: 0xffffff, alpha: fx.soft ? 0.36 : 0.9 });
-        if (!fx.soft) {
-          gfx.poly(regularPixelPoly(12, fx.radius * 0.62, Math.PI / 12))
-            .stroke({ width: 2, color: 0xffffff, alpha: 0.45 });
-          for (let i = 0; i < 8; i++) {
-            const angle = i * Math.PI / 4;
-            pixelDiamond(gfx, Math.cos(angle) * fx.radius, Math.sin(angle) * fx.radius, 3, 0xffffff, 0.8);
+  private syncEncoreCases(): void {
+    const live = new Set<object>(this.world.encoreCases);
+    for (const encore of this.world.encoreCases) {
+      let visual = this.encoreSprites.get(encore);
+      if (!visual) {
+        visual = sprite(pickupPixelTexture('evolution-chest'));
+        visual.scale.set(0.62);
+        this.rewardLayer.addChild(visual);
+        this.encoreSprites.set(encore, visual);
+      }
+      visual.position.set(snap(encore.x), snap(encore.y));
+      visual.alpha = 0.92 + (Math.floor(this.viewTime * 5) % 2) * 0.08;
+    }
+    for (const [encore, visual] of this.encoreSprites) {
+      if (live.has(encore)) continue;
+      visual.destroy();
+      this.encoreSprites.delete(encore);
+    }
+  }
+
+  private drainFx(): void {
+    const queue = this.world.fx;
+    if (!queue || queue.length === 0) return;
+    const events = queue.splice(0, queue.length);
+    for (const event of events) this.spawnFx(event);
+  }
+
+  private spawnFx(event: FxEvent): void {
+    switch (event.type) {
+      case 'ring':
+        {
+          const texture = effectPixelTexture(event.color === KIT_COLORS.bell ? 'impact-gold' : 'impact-cyan');
+          const displayRadius = Math.min(event.radius, Math.min(this.world.worldW, this.world.worldH) * 0.44);
+          const count = event.radius < 44 ? 1 : Math.min(18, Math.max(8, Math.round(displayRadius / 38)));
+          for (let i = 0; i < count; i++) {
+            const angle = count === 1 ? 0 : (i / count) * Math.PI * 2;
+            const radius = count === 1 ? 0 : displayRadius;
+            this.addTimedSprite(texture, event.x + Math.cos(angle) * radius, event.y + Math.sin(angle) * radius, {
+              duration: event.dur,
+              from: event.soft ? 0.12 : 0.16,
+              to: event.soft ? 0.22 : 0.3,
+              alpha: event.soft ? 0.38 : 0.66,
+            });
           }
         }
-        gfx.tint = fx.color;
-        gfx.position.set(snap(fx.x), snap(fx.y));
-        gfx.scale.set(this.reducedMotion ? 1 : 0.2);
-        if (!fx.soft) gfx.blendMode = 'add';
-        this.fxLayer.addChild(gfx);
-        this.pops.push({
-          gfx,
-          t: 0,
-          dur: fx.dur,
-          fromScale: this.reducedMotion ? 1 : 0.2,
-          toScale: 1,
+        break;
+      case 'death':
+        this.addTimedSprite(effectPixelTexture('death'), event.x, event.y, {
+          duration: event.elite ? 0.75 : 0.48,
+          from: event.elite ? 0.65 : 0.38,
+          to: event.elite ? 1.15 : 0.72,
+          alpha: 0.9,
         });
         break;
-      }
-      case 'vacuum': {
-        const colors = [SOUNDWOOD.cyanHot, SOUNDWOOD.magenta];
-        for (let i = 0; i < colors.length; i++) {
-          const gfx = new Graphics({ roundPixels: true });
-          gfx.poly(regularPixelPoly(16, fx.radius, Math.PI / 16 + i * Math.PI / 16))
-            .stroke({ width: i === 0 ? 5 : 3, color: 0xffffff, alpha: 0.72 });
-          for (let p = 0; p < 12; p++) {
-            const angle = p * Math.PI / 6 + i * Math.PI / 12;
-            pixelDiamond(gfx, Math.cos(angle) * fx.radius, Math.sin(angle) * fx.radius, 4, 0xffffff, 0.8);
-          }
-          gfx.tint = colors[i];
-          gfx.position.set(snap(fx.x), snap(fx.y));
-          gfx.scale.set(1);
-          gfx.blendMode = 'add';
-          this.fxLayer.addChild(gfx);
-          this.pops.push({ gfx, t: -i * 0.07, dur: 0.52, fromScale: 1, toScale: 0.06 });
-        }
-        this.flashes.push({ start: this.world.timeS, dur: 0.34, color: SOUNDWOOD.violet, alpha: 0.22 });
-        this.pushShake(5, 0.36);
+      case 'whip': {
+        const attack = this.addTimedSprite(weaponPixelTexture('kick', false), event.x, event.y, {
+          duration: 0.22,
+          from: 0.45,
+          to: 0.8 * event.area,
+          alpha: 0.96,
+        });
+        attack.sprite.scale.x *= event.side;
         break;
       }
       case 'arc': {
-        const gfx = new Graphics({ roundPixels: true });
-        const points = [0, 0];
-        const steps = 12;
-        for (let i = 0; i <= steps; i++) {
-          const angle = fx.angle - fx.arc + (i / steps) * fx.arc * 2;
-          points.push(snap(Math.cos(angle) * fx.radius), snap(Math.sin(angle) * fx.radius));
-        }
-        gfx.poly(points).fill({ color: 0xffffff, alpha: 0.22 });
-        for (let i = 0; i <= steps; i += 2) {
-          const angle = fx.angle - fx.arc + (i / steps) * fx.arc * 2;
-          pixelDiamond(gfx, Math.cos(angle) * fx.radius, Math.sin(angle) * fx.radius, 4, 0xffffff, 0.8);
-        }
-        gfx.tint = fx.color;
-        gfx.position.set(snap(fx.x), snap(fx.y));
-        gfx.blendMode = 'add';
-        this.fxLayer.addChild(gfx);
-        this.pops.push({ gfx, t: 0, dur: 0.2, fromScale: 1, toScale: 1.05 });
-        break;
-      }
-      case 'whip': {
-        const { width, height } = whipDimensions(fx.area);
-        const x0 = fx.side === 1 ? 0 : -width;
-        const gfx = new Graphics({ roundPixels: true });
-        gfx.rect(snap(x0), snap(-height * 0.72), snap(width), snap(height * 1.44))
-          .fill({ color: 0xffffff, alpha: 0.09 });
-        gfx.rect(snap(x0), snap(-height * 0.46), snap(width), snap(height * 0.92))
-          .fill({ color: 0xffffff, alpha: 0.3 });
-        for (let i = 1; i < 8; i++) {
-          const x = x0 + width * i / 8;
-          gfx.rect(snap(x), snap(-height * 0.58), 3, snap(height * 1.16))
-            .fill({ color: 0xffffff, alpha: 0.16 + i * 0.035 });
-        }
-        pixelDiamond(gfx, x0 + (fx.side === 1 ? width : 0), 0, height * 0.52, 0xffffff, 0.72);
-        gfx.tint = fx.color;
-        gfx.blendMode = 'add';
-        gfx.position.set(snap(fx.x), snap(fx.y));
-        gfx.scale.set(0);
-        this.fxLayer.addChild(gfx);
-        this.pops.push({
-          gfx,
-          t: 0,
-          dur: 0.2,
-          fromScale: 0,
-          toScale: 1,
-          holdHalf: true,
-          expandHalf: true,
+        const attack = this.addTimedSprite(weaponPixelTexture('clap', false), event.x, event.y, {
+          duration: 0.25,
+          from: 0.42,
+          to: Math.min(2.5, Math.max(0.65, event.radius / 70)),
+          alpha: 0.76,
         });
+        attack.sprite.rotation = direction8(Math.cos(event.angle), Math.sin(event.angle));
         break;
       }
+      case 'dmg':
+        this.addDamageText(event);
+        break;
       case 'spark': {
-        const gfx = new Graphics({ roundPixels: true });
-        for (let i = 0; i < fx.n; i++) {
-          const angle = hash2(snap(fx.x), snap(fx.y), i * 71 + 9) * Math.PI * 2;
-          const distance = fx.spread * (0.48 + hash2(i, snap(fx.x), 313) * 0.52);
-          const x = Math.cos(angle) * distance;
-          const y = Math.sin(angle) * distance;
-          const size = i % 3 === 0 ? 4 : 2;
-          pixelDiamond(gfx, x, y, size, 0xffffff, 0.9);
-          gfx.moveTo(0, 0).lineTo(snap(x * 0.78), snap(y * 0.78));
+        const count = Math.min(10, Math.max(1, event.n));
+        for (let i = 0; i < count; i++) {
+          const angle = (i / count) * Math.PI * 2 + (event.x + event.y) * 0.01;
+          const speed = event.spread * (1.2 + (i % 3) * 0.35);
+          this.addTimedSprite(effectPixelTexture(event.color === KIT_COLORS.bell ? 'impact-gold' : 'impact-cyan'), event.x, event.y, {
+            duration: 0.32,
+            from: 0.12,
+            to: 0.22,
+            alpha: 0.9,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+          });
         }
-        gfx.stroke({ width: 2, color: 0xffffff, alpha: 0.55 });
-        gfx.tint = fx.color;
-        gfx.position.set(snap(fx.x), snap(fx.y));
-        gfx.blendMode = 'add';
-        this.fxLayer.addChild(gfx);
-        this.pops.push({ gfx, t: 0, dur: 0.2, fromScale: 0.35, toScale: 1.25 });
         break;
       }
-      case 'slam': {
-        const gfx = new Graphics({ roundPixels: true });
-        gfx.poly(regularPixelPoly(12, fx.radius, Math.PI / 12)).stroke({ width: 7, color: 0xffffff, alpha: 0.9 });
-        gfx.poly(regularPixelPoly(8, fx.radius * 0.48, Math.PI / 8)).fill({ color: 0xffffff, alpha: 0.4 });
-        for (let i = 0; i < 8; i++) {
-          const angle = i * Math.PI / 4;
-          pixelDiamond(gfx, Math.cos(angle) * fx.radius, Math.sin(angle) * fx.radius, 5, 0xffffff);
-        }
-        gfx.tint = fx.color;
-        gfx.position.set(snap(fx.x), snap(fx.y));
-        gfx.blendMode = 'add';
-        this.fxLayer.addChild(gfx);
-        this.pops.push({ gfx, t: 0, dur: 0.3, fromScale: 0.35, toScale: 1.55 });
-        break;
-      }
-      case 'beam': {
-        const dx = fx.x2 - fx.x;
-        const dy = fx.y2 - fx.y;
-        const length = Math.hypot(dx, dy);
-        const width = Math.max(3, fx.width);
-        const gfx = new Graphics({ roundPixels: true });
-        gfx.rect(0, snap(-width * 1.25), snap(length), snap(width * 2.5))
-          .fill({ color: SOUNDWOOD.ink, alpha: 0.58 });
-        gfx.rect(0, snap(-width * 0.58), snap(length), snap(width * 1.16))
-          .fill({ color: 0xffffff, alpha: 0.72 });
-        gfx.rect(0, snap(-Math.max(1, width * 0.16)), snap(length), snap(Math.max(2, width * 0.32)))
-          .fill(0xffffff);
-        pixelDiamond(gfx, 0, 0, width * 0.9, 0xffffff, 0.78);
-        pixelDiamond(gfx, length, 0, width * 1.15, 0xffffff, 0.92);
-        gfx.tint = fx.color;
-        gfx.position.set(snap(fx.x), snap(fx.y));
-        gfx.rotation = Math.atan2(dy, dx);
-        gfx.blendMode = 'add';
-        this.fxLayer.addChild(gfx);
-        this.pops.push({ gfx, t: 0, dur: 0.24, fromScale: 1, toScale: 1.04 });
-        break;
-      }
-      case 'pressure': {
-        const dropBar = /^DROP\s+([1-4])\/4\b/i.exec(fx.label);
-        if (dropBar) this.spawnPressureDropPulse(fx.label, fx.x, fx.y, Number(dropBar[1]), fx.color);
-        else this.spawnWorldBanner(fx.label, fx.x, fx.y, fx.color, false);
-        break;
-      }
-      case 'evolution':
-        this.spawnWorldBanner(fx.label, fx.x, fx.y, fx.color, true);
-        break;
-      case 'dmg': {
-        if (this.floaters.length >= DMG_CAP) break;
-        const player = this.world.player;
-        const cameraX = player.x + PLAYER_FOOT_OFFSET.x;
-        const cameraY = player.y + PLAYER_FOOT_OFFSET.y;
-        if (Math.abs(fx.x - cameraX) > this.world.worldW / 2 + 40) break;
-        if (Math.abs(fx.y - cameraY) > this.world.worldH / 2 + 40) break;
-        const txt = new Text({ text: String(fx.amount), style: DMG_STYLE, roundPixels: true });
-        txt.anchor.set(0.5);
-        txt.tint = fx.color;
-        const offset = (hash2(snap(fx.x), snap(fx.y), fx.amount) - 0.5) * 12;
-        const x = snap(fx.x + offset);
-        const y = snap(fx.y);
-        txt.position.set(x, y);
-        this.floaterLayer.addChild(txt);
-        this.floaters.push({ txt, x, y, t: 0, dur: DMG_DUR, vy: DMG_RISE });
-        break;
-      }
-      case 'death': {
-        if (this.deathBurstCount >= DEATH_BURST_CAP) break;
-        if (!fx.elite && this.deathBurstCount >= REGULAR_DEATH_BURST_CAP) break;
-        const player = this.world.player;
-        const cameraX = player.x + PLAYER_FOOT_OFFSET.x;
-        const cameraY = player.y + PLAYER_FOOT_OFFSET.y;
-        const pad = fx.elite ? fx.radius * 3 : fx.radius * 2;
-        if (Math.abs(fx.x - cameraX) > this.world.worldW / 2 + pad) break;
-        if (Math.abs(fx.y - cameraY) > this.world.worldH / 2 + pad) break;
-        const { gfx, burst } = makeDeathBurst(fx.radius, fx.color, fx.elite, fx.x, fx.y);
-        gfx.position.set(snap(fx.x), snap(fx.y));
-        this.fxLayer.addChild(gfx);
-        this.pops.push({
-          gfx,
-          t: 0,
-          dur: fx.elite ? 0.66 : 0.44,
-          fromScale: 1,
-          toScale: 1,
-          death: burst,
+      case 'slam':
+        this.addTimedSprite(effectPixelTexture('explosion'), event.x, event.y, {
+          duration: 0.48,
+          from: 0.45,
+          to: Math.min(2.5, Math.max(0.75, event.radius / 48)),
+          alpha: 0.48,
         });
-        this.deathBurstCount++;
+        break;
+      case 'beam': {
+        // Never stretch one square sprite across the viewport: that creates a
+        // giant opaque slab. A beam is a dotted rail of compact pixel bursts,
+        // retaining its full direction/length while leaving enemies visible.
+        const dx = event.x2 - event.x;
+        const dy = event.y2 - event.y;
+        const length = Math.hypot(dx, dy);
+        const count = Math.min(24, Math.max(3, Math.ceil(length / 44)));
+        const thickness = Math.max(0.18, Math.min(0.58, event.width / 150));
+        for (let i = 0; i <= count; i++) {
+          const t = i / count;
+          const beam = this.addTimedSprite(
+            weaponPixelTexture('snare', true),
+            event.x + dx * t,
+            event.y + dy * t,
+            {
+              duration: 0.24,
+              fromX: 0.16,
+              fromY: thickness,
+              toX: 0.28,
+              toY: thickness,
+              alpha: i % 2 === 0 ? 0.68 : 0.48,
+            },
+          );
+          beam.sprite.rotation = direction8(dx, dy);
+        }
         break;
       }
+      case 'banner':
+        this.addTimedSprite(effectPixelTexture('celebration'), event.x, event.y, {
+          duration: 0.75,
+          from: 0.4,
+          to: 1.05,
+          alpha: 0.94,
+        });
+        this.addBanner(event.label, event.x, event.y - 52, event.color);
+        break;
+      case 'evolution':
+        this.addTimedSprite(effectPixelTexture('celebration'), event.x, event.y, {
+          duration: 1,
+          from: 0.55,
+          to: 1.55,
+          alpha: 1,
+        });
+        this.addBanner(event.label, event.x, event.y - 62, event.color);
+        break;
     }
   }
 
-  private updatePops(dt: number): void {
-    for (let i = this.pops.length - 1; i >= 0; i--) {
-      const pop = this.pops[i];
-      pop.t += dt;
-      if (pop.t < 0) {
-        pop.gfx.alpha = 0;
-        continue;
-      }
-      const progress = pop.t / pop.dur;
-      if (progress >= 1) {
-        if (pop.death) this.deathBurstCount--;
-        pop.gfx.destroy();
-        this.pops.splice(i, 1);
-        continue;
-      }
-      if (pop.death) {
-        redrawDeathBurst(pop.gfx, pop.death, progress);
-        pop.gfx.alpha = Math.pow(1 - progress, 0.7);
-      } else {
-        pop.gfx.alpha = pop.holdHalf
-          ? progress < 0.5 ? 1 : (1 - progress) * 2
-          : 1 - progress;
-        if (pop.expandHalf) pop.gfx.scale.set(Math.min(pop.toScale, progress * 2 * pop.toScale));
-        else pop.gfx.scale.set(pop.fromScale + (pop.toScale - pop.fromScale) * progress);
-      }
+  private addTimedSprite(
+    texture: Texture,
+    x: number,
+    y: number,
+    options: {
+      duration: number;
+      from?: number;
+      to?: number;
+      fromX?: number;
+      fromY?: number;
+      toX?: number;
+      toY?: number;
+      alpha?: number;
+      vx?: number;
+      vy?: number;
+    },
+  ): TimedSprite {
+    if (this.timedSprites.length >= MAX_EFFECTS) {
+      const oldest = this.timedSprites.shift();
+      oldest?.sprite.destroy();
     }
+    const visual = sprite(texture);
+    visual.position.set(snap(x), snap(y));
+    visual.alpha = options.alpha ?? 1;
+    const fromX = options.fromX ?? options.from ?? 0.25;
+    const fromY = options.fromY ?? options.from ?? 0.25;
+    visual.scale.set(quantizeScale(fromX), quantizeScale(fromY));
+    this.effectLayer.addChild(visual);
+    const timed: TimedSprite = {
+      sprite: visual,
+      age: 0,
+      duration: Math.max(0.05, options.duration),
+      fromX,
+      fromY,
+      toX: options.toX ?? options.to ?? 1,
+      toY: options.toY ?? options.to ?? 1,
+      vx: options.vx ?? 0,
+      vy: options.vy ?? 0,
+      fade: true,
+    };
+    this.timedSprites.push(timed);
+    return timed;
+  }
+
+  private updateTimedSprites(dt: number): void {
+    for (let i = this.timedSprites.length - 1; i >= 0; i--) {
+      const effect = this.timedSprites[i];
+      effect.age += dt;
+      if (effect.age >= effect.duration) {
+        effect.sprite.destroy();
+        this.timedSprites.splice(i, 1);
+        continue;
+      }
+      const t = effect.age / effect.duration;
+      const eased = 1 - (1 - t) * (1 - t);
+      effect.sprite.position.x = snap(effect.sprite.position.x + effect.vx * dt);
+      effect.sprite.position.y = snap(effect.sprite.position.y + effect.vy * dt);
+      effect.sprite.scale.set(
+        quantizeScale(effect.fromX + (effect.toX - effect.fromX) * eased),
+        quantizeScale(effect.fromY + (effect.toY - effect.fromY) * eased),
+      );
+      if (effect.fade) effect.sprite.alpha = Math.max(0, effect.sprite.alpha * (1 - t * 0.12));
+    }
+  }
+
+  private addDamageText(event: Extract<FxEvent, { type: 'dmg' }>): void {
+    // Fold simultaneous hits in the same tiny screen-space pocket into one
+    // total. This preserves feedback while preventing a rapid-fire weapon
+    // from spawning a solid rectangle of digits.
+    const nearby = this.floaters.find((floater) =>
+      floater.age < 0.14 &&
+      Math.abs(floater.x - event.x) <= 20 &&
+      Math.abs(floater.y - event.y) <= 20 &&
+      /^\d+$/.test(floater.text.text),
+    );
+    if (nearby) {
+      nearby.text.text = String(Number(nearby.text.text) + event.amount);
+      nearby.text.tint = event.color;
+      nearby.age = 0;
+      nearby.duration = 0.46;
+      nearby.x = Math.round((nearby.x + event.x) / 2);
+      nearby.y = Math.round((nearby.y + event.y) / 2);
+      return;
+    }
+    if (this.floaters.length >= MAX_FLOATERS) {
+      const oldest = this.floaters.shift();
+      oldest?.text.destroy();
+    }
+    const text = new Text({ text: String(event.amount), style: DAMAGE_STYLE, roundPixels: true });
+    text.anchor.set(0.5);
+    text.tint = event.color;
+    text.position.set(snap(event.x), snap(event.y));
+    this.textLayer.addChild(text);
+    this.floaters.push({ text, age: 0, duration: 0.46, x: event.x, y: event.y, vy: -30 });
+  }
+
+  private addBanner(label: string, x: number, y: number, color: number): void {
+    const text = new Text({ text: label.toUpperCase(), style: LABEL_STYLE, roundPixels: true });
+    text.anchor.set(0.5);
+    text.tint = color;
+    text.position.set(snap(x), snap(y));
+    this.textLayer.addChild(text);
+    this.floaters.push({ text, age: 0, duration: 1.05, x, y, vy: -12 });
   }
 
   private updateFloaters(dt: number): void {
     for (let i = this.floaters.length - 1; i >= 0; i--) {
       const floater = this.floaters[i];
-      floater.t += dt;
-      const progress = floater.t / floater.dur;
-      if (progress >= 1) {
-        floater.txt.destroy();
+      floater.age += dt;
+      if (floater.age >= floater.duration) {
+        floater.text.destroy();
         this.floaters.splice(i, 1);
         continue;
       }
-      if (!floater.staticMotion) floater.y -= floater.vy * dt;
-      floater.txt.position.set(floater.x, snap(floater.y));
-      floater.txt.alpha = progress < 0.4 ? 1 : 1 - (progress - 0.4) / 0.6;
-      floater.txt.scale.set((floater.baseScale ?? 1) * (floater.staticMotion
-        ? 1
-        : 1 + Math.sin(progress * Math.PI) * 0.12));
+      floater.y += floater.vy * dt;
+      floater.text.position.set(snap(floater.x), snap(floater.y));
+      floater.text.alpha = Math.max(0, 1 - Math.pow(floater.age / floater.duration, 2));
     }
   }
 
-  private chapterBurst(x: number, y: number, chapter: number): void {
-    // Pressure Drop owns the center-screen celebration lane for its four bars;
-    // the minute toast still reports scaling without burying the finale.
-    if (tourWorld(this.world).pressureState === 'drop') return;
-    const palette = venuePalette(this.world);
-    const color = chapter % 2 === 0 ? palette.accent : palette.secondary;
-    for (const [radius, sides] of [[110, 12], [165, 16], [225, 8]] as const) {
-      const gfx = new Graphics({ roundPixels: true });
-      gfx.poly(regularPixelPoly(sides, radius, Math.PI / sides))
-        .stroke({ width: 5, color: 0xffffff, alpha: 0.8 });
-      for (let i = 0; i < sides; i += 2) {
-        const angle = (i / sides) * Math.PI * 2;
-        pixelDiamond(gfx, Math.cos(angle) * radius, Math.sin(angle) * radius, 5, 0xffffff, 0.82);
-      }
-      gfx.tint = color;
-      gfx.position.set(snap(x), snap(y));
-      gfx.scale.set(0.2);
-      gfx.blendMode = 'add';
-      this.fxLayer.addChild(gfx);
-      this.pops.push({ gfx, t: 0, dur: 1.05, fromScale: 0.2, toScale: 1.45 });
+  private updateGroundPicks(): void {
+    for (const pick of this.groundPicks) {
+      const bob = Math.floor((Math.sin(this.viewTime * 5 + pick.phase) + 1) * 0.75);
+      pick.root.position.set(snap(pick.worldX), snap(pick.worldY - bob));
     }
-    const banner = new Text({
-      text: `MINUTE ${chapter} · CROWD SURGE`,
-      style: BANNER_STYLE,
-      roundPixels: true,
-    });
-    banner.anchor.set(0.5);
-    banner.tint = color;
-    const bannerY = snap(y - 92);
-    banner.position.set(snap(x), bannerY);
-    this.floaterLayer.addChild(banner);
-    this.floaters.push({ txt: banner, x: snap(x), y: bannerY, t: 0, dur: 1.35, vy: 13 });
-    this.flashes.push({ start: this.world.timeS, dur: 0.72, color, alpha: 0.18 });
-    this.pushShake(5, 0.38);
-  }
-
-  private drawForeground(cameraX: number, cameraY: number): void {
-    const gfx = this.foregroundGfx;
-    const width = this.world.worldW;
-    const height = this.world.worldH;
-    const left = cameraX - width / 2;
-    const top = cameraY - height / 2;
-    gfx.clear();
-
-    // Deep leaf silhouettes frame the image only at the outer margins.
-    for (let side = 0; side < 2; side++) {
-      const edgeX = side === 0 ? left - 10 : left + width + 10;
-      for (let i = 0; i < 8; i++) {
-        const y = top - 20 + i * (height + 40) / 7;
-        const reach = 28 + hash2(side, i, 811) * 48;
-        const dir = side === 0 ? 1 : -1;
-        gfx.poly([
-          edgeX, y - 35,
-          edgeX + dir * reach, y - 10,
-          edgeX + dir * reach * 0.35, y,
-          edgeX + dir * reach * 0.9, y + 18,
-          edgeX, y + 34,
-        ].map(snap)).fill({ color: SOUNDWOOD.ink, alpha: 0.28 });
-      }
-    }
-    gfx.rect(snap(left), snap(top - 15), snap(width), 25).fill({ color: SOUNDWOOD.ink, alpha: 0.1 });
-    gfx.rect(snap(left), snap(top + height - 10), snap(width), 25).fill({ color: SOUNDWOOD.ink, alpha: 0.13 });
-
-    // A handful of drifting leaves and embers add life without crossing the
-    // central combat read. They stay within the outer 12 percent of the view.
-    for (let i = 0; i < 14; i++) {
-      const side = i & 1;
-      const edgeBand = width * 0.1;
-      const x = side === 0
-        ? left + hash2(i, 1, 991) * edgeBand
-        : left + width - hash2(i, 1, 991) * edgeBand;
-      const speed = 7 + hash2(i, 2, 997) * 13;
-      const y = top + ((hash2(i, 3, 1009) * height + this.world.timeS * speed) % height);
-      const color = i % 5 === 0 ? SOUNDWOOD.cyan : i % 3 === 0 ? SOUNDWOOD.amber : SOUNDWOOD.barkLight;
-      gfx.rect(snap(x), snap(y), i % 4 === 0 ? 4 : 3, i % 4 === 0 ? 2 : 4)
-        .fill({ color, alpha: i % 5 === 0 ? 0.25 : 0.18 });
-    }
-
-    const tour = tourWorld(this.world);
-    const heat = Math.max(0, Math.min(1, tour.pressureHeat ?? 0));
-    const dropActive = tour.pressureState === 'drop';
-    const visualHeat = dropActive || tour.pressureState === 'armed' ? 1 : heat;
-    if (visualHeat > 0.04) {
-      const pressureColor = dropActive
-        ? SOUNDWOOD.cyanHot
-        : tour.pressureState === 'armed' ? SOUNDWOOD.amber : SOUNDWOOD.coral;
-      const pressureAlpha = dropActive
-        ? 0.3
-        : (0.08 + visualHeat * 0.26) * (0.78 + Math.sin(this.world.timeS * 9) * 0.22);
-      const blocks = 12;
-      for (let i = 0; i < blocks; i++) {
-        if (i / blocks > visualHeat) continue;
-        const y = top + height - 22 - i * Math.max(10, (height - 70) / blocks);
-        const blockH = Math.max(4, Math.min(12, height / blocks - 5));
-        gfx.rect(snap(left + 6), snap(y), 8 + (i % 3) * 4, snap(blockH))
-          .fill({ color: pressureColor, alpha: pressureAlpha });
-        gfx.rect(snap(left + width - 14 - (i % 3) * 4), snap(y), 8 + (i % 3) * 4, snap(blockH))
-          .fill({ color: pressureColor, alpha: pressureAlpha });
-      }
-      const corner = 42 + visualHeat * 22;
-      for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
-        const x = sx < 0 ? left + 5 : left + width - 5;
-        const y = sy < 0 ? top + 5 : top + height - 5;
-        gfx.moveTo(snap(x + sx * -corner), snap(y)).lineTo(snap(x), snap(y)).lineTo(snap(x), snap(y + sy * -corner))
-          .stroke({ width: 3, color: pressureColor, alpha: pressureAlpha * 0.82 });
-      }
-    }
-  }
-
-  private drawFlash(cameraX: number, cameraY: number): void {
-    this.flashGfx.clear();
-    let alpha = 0;
-    let color = 0xffffff;
-    for (let i = this.flashes.length - 1; i >= 0; i--) {
-      const flash = this.flashes[i];
-      const progress = (this.world.timeS - flash.start) / flash.dur;
-      if (progress >= 1 || progress < 0) {
-        this.flashes.splice(i, 1);
-        continue;
-      }
-      const candidate = flash.alpha * (1 - progress);
-      if (candidate > alpha) {
-        alpha = candidate;
-        color = flash.color;
-      }
-    }
-    const transition = Math.max(0, tourWorld(this.world).venueTransitionT ?? 0);
-    const transitionAlpha = Math.min(0.3, transition * 0.13);
-    if (transitionAlpha > alpha) {
-      alpha = transitionAlpha;
-      color = venuePalette(this.world).accent;
-    }
-    if (alpha <= 0) {
-      this.flashGfx.alpha = 0;
-      return;
-    }
-    this.flashGfx
-      .rect(
-        snap(cameraX - this.world.worldW / 2),
-        snap(cameraY - this.world.worldH / 2),
-        snap(this.world.worldW),
-        snap(this.world.worldH),
-      )
-      .fill(color);
-    this.flashGfx.alpha = alpha;
   }
 }

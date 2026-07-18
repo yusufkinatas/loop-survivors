@@ -1,10 +1,18 @@
-// Renderer for the boss arena. The whole fight fits on screen (a locked box,
-// no camera scroll), so the world container is just scaled to letterbox ARENA
-// into whatever viewport it gets. Immediate-mode: most layers clear and redraw
-// each frame — the entity counts are modest and it keeps telegraph/live state
-// dead simple to read. World sim is in world.ts; this only draws it.
+// Sprite renderer for the fixed boss arena. Simulation remains entirely in
+// world.ts; this view only maps its state onto the shared pixel-art atlases.
 
-import { Container, Graphics } from 'pixi.js';
+import { Container, Sprite, TilingSprite } from 'pixi.js';
+import type { Texture } from 'pixi.js';
+import {
+  arenaFloorTexture,
+  effectPixelTexture,
+  enemyPixelFrames,
+  environmentPixelTexture,
+  playerPixelFrames,
+  preloadPixelArt,
+  weaponPixelTexture,
+  type PixelEnvironmentId,
+} from '../../game/pixel-art';
 import type { BossPalette } from './bosses';
 import { ARENA, type BossWorld } from './world';
 
@@ -17,6 +25,12 @@ interface Pop {
   kind: 'spark' | 'slam';
 }
 
+interface ProjectileTextures {
+  cyan: Texture;
+  magenta: Texture;
+  warm: Texture;
+}
+
 const DIAG = Math.hypot(ARENA.w, ARENA.h);
 
 export class BossView {
@@ -24,15 +38,35 @@ export class BossView {
   private world: BossWorld;
   private palette: BossPalette;
 
-  private box: Container; // world-space, scaled to fit
-  private gFloor = new Graphics();
-  private gGrid = new Graphics();
-  private gHaz = new Graphics();
-  private gBullets = new Graphics();
-  private gBoss = new Graphics();
-  private gPlayer = new Graphics();
-  private gFx = new Graphics();
-  private gBorder = new Graphics();
+  private box: Container;
+  private floorLayer = new Container();
+  private environmentLayer = new Container();
+  private hazardLayer = new Container();
+  private bulletLayer = new Container();
+  private fxLayer = new Container();
+  private bossLayer = new Container();
+  private playerLayer = new Container();
+
+  private hazardSprites: Sprite[] = [];
+  private bulletSprites: Sprite[] = [];
+  private fxSprites: Sprite[] = [];
+  private bossAura?: Sprite;
+  private bossSprite?: Sprite;
+  private playerDash?: Sprite;
+  private playerSprite?: Sprite;
+  private playerFrames?: readonly [Texture, Texture];
+  private bossFrames?: readonly [Texture, Texture];
+  private projectiles?: ProjectileTextures;
+  private impactCyan?: Texture;
+  private impactGold?: Texture;
+  private explosion?: Texture;
+  private death?: Texture;
+  private xpCollect?: Texture;
+  private kickNormal?: Texture;
+  private kickEvolved?: Texture;
+  private runeDais?: Texture;
+  private artReady = false;
+  private destroyed = false;
 
   private pops: Pop[] = [];
   private lastFit = 0;
@@ -45,35 +79,138 @@ export class BossView {
     this.box = new Container();
     this.stage.addChild(this.box);
     this.box.addChild(
-      this.gFloor,
-      this.gGrid,
-      this.gHaz,
-      this.gBullets,
-      this.gFx,
-      this.gBoss,
-      this.gPlayer,
-      this.gBorder,
+      this.floorLayer,
+      this.environmentLayer,
+      this.hazardLayer,
+      this.bulletLayer,
+      this.fxLayer,
+      this.bossLayer,
+      this.playerLayer,
     );
-    this.drawStatic();
+
+    // The boss route can be opened directly before the main arena has loaded
+    // art. Keep the constructor/API synchronous and install sprites as soon as
+    // the shared preload completes.
+    void preloadPixelArt()
+      .then(() => {
+        if (!this.destroyed) this.installArt();
+      })
+      .catch((error: unknown) => {
+        // A failed network/decode should not take down the simulation or leave
+        // an unhandled rejection; the boss HUD still remains usable.
+        console.error('Boss pixel-art preload failed', error);
+      });
   }
 
   destroy(): void {
+    this.destroyed = true;
     this.stage.destroy({ children: true });
   }
 
-  private drawStatic(): void {
+  private installArt(): void {
+    const floor = new TilingSprite({
+      texture: arenaFloorTexture(),
+      width: ARENA.w,
+      height: ARENA.h,
+      anchor: 0.5,
+      roundPixels: true,
+    });
+    floor.alpha = 0.82;
+    this.floorLayer.addChild(floor);
+    this.installEnvironment();
+
+    this.playerFrames = playerPixelFrames();
+    const bossKind = this.palette.boss === 0xd14b8f
+      ? 'mantis'
+      : this.palette.boss === 0x2ad4ff
+        ? 'glowingBat'
+        : 'tank';
+    this.bossFrames = enemyPixelFrames(bossKind);
+    this.projectiles = {
+      cyan: weaponPixelTexture('arp', true),
+      magenta: weaponPixelTexture('chord', true),
+      warm: weaponPixelTexture('bass', true),
+    };
+    this.impactCyan = effectPixelTexture('impact-cyan');
+    this.impactGold = effectPixelTexture('impact-gold');
+    this.explosion = effectPixelTexture('explosion');
+    this.death = effectPixelTexture('death');
+    this.xpCollect = effectPixelTexture('xp-collect');
+    this.kickNormal = weaponPixelTexture('kick');
+    this.kickEvolved = weaponPixelTexture('kick', true);
+    this.runeDais = environmentPixelTexture('rune-dais');
+
+    this.bossAura = this.newSprite(this.death, this.bossLayer);
+    this.bossSprite = this.newSprite(this.bossFrames[0], this.bossLayer);
+    this.playerDash = this.newSprite(this.xpCollect, this.playerLayer);
+    this.playerSprite = this.newSprite(this.playerFrames[0], this.playerLayer);
+    this.artReady = true;
+  }
+
+  private installEnvironment(): void {
     const hw = ARENA.w / 2;
     const hh = ARENA.h / 2;
-    this.gFloor.clear().rect(-hw, -hh, ARENA.w, ARENA.h).fill(this.palette.bg);
-    const cell = 80;
-    const g = this.gGrid.clear();
-    for (let x = -hw; x <= hw + 1; x += cell) g.moveTo(x, -hh).lineTo(x, hh);
-    for (let y = -hh; y <= hh + 1; y += cell) g.moveTo(-hw, y).lineTo(hw, y);
-    g.stroke({ width: 1.5, color: 0xffffff, alpha: 0.05 });
-    this.gBorder
-      .clear()
-      .rect(-hw, -hh, ARENA.w, ARENA.h)
-      .stroke({ width: 4, color: this.palette.accent, alpha: 0.5 });
+    const props: ReadonlyArray<readonly [PixelEnvironmentId, number, number, number]> = [
+      ['rune-pillar', -hw + 52, -hh + 58, 96],
+      ['broken-pillar', hw - 52, -hh + 58, 96],
+      ['hooded-statue', -hw + 54, hh - 65, 94],
+      ['knight-statue', hw - 54, hh - 65, 96],
+      ['cyan-brazier', -hw + 155, -hh + 45, 72],
+      ['gold-brazier', hw - 155, -hh + 45, 72],
+      ['cyan-crystals', -hw + 150, hh - 42, 78],
+      ['gravestone', hw - 150, hh - 42, 74],
+      ['rubble', -hw + 270, -hh + 30, 68],
+      ['bones', hw - 270, -hh + 30, 66],
+      ['thorn-vines', -hw + 280, hh - 25, 74],
+      ['mushrooms', hw - 280, hh - 25, 64],
+    ];
+    for (const [id, x, y, size] of props) {
+      const sprite = this.newSprite(environmentPixelTexture(id), this.environmentLayer);
+      this.place(sprite, sprite.texture, x, y, size, size, 0.76);
+    }
+  }
+
+  private newSprite(texture: Texture, layer: Container): Sprite {
+    const sprite = new Sprite(texture);
+    sprite.anchor.set(0.5);
+    sprite.roundPixels = true;
+    layer.addChild(sprite);
+    return sprite;
+  }
+
+  private pooledSprite(pool: Sprite[], layer: Container, index: number, texture: Texture): Sprite {
+    let sprite = pool[index];
+    if (!sprite) {
+      sprite = this.newSprite(texture, layer);
+      pool.push(sprite);
+    }
+    sprite.visible = true;
+    return sprite;
+  }
+
+  private hidePoolFrom(pool: Sprite[], used: number): void {
+    for (let i = used; i < pool.length; i++) pool[i].visible = false;
+  }
+
+  private place(
+    sprite: Sprite,
+    texture: Texture,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    alpha = 1,
+    tint = 0xffffff,
+    rotation = 0,
+  ): void {
+    sprite.texture = texture;
+    sprite.position.set(Math.round(x), Math.round(y));
+    sprite.width = Math.max(1, Math.round(width));
+    sprite.height = Math.max(1, Math.round(height));
+    sprite.alpha = alpha;
+    sprite.tint = tint;
+    sprite.rotation = rotation;
+    sprite.visible = true;
   }
 
   private fit(viewW: number, viewH: number): void {
@@ -87,9 +224,7 @@ export class BossView {
   update(dt: number, viewW: number, viewH: number): void {
     this.fit(viewW, viewH);
     // Hit shake: nudge the whole arena box a few view pixels, decaying over
-    // each shake's life. Same feel as RunView so a hit reads identically in
-    // either arena. Frozen (the end screen) drops any shake so it can't jitter
-    // behind the results.
+    // each shake's life. Frozen results screens drop shake immediately.
     if (this.world.frozen) {
       this.shakes.length = 0;
       this.box.position.set(viewW / 2, viewH / 2);
@@ -97,6 +232,7 @@ export class BossView {
       const [sx, sy] = this.shakeOffset();
       this.box.position.set(viewW / 2 + sx, viewH / 2 + sy);
     }
+    if (!this.artReady) return;
     this.drawHazards();
     this.drawBullets();
     this.drawBoss();
@@ -105,13 +241,11 @@ export class BossView {
   }
 
   /** Kick a screenshake (mag view px, over durS seconds). Same contract as
-   *  RunView.pushShake so the shared damage feedback drives both arenas. */
+   * RunView.pushShake so shared damage feedback can drive either arena. */
   pushShake(mag: number, durS: number): void {
     this.shakes.push({ start: this.world.timeS, mag, dur: durS });
   }
 
-  /** Current shake offset in view pixels: the strongest live shake decayed by
-   *  its age, jittered per frame. Drops finished shakes as it scans. */
   private shakeOffset(): [number, number] {
     let amp = 0;
     for (let i = this.shakes.length - 1; i >= 0; i--) {
@@ -128,99 +262,155 @@ export class BossView {
   }
 
   private drawHazards(): void {
-    const g = this.gHaz.clear();
-    const w = this.world;
+    const impact = this.impactGold!;
+    let used = 0;
+    const add = (
+      texture: Texture,
+      x: number,
+      y: number,
+      size: number,
+      alpha: number,
+      tint: number,
+      rotation = 0,
+    ): void => {
+      const sprite = this.pooledSprite(this.hazardSprites, this.hazardLayer, used++, texture);
+      this.place(sprite, texture, x, y, size, size, alpha, tint, rotation);
+    };
 
-    for (const s of w.shocks) {
-      const live = s.age >= s.warnT;
-      const r = live ? s.r0 + (s.age - s.warnT) * s.speed : s.r0;
+    for (const shock of this.world.shocks) {
+      const live = shock.age >= shock.warnT;
+      const radius = live ? shock.r0 + (shock.age - shock.warnT) * shock.speed : shock.r0;
       if (!live) {
-        // wind-up: a tight pulsing core where the ring will burst from
-        g.circle(s.x, s.y, s.r0 + 6).stroke({ width: 3, color: s.color, alpha: 0.5 });
-      } else {
-        const fade = Math.max(0.15, 1 - r / s.rMax);
-        g.circle(s.x, s.y, r).stroke({ width: s.thickness, color: s.color, alpha: 0.5 * fade });
-        g.circle(s.x, s.y, r).stroke({ width: 3, color: 0xffffff, alpha: 0.7 * fade });
+        const pulse = 1 + 0.12 * Math.sin(this.world.timeS * 18);
+        add(this.runeDais!, shock.x, shock.y, (shock.r0 + 14) * 2 * pulse, 0.62, shock.color);
+        continue;
+      }
+      const fade = Math.max(0.15, 1 - radius / shock.rMax);
+      const count = Math.min(96, Math.max(12, Math.ceil(Math.PI * 2 * radius / 36)));
+      const size = Math.max(14, Math.min(34, shock.thickness * 0.82));
+      for (let i = 0; i < count; i++) {
+        const angle = i / count * Math.PI * 2;
+        add(impact, shock.x + Math.cos(angle) * radius, shock.y + Math.sin(angle) * radius,
+          size, 0.72 * fade, shock.color, angle);
       }
     }
 
-    for (const z of w.zones) {
-      const live = z.age >= z.warnT;
-      if (!live) {
-        const k = z.age / z.warnT;
-        g.circle(z.x, z.y, z.radius).stroke({ width: 3, color: z.color, alpha: 0.3 + 0.5 * k });
-      } else {
-        g.circle(z.x, z.y, z.radius).fill({ color: z.color, alpha: 0.5 });
-        g.circle(z.x, z.y, z.radius).stroke({ width: 3, color: 0xffffff, alpha: 0.8 });
+    for (const zone of this.world.zones) {
+      const live = zone.age >= zone.warnT;
+      const progress = live ? 1 : zone.age / zone.warnT;
+      if (live) add(this.death!, zone.x, zone.y, zone.radius * 2, 0.62, zone.color);
+      const count = Math.min(48, Math.max(14, Math.ceil(Math.PI * 2 * zone.radius / 32)));
+      for (let i = 0; i < count; i++) {
+        const angle = i / count * Math.PI * 2;
+        add(live ? impact : this.impactCyan!,
+          zone.x + Math.cos(angle) * zone.radius,
+          zone.y + Math.sin(angle) * zone.radius,
+          live ? 22 : 14,
+          live ? 0.9 : 0.32 + 0.5 * progress,
+          live ? 0xffffff : zone.color,
+          angle);
       }
     }
 
-    for (const bm of w.beams) {
-      const live = bm.age >= bm.warnT;
-      const alpha = live ? 0.85 : 0.3 + 0.35 * (bm.age / bm.warnT);
-      const width = live ? bm.halfWidth * 2 : 5;
-      let x1: number, y1: number, x2: number, y2: number;
-      if (bm.type === 'vlane') {
-        x1 = x2 = bm.ox;
+    for (const beam of this.world.beams) {
+      const live = beam.age >= beam.warnT;
+      const alpha = live ? 0.9 : 0.3 + 0.35 * (beam.age / beam.warnT);
+      const width = live ? beam.halfWidth * 2 : 8;
+      let x1: number;
+      let y1: number;
+      let x2: number;
+      let y2: number;
+      if (beam.type === 'vlane') {
+        x1 = x2 = beam.ox;
         y1 = -ARENA.h / 2;
         y2 = ARENA.h / 2;
-      } else if (bm.type === 'hlane') {
-        y1 = y2 = bm.oy;
+      } else if (beam.type === 'hlane') {
+        y1 = y2 = beam.oy;
         x1 = -ARENA.w / 2;
         x2 = ARENA.w / 2;
       } else {
-        const dx = Math.cos(bm.angle);
-        const dy = Math.sin(bm.angle);
-        x1 = bm.ox - dx * DIAG;
-        y1 = bm.oy - dy * DIAG;
-        x2 = bm.ox + dx * DIAG;
-        y2 = bm.oy + dy * DIAG;
+        const dx = Math.cos(beam.angle);
+        const dy = Math.sin(beam.angle);
+        x1 = beam.ox - dx * DIAG;
+        y1 = beam.oy - dy * DIAG;
+        x2 = beam.ox + dx * DIAG;
+        y2 = beam.oy + dy * DIAG;
       }
-      g.moveTo(x1, y1).lineTo(x2, y2).stroke({ width, color: bm.color, alpha });
-      if (live) {
-        g.moveTo(x1, y1).lineTo(x2, y2).stroke({ width: Math.max(3, width * 0.25), color: 0xffffff, alpha: 0.9 });
+      const length = Math.hypot(x2 - x1, y2 - y1);
+      const spacing = live ? Math.max(18, width * 0.62) : 32;
+      const count = Math.max(2, Math.ceil(length / spacing));
+      const angle = Math.atan2(y2 - y1, x2 - x1);
+      for (let i = 0; i <= count; i++) {
+        const t = i / count;
+        add(impact, x1 + (x2 - x1) * t, y1 + (y2 - y1) * t,
+          live ? Math.max(20, width) : 12, alpha, beam.color, angle);
       }
     }
 
-    for (const a of w.arcs) {
-      const live = a.age >= a.warnT;
-      g.moveTo(a.cx, a.cy)
-        .arc(a.cx, a.cy, a.reach, a.angle - a.half, a.angle + a.half)
-        .lineTo(a.cx, a.cy);
-      if (live) g.fill({ color: a.color, alpha: 0.55 });
-      else g.stroke({ width: 3, color: a.color, alpha: 0.35 + 0.4 * (a.age / a.warnT) });
+    for (const arc of this.world.arcs) {
+      const live = arc.age >= arc.warnT;
+      const angleSteps = 11;
+      const layers = live ? 3 : 1;
+      for (let layer = 1; layer <= layers; layer++) {
+        const radius = arc.reach * (live ? layer / layers : 1);
+        for (let i = 0; i < angleSteps; i++) {
+          const angle = arc.angle - arc.half + i / (angleSteps - 1) * arc.half * 2;
+          add(live ? this.kickEvolved! : this.kickNormal!,
+            arc.cx + Math.cos(angle) * radius,
+            arc.cy + Math.sin(angle) * radius,
+            live ? 30 : 18,
+            live ? 0.78 : 0.38 + 0.42 * (arc.age / arc.warnT),
+            arc.color,
+            angle);
+        }
+      }
     }
+    this.hidePoolFrom(this.hazardSprites, used);
+  }
+
+  private projectileTexture(color: number): Texture {
+    const red = (color >>> 16) & 0xff;
+    const green = (color >>> 8) & 0xff;
+    const blue = color & 0xff;
+    if (blue > red * 1.12 && green > red * 0.75) return this.projectiles!.cyan;
+    if (blue > green * 1.18 || (red > 150 && blue > 120)) return this.projectiles!.magenta;
+    return this.projectiles!.warm;
   }
 
   private drawBullets(): void {
-    const g = this.gBullets.clear();
-    for (const b of this.world.bullets) {
-      g.circle(b.x, b.y, b.radius + 2).fill({ color: b.color, alpha: 0.9 });
-      g.circle(b.x, b.y, b.radius * 0.5).fill({ color: 0xffffff, alpha: 0.85 });
+    let used = 0;
+    for (const bullet of this.world.bullets) {
+      const texture = this.projectileTexture(bullet.color);
+      const sprite = this.pooledSprite(this.bulletSprites, this.bulletLayer, used++, texture);
+      const size = Math.max(16, Math.round((bullet.radius * 2 + 8) / 2) * 2);
+      this.place(sprite, texture, bullet.x, bullet.y, size, size, 0.96, 0xffffff,
+        Math.atan2(bullet.vy, bullet.vx) + Math.PI / 4);
     }
+    this.hidePoolFrom(this.bulletSprites, used);
   }
 
   private drawBoss(): void {
-    const b = this.world.boss;
-    const g = this.gBoss.clear();
-    const r = b.radius * (1 + 0.14 * b.pulse);
-    // outer aura pulse
-    g.circle(b.x, b.y, r + 14 + b.pulse * 26).fill({ color: b.color, alpha: 0.12 + 0.18 * b.pulse });
-    g.circle(b.x, b.y, r).fill({ color: b.color, alpha: 0.9 });
-    g.circle(b.x, b.y, r).stroke({ width: 3, color: 0xffffff, alpha: 0.5 });
-    g.circle(b.x, b.y, r * 0.5).fill({ color: 0x0a0a12, alpha: 0.85 });
-    g.circle(b.x, b.y, r * 0.5).stroke({ width: 2, color: this.palette.accent, alpha: 0.8 });
+    const boss = this.world.boss;
+    const frame = this.bossFrames![Math.floor(this.world.timeS * 5) % 2];
+    const pulse = 1 + 0.14 * boss.pulse;
+    const bodySize = 96 * pulse;
+    this.place(this.bossAura!, this.explosion!, boss.x, boss.y,
+      boss.radius * 3.2 + boss.pulse * 42,
+      boss.radius * 3.2 + boss.pulse * 42,
+      0.18 + boss.pulse * 0.28,
+      this.palette.boss);
+    this.place(this.bossSprite!, frame, boss.x, boss.y, bodySize, bodySize, 1);
   }
 
   private drawPlayer(): void {
-    const p = this.world.player;
-    const g = this.gPlayer.clear();
-    const invuln = p.iframesT > 0;
-    if (p.dashT > 0) {
-      g.circle(p.x, p.y, p.radius + 8).stroke({ width: 2, color: this.palette.accent, alpha: 0.6 });
+    const player = this.world.player;
+    if (player.dashT > 0) {
+      this.place(this.playerDash!, this.xpCollect!, player.x, player.y, 62, 62, 0.72, this.palette.accent);
+    } else {
+      this.playerDash!.visible = false;
     }
-    g.circle(p.x, p.y, p.radius).fill({ color: 0xffffff, alpha: invuln ? 0.45 : 1 });
-    g.circle(p.x, p.y, p.radius).stroke({ width: 2.5, color: this.palette.accent, alpha: invuln ? 0.4 : 0.95 });
+    const frame = this.playerFrames![Math.floor(this.world.timeS * 7) % 2];
+    this.place(this.playerSprite!, frame, player.x, player.y, 48, 48, player.iframesT > 0 ? 0.45 : 1);
   }
 
   private drawFx(dt: number): void {
@@ -228,20 +418,20 @@ export class BossView {
       this.pops.push({ x: fx.x, y: fx.y, color: fx.color, t: 0, dur: fx.type === 'slam' ? 0.3 : 0.22, kind: fx.type });
     }
     this.world.fx.length = 0;
-    const g = this.gFx.clear();
+    let used = 0;
     for (let i = this.pops.length - 1; i >= 0; i--) {
-      const p = this.pops[i];
-      p.t += dt;
-      const k = p.t / p.dur;
-      if (k >= 1) {
+      const pop = this.pops[i];
+      pop.t += dt;
+      const progress = pop.t / pop.dur;
+      if (progress >= 1) {
         this.pops.splice(i, 1);
         continue;
       }
-      if (p.kind === 'slam') {
-        g.circle(p.x, p.y, 20 + k * 90).stroke({ width: 6 * (1 - k), color: p.color, alpha: 0.7 * (1 - k) });
-      } else {
-        g.circle(p.x, p.y, 4 + k * 16).fill({ color: p.color, alpha: 0.8 * (1 - k) });
-      }
+      const texture = pop.kind === 'slam' ? this.explosion! : this.impactGold!;
+      const sprite = this.pooledSprite(this.fxSprites, this.fxLayer, used++, texture);
+      const size = pop.kind === 'slam' ? 44 + progress * 176 : 14 + progress * 34;
+      this.place(sprite, texture, pop.x, pop.y, size, size, 0.82 * (1 - progress), pop.color);
     }
+    this.hidePoolFrom(this.fxSprites, used);
   }
 }

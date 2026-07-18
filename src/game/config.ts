@@ -22,22 +22,6 @@ export const RUN = {
   maxMusicNotes: 180,
 };
 
-/** Rare one-use arena pickup. This is deliberately separate from Magnet
- * Lanyard, the passive item that increases ordinary pickup reach. */
-export const STAGE_MAGNET = {
-  /** Per eligible enemy kill: rare in a horde, but visible in a healthy run. */
-  dropChance: 0.0012,
-  /** Bad-luck protection. The next eligible kill drops one at this count. */
-  pityKills: 700,
-  /** Prevent lucky streaks from filling the floor with vacuum pickups. */
-  dropCooldownS: 90,
-  /** A missed magnet eventually clears so another can drop later. */
-  lifetimeS: 45,
-  pickupRadius: 28,
-  /** Marked gems and notes cross a full viewport in well under a second. */
-  vacuumSpeed: 1800,
-} as const;
-
 /** Player take-damage feedback, shared by every arena (normal run, sandbox,
  *  and boss) through damage-feedback.ts. One place for the whole feel: the
  *  recovery window, the red edge tint, and the hit screenshake. The flash
@@ -89,6 +73,28 @@ export const LEVELUP = {
   duckDepth: 0.32,
 };
 
+/** Place a physical choice inside the visible camera while keeping it outside
+ * the walk-to-collect radius. The 92-unit inset covers the pedestal plus its
+ * one-line label plate; on an impossibly small view, reachability wins. */
+export function groundPickPosition(
+  playerX: number,
+  playerY: number,
+  degrees: number,
+  worldW: number,
+  worldH: number,
+): { x: number; y: number } {
+  const rad = (degrees * Math.PI) / 180;
+  const minimumOffset = LEVELUP.itemPickupRadius + 4;
+  const horizontalRoom = Math.max(minimumOffset, worldW / 2 - 92);
+  const verticalRoom = Math.max(minimumOffset, worldH / 2 - 92);
+  const xOffset = Math.cos(rad) * LEVELUP.itemRadius;
+  const yOffset = Math.sin(rad) * LEVELUP.itemRadius;
+  return {
+    x: playerX + Math.max(-horizontalRoom, Math.min(horizontalRoom, xOffset)),
+    y: playerY + Math.max(-verticalRoom, Math.min(verticalRoom, yOffset)),
+  };
+}
+
 /** Exact Vampire Survivors XP requirement for the next level. `level` is the
  * player's current level (1 means the 5 XP step from level 1 -> 2). */
 export function xpForNextLevel(level: number): number {
@@ -130,7 +136,7 @@ export type EnemyKind =
   | 'batSwarm';
 
 /** Complete simulation catalog. The sandbox consumes this directly so an
- * opening-act change cannot hide endless-tour enemies from its controls. */
+ * opening-act change cannot hide endless-run enemies from its controls. */
 export const ALL_ENEMY_KINDS: readonly EnemyKind[] = [
   'bat', 'redBat', 'redBat2', 'zombie', 'skeleton', 'ghost',
   'greenMudman', 'grayMudman', 'flower', 'glowingBat', 'mantis', 'batSwarm',
@@ -344,29 +350,29 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
  *  cap must not silently swallow the designed spikes. */
 export const MAX_ALIVE_HARD = 500;
 
-/** Player-facing names for The Hush. Internal keys remain stable simulation
+/** Player-facing Neon Crypt bestiary. Internal keys remain stable simulation
  * IDs so the proven movement/stat tables do not change with the new fiction. */
 export const ENEMY_LABELS: Record<EnemyKind, string> = {
-  swarmer: 'Shardling',
-  tank: 'Wallstack',
-  darter: 'Needlejack',
-  splitter: 'Crackbox',
-  charger: 'Rail Ram',
-  circler: 'Orbit Leech',
-  shielded: 'Phase Guard',
-  elite: 'Blackout Idol',
-  bat: 'Static Mite',
-  redBat: 'Flare Mite',
-  redBat2: 'Night Mite',
-  zombie: 'Cable Husk',
-  skeleton: 'Jackwalker',
-  ghost: 'Echo Shard',
-  greenMudman: 'Moss Cabinet',
-  grayMudman: 'Cracked Cabinet',
-  flower: 'Mute Bloom',
-  glowingBat: 'Signal Crown',
-  mantis: 'The Shear',
-  batSwarm: 'Static Rush',
+  swarmer: 'Crypt Wisp',
+  tank: 'Void Golem',
+  darter: 'Iron Scarab',
+  splitter: 'Thorn Maw',
+  charger: 'Ember Boar',
+  circler: 'Rune Eye',
+  shielded: 'Aegis Knight',
+  elite: 'Eclipse Guardian',
+  bat: 'Dusk Moth',
+  redBat: 'Ember Moth',
+  redBat2: 'Frost Moth',
+  zombie: 'Plague Husk',
+  skeleton: 'Bone Warden',
+  ghost: 'Phase Shade',
+  greenMudman: 'Moss Golem',
+  grayMudman: 'Slate Golem',
+  flower: 'Spore Maw',
+  glowingBat: 'Crown Wraith',
+  mantis: 'Crypt Spider',
+  batSwarm: 'Dusk Swarm',
 };
 
 /** Base spawn-time stats before endless-minute scaling. Contact `damage` is

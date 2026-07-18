@@ -462,6 +462,8 @@ input[type='range'] {
 #app.game-root canvas {
   display: block;
   touch-action: none;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
 }
 
 /* the floating touch joystick */
@@ -890,7 +892,7 @@ button.big {
   border-bottom: 1px solid #29483e;
   padding: 8px 1px 3px;
   margin-top: 3px;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 900;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -915,13 +917,15 @@ button.big {
 
 .sb-enemy-name {
   color: var(--ink);
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .sb-enemy-stats {
   overflow: hidden;
-  color: #71877e;
-  font-size: 9px;
-  line-height: 1.25;
+  color: #a8bdb5;
+  font-size: 10px;
+  line-height: 1.3;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -968,9 +972,7 @@ button.big {
   padding: 5px 0;
 }
 
-/* The Career pickup lab has descriptive actions rather than compact numeric
- * tiers. Let this one group wrap so Stage Magnet controls never widen the
- * panel or create a horizontal scrollbar on desktop or phones. */
+/* Career pickup controls use descriptive actions, so this group may wrap. */
 .sb-pickup-controls {
   flex-wrap: wrap;
   justify-content: flex-start;
@@ -1030,8 +1032,8 @@ button.big {
 }
 
 .sb-hint {
-  color: #80958c;
-  font-size: 9px;
+  color: #abc0b7;
+  font-size: 10px;
   line-height: 1.4;
   margin-top: 6px;
 }
@@ -1459,7 +1461,7 @@ button.big {
   opacity: 0.28;
 }
 .socket-slot {
-  font: 700 9px/1 var(--font-mono);
+  font: 800 10px/1 var(--font-mono);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ink-faint);
@@ -1472,7 +1474,7 @@ button.big {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font: 700 11px/1 var(--font-mono);
+  font: 800 12px/1 var(--font-mono);
   letter-spacing: 0.02em;
   color: var(--voice-color);
 }
@@ -1674,7 +1676,7 @@ button.big {
   }
 }
 
-/* ---- Midnight Neon Soundwood: final game-facing chrome ---- */
+/* ---- Neon Crypt pixel-art chrome ---- */
 
 #app.game-root {
   --panel-ink: rgba(8, 10, 18, 0.92);
@@ -1708,18 +1710,9 @@ button.big {
 .hud-level {
   border-radius: 2px;
   align-self: center;
-}
-
-.hud-venue {
-  grid-column: 1;
-  overflow: hidden;
-  color: #a7c7bf;
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-align: left;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
 }
 
 .hud-notes {
@@ -1731,109 +1724,42 @@ button.big {
   font-weight: 900;
   letter-spacing: 0.08em;
   text-shadow: 1px 1px 0 #000, 0 0 8px rgba(255, 212, 92, 0.45);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.pixel-ui-icon {
+  display: inline-block;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  background-image: url('/art/pixel/ui.png');
+  background-repeat: no-repeat;
+  background-size: 128px 128px;
+  background-position: var(--pixel-icon-x) var(--pixel-icon-y);
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.hud-status-icon {
+  vertical-align: middle;
+}
+
+.meter-cap {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.meter-icon {
+  margin-right: -12px;
+  transform: scale(0.5);
+  transform-origin: left center;
 }
 
 .meter {
   border-radius: 1px;
-}
-
-.meter.pressure {
-  height: 13px;
-  border-color: rgba(255, 212, 92, 0.38);
-}
-
-.meter.pressure .fill {
-  width: 0;
-  background: repeating-linear-gradient(90deg, #834f9f 0 8px, #d257a5 8px 16px, #ffca65 16px 24px);
-}
-
-.meter.pressure .fill.ready {
-  background: #ffd45c;
-}
-
-.meter.pressure .fill.drop {
-  background: #21162e;
-}
-
-.pressure-segments {
-  position: absolute;
-  z-index: 1;
-  inset: 1px;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 2px;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.meter.pressure.ready .pressure-segments,
-.meter.pressure.drop .pressure-segments {
-  opacity: 1;
-}
-
-.pressure-segment {
-  min-width: 0;
-  background: #30253c;
-  border-inline: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.pressure-segment.ready {
-  background: linear-gradient(90deg, #ffb94a, #ffe978);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.38);
-}
-
-.pressure-segment.on {
-  background: linear-gradient(90deg, #46f7ff, #e35dff 54%, #ffd45c);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.48);
-}
-
-.pressure-segment.current {
-  background: linear-gradient(90deg, #64f8ff, #ff68d8 58%, #ffe36e);
-  box-shadow: inset 0 0 0 1px #fff, 0 0 8px rgba(100, 248, 255, 0.72);
-  animation: pressure-segment-hit 0.44s ease-out 1;
-}
-
-.pressure-cap {
-  z-index: 2;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  color: #fff;
-  font-weight: 900;
-  text-shadow: 1px 1px 0 #000;
-  white-space: nowrap;
-}
-
-.meter.pressure.ready .pressure-cap {
-  color: #07120f;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.62);
-}
-
-.pressure-cap.energized {
-  letter-spacing: 0.08em;
-}
-
-.meter.pressure.drop .pressure-cap {
-  color: #fff;
-  padding: 0 5px;
-  line-height: 11px;
-  background: rgba(5, 7, 13, 0.78);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.22);
-  text-shadow: 1px 1px 0 #000, 0 0 5px #000;
-}
-
-.meter.pressure.phase-hit {
-  animation: pressure-phase-hit 0.48s ease-out 1;
-}
-
-@keyframes pressure-phase-hit {
-  0% { box-shadow: 0 0 0 2px #fff, 0 0 18px rgba(70, 247, 255, 0.92); }
-  48% { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.65), 0 0 10px rgba(227, 93, 255, 0.62); }
-  100% { box-shadow: 0 0 0 0 transparent, 0 0 0 transparent; }
-}
-
-@keyframes pressure-segment-hit {
-  0% { filter: brightness(1.5); }
-  100% { filter: brightness(1); }
 }
 
 .band-socket,
@@ -1870,7 +1796,7 @@ button.big {
   --item-color: #58606f;
   position: relative;
   display: grid;
-  grid-template-columns: 20px 1fr;
+  grid-template-columns: 24px 1fr;
   grid-template-rows: 1fr 1fr;
   width: 66px;
   height: 43px;
@@ -1892,6 +1818,13 @@ button.big {
   color: var(--item-color);
   font-size: 19px;
   font-weight: 900;
+}
+
+.item-glyph.pixel-ui-icon {
+  width: 24px;
+  height: 24px;
+  color: inherit;
+  font-size: 0;
 }
 
 .item-name {
@@ -1954,6 +1887,7 @@ button.big {
   height: 100%;
   object-fit: cover;
   image-rendering: pixelated;
+  image-rendering: crisp-edges;
   filter: saturate(0.94) brightness(0.78);
 }
 
@@ -2284,6 +2218,24 @@ button.big {
   font-size: 10px;
 }
 
+.loadout-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.career-rep,
+.shop-wallet,
+.shop-cost {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.shop-note-icon {
+  margin-block: -3px;
+}
+
 .loadout-chip.selected {
   color: var(--gold);
   border-color: var(--gold);
@@ -2311,8 +2263,8 @@ button.big {
 .start-hint {
   max-width: 720px;
   margin: -6px 0 0;
-  color: #80958c;
-  font-size: 10px;
+  color: #abc0b7;
+  font-size: 11px;
 }
 
 .end-screen h1 {
@@ -2468,9 +2420,7 @@ button.big {
   .band-socket.pending-off,
   .band-socket.pending-on,
   .tr-row.pending-off,
-  .tr-row.pending-on,
-  .meter.pressure.phase-hit,
-  .pressure-segment.current {
+  .tr-row.pending-on {
     animation: none;
   }
   .band-socket.pending-off,

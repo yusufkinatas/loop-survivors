@@ -4,18 +4,16 @@
 
 import type { Role } from '../audio/kits';
 import { ITEM_IDS, type ItemId } from './items';
-import { isVenueId, type VenueId } from './tour';
 
-export const META_SAVE_KEY = 'loop-survivors.meta.v2';
-export const LEGACY_META_SAVE_KEY = 'loop-survivors.meta.v1';
+export const META_SAVE_KEY = 'loop-survivors.meta.v3';
+export const LEGACY_META_SAVE_KEY = 'loop-survivors.meta.v2';
+export const LEGACY_META_V1_SAVE_KEY = 'loop-survivors.meta.v1';
 
 export const MILESTONE_IDS = [
   'first5m',
   'fullBand',
   'firstEvolution',
   'hitlessHeadliner',
-  'loopCross',
-  'pressureBreak',
 ] as const;
 
 export type MilestoneId = (typeof MILESTONE_IDS)[number];
@@ -28,10 +26,8 @@ export interface MasteryProgress {
 
 export const CORE_WEAPONS: readonly Role[] = ['kick', 'snare', 'hat', 'bass', 'chord'];
 export const CORE_ITEMS: readonly ItemId[] = ['highTops', 'fastForward', 'mirrorball', 'wideLens'];
-export const CORE_VENUES: readonly VenueId[] = ['alley', 'warehouse', 'rooftop'];
 
 const META_WEAPONS: readonly Role[] = ['kick', 'snare', 'hat', 'bass', 'chord', 'clap', 'arp', 'lead', 'bell'];
-const META_VENUES: readonly VenueId[] = ['alley', 'warehouse', 'rooftop', 'metro', 'basement', 'dawn'];
 
 export const SHOP_OFFER_IDS = [
   'reroll1',
@@ -40,22 +36,19 @@ export const SHOP_OFFER_IDS = [
   'arp',
   'needleTips',
   'recoveryTape',
-  'metro',
   'lead',
   'extensionCable',
   'paddedJacket',
-  'basement',
   'bell',
   'magnetLanyard',
   'secondWind',
   'startItem',
   'reroll2',
-  'dawn',
   'gold',
 ] as const;
 
 export type ShopOfferId = (typeof SHOP_OFFER_IDS)[number];
-export type ShopOfferKind = 'weapon' | 'item' | 'venue' | 'perk' | 'palette';
+export type ShopOfferKind = 'weapon' | 'item' | 'perk' | 'palette';
 
 export interface ShopOffer {
   id: ShopOfferId;
@@ -82,39 +75,42 @@ export const SHOP_OFFERS: readonly ShopOffer[] = [
     description: 'A rapid run of separate notes orbiting the player.' },
   { id: 'needleTips', kind: 'item', contentId: 'needleTips', name: 'Needle Tips', cost: 65, minOwned: 2,
     description: 'Piercing projectiles and the Lead evolution recipe.' },
-  { id: 'metro', kind: 'venue', contentId: 'metro', name: 'Last Train Metro', cost: 110, minOwned: 2,
-    description: 'A venue where train lanes erase enemies and threaten the player.' },
 
-  { id: 'lead', kind: 'weapon', contentId: 'lead', name: 'Lead', cost: 130, minOwned: 5,
+  { id: 'lead', kind: 'weapon', contentId: 'lead', name: 'Lead', cost: 130, minOwned: 4,
     description: 'A bright homing melody weapon.' },
-  { id: 'extensionCable', kind: 'item', contentId: 'extensionCable', name: 'Extension Cable', cost: 75, minOwned: 5,
+  { id: 'extensionCable', kind: 'item', contentId: 'extensionCable', name: 'Extension Cable', cost: 75, minOwned: 4,
     description: 'Longer attacks and the Arp evolution recipe.' },
-  { id: 'paddedJacket', kind: 'item', contentId: 'paddedJacket', name: 'Padded Jacket', cost: 85, minOwned: 5,
+  { id: 'paddedJacket', kind: 'item', contentId: 'paddedJacket', name: 'Padded Jacket', cost: 85, minOwned: 4,
     description: 'Health, armor, and the Clap evolution recipe.' },
-  { id: 'basement', kind: 'venue', contentId: 'basement', name: 'Flooded Basement', cost: 140, minOwned: 5,
-    description: 'Slow puddles and longer zone attacks.' },
 
-  { id: 'bell', kind: 'weapon', contentId: 'bell', name: 'Bell', cost: 180, minOwned: 8,
+  { id: 'bell', kind: 'weapon', contentId: 'bell', name: 'Bell', cost: 180, minOwned: 6,
     description: 'Heavy crystal shots that shatter on impact.' },
-  { id: 'magnetLanyard', kind: 'item', contentId: 'magnetLanyard', name: 'Magnet Lanyard', cost: 110, minOwned: 8,
+  { id: 'magnetLanyard', kind: 'item', contentId: 'magnetLanyard', name: 'Magnet Lanyard', cost: 110, minOwned: 6,
     description: 'Long-range pickup pull and the Bell evolution recipe.' },
-  { id: 'secondWind', kind: 'perk', contentId: 'secondWind', name: 'Second Wind', cost: 160, minOwned: 8,
+  { id: 'secondWind', kind: 'perk', contentId: 'secondWind', name: 'Second Wind', cost: 160, minOwned: 6,
     description: 'Revive once per run at 30% health.' },
-  { id: 'startItem', kind: 'perk', contentId: 'startItem', name: 'Tour Loadout', cost: 150, minOwned: 8,
+  { id: 'startItem', kind: 'perk', contentId: 'startItem', name: 'Starting Passive', cost: 150, minOwned: 6,
     description: 'Choose one unlocked passive to begin at tier I.' },
 
-  { id: 'reroll2', kind: 'perk', contentId: 'reroll2', name: 'Second Reroll', cost: 200, minOwned: 12,
+  { id: 'reroll2', kind: 'perk', contentId: 'reroll2', name: 'Second Reroll', cost: 200, minOwned: 10,
     description: 'Refresh a second ordinary level-up offer each run.' },
-  { id: 'dawn', kind: 'venue', contentId: 'dawn', name: 'Dawn Roof', cost: 220, minOwned: 12,
-    description: 'Healing light with much harsher contact damage.' },
-  { id: 'gold', kind: 'palette', contentId: 'gold', name: 'Headliner Gold', cost: 300, minOwned: 12,
-    description: 'A gold venue, enemy, and evolution palette.' },
+  { id: 'gold', kind: 'palette', contentId: 'gold', name: 'Headliner Gold', cost: 300, minOwned: 10,
+    description: 'A gold enemy and evolution palette.' },
 ] as const;
 
 const SHOP_BY_ID = new Map<ShopOfferId, ShopOffer>(SHOP_OFFERS.map((offer) => [offer.id, offer]));
 
-export interface MetaV2 {
-  version: 2;
+/** Exact historical prices returned once when an older save loses purchases
+ * whose content no longer exists. A set prevents duplicate/corrupt ids from
+ * creating duplicate refunds. */
+const OBSOLETE_PURCHASE_REFUNDS = {
+  metro: 110,
+  basement: 140,
+  dawn: 220,
+} as const;
+
+export interface MetaV3 {
+  version: 3;
   runs: number;
   /** Spendable music notes. */
   notes: number;
@@ -126,13 +122,11 @@ export interface MetaV2 {
   purchases: ShopOfferId[];
   unlockedWeapons: Role[];
   unlockedItems: ItemId[];
-  unlockedVenues: VenueId[];
   rerolls: number;
   secondWind: boolean;
   startItem?: ItemId;
   milestones: string[];
   mastery: Partial<Record<Role, MasteryProgress>>;
-  seen: string[];
 }
 
 export interface ShopOfferState {
@@ -150,9 +144,9 @@ export interface CollectionProgress {
   complete: boolean;
 }
 
-export function defaultMetaState(): MetaV2 {
+export function defaultMetaState(): MetaV3 {
   return {
-    version: 2,
+    version: 3,
     runs: 0,
     notes: 0,
     lifetimeNotes: 0,
@@ -162,12 +156,10 @@ export function defaultMetaState(): MetaV2 {
     purchases: [],
     unlockedWeapons: [...CORE_WEAPONS],
     unlockedItems: [...CORE_ITEMS],
-    unlockedVenues: [...CORE_VENUES],
     rerolls: 0,
     secondWind: false,
     milestones: [],
     mastery: {},
-    seen: [],
   };
 }
 
@@ -185,10 +177,9 @@ function addUnique<T>(array: T[], value: T): void {
   if (!array.includes(value)) array.push(value);
 }
 
-function rebuildUnlocks(state: MetaV2): void {
+function rebuildUnlocks(state: MetaV3): void {
   state.unlockedWeapons = [...CORE_WEAPONS];
   state.unlockedItems = [...CORE_ITEMS];
-  state.unlockedVenues = [...CORE_VENUES];
   state.rerolls = 0;
   state.secondWind = false;
   for (const id of state.purchases) {
@@ -196,7 +187,6 @@ function rebuildUnlocks(state: MetaV2): void {
     if (!offer) continue;
     if (offer.kind === 'weapon') addUnique(state.unlockedWeapons, offer.contentId as Role);
     if (offer.kind === 'item') addUnique(state.unlockedItems, offer.contentId as ItemId);
-    if (offer.kind === 'venue') addUnique(state.unlockedVenues, offer.contentId as VenueId);
     if (id === 'reroll1') state.rerolls = Math.max(state.rerolls, 1);
     if (id === 'reroll2') state.rerolls = Math.max(state.rerolls, 2);
     if (id === 'secondWind') state.secondWind = true;
@@ -210,12 +200,10 @@ function rebuildUnlocks(state: MetaV2): void {
 function inferLegacyPurchases(raw: Record<string, unknown>): ShopOfferId[] {
   const weapons = filterIds(raw.unlockedWeapons, META_WEAPONS);
   const items = filterIds(raw.unlockedItems, ITEM_IDS);
-  const venues = filterIds(raw.unlockedVenues, META_VENUES);
   const purchases: ShopOfferId[] = [];
   for (const offer of SHOP_OFFERS) {
     if (offer.kind === 'weapon' && weapons.includes(offer.contentId as Role)) addUnique(purchases, offer.id);
     if (offer.kind === 'item' && items.includes(offer.contentId as ItemId)) addUnique(purchases, offer.id);
-    if (offer.kind === 'venue' && venues.includes(offer.contentId as VenueId)) addUnique(purchases, offer.id);
   }
   const rerolls = Math.floor(safeNumber(raw.rerolls));
   if (rerolls >= 1) addUnique(purchases, 'reroll1');
@@ -230,7 +218,30 @@ function inferLegacyPurchases(raw: Record<string, unknown>): ShopOfferId[] {
   return purchases;
 }
 
-function sanitize(raw: unknown): MetaV2 {
+function obsoletePurchaseRefund(raw: Record<string, unknown>): number {
+  const removed = new Set<keyof typeof OBSOLETE_PURCHASE_REFUNDS>();
+  if (Array.isArray(raw.purchases)) {
+    for (const id of raw.purchases) {
+      if (typeof id === 'string' && id in OBSOLETE_PURCHASE_REFUNDS) {
+        removed.add(id as keyof typeof OBSOLETE_PURCHASE_REFUNDS);
+      }
+    }
+  }
+  // The oldest profile stored unlocked content rather than purchases. Reading
+  // this legacy field is migration-only; it is never copied into v3 state.
+  if (Array.isArray(raw.unlockedVenues)) {
+    for (const id of raw.unlockedVenues) {
+      if (typeof id === 'string' && id in OBSOLETE_PURCHASE_REFUNDS) {
+        removed.add(id as keyof typeof OBSOLETE_PURCHASE_REFUNDS);
+      }
+    }
+  }
+  let refund = 0;
+  for (const id of removed) refund += OBSOLETE_PURCHASE_REFUNDS[id];
+  return refund;
+}
+
+function sanitize(raw: unknown): MetaV3 {
   const state = defaultMetaState();
   if (!raw || typeof raw !== 'object') return state;
   const parsed = raw as Record<string, unknown>;
@@ -239,17 +250,21 @@ function sanitize(raw: unknown): MetaV2 {
   state.lifetimeKills = Math.floor(safeNumber(parsed.lifetimeKills));
   state.lifetimeHeadliners = Math.floor(safeNumber(parsed.lifetimeHeadliners));
   state.milestones = filterIds(parsed.milestones, MILESTONE_IDS);
-  state.seen = Array.isArray(parsed.seen)
-    ? [...new Set(parsed.seen.filter((id): id is string => typeof id === 'string').slice(0, 256))]
-    : [];
 
+  const isV3 = parsed.version === 3;
   const isV2 = parsed.version === 2;
-  state.purchases = isV2
+  state.purchases = isV3 || isV2
     ? filterIds(parsed.purchases, SHOP_OFFER_IDS)
     : inferLegacyPurchases(parsed);
   // Migration converts one quarter of old reputation to spendable notes while
-  // preserving every already-earned unlock. Existing players never lose work.
-  state.notes = Math.floor(isV2 ? safeNumber(parsed.notes) : safeNumber(parsed.reputation) / 4);
+  // preserving every already-earned unlock. Removed purchases are refunded at
+  // their exact historical prices once, while a native v3 save can never mint
+  // currency by injecting obsolete ids.
+  const baseNotes = isV3 || isV2
+    ? safeNumber(parsed.notes)
+    : safeNumber(parsed.reputation) / 4;
+  const refund = isV3 ? 0 : obsoletePurchaseRefund(parsed);
+  state.notes = Math.floor(baseNotes + refund);
   state.lifetimeNotes = Math.max(state.notes, Math.floor(safeNumber(parsed.lifetimeNotes, state.notes)));
 
   if (typeof parsed.startItem === 'string' && ITEM_IDS.includes(parsed.startItem as ItemId)) {
@@ -290,34 +305,41 @@ export interface RunProgressInput {
   damageByRole?: Partial<Record<Role, number>>;
   killsByRole?: Partial<Record<Role, number>>;
   evolutionsByRole?: Partial<Record<Role, number>>;
-  venuesVisited?: readonly VenueId[];
 }
 
 export interface RunSettlement {
-  state: MetaV2;
+  state: MetaV3;
   notesEarned: number;
   walletBefore: number;
   walletAfter: number;
   newMilestones: MilestoneId[];
-  newVenues: VenueId[];
   collection: CollectionProgress;
 }
 
 export class MetaStore {
-  readonly state: MetaV2;
+  readonly state: MetaV3;
   private readonly storage: Storage | null;
 
   constructor(storage: Storage | null = browserStorage()) {
     this.storage = storage;
     let raw: unknown = null;
-    try {
-      const saved = storage?.getItem(META_SAVE_KEY) ?? storage?.getItem(LEGACY_META_SAVE_KEY);
-      if (saved) raw = JSON.parse(saved);
-    } catch {
-      raw = null;
+    let loadedFrom: string | null = null;
+    for (const key of [META_SAVE_KEY, LEGACY_META_SAVE_KEY, LEGACY_META_V1_SAVE_KEY]) {
+      try {
+        const saved = storage?.getItem(key);
+        if (!saved) continue;
+        raw = JSON.parse(saved);
+        loadedFrom = key;
+        break;
+      } catch {
+        // A malformed newer save must not hide an intact older profile.
+      }
     }
     this.state = sanitize(raw);
-    if (raw && (raw as { version?: unknown }).version !== 2) this.save();
+    const sanitizedChanged = raw !== null && JSON.stringify(raw) !== JSON.stringify(this.state);
+    if (raw !== null && (loadedFrom !== META_SAVE_KEY || sanitizedChanged)) {
+      this.save();
+    }
   }
 
   save(): void {
@@ -376,10 +398,6 @@ export class MetaStore {
     return new Set(this.state.unlockedItems);
   }
 
-  unlockedVenueIds(): Set<VenueId> {
-    return new Set(this.state.unlockedVenues);
-  }
-
   hasGoldPalette(): boolean {
     return this.hasPurchase('gold');
   }
@@ -400,10 +418,6 @@ export class MetaStore {
     const milestoneSet = new Set(this.state.milestones);
     const newMilestones = [...new Set(run.milestones)].filter((id) => !milestoneSet.has(id));
     for (const id of newMilestones) addUnique(this.state.milestones, id);
-    const newVenues = [...new Set(run.venuesVisited ?? [])]
-      .filter(isVenueId)
-      .filter((id) => !this.state.seen.includes(`venue:${id}`));
-    for (const id of newVenues) addUnique(this.state.seen, `venue:${id}`);
 
     const notesEarned = Math.max(0, Math.floor(safeNumber(run.notesCollected)));
     const walletBefore = this.state.notes;
@@ -432,7 +446,6 @@ export class MetaStore {
       walletBefore,
       walletAfter: this.state.notes,
       newMilestones,
-      newVenues,
       collection: this.collection(),
     };
   }
