@@ -225,7 +225,7 @@ export const EVOLUTIONS: Record<EvolutionId, EvolutionDefinition> = {
     description: 'A full arena ring blasts outward, then claps inward and rewards packed crowds.', signature: 'outward and inward rings',
   },
   eventHorizon: {
-    id: 'eventHorizon', role: 'arp', item: 'extensionCable', name: 'Event Horizon', color: 0x5effd8, gainDb: -2,
+    id: 'eventHorizon', role: 'arp', item: 'extensionCable', name: 'Event Horizon', color: 0x5effd8, gainDb: 0,
     description: 'Counter-rotating pairs breathe around you as a dense orbiting crown.', signature: 'counter-orbiting crown',
   },
   gravityBell: {

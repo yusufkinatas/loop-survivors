@@ -245,10 +245,12 @@ async function renderArp(rootHz: number): Promise<AudioBuffer> {
   filter.type = 'bandpass';
   filter.frequency.setValueAtTime(4_800, 0);
   filter.frequency.exponentialRampToValueAtTime(1_500, 0.28);
-  filter.Q.value = 1.25;
+  // A wide band, not a sliver: at Q 1.25 the note was a thin slice sitting in
+  // the hi-hats' own range, so it masked instead of reading as a line.
+  filter.Q.value = 0.9;
   const envelope = ctx.createGain();
   envelope.gain.setValueAtTime(0.001, 0);
-  envelope.gain.exponentialRampToValueAtTime(0.28, 0.004);
+  envelope.gain.exponentialRampToValueAtTime(0.34, 0.004);
   envelope.gain.exponentialRampToValueAtTime(0.001, 0.31);
   filter.connect(envelope).connect(ctx.destination);
   for (const [type, detune, gain] of [

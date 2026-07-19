@@ -121,7 +121,7 @@ const EVOLUTION_SATURATION = softClipCurve(2.4);
 export const VOICE_MIX_GAIN: Readonly<Partial<Record<Role, number>>> = {
   hat: 0.708, // -3 dB
   chord: 1.334, // +2.5 dB
-  arp: 1.413, // +3 dB
+  arp: 1.778, // +5 dB
 };
 
 function voiceMixGain(role: Role): number {
