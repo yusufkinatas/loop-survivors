@@ -156,14 +156,14 @@ assert.equal(meta.purchase('heavyAmp'), false, 'a shop purchase must be one-time
 assert.equal(meta.shop().find(({ offer }) => offer.id === 'arp')!.shelfLocked, false);
 assert(meta.purchase('arp'));
 assert(meta.unlockedRoles().has('arp'));
-assert.equal(meta.state.notes, 412, 'shop costs must be deducted from the note wallet');
+assert.equal(meta.state.notes, 222, 'shop costs must be deducted from the note wallet');
 const roundTrippedMeta = new MetaStore(storage);
 assert.equal(roundTrippedMeta.state.version, 2);
-assert.equal(roundTrippedMeta.state.notes, 412, 'the v2 note wallet should round-trip');
+assert.equal(roundTrippedMeta.state.notes, 222, 'the v2 note wallet should round-trip');
 assert.deepEqual(roundTrippedMeta.state.purchases, ['heavyAmp', 'clap', 'arp'],
   'shop purchases should round-trip in purchase order');
 const recoveryMeta = new MetaStore(new MemoryStorage());
-recoveryMeta.grantNotes(50);
+recoveryMeta.grantNotes(100);
 assert(recoveryMeta.purchase('recoveryTape'), 'Recovery Tape should be buyable from the first shop shelf');
 assert(recoveryMeta.unlockedItemIds().has('recoveryTape'),
   'buying Recovery Tape should add it to the passive offer pool');
