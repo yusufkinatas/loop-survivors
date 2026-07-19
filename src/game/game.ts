@@ -14,7 +14,7 @@ import { pushDamageFeedback } from './damage-feedback';
 import { createGreedyMover, createKiter, type AutoMover } from './auto-move';
 import { autoMove, Input, type AutoMoveMode } from './input';
 import { mountJoystick } from './joystick';
-import { rollOffers, type AnyPickOption } from './picks';
+import { rollOffers, rollStartingWeapons, type AnyPickOption } from './picks';
 import { RunWorld, KIT_COLORS, type VacuumResult } from './run';
 import { SIM_DT } from './timing';
 import { preloadRunArt, RunView, type GroundPickView } from './view';
@@ -208,9 +208,13 @@ export async function bootGame(
     option: ShellPick;
   }
   let groundPicks: GroundItem[] = [];
+  // True while the run's opening weapon choice is the triangle on the ground.
+  // That pick is committed: it must never spend a purchased reroll.
+  let openingPickOut = false;
 
   function clearGroundPicks(): void {
     if (groundPicks.length > 0) groundPicks = [];
+    openingPickOut = false;
     view?.setGroundPicks([]);
   }
 
@@ -267,8 +271,11 @@ export async function bootGame(
   }
 
   /** Drop the offered options as items in a triangle around the player, shove
-   *  the horde clear of them, and fire the cosmetic level-up moment. */
-  function dropGroundPicks(w: RunWorld, options: ShellPick[]): void {
+   *  the horde clear of them, and fire the cosmetic level-up moment. Pass
+   *  celebrate=false for a drop that is not a reward (the opening hire): the
+   *  pedestals still appear and the horde is still cleared, but nothing claims
+   *  the player gained a level. */
+  function dropGroundPicks(w: RunWorld, options: ShellPick[], celebrate = true): void {
     const cx = w.player.x;
     const cy = w.player.y;
     const items: GroundItem[] = [];
@@ -308,7 +315,10 @@ export async function bootGame(
     groundPicks = items;
     view?.setGroundPicks(payload);
     w.shoveEnemiesOut(cx, cy, LEVELUP.enemyPushRadius);
-    startLevelMoment(cx, cy);
+    // No slow-mo, no mix duck, no level cue and no HUD pulse for the opening
+    // hire — only the burst that reads as "here are your options".
+    if (celebrate) startLevelMoment(cx, cy);
+    else view?.levelBurst(cx, cy);
   }
 
   /** The satisfying beat: normally slowScale slow-mo + a short mix dip. An
@@ -395,6 +405,12 @@ export async function bootGame(
   function rerollGroundOffers(): void {
     const w = world;
     if (!w || state !== 'run' || rerollsLeft <= 0 || groundPicks.length === 0) return;
+    if (openingPickOut) {
+      // Rerolls are a purchased meta resource for in-run level-ups. The run's
+      // opening instrument is a committed choice and never spends one.
+      hud.showToast('The opening hire cannot be rerolled');
+      return;
+    }
     if (groundPicks.some((pick) => pick.option.kind === 'evolution')) {
       hud.showToast('Encore Cases cannot be rerolled');
       return;
@@ -622,7 +638,7 @@ export async function bootGame(
     for (const role of ROLES) engine.setVoiceEnabled(role, false);
   }
 
-  function startRun(startingKit: Role, mode: AutoMoveMode = 'off'): void {
+  function startRun(mode: AutoMoveMode = 'off'): void {
     resetWorld();
     // Auto-move hands movement to a kiter or gem-hungry greedy mode;
     // manual keeps the keyboard/joystick.
@@ -642,9 +658,6 @@ export async function bootGame(
     view = new RunView(w, app.screen);
     app.stage.addChild(view.stage);
     void engine.setAudioSet('midnight-warehouse');
-    engine.setVoiceTier(startingKit, 1);
-    engine.setVoiceEnabled(startingKit, true);
-    w.addWeapon(startingKit, 1);
     hud.showHud(true);
     pauseButton.style.display = '';
     hud.renderBand(w.tiers, undefined, undefined, undefined, w.evolved);
@@ -652,6 +665,22 @@ export async function bootGame(
     syncTimeScaleControl(); // arm the timeScale slider for the live run
     void engine.ctx.resume();
     engine.clock.start();
+    // The run opens silent, on a choice of instrument rather than a fixed one.
+    // Three weapon pedestals drop around the player and collectGroundPick arms
+    // the chosen one on the next bar. This is deliberately NOT a level-up: no
+    // upgrade is enqueued and world level/XP are untouched, so the HUD still
+    // reads level 1 after the pick.
+    dropGroundPicks(
+      w,
+      rollStartingWeapons({
+        tiers: w.tiers,
+        unlockedRoles: meta.unlockedRoles(),
+        rng: Math.random,
+        timeS: 0,
+      }),
+      false,
+    );
+    openingPickOut = true;
   }
 
   function startSandbox(): void {

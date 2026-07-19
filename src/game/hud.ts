@@ -324,10 +324,11 @@ export class Hud {
     }
   }
 
-  /** Start screen: every run opens on the kick at tier 1 (non-negotiable for
-   *  now). Runs start manual; auto-move is an in-game toggle (B hotkey). */
+  /** Start screen: the run picks its own opening instrument — three weapon
+   *  pedestals drop in-world the moment it starts, so nothing is chosen here.
+   *  Runs start manual; auto-move is an in-game toggle (B hotkey). */
   showStart(
-    onStart: (role: Role) => void,
+    onStart: () => void,
     onSandbox: () => void,
     meta?: MetaStore,
     shopOpen = false,
@@ -468,7 +469,7 @@ export class Hud {
     const startBtn = el('button', 'start-btn', s, 'ENTER THE SOUNDWOOD');
     startBtn.onclick = () => {
       this.closeScreen();
-      onStart('kick');
+      onStart();
     };
     el('p', 'start-hint', s,
       'WASD / arrow keys / touch to move · collect blue XP and gold music notes · rare Stage Magnets vacuum the visible floor · walk onto reward pedestals · R rerolls');
