@@ -744,16 +744,22 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
   // Zone thrown onto the nearest pack: ticks damage and slows enemies
   // inside. Chip damage + control; the slow is the identity. NOTE: zone
   // `damage` is PER TICK (every ZONE_TICK_S) for the zone's whole life, so
-  // effective DPS = trigger rate x damage x (lifetimeS / ZONE_TICK_S). Keep
-  // per-tick numbers tiny; chart density and lifetime multiply them.
-  // Lifetime trimmed alongside the ~1/3 damage pass: per-tick is floored at 1
-  // so it can't drop a full third, so the zone's life is shortened instead to
-  // bring total tick output (and the slow duration) down in line.
+  // effective DPS = trigger rate x damage x (1 + floor(lifetimeS /
+  // ZONE_TICK_S)) — a zone spawns with tickT 0, so it always lands one tick
+  // immediately. Keep per-tick numbers tiny; chart density and lifetime
+  // multiply them.
+  // Lifetimes were once trimmed alongside the ~1/3 damage pass (per-tick is
+  // floored at 1, so it can't drop a full third). That trim made every zone
+  // die before the next trigger fired, so Chord read as ONE area teleporting
+  // around instead of a carpet building up. Lifetimes now outlive at least
+  // two trigger intervals, and ZONE_TICK_S was doubled to match: ticks per
+  // zone are unchanged at every tier, so total damage output is identical —
+  // only the visual and slow footprint grows.
   chord: [
-    { damage: 1, radius: 48, lifetimeS: 1.0 },
-    { damage: 1, radius: 56, lifetimeS: 1.15 },
-    { damage: 1, radius: 64, lifetimeS: 1.3 },
-    { damage: 2, radius: 76, lifetimeS: 1.45 },
+    { damage: 1, radius: 48, lifetimeS: 2.0 },
+    { damage: 1, radius: 56, lifetimeS: 2.2 },
+    { damage: 1, radius: 64, lifetimeS: 2.5 },
+    { damage: 2, radius: 76, lifetimeS: 2.8 },
   ],
   // Homing seeker per melody note: mid damage, never misses.
   lead: [
@@ -860,8 +866,12 @@ export const AIM_RANGE = 750;
 
 /** Zone damage tick interval (chord). Slower than M1's 0.3: the zone now
  *  lands on the pack, so its per-tick reach is the whole horde — the slow
- *  is the identity, the damage is chip. */
-export const ZONE_TICK_S = 0.45;
+ *  is the identity, the damage is chip. Doubled from 0.45 when chord
+ *  lifetimes were raised so zones overlap: ticks per zone (1 + floor(lifeS /
+ *  ZONE_TICK_S)) come out identical at every tier, so the longer zones cost
+ *  no extra damage. Chord is the only weapon that spawns zones, so this
+ *  cannot spill onto another kit. */
+export const ZONE_TICK_S = 0.9;
 
 /** Chord zones: enemy speed multiplier while inside, and how far a zone
  *  can be thrown toward the nearest pack. */
