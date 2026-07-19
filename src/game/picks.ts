@@ -19,7 +19,7 @@ import {
 } from './band';
 import {
   ITEM_IDS,
-  ITEM_MAX_LEVEL,
+  itemMaxLevel,
   ITEM_SLOT_CAP,
   itemLevel,
   type ItemId,
@@ -153,7 +153,7 @@ function buildFinitePool(input: RollOffersInput): WeightedOption<BuildPickOption
     if (tier === 0) {
       if (itemSlotsFull || !input.unlockedItems.has(item)) continue;
       pool.push({ option: { kind: 'item', item, tier: 1 }, weight: NEW_ITEM_WEIGHT });
-    } else if (tier < ITEM_MAX_LEVEL) {
+    } else if (tier < itemMaxLevel(item)) {
       // As with an owned weapon, an item already in this run remains legal if
       // meta state is repaired underneath it.
       pool.push({ option: { kind: 'item', item, tier: tier + 1 }, weight: OWNED_ITEM_WEIGHT });

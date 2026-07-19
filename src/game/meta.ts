@@ -44,6 +44,7 @@ export const SHOP_OFFER_IDS = [
   'lead',
   'extensionCable',
   'paddedJacket',
+  'doubleTake',
   'basement',
   'bell',
   'magnetLanyard',
@@ -91,6 +92,8 @@ export const SHOP_OFFERS: readonly ShopOffer[] = [
     description: 'Longer attacks and the Arp evolution recipe.' },
   { id: 'paddedJacket', kind: 'item', contentId: 'paddedJacket', name: 'Padded Jacket', cost: 170, minOwned: 5,
     description: 'Health, armor, and the Clap evolution recipe.' },
+  { id: 'doubleTake', kind: 'item', contentId: 'doubleTake', name: 'Double Take', cost: 280, minOwned: 5,
+    description: 'Two levels only: every projectile weapon fires one, then two extra shots.' },
   { id: 'basement', kind: 'venue', contentId: 'basement', name: 'Flooded Basement', cost: 280, minOwned: 5,
     description: 'Slow puddles and longer zone attacks.' },
 

@@ -14,6 +14,7 @@ export const ITEM_IDS = [
   'magnetLanyard',
   'paddedJacket',
   'recoveryTape',
+  'doubleTake',
 ] as const;
 
 export type ItemId = (typeof ITEM_IDS)[number];
@@ -34,7 +35,10 @@ export interface ItemDefinition {
   shortName: string;
   glyph: string;
   description: string;
-  levelLines: readonly [string, string, string, string, string];
+  /** One line of copy per level; its length must equal the item's max level. */
+  levelLines: readonly string[];
+  /** Omitted when the item rides the standard five-level ladder. */
+  maxLevel?: number;
   /** Omitted for utility passives that deliberately do not form a recipe. */
   evolutionPartner?: Role;
 }
@@ -90,7 +94,17 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     description: 'Slowly restores missing health throughout the run.',
     levelLines: ['+0.1 HP/sec regeneration', '+0.2 HP/sec regeneration', '+0.3 HP/sec regeneration', '+0.4 HP/sec regeneration', '+0.5 HP/sec regeneration'],
   },
+  doubleTake: {
+    id: 'doubleTake', name: 'Double Take', shortName: 'Shots', glyph: '⧉',
+    description: 'Every weapon that throws something throws more of it.', maxLevel: 2,
+    levelLines: ['+1 projectile', '+2 projectiles'],
+  },
 };
+
+/** Most passives climb five levels; Double Take deliberately stops at two. */
+export function itemMaxLevel(id: ItemId): number {
+  return ITEMS[id].maxLevel ?? ITEM_MAX_LEVEL;
+}
 
 /** All passive effects are recomputed here so weapon branches never bake in
  * individual item logic. Values are multipliers unless their name says bonus. */
@@ -111,6 +125,8 @@ export interface BuildMods {
   maxHpBonus: number;
   armorBonus: number;
   hpRegenPerSecond: number;
+  /** Extra shots per trigger on every projectile weapon (Double Take). */
+  extraProjectiles: number;
 }
 
 export const BASE_BUILD_MODS: Readonly<BuildMods> = {
@@ -130,10 +146,11 @@ export const BASE_BUILD_MODS: Readonly<BuildMods> = {
   maxHpBonus: 0,
   armorBonus: 0,
   hpRegenPerSecond: 0,
+  extraProjectiles: 0,
 };
 
 export function itemLevel(items: ReadonlyMap<ItemId, number>, id: ItemId): number {
-  return Math.max(0, Math.min(ITEM_MAX_LEVEL, Math.floor(items.get(id) ?? 0)));
+  return Math.max(0, Math.min(itemMaxLevel(id), Math.floor(items.get(id) ?? 0)));
 }
 
 export function deriveBuildMods(items: ReadonlyMap<ItemId, number>): BuildMods {
@@ -147,6 +164,7 @@ export function deriveBuildMods(items: ReadonlyMap<ItemId, number>): BuildMods {
   const magnet = itemLevel(items, 'magnetLanyard');
   const jacket = itemLevel(items, 'paddedJacket');
   const recovery = itemLevel(items, 'recoveryTape');
+  const duplicate = itemLevel(items, 'doubleTake');
   const needlePierce = [0, 1, 1, 2, 2, 3][needle];
   const needleDamage = [1, 1, 1.06, 1.06, 1.12, 1.12][needle];
   const bounceCount = [0, 1, 1, 2, 2, 3][bounce];
@@ -168,6 +186,7 @@ export function deriveBuildMods(items: ReadonlyMap<ItemId, number>): BuildMods {
     maxHpBonus: jacket * 8,
     armorBonus: jacket >= 5 ? 2 : jacket >= 3 ? 1 : 0,
     hpRegenPerSecond: recovery * 0.1,
+    extraProjectiles: duplicate,
   };
 }
 

@@ -12,7 +12,7 @@ import {
   canDispatchPhraseBoundary,
   nextUnheardPhraseTime,
 } from '../audio/engine';
-import { EVOLUTIONS, ITEM_IDS, ITEMS, deriveBuildMods, type ItemId } from './items';
+import { EVOLUTIONS, ITEM_IDS, ITEMS, deriveBuildMods, itemMaxLevel, type ItemId } from './items';
 import {
   CORE_ITEMS,
   CORE_VENUES,
@@ -53,6 +53,13 @@ assert.equal(mods.damageMul, 1.25);
 assert.equal(mods.maxHpBonus, 40);
 assert.equal(mods.armorBonus, 2);
 assert.equal(mods.hpRegenPerSecond, 0.5);
+// Double Take stops at two levels, so the all-items-at-5 sweep clamps to 2.
+assert.equal(mods.extraProjectiles, 2);
+
+for (const id of ITEM_IDS) {
+  assert.equal(ITEMS[id].levelLines.length, itemMaxLevel(id),
+    `${id} must carry exactly one copy line per level it can reach`);
+}
 
 const evolutionRoles = Object.values(EVOLUTIONS).map(({ role }) => role);
 assert.equal(new Set(evolutionRoles).size, 9, 'every evolution must have a unique weapon');
@@ -60,8 +67,9 @@ const recipeItems = new Set(Object.values(EVOLUTIONS).map(({ item }) => item));
 const pairedItems = new Set(ITEM_IDS.filter((id) => ITEMS[id].evolutionPartner !== undefined));
 assert.deepEqual(recipeItems, pairedItems,
   'every paired passive should complete exactly one evolution recipe');
-assert.equal(ITEMS.recoveryTape.evolutionPartner, undefined,
-  'Recovery Tape should remain a standalone passive with no evolution recipe');
+const standaloneItems = new Set(ITEM_IDS.filter((id) => ITEMS[id].evolutionPartner === undefined));
+assert.deepEqual(standaloneItems, new Set<ItemId>(['recoveryTape', 'doubleTake']),
+  'Recovery Tape and Double Take are the deliberate standalone passives');
 assert.deepEqual(new Set(SANDBOX_ENEMY_CATALOG), new Set(ALL_ENEMY_KINDS),
   'the sandbox must expose every opening, endless, child, event, and boss enemy');
 assert.deepEqual(new Set(SANDBOX_ITEM_CATALOG), new Set(ITEM_IDS),

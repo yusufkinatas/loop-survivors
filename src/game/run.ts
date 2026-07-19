@@ -10,6 +10,7 @@ import type { Role } from '../audio/kits';
 import type { ScheduledTrigger } from '../audio/engine';
 import {
   AIM_RANGE,
+  MULTISHOT_FAN_RAD,
   ARP_OMEGA,
   BELL,
   CIRCLER,
@@ -48,6 +49,7 @@ import { SpatialHash, circlesOverlap } from './spatial';
 import {
   deriveBuildMods,
   eligibleEvolutions,
+  itemMaxLevel,
   paddedJacketHeal,
   type BuildMods,
   type EvolutionDefinition,
@@ -692,7 +694,7 @@ export class RunWorld {
 
   addItem(id: ItemId, level = (this.items.get(id) ?? 0) + 1): void {
     const previous = this.items.get(id) ?? 0;
-    const next = Math.max(previous, Math.min(5, level));
+    const next = Math.max(previous, Math.min(itemMaxLevel(id), level));
     this.items.set(id, next);
     if (id === 'paddedJacket') {
       this.player.hp = Math.min(this.playerMaxHp, this.player.hp + paddedJacketHeal(previous, next));
@@ -704,7 +706,7 @@ export class RunWorld {
    * monotonic through addItem(); this developer surface supports removal. */
   setItemLevelForSandbox(id: ItemId, level: number): void {
     const previousMax = this.playerMaxHp;
-    const next = Math.max(0, Math.min(5, Math.floor(level)));
+    const next = Math.max(0, Math.min(itemMaxLevel(id), Math.floor(level)));
     if (next === 0) this.items.delete(id);
     else this.items.set(id, next);
     if (id === 'paddedJacket') {
@@ -829,7 +831,7 @@ export class RunWorld {
       }
       case 'bell': {
         // A note lobbed straight that shatters into shards on its first hit.
-        this.spawnBell(this.aimDir(0.1), conf, color, v);
+        for (const dir of this.aimFan(0.1)) this.spawnBell(dir, conf, color, v);
         break;
       }
       case 'arp': {
@@ -843,8 +845,8 @@ export class RunWorld {
           this.spawnSubquake(conf, color, v, t.variant === 'fat');
           break;
         }
-        // Bass never multishots (no 'aimedfan' tag): one wide rolling wave.
-        this.spawnProjectile('bass', this.aimDir(0.08), conf, color, v);
+        // One wide rolling wave per trigger; Double Take fans extra waves.
+        for (const dir of this.aimFan(0.08)) this.spawnProjectile('bass', dir, conf, color, v);
         break;
       }
       case 'snare':
@@ -852,11 +854,12 @@ export class RunWorld {
           this.fireRailshot(conf, color, v);
           break;
         }
-        this.spawnProjectile(t.role, this.aimDir(0.08), conf, color, v);
+        for (const dir of this.aimFan(0.08)) this.spawnProjectile(t.role, dir, conf, color, v);
         break;
       case 'hat':
       case 'lead': {
-        this.spawnProjectile(t.role, this.aimDir(t.role === 'hat' ? 0.35 : 0.08), conf, color, v);
+        const spread = t.role === 'hat' ? 0.35 : 0.08;
+        for (const dir of this.aimFan(spread)) this.spawnProjectile(t.role, dir, conf, color, v);
         break;
       }
     }
@@ -2315,6 +2318,23 @@ export class RunWorld {
     return { x: Math.cos(ang), y: Math.sin(ang) };
   }
 
+  /** Aim once, then hand back one direction per shot this trigger owes. Double
+   *  Take's extra shots alternate to either side of the aim line so the volley
+   *  stays centred on the target instead of drifting off it. */
+  private aimFan(spread: number): Array<{ x: number; y: number }> {
+    const base = this.aimDir(spread);
+    const count = 1 + this.buildMods.extraProjectiles;
+    if (count <= 1) return [base];
+    const baseAngle = Math.atan2(base.y, base.x);
+    const dirs: Array<{ x: number; y: number }> = [];
+    for (let i = 0; i < count; i++) {
+      // Offsets run 0, +step, -step, +2 step, -2 step, ...
+      const ang = baseAngle + Math.ceil(i / 2) * (i % 2 === 1 ? 1 : -1) * MULTISHOT_FAN_RAD;
+      dirs.push({ x: Math.cos(ang), y: Math.sin(ang) });
+    }
+    return dirs;
+  }
+
   /** Base projectile with all fields defaulted; specialized spawners tweak
    *  the few that matter to them. */
   private baseProjectile(role: Role, conf: WeaponConf, color: number, damage: number): Projectile {
@@ -2351,6 +2371,13 @@ export class RunWorld {
     };
   }
 
+  /** Every projectile enters the world here so the live-shot ceiling holds
+   *  regardless of which weapon spawned it. */
+  private pushProjectile(projectile: Projectile): void {
+    if (this.projectiles.length >= RUN.maxProjectiles) this.projectiles.shift();
+    this.projectiles.push(projectile);
+  }
+
   private spawnProjectile(
     role: Role,
     dir: { x: number; y: number },
@@ -2382,40 +2409,50 @@ export class RunWorld {
       pr.vy *= 1.50;
     }
     this.applyRooftopWind(pr);
-    this.projectiles.push(pr);
+    this.pushProjectile(pr);
   }
 
   /** Arp: an orbiter that circles the player, chipping what it sweeps. */
   private spawnOrbiter(conf: WeaponConf, color: number, velocity: number): void {
-    const angle = this.rng() * Math.PI * 2;
-    const pr = this.baseProjectile('arp', conf, color, conf.damage * (0.8 + 0.4 * velocity));
-    pr.pierce = Infinity;
-    pr.orbitAngle = angle;
-    pr.orbitRadius = conf.orbitRadius!;
-    pr.x = this.player.x + Math.cos(angle) * pr.orbitRadius;
-    pr.y = this.player.y + Math.sin(angle) * pr.orbitRadius;
-    this.projectiles.push(pr);
+    // One random base angle per trigger; Double Take's copies space themselves
+    // evenly around the ring from it, so a crown reads as a ring not a clump.
+    const baseAngle = this.rng() * Math.PI * 2;
+    const count = 1 + this.buildMods.extraProjectiles;
+    for (let i = 0; i < count; i++) {
+      const angle = baseAngle + (Math.PI * 2 * i) / count;
+      const pr = this.baseProjectile('arp', conf, color, conf.damage * (0.8 + 0.4 * velocity));
+      pr.pierce = Infinity;
+      pr.orbitAngle = angle;
+      pr.orbitRadius = conf.orbitRadius!;
+      pr.x = this.player.x + Math.cos(angle) * pr.orbitRadius;
+      pr.y = this.player.y + Math.sin(angle) * pr.orbitRadius;
+      this.pushProjectile(pr);
+    }
   }
 
   private spawnEventHorizon(conf: WeaponConf, color: number, velocity: number): void {
     const baseAngle = this.rng() * Math.PI * 2;
-    for (const dir of [1, -1] as const) {
-      const angle = baseAngle + (dir === 1 ? 0 : Math.PI);
-      const evolvedConf = {
-        ...conf,
-        radius: (conf.radius ?? 8) * 1.25,
-        lifetimeS: (conf.lifetimeS ?? 2) * 1.35,
-      };
-      const pr = this.baseProjectile('arp', evolvedConf, color, conf.damage * 0.8 * (0.8 + 0.4 * velocity));
-      pr.pierce = Infinity;
-      pr.orbitAngle = angle;
-      pr.orbitRadius = conf.orbitRadius!;
-      pr.orbitDir = dir;
-      pr.rehitT = 0.45;
-      pr.evolved = true;
-      pr.x = this.player.x + Math.cos(angle) * pr.orbitRadius;
-      pr.y = this.player.y + Math.sin(angle) * pr.orbitRadius;
-      this.projectiles.push(pr);
+    // Double Take adds whole counter-rotating pairs, spaced around the orbit.
+    const pairs = 1 + this.buildMods.extraProjectiles;
+    for (let pair = 0; pair < pairs; pair++) {
+      for (const dir of [1, -1] as const) {
+        const angle = baseAngle + (Math.PI * pair) / pairs + (dir === 1 ? 0 : Math.PI);
+        const evolvedConf = {
+          ...conf,
+          radius: (conf.radius ?? 8) * 1.25,
+          lifetimeS: (conf.lifetimeS ?? 2) * 1.35,
+        };
+        const pr = this.baseProjectile('arp', evolvedConf, color, conf.damage * 0.8 * (0.8 + 0.4 * velocity));
+        pr.pierce = Infinity;
+        pr.orbitAngle = angle;
+        pr.orbitRadius = conf.orbitRadius!;
+        pr.orbitDir = dir;
+        pr.rehitT = 0.45;
+        pr.evolved = true;
+        pr.x = this.player.x + Math.cos(angle) * pr.orbitRadius;
+        pr.y = this.player.y + Math.sin(angle) * pr.orbitRadius;
+        this.pushProjectile(pr);
+      }
     }
     const evolvedOrbiters = this.projectiles.filter((projectile) => projectile.role === 'arp' && projectile.evolved);
     while (evolvedOrbiters.length > 24) {
@@ -2445,7 +2482,7 @@ export class RunWorld {
       pr.shatter = 10;
     }
     this.applyRooftopWind(pr);
-    this.projectiles.push(pr);
+    this.pushProjectile(pr);
   }
 
   private applyRooftopWind(projectile: Projectile): void {
@@ -2501,7 +2538,7 @@ export class RunWorld {
         pr.shatter = 0;
       }
       this.applyRooftopWind(pr);
-      this.projectiles.push(pr);
+      this.pushProjectile(pr);
     }
   }
 

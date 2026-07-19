@@ -20,6 +20,7 @@ import {
   ITEM_IDS,
   ITEM_MAX_LEVEL,
   ITEM_NEUTRAL_CSS,
+  itemMaxLevel,
   type EvolutionDefinition,
   type ItemId,
 } from './items';
@@ -275,7 +276,7 @@ export function mountSandboxPanel(
   const itemControls = el('div', 'sb-btns sb-controls', build);
   itemControls.style.marginLeft = '0';
   button(itemControls, 'ALL V', () => {
-    for (const id of SANDBOX_ITEM_CATALOG) setItemLevel(id, ITEM_MAX_LEVEL);
+    for (const id of SANDBOX_ITEM_CATALOG) setItemLevel(id, itemMaxLevel(id));
   });
   button(itemControls, 'CLEAR ITEMS', () => {
     for (const id of SANDBOX_ITEM_CATALOG) setItemLevel(id, 0);
@@ -296,7 +297,7 @@ export function mountSandboxPanel(
     );
     const controls = el('div', 'sb-btns', row);
     const choices: ChoiceButtons<number> = { value: () => world.items.get(id) ?? 0, options: [] };
-    for (let level = 0; level <= ITEM_MAX_LEVEL; level++) {
+    for (let level = 0; level <= itemMaxLevel(id); level++) {
       choices.options.push({
         value: level,
         button: button(controls, level === 0 ? '⏻' : String(level), () => setItemLevel(id, level)),
@@ -495,7 +496,7 @@ export function mountSandboxPanel(
   }
 
   function setItemLevel(id: ItemId, level: number): void {
-    const next = Math.max(0, Math.min(ITEM_MAX_LEVEL, Math.floor(level)));
+    const next = Math.max(0, Math.min(itemMaxLevel(id), Math.floor(level)));
     world.setItemLevelForSandbox(id, next);
     const partner = ITEMS[id].evolutionPartner;
     if (partner && next < ITEM_MAX_LEVEL) clearEvolution(partner);

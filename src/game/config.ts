@@ -20,6 +20,9 @@ export const RUN = {
   maxGems: 400,
   /** Currency pickups merge into an overflow note above this visual cap. */
   maxMusicNotes: 180,
+  /** Live projectile ceiling; the oldest shot is evicted past it. Double Take
+   * multiplies six weapons' spawn rate at once, so this guards the late tour. */
+  maxProjectiles: 600,
 };
 
 /** Rare one-use arena pickup. This is deliberately separate from Magnet
@@ -841,6 +844,10 @@ export const VARIANT_EFFECTS = {
 
 /** How far weapons look for a target. */
 export const AIM_RANGE = 750;
+
+/** Angular offset between Double Take's extra shots and the aim line. Wide
+ *  enough to read as a spread, tight enough that aimed weapons stay aimed. */
+export const MULTISHOT_FAN_RAD = 7 * Math.PI / 180;
 
 /** Zone damage tick interval (chord). Slower than M1's 0.3: the zone now
  *  lands on the pack, so its per-tick reach is the whole horde — the slow
