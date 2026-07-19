@@ -430,6 +430,9 @@ export function mountSandboxPanel(
   button(noteControls, 'DROP STAGE MAGNET', () => {
     world.spawnStageMagnetAt(world.player.x + 115, world.player.y);
   });
+  button(noteControls, 'DROP ENCORE CASE', () => {
+    world.spawnEncoreCaseAt(world.player.x + 115, world.player.y);
+  });
   button(noteControls, 'PICKUP FIELD', () => {
     for (let i = 0; i < 18; i++) {
       const angle = (i / 18) * Math.PI * 2;

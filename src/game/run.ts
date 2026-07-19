@@ -2062,10 +2062,8 @@ export class RunWorld {
       this.spawnStageMagnetForEnemy(e);
       if (e.headliner) {
         this.headlinersKilled += 1;
-        const encore: EncoreCase = { x: e.x, y: e.y, minute: e.spawnMinute, color: 0xffd45c };
-        this.encoreCases.push(encore);
+        this.spawnEncoreCaseAt(e.x, e.y, e.spawnMinute);
         if (!this.headlinerHitTaken) this.markMilestone('hitlessHeadliner');
-        this.fx?.push({ type: 'evolution', x: e.x, y: e.y, color: encore.color, label: 'ENCORE CASE' });
       }
       // Chests are outside this game's item vocabulary. Preserve each stage
       // row's any-chest chance, but translate a successful roll directly into
@@ -3051,6 +3049,15 @@ export class RunWorld {
     this.stageMagnets.push(magnet);
     this.fx?.push({ type: 'spark', x, y, color: 0xa06bff, n: 8, spread: 22 });
     return magnet;
+  }
+
+  /** The single construction site for an Encore Case: Headliner deaths route
+   * here, and the Sandbox drops one on demand. */
+  spawnEncoreCaseAt(x: number, y: number, minute = Math.floor(this.timeS / 60)): EncoreCase {
+    const encore: EncoreCase = { x, y, minute, color: 0xffd45c };
+    this.encoreCases.push(encore);
+    this.fx?.push({ type: 'evolution', x, y, color: encore.color, label: 'ENCORE CASE' });
+    return encore;
   }
 
   private spawnMusicNoteForEnemy(enemy: Enemy): void {
