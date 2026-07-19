@@ -1182,6 +1182,9 @@ export class RunWorld {
       if (phase < 0.8 && cycle !== this.lastTrainCycle) {
         this.lastTrainCycle = cycle;
         for (const enemy of this.enemies) {
+          // The practice dummy outlives the train: it is a measurement prop, and
+          // losing it mid-reading would take the accumulated TOTAL with it.
+          if (enemy.dummy) continue;
           if (!enemy.dead && enemy.spawnClass === 'regular' && Math.abs(enemy.y - laneY) < 65) enemy.dead = true;
         }
         if (Math.abs(this.player.y - laneY) < 65) this.damagePlayer(30, false);
@@ -2484,7 +2487,19 @@ export class RunWorld {
   /** Every projectile enters the world here so the live-shot ceiling holds
    *  regardless of which weapon spawned it. */
   private pushProjectile(projectile: Projectile): void {
-    if (this.projectiles.length >= RUN.maxProjectiles) this.projectiles.shift();
+    if (this.projectiles.length >= RUN.maxProjectiles) {
+      // Retire the oldest live shot rather than splicing it out. A Bell shatter
+      // reaches here through spawnShards from inside updateProjectiles' downward
+      // loop, so removing an element now would renumber every index below the
+      // cursor; the normal lifeS <= 0 sweep collects it instead. Appending is
+      // safe either way: new shots land above the cursor and wait a frame.
+      for (const live of this.projectiles) {
+        if (live.lifeS > 0) {
+          live.lifeS = 0;
+          break;
+        }
+      }
+    }
     this.projectiles.push(projectile);
   }
 

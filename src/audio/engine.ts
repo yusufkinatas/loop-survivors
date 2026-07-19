@@ -118,6 +118,12 @@ const EVOLUTION_SATURATION = softClipCurve(2.4);
  * while the chord and arpeggio (the fast sequence of separate notes) were
  * masked by the drums. Keeping this at the final voice bus makes every venue
  * palette obey the same musical balance. */
+/** These are ABSOLUTE voice levels, not offsets from a previous value: arp at
+ *  1.778 is +5 dB total, up from +3 dB, so the change was a +2 dB lift. Worth
+ *  stating because it is easy to misread a raise here as additive and invent a
+ *  limiter-headroom problem that is not there. Arp still has room to 2.0 (+6 dB)
+ *  before the master limiter (threshold -10, ratio 8) is the binding constraint.
+ *  Every number here wants a listening pass; none of them is derivable on paper. */
 export const VOICE_MIX_GAIN: Readonly<Partial<Record<Role, number>>> = {
   hat: 0.708, // -3 dB
   chord: 1.334, // +2.5 dB

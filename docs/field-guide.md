@@ -22,6 +22,10 @@ one line, and the pause screen lists every current passive total. Walk into one
 pedestal to take it. A build can hold one weapon in each of seven band
 positions and up to six passive items.
 
+A run opens silent and unarmed: three weapon pedestals drop around the player,
+and walking into one arms that weapon at tier I on the next bar. The choice
+costs no level and no reroll.
+
 There is no victory timer. The first eight minutes are an authored opening
 act; from minute eight onward, the endless director combines enemy families
 and formations indefinitely. The run ends only when The Hush overwhelms the
@@ -68,11 +72,11 @@ Midnight Warehouse, and Velvet Rooftop.
 
 | Shelf opens after | Purchases available |
 | --- | --- |
-| 0 owned | First Reroll (35), Heavy Amp (45), Recovery Tape (50), Clap (55) |
-| 2 owned | Arp (90), Needle Tips (65), Last Metro (110) |
-| 5 owned | Lead (130), Extension Cable (75), Padded Jacket (85), Acid Basement (140) |
-| 8 owned | Bell (180), Magnet Lanyard (110), Second Wind (160), Tour Loadout (150) |
-| 12 owned | Second Reroll (200), Dawn Afterparty (220), Headliner Gold (300) |
+| 0 owned | First Reroll (70), Heavy Amp (90), Recovery Tape (100), Clap (110) |
+| 2 owned | Arp (180), Needle Tips (130), Last Metro (220) |
+| 5 owned | Lead (260), Extension Cable (150), Padded Jacket (170), Double Take (280), Acid Basement (280) |
+| 8 owned | Bell (360), Magnet Lanyard (220), Second Wind (320), Tour Loadout (300) |
+| 12 owned | Second Reroll (400), Dawn Afterparty (440), Headliner Gold (600) |
 
 Second Wind revives the player once per run at 30% health. Tour Loadout lets
 the player choose one unlocked passive to start at tier I. Headliner Gold is a
@@ -96,14 +100,15 @@ level-up reward pedestals, Encore Cases, and venue gates alone because those
 are player choices rather than loose resources. It is also separate from the
 permanent **Magnet Lanyard** passive.
 
-## The ten passive items
+## The eleven passive items
 
-Every passive has five levels. The table shows its recognizable purpose and
-its total effect at level five. Nine passives complete weapon recipes; Recovery
-Tape is deliberately standalone, so a useful item does not always need to be
+Every passive has five levels except Double Take, which deliberately stops at
+two. The table shows each one's recognizable purpose and its total effect at
+maximum level. Nine passives complete weapon recipes; Recovery Tape and Double
+Take are deliberately standalone, so a useful item does not always need to be
 an evolution ingredient.
 
-| Passive | Level-five effect | Evolution partner |
+| Passive | Effect at maximum level | Evolution partner |
 | --- | --- | --- |
 | High-Tops | +20% movement speed | Kick |
 | Fast Forward | +100% speed for moving projectiles | Snare |
@@ -115,6 +120,7 @@ an evolution ingredient.
 | Magnet Lanyard | +100% pickup range and +40% pull speed | Bell |
 | Padded Jacket | +40 maximum health, immediate healing as it levels, and +2 armor | Clap |
 | Recovery Tape | Restores 0.5 HP per second while below maximum health | None — standalone |
+| Double Take | +2 projectiles from every weapon that throws one | None — standalone |
 
 ## The nine weapon evolutions
 
@@ -217,6 +223,7 @@ behaviors stay deliberately readable even when the screen is crowded.
 | **Orbit Leech** | Circles the player at range instead of joining the direct pack. |
 | **Phase Guard** | Carries a shield equal to its health; the barrier must break first. |
 | **Blackout Idol** | A huge slow objective retained as a Sandbox-only stress-test fixture. |
+| **Practice Cabinet** | A Sandbox-only target that never moves, never hits back, and never dies; it prints live damage per second instead. |
 
 ## Audio and venue palettes
 
@@ -238,7 +245,7 @@ sounds. The game ships three:
 
 The final instrument channels are calibrated after any venue palette is
 loaded: Hi-hat runs at about 71% of its old channel level, while Chord runs at
-133% and Arp at 141%. Evolution loudness adjustments multiply those calibrated
+133% and Arp at 178%. Evolution loudness adjustments multiply those calibrated
 levels instead of resetting them, so the balance stays consistent all night.
 
 The 18 drum samples are CC0 public-domain recordings. Every file was trimmed,
@@ -253,14 +260,15 @@ altering the player's career.
 
 - **Combat:** set threat/player level; spawn all 20 enemy fixtures near the
   player, in groups of eight, or as rings; create a Headliner or complete
-  minute wave; toggle invulnerability; clear the arena.
-- **Build:** set every live weapon tier and all ten passive levels; assemble or
-  clear a full loadout; toggle each of the nine complete evolution recipes;
+  minute wave; drop or clear practice dummies; toggle invulnerability; clear
+  the arena.
+- **Build:** set every live weapon tier and all eleven passive levels; assemble
+  or clear a full loadout; toggle each of the nine complete evolution recipes;
   inspect the live combined modifiers.
 - **Tour:** switch among all six venues, open the real walk-through route-gate
   demo, and read their rules; arm or start Pressure Drop, pulse each of its four
   bars, end/reset it, and install or clear a figure-eight Neon Loop.
 - **Career:** use a disposable in-memory note wallet; create physical notes,
-  XP pickup fields, and Stage Magnets; trigger the full-screen vacuum; grant
-  testing currency; exercise the real gated 18-offer Afterhours Shop. Nothing
-  in this tab touches the player save.
+  XP pickup fields, Stage Magnets, and Encore Cases; trigger the full-screen
+  vacuum; grant testing currency; exercise the real gated 19-offer Afterhours
+  Shop. Nothing in this tab touches the player save.

@@ -684,8 +684,9 @@ input[type='range'] {
   font-size: var(--fs-xs);
 }
 
-/* Primary call-to-action on the start screen: every run opens on the kick,
-   so the one choice left is when to begin. */
+/* Primary call-to-action on the start screen: the first build choice happens
+   in the arena, on the opening weapon pedestals, so the one choice left here
+   is when to begin. */
 .start-btn {
   padding: 12px 40px;
   font-size: var(--fs-h2);

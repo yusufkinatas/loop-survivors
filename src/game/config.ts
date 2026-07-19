@@ -885,7 +885,7 @@ export const WEAPON_SHOVE: Partial<Record<Role, number>> = { snare: 8, clap: 12,
  *  Deliberately tiny — the identity is high single-target damage plus an
  *  inward tug that bunches the horde up for the rest of the band, NOT another
  *  player-centred blast (that is what Subquake is for). Keep `pinchRadius`
- *  well under Subquake's 360-480 unit ring. */
+ *  well under Subquake's 230-300 unit ring. */
 export const TWO_HANDS = {
   /** How many nearby enemies get their own pincer on a single trigger. */
   targets: 3,

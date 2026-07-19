@@ -730,8 +730,11 @@ assert(pincerWorld.evolve('clap'));
 const pinchTarget = pincerWorld.spawnEnemyAt('bat', 160, 0)!;
 pincerWorld.spawnEnemyAt('bat', 0, 150);
 pincerWorld.spawnEnemyAt('bat', -150, 0);
-// Well outside every pincer but well inside Subquake's 360-480 unit ring,
-// which is the comparison this evolution exists to fail.
+// Well outside every pincer: 300 units is more than seven times the 42-unit
+// crush radius and four times the open gap the slabs travel. It also sits past
+// the outer edge of a regular 230-unit Subquake wave, which is the comparison
+// this evolution exists to fail — the hands stay local instead of turning into
+// a second player-centred blast.
 const bystander = pincerWorld.spawnEnemyAt('bat', 0, 300)!;
 const cornerEnemy = pincerWorld.spawnEnemyAt(
   'bat',
