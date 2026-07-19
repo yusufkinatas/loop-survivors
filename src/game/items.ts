@@ -202,7 +202,7 @@ export const EVOLUTION_IDS = [
   'subquake',
   'afterhours',
   'neonSerpent',
-  'standingOvation',
+  'twoHands',
   'eventHorizon',
   'gravityBell',
 ] as const;
@@ -245,9 +245,9 @@ export const EVOLUTIONS: Record<EvolutionId, EvolutionDefinition> = {
     id: 'neonSerpent', role: 'lead', item: 'needleTips', name: 'Neon Serpent', color: 0xff70d4, gainDb: -1.5,
     description: 'A sharp homing serpent pierces six targets and grows a giant head every fifth trigger.', signature: 'retargeting serpent',
   },
-  standingOvation: {
-    id: 'standingOvation', role: 'clap', item: 'paddedJacket', name: 'Standing Ovation', color: 0xff719f, gainDb: 0,
-    description: 'A full arena ring blasts outward, then claps inward and rewards packed crowds.', signature: 'outward and inward rings',
+  twoHands: {
+    id: 'twoHands', role: 'clap', item: 'paddedJacket', name: 'Two Hands', color: 0xff719f, gainDb: 0,
+    description: 'Paired slabs snap shut on the nearest few enemies, crushing them and dragging survivors inward.', signature: 'target-picked pincer',
   },
   eventHorizon: {
     id: 'eventHorizon', role: 'arp', item: 'extensionCable', name: 'Event Horizon', color: 0x5effd8, gainDb: 0,

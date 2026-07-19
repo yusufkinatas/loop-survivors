@@ -718,22 +718,37 @@ redlineWorld.fireTrigger({ role: 'kick', time: 0, velocity: 1, step: 0 });
 assert(farHorizontal.dead && farVertical.dead,
   'Redline Stomp should cross the complete visible arena');
 
-const ovationWorld = new RunWorld({ width: 1280, height: 720 }, events, {
+const pincerWorld = new RunWorld({ width: 1280, height: 720 }, events, {
   scripted: false,
   fx: false,
   rng: () => 0.5,
 });
-ovationWorld.addWeapon('clap', 4);
-ovationWorld.addItem('paddedJacket', 5);
-assert(ovationWorld.evolve('clap'));
-const cornerEnemy = ovationWorld.spawnEnemyAt(
+pincerWorld.addWeapon('clap', 4);
+pincerWorld.addItem('paddedJacket', 5);
+assert(pincerWorld.evolve('clap'));
+// Three close enemies fill the pincer's target slots.
+const pinchTarget = pincerWorld.spawnEnemyAt('bat', 160, 0)!;
+pincerWorld.spawnEnemyAt('bat', 0, 150);
+pincerWorld.spawnEnemyAt('bat', -150, 0);
+// Well outside every pincer but well inside Subquake's 360-480 unit ring,
+// which is the comparison this evolution exists to fail.
+const bystander = pincerWorld.spawnEnemyAt('bat', 0, 300)!;
+const cornerEnemy = pincerWorld.spawnEnemyAt(
   'bat',
-  ovationWorld.worldW * 0.45,
-  ovationWorld.worldH * 0.45,
+  pincerWorld.worldW * 0.45,
+  pincerWorld.worldH * 0.45,
 )!;
-ovationWorld.update(0);
+pincerWorld.update(0);
+const targetHpBefore = pinchTarget.hp;
+const bystanderHpBefore = bystander.hp;
 const cornerHpBefore = cornerEnemy.hp;
-ovationWorld.fireTrigger({ role: 'clap', time: 0, velocity: 1, step: 0 });
-assert(cornerEnemy.hp < cornerHpBefore, 'Standing Ovation should reach the visible arena corners');
+pincerWorld.fireTrigger({ role: 'clap', time: 0, velocity: 1, step: 0 });
+assert(pinchTarget.hp === targetHpBefore, 'Two Hands damage lands when the hands meet, not on the trigger');
+// Step past the close time so the slabs snap shut.
+for (let i = 0; i < 12; i++) pincerWorld.update(1 / 60);
+assert(pinchTarget.hp < targetHpBefore, 'Two Hands should crush the enemy it picked');
+assert(bystander.hp === bystanderHpBefore,
+  'Two Hands must stay far tighter than Subquake: nothing at 300 units should be damaged');
+assert(cornerEnemy.hp === cornerHpBefore, 'Two Hands must not reach the arena corners');
 
 console.log('systems-check: items, note shop, Stage Magnet, enemies, endless director, and evolutions passed');

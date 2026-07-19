@@ -822,7 +822,7 @@ export const TIER_LINES: Partial<Record<Role, string[]>> = {
     'a wide slash close to you',
     'wider, harder slash',
     'sweeps a bigger arc',
-    'a huge slash all around you',
+    'the widest, hardest slash',
   ],
   arp: [
     'orbiting notes circle you',
@@ -877,6 +877,33 @@ export const SHOVE_S = 0.12;
 
 /** Per-weapon knock distance applied on hit (Feature 3). Absent = no shove. */
 export const WEAPON_SHOVE: Partial<Record<Role, number>> = { snare: 8, clap: 12, bass: 6 };
+
+// ---- the pincer weapon ----
+
+/** Two Hands (evolved clap): a clap is two hands meeting, so each trigger
+ *  picks the closest few enemies and snaps a pair of slabs shut on each one.
+ *  Deliberately tiny — the identity is high single-target damage plus an
+ *  inward tug that bunches the horde up for the rest of the band, NOT another
+ *  player-centred blast (that is what Subquake is for). Keep `pinchRadius`
+ *  well under Subquake's 360-480 unit ring. */
+export const TWO_HANDS = {
+  /** How many nearby enemies get their own pincer on a single trigger. */
+  targets: 3,
+  /** Seconds the two slabs take to travel from open to shut. */
+  closeS: 0.12,
+  /** How far out along the pinch axis each slab starts, in world units. */
+  openGap: 74,
+  /** Radius crushed at the pinch point once the hands meet. */
+  pinchRadius: 42,
+  /** Per-hit damage multiplier on the weapon's base damage — sits between
+   *  Railshot's 1.50 and Subquake's 1.55, because the footprint is a fraction
+   *  of either. */
+  damageMul: 1.52,
+  /** Radius over which survivors get dragged toward the pinch point. */
+  tugRadius: 96,
+  /** How far survivors are dragged inward. */
+  tug: 30,
+};
 
 // ---- the shatter weapon ----
 

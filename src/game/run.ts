@@ -26,6 +26,7 @@ import {
   SHIELDED,
   SHOVE_S,
   SPLITTER,
+  TWO_HANDS,
   VARIANT_EFFECTS,
   WEAPON_SHOVE,
   WEAPONS,
@@ -368,15 +369,23 @@ export interface GravityWell {
   burst: boolean;
 }
 
-interface PendingPulse {
-  atS: number;
+/** One Two Hands pincer in flight: two slabs standing off along `angle` from
+ *  (x, y), travelling inward to meet at `closesAt`. */
+interface ClapPinch {
   x: number;
   y: number;
+  /** Axis the two slabs travel along, in radians. */
+  angle: number;
+  /** Simulation time at which the hands meet and the damage lands. */
+  closesAt: number;
+  /** Total travel time, so the view can be fed a halfway frame. */
+  closeS: number;
+  gap: number;
   radius: number;
   damage: number;
-  shove: number;
   color: number;
-  source: Role;
+  /** Set once the halfway visual has been emitted. */
+  midShown: boolean;
 }
 
 export interface EncoreCase {
@@ -557,7 +566,7 @@ export class RunWorld {
   readonly shockwaves: Shockwave[] = [];
   readonly gravityWells: GravityWell[] = [];
   readonly encoreCases: EncoreCase[] = [];
-  private readonly pendingPulses: PendingPulse[] = [];
+  private readonly clapPinches: ClapPinch[] = [];
 
   /** Surprise-system state is public and renderer-readable. */
   venue: VenueId = 'alley';
@@ -607,8 +616,6 @@ export class RunWorld {
   private railSamples: Array<{ x: number; y: number }> = [];
   private railSampleT = 0;
   private headlinerHitTaken = false;
-  private clapHealMinute = -1;
-  private clapHealThisMinute = 0;
   private triggerCounts: Partial<Record<Role, number>> = {};
   private encoreDamageBonus = 0;
   private encoreMoveBonus = 0;
@@ -824,7 +831,7 @@ export class RunWorld {
       }
       case 'clap': {
         if (evolved) {
-          this.fireStandingOvation(conf, color, v);
+          this.fireTwoHands(conf, color, v);
           break;
         }
         // Whip: a wide forward slash in the aim direction, hitting a cone.
@@ -1349,7 +1356,7 @@ export class RunWorld {
     this.hash.clear();
     for (const e of this.enemies) if (!e.dead) this.hash.insert(e);
     this.updateKickStrikes();
-    this.updatePendingPulses();
+    this.updateClapPinches();
     this.updateProjectiles(dt);
     this.updateZones(dt);
     this.updateShockwaves(dt);
@@ -1817,7 +1824,7 @@ export class RunWorld {
     this.gravityWells.length = 0;
     if (this.fx) this.fx.length = 0;
     this.pendingKick.length = 0;
-    this.pendingPulses.length = 0;
+    this.clapPinches.length = 0;
     this.overflowGem = null;
     this.overflowMusicNote = null;
     this.noteDropPity = 0;
@@ -2229,46 +2236,101 @@ export class RunWorld {
     }
   }
 
-  private fireStandingOvation(conf: WeaponConf, color: number, velocity: number): void {
-    const radius = Math.hypot(this.worldW, this.worldH) * 0.58 * this.buildMods.areaMul;
-    const damage = conf.damage * 1.20 * (0.85 + 0.3 * velocity);
-    const hitCount = this.damageArea(
-      this.player.x,
-      this.player.y,
-      radius,
-      damage,
-      'clap',
-      28 * this.buildMods.knockbackMul,
-    );
-    const minute = Math.floor(this.timeS / 60);
-    if (minute !== this.clapHealMinute) {
-      this.clapHealMinute = minute;
-      this.clapHealThisMinute = 0;
+  /** Two Hands: a clap is two hands meeting, so each trigger picks the closest
+   *  few enemies and snaps a slab pair shut on each of them. Target-picked and
+   *  tiny on purpose — the base weapon's cone is short-ranged, and the roster
+   *  already has three player-centred blasts (Subquake, Redline Stomp,
+   *  Afterhours). The inward tug on the crush is the point: it bunches the
+   *  horde for the rest of the band. */
+  private fireTwoHands(conf: WeaponConf, color: number, velocity: number): void {
+    const p = this.player;
+    const damage = conf.damage * TWO_HANDS.damageMul * (0.85 + 0.3 * velocity);
+    const targets = this.nearestEnemies(AIM_RANGE, TWO_HANDS.targets);
+    if (targets.length === 0) {
+      // Nothing in reach: still clap, just ahead of the player, so the beat
+      // reads on screen and an empty field does not eat the trigger.
+      const aim = this.aimDir(0);
+      this.spawnPinch(p.x + aim.x * TWO_HANDS.openGap, p.y + aim.y * TWO_HANDS.openGap,
+        Math.atan2(aim.y, aim.x), damage, color);
+      return;
     }
-    if (hitCount >= 8 && this.clapHealThisMinute < 6) {
-      this.clapHealThisMinute += 1;
-      this.player.hp = Math.min(this.playerMaxHp, this.player.hp + 1);
+    for (const target of targets) {
+      this.spawnPinch(target.x, target.y, Math.atan2(target.y - p.y, target.x - p.x), damage, color);
     }
-    this.pendingPulses.push({
-      atS: this.timeS + 0.18,
-      x: this.player.x,
-      y: this.player.y,
-      radius,
-      damage: damage * 0.55,
-      shove: 0,
-      color,
-      source: 'clap',
-    });
-    this.spawnRing(this.player.x, this.player.y, radius, color, 0.35);
   }
 
-  private updatePendingPulses(): void {
-    for (let i = this.pendingPulses.length - 1; i >= 0; i--) {
-      const pulse = this.pendingPulses[i];
-      if (pulse.atS > this.timeS) continue;
-      this.damageArea(pulse.x, pulse.y, pulse.radius, pulse.damage, pulse.source, pulse.shove);
-      this.fx?.push({ type: 'ring', x: pulse.x, y: pulse.y, radius: pulse.radius, color: pulse.color, dur: 0.3 });
-      this.pendingPulses.splice(i, 1);
+  /** Queue one pincer centred on (x, y), its slabs standing off along `angle`. */
+  private spawnPinch(x: number, y: number, angle: number, damage: number, color: number): void {
+    const area = this.buildMods.areaMul;
+    const pinch: ClapPinch = {
+      x,
+      y,
+      angle,
+      closesAt: this.timeS + TWO_HANDS.closeS,
+      closeS: TWO_HANDS.closeS,
+      gap: TWO_HANDS.openGap * area,
+      radius: TWO_HANDS.pinchRadius * area,
+      damage,
+      color,
+      midShown: false,
+    };
+    this.clapPinches.push(pinch);
+    this.drawPinchHands(pinch, 1);
+  }
+
+  /** The two slabs, drawn as short bars broadside to the pinch axis at
+   *  `t` of their standoff (1 = fully open, 0 = met). */
+  private drawPinchHands(pinch: ClapPinch, t: number): void {
+    if (!this.fx) return;
+    const ax = Math.cos(pinch.angle);
+    const ay = Math.sin(pinch.angle);
+    const half = pinch.radius * 1.15;
+    for (const side of [-1, 1] as const) {
+      const cx = pinch.x + ax * pinch.gap * t * side;
+      const cy = pinch.y + ay * pinch.gap * t * side;
+      this.fx.push({
+        type: 'beam',
+        x: cx + ay * half,
+        y: cy - ax * half,
+        x2: cx - ay * half,
+        y2: cy + ax * half,
+        width: 5,
+        color: pinch.color,
+      });
+    }
+  }
+
+  private updateClapPinches(): void {
+    for (let i = this.clapPinches.length - 1; i >= 0; i--) {
+      const pinch = this.clapPinches[i];
+      if (pinch.closesAt > this.timeS) {
+        if (!pinch.midShown && pinch.closesAt - this.timeS <= pinch.closeS * 0.5) {
+          pinch.midShown = true;
+          this.drawPinchHands(pinch, 0.45);
+        }
+        continue;
+      }
+      // The crush itself: no shove, because the whole move pulls inward.
+      this.damageArea(pinch.x, pinch.y, pinch.radius, pinch.damage, 'clap', 0);
+      this.dragInward(pinch.x, pinch.y, TWO_HANDS.tugRadius * this.buildMods.areaMul,
+        TWO_HANDS.tug * this.buildMods.knockbackMul);
+      this.fx?.push({ type: 'slam', x: pinch.x, y: pinch.y, radius: pinch.radius, color: pinch.color });
+      this.fx?.push({ type: 'spark', x: pinch.x, y: pinch.y, color: pinch.color, n: 6, spread: pinch.radius * 0.7 });
+      this.clapPinches.splice(i, 1);
+    }
+  }
+
+  /** Drag every enemy within `radius` toward (x, y) by up to `dist`. Runs
+   *  through shove() with the origin mirrored through the enemy, so knockback
+   *  resistance and the Drop lift apply exactly as they do on a push. */
+  private dragInward(x: number, y: number, radius: number, dist: number): void {
+    if (dist <= 0) return;
+    const near = this.hash.query(x, y, radius + 24, this.queryBuf);
+    for (const e of near) {
+      if (e.dead) continue;
+      const d = Math.hypot(e.x - x, e.y - y);
+      if (d > radius || d < 1) continue;
+      this.shove(e, 2 * e.x - x, 2 * e.y - y, Math.min(dist, d));
     }
   }
 
@@ -2322,6 +2384,23 @@ export class RunWorld {
       }
     }
     return best;
+  }
+
+  /** The `count` closest live enemies inside `range`, nearest first. For
+   *  weapons that work on more than one picked target at a time. */
+  private nearestEnemies(range: number, count: number): Enemy[] {
+    const p = this.player;
+    const maxD = range * range;
+    const found: Array<{ e: Enemy; d: number }> = [];
+    for (const e of this.enemies) {
+      if (e.dead) continue;
+      const dx = e.x - p.x;
+      const dy = e.y - p.y;
+      const d = dx * dx + dy * dy;
+      if (d < maxD) found.push({ e, d });
+    }
+    found.sort((a, b) => a.d - b.d);
+    return found.slice(0, count).map((f) => f.e);
   }
 
   private aimDir(spread: number): { x: number; y: number } {
