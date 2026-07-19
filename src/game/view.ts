@@ -151,6 +151,9 @@ interface GroundPickBase {
   name: string;
   level: string;
   effect?: string;
+  /** Item picks only: the weapon this passive evolves, set on first pickup so
+   * the pedestal can show the recipe teaser. Passed straight to the pedestal. */
+  evoRole?: Role;
 }
 
 export type GroundPickView = GroundPickBase & (

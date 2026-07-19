@@ -5,7 +5,7 @@
 
 import { type Kit, type Role } from '../audio/kits';
 import { SLOTS, SLOT_LABEL, ownerOfSlot, supportedRoster } from './band';
-import { EVOLUTION_BY_ROLE, ITEM_IDS, ITEMS, type ItemId } from './items';
+import { EVOLUTION_BY_ROLE, ITEM_IDS, ITEMS, ITEM_NEUTRAL_CSS, type ItemId } from './items';
 import type { MetaStore, RunSettlement } from './meta';
 import { VENUES, isVenueId } from './tour';
 
@@ -171,7 +171,7 @@ export class Hud {
       }
       const [id, level] = entry;
       const item = ITEMS[id];
-      socket.style.setProperty('--item-color', `#${item.color.toString(16).padStart(6, '0')}`);
+      socket.style.setProperty('--item-color', ITEM_NEUTRAL_CSS);
       el('span', 'item-glyph', socket, item.glyph);
       el('span', 'item-name', socket, item.shortName);
       el('span', 'item-tier', socket, String(level));
@@ -198,12 +198,18 @@ export class Hud {
     for (const [id, level] of items) {
       const item = ITEMS[id];
       const row = el('div', 'pause-item', grid);
-      row.style.setProperty('--item-color', `#${item.color.toString(16).padStart(6, '0')}`);
+      row.style.setProperty('--item-color', ITEM_NEUTRAL_CSS);
       el('span', 'pause-item-glyph', row, item.glyph);
       const copy = el('div', 'pause-item-copy', row);
       el('strong', '', copy, `${item.name} · LV ${level}`);
       el('span', '', copy, item.levelLines[level - 1]);
-      row.setAttribute('aria-label', `${item.name}, level ${level}: ${item.levelLines[level - 1]}`);
+      // The recipe reminder the in-world pedestal showed once, kept reachable
+      // for the rest of the run. Names the weapon only — not what it becomes.
+      const partner = item.evolutionPartner;
+      const partnerName = partner ? this.kits.get(partner)?.name ?? partner : '';
+      if (partner) el('span', 'pause-item-evo', copy, `EVO ${partnerName.toUpperCase()}`);
+      row.setAttribute('aria-label', `${item.name}, level ${level}: ${item.levelLines[level - 1]}`
+        + (partner ? `. Evolves ${partnerName} at level 5.` : ''));
     }
   }
 

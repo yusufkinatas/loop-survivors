@@ -21,11 +21,17 @@ export type ItemId = (typeof ITEM_IDS)[number];
 export const ITEM_MAX_LEVEL = 5;
 export const ITEM_SLOT_CAP = 6;
 
+/** Hue is the weapon language: every role owns one (`KIT_COLORS`). Passives
+ * deliberately share a single cool off-white so a glance separates "weapon"
+ * from "passive", and the glyph alone identifies which passive it is. Keep the
+ * `.item-socket` / `.pause-item` CSS fallbacks in `src/style.css` in sync. */
+export const ITEM_NEUTRAL_COLOR = 0xcfd8e3;
+export const ITEM_NEUTRAL_CSS = `#${ITEM_NEUTRAL_COLOR.toString(16).padStart(6, '0')}`;
+
 export interface ItemDefinition {
   id: ItemId;
   name: string;
   shortName: string;
-  color: number;
   glyph: string;
   description: string;
   levelLines: readonly [string, string, string, string, string];
@@ -35,52 +41,52 @@ export interface ItemDefinition {
 
 export const ITEMS: Record<ItemId, ItemDefinition> = {
   highTops: {
-    id: 'highTops', name: 'High-Tops', shortName: 'Move', color: 0x61f5be, glyph: '↗',
+    id: 'highTops', name: 'High-Tops', shortName: 'Move', glyph: '↗',
     description: 'Move faster without changing the rhythm.', evolutionPartner: 'kick',
     levelLines: ['+4% move speed', '+8% total move speed', '+12% total move speed', '+16% total move speed', '+20% total move speed'],
   },
   fastForward: {
-    id: 'fastForward', name: 'Fast Forward', shortName: 'Shot Speed', color: 0x58dcff, glyph: '»',
+    id: 'fastForward', name: 'Fast Forward', shortName: 'Shot Speed', glyph: '»',
     description: 'Moving projectiles travel faster.', evolutionPartner: 'snare',
     levelLines: ['+20% projectile speed', '+40% total projectile speed', '+60% total projectile speed', '+80% total projectile speed', '+100% total projectile speed'],
   },
   needleTips: {
-    id: 'needleTips', name: 'Needle Tips', shortName: 'Pierce', color: 0xffd65a, glyph: '◆',
+    id: 'needleTips', name: 'Needle Tips', shortName: 'Pierce', glyph: '◆',
     description: 'Shots pass through more enemies and hit harder.', evolutionPartner: 'lead',
     levelLines: ['+1 pierce', '+1 pierce, +6% shot damage', '+2 pierce, +6% shot damage', '+2 pierce, +12% shot damage', '+3 pierce, +12% shot damage'],
   },
   mirrorball: {
-    id: 'mirrorball', name: 'Mirrorball', shortName: 'Bounce', color: 0xb997ff, glyph: '◇',
+    id: 'mirrorball', name: 'Mirrorball', shortName: 'Bounce', glyph: '◇',
     description: 'Moving projectiles rebound from arena rails.', evolutionPartner: 'hat',
     levelLines: ['1 bounce, retains 65% power', '1 bounce, retains 75% power', '2 bounces, retain 75% power', '2 bounces, retain 85% power', '3 bounces, retain 85% power'],
   },
   wideLens: {
-    id: 'wideLens', name: 'Wide Lens', shortName: 'Area', color: 0x79ff90, glyph: '◉',
+    id: 'wideLens', name: 'Wide Lens', shortName: 'Area', glyph: '◉',
     description: 'Attacks cover more ground; orbiters travel slightly wider.', evolutionPartner: 'chord',
     levelLines: ['+6% attack area', '+12% total attack area', '+18% total attack area', '+24% total attack area', '+30% total attack area'],
   },
   heavyAmp: {
-    id: 'heavyAmp', name: 'Heavy Amp', shortName: 'Might', color: 0xff7b65, glyph: '▲',
+    id: 'heavyAmp', name: 'Heavy Amp', shortName: 'Might', glyph: '▲',
     description: 'Every weapon hits harder and shoves farther.', evolutionPartner: 'bass',
     levelLines: ['+5% damage, +4% shove', '+10% damage, +8% shove', '+15% damage, +12% shove', '+20% damage, +16% shove', '+25% damage, +20% shove'],
   },
   extensionCable: {
-    id: 'extensionCable', name: 'Extension Cable', shortName: 'Duration', color: 0x60e8d2, glyph: '∞',
+    id: 'extensionCable', name: 'Extension Cable', shortName: 'Duration', glyph: '∞',
     description: 'Projectiles, zones, and orbiters stay active longer.', evolutionPartner: 'arp',
     levelLines: ['+8% attack duration', '+16% total attack duration', '+24% total attack duration', '+32% total attack duration', '+40% total attack duration'],
   },
   magnetLanyard: {
-    id: 'magnetLanyard', name: 'Magnet Lanyard', shortName: 'Pickup', color: 0x66baff, glyph: '✦',
+    id: 'magnetLanyard', name: 'Magnet Lanyard', shortName: 'Pickup', glyph: '✦',
     description: 'Experience gems find you from farther away and fly faster.', evolutionPartner: 'bell',
     levelLines: ['+20% gem range, +8% pull', '+40% range, +16% pull', '+60% range, +24% pull', '+80% range, +32% pull', '+100% range, +40% pull'],
   },
   paddedJacket: {
-    id: 'paddedJacket', name: 'Padded Jacket', shortName: 'Guard', color: 0xff91b9, glyph: '▣',
+    id: 'paddedJacket', name: 'Padded Jacket', shortName: 'Guard', glyph: '▣',
     description: 'Raises maximum health, heals immediately, and adds armor.', evolutionPartner: 'clap',
     levelLines: ['+8 max HP and heal 8', '+16 total max HP', '+24 max HP, +1 armor', '+32 total max HP', '+40 max HP, +2 armor'],
   },
   recoveryTape: {
-    id: 'recoveryTape', name: 'Recovery Tape', shortName: 'Regen', color: 0x72f5a4, glyph: '✚',
+    id: 'recoveryTape', name: 'Recovery Tape', shortName: 'Regen', glyph: '✚',
     description: 'Slowly restores missing health throughout the run.',
     levelLines: ['+0.1 HP/sec regeneration', '+0.2 HP/sec regeneration', '+0.3 HP/sec regeneration', '+0.4 HP/sec regeneration', '+0.5 HP/sec regeneration'],
   },

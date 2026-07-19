@@ -19,6 +19,7 @@ import {
   ITEMS,
   ITEM_IDS,
   ITEM_MAX_LEVEL,
+  ITEM_NEUTRAL_CSS,
   type EvolutionDefinition,
   type ItemId,
 } from './items';
@@ -282,7 +283,7 @@ export function mountSandboxPanel(
   for (const id of SANDBOX_ITEM_CATALOG) {
     const item = ITEMS[id];
     const row = el('div', 'sb-loadout', build);
-    row.style.setProperty('--voice-color', `#${item.color.toString(16).padStart(6, '0')}`);
+    row.style.setProperty('--voice-color', ITEM_NEUTRAL_CSS);
     const info = el('div', 'sb-enemy-info', row);
     const name = el('span', 'sb-loadout-label', info, `${item.glyph} ${item.name}`);
     name.title = item.description;

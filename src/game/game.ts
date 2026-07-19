@@ -19,7 +19,7 @@ import { RunWorld, KIT_COLORS, type VacuumResult } from './run';
 import { SIM_DT } from './timing';
 import { preloadRunArt, RunView, type GroundPickView } from './view';
 import { mountSandboxPanel, type SandboxPanel } from './sandbox';
-import { ITEMS, type EvolutionDefinition } from './items';
+import { ITEMS, ITEM_NEUTRAL_COLOR, type EvolutionDefinition } from './items';
 import { MetaStore, type RunSettlement } from './meta';
 import { VENUE_AUDIO_SET } from '../audio/venue-audio';
 import { VENUE_IDS, isVenueId } from './tour';
@@ -299,9 +299,12 @@ export async function bootGame(
       } else if (option.kind === 'item') {
         const definition = ITEMS[option.item];
         const previous = w.items.get(option.item) ?? 0;
-        payload.push({ x, y, glyph: definition.glyph, color: definition.color,
+        payload.push({ x, y, glyph: definition.glyph, color: ITEM_NEUTRAL_COLOR,
           name: definition.name, level: previous > 0 ? `${previous} → ${option.tier}` : '1',
-          effect: definition.levelLines[option.tier - 1] });
+          effect: definition.levelLines[option.tier - 1],
+          // Teach the recipe once, when the passive is new. Later levels of the
+          // same item would only repeat a hint the player has already read.
+          evoRole: previous === 0 ? definition.evolutionPartner : undefined });
       } else if (option.kind === 'encore') {
         const role: Role = option.encore === 'heal' ? 'clap' : option.encore === 'damage' ? 'bass' : option.encore === 'move' ? 'kick' : 'chord';
         const label = option.encore === 'heal' ? 'Emergency Water' : option.encore === 'damage' ? 'Hotter Signal' : option.encore === 'move' ? 'Quick Change' : 'Wider Stage';
@@ -351,9 +354,12 @@ export async function bootGame(
     const option = item.option;
     clearGroundPicks();
     if (option.kind === 'item') {
+      const firstCopy = (w.items.get(option.item) ?? 0) === 0;
       w.addItem(option.item, option.tier);
       const definition = ITEMS[option.item];
-      hud.showToast(`${definition.name} ${option.tier} · ${definition.levelLines[option.tier - 1]}`);
+      const partner = firstCopy ? definition.evolutionPartner : undefined;
+      const evoCopy = partner ? ` · EVO ${kits.get(partner)?.name ?? partner}` : '';
+      hud.showToast(`${definition.name} ${option.tier} · ${definition.levelLines[option.tier - 1]}${evoCopy}`);
       hud.levelPulse();
       view?.flourish(w.player.x, w.player.y);
       presentNextUpgrade();
