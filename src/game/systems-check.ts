@@ -46,7 +46,7 @@ class MemoryStorage implements Storage {
 const allItems = new Map<ItemId, number>(ITEM_IDS.map((id) => [id, 5]));
 const mods = deriveBuildMods(allItems);
 assert.equal(mods.moveMul, 1.2);
-assert.equal(mods.projectileSpeedMul, 1.5);
+assert.equal(mods.projectileSpeedMul, 2.0);
 assert.equal(mods.extraPierce, 3);
 assert.equal(mods.bounceCount, 3);
 assert.equal(mods.damageMul, 1.25);

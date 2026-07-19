@@ -42,7 +42,7 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
   fastForward: {
     id: 'fastForward', name: 'Fast Forward', shortName: 'Shot Speed', color: 0x58dcff, glyph: '»',
     description: 'Moving projectiles travel faster.', evolutionPartner: 'snare',
-    levelLines: ['+10% projectile speed', '+20% total projectile speed', '+30% total projectile speed', '+40% total projectile speed', '+50% total projectile speed'],
+    levelLines: ['+20% projectile speed', '+40% total projectile speed', '+60% total projectile speed', '+80% total projectile speed', '+100% total projectile speed'],
   },
   needleTips: {
     id: 'needleTips', name: 'Needle Tips', shortName: 'Pierce', color: 0xffd65a, glyph: '◆',
@@ -147,7 +147,7 @@ export function deriveBuildMods(items: ReadonlyMap<ItemId, number>): BuildMods {
   const bounceRetention = [0.65, 0.65, 0.75, 0.75, 0.85, 0.85][bounce];
   return {
     moveMul: 1 + move * 0.04,
-    projectileSpeedMul: 1 + fast * 0.10,
+    projectileSpeedMul: 1 + fast * 0.20,
     projectileDamageMul: needleDamage,
     extraPierce: needlePierce,
     bounceCount,
