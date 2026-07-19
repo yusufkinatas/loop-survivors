@@ -5,6 +5,10 @@ status: what the design is trying to be, and the constraints that settle
 arguments about how to build it. For what exists right now, read the code and
 the git history.
 
+> **Current player reference:** read
+> [the Infinite Night Field Guide](field-guide.md) for every live system, passive,
+> evolution recipe, venue, enemy, audio palette, and Sandbox tab.
+
 ## The Game in One Sentence
 
 Vampire Survivors, but the weapons are sounds and a good build makes a track.
@@ -22,9 +26,79 @@ music, and the system guarantees the result always sounds decent.
    game, it never excuses a broken one. A muted run has to hold up on its own.
 4. **Combinations over volume.** Depth comes from systems interacting, not
    from content mass.
+5. **A run ends when The Hush overwhelms the stage.** There is no victory
+   timer. Threat rises at every minute mark forever, with authored opening acts
+   flowing into a procedural tour that must eventually overwhelm the player.
+6. **Career progress favors expression over stat grind.** Players collect
+   music notes from enemies and choose weapons, passive items, venues, and a
+   few authored perks in the Afterhours Shop. Nothing unlocks automatically,
+   and the shop never becomes an uncapped treadmill of permanent damage,
+   health, or speed.
 
 Cut, deliberately: a shareable per-run track artifact. No recording,
 rendering, or sharing systems in v1.
+
+## Run Shape
+
+The first eight minutes are a deliberately authored opening act. The enemy
+faction is **The Hush**: living interference formed from static, cable, broken
+stage equipment, light, and Soundwood growth rather than borrowed fantasy
+monsters. After the opening, an endless director recombines Hush families,
+formation patterns, population pressure, Amped variants, and five-minute
+Headliner encounters. Every minute is a visible threat step: enemy health,
+damage, speed, rewards, density, and a small tempo lift scale together. Scaling
+is slow enough that a strong build can keep finding a new ceiling, but uncapped
+health and damage ensure every run eventually ends.
+
+Every five minutes the **Infinite Night Tour** moves to a new venue. Before the
+transition, the player walks through one of two stage gates; each offers a
+legible benefit and danger. Venues change the arena art, sampled drum palette,
+and a bounded combat rule without rewriting the build's composition.
+
+Two run systems reward movement and mounting danger:
+
+- **Neon Loop** remembers the player's path at the end of each minute, then
+  turns it into a temporary glowing rail that slows enemies and reflects moving
+  attacks.
+- **Pressure Drop** fills from close calls and close-range kills. At 100% it
+  becomes ready, then starts on the next complete four-bar phrase—the next
+  block of four repeating musical measures. An opening shove clears breathing
+  room, and all four bars add +50% damage, +25% attack area and knockback,
+  +20% projectile speed, and +15% movement speed. The track and normal attacks
+  continue throughout; the Drop is a purely positive power window.
+
+A rare one-use **Stage Magnet** can fall from a defeated enemy. Walking onto
+it vacuums every freely collectible experience gem and music note currently
+visible, while decision-bearing reward pedestals, evolution cases, and route
+gates remain deliberate walk-to-choose interactions.
+
+## Build Progression
+
+A build has weapons and up to six passive items. Passives change recognizable
+combat verbs—movement speed, projectile speed, piercing, wall bounces, size,
+damage, duration, pickup reach, protection, and slow regeneration—so
+combinations are useful even with the sound muted. Utility passives may stand
+alone when the tradeoff is interesting; a passive is not required to be an
+evolution ingredient. Once a weapon and its paired passive are both maxed, the
+next Headliner drops an evolution case. The evolved weapon receives a new name,
+visuals, audio processing, damage profile, and attack pattern; evolution is a
+qualitative transformation rather than another percentage level.
+
+After all normal build slots and levels are complete, level-ups become Encore
+picks. Encore bonuses are small, diminishing run-only improvements, preventing
+dead rewards without displacing the authored weapon and item balance.
+
+## Meta Progression
+
+Enemies shed collectible music notes during a run. Notes only enter the career
+wallet when the run ends, then the player spends them in the Afterhours Shop.
+Purchases unlock new choice-space: instruments, passive items, venues,
+rerolls, an optional starting passive, one 30%-health Second Wind, and a final
+cosmetic palette. Later shelves open after enough earlier purchases, but no
+survival result, kill total, or hidden rank grants an unlock automatically.
+The save is versioned, validated at load, and stored locally. Purchases are
+finite and authored; there are no repeatable permanent damage, health, or
+speed upgrades.
 
 ## Core Architecture
 
@@ -53,9 +127,10 @@ at once. It is the main engine of the game.
 - Each weapon is a distinct gameplay archetype (aura pulses, piercing bolts,
   sprays, melee arcs, orbiters, homing seekers, thrown zones, and so on), so a
   muted build already plays like a varied survivors-like. All weapons draw from
-  one shared soundset — a single fixed voicing of the instrument catalog, one
-  tempo, one set of hand-authored patterns. The soundset is fixed, not
-  player-selectable.
+  one shared soundset at a time — one coherent voicing of the instrument
+  catalog and one set of hand-authored patterns. The venue may rotate among
+  curated drum palettes; this changes texture, not notes, charts, or build
+  power, and is never presented as a player theory decision.
 - Atomic unit: a **sound kit** plus a **music chart**. A kit is a small family
   of related samples per weapon (soft and hard variants, open and closed,
   multiple notes for pitched instruments). A chart says when, which variant,

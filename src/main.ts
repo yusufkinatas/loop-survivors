@@ -3,6 +3,7 @@
 
 import { inject } from '@vercel/analytics';
 import { buildKits } from './audio/kits';
+import { buildSoundsetKit } from './audio/kits/index';
 import { MusicEngine } from './audio/engine';
 import * as charts from './audio/chartstore';
 import { SKELETON } from './audio/scale';
@@ -18,7 +19,15 @@ async function boot(): Promise<void> {
   const root = document.getElementById('app')!;
   root.textContent = 'rendering kits…';
 
-  const kits = await buildKits(SKELETON.rootHz);
+  // Keep retired developer-only instruments available, but replace every live
+  // weapon before the engine exists. The same cached soundset map powers later
+  // venue swaps, so the first audible hit can never leak an older rehearsal
+  // voice while the Afterhours render is still loading.
+  const [kits, liveKits] = await Promise.all([
+    buildKits(SKELETON.rootHz),
+    buildSoundsetKit(SKELETON.rootHz),
+  ]);
+  for (const [role, kit] of liveKits) kits.set(role, kit);
   // Created suspended until a user gesture; the first click resumes it.
   const ctx = new AudioContext({ latencyHint: 'interactive' });
   const engine = new MusicEngine(ctx, kits);

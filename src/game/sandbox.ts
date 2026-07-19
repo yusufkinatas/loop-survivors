@@ -1,33 +1,63 @@
-// The sandbox (developer tools): the real game arena with the
-// stage script switched off. Enemies are watched, weapons tested, and
-// balance gates run under reproducible conditions here. The rehearsal room
-// is for listening; the sandbox is for watching and testing.
+// The sandbox is the real arena with automatic waves disabled and a compact,
+// deterministic control surface over every live run system. The UI owns no
+// persistent progression: its shop always uses MetaStore(null).
 
 import type { MusicEngine } from '../audio/engine';
-import { supportedRoles } from '../audio/soundset';
-import { ROLES, ROLE_META, type Role } from '../audio/kits';
+import { type Role, ROLE_META } from '../audio/kits';
 import { sampledRoles } from '../audio/kits/index';
+import { supportedRoles } from '../audio/soundset';
+import { SLOT_LABEL, slotOf } from './band';
 import {
-  supportedRoster,
-  supportedSlots,
-  SLOTS,
-  SLOT_ROSTER,
-  SLOT_LABEL,
-} from './band';
+  ALL_ENEMY_KINDS,
+  ENEMY_LABELS,
+  madForestEnemyStats,
+  type EnemyKind,
+} from './config';
 import { TIER_NUMERALS } from './hud';
-import { ENEMY_LABELS, madForestEnemyStats, type EnemyKind } from './config';
-import { ACTIVE_ENEMY_KINDS } from './madforest';
+import {
+  EVOLUTIONS,
+  ITEMS,
+  ITEM_IDS,
+  ITEM_MAX_LEVEL,
+  type EvolutionDefinition,
+  type ItemId,
+} from './items';
+import { MetaStore, SHOP_OFFERS, type ShopOfferId } from './meta';
 import type { RunWorld } from './run';
+import { endlessScale, VENUES, VENUE_IDS, type VenueId } from './tour';
+
+/** Exported coverage catalogs keep the no-test-framework verification script
+ * able to prove that future content cannot silently disappear from the panel. */
+export const SANDBOX_ENEMY_CATALOG: readonly EnemyKind[] = ALL_ENEMY_KINDS;
+export const SANDBOX_WEAPON_CATALOG: readonly Role[] = Object.freeze(supportedRoles());
+export const SANDBOX_ITEM_CATALOG: readonly ItemId[] = ITEM_IDS;
+export const SANDBOX_EVOLUTION_CATALOG: readonly EvolutionDefinition[] = Object.freeze(
+  Object.values(EVOLUTIONS),
+);
+export const SANDBOX_VENUE_CATALOG: readonly VenueId[] = VENUE_IDS;
+
+type TabId = 'combat' | 'build' | 'tour' | 'career';
 
 export interface SandboxPanel {
+  /** Refresh readouts after the world has taken its fixed steps for this frame. */
+  update(): void;
   destroy(): void;
 }
 
 export interface SandboxOpts {
   onExit: () => void;
-  /** The loadout changed (force-assembly): keep the band rack in sync. The
-   *  sandbox itself ignores slot rules — it lets any combination be built. */
+  /** The loadout changed (force-assembly): keep the rack and track overlay in sync. */
   onLoadout?: () => void;
+}
+
+interface ChoiceButtons<T> {
+  value: () => T;
+  options: Array<{ value: T; button: HTMLButtonElement }>;
+}
+
+function formatStat(value: number): string {
+  if (value >= 10_000) return `${(value / 1000).toFixed(value >= 100_000 ? 0 : 1)}k`;
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
 export function mountSandboxPanel(
@@ -36,11 +66,28 @@ export function mountSandboxPanel(
   world: RunWorld,
   opts: SandboxOpts,
 ): SandboxPanel {
+  // Explicitly null: career experiments must never read or write localStorage.
+  const career = new MetaStore(null);
+  let creditedRunNotes = world.notesCollected;
+  let activeTab: TabId = 'combat';
+  let collapsed = false;
+  let lastStatsKey = '';
+
   const panel = document.createElement('div');
   panel.className = 'sandbox-panel';
+  // The live item rack occupies this corner at z3; the developer panel must be
+  // the topmost interactive surface. Inline sizing also keeps four tabs usable
+  // on phones without requiring a second CSS layout.
+  panel.style.zIndex = '7';
+  panel.style.width = 'min(420px, calc(100vw - 24px))';
   root.appendChild(panel);
 
-  const el = (tag: string, className: string, parent: HTMLElement, text = ''): HTMLElement => {
+  const el = (
+    tag: string,
+    className: string,
+    parent: HTMLElement,
+    text = '',
+  ): HTMLElement => {
     const node = document.createElement(tag);
     node.className = className;
     if (text) node.textContent = text;
@@ -48,172 +95,521 @@ export function mountSandboxPanel(
     return node;
   };
 
+  const button = (parent: HTMLElement, text: string, action: () => void): HTMLButtonElement => {
+    const node = el('button', 'small', parent, text) as HTMLButtonElement;
+    node.onclick = () => {
+      action();
+      refresh();
+      node.blur();
+    };
+    return node;
+  };
+
+  const section = (parent: HTMLElement, title: string): HTMLElement => {
+    el('div', 'sb-section', parent, title);
+    return parent;
+  };
+
   const head = el('div', 'sb-head', panel);
-  el('span', 'sb-title', head, 'sandbox');
-  const exitBtn = el('button', 'small', head, '← leave') as HTMLButtonElement;
-  exitBtn.onclick = opts.onExit;
+  el('span', 'sb-title', head, 'SYSTEM SANDBOX');
+  const headActions = el('div', 'sb-head-actions', head);
+  let collapseButton: HTMLButtonElement;
+  collapseButton = button(headActions, '− panel', () => {
+    collapsed = !collapsed;
+    panel.classList.toggle('collapsed', collapsed);
+    collapseButton.textContent = collapsed ? '+ panel' : '− panel';
+    collapseButton.setAttribute('aria-expanded', String(!collapsed));
+  });
+  collapseButton.setAttribute('aria-expanded', 'true');
+  button(headActions, '← leave', opts.onExit);
 
-  // ---- instrument readout: which instruments the soundset is built around ----
-  // Play-testing reads this to know the set (some slots are dropped).
-  el('div', 'sb-section', panel, 'instruments');
-  const optimizedFor = el('div', 'sb-hint', panel, '');
-  const names = supportedRoles().map((r) => ROLE_META[r].name);
-  optimizedFor.textContent = `${names.length} instruments: ${names.join(', ')}`;
+  const tabBar = el('div', 'sb-btns sb-controls', panel);
+  tabBar.style.marginLeft = '0';
+  tabBar.style.display = 'grid';
+  tabBar.style.gridTemplateColumns = 'repeat(4, minmax(0, 1fr))';
+  const tabButtons = new Map<TabId, HTMLButtonElement>();
+  const pages = new Map<TabId, HTMLElement>();
+  const tabLabels: Array<[TabId, string]> = [
+    ['combat', 'Combat'],
+    ['build', 'Build'],
+    ['tour', 'Tour'],
+    ['career', 'Career'],
+  ];
+  for (const [id, label] of tabLabels) {
+    const tab = button(tabBar, label, () => setTab(id));
+    tabButtons.set(id, tab);
+    const page = el('div', `sb-page sb-page-${id}`, panel);
+    page.style.display = id === activeTab ? 'flex' : 'none';
+    page.style.flexDirection = 'column';
+    page.style.gap = '6px';
+    pages.set(id, page);
+  }
 
-  // Assemble a representative full band so the whole track can be heard at once:
-  // one instrument in each SUPPORTED slot, all at tier 4. Toggles off (silences
-  // every voice) when pressed again.
-  let bandOn = false;
-  const bandBtn = el('button', 'small sb-controls', panel, '▶ play full band') as HTMLButtonElement;
-  const firstForSlot = (slot: Parameters<typeof supportedRoster>[0]): Role =>
-    supportedRoster(slot)[0];
-  bandBtn.onclick = () => {
-    bandOn = !bandOn;
-    for (const role of ROLES) {
-      engine.setVoiceEnabled(role, false);
-      world.removeWeapon(role);
-    }
-    if (bandOn) {
-      for (const slot of supportedSlots()) {
-        const role = firstForSlot(slot);
-        engine.setVoiceTier(role, 4);
-        engine.setVoiceEnabled(role, true);
-        world.addWeapon(role, 4);
-      }
-    }
-    bandBtn.classList.toggle('on', bandOn);
-    bandBtn.textContent = bandOn ? '■ stop full band' : '▶ play full band';
-    opts.onLoadout?.();
+  const combat = pages.get('combat')!;
+  const build = pages.get('build')!;
+  const tour = pages.get('tour')!;
+  const careerPage = pages.get('career')!;
+
+  // -----------------------------------------------------------------------
+  // Combat: exact threat minute, complete enemy catalog, repeatable fixtures.
+
+  section(combat, 'threat minute');
+  const threatChoices = [0, 5, 8, 12, 20, 30] as const;
+  const threatRow = el('div', 'sb-enemy', combat);
+  const threatInfo = el('div', 'sb-enemy-info', threatRow);
+  el('span', 'sb-enemy-name', threatInfo, 'endless scale');
+  const threatStatus = el('span', 'sb-enemy-stats', threatInfo);
+  const threatButtons = el('div', 'sb-btns', threatRow);
+  const threatChoice: ChoiceButtons<number> = {
+    value: () => Math.floor(world.timeS / 60),
+    options: threatChoices.map((minute) => ({
+      value: minute,
+      button: button(threatButtons, String(minute), () => world.setSandboxThreatMinute(minute)),
+    })),
   };
 
-  // ---- enemy roster: stats and spawn buttons ----
-  el('div', 'sb-section', panel, 'enemies');
-
-  // Spawn-time preview: Mad Forest stats are static except for the
-  // HP-by-player-level enemies, so level is the useful sandbox axis.
-  const statEls = new Map<EnemyKind, HTMLElement>();
-  const formatStat = (value: number): string =>
-    Number.isInteger(value) ? String(value) : value.toFixed(1);
-  const refreshStats = () => {
-    for (const [kind, node] of statEls) {
-      const s = madForestEnemyStats(kind, world.level);
-      node.textContent =
-        `hp ${formatStat(s.hp)} · dmg ${formatStat(s.damage)}` +
-        ` · spd ${formatStat(s.speed)} · xp ${formatStat(s.xp)}`;
-    }
-  };
-  const levelRow = el('div', 'sb-enemy', panel);
-  el('span', 'sb-enemy-name', el('div', 'sb-enemy-info', levelRow), 'player level');
-  const levelBtns = el('div', 'sb-btns', levelRow);
   const levelChoices = [1, 5, 10, 20, 40] as const;
-  const levelOpts: HTMLButtonElement[] = [];
-  for (const level of levelChoices) {
-    const b = el('button', 'small', levelBtns, String(level)) as HTMLButtonElement;
-    b.onclick = () => {
-      world.level = level;
-      levelOpts.forEach((o) => o.classList.toggle('on', o === b));
-      refreshStats();
-    };
-    levelOpts.push(b);
-  }
-  levelOpts.forEach((b, i) => b.classList.toggle('on', world.level === levelChoices[i]));
-
-  for (const kind of ACTIVE_ENEMY_KINDS) {
-    const row = el('div', 'sb-enemy', panel);
-    const info = el('div', 'sb-enemy-info', row);
-    el('span', 'sb-enemy-name', info, ENEMY_LABELS[kind] ?? kind);
-    statEls.set(kind, el('span', 'sb-enemy-stats', info));
-    const btns = el('div', 'sb-btns', row);
-    const one = el('button', 'small', btns, '+1') as HTMLButtonElement;
-    one.onclick = () => world.spawnEnemy(kind);
-    const few = el('button', 'small', btns, '+8') as HTMLButtonElement;
-    few.onclick = () => {
-      for (let i = 0; i < 8; i++) world.spawnEnemy(kind);
-    };
-    const ring = el('button', 'small', btns, 'ring') as HTMLButtonElement;
-    ring.onclick = () => world.spawnRingOf(kind, 24);
-  }
-  refreshStats();
-
-  const controls = el('div', 'sb-btns sb-controls', panel);
-  const clear = el('button', 'small', controls, 'clear all') as HTMLButtonElement;
-  clear.onclick = () => world.clearEnemies();
-  const invuln = el('button', 'small', controls, 'invulnerable') as HTMLButtonElement;
-  const syncInvuln = () => invuln.classList.toggle('on', world.invincible);
-  invuln.onclick = () => {
-    world.invincible = !world.invincible;
-    syncInvuln();
+  const levelRow = el('div', 'sb-enemy', combat);
+  const levelInfo = el('div', 'sb-enemy-info', levelRow);
+  el('span', 'sb-enemy-name', levelInfo, 'player level');
+  const levelStatus = el('span', 'sb-enemy-stats', levelInfo);
+  const levelButtons = el('div', 'sb-btns', levelRow);
+  const levelChoice: ChoiceButtons<number> = {
+    value: () => world.level,
+    options: levelChoices.map((level) => ({
+      value: level,
+      button: button(levelButtons, String(level), () => {
+        world.level = level;
+      }),
+    })),
   };
-  syncInvuln();
 
-  // ---- loadout editor: any weapon at any tier, applied instantly ----
-  // Grouped by band slot (Beat / Snap / Tick / … , the rack order at the top of
-  // the screen) instead of a flat list, so a voice is easy to find by its job.
-  // A ★ custom badge marks the roles that are sample-backed (their own real
-  // voicing, worth focusing testing on).
-  el('div', 'sb-section', panel, 'loadout');
-  // Rows carry their name element so refreshCustom can toggle the sample-backed
-  // mark (a border on the name).
-  const customMarks: { role: Role; el: HTMLElement }[] = [];
-  for (const slot of SLOTS) {
-    el('div', 'sb-slot-head', panel, SLOT_LABEL[slot]);
-    for (const role of SLOT_ROSTER[slot]) {
-      const voice = engine.voices.get(role)!;
-      const row = el('div', 'sb-loadout', panel);
-      row.style.setProperty('--voice-color', voice.kit.color);
-      const name = el('div', 'sb-loadout-name', row);
-      const label = el('span', 'sb-loadout-label', name, voice.kit.name);
-      customMarks.push({ role, el: label });
-      const btns = el('div', 'sb-btns', row);
-      const options: HTMLButtonElement[] = [];
-      const set = (tier: number | null) => {
-        if (tier === null) {
-          engine.setVoiceEnabled(role, false);
-          world.removeWeapon(role);
-        } else {
-          engine.setVoiceTier(role, tier);
-          engine.setVoiceEnabled(role, true);
-          world.addWeapon(role, tier);
-        }
-        options.forEach((b, i) =>
-          b.classList.toggle('on', tier === null ? i === 0 : i === tier),
+  const fixtureControls = el('div', 'sb-btns sb-controls', combat);
+  fixtureControls.style.marginLeft = '0';
+  button(fixtureControls, 'HEADLINER', () => world.spawnSandboxHeadliner('mantis'));
+  button(fixtureControls, 'MINUTE WAVE', () => world.spawnSandboxWave());
+  const invulnButton = button(fixtureControls, 'INVULN', () => {
+    world.invincible = !world.invincible;
+  });
+  button(fixtureControls, 'CLEAR ALL', () => {
+    engine.clearBarQueue();
+    world.clearSandboxEntities();
+    engine.setPressureDropLift(false);
+  });
+
+  section(combat, 'complete enemy catalog');
+  const enemyStats = new Map<EnemyKind, HTMLElement>();
+  for (const kind of SANDBOX_ENEMY_CATALOG) {
+    const row = el('div', 'sb-enemy', combat);
+    const info = el('div', 'sb-enemy-info', row);
+    const name = el('span', 'sb-enemy-name', info, ENEMY_LABELS[kind]);
+    name.title = kind;
+    enemyStats.set(kind, el('span', 'sb-enemy-stats', info));
+    const controls = el('div', 'sb-btns', row);
+    button(controls, 'near', () => {
+      world.spawnEnemyAt(kind, world.player.x + 190, world.player.y);
+    });
+    button(controls, '×8', () => {
+      for (let i = 0; i < 8; i++) {
+        const angle = (i / 8) * Math.PI * 2;
+        world.spawnEnemyAt(
+          kind,
+          world.player.x + Math.cos(angle) * 245,
+          world.player.y + Math.sin(angle) * 185,
         );
-        opts.onLoadout?.();
-      };
-      const off = el('button', 'small off-btn', btns, '⏻') as HTMLButtonElement;
-      off.title = 'off';
-      off.onclick = () => set(null);
-      options.push(off);
-      TIER_NUMERALS.forEach((numeral, i) => {
-        const b = el('button', 'small', btns, numeral) as HTMLButtonElement;
-        b.onclick = () => set(i + 1);
-        options.push(b);
+      }
+    });
+    button(controls, 'ring', () => world.spawnRingOf(kind, 24));
+  }
+
+  // -----------------------------------------------------------------------
+  // Build: all supported weapons, all passives, every complete evolution.
+
+  section(build, 'band controls');
+  const instrumentNames = SANDBOX_WEAPON_CATALOG.map((role) => ROLE_META[role].name);
+  el('div', 'sb-hint', build, `${instrumentNames.length} live weapons: ${instrumentNames.join(', ')}`);
+  const bandControls = el('div', 'sb-btns sb-controls', build);
+  bandControls.style.marginLeft = '0';
+  button(bandControls, 'FULL BAND IV', () => {
+    for (const role of SANDBOX_WEAPON_CATALOG) {
+      engine.setVoiceTier(role, 4);
+      engine.setVoiceEnabled(role, true);
+      world.addWeapon(role, 4);
+    }
+    opts.onLoadout?.();
+  });
+  button(bandControls, 'CLEAR WEAPONS', () => {
+    for (const role of SANDBOX_WEAPON_CATALOG) setWeaponTier(role, 0);
+  });
+
+  const weaponButtons = new Map<Role, ChoiceButtons<number>>();
+  const custom = sampledRoles();
+  for (const role of SANDBOX_WEAPON_CATALOG) {
+    const voice = engine.voices.get(role);
+    if (!voice) continue;
+    const row = el('div', 'sb-loadout', build);
+    row.style.setProperty('--voice-color', voice.kit.color);
+    const info = el('div', 'sb-enemy-info', row);
+    const label = el('span', `sb-loadout-label ${custom.has(role) ? 'custom' : ''}`, info, voice.kit.name);
+    label.title = `${SLOT_LABEL[slotOf(role)]} slot${custom.has(role) ? ' · sample-backed' : ''}`;
+    el('span', 'sb-enemy-stats', info, SLOT_LABEL[slotOf(role)]);
+    const controls = el('div', 'sb-btns', row);
+    const choices: ChoiceButtons<number> = { value: () => world.tiers.get(role) ?? 0, options: [] };
+    choices.options.push({ value: 0, button: button(controls, '⏻', () => setWeaponTier(role, 0)) });
+    for (let tier = 1; tier <= 4; tier++) {
+      choices.options.push({
+        value: tier,
+        button: button(controls, TIER_NUMERALS[tier - 1], () => setWeaponTier(role, tier)),
       });
-      const current = world.tiers.get(role);
-      options.forEach((b, i) => b.classList.toggle('on', current === undefined ? i === 0 : i === current));
     }
+    weaponButtons.set(role, choices);
   }
-  // Mark (with a bordered name) the roles that are sample-backed — their own
-  // real voicing, worth focusing testing on.
-  function refreshCustom(): void {
-    const custom = sampledRoles();
-    for (const { role, el: mark } of customMarks) {
-      const on = custom.has(role);
-      mark.classList.toggle('custom', on);
-      mark.title = on ? 'custom voicing (sample-backed)' : '';
+
+  section(build, 'passive items');
+  const itemButtons = new Map<ItemId, ChoiceButtons<number>>();
+  const itemControls = el('div', 'sb-btns sb-controls', build);
+  itemControls.style.marginLeft = '0';
+  button(itemControls, 'ALL V', () => {
+    for (const id of SANDBOX_ITEM_CATALOG) setItemLevel(id, ITEM_MAX_LEVEL);
+  });
+  button(itemControls, 'CLEAR ITEMS', () => {
+    for (const id of SANDBOX_ITEM_CATALOG) setItemLevel(id, 0);
+  });
+  for (const id of SANDBOX_ITEM_CATALOG) {
+    const item = ITEMS[id];
+    const row = el('div', 'sb-loadout', build);
+    row.style.setProperty('--voice-color', `#${item.color.toString(16).padStart(6, '0')}`);
+    const info = el('div', 'sb-enemy-info', row);
+    const name = el('span', 'sb-loadout-label', info, `${item.glyph} ${item.name}`);
+    name.title = item.description;
+    const partner = item.evolutionPartner;
+    el(
+      'span',
+      'sb-enemy-stats passive-copy',
+      info,
+      `${item.description} · ${partner ? `evolves ${ROLE_META[partner].name}` : 'standalone · no evolution'}`,
+    );
+    const controls = el('div', 'sb-btns', row);
+    const choices: ChoiceButtons<number> = { value: () => world.items.get(id) ?? 0, options: [] };
+    for (let level = 0; level <= ITEM_MAX_LEVEL; level++) {
+      choices.options.push({
+        value: level,
+        button: button(controls, level === 0 ? '⏻' : String(level), () => setItemLevel(id, level)),
+      });
     }
+    itemButtons.set(id, choices);
   }
-  refreshCustom();
+
+  section(build, 'evolution recipes · click to toggle');
+  const evolutionButtons = new Map<Role, HTMLButtonElement>();
+  for (const evolution of SANDBOX_EVOLUTION_CATALOG) {
+    const row = el('div', 'sb-loadout', build);
+    row.style.setProperty('--voice-color', `#${evolution.color.toString(16).padStart(6, '0')}`);
+    const info = el('div', 'sb-enemy-info', row);
+    const name = el('span', 'sb-loadout-label', info, evolution.name);
+    name.title = evolution.description;
+    el(
+      'span',
+      'sb-enemy-stats',
+      info,
+      `${ROLE_META[evolution.role].name} IV + ${ITEMS[evolution.item].name} V`,
+    );
+    const controls = el('div', 'sb-btns', row);
+    const evolveButton = button(controls, 'EVOLVE', () => toggleEvolution(evolution));
+    evolutionButtons.set(evolution.role, evolveButton);
+  }
+
+  const buildReadout = el('div', 'sb-hint', build);
+
+  // -----------------------------------------------------------------------
+  // Tour: venue rule/audio callbacks, Pressure lifecycle, and Neon Loop.
+
+  section(tour, 'infinite night tour venues');
+  const venueButtons = new Map<VenueId, HTMLButtonElement>();
+  const venueGrid = el('div', 'sb-btns sb-controls', tour);
+  venueGrid.style.marginLeft = '0';
+  venueGrid.style.flexWrap = 'wrap';
+  for (const id of SANDBOX_VENUE_CATALOG) {
+    const venue = VENUES[id];
+    const venueButton = button(venueGrid, venue.name, () => world.setSandboxVenue(id));
+    venueButton.title = `${venue.ruleName}: ${venue.ruleDescription}`;
+    venueButtons.set(id, venueButton);
+  }
+  button(venueGrid, 'ROUTE GATE DEMO', () => world.installSandboxVenueGate());
+  const venueReadout = el('div', 'sb-hint', tour);
+
+  section(tour, 'pressure drop · four bars');
+  const pressureControls = el('div', 'sb-btns sb-controls', tour);
+  pressureControls.style.marginLeft = '0';
+  pressureControls.style.flexWrap = 'wrap';
+  const pressureArmButton = button(pressureControls, 'ARM', () => {
+    world.cancelPressureConductor();
+    engine.cancelPressureDropAudio();
+    world.pressureHeat = 100;
+    world.pressureState = 'armed';
+    world.pressureDropBar = 0;
+  });
+  const startPressureDrop = (): void => {
+    world.cancelPressureConductor();
+    engine.cancelPressureDropAudio();
+    if (world.pressureState !== 'armed') {
+      world.pressureHeat = 100;
+      world.pressureState = 'armed';
+      world.pressureDropBar = 0;
+    }
+    world.beginPressureDrop();
+    engine.setPressureDropLift(true);
+  };
+  const pressureStartButton = button(pressureControls, 'START DROP', startPressureDrop);
+  const pressureBarButtons = new Map<number, HTMLButtonElement>();
+  for (let bar = 1; bar <= 4; bar++) {
+    pressureBarButtons.set(bar, button(pressureControls, `BAR ${bar}`, () => {
+      if (world.pressureState !== 'drop') startPressureDrop();
+      world.pulsePressureDropBar(bar);
+      engine.playPressureDropBar(bar);
+    }));
+  }
+  const pressureEndButton = button(pressureControls, 'END DROP', () => {
+    world.cancelPressureConductor();
+    world.finishPressureDrop();
+    engine.cancelPressureDropAudio();
+  });
+  button(pressureControls, 'RESET', () => {
+    engine.clearBarQueue();
+    world.clearSandboxEntities();
+    engine.setPressureDropLift(false);
+  });
+  const pressureReadout = el('div', 'sb-hint', tour);
+
+  section(tour, 'neon loop');
+  const neonControls = el('div', 'sb-btns sb-controls', tour);
+  neonControls.style.marginLeft = '0';
+  button(neonControls, 'FIGURE-EIGHT RAIL', () => world.installSandboxNeonLoop());
+  button(neonControls, 'CLEAR RAIL', () => {
+    world.neonRail = null;
+  });
+  const neonReadout = el('div', 'sb-hint', tour);
+
+  // -----------------------------------------------------------------------
+  // Career: disposable wallet + real shop rules + physical pickup tests.
+
+  section(careerPage, 'isolated career profile');
+  el(
+    'div',
+    'sb-hint',
+    careerPage,
+    'IN-MEMORY ONLY · purchases and note grants here never touch your real collection.',
+  );
+  const walletReadout = el('div', 'sb-enemy-name', careerPage);
+  const careerControls = el('div', 'sb-btns sb-controls', careerPage);
+  careerControls.style.marginLeft = '0';
+  button(careerControls, '+100 NOTES', () => career.grantNotes(100));
+  button(careerControls, '+1000 NOTES', () => career.grantNotes(1000));
+  button(careerControls, '+5000 NOTES', () => career.grantNotes(5000));
+
+  section(careerPage, 'physical pickups');
+  const noteControls = el('div', 'sb-btns sb-controls sb-pickup-controls', careerPage);
+  noteControls.style.marginLeft = '0';
+  button(noteControls, 'DROP ♫1', () => dropNote(1, 100));
+  button(noteControls, 'DROP ♫3', () => dropNote(3, 125));
+  button(noteControls, 'DROP ♫10', () => dropNote(10, 150));
+  button(noteControls, 'NOTE SHOWER', () => {
+    for (let i = 0; i < 12; i++) {
+      const angle = (i / 12) * Math.PI * 2;
+      world.spawnMusicNoteAt(
+        world.player.x + Math.cos(angle) * 125,
+        world.player.y + Math.sin(angle) * 95,
+        i % 6 === 0 ? 3 : 1,
+      );
+    }
+  });
+  button(noteControls, 'DROP STAGE MAGNET', () => {
+    world.spawnStageMagnetAt(world.player.x + 115, world.player.y);
+  });
+  button(noteControls, 'PICKUP FIELD', () => {
+    for (let i = 0; i < 18; i++) {
+      const angle = (i / 18) * Math.PI * 2;
+      const x = world.player.x + Math.cos(angle) * 210;
+      const y = world.player.y + Math.sin(angle) * 135;
+      if (i % 3 === 0) world.spawnMusicNoteAt(x, y, i === 0 ? 3 : 1);
+      else world.spawnGemAt(x, y, i % 5 === 0 ? 3 : 1);
+    }
+  });
+  button(noteControls, 'TRIGGER VACUUM', () => world.vacuumVisiblePickups());
+  const pickupReadout = el('div', 'sb-hint', careerPage);
+
+  section(careerPage, 'afterhours shop');
+  const shopButtons = new Map<ShopOfferId, HTMLButtonElement>();
+  for (const offer of SHOP_OFFERS) {
+    const row = el('div', 'sb-loadout', careerPage);
+    const info = el('div', 'sb-enemy-info', row);
+    const name = el('span', 'sb-enemy-name', info, offer.name);
+    name.title = offer.description;
+    el('span', 'sb-enemy-stats', info, `${offer.kind} · ♫ ${offer.cost} · shelf ${offer.minOwned}`);
+    const controls = el('div', 'sb-btns', row);
+    const buy = button(controls, 'BUY', () => {
+      career.purchase(offer.id);
+    });
+    shopButtons.set(offer.id, buy);
+  }
 
   el(
     'div',
     'sb-hint',
     panel,
-    'stage script off: nothing spawns by itself. O = perf overlay, C = track overlay, 1-7 = mute a slot.',
+    'Stage spawns are off. O = perf, C = track, K = clear visible, 1–7 = mute a band slot.',
   );
 
+  function setTab(id: TabId): void {
+    activeTab = id;
+    for (const [tabId, page] of pages) page.style.display = tabId === id ? 'flex' : 'none';
+    for (const [tabId, tab] of tabButtons) tab.classList.toggle('on', tabId === id);
+  }
+
+  function clearEvolution(role: Role): void {
+    world.clearEvolutionForSandbox(role);
+    engine.clearEvolutionGain(role);
+  }
+
+  function setWeaponTier(role: Role, tier: number): void {
+    const next = Math.max(0, Math.min(4, Math.floor(tier)));
+    if (next === 0) {
+      clearEvolution(role);
+      engine.setVoiceEnabled(role, false);
+      world.removeWeapon(role);
+    } else {
+      if (next < 4) clearEvolution(role);
+      engine.setVoiceTier(role, next);
+      engine.setVoiceEnabled(role, true);
+      world.addWeapon(role, next);
+    }
+    opts.onLoadout?.();
+  }
+
+  function setItemLevel(id: ItemId, level: number): void {
+    const next = Math.max(0, Math.min(ITEM_MAX_LEVEL, Math.floor(level)));
+    world.setItemLevelForSandbox(id, next);
+    const partner = ITEMS[id].evolutionPartner;
+    if (partner && next < ITEM_MAX_LEVEL) clearEvolution(partner);
+    opts.onLoadout?.();
+  }
+
+  function toggleEvolution(evolution: EvolutionDefinition): void {
+    if (world.evolved.has(evolution.role)) {
+      clearEvolution(evolution.role);
+      opts.onLoadout?.();
+      return;
+    }
+    setWeaponTier(evolution.role, 4);
+    setItemLevel(evolution.item, ITEM_MAX_LEVEL);
+    const made = world.evolve(evolution.role);
+    if (made) engine.setEvolutionGain(evolution.role, evolution.gainDb);
+    opts.onLoadout?.();
+  }
+
+  function dropNote(value: number, radius: number): void {
+    world.spawnMusicNoteAt(world.player.x + radius, world.player.y, value);
+  }
+
+  function syncChoice<T>(choice: ChoiceButtons<T>): void {
+    const selected = choice.value();
+    for (const option of choice.options) option.button.classList.toggle('on', option.value === selected);
+  }
+
+  function refreshStats(): void {
+    const minute = Math.floor(world.timeS / 60);
+    const key = `${minute}/${world.level}`;
+    if (key === lastStatsKey) return;
+    lastStatsKey = key;
+    const scale = endlessScale(minute);
+    for (const [kind, node] of enemyStats) {
+      const base = madForestEnemyStats(kind, world.level);
+      node.textContent =
+        `hp ${formatStat(base.hp * scale.hpMul)} · dmg ${formatStat(base.damage * scale.damageMul)}` +
+        ` · spd ${formatStat(base.speed * scale.speedMul)} · xp ${formatStat(base.xp * scale.xpMul)}`;
+    }
+  }
+
+  function refreshCareer(): void {
+    if (world.notesCollected < creditedRunNotes) creditedRunNotes = world.notesCollected;
+    if (world.notesCollected > creditedRunNotes) {
+      career.grantNotes(world.notesCollected - creditedRunNotes);
+      creditedRunNotes = world.notesCollected;
+    }
+    const collection = career.collection();
+    walletReadout.textContent = `♫ ${career.state.notes} · ${collection.owned}/${collection.total} shop unlocks`;
+    pickupReadout.textContent =
+      `${world.gems.length} XP gems · ${world.musicNotes.length} notes · ` +
+      `${world.stageMagnets.length} Stage Magnet${world.stageMagnets.length === 1 ? '' : 's'} on floor · ` +
+      `${world.notesCollected} notes collected`;
+    const states = new Map(career.shop().map((state) => [state.offer.id, state]));
+    for (const offer of SHOP_OFFERS) {
+      const state = states.get(offer.id)!;
+      const buy = shopButtons.get(offer.id)!;
+      buy.disabled = state.purchased || state.shelfLocked || !state.affordable;
+      buy.classList.toggle('on', state.purchased);
+      buy.textContent = state.purchased
+        ? 'OWNED'
+        : state.shelfLocked
+          ? `LOCK ${state.purchasesNeeded}`
+          : state.affordable
+            ? `BUY ♫${offer.cost}`
+            : `NEED ♫${offer.cost}`;
+    }
+  }
+
+  function refresh(): void {
+    setTab(activeTab);
+    syncChoice(threatChoice);
+    syncChoice(levelChoice);
+    for (const choice of weaponButtons.values()) syncChoice(choice);
+    for (const choice of itemButtons.values()) syncChoice(choice);
+    invulnButton.classList.toggle('on', world.invincible);
+    invulnButton.textContent = `INVULN ${world.invincible ? 'ON' : 'OFF'}`;
+    threatStatus.textContent = `minute ${Math.floor(world.timeS / 60)} · freshly spawned enemies use this scale`;
+    levelStatus.textContent = `level ${world.level} · HP ${Math.ceil(world.player.hp)}/${world.playerMaxHp}`;
+    for (const evolution of SANDBOX_EVOLUTION_CATALOG) {
+      const evolved = world.evolved.has(evolution.role);
+      const control = evolutionButtons.get(evolution.role)!;
+      control.classList.toggle('on', evolved);
+      control.textContent = evolved ? 'CLEAR EVO' : 'EVOLVE';
+    }
+    const mods = world.buildMods;
+    buildReadout.textContent =
+      `build: move ×${mods.moveMul.toFixed(2)} · damage ×${mods.damageMul.toFixed(2)}` +
+      ` · speed ×${mods.projectileSpeedMul.toFixed(2)} · pierce +${mods.extraPierce}` +
+      ` · bounce ${mods.bounceCount} · area ×${mods.areaMul.toFixed(2)}` +
+      ` · regen ${mods.hpRegenPerSecond.toFixed(1)} HP/s`;
+    for (const [id, venueButton] of venueButtons) venueButton.classList.toggle('on', world.venue === id);
+    const venue = VENUES[world.venue];
+    venueReadout.textContent = `${venue.ruleName}: ${venue.ruleDescription}`;
+    const dropBar = Math.max(0, Math.min(4, Math.floor(world.pressureDropBar)));
+    pressureArmButton.classList.toggle('on', world.pressureState === 'armed');
+    pressureStartButton.classList.toggle('on', world.pressureState === 'drop');
+    pressureEndButton.classList.toggle('on', world.pressureState === 'cooldown');
+    for (const [bar, control] of pressureBarButtons) {
+      control.classList.toggle('on', world.pressureState === 'drop' && dropBar === bar);
+    }
+    pressureReadout.textContent = world.pressureState === 'drop'
+      ? `DROP ${Math.max(1, dropBar)}/4 · +50% damage · +25% area/knockback · +20% projectile speed · +15% movement`
+      : world.pressureState === 'armed'
+        ? 'DROP READY · starts on the next complete four-bar phrase'
+        : `${world.pressureState.toUpperCase()} · heat ${Math.round(world.pressureHeat)}%` +
+          (world.pressureState === 'cooldown' ? ` · ${world.pressureCooldownT.toFixed(1)}s cooldown` : '');
+    neonReadout.textContent = world.neonRail
+      ? `${world.neonRail.phase.toUpperCase()} rail · ${world.neonRail.points.length} points · ${world.neonRail.lifeS.toFixed(1)}s`
+      : 'No active rail.';
+    refreshStats();
+    refreshCareer();
+  }
+
+  refresh();
+
   return {
+    update: refresh,
     destroy(): void {
+      // Never allow a sandbox Pressure mix lift to leak back to the title/run.
+      engine.setPressureDropLift(false);
       panel.remove();
     },
   };

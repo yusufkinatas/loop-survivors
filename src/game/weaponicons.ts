@@ -1,107 +1,145 @@
-// Abstract weapon glyphs for the level-up ground picks. Each role gets one
-// simple, gamified mark drawn into a GraphicsContext in white, so the caller
-// can tint it to the weapon's identity color (mirroring the gem/glow pattern
-// in view.ts). Purely cosmetic and view-only — never touched headless.
-//
-// Every glyph is drawn inside a box of half-extent `s` centered on (0,0). The
-// name text under the item does the real disambiguating, so these only need to
-// read as distinct silhouettes, not as literal instruments.
+// Pixel glyphs shared by reward pedestals and any future inventory surfaces.
+// Geometry is white so callers can tint one cached GraphicsContext per role.
 
 import { GraphicsContext } from 'pixi.js';
 import type { Role } from '../audio/kits';
 
 const W = 0xffffff;
+const D = 0x101522;
 
-/** Draw `role`'s glyph into `c`, sized to a half-extent of `s`, in white. */
-export function drawWeaponIcon(c: GraphicsContext, role: Role, s: number): void {
-  switch (role) {
-    case 'kick': {
-      // A booming disc inside a ring (a big low thump).
-      c.circle(0, 0, s * 0.58).fill(W);
-      c.circle(0, 0, s * 0.92).stroke({ width: s * 0.14, color: W });
-      break;
-    }
-    case 'snare': {
-      // Drumhead: a ring with a center line and snare-wire ticks below.
-      c.circle(0, 0, s * 0.82).stroke({ width: s * 0.13, color: W });
-      c.moveTo(-s * 0.82, 0).lineTo(s * 0.82, 0).stroke({ width: s * 0.13, color: W });
-      for (let i = -2; i <= 2; i++) {
-        const x = i * s * 0.3;
-        c.moveTo(x, s * 0.18).lineTo(x, s * 0.6).stroke({ width: s * 0.09, color: W });
-      }
-      break;
-    }
-    case 'hat': {
-      // Two cymbals slightly open, on a short stand.
-      c.moveTo(0, -s * 0.05).lineTo(0, s * 0.85).stroke({ width: s * 0.12, color: W });
-      c.ellipse(0, -s * 0.32, s * 0.85, s * 0.2).fill(W);
-      c.ellipse(0, s * 0.04, s * 0.85, s * 0.2).fill(W);
-      break;
-    }
-    case 'bass': {
-      // A fat, slow low-end wave.
-      wave(c, s, 1, s * 0.5, s * 0.22);
-      break;
-    }
-    case 'chord': {
-      // Three stacked notes struck together (a chord), as horizontal bars.
-      for (let i = -1; i <= 1; i++) {
-        c.roundRect(-s * 0.72, i * s * 0.5 - s * 0.15, s * 1.44, s * 0.3, s * 0.12).fill(W);
-      }
-      break;
-    }
-    case 'lead': {
-      // A single melody note: head, stem, flag.
-      c.ellipse(-s * 0.28, s * 0.5, s * 0.34, s * 0.26).fill(W);
-      c.moveTo(-s * 0.02, s * 0.5).lineTo(-s * 0.02, -s * 0.7).stroke({ width: s * 0.12, color: W });
-      c.moveTo(-s * 0.02, -s * 0.7)
-        .quadraticCurveTo(s * 0.6, -s * 0.5, s * 0.4, s * 0.05)
-        .stroke({ width: s * 0.12, color: W });
-      break;
-    }
-    case 'clap': {
-      // A hand-clap burst: radiating spokes around a small core.
-      for (let i = 0; i < 6; i++) {
-        const a = (i / 6) * Math.PI * 2 - Math.PI / 2;
-        c.moveTo(Math.cos(a) * s * 0.3, Math.sin(a) * s * 0.3)
-          .lineTo(Math.cos(a) * s * 0.95, Math.sin(a) * s * 0.95)
-          .stroke({ width: s * 0.14, color: W, cap: 'round' });
-      }
-      c.circle(0, 0, s * 0.2).fill(W);
-      break;
-    }
-    case 'arp': {
-      // An arpeggio climbing: four dots on a rising diagonal.
-      for (let i = 0; i < 4; i++) {
-        const x = -s * 0.7 + (i / 3) * s * 1.4;
-        const y = s * 0.6 - (i / 3) * s * 1.2;
-        c.circle(x, y, s * 0.2).fill(W);
-      }
-      break;
-    }
-    case 'bell': {
-      // A bell: a domed body with a flared lip and a clapper dot.
-      c.moveTo(-s * 0.6, s * 0.45)
-        .quadraticCurveTo(-s * 0.55, -s * 0.75, 0, -s * 0.8)
-        .quadraticCurveTo(s * 0.55, -s * 0.75, s * 0.6, s * 0.45)
-        .lineTo(-s * 0.6, s * 0.45)
-        .fill(W);
-      c.circle(0, s * 0.7, s * 0.16).fill(W);
-      break;
-    }
-  }
+function rect(c: GraphicsContext, x: number, y: number, w: number, h: number): void {
+  c.rect(Math.round(x), Math.round(y), Math.max(1, Math.round(w)), Math.max(1, Math.round(h))).fill(W);
 }
 
-/** A horizontal wave path (used by the bass glyph). `cycles` full periods
- *  across the box, amplitude `amp`, stroke width `width`. */
-function wave(c: GraphicsContext, s: number, cycles: number, amp: number, width: number): void {
-  const steps = 40;
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    const x = -s * 0.9 + t * s * 1.8;
-    const y = -Math.sin(t * cycles * Math.PI * 2) * amp;
-    if (i === 0) c.moveTo(x, y);
-    else c.lineTo(x, y);
+function dark(c: GraphicsContext, x: number, y: number, w: number, h: number): void {
+  c.rect(Math.round(x), Math.round(y), Math.max(1, Math.round(w)), Math.max(1, Math.round(h))).fill(D);
+}
+
+function diamond(c: GraphicsContext, x: number, y: number, r: number): void {
+  const q = Math.round(r);
+  c.poly([Math.round(x), Math.round(y - q), Math.round(x + q), Math.round(y), Math.round(x), Math.round(y + q), Math.round(x - q), Math.round(y)]).fill(W);
+}
+
+/** Draw a role's unmistakable pixel mark within half-extent `s`. */
+export function drawWeaponIcon(c: GraphicsContext, role: Role, s: number): void {
+  const u = Math.max(1, Math.round(s / 8));
+  const p = (n: number): number => n * u;
+
+  switch (role) {
+    case 'kick':
+      // Speaker cone: the low, booming pulse.
+      rect(c, p(-6), p(-6), p(12), p(12));
+      dark(c, p(-4), p(-4), p(8), p(8));
+      rect(c, p(-2), p(-2), p(4), p(4));
+      rect(c, p(-8), p(-1), p(2), p(2));
+      rect(c, p(6), p(-1), p(2), p(2));
+      break;
+    case 'snare':
+      // Drum with crossing snare wires.
+      rect(c, p(-7), p(-5), p(14), p(3));
+      rect(c, p(-7), p(3), p(14), p(3));
+      rect(c, p(-6), p(-2), p(2), p(5));
+      rect(c, p(4), p(-2), p(2), p(5));
+      rect(c, p(-3), p(-2), p(2), p(5));
+      rect(c, p(1), p(-2), p(2), p(5));
+      break;
+    case 'hat':
+      // Two cymbal plates and their stand.
+      rect(c, p(-7), p(-4), p(14), p(2));
+      rect(c, p(-5), p(-2), p(10), p(2));
+      rect(c, p(-1), p(0), p(2), p(7));
+      rect(c, p(-4), p(6), p(8), p(2));
+      break;
+    case 'bass':
+      // Heavy square wave.
+      rect(c, p(-8), p(-2), p(3), p(6));
+      rect(c, p(-5), p(-5), p(4), p(3));
+      rect(c, p(-1), p(-2), p(4), p(3));
+      rect(c, p(3), p(1), p(3), p(4));
+      rect(c, p(6), p(-2), p(2), p(3));
+      break;
+    case 'chord':
+      // Three notes played together as one punch.
+      rect(c, p(-7), p(-6), p(14), p(3));
+      rect(c, p(-7), p(-1), p(14), p(3));
+      rect(c, p(-7), p(4), p(14), p(3));
+      rect(c, p(-5), p(-7), p(2), p(15));
+      break;
+    case 'lead':
+      // A melody note with a lightning-shaped flag.
+      rect(c, p(-3), p(-6), p(2), p(11));
+      rect(c, p(-6), p(3), p(5), p(4));
+      rect(c, p(-1), p(-6), p(6), p(2));
+      rect(c, p(3), p(-4), p(3), p(2));
+      rect(c, p(1), p(-2), p(4), p(2));
+      break;
+    case 'clap':
+      // Two hands meeting at a bright center.
+      c.poly([p(-8), p(-5), p(-2), p(-1), p(-8), p(5), p(-5), p(7), p(0), p(1), p(-5), p(-7)]).fill(W);
+      c.poly([p(8), p(-5), p(2), p(-1), p(8), p(5), p(5), p(7), p(0), p(1), p(5), p(-7)]).fill(W);
+      rect(c, p(-1), p(-8), p(2), p(4));
+      rect(c, p(-1), p(5), p(2), p(3));
+      break;
+    case 'tom':
+      // Deep drum, wider at the shoulders.
+      rect(c, p(-7), p(-6), p(14), p(3));
+      rect(c, p(-5), p(-3), p(10), p(8));
+      rect(c, p(-7), p(5), p(14), p(2));
+      dark(c, p(-2), p(-1), p(4), p(3));
+      break;
+    case 'arp':
+      // Four notes climbing one at a time.
+      diamond(c, p(-6), p(5), p(2));
+      diamond(c, p(-2), p(1), p(2));
+      diamond(c, p(2), p(-3), p(2));
+      diamond(c, p(6), p(-7), p(2));
+      break;
+    case 'crash':
+      // Explosive cymbal star.
+      c.poly([0, p(-8), p(2), p(-3), p(7), p(-6), p(4), p(-1), p(8), p(2), p(3), p(2), p(5), p(7), 0, p(4), p(-5), p(7), p(-3), p(2), p(-8), p(2), p(-4), p(-1), p(-7), p(-6), p(-2), p(-3)]).fill(W);
+      break;
+    case 'shaker':
+      // Beaded capsule with grit pixels.
+      rect(c, p(-6), p(-5), p(12), p(10));
+      dark(c, p(-4), p(-3), p(8), p(6));
+      rect(c, p(-3), p(-2), p(2), p(2));
+      rect(c, p(1), p(-1), p(2), p(2));
+      rect(c, p(-1), p(2), p(2), p(2));
+      rect(c, p(6), p(-1), p(2), p(2));
+      break;
+    case 'acid':
+      // Corrosive drop and jagged waveform.
+      c.poly([0, p(-8), p(5), p(-1), p(4), p(5), 0, p(8), p(-4), p(5), p(-5), p(-1)]).fill(W);
+      dark(c, p(-2), p(1), p(4), p(3));
+      rect(c, p(-8), p(-1), p(3), p(2));
+      rect(c, p(5), p(-4), p(3), p(2));
+      break;
+    case 'pluck':
+      // A taut string being pulled sideways.
+      rect(c, p(-7), p(-7), p(2), p(14));
+      rect(c, p(5), p(-7), p(2), p(14));
+      rect(c, p(-5), p(-1), p(6), p(2));
+      rect(c, p(1), p(-3), p(4), p(2));
+      diamond(c, p(1), p(-2), p(2));
+      break;
+    case 'rhodes':
+      // Electric piano keys with a soft glow cap.
+      rect(c, p(-8), p(-6), p(16), p(12));
+      dark(c, p(-6), p(-4), p(12), p(8));
+      for (let i = -5; i <= 5; i += 4) rect(c, p(i), p(0), p(2), p(4));
+      rect(c, p(-5), p(-4), p(2), p(4));
+      rect(c, p(1), p(-4), p(2), p(4));
+      break;
+    case 'riser':
+      // Upward launch arrows.
+      c.poly([0, p(-8), p(6), p(-2), p(2), p(-2), p(2), p(3), p(-2), p(3), p(-2), p(-2), p(-6), p(-2)]).fill(W);
+      rect(c, p(-6), p(5), p(12), p(2));
+      break;
+    case 'bell':
+      // Blocky bell with a separate clapper.
+      c.poly([p(-2), p(-8), p(2), p(-8), p(3), p(-6), p(5), p(-4), p(5), p(3), p(8), p(5), p(-8), p(5), p(-5), p(3), p(-5), p(-4), p(-3), p(-6)]).fill(W);
+      dark(c, p(-3), p(-3), p(6), p(6));
+      rect(c, p(-2), p(6), p(4), p(2));
+      break;
   }
-  c.stroke({ width, color: W, cap: 'round', join: 'round' });
 }

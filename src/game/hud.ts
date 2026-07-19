@@ -5,6 +5,9 @@
 
 import { type Kit, type Role } from '../audio/kits';
 import { SLOTS, SLOT_LABEL, ownerOfSlot, supportedRoster } from './band';
+import { EVOLUTION_BY_ROLE, ITEM_IDS, ITEMS, type ItemId } from './items';
+import type { MetaStore, RunSettlement } from './meta';
+import { VENUES, isVenueId } from './tour';
 
 import { TIER_COUNT } from '../audio/charts';
 /** Tier numerals used by the band rack. */
@@ -28,10 +31,21 @@ export class Hud {
   private xpFill: HTMLElement;
   private timer: HTMLElement;
   private levelEl: HTMLElement;
+  private noteEl: HTMLElement;
   private flash: HTMLElement;
   private pulse: HTMLElement;
   private toastStack: HTMLElement;
   private rack: HTMLElement;
+  private itemRack: HTMLElement;
+  private pressureMeter: HTMLElement;
+  private pressureFill: HTMLElement;
+  private pressureLabel: HTMLElement;
+  private pressureSegments: HTMLElement[] = [];
+  private lastPressureState = '';
+  private lastPressureDropBar = 0;
+  private venueLabel: HTMLElement;
+  private rerollButton: HTMLButtonElement;
+  private runInfoKey = '';
   private screen: HTMLElement | null = null;
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
   private kits: Map<Role, Kit>;
@@ -48,11 +62,20 @@ export class Hud {
     const top = el('div', 'hud-top', this.bar);
     this.timer = el('span', 'hud-timer', top, '0:00');
     this.levelEl = el('span', 'hud-level', top, 'LV 1');
+    this.venueLabel = el('span', 'hud-venue', top, 'NEON ALLEY');
+    this.noteEl = el('span', 'hud-notes', top, '♫ 0');
     const hp = el('div', 'meter hp', this.bar);
     this.hpFill = el('div', 'fill', hp);
     el('span', 'meter-cap', hp, 'HP');
     const xp = el('div', 'meter xp', this.bar);
     this.xpFill = el('div', 'fill', xp);
+    this.pressureMeter = el('div', 'meter pressure', this.bar);
+    this.pressureFill = el('div', 'fill', this.pressureMeter);
+    const pressureSegments = el('div', 'pressure-segments', this.pressureMeter);
+    for (let i = 0; i < 4; i++) {
+      this.pressureSegments.push(el('span', 'pressure-segment', pressureSegments));
+    }
+    this.pressureLabel = el('span', 'meter-cap pressure-cap', this.pressureMeter, 'PRESSURE 0%');
     this.bar.style.display = 'none';
 
     this.flash = el('div', 'hit-flash', root);
@@ -61,11 +84,127 @@ export class Hud {
     // The band rack: seven sockets, one per band position, empty until hired.
     this.rack = el('div', 'band-rack', root);
     this.rack.style.display = 'none';
+    this.itemRack = el('div', 'item-rack', root);
+    this.itemRack.style.display = 'none';
+    this.rerollButton = el('button', 'reroll-live', root, 'REROLL') as HTMLButtonElement;
+    this.rerollButton.style.display = 'none';
   }
 
-  showHud(show: boolean): void {
+  showHud(show: boolean, sandbox = false): void {
     this.bar.style.display = show ? '' : 'none';
     this.rack.style.display = show ? '' : 'none';
+    // The sandbox owns a complete Build/Career inspector. Hiding the live-run
+    // item rack and reroll button prevents two overlapping control surfaces.
+    this.itemRack.style.display = show && !sandbox ? '' : 'none';
+    this.rerollButton.style.display = show && !sandbox ? '' : 'none';
+  }
+
+  setRerollAction(action: () => void): void {
+    this.rerollButton.onclick = action;
+  }
+
+  setRunInfo(
+    items: ReadonlyMap<ItemId, number>,
+    evolved: ReadonlySet<Role>,
+    pressureHeat: number,
+    pressureState: string,
+    pressureDropBar: number,
+    venue: string,
+    chapter: number,
+    rerolls: number,
+    notesCollected: number,
+  ): void {
+    const itemPart = [...items].map(([id, level]) => `${id}:${level}`).join('|');
+    const evolvedPart = [...evolved].join('|');
+    const dropBar = Math.max(0, Math.min(4, Math.floor(pressureDropBar)));
+    const key = `${itemPart}/${evolvedPart}/${Math.round(pressureHeat)}/${pressureState}:${dropBar}/${venue}/${chapter}/${rerolls}/${notesCollected}`;
+    if (key === this.runInfoKey) return;
+    this.runInfoKey = key;
+    const venueName = isVenueId(venue) ? VENUES[venue].name : venue.replace(/([A-Z])/g, ' $1');
+    this.venueLabel.textContent = `${venueName.toUpperCase()} · SET ${chapter + 1}`;
+    const isReady = pressureState === 'armed';
+    const isDrop = pressureState === 'drop';
+    const pressureChanged = pressureState !== this.lastPressureState ||
+      (isDrop && dropBar !== this.lastPressureDropBar);
+    const label = isDrop
+      ? `DROP ${Math.max(1, dropBar)}/4 · POWER MODE`
+      : isReady
+        ? 'DROP READY · NEXT PHRASE'
+        : `PRESSURE ${Math.round(pressureHeat)}%`;
+    this.pressureFill.style.width = `${isReady || isDrop ? 100 : Math.max(0, Math.min(100, pressureHeat))}%`;
+    this.pressureLabel.textContent = label;
+    this.pressureMeter.setAttribute('aria-label', isDrop
+      ? `${label}; damage plus 50 percent, area and shove plus 25 percent, ` +
+        'projectile speed plus 20 percent, movement plus 15 percent'
+      : label);
+    this.pressureMeter.classList.toggle('ready', isReady);
+    this.pressureMeter.classList.toggle('drop', isDrop);
+    this.pressureFill.classList.toggle('ready', isReady);
+    this.pressureFill.classList.toggle('drop', isDrop);
+    this.pressureLabel.classList.toggle('energized', isReady || isDrop);
+    for (let i = 0; i < this.pressureSegments.length; i++) {
+      const segment = this.pressureSegments[i];
+      const bar = i + 1;
+      segment.classList.toggle('ready', isReady);
+      segment.classList.toggle('on', isDrop && bar <= Math.max(1, dropBar));
+      segment.classList.toggle('current', isDrop && bar === Math.max(1, dropBar));
+    }
+    if (pressureChanged && (isReady || isDrop)) {
+      this.pressureMeter.classList.remove('phase-hit');
+      // Restart one short phase/bar hit; active Drop styling itself is static,
+      // so the HUD never becomes a permanent full-screen strobe.
+      void this.pressureMeter.offsetWidth;
+      this.pressureMeter.classList.add('phase-hit');
+    }
+    this.lastPressureState = pressureState;
+    this.lastPressureDropBar = dropBar;
+    this.rerollButton.textContent = `REROLL ×${rerolls}`;
+    this.rerollButton.disabled = rerolls <= 0;
+    this.noteEl.textContent = `♫ ${notesCollected}`;
+    this.itemRack.replaceChildren();
+    for (let slot = 0; slot < 6; slot++) {
+      const entry = [...items][slot];
+      const socket = el('div', `item-socket ${entry ? 'filled' : 'empty'}`, this.itemRack);
+      if (!entry) {
+        el('span', 'item-glyph', socket, '·');
+        continue;
+      }
+      const [id, level] = entry;
+      const item = ITEMS[id];
+      socket.style.setProperty('--item-color', `#${item.color.toString(16).padStart(6, '0')}`);
+      el('span', 'item-glyph', socket, item.glyph);
+      el('span', 'item-name', socket, item.shortName);
+      el('span', 'item-tier', socket, String(level));
+      const itemSummary = `${item.name} ${level}: ${item.levelLines[level - 1]}. ${item.description}`;
+      socket.title = itemSummary;
+      socket.setAttribute('aria-label', itemSummary);
+    }
+  }
+
+  /** Plain-language passive details for the pause screen. The compact live
+   * rack cannot carry readable copy on phones, so pausing is the reliable
+   * in-run reference for both the current total and the item's core purpose. */
+  renderItemDetails(items: ReadonlyMap<ItemId, number>, into: HTMLElement): void {
+    into.replaceChildren();
+    const head = el('div', 'pause-items-head', into);
+    const countCopy = items.size > 6 ? `${items.size} ACTIVE · RUN CAP 6` : `${items.size}/6`;
+    el('strong', '', head, `PASSIVE ITEMS · ${countCopy}`);
+    el('span', '', head, 'CURRENT TOTALS');
+    if (items.size === 0) {
+      el('p', 'pause-items-empty', into, 'No passive items yet. Walk into an item reward pedestal to take one.');
+      return;
+    }
+    const grid = el('div', 'pause-items-grid', into);
+    for (const [id, level] of items) {
+      const item = ITEMS[id];
+      const row = el('div', 'pause-item', grid);
+      row.style.setProperty('--item-color', `#${item.color.toString(16).padStart(6, '0')}`);
+      el('span', 'pause-item-glyph', row, item.glyph);
+      const copy = el('div', 'pause-item-copy', row);
+      el('strong', '', copy, `${item.name} · LV ${level}`);
+      el('span', '', copy, item.levelLines[level - 1]);
+      row.setAttribute('aria-label', `${item.name}, level ${level}: ${item.levelLines[level - 1]}`);
+    }
   }
 
   /** The band rack: seven typed sockets in rack
@@ -81,6 +220,7 @@ export class Hud {
     into: HTMLElement = this.rack,
     deactivated?: ReadonlySet<Role>,
     pending?: ReadonlySet<Role>,
+    evolved?: ReadonlySet<Role>,
   ): void {
     into.replaceChildren();
     for (const slot of SLOTS) {
@@ -96,6 +236,7 @@ export class Hud {
         // a settled-off socket with no pending change just sits dimmed.
         if (pend) cls += off ? ' pending-on' : ' pending-off';
         else if (off) cls += ' deactivated';
+        if (evolved?.has(owner)) cls += ' evolved';
       }
       const socket = el('div', `band-socket ${cls}`, into);
       el('span', 'socket-slot', socket, SLOT_LABEL[slot]);
@@ -116,9 +257,7 @@ export class Hud {
     this.hpFill.style.width = `${Math.max(0, hp01) * 100}%`;
     this.xpFill.style.width = `${xp01 * 100}%`;
     this.levelEl.textContent = `LV ${level}`;
-    const m = Math.floor(timeS / 60);
-    const s = Math.floor(timeS % 60);
-    this.timer.textContent = `${m}:${String(s).padStart(2, '0')}`;
+    this.timer.textContent = formatTime(timeS);
   }
 
   /** The `.hit-flash` edge-tint element. The shared damage-feedback helper
@@ -146,7 +285,7 @@ export class Hud {
     this.debugRow = el('div', 'debug-row', wrap);
     const gear = el('button', 'small debug-btn debug-gear', wrap, '⚙');
     gear.title = 'dev tools';
-    let open = localStorage.getItem(KEY) === '1';
+    let open = localStorage.getItem(KEY) === '1' && !matchMedia('(max-width: 720px)').matches;
     const paint = (): void => {
       this.debugRow!.style.display = open ? '' : 'none';
       gear.classList.toggle('on', open);
@@ -190,15 +329,149 @@ export class Hud {
   showStart(
     onStart: (role: Role) => void,
     onSandbox: () => void,
+    meta?: MetaStore,
+    shopOpen = false,
+    shopScrollTop = 0,
   ): void {
     const s = this.newScreen();
-    el('h1', '', s, 'Loop Survivors');
-    el('p', 'sub', s, 'WASD or touch to move. Survive 8 minutes.');
-    const startBtn = el('button', 'start-btn', s, 'start');
+    s.classList.add('start-screen');
+    const hero = el('div', 'start-hero', s);
+    const art = document.createElement('img');
+    art.className = 'title-art';
+    art.src = '/art/soundwood-title.png';
+    art.alt = 'A neon pixel-art DJ stage surrounded by strange signal creatures in the Soundwood';
+    hero.appendChild(art);
+    const title = el('div', 'title-lockup', hero);
+    el('span', 'eyebrow', title, 'THE INFINITE NIGHT TOUR');
+    el('h1', '', title, 'LOOP SURVIVORS');
+    el('p', 'sub', title, 'Build the track. Draw the arena. Survive until the crowd wins.');
+
+    if (meta) {
+      const profile = el('div', 'career-panel', s);
+      const collectionProgress = meta.collection();
+      const head = el('div', 'career-head', profile);
+      el('strong', 'career-rank', head, 'AFTERHOURS COLLECTION');
+      el('span', 'career-rep', head, `♫ ${meta.state.notes} MUSIC NOTES`);
+      const bar = el('div', 'rank-meter', profile);
+      const fill = el('div', 'rank-meter-fill', bar);
+      fill.style.width = `${collectionProgress.ratio * 100}%`;
+      el('span', 'rank-meter-copy', bar, collectionProgress.complete
+        ? 'COLLECTION COMPLETE'
+        : `${collectionProgress.owned} / ${collectionProgress.total} SHOP UNLOCKS`);
+      const rewards = el('div', 'next-reward', profile);
+      el('span', 'eyebrow', rewards, 'PLAYER-DIRECTED PROGRESSION');
+      el('strong', '', rewards, collectionProgress.complete
+        ? 'Every shelf of the Afterhours Shop is yours.'
+        : 'Defeat The Hush, collect its music notes, then choose what unlocks next.');
+      el('span', 'reward-copy', rewards,
+        'Collected notes bank when the set ends. Shop purchases unlock new instruments, passives, venues, and perks.');
+
+      const collection = el('div', 'collection-strip', profile);
+      el('span', '', collection, `${meta.state.unlockedWeapons.length}/9 WEAPONS`);
+      el('span', '', collection, `${meta.state.unlockedItems.length}/${ITEM_IDS.length} PASSIVES`);
+      el('span', '', collection, `${meta.state.unlockedVenues.length}/6 VENUES`);
+      el('span', '', collection, `${meta.state.rerolls} REROLLS`);
+
+      if (meta.hasPurchase('startItem')) {
+        const loadout = el('div', 'start-loadout', profile);
+        el('span', 'eyebrow', loadout, 'STARTING PASSIVE');
+        const choices = el('div', 'loadout-choices', loadout);
+        const noneButton = el(
+          'button',
+          `loadout-chip ${meta.state.startItem === undefined ? 'selected' : ''}`,
+          choices,
+          'NO PASSIVE',
+        ) as HTMLButtonElement;
+          noneButton.onclick = () => {
+            meta.selectStartItem(undefined);
+            this.showStart(onStart, onSandbox, meta, shopOpen, s.scrollTop);
+          };
+        for (const id of meta.state.unlockedItems) {
+          const item = ITEMS[id];
+          const button = el('button', `loadout-chip ${meta.state.startItem === id ? 'selected' : ''}`, choices,
+            `${item.glyph} ${item.name}`) as HTMLButtonElement;
+            button.onclick = () => {
+              meta.selectStartItem(id);
+              this.showStart(onStart, onSandbox, meta, shopOpen, s.scrollTop);
+            };
+        }
+      }
+
+      const mastery = Object.entries(meta.state.mastery) as [Role, { damage: number; kills: number; evolutions: number }][];
+      const revealed = mastery.filter(([, value]) => value.damage >= 100_000);
+      if (revealed.length > 0) {
+        const hints = el('div', 'recipe-hints', profile);
+        el('span', 'eyebrow', hints, 'MASTERY REVEALED');
+        for (const [role] of revealed.slice(0, 3)) {
+          const recipe = EVOLUTION_BY_ROLE[role];
+          if (recipe) el('span', 'recipe-chip', hints, `${this.kits.get(role)?.name ?? role} + ${ITEMS[recipe.item].name} → ${recipe.name}`);
+        }
+      }
+
+      const shopToggle = el('button', 'shop-toggle', profile,
+        shopOpen ? 'CLOSE AFTERHOURS SHOP' : 'OPEN AFTERHOURS SHOP') as HTMLButtonElement;
+      const shop = el('section', 'shop-panel', profile);
+      shop.style.display = shopOpen ? '' : 'none';
+      const shopHead = el('div', 'shop-head', shop);
+      const shopTitle = el('div', '', shopHead);
+      el('span', 'eyebrow', shopTitle, 'SPEND MUSIC NOTES');
+      el('strong', '', shopTitle, 'AFTERHOURS SHOP');
+      const shopHeadActions = el('div', 'shop-head-actions', shopHead);
+      el('span', 'shop-wallet', shopHeadActions, `♫ ${meta.state.notes}`);
+      const shopClose = el('button', 'shop-close', shopHeadActions, 'CLOSE SHOP') as HTMLButtonElement;
+      const shopGrid = el('div', 'shop-grid', shop);
+      for (const status of meta.shop()) {
+        const { offer } = status;
+        const stateClass = status.purchased
+          ? 'purchased'
+          : status.shelfLocked
+            ? 'locked'
+            : status.affordable
+              ? 'available'
+              : 'short';
+        const card = el('article', `shop-card ${stateClass}`, shopGrid);
+        const cardTop = el('div', 'shop-card-top', card);
+        el('span', 'shop-kind', cardTop, offer.kind.toUpperCase());
+        el('span', 'shop-cost', cardTop, status.purchased ? 'OWNED' : `♫ ${offer.cost}`);
+        el('strong', 'shop-name', card, offer.name);
+        el('span', 'shop-copy', card, offer.description);
+        const buy = el('button', 'shop-buy', card, status.purchased
+          ? 'PURCHASED'
+          : status.shelfLocked
+            ? `BUY ${status.purchasesNeeded} MORE TO REVEAL`
+            : status.affordable
+              ? `UNLOCK FOR ♫ ${offer.cost}`
+              : `NEED ♫ ${offer.cost - meta.state.notes} MORE`) as HTMLButtonElement;
+        buy.disabled = status.purchased || status.shelfLocked || !status.affordable;
+        buy.onclick = () => {
+          if (!meta.purchase(offer.id)) return;
+          const scrollTop = s.scrollTop;
+          this.showToast(`SHOP UNLOCK · ${offer.name.toUpperCase()}`);
+          this.showStart(onStart, onSandbox, meta, true, scrollTop);
+        };
+      }
+      shopToggle.onclick = () => {
+        const opening = shop.style.display === 'none';
+        shop.style.display = opening ? '' : 'none';
+        shopToggle.textContent = opening ? 'CLOSE AFTERHOURS SHOP' : 'OPEN AFTERHOURS SHOP';
+        shopToggle.classList.toggle('on', opening);
+      };
+      shopToggle.classList.toggle('on', shopOpen);
+      shopClose.onclick = () => {
+        shop.style.display = 'none';
+        shopToggle.textContent = 'OPEN AFTERHOURS SHOP';
+        shopToggle.classList.remove('on');
+        shopToggle.focus();
+      };
+    }
+
+    const startBtn = el('button', 'start-btn', s, 'ENTER THE SOUNDWOOD');
     startBtn.onclick = () => {
       this.closeScreen();
       onStart('kick');
     };
+    el('p', 'start-hint', s,
+      'WASD / arrow keys / touch to move · collect blue XP and gold music notes · rare Stage Magnets vacuum the visible floor · walk onto reward pedestals · R rerolls');
     // Below the primary CTA, two menu buttons: sandbox launches directly,
     // experiments is a disclosure for the standalone playtest surfaces (boss
     // fights, full tracks, rehearsal room — mirrors src/experiments/).
@@ -232,6 +505,11 @@ export class Hud {
     roomBtn.onclick = () => {
       location.hash = '#rehearsal';
     };
+    if (shopScrollTop > 0) {
+      requestAnimationFrame(() => {
+        if (this.screen === s) s.scrollTop = Math.min(shopScrollTop, s.scrollHeight - s.clientHeight);
+      });
+    }
   }
 
   /** Transient notices stack instead of overlapping, animate in and out,
@@ -251,21 +529,63 @@ export class Hud {
   /** End screen. Weapon chips lead with damage share, kills in parentheses:
    *  kill counts flatter AoE last hits and hide single-target work on tanks. */
   showEnd(
-    victory: boolean,
+    _victory: boolean,
     stats: {
       timeS: number;
       kills: number;
       level: number;
+      notesCollected: number;
       damageByRole: Partial<Record<Role, number>>;
       killsByRole: Partial<Record<Role, number>>;
     },
     onRetry: () => void,
+    settlement?: RunSettlement,
   ): void {
     const s = this.newScreen();
-    el('h1', '', s, victory ? 'You survived.' : 'You died.');
-    const m = Math.floor(stats.timeS / 60);
-    const sec = Math.floor(stats.timeS % 60);
-    el('p', 'sub', s, `${m}:${String(sec).padStart(2, '0')} · ${stats.kills} kills · level ${stats.level}`);
+    s.classList.add('end-screen');
+    el('span', 'eyebrow', s, 'THE CROWD FINALLY WON');
+    el('h1', '', s, 'SET ENDED');
+    el('p', 'sub run-summary', s,
+      `${formatTime(stats.timeS)} · ${stats.kills} kills · level ${stats.level} · ♫ ${stats.notesCollected}`);
+
+    if (settlement) {
+      const rep = el('section', 'settlement-panel', s);
+      const earned = el('div', 'rep-earned', rep);
+      const earnedCopy = el('div', '', earned);
+      el('span', 'eyebrow', earnedCopy, 'MUSIC NOTES BANKED');
+      el('span', 'reward-copy', earnedCopy,
+        `${settlement.walletBefore} before this set · ${settlement.walletAfter} now available`);
+      el('strong', '', earned, `+♫ ${settlement.notesEarned}`);
+      const breakdown = el('div', 'rep-breakdown', rep);
+      for (const [label, value] of [
+        ['COLLECTION', `${settlement.collection.owned} / ${settlement.collection.total}`],
+        ['NEW MILESTONES', String(settlement.newMilestones.length)],
+        ['NEW VENUES SEEN', String(settlement.newVenues.length)],
+      ] as const) {
+        const row = el('div', 'rep-row', breakdown);
+        el('span', '', row, label);
+        el('strong', '', row, value);
+      }
+      const rank = el('div', 'end-rank', rep);
+      el('strong', '', rank, 'AFTERHOURS COLLECTION');
+      const meter = el('div', 'rank-meter', rank);
+      const fill = el('div', 'rank-meter-fill', meter);
+      fill.style.width = `${settlement.collection.ratio * 100}%`;
+      el('span', 'rank-meter-copy', meter, settlement.collection.complete
+        ? 'COLLECTION COMPLETE'
+        : `${settlement.collection.owned} / ${settlement.collection.total} UNLOCKS`);
+      if (settlement.newMilestones.length > 0) {
+        el('p', 'milestone-line', rep,
+          `MILESTONES · ${settlement.newMilestones.map((id) => id.replace(/([A-Z])/g, ' $1')).join(' · ')}`);
+      }
+      const next = el('div', 'next-reward end-next', rep);
+      el('span', 'eyebrow', next, settlement.collection.complete
+        ? 'FULL TOUR COLLECTION'
+        : 'YOUR NEXT UNLOCK IS YOUR CHOICE');
+      el('strong', '', next, settlement.collection.complete
+        ? 'The Afterhours Shop is sold out.'
+        : 'Return to the Afterhours Shop and spend your music notes.');
+    }
     const byDamage = (Object.entries(stats.damageByRole) as [Role, number][]).sort(
       (a, b) => b[1] - a[1],
     );
@@ -280,7 +600,7 @@ export class Hud {
         chip.style.setProperty('--voice-color', kit.color);
       }
     }
-    const btn = el('button', 'big', s, 'run it back');
+    const btn = el('button', 'big retry-btn', s, 'ONE MORE SET');
     btn.onclick = () => {
       this.closeScreen();
       onRetry();
@@ -309,4 +629,14 @@ function el(tag: string, className: string, parent: HTMLElement, text = ''): HTM
   if (text) node.textContent = text;
   parent.appendChild(node);
   return node;
+}
+
+function formatTime(timeS: number): string {
+  const whole = Math.max(0, Math.floor(timeS));
+  const hours = Math.floor(whole / 3600);
+  const minutes = Math.floor((whole % 3600) / 60);
+  const seconds = whole % 60;
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+    : `${minutes}:${String(seconds).padStart(2, '0')}`;
 }

@@ -1,9 +1,9 @@
 // Sound kits: the atomic unit of a weapon is a kit plus a chart
 // (docs/plan.md, "Weapons as sound"). A kit is a small family of related
-// samples. M1 ships with synthesized placeholder samples rendered offline at
-// startup so the rehearsal room works out of the box; real CC0 pack samples
-// are auditioned in the room by loading files over these slots. Pitched kits
-// hold one sample at the root and get note variants by playback-rate shifting.
+// samples. This catalog builder preserves retired developer instruments and an
+// emergency procedural fallback; main.ts replaces all nine live roles with the
+// fresh Afterhours set before MusicEngine is created. Pitched kits hold one
+// root sample and receive chart notes by playback-rate shifting.
 
 // The catalog of instrument types. Six drums/fx (unpitched) and six pitched
 // voices, plus the later hires; the soundset chooses how each is played
@@ -786,9 +786,9 @@ export function makeKit(role: Role, samples: Map<string, AudioBuffer>, tune = 0)
   };
 }
 
-/** Render every builtin kit. Called once at startup. This is the default kit:
- *  the rehearsal room's palette and the fallback voicing for any role the
- *  soundset kit does not override. */
+/** Render the complete catalog once at startup. Supported live roles are
+ *  replaced by Afterhours in main.ts; retired experiment roles and an
+ *  emergency fallback remain available here. */
 export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
   const [
     kickHard,

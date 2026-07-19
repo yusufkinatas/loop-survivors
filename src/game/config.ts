@@ -6,8 +6,6 @@
 import type { Role } from '../audio/kits';
 
 export const RUN = {
-  /** The 8-minute run. */
-  durationS: 480,
   /** Antonio baseline: 100 base HP +20 character bonus, +1 Armor. */
   playerHp: 120,
   playerArmor: 1,
@@ -20,7 +18,25 @@ export const RUN = {
   pickupRadius: 16,
   gemPullSpeed: 420,
   maxGems: 400,
+  /** Currency pickups merge into an overflow note above this visual cap. */
+  maxMusicNotes: 180,
 };
+
+/** Rare one-use arena pickup. This is deliberately separate from Magnet
+ * Lanyard, the passive item that increases ordinary pickup reach. */
+export const STAGE_MAGNET = {
+  /** Per eligible enemy kill: rare in a horde, but visible in a healthy run. */
+  dropChance: 0.0012,
+  /** Bad-luck protection. The next eligible kill drops one at this count. */
+  pityKills: 700,
+  /** Prevent lucky streaks from filling the floor with vacuum pickups. */
+  dropCooldownS: 90,
+  /** A missed magnet eventually clears so another can drop later. */
+  lifetimeS: 45,
+  pickupRadius: 28,
+  /** Marked gems and notes cross a full viewport in well under a second. */
+  vacuumSpeed: 1800,
+} as const;
 
 /** Player take-damage feedback, shared by every arena (normal run, sandbox,
  *  and boss) through damage-feedback.ts. One place for the whole feel: the
@@ -113,6 +129,14 @@ export type EnemyKind =
   | 'mantis'
   | 'batSwarm';
 
+/** Complete simulation catalog. The sandbox consumes this directly so an
+ * opening-act change cannot hide endless-tour enemies from its controls. */
+export const ALL_ENEMY_KINDS: readonly EnemyKind[] = [
+  'bat', 'redBat', 'redBat2', 'zombie', 'skeleton', 'ghost',
+  'greenMudman', 'grayMudman', 'flower', 'glowingBat', 'mantis', 'batSwarm',
+  'swarmer', 'tank', 'darter', 'splitter', 'charger', 'circler', 'shielded', 'elite',
+] as const;
+
 export interface EnemyConf {
   radius: number;
   speed: number;
@@ -203,7 +227,7 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
     hp: 5,
     damage: 10,
     xp: 1,
-    color: 0x9aa0b4,
+    color: 0xf29caf,
   },
   /** The late-game wall: slow, fat, soaks a build for 5-10s. */
   tank: {
@@ -212,7 +236,7 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
     hp: 110,
     damage: 22,
     xp: 10,
-    color: 0x6a7086,
+    color: 0x98445f,
   },
   /** Fast, fragile, rushes the player in straight bursts. */
   darter: {
@@ -221,28 +245,28 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
     hp: 6,
     damage: 10,
     xp: 2,
-    color: 0xe08a5a,
+    color: 0xff845f,
   },
   /** Bursts into a knot of swarmers on death. The early-mid wall. */
-  splitter: { radius: 14, speed: 70, hp: 40, damage: 14, xp: 5, color: 0x8fb46a },
+  splitter: { radius: 14, speed: 70, hp: 40, damage: 14, xp: 5, color: 0xd35f8d },
   /** Telegraphs, then commits a fast fixed-direction dash. Dodge check. */
-  charger: { radius: 12, speed: 60, hp: 35, damage: 18, xp: 5, color: 0xd06a5a },
+  charger: { radius: 12, speed: 60, hp: 35, damage: 18, xp: 5, color: 0xff594f },
   /** Fast, fragile, orbits the player at range and harasses. */
-  circler: { radius: 10, speed: 170, hp: 10, damage: 12, xp: 2, color: 0x6ac2d0 },
+  circler: { radius: 10, speed: 170, hp: 10, damage: 12, xp: 2, color: 0xb868db },
   /** A shield pool absorbs damage before its hp; the mid-game wall. */
-  shielded: { radius: 16, speed: 55, hp: 40, damage: 16, xp: 7, color: 0x9a86c0 },
+  shielded: { radius: 16, speed: 55, hp: 40, damage: 16, xp: 7, color: 0xd474c8 },
   /** Slow, huge, tanky objective; drops one large gem (xp=big drop). */
-  elite: { radius: 34, speed: 48, hp: 420, damage: 25, xp: 80, color: 0xd94f8a },
+  elite: { radius: 34, speed: 48, hp: 420, damage: 25, xp: 80, color: 0x8e3b68 },
   // Mad Forest normal-mode bestiary values. `damage` is what Antonio actually
   // loses after his +1 Armor; `power` retains the source number for audits/UI.
-  bat: { radius: legacyEnemyRadius(19), speed: 140 * ENEMY_SPEED_UNIT, hp: 1, power: 5, damage: 4, xp: 1, color: 0x8d92b8, knockback: 1 },
-  redBat: { radius: legacyEnemyRadius(25), speed: 140 * ENEMY_SPEED_UNIT, hp: 5, power: 5, damage: 4, xp: 1, color: 0xd15b68, knockback: 1 },
-  redBat2: { radius: legacyEnemyRadius(30), speed: 140 * ENEMY_SPEED_UNIT, hp: 5, power: 5, damage: 4, xp: 1, color: 0xb94364, knockback: 1 },
-  zombie: { radius: legacyEnemyRadius(31), speed: 100 * ENEMY_SPEED_UNIT, hp: 10, power: 10, damage: 9, xp: 1, color: 0x77906f, knockback: 0.8 },
-  skeleton: { radius: legacyEnemyRadius(28), speed: 100 * ENEMY_SPEED_UNIT, hp: 15, power: 10, damage: 9, xp: 2, color: 0xd7d0b3, knockback: 1 },
-  ghost: { radius: legacyEnemyRadius(29), speed: 200 * ENEMY_SPEED_UNIT, hp: 10, power: 5, damage: 4, xp: 1.5, color: 0x72c5d8, knockback: 0 },
-  greenMudman: { radius: legacyEnemyRadius(34), speed: 100 * ENEMY_SPEED_UNIT, hp: 150, power: 10, damage: 9, xp: 2.5, color: 0x6f9d62, knockback: 0.3 },
-  grayMudman: { radius: legacyEnemyRadius(34), speed: 100 * ENEMY_SPEED_UNIT, hp: 70, power: 10, damage: 9, xp: 2.5, color: 0x7f8390, knockback: 0.3 },
+  bat: { radius: legacyEnemyRadius(19), speed: 140 * ENEMY_SPEED_UNIT, hp: 1, power: 5, damage: 4, xp: 1, color: 0xf07aa6, knockback: 1 },
+  redBat: { radius: legacyEnemyRadius(25), speed: 140 * ENEMY_SPEED_UNIT, hp: 5, power: 5, damage: 4, xp: 1, color: 0xff6b63, knockback: 1 },
+  redBat2: { radius: legacyEnemyRadius(30), speed: 140 * ENEMY_SPEED_UNIT, hp: 5, power: 5, damage: 4, xp: 1, color: 0xd83b76, knockback: 1 },
+  zombie: { radius: legacyEnemyRadius(31), speed: 100 * ENEMY_SPEED_UNIT, hp: 10, power: 10, damage: 9, xp: 1, color: 0xc77a5c, knockback: 0.8 },
+  skeleton: { radius: legacyEnemyRadius(28), speed: 100 * ENEMY_SPEED_UNIT, hp: 15, power: 10, damage: 9, xp: 2, color: 0xe7b673, knockback: 1 },
+  ghost: { radius: legacyEnemyRadius(29), speed: 200 * ENEMY_SPEED_UNIT, hp: 10, power: 5, damage: 4, xp: 1.5, color: 0xa979e8, knockback: 0 },
+  greenMudman: { radius: legacyEnemyRadius(34), speed: 100 * ENEMY_SPEED_UNIT, hp: 150, power: 10, damage: 9, xp: 2.5, color: 0x91ad59, knockback: 0.3 },
+  grayMudman: { radius: legacyEnemyRadius(34), speed: 100 * ENEMY_SPEED_UNIT, hp: 70, power: 10, damage: 9, xp: 2.5, color: 0x9c829a, knockback: 0.3 },
   flower: {
     radius: legacyEnemyRadius(26),
     speed: 20 * ENEMY_SPEED_UNIT,
@@ -250,7 +274,7 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
     power: 1,
     damage: 1,
     xp: 2,
-    color: 0xe26b9a,
+    color: 0xff4f98,
     hpPerLevel: true,
     knockback: 1,
   },
@@ -261,7 +285,7 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
     power: 10,
     damage: 9,
     xp: 30,
-    color: 0xffc857,
+    color: 0xffd45c,
     hpPerLevel: true,
     boss: true,
     knockback: 1,
@@ -273,7 +297,7 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
     power: 20,
     damage: 19,
     xp: 3,
-    color: 0xb46cff,
+    color: 0xbf64ff,
     boss: true,
     knockback: 0,
   },
@@ -285,7 +309,7 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
     power: 1,
     damage: 1,
     xp: 1,
-    color: 0xb9b6d8,
+    color: 0xffa36b,
     fixedDirection: true,
     knockback: 1,
   },
@@ -320,30 +344,41 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
  *  cap must not silently swallow the designed spikes. */
 export const MAX_ALIVE_HARD = 500;
 
-export const ENEMY_LABELS: Partial<Record<EnemyKind, string>> = {
-  bat: 'small bat',
-  redBat: 'red-eyed bat',
-  redBat2: 'red-eyed bat (dark)',
-  zombie: 'zombie',
-  skeleton: 'skeleton',
-  ghost: 'ghost',
-  greenMudman: 'green mudman',
-  grayMudman: 'gray mudman',
-  flower: 'closing flower',
-  glowingBat: 'glowing bat (elite)',
-  mantis: 'mantis (elite)',
-  batSwarm: 'sweeping bat',
+/** Player-facing names for The Hush. Internal keys remain stable simulation
+ * IDs so the proven movement/stat tables do not change with the new fiction. */
+export const ENEMY_LABELS: Record<EnemyKind, string> = {
+  swarmer: 'Shardling',
+  tank: 'Wallstack',
+  darter: 'Needlejack',
+  splitter: 'Crackbox',
+  charger: 'Rail Ram',
+  circler: 'Orbit Leech',
+  shielded: 'Phase Guard',
+  elite: 'Blackout Idol',
+  bat: 'Static Mite',
+  redBat: 'Flare Mite',
+  redBat2: 'Night Mite',
+  zombie: 'Cable Husk',
+  skeleton: 'Jackwalker',
+  ghost: 'Echo Shard',
+  greenMudman: 'Moss Cabinet',
+  grayMudman: 'Cracked Cabinet',
+  flower: 'Mute Bloom',
+  glowingBat: 'Signal Crown',
+  mantis: 'The Shear',
+  batSwarm: 'Static Rush',
 };
 
-/** Spawn-time stats. Mad Forest has no invented global time ramp: only the
- * documented HP x Level units multiply health by player level. */
+/** Base spawn-time stats before endless-minute scaling. Contact `damage` is
+ * deliberately raw Power: RunWorld subtracts the player's current armor at
+ * collision time so Padded Jacket also protects against enemies already alive. */
 export function madForestEnemyStats(kind: EnemyKind, playerLevel: number) {
   const conf = ENEMIES[kind];
   return {
     radius: conf.radius,
     hp: conf.hp * (conf.hpPerLevel ? Math.max(1, playerLevel) : 1),
     speed: conf.speed,
-    damage: conf.power === undefined ? conf.damage : Math.max(1, conf.power - RUN.playerArmor),
+    damage: conf.power ?? conf.damage,
     xp: conf.xp,
     color: conf.color,
     knockback: conf.knockback ?? 1,
@@ -673,12 +708,13 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
     { damage: 13, speed: 720, radius: 8, lifetimeS: 1.5, pierce: 6 },
   ],
   // Dense stream of weak fast chips, wide scatter. Density IS the ladder;
-  // per-trigger damage barely moves.
+  // per-trigger damage barely moves. Tier I starts at 2 so even the quietest
+  // velocity roll (0.75x) reliably clears a 1-HP Static Mite in one hit.
   hat: [
-    { damage: 1, speed: 440, radius: 3, lifetimeS: 0.8, pierce: 1 },
-    { damage: 1, speed: 450, radius: 3, lifetimeS: 0.85, pierce: 1 },
-    { damage: 1, speed: 460, radius: 3, lifetimeS: 0.9, pierce: 1 },
-    { damage: 2, speed: 480, radius: 3, lifetimeS: 0.95, pierce: 2 },
+    { damage: 2, speed: 440, radius: 3, lifetimeS: 0.8, pierce: 1 },
+    { damage: 2, speed: 450, radius: 3, lifetimeS: 0.85, pierce: 1 },
+    { damage: 2, speed: 460, radius: 3, lifetimeS: 0.9, pierce: 1 },
+    { damage: 3, speed: 480, radius: 3, lifetimeS: 0.95, pierce: 2 },
   ],
   // Slow wide low wave that rolls through everything. The weight ladder:
   // per-trigger damage climbs harder than any other kit.

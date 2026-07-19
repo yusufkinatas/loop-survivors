@@ -6,7 +6,7 @@ import { Application } from 'pixi.js';
 import type { MusicEngine } from '../audio/engine';
 import { SOUNDSET } from '../audio/soundset';
 import { ROLES, type Kit, type Role } from '../audio/kits';
-import { RUN, LEVELUP } from './config';
+import { LEVELUP } from './config';
 import { SLOTS, ownerOfSlot } from './band';
 import { mountTrackOverlay } from './trackoverlay';
 import { Hud } from './hud';
@@ -14,11 +14,16 @@ import { pushDamageFeedback } from './damage-feedback';
 import { createGreedyMover, createKiter, type AutoMover } from './auto-move';
 import { autoMove, Input, type AutoMoveMode } from './input';
 import { mountJoystick } from './joystick';
-import { rollOffers, type PickOption } from './picks';
-import { RunWorld, KIT_COLORS } from './run';
+import { rollOffers, type AnyPickOption } from './picks';
+import { RunWorld, KIT_COLORS, type VacuumResult } from './run';
 import { SIM_DT } from './timing';
-import { RunView, type GroundPickView } from './view';
+import { preloadRunArt, RunView, type GroundPickView } from './view';
 import { mountSandboxPanel, type SandboxPanel } from './sandbox';
+import { ITEMS, type EvolutionDefinition } from './items';
+import { MetaStore, type RunSettlement } from './meta';
+import { VENUE_AUDIO_SET } from '../audio/venue-audio';
+import { VENUE_IDS, isVenueId } from './tour';
+import { mulberry32 } from './rng';
 
 type State = 'start' | 'run' | 'end' | 'sandbox';
 
@@ -27,11 +32,12 @@ export async function bootGame(
   engine: MusicEngine,
   kits: Map<Role, Kit>,
 ): Promise<void> {
+  await preloadRunArt();
   const app = new Application();
   await app.init({
-    background: 0x0a0b0f,
+    background: 0x080a12,
     resizeTo: window,
-    antialias: true,
+    antialias: false,
     // crisp on phone screens; capped so high-dpr devices don't pay 3x pixels
     resolution: Math.min(window.devicePixelRatio || 1, 2),
     autoDensity: true,
@@ -48,12 +54,14 @@ export async function bootGame(
   root.addEventListener('contextmenu', (e) => e.preventDefault());
 
   const hud = new Hud(root, kits);
+  const meta = new MetaStore();
   const input = new Input();
   let state: State = 'start';
   let world: RunWorld | null = null;
   let view: RunView | null = null;
   let muted = false;
   let paused = false;
+  let lastWarningMinute = -1;
 
   // Global time scale (issue #21): one knob scaling the sim, audio tempo, and
   // world juice together, live mid-run, in run + sandbox only. Continuous
@@ -135,28 +143,43 @@ export async function bootGame(
 
   // Pause overlay: ESC freezes the run behind a dimmed screen; the audio clock
   // stops so no triggers fire, and the game loop skips its world step. A second
-  // ESC resumes. Only the live run pauses.
+  // ESC resumes. Both playable arenas pause; menu screens do not.
   const pauseOverlay = document.createElement('div');
   pauseOverlay.className = 'screen pause-overlay';
   pauseOverlay.style.display = 'none';
   pauseOverlay.innerHTML =
-    '<h1>Paused</h1><div class="pause-rack"></div><p class="hint">Hit ESC again to continue.</p>';
+    '<h1>Paused</h1><div class="pause-rack"></div><div class="pause-items"></div><button class="pause-resume">RESUME SET</button><p class="hint">Escape also resumes.</p>';
   root.appendChild(pauseOverlay);
   const pauseRack = pauseOverlay.querySelector('.pause-rack') as HTMLElement;
+  const pauseItems = pauseOverlay.querySelector('.pause-items') as HTMLElement;
+  const resumeButton = pauseOverlay.querySelector('.pause-resume') as HTMLButtonElement;
+  const pauseButton = document.createElement('button');
+  pauseButton.className = 'pause-live';
+  pauseButton.textContent = 'PAUSE';
+  pauseButton.setAttribute('aria-label', 'Pause the set');
+  pauseButton.style.display = 'none';
+  root.appendChild(pauseButton);
   function togglePause(): void {
-    if (state !== 'run') return;
+    if (state !== 'run' && state !== 'sandbox') return;
     paused = !paused;
     pauseOverlay.style.display = paused ? '' : 'none';
+    pauseButton.textContent = paused ? 'RESUME' : 'PAUSE';
+    pauseButton.setAttribute('aria-label', paused ? 'Resume the set' : 'Pause the set');
     if (paused) {
       engine.clock.pause();
       engine.holdTransport();
       // Show the current band while paused (the same rack the HUD draws).
-      if (world) hud.renderBand(world.tiers, pauseRack, deactivatedRoles, pendingRoles);
+      if (world) {
+        hud.renderBand(world.tiers, pauseRack, deactivatedRoles, pendingRoles, world.evolved);
+        hud.renderItemDetails(world.items, pauseItems);
+      }
     } else {
       engine.releaseTransport();
       engine.clock.resume();
     }
   }
+  pauseButton.onclick = togglePause;
+  resumeButton.onclick = togglePause;
 
   // debug overlay
   const overlay = document.createElement('div');
@@ -170,15 +193,19 @@ export async function bootGame(
   // state guard. A queued pick is not presented until the previous choice has
   // actually entered on its next bar.
   const pendingUpgrades: number[] = [];
+  const pendingEvolutionChoices: EvolutionDefinition[][] = [];
   let pickAwaitingBar = false;
   let presentQueuedPickAtAudioT: number | null = null;
+  let rerollsLeft = 0;
   // The level-up offers currently dropped on the ground as physical items, in
   // a triangle around the player. Shell-owned (never entities in the
   // simulation), so it stays independent from world entities. Empty = none.
+  type EvolutionPick = { kind: 'evolution'; evolution: EvolutionDefinition };
+  type ShellPick = AnyPickOption | EvolutionPick;
   interface GroundItem {
     x: number;
     y: number;
-    option: PickOption;
+    option: ShellPick;
   }
   let groundPicks: GroundItem[] = [];
 
@@ -189,6 +216,7 @@ export async function bootGame(
 
   function resetUpgradeQueue(): void {
     pendingUpgrades.length = 0;
+    pendingEvolutionChoices.length = 0;
     pickAwaitingBar = false;
     presentQueuedPickAtAudioT = null;
     clearGroundPicks();
@@ -209,24 +237,38 @@ export async function bootGame(
     if (groundPicks.length > 0) return; // one triangle at a time
 
     const w = world;
+    if (pendingEvolutionChoices.length > 0) {
+      const eligibleNow = new Set(w.eligibleEvolutions().map(({ role }) => role));
+      const evolutionOptions = pendingEvolutionChoices.shift()!
+        .filter(({ role }) => eligibleNow.has(role))
+        .slice(0, 3)
+        .map((evolution): EvolutionPick => ({ kind: 'evolution', evolution }));
+      if (evolutionOptions.length > 0) dropGroundPicks(w, evolutionOptions);
+      else presentNextUpgrade();
+      return;
+    }
     // Build-complete rewards have no item to drop and resolve to the heal
     // fallback immediately; the first real offer drops a triangle and stops.
     while (pendingUpgrades.length > 0 && groundPicks.length === 0) {
       pendingUpgrades.shift();
       // Roll the real three-option offer for this reward.
-      const options = rollOffers(w.tiers, Math.random, w.timeS);
-      if (options.length === 0) {
-        w.player.hp = Math.min(RUN.playerHp, w.player.hp + 15);
-        hud.showToast('+15 hp — the track is complete');
-        continue;
-      }
+      const options = rollOffers({
+        tiers: w.tiers,
+        items: w.items,
+        unlockedRoles: meta.unlockedRoles(),
+        unlockedItems: meta.unlockedItemIds(),
+        rng: Math.random,
+        timeS: w.timeS,
+        level: w.level,
+        encore: w.encoreProgress,
+      });
       dropGroundPicks(w, options);
     }
   }
 
   /** Drop the offered options as items in a triangle around the player, shove
    *  the horde clear of them, and fire the cosmetic level-up moment. */
-  function dropGroundPicks(w: RunWorld, options: PickOption[]): void {
+  function dropGroundPicks(w: RunWorld, options: ShellPick[]): void {
     const cx = w.player.x;
     const cy = w.player.y;
     const items: GroundItem[] = [];
@@ -235,19 +277,33 @@ export async function bootGame(
       const option = options[i];
       const deg = LEVELUP.angles[i % LEVELUP.angles.length];
       const rad = (deg * Math.PI) / 180;
-      const x = cx + Math.cos(rad) * LEVELUP.itemRadius;
+      // Portrait screens have less visible world width than the authored
+      // triangle. Clamp the horizontal offset far enough inside the camera for
+      // the 168-unit name/effect plate to stay fully readable, while retaining
+      // more than the fixed 40-unit walk-to-collect distance.
+      const horizontalRoom = Math.max(LEVELUP.itemPickupRadius + 4, w.worldW / 2 - 92);
+      const x = cx + Math.max(-horizontalRoom, Math.min(horizontalRoom, Math.cos(rad) * LEVELUP.itemRadius));
       const y = cy + Math.sin(rad) * LEVELUP.itemRadius;
       items.push({ x, y, option });
-      const prevTier = w.tiers.get(option.role) ?? 0;
-      payload.push({
-        x,
-        y,
-        role: option.role,
-        color: KIT_COLORS[option.role],
-        name: kits.get(option.role)!.name,
-        // New pick reads "1"; a tier-up reads e.g. "2 → 3".
-        level: prevTier > 0 ? `${prevTier} → ${option.tier}` : '1',
-      });
+      if (option.kind === 'weapon') {
+        const prevTier = w.tiers.get(option.role) ?? 0;
+        payload.push({ x, y, role: option.role, color: KIT_COLORS[option.role],
+          name: kits.get(option.role)!.name, level: prevTier > 0 ? `${prevTier} → ${option.tier}` : '1' });
+      } else if (option.kind === 'item') {
+        const definition = ITEMS[option.item];
+        const previous = w.items.get(option.item) ?? 0;
+        payload.push({ x, y, glyph: definition.glyph, color: definition.color,
+          name: definition.name, level: previous > 0 ? `${previous} → ${option.tier}` : '1',
+          effect: definition.levelLines[option.tier - 1] });
+      } else if (option.kind === 'encore') {
+        const role: Role = option.encore === 'heal' ? 'clap' : option.encore === 'damage' ? 'bass' : option.encore === 'move' ? 'kick' : 'chord';
+        const label = option.encore === 'heal' ? 'Emergency Water' : option.encore === 'damage' ? 'Hotter Signal' : option.encore === 'move' ? 'Quick Change' : 'Wider Stage';
+        payload.push({ x, y, role, color: KIT_COLORS[role], name: label,
+          level: option.encore === 'heal' ? '+15 HP' : `+${option.amount}%` });
+      } else {
+        payload.push({ x, y, role: option.evolution.role, color: option.evolution.color,
+          name: option.evolution.name, level: 'EVOLVE' });
+      }
     }
     groundPicks = items;
     view?.setGroundPicks(payload);
@@ -255,14 +311,19 @@ export async function bootGame(
     startLevelMoment(cx, cy);
   }
 
-  /** The satisfying beat: slowScale slow-mo + weapon-volume duck for up to
-   *  momentS, plus a bright cue and a screen pulse. Everything snaps back when
-   *  the player collects a pick, or when momentS elapses, whichever is first. */
+  /** The satisfying beat: normally slowScale slow-mo + a short mix dip. An
+   * earned or live Pressure Drop keeps full momentum, so a reward arriving in
+   * the scheduler's lookahead window cannot weaken the opening downbeat. */
   function startLevelMoment(cx: number, cy: number): void {
-    momentT = LEVELUP.momentS;
-    momentScale = LEVELUP.slowScale;
-    applyClockRate();
-    engine.duckWeapons(LEVELUP.duckDepth, LEVELUP.momentS);
+    if (world?.pressureState === 'armed' || world?.pressureState === 'drop') {
+      endLevelMoment();
+      engine.restoreWeapons(0.025);
+    } else {
+      momentT = LEVELUP.momentS;
+      momentScale = LEVELUP.slowScale;
+      applyClockRate();
+      engine.duckWeapons(LEVELUP.duckDepth, LEVELUP.momentS);
+    }
     engine.playLevelCue();
     hud.levelPulse();
     view?.levelBurst(cx, cy);
@@ -279,21 +340,48 @@ export async function bootGame(
     endLevelMoment();
     const option = item.option;
     clearGroundPicks();
+    if (option.kind === 'item') {
+      w.addItem(option.item, option.tier);
+      const definition = ITEMS[option.item];
+      hud.showToast(`${definition.name} ${option.tier} · ${definition.levelLines[option.tier - 1]}`);
+      hud.levelPulse();
+      view?.flourish(w.player.x, w.player.y);
+      presentNextUpgrade();
+      return;
+    }
+    if (option.kind === 'encore') {
+      w.applyEncoreChoice(option.encore);
+      hud.showToast(option.encore === 'heal' ? '+15 HP' : `Encore ${option.encore} +${option.amount}%`);
+      hud.levelPulse();
+      view?.flourish(w.player.x, w.player.y);
+      presentNextUpgrade();
+      return;
+    }
     pickAwaitingBar = true;
     engine.atNextBar((barAudioTime) => {
       if (world !== w || state !== 'run') return;
       // Audio is scheduled ahead, so its chart must change now for the first
       // note of the new bar. World state waits for the exact heard timestamp
       // below, preserving old-tier damage on any older trigger.
-      engine.setVoiceTier(option.role, option.tier);
+      if (option.kind === 'weapon') engine.setVoiceTier(option.role, option.tier);
+      else {
+        const stillEligible = w.eligibleEvolutions().some(({ role }) => role === option.evolution.role);
+        if (!stillEligible) {
+          pickAwaitingBar = false;
+          presentNextUpgrade();
+          return;
+        }
+        engine.setEvolutionGain(option.evolution.role, option.evolution.gainDb);
+      }
       // Sticky deactivation: a tier-up applies the new tier but does not revive
       // an instrument the developer deliberately turned off. It returns at the
       // higher tier when reactivated.
-      if (!deactivatedRoles.has(option.role)) engine.setVoiceEnabled(option.role, true);
+      if (option.kind === 'weapon' && !deactivatedRoles.has(option.role)) engine.setVoiceEnabled(option.role, true);
       engine.atAudioTime(barAudioTime, () => {
         if (world !== w || state !== 'run') return;
-        w.addWeapon(option.role, option.tier);
-        hud.renderBand(w.tiers, undefined, deactivatedRoles, pendingRoles);
+        if (option.kind === 'weapon') w.addWeapon(option.role, option.tier);
+        else w.evolve(option.evolution.role);
+        hud.renderBand(w.tiers, undefined, deactivatedRoles, pendingRoles, w.evolved);
         refreshTrackOverlay();
         view?.flourish(w.player.x, w.player.y);
         pickAwaitingBar = false;
@@ -304,6 +392,101 @@ export async function bootGame(
     });
   }
 
+  function rerollGroundOffers(): void {
+    const w = world;
+    if (!w || state !== 'run' || rerollsLeft <= 0 || groundPicks.length === 0) return;
+    if (groundPicks.some((pick) => pick.option.kind === 'evolution')) {
+      hud.showToast('Encore Cases cannot be rerolled');
+      return;
+    }
+    rerollsLeft -= 1;
+    clearGroundPicks();
+    const options = rollOffers({
+      tiers: w.tiers,
+      items: w.items,
+      unlockedRoles: meta.unlockedRoles(),
+      unlockedItems: meta.unlockedItemIds(),
+      rng: Math.random,
+      timeS: w.timeS,
+      level: w.level,
+      encore: w.encoreProgress,
+    });
+    dropGroundPicks(w, options);
+    hud.showToast(`REROLL · ${rerollsLeft} left`);
+  }
+  hud.setRerollAction(rerollGroundOffers);
+
+  const updateArenaMinute = (minute: number): void => {
+    engine.clock.bpm = SOUNDSET.bpm * (1 + Math.min(0.08, minute * 0.002));
+    if (minute > 0) hud.showToast(`PRESSURE ${minute} · enemies scale up`);
+  };
+
+  const updateArenaVenue = (venue: string): void => {
+    const id = isVenueId(venue) ? venue : 'alley';
+    void engine.setAudioSet(VENUE_AUDIO_SET[id]);
+    hud.showToast(`NEW VENUE · ${venue.replace(/\b\w/g, (letter) => letter.toUpperCase())}`);
+  };
+
+  /** One Pressure Drop conductor for the run and Sandbox. Full pressure waits
+   * without a penalty, then the positive buff spans exactly one heard phrase:
+   * actions precede same-time weapon triggers at bars 1-4 and at the exit. */
+  const schedulePressureDrop = (w: RunWorld, arena: 'run' | 'sandbox'): void => {
+    const conductorToken = w.newPressureConductor();
+    const conductorIsLive = (): boolean =>
+      world === w && state === arena && w.pressureConductorIsCurrent(conductorToken);
+    hud.showToast('PRESSURE FULL · DROP ON NEXT PHRASE');
+    engine.atNextPhrase((startAudioTime) => {
+      if (!conductorIsLive()) return;
+      // The scheduler is looking ahead. Restore tempo/mix now so the first
+      // Drop downbeat itself cannot be pre-scheduled through a reward dip.
+      endLevelMoment();
+      engine.restoreWeapons(0.025);
+      engine.setPressureDropLift(true, startAudioTime);
+      engine.playPressureDropBar(1, startAudioTime);
+      engine.atAudioTime(startAudioTime, () => {
+        if (!conductorIsLive()) return;
+        // Defend the heard boundary too: any later UI path that introduced a
+        // transient duck after lookahead scheduling is canceled at impact.
+        endLevelMoment();
+        engine.restoreWeapons(0.025);
+        w.beginPressureDrop();
+        w.pulsePressureDropBar(1);
+      });
+
+      const queueBarPulse = (bar: number): void => {
+        engine.atNextBar((barAudioTime) => {
+          if (
+            !conductorIsLive() ||
+            (w.pressureState !== 'armed' && w.pressureState !== 'drop')
+          ) return;
+          // A delayed scheduler may catch up past several grid lines. Advance
+          // world state in timestamp order, but never pile missed accents onto
+          // the first audible instant after the stall.
+          if (barAudioTime > engine.ctx.currentTime + 1e-6) {
+            engine.playPressureDropBar(bar, barAudioTime);
+          }
+          engine.atAudioTime(barAudioTime, () => {
+            if (!conductorIsLive() || w.pressureState !== 'drop') return;
+            w.pulsePressureDropBar(bar);
+          });
+          if (bar < 4) queueBarPulse(bar + 1);
+        });
+      };
+      queueBarPulse(2);
+
+      // Registered from inside the phrase-start flush, so this necessarily
+      // lands on the following phrase boundary: exactly four complete bars.
+      engine.atNextPhrase((finishAudioTime) => {
+        if (!conductorIsLive()) return;
+        engine.setPressureDropLift(false, finishAudioTime);
+        engine.atAudioTime(finishAudioTime, () => {
+          if (!conductorIsLive()) return;
+          w.finishPressureDrop();
+        });
+      }, startAudioTime, true);
+    });
+  };
+
   const events = {
     onLevelUp(level: number): void {
       enqueueUpgrade(level);
@@ -312,10 +495,48 @@ export async function bootGame(
       endRun(false);
     },
     onVictory(): void {
-      endRun(true);
+      // Endless mode has no victory terminal; kept for the shared interface.
     },
     onHit(): void {
       pushDamageFeedback(hud.flashEl, view);
+    },
+    onMinute(minute: number): void {
+      updateArenaMinute(minute);
+    },
+    onEncoreCase(): void {
+      const w = world;
+      if (!w || state !== 'run') return;
+      const choices = w.eligibleEvolutions();
+      if (choices.length === 0) {
+        w.applyEncoreChoice('heal');
+        hud.showToast('Encore Case · +15 HP (no recipe ready)');
+        return;
+      }
+      pendingEvolutionChoices.push(choices);
+      presentNextUpgrade();
+    },
+    onPressureArmed(): void {
+      const w = world;
+      if (!w) return;
+      schedulePressureDrop(w, 'run');
+    },
+    onPressureBreak(active: boolean): void {
+      hud.showToast(active
+        ? 'DROP · DAMAGE +50% · AREA/SHOVE +25% · SHOT SPEED +20% · MOVE +15%'
+        : 'DROP COMPLETE · RECHARGING');
+    },
+    onStageMagnet(result: VacuumResult): void {
+      engine.playStageMagnetCue();
+      const total = result.gems + result.notes;
+      hud.showToast(total > 0
+        ? `STAGE MAGNET · ${total} PICKUPS INBOUND`
+        : 'STAGE MAGNET · FLOOR CLEAR');
+    },
+    onVenueChanged(venue: string): void {
+      updateArenaVenue(venue);
+    },
+    onMilestone(id: string): void {
+      hud.showToast(`MILESTONE · ${id.replace(/([A-Z])/g, ' $1').toUpperCase()}`);
     },
   };
 
@@ -324,12 +545,51 @@ export async function bootGame(
   const sandboxEvents = {
     onLevelUp(): void {},
     onDeath(): void {
-      if (world) world.player.hp = RUN.playerHp;
+      if (world) world.player.hp = world.playerMaxHp;
       hud.showToast('you would have died — hp refilled');
     },
     onVictory(): void {},
     onHit(): void {
       pushDamageFeedback(hud.flashEl, view);
+    },
+    onMinute(minute: number): void {
+      updateArenaMinute(minute);
+    },
+    onEncoreCase(): void {
+      const w = world;
+      if (!w || state !== 'sandbox') return;
+      const evolution = w.eligibleEvolutions()[0];
+      if (!evolution) {
+        w.applyEncoreChoice('heal');
+        hud.showToast('Encore Case · +15 HP (no recipe ready)');
+        return;
+      }
+      w.evolve(evolution.role);
+      engine.setEvolutionGain(evolution.role, evolution.gainDb);
+      hud.renderBand(w.tiers, undefined, undefined, undefined, w.evolved);
+      hud.showToast(`EVOLVED · ${evolution.name}`);
+    },
+    onPressureArmed(): void {
+      const w = world;
+      if (w) schedulePressureDrop(w, 'sandbox');
+    },
+    onPressureBreak(active: boolean): void {
+      hud.showToast(active
+        ? 'DROP · DAMAGE +50% · AREA/SHOVE +25% · SHOT SPEED +20% · MOVE +15%'
+        : 'DROP COMPLETE · RECHARGING');
+    },
+    onStageMagnet(result: VacuumResult): void {
+      engine.playStageMagnetCue();
+      const total = result.gems + result.notes;
+      hud.showToast(total > 0
+        ? `STAGE MAGNET · ${total} PICKUPS INBOUND`
+        : 'STAGE MAGNET · FLOOR CLEAR');
+    },
+    onVenueChanged(venue: string): void {
+      updateArenaVenue(venue);
+    },
+    onMilestone(id: string): void {
+      hud.showToast(`MILESTONE · ${id.replace(/([A-Z])/g, ' $1').toUpperCase()}`);
     },
   };
   let sandboxPanel: SandboxPanel | null = null;
@@ -342,12 +602,15 @@ export async function bootGame(
 
   function resetWorld(): void {
     paused = false;
+    lastWarningMinute = -1;
     resetUpgradeQueue();
     liveAcc = 0;
     setTimeScale(1); // every new run or sandbox starts at normal speed
     syncTimeScaleControl(); // disabled until startRun/startSandbox re-enables it
     setAutoMode('off'); // manual by default; startRun re-arms it if chosen
     pauseOverlay.style.display = 'none';
+    pauseButton.style.display = 'none';
+    pauseButton.textContent = 'PAUSE';
     sandboxPanel?.destroy();
     sandboxPanel = null;
     view?.destroy();
@@ -355,6 +618,7 @@ export async function bootGame(
     world = null;
     resetDeactivations(); // new run starts with every instrument active
     engine.clearBarQueue();
+    engine.resetEvolutionMixes();
     for (const role of ROLES) engine.setVoiceEnabled(role, false);
   }
 
@@ -366,16 +630,24 @@ export async function bootGame(
     setAutoMode(mode);
     const w: RunWorld = new RunWorld(app.screen, events, {
       control: () => playerControl(w),
+      startingItem: meta.state.startItem,
+      unlockedVenues: meta.state.unlockedVenues,
+      secondWind: meta.state.secondWind,
+      headlinerGold: meta.hasGoldPalette(),
     });
     world = w;
+    w.player.hp = w.playerMaxHp;
+    rerollsLeft = meta.state.rerolls;
     w.powerMul = SOUNDSET.powerMul;
     view = new RunView(w, app.screen);
     app.stage.addChild(view.stage);
+    void engine.setAudioSet('midnight-warehouse');
     engine.setVoiceTier(startingKit, 1);
     engine.setVoiceEnabled(startingKit, true);
     w.addWeapon(startingKit, 1);
     hud.showHud(true);
-    hud.renderBand(w.tiers);
+    pauseButton.style.display = '';
+    hud.renderBand(w.tiers, undefined, undefined, undefined, w.evolved);
     state = 'run';
     syncTimeScaleControl(); // arm the timeScale slider for the live run
     void engine.ctx.resume();
@@ -386,36 +658,40 @@ export async function bootGame(
     resetWorld();
     const w: RunWorld = new RunWorld(app.screen, sandboxEvents, {
       scripted: false,
+      rng: mulberry32(0x5eed),
       control: () => playerControl(w),
+      unlockedVenues: VENUE_IDS,
     });
     world = w;
     w.powerMul = SOUNDSET.powerMul;
     w.invincible = true;
     view = new RunView(w, app.screen);
     app.stage.addChild(view.stage);
+    void engine.setAudioSet(VENUE_AUDIO_SET.alley);
     sandboxPanel = mountSandboxPanel(root, engine, w, {
       onLoadout: () => {
-        hud.renderBand(w.tiers, undefined, deactivatedRoles, pendingRoles);
+        hud.renderBand(w.tiers, undefined, deactivatedRoles, pendingRoles, w.evolved);
         refreshTrackOverlay();
       },
       onExit: () => {
         resetWorld();
         engine.clock.stop();
         hud.showHud(false);
-        hud.showStart(startRun, startSandbox);
+        hud.showStart(startRun, startSandbox, meta);
         state = 'start';
         syncTimeScaleControl(); // resetWorld ran while still 'sandbox'; re-grey now
       },
     });
-    hud.showHud(true);
-    hud.renderBand(w.tiers);
+    hud.showHud(true, true);
+    pauseButton.style.display = '';
+    hud.renderBand(w.tiers, undefined, undefined, undefined, w.evolved);
     state = 'sandbox';
     syncTimeScaleControl(); // arm the timeScale slider for the sandbox
     void engine.ctx.resume();
     engine.clock.start();
   }
 
-  function endRun(victory: boolean): void {
+  function endRun(_victory = false): void {
     if (!world || state === 'end') return;
     state = 'end';
     syncTimeScaleControl(); // no live world to scale on the end screen
@@ -424,20 +700,37 @@ export async function bootGame(
     applyGain();
     engine.clock.stop();
     engine.clearBarQueue();
+    hud.showHud(false);
+    pauseButton.style.display = 'none';
+    const settlement: RunSettlement = meta.settleRun({
+      timeS: world.timeS,
+      level: world.level,
+      kills: world.kills,
+      notesCollected: world.notesCollected,
+      headlinersKilled: world.headlinersKilled,
+      evolutionsMade: world.evolutionsMade,
+      milestones: [...world.milestones],
+      damageByRole: world.damageByRole,
+      killsByRole: world.killsByRole,
+      evolutionsByRole: world.evolutionsByRole,
+      venuesVisited: [...world.venuesVisited],
+    });
     hud.showEnd(
-      victory,
+      false,
       {
         timeS: world.timeS,
         kills: world.kills,
         level: world.level,
+        notesCollected: world.notesCollected,
         damageByRole: world.damageByRole,
         killsByRole: world.killsByRole,
       },
       () => {
         hud.showHud(false);
-        hud.showStart(startRun, startSandbox);
+        hud.showStart(startRun, startSandbox, meta);
         state = 'start';
       },
+      settlement,
     );
   }
 
@@ -474,9 +767,12 @@ export async function bootGame(
   const pendingRoles = new Set<Role>();
   function paintBand(): void {
     if (!world) return;
-    hud.renderBand(world.tiers, undefined, deactivatedRoles, pendingRoles);
+    hud.renderBand(world.tiers, undefined, deactivatedRoles, pendingRoles, world.evolved);
     // The pause menu mirrors the same rack; keep it truthful if it's open.
-    if (paused) hud.renderBand(world.tiers, pauseRack, deactivatedRoles, pendingRoles);
+    if (paused) {
+      hud.renderBand(world.tiers, pauseRack, deactivatedRoles, pendingRoles, world.evolved);
+      hud.renderItemDetails(world.items, pauseItems);
+    }
     refreshTrackOverlay();
   }
   function toggleRoleActive(role: Role): void {
@@ -598,11 +894,29 @@ export async function bootGame(
       if (state !== steppingState || world !== w) liveAcc = 0;
       view?.update(visualDt);
       hud.setStatus(
-        w.player.hp / RUN.playerHp,
+        w.player.hp / w.playerMaxHp,
         w.xpProgress(),
         w.level,
         w.timeS,
       );
+      hud.setRunInfo(
+        w.items,
+        w.evolved,
+        w.pressureHeat,
+        w.pressureState,
+        w.pressureDropBar,
+        w.venue,
+        w.venueChapter,
+        rerollsLeft,
+        w.notesCollected,
+      );
+      sandboxPanel?.update();
+      const minute = Math.floor(w.timeS / 60);
+      const second = w.timeS - minute * 60;
+      if (state === 'run' && second >= 57 && lastWarningMinute !== minute) {
+        lastWarningMinute = minute;
+        hud.showToast('PRESSURE RISES IN 3');
+      }
     }
     if (trackOverlayEl.style.display !== 'none') trackOverlay.tick();
     if (overlay.style.display !== 'none' && world) {
@@ -661,6 +975,11 @@ export async function bootGame(
       onClick: () => {
         if (world && state === 'run') world.levelUp();
       },
+    },
+    reroll: {
+      label: 'reroll offer',
+      hotkey: 'R',
+      onClick: rerollGroundOffers,
     },
     kill: {
       label: 'kill screen',
@@ -738,6 +1057,7 @@ export async function bootGame(
       KeyI: debugActions.invincible,
       KeyB: debugActions.autokite,
       KeyX: debugActions.xp,
+      KeyR: debugActions.reroll,
       KeyK: debugActions.kill,
       KeyO: debugActions.overlay,
       KeyC: debugActions.charts,
@@ -749,7 +1069,7 @@ export async function bootGame(
     }
   });
 
-  hud.showStart(startRun, startSandbox);
+  hud.showStart(startRun, startSandbox, meta);
 
   // extend the dev console handle
   Object.assign((window as unknown as { loop: object }).loop, {
