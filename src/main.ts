@@ -20,9 +20,8 @@ async function boot(): Promise<void> {
   root.textContent = 'rendering kits…';
 
   // Keep retired developer-only instruments available, but replace every live
-  // weapon before the engine exists. The same cached soundset map powers later
-  // venue swaps, so the first audible hit can never leak an older rehearsal
-  // voice while the Afterhours render is still loading.
+  // weapon before the engine exists, so the first audible hit can never leak an
+  // older rehearsal voice while the Afterhours render is still loading.
   const [kits, liveKits] = await Promise.all([
     buildKits(SKELETON.rootHz),
     buildSoundsetKit(SKELETON.rootHz),

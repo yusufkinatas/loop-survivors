@@ -24,7 +24,7 @@ import {
 } from './items';
 import { MetaStore, SHOP_OFFERS, type ShopOfferId } from './meta';
 import type { RunWorld } from './run';
-import { endlessScale, VENUES, VENUE_IDS, type VenueId } from './tour';
+import { endlessScale } from './tour';
 
 /** Exported coverage catalogs keep the no-test-framework verification script
  * able to prove that future content cannot silently disappear from the panel. */
@@ -34,9 +34,8 @@ export const SANDBOX_ITEM_CATALOG: readonly ItemId[] = ITEM_IDS;
 export const SANDBOX_EVOLUTION_CATALOG: readonly EvolutionDefinition[] = Object.freeze(
   Object.values(EVOLUTIONS),
 );
-export const SANDBOX_VENUE_CATALOG: readonly VenueId[] = VENUE_IDS;
 
-type TabId = 'combat' | 'build' | 'tour' | 'career';
+type TabId = 'combat' | 'build' | 'career';
 
 export interface SandboxPanel {
   /** Refresh readouts after the world has taken its fixed steps for this frame. */
@@ -126,13 +125,12 @@ export function mountSandboxPanel(
   const tabBar = el('div', 'sb-btns sb-controls', panel);
   tabBar.style.marginLeft = '0';
   tabBar.style.display = 'grid';
-  tabBar.style.gridTemplateColumns = 'repeat(4, minmax(0, 1fr))';
+  tabBar.style.gridTemplateColumns = 'repeat(3, minmax(0, 1fr))';
   const tabButtons = new Map<TabId, HTMLButtonElement>();
   const pages = new Map<TabId, HTMLElement>();
   const tabLabels: Array<[TabId, string]> = [
     ['combat', 'Combat'],
     ['build', 'Build'],
-    ['tour', 'Tour'],
     ['career', 'Career'],
   ];
   for (const [id, label] of tabLabels) {
@@ -147,7 +145,6 @@ export function mountSandboxPanel(
 
   const combat = pages.get('combat')!;
   const build = pages.get('build')!;
-  const tour = pages.get('tour')!;
   const careerPage = pages.get('career')!;
 
   // -----------------------------------------------------------------------
@@ -186,7 +183,7 @@ export function mountSandboxPanel(
 
   const fixtureControls = el('div', 'sb-btns sb-controls', combat);
   fixtureControls.style.marginLeft = '0';
-  button(fixtureControls, 'HEADLINER', () => world.spawnSandboxHeadliner('mantis'));
+  button(fixtureControls, 'ELITE BOSS', () => world.spawnSandboxBoss('mantis'));
   button(fixtureControls, 'MINUTE WAVE', () => world.spawnSandboxWave());
   const invulnButton = button(fixtureControls, 'INVULN', () => {
     world.invincible = !world.invincible;
@@ -194,7 +191,6 @@ export function mountSandboxPanel(
   button(fixtureControls, 'CLEAR ALL', () => {
     engine.clearBarQueue();
     world.clearSandboxEntities();
-    engine.setPressureDropLift(false);
   });
 
   section(combat, 'complete enemy catalog');
@@ -320,75 +316,6 @@ export function mountSandboxPanel(
   }
 
   const buildReadout = el('div', 'sb-hint', build);
-
-  // -----------------------------------------------------------------------
-  // Tour: venue rule/audio callbacks, Pressure lifecycle, and Neon Loop.
-
-  section(tour, 'infinite night tour venues');
-  const venueButtons = new Map<VenueId, HTMLButtonElement>();
-  const venueGrid = el('div', 'sb-btns sb-controls', tour);
-  venueGrid.style.marginLeft = '0';
-  venueGrid.style.flexWrap = 'wrap';
-  for (const id of SANDBOX_VENUE_CATALOG) {
-    const venue = VENUES[id];
-    const venueButton = button(venueGrid, venue.name, () => world.setSandboxVenue(id));
-    venueButton.title = `${venue.ruleName}: ${venue.ruleDescription}`;
-    venueButtons.set(id, venueButton);
-  }
-  button(venueGrid, 'ROUTE GATE DEMO', () => world.installSandboxVenueGate());
-  const venueReadout = el('div', 'sb-hint', tour);
-
-  section(tour, 'pressure drop · four bars');
-  const pressureControls = el('div', 'sb-btns sb-controls', tour);
-  pressureControls.style.marginLeft = '0';
-  pressureControls.style.flexWrap = 'wrap';
-  const pressureArmButton = button(pressureControls, 'ARM', () => {
-    world.cancelPressureConductor();
-    engine.cancelPressureDropAudio();
-    world.pressureHeat = 100;
-    world.pressureState = 'armed';
-    world.pressureDropBar = 0;
-  });
-  const startPressureDrop = (): void => {
-    world.cancelPressureConductor();
-    engine.cancelPressureDropAudio();
-    if (world.pressureState !== 'armed') {
-      world.pressureHeat = 100;
-      world.pressureState = 'armed';
-      world.pressureDropBar = 0;
-    }
-    world.beginPressureDrop();
-    engine.setPressureDropLift(true);
-  };
-  const pressureStartButton = button(pressureControls, 'START DROP', startPressureDrop);
-  const pressureBarButtons = new Map<number, HTMLButtonElement>();
-  for (let bar = 1; bar <= 4; bar++) {
-    pressureBarButtons.set(bar, button(pressureControls, `BAR ${bar}`, () => {
-      if (world.pressureState !== 'drop') startPressureDrop();
-      world.pulsePressureDropBar(bar);
-      engine.playPressureDropBar(bar);
-    }));
-  }
-  const pressureEndButton = button(pressureControls, 'END DROP', () => {
-    world.cancelPressureConductor();
-    world.finishPressureDrop();
-    engine.cancelPressureDropAudio();
-  });
-  button(pressureControls, 'RESET', () => {
-    engine.clearBarQueue();
-    world.clearSandboxEntities();
-    engine.setPressureDropLift(false);
-  });
-  const pressureReadout = el('div', 'sb-hint', tour);
-
-  section(tour, 'neon loop');
-  const neonControls = el('div', 'sb-btns sb-controls', tour);
-  neonControls.style.marginLeft = '0';
-  button(neonControls, 'FIGURE-EIGHT RAIL', () => world.installSandboxNeonLoop());
-  button(neonControls, 'CLEAR RAIL', () => {
-    world.neonRail = null;
-  });
-  const neonReadout = el('div', 'sb-hint', tour);
 
   // -----------------------------------------------------------------------
   // Career: disposable wallet + real shop rules + physical pickup tests.
@@ -580,25 +507,6 @@ export function mountSandboxPanel(
       ` · speed ×${mods.projectileSpeedMul.toFixed(2)} · pierce +${mods.extraPierce}` +
       ` · bounce ${mods.bounceCount} · area ×${mods.areaMul.toFixed(2)}` +
       ` · regen ${mods.hpRegenPerSecond.toFixed(1)} HP/s`;
-    for (const [id, venueButton] of venueButtons) venueButton.classList.toggle('on', world.venue === id);
-    const venue = VENUES[world.venue];
-    venueReadout.textContent = `${venue.ruleName}: ${venue.ruleDescription}`;
-    const dropBar = Math.max(0, Math.min(4, Math.floor(world.pressureDropBar)));
-    pressureArmButton.classList.toggle('on', world.pressureState === 'armed');
-    pressureStartButton.classList.toggle('on', world.pressureState === 'drop');
-    pressureEndButton.classList.toggle('on', world.pressureState === 'cooldown');
-    for (const [bar, control] of pressureBarButtons) {
-      control.classList.toggle('on', world.pressureState === 'drop' && dropBar === bar);
-    }
-    pressureReadout.textContent = world.pressureState === 'drop'
-      ? `DROP ${Math.max(1, dropBar)}/4 · +50% damage · +25% area/knockback · +20% projectile speed · +15% movement`
-      : world.pressureState === 'armed'
-        ? 'DROP READY · starts on the next complete four-bar phrase'
-        : `${world.pressureState.toUpperCase()} · heat ${Math.round(world.pressureHeat)}%` +
-          (world.pressureState === 'cooldown' ? ` · ${world.pressureCooldownT.toFixed(1)}s cooldown` : '');
-    neonReadout.textContent = world.neonRail
-      ? `${world.neonRail.phase.toUpperCase()} rail · ${world.neonRail.points.length} points · ${world.neonRail.lifeS.toFixed(1)}s`
-      : 'No active rail.';
     refreshStats();
     refreshCareer();
   }
@@ -608,8 +516,6 @@ export function mountSandboxPanel(
   return {
     update: refresh,
     destroy(): void {
-      // Never allow a sandbox Pressure mix lift to leak back to the title/run.
-      engine.setPressureDropLift(false);
       panel.remove();
     },
   };

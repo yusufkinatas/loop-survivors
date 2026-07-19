@@ -14,7 +14,7 @@ export interface StageWave {
 }
 
 export type StageEvent =
-  | { atS: number; type: 'boss'; kind: 'glowingBat' | 'mantis'; rewardChance: number }
+  | { atS: number; type: 'boss'; kind: 'glowingBat' | 'mantis' }
   | { atS: number; type: 'batSweep'; kind: 'batSwarm'; count: number; chance: number }
   | { atS: number; type: 'flowerWall'; kind: 'flower'; count: number; durationS: number };
 
@@ -36,20 +36,20 @@ export const STAGE_WAVES: readonly StageWave[] = [
 ] as const;
 
 export const STAGE_EVENTS: readonly StageEvent[] = [
-  { atS: 60, type: 'boss', kind: 'glowingBat', rewardChance: 0.3 },
+  { atS: 60, type: 'boss', kind: 'glowingBat' },
   { atS: 125, type: 'batSweep', kind: 'batSwarm', count: 150, chance: 1 },
   { atS: 130, type: 'batSweep', kind: 'batSwarm', count: 150, chance: 1 },
   { atS: 135, type: 'batSweep', kind: 'batSwarm', count: 150, chance: 1 },
-  { atS: 180, type: 'boss', kind: 'glowingBat', rewardChance: 0.43 },
+  { atS: 180, type: 'boss', kind: 'glowingBat' },
   { atS: 185, type: 'batSweep', kind: 'batSwarm', count: 150, chance: 0.1 },
   { atS: 190, type: 'batSweep', kind: 'batSwarm', count: 150, chance: 0.1 },
   { atS: 245, type: 'batSweep', kind: 'batSwarm', count: 150, chance: 0.1 },
   { atS: 250, type: 'batSweep', kind: 'batSwarm', count: 150, chance: 0.1 },
-  { atS: 300, type: 'boss', kind: 'mantis', rewardChance: 1 },
+  { atS: 300, type: 'boss', kind: 'mantis' },
   { atS: 300, type: 'flowerWall', kind: 'flower', count: 300, durationS: 30 },
   { atS: 365, type: 'batSweep', kind: 'batSwarm', count: 150, chance: 0.1 },
   { atS: 370, type: 'batSweep', kind: 'batSwarm', count: 150, chance: 0.1 },
-  { atS: 420, type: 'boss', kind: 'glowingBat', rewardChance: 0.5635 },
+  { atS: 420, type: 'boss', kind: 'glowingBat' },
   { atS: 425, type: 'batSweep', kind: 'batSwarm', count: 150, chance: 0.8 },
   { atS: 430, type: 'batSweep', kind: 'batSwarm', count: 150, chance: 0.8 },
   { atS: 435, type: 'batSweep', kind: 'batSwarm', count: 150, chance: 0.8 },
