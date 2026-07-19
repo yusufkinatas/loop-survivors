@@ -164,6 +164,8 @@ export function enemyContext(e: Enemy, shieldOn: boolean, frame: number): Graphi
       case 'skeleton': hushWalker(g, r, frame, true); break;
       case 'greenMudman': hushCabinet(g, r, false, frame); break;
       case 'grayMudman': hushCabinet(g, r, true, frame); break;
+      // The practice target is a cabinet with its step pinned: it never walks.
+      case 'dummy': hushCabinet(g, r, false, 0); break;
       case 'ghost': {
         // Three displaced glass panes sell phasing without a face or sheet tail.
         const offset = frame ? r * 0.18 : -r * 0.18;

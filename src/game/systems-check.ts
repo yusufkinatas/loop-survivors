@@ -201,6 +201,7 @@ const expectedEnemyLabels = {
   glowingBat: 'Signal Crown',
   mantis: 'The Shear',
   batSwarm: 'Static Rush',
+  dummy: 'Practice Cabinet',
 } satisfies Record<EnemyKind, string>;
 assert.deepEqual(ENEMY_LABELS, expectedEnemyLabels,
   'every simulation archetype needs its complete fresh player-facing identity');

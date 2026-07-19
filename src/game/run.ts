@@ -195,6 +195,27 @@ function reflectAcrossSegment(vx: number, vy: number, a: Point, b: Point): { x: 
   return { x: vx - 2 * dot * nx, y: vy - 2 * dot * ny };
 }
 
+/** Rolling window for the sandbox dummy's live DPS. Weapons fire on the beat
+ * grid, so a one-second average would jitter between "kick landed" and
+ * "nothing landed"; four bars at 122 BPM is ~7.9s, so 8s reads steady. */
+export const DUMMY_DPS_WINDOW = 8;
+const DUMMY_DPS_BUCKET = 0.25;
+const DUMMY_DPS_BUCKETS = Math.round(DUMMY_DPS_WINDOW / DUMMY_DPS_BUCKET);
+
+/** Per-dummy damage bookkeeping behind the floating readout. */
+export interface DummyReadout {
+  /** HP restored after every hit, so the dummy never reaches zero. */
+  spawnHp: number;
+  /** Cumulative damage taken since spawn. */
+  total: number;
+  /** Seconds alive since spawn. */
+  aliveT: number;
+  /** Ring buffer of per-bucket damage covering DUMMY_DPS_WINDOW seconds. */
+  buckets: number[];
+  head: number;
+  bucketT: number;
+}
+
 export interface Enemy {
   id: number;
   kind: EnemyKind;
@@ -259,6 +280,11 @@ export interface Enemy {
   railCooldownT: number;
   prevX: number;
   prevY: number;
+  /** Sandbox practice target: undying, immobile, harmless. A flag keeps the
+   *  hot movement loops off a string compare. */
+  dummy: boolean;
+  /** Dummy-only damage bookkeeping; null on every ordinary enemy. */
+  readout: DummyReadout | null;
 }
 
 export interface Projectile {
@@ -1302,6 +1328,7 @@ export class RunWorld {
     }
 
     this.moveEnemies(dt);
+    this.updateDummies(dt);
     this.applyNeonRailToEnemies(dt);
     this.recycleEnemies();
     this.hash.clear();
@@ -1353,6 +1380,11 @@ export class RunWorld {
     let hitter: Enemy | null = null;
     for (const e of near) {
       if (e.dead || !circlesOverlap(p, e)) continue;
+      // Dummies are furniture the player walks through: skipping here is what
+      // keeps them from being shoved by the body AND from taking the `hitter`
+      // slot (damagePlayer floors at 1, so `damage: 0` alone would still cost
+      // a point of HP and a set of i-frames, and would mask a real enemy).
+      if (e.dummy) continue;
       // Solid player/enemy circles. The reference player body is immovable,
       // so resolution pushes the enemy to the nearest legal edge while input
       // retains its immediate, unsmoothed feel.
@@ -1649,7 +1681,10 @@ export class RunWorld {
     const body = this.nextEnemyBody(kind, stats.radius);
     const minute = Math.floor(this.timeS / 60);
     const scale = endlessScale(minute);
-    const amped = spawnClass === 'regular' && minute >= 12 &&
+    const dummy = kind === 'dummy';
+    // A measurement prop must look identical whenever it is spawned: no gold
+    // amped outline, no band danger diamonds, no minute-scaled stats drift.
+    const amped = !dummy && spawnClass === 'regular' && minute >= 12 &&
       this.rng() < scale.ampedChance;
     const scaledHp = stats.hp * scale.hpMul * (amped ? 2.2 : 1);
     const enemy: Enemy = {
@@ -1665,7 +1700,7 @@ export class RunWorld {
       damage: stats.damage * scale.damageMul * (amped ? 1.25 : 1),
       xp: stats.xp * scale.xpMul * (amped ? 3 : 1),
       color: stats.color,
-      band: conf.boss ? 3 : Math.min(3, Math.floor(minute / 5)),
+      band: dummy ? 0 : conf.boss ? 3 : Math.min(3, Math.floor(minute / 5)),
       flashT: 0,
       dead: false,
       dashT: 0,
@@ -1695,6 +1730,17 @@ export class RunWorld {
       railCooldownT: 0,
       prevX: x - body.footOffsetX,
       prevY: y - body.footOffsetY,
+      dummy,
+      readout: dummy
+        ? {
+            spawnHp: scaledHp,
+            total: 0,
+            aliveT: 0,
+            buckets: new Array<number>(DUMMY_DPS_BUCKETS).fill(0),
+            head: 0,
+            bucketT: 0,
+          }
+        : null,
     };
     this.enemies.push(enemy);
     return enemy;
@@ -1789,6 +1835,9 @@ export class RunWorld {
       if (e.railSlowT > 0) speed *= 0.70;
       if (this.venue === 'basement' && this.inBasementPuddle(e.x, e.y)) speed *= 0.70;
       if (e.flashT > 0) e.flashT -= dt;
+      // After the flash decay, never before it: the view tints on flashT, so
+      // an early skip would leave a hit dummy permanently solid white.
+      if (e.dummy) continue;
 
       // Weapon knockback overrides everything: ride the push, don't chase.
       if (e.knockT > 0) {
@@ -1924,10 +1973,16 @@ export class RunWorld {
         const push = (target - d) * 0.5;
         const nx = dx / d;
         const ny = dy / d;
-        e.x += nx * push;
-        e.y += ny * push;
-        o.x -= nx * push;
-        o.y -= ny * push;
+        // The separation is symmetric, so each side is skipped on its own: a
+        // dummy can be either member of the pair.
+        if (!e.dummy) {
+          e.x += nx * push;
+          e.y += ny * push;
+        }
+        if (!o.dummy) {
+          o.x -= nx * push;
+          o.y -= ny * push;
+        }
       }
     }
   }
@@ -1964,6 +2019,19 @@ export class RunWorld {
       e.flashT = 0.08;
       amount -= absorbed;
       if (amount <= 0) return; // shield held
+    }
+    // The practice target absorbs everything, including killVisible's
+    // Infinity: record the hit, refill, and leave before the death path so it
+    // never drops a gem, a note, a magnet, an Encore Case, a death fx, an
+    // upgrade roll, or a kill count.
+    if (e.dummy && e.readout) {
+      const landed = Number.isFinite(amount) ? amount : 0;
+      e.readout.total += landed;
+      e.readout.buckets[e.readout.head] += landed;
+      if (source) this.damageByRole[source] = (this.damageByRole[source] ?? 0) + landed;
+      e.hp = e.readout.spawnHp;
+      e.flashT = 0.08;
+      return;
     }
     // Effective damage only: overkill on a 3hp swarmer must not count as a
     // 34-damage contribution, or AoE sweeps inflate their share.
@@ -2009,6 +2077,41 @@ export class RunWorld {
     }
   }
 
+  /** Advance every practice target's rolling DPS window. Rotating the ring
+   *  buffer is what makes the readout fall back toward zero when the guns go
+   *  quiet instead of freezing on its last value. */
+  private updateDummies(dt: number): void {
+    for (const e of this.enemies) {
+      if (!e.dummy || e.dead || !e.readout) continue;
+      const r = e.readout;
+      r.aliveT += dt;
+      r.bucketT += dt;
+      while (r.bucketT >= DUMMY_DPS_BUCKET) {
+        r.bucketT -= DUMMY_DPS_BUCKET;
+        r.head = (r.head + 1) % r.buckets.length;
+        r.buckets[r.head] = 0;
+      }
+    }
+  }
+
+  /** Live damage per second over the trailing DUMMY_DPS_WINDOW. Divides by the
+   *  time actually elapsed while the window is still filling, so a fresh dummy
+   *  does not read artificially low. */
+  dummyDps(e: Enemy): number {
+    if (!e.readout) return 0;
+    let sum = 0;
+    for (const bucket of e.readout.buckets) sum += bucket;
+    return sum / Math.max(DUMMY_DPS_BUCKET, Math.min(e.readout.aliveT, DUMMY_DPS_WINDOW));
+  }
+
+  /** Sandbox helper: drop every practice target without the collateral of
+   *  CLEAR ALL (projectiles, zones, gems, notes, cases, the conductor). */
+  clearDummies(): void {
+    for (let i = this.enemies.length - 1; i >= 0; i--) {
+      if (this.enemies[i].dummy) this.enemies.splice(i, 1);
+    }
+  }
+
   private reapEnemies(): void {
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       if (this.enemies[i].dead) this.enemies.splice(i, 1);
@@ -2028,6 +2131,9 @@ export class RunWorld {
     const far2 = far * far;
     for (const e of this.enemies) {
       if (e.dead) continue;
+      // Dummies are placed deliberately: neither cull them nor teleport them,
+      // or walking away from a measurement would silently delete the target.
+      if (e.dummy) continue;
       if (e.despawnAt > 0 && this.timeS >= e.despawnAt) {
         e.dead = true;
         continue;
@@ -2445,6 +2551,7 @@ export class RunWorld {
       well.burstT -= dt;
       for (const enemy of this.enemies) {
         if (enemy.dead) continue;
+        if (enemy.dummy) continue;
         const dx = well.x - enemy.x;
         const dy = well.y - enemy.y;
         const distance = Math.hypot(dx, dy);

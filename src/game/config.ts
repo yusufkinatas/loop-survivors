@@ -127,7 +127,9 @@ export type EnemyKind =
   | 'flower'
   | 'glowingBat'
   | 'mantis'
-  | 'batSwarm';
+  | 'batSwarm'
+  // Sandbox-only measurement prop. Never appears in a stage or endless row.
+  | 'dummy';
 
 /** Complete simulation catalog. The sandbox consumes this directly so an
  * opening-act change cannot hide endless-tour enemies from its controls. */
@@ -135,6 +137,7 @@ export const ALL_ENEMY_KINDS: readonly EnemyKind[] = [
   'bat', 'redBat', 'redBat2', 'zombie', 'skeleton', 'ghost',
   'greenMudman', 'grayMudman', 'flower', 'glowingBat', 'mantis', 'batSwarm',
   'swarmer', 'tank', 'darter', 'splitter', 'charger', 'circler', 'shielded', 'elite',
+  'dummy',
 ] as const;
 
 export interface EnemyConf {
@@ -313,6 +316,19 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
     fixedDirection: true,
     knockback: 1,
   },
+  /** Sandbox measurement prop: undying, immobile, harmless. RunWorld special-
+   *  cases it in every mover and in damageEnemy; the values here only need to
+   *  give it a Moss Cabinet body and a colour that reads as scenery. */
+  dummy: {
+    radius: legacyEnemyRadius(34),
+    speed: 0,
+    hp: 1,
+    power: 0,
+    damage: 0,
+    xp: 0,
+    color: 0x8ba7a2,
+    knockback: 0,
+  },
   /** Spawn ring distance beyond the larger screen half-extent. */
   spawnMargin: 128,
   /** Soft cap on the steady-state horde (VS-density target, see gate B
@@ -367,6 +383,7 @@ export const ENEMY_LABELS: Record<EnemyKind, string> = {
   glowingBat: 'Signal Crown',
   mantis: 'The Shear',
   batSwarm: 'Static Rush',
+  dummy: 'Practice Cabinet',
 };
 
 /** Base spawn-time stats before endless-minute scaling. Contact `damage` is

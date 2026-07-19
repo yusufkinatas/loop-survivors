@@ -188,6 +188,10 @@ export function mountSandboxPanel(
   fixtureControls.style.marginLeft = '0';
   button(fixtureControls, 'HEADLINER', () => world.spawnSandboxHeadliner('mantis'));
   button(fixtureControls, 'MINUTE WAVE', () => world.spawnSandboxWave());
+  button(fixtureControls, 'SPAWN DUMMY', () => {
+    world.spawnEnemyAt('dummy', world.player.x + 190, world.player.y);
+  });
+  button(fixtureControls, 'CLEAR DUMMIES', () => world.clearDummies());
   const invulnButton = button(fixtureControls, 'INVULN', () => {
     world.invincible = !world.invincible;
   });
