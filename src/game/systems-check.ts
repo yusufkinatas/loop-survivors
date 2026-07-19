@@ -387,10 +387,57 @@ hatWorld.invincible = true;
 hatWorld.addWeapon('hat', 1);
 const weakestEnemy = hatWorld.spawnEnemyAt('bat', 80, 0)!;
 assert.equal(weakestEnemy.hp, 1, 'the Static Mite fixture should remain the 1-HP baseline');
+// Hi-hat fires along the walk heading now, which defaults to +x, so the target
+// has to sit ON that line. spawnEnemyAt takes a sprite-feet position and offsets
+// the circle center off-axis, so pin the center dead ahead of the player.
+weakestEnemy.x = hatWorld.player.x + 80;
+weakestEnemy.y = hatWorld.player.y;
 hatWorld.fireTrigger({ role: 'hat', time: 0, velocity: 1, step: 0, variant: 'closed' });
 for (let i = 0; i < 60 && !weakestEnemy.dead; i++) hatWorld.update(1 / 120);
 assert.equal(weakestEnemy.dead, true,
   'one base tier-I hi-hat trigger must be able to kill the weakest enemy');
+
+// Hi-hat is the Knife: it fires along the walk heading with zero scatter, and
+// it never consults enemy positions. Walking one direction must give the exact
+// same angle every trigger, with or without anything on screen.
+const laneWorld = new RunWorld({ width: 1280, height: 720 }, events, {
+  scripted: false,
+  fx: false,
+  rng: () => 0.5,
+  control: () => ({ x: 0, y: -1 }),
+});
+laneWorld.invincible = true;
+laneWorld.addWeapon('hat', 1);
+laneWorld.update(1 / 120);
+// An enemy far off the heading must not bend the shot.
+laneWorld.spawnEnemyAt('bat', 300, 0);
+const shotAngles: number[] = [];
+for (let i = 0; i < 2; i++) {
+  laneWorld.projectiles.length = 0;
+  laneWorld.fireTrigger({ role: 'hat', time: 0, velocity: 1, step: 0, variant: 'closed' });
+  const shot = laneWorld.projectiles[0];
+  assert.ok(shot, 'a hi-hat trigger must spawn a chip');
+  shotAngles.push(Math.atan2(shot.vy, shot.vx));
+}
+assert.equal(shotAngles[0], shotAngles[1],
+  'consecutive hi-hat shots on a constant heading must share one exact angle');
+assert.ok(Math.abs(shotAngles[0] - -Math.PI / 2) < 1e-9,
+  'hi-hat must fire along the walk heading, not at the nearest enemy');
+
+// No enemies at all: still fires along the heading, never a random fallback.
+const emptyLane = new RunWorld({ width: 1280, height: 720 }, events, {
+  scripted: false,
+  fx: false,
+  rng: () => 0.5,
+  control: () => ({ x: -1, y: 0 }),
+});
+emptyLane.invincible = true;
+emptyLane.addWeapon('hat', 1);
+emptyLane.update(1 / 120);
+emptyLane.projectiles.length = 0;
+emptyLane.fireTrigger({ role: 'hat', time: 0, velocity: 1, step: 0, variant: 'closed' });
+assert.ok(Math.abs(Math.atan2(emptyLane.projectiles[0].vy, emptyLane.projectiles[0].vx) - Math.PI) < 1e-9,
+  'hi-hat with an empty screen must still rail along the walk direction');
 
 const world = new RunWorld({ width: 1280, height: 720 }, events, {
   rng: () => 0.5,

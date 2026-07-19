@@ -1200,6 +1200,8 @@ export class RunView {
     const liveTrails = new Set<Projectile>();
     let evolvedHatTrails = 0;
     for (const projectile of this.world.projectiles) {
+      // Cap held at 64 on purpose: the lane's chips all share one angle, so the
+      // nearest 64 already draw the whole rail — more would only overdraw it.
       const evolvedHat = projectile.role === 'hat' && roleIsEvolved(this.world, 'hat') && evolvedHatTrails++ < 64;
       if (!TRAIL_ROLES.has(projectile.role) && !evolvedHat) continue;
       liveTrails.add(projectile);
@@ -1212,9 +1214,11 @@ export class RunView {
       if (points.length > TRAIL_POINTS * 2) points.splice(0, points.length - TRAIL_POINTS * 2);
       for (let i = 0; i < points.length; i += 2) {
         const progress = (i + 2) / points.length;
-        const size = Math.max(1, snap(1 + progress * (evolvedHat ? 2 : 3)));
+        // The evolved hat is a lane now, so its streak reads brighter than the
+        // old ricochet trail — the rail itself is the weapon's tell.
+        const size = Math.max(1, snap(1 + progress * 3));
         this.trailGfx.rect(points[i] - Math.floor(size / 2), points[i + 1] - Math.floor(size / 2), size, size)
-          .fill({ color: projectile.color, alpha: progress * (evolvedHat ? 0.28 : 0.42) });
+          .fill({ color: projectile.color, alpha: progress * (evolvedHat ? 0.5 : 0.42) });
       }
     }
     for (const projectile of this.trails.keys()) if (!liveTrails.has(projectile)) this.trails.delete(projectile);

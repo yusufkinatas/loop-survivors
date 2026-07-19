@@ -230,8 +230,8 @@ export const EVOLUTIONS: Record<EvolutionId, EvolutionDefinition> = {
     description: 'An instant 900-range beam with infinite pierce; every fourth hit fires twin rails.', signature: 'infinite rail beam',
   },
   prismRain: {
-    id: 'prismRain', role: 'hat', item: 'mirrorball', name: 'Prism Rain', color: 0x6febff, gainDb: -3,
-    description: 'Faster blades redirect between distinct targets in a controlled ricochet storm.', signature: 'smart ricochet rain',
+    id: 'prismRain', role: 'hat', item: 'mirrorball', name: 'Strobe Lane', color: 0x6febff, gainDb: -3,
+    description: 'A barrage of chips rails down the way you walk, piercing everything in the lane.', signature: 'forward damage lane',
   },
   subquake: {
     id: 'subquake', role: 'bass', item: 'heavyAmp', name: 'Subquake', color: 0xbb91ff, gainDb: 0,

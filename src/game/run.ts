@@ -17,6 +17,7 @@ import {
   DAMAGE_FEEDBACK,
   DARTER,
   ENEMIES,
+  HAT_LANE,
   MAD_FOREST_FRAMES,
   MAX_ALIVE_HARD,
   ORBIT_REHIT_S,
@@ -519,6 +520,11 @@ export class RunWorld {
     radius: RUN.playerRadius,
     iframesT: 0,
     facingX: 1 as 1 | -1,
+    /** Persistent 2D walk heading (unit vector). Holds its last value while
+     *  standing still so directional weapons never lose their line. Starts
+     *  pointing right, consistent with facingX: 1. */
+    moveDirX: 1,
+    moveDirY: 0,
   };
   level = 1;
   xp = 0;
@@ -856,10 +862,16 @@ export class RunWorld {
         }
         for (const dir of this.aimFan(0.08)) this.spawnProjectile(t.role, dir, conf, color, v);
         break;
-      case 'hat':
+      case 'hat': {
+        // Knife: fires straight along the walk heading with zero scatter, so
+        // the player aims by steering. Never consults nearestEnemy — with an
+        // empty screen it still rails along the direction of travel.
+        // Double Take's extra shots fan around the heading, never off it.
+        for (const dir of this.fanAround(this.moveDir())) this.spawnProjectile('hat', dir, conf, color, v);
+        break;
+      }
       case 'lead': {
-        const spread = t.role === 'hat' ? 0.35 : 0.08;
-        for (const dir of this.aimFan(spread)) this.spawnProjectile(t.role, dir, conf, color, v);
+        for (const dir of this.aimFan(0.08)) this.spawnProjectile(t.role, dir, conf, color, v);
         break;
       }
     }
@@ -1364,6 +1376,13 @@ export class RunWorld {
     const a = this.control();
     if (a.x > 0.001) this.player.facingX = 1;
     else if (a.x < -0.001) this.player.facingX = -1;
+    // Persist the walk heading for directional weapons (hi-hat). Standing
+    // still keeps the last heading rather than zeroing it.
+    const mag = Math.hypot(a.x, a.y);
+    if (mag > 0.001) {
+      this.player.moveDirX = a.x / mag;
+      this.player.moveDirY = a.y / mag;
+    }
     let venueMul = 1;
     if (this.venue === 'warehouse' && !this.inVenueLight(this.player.x, this.player.y)) venueMul *= 0.92;
     if (this.venue === 'basement' && this.inBasementPuddle(this.player.x, this.player.y)) venueMul *= 0.90;
@@ -2322,7 +2341,13 @@ export class RunWorld {
    *  Take's extra shots alternate to either side of the aim line so the volley
    *  stays centred on the target instead of drifting off it. */
   private aimFan(spread: number): Array<{ x: number; y: number }> {
-    const base = this.aimDir(spread);
+    return this.fanAround(this.aimDir(spread));
+  }
+
+  /** Spread this trigger's shots around an already-chosen direction. Split out
+   *  of aimFan so the hat can fan around its walk heading without ever
+   *  consulting nearestEnemy. */
+  private fanAround(base: { x: number; y: number }): Array<{ x: number; y: number }> {
     const count = 1 + this.buildMods.extraProjectiles;
     if (count <= 1) return [base];
     const baseAngle = Math.atan2(base.y, base.x);
@@ -2333,6 +2358,12 @@ export class RunWorld {
       dirs.push({ x: Math.cos(ang), y: Math.sin(ang) });
     }
     return dirs;
+  }
+
+  /** The player's walk heading as a unit vector. No targeting, no jitter: two
+   *  triggers while holding one direction produce the exact same angle. */
+  private moveDir(): { x: number; y: number } {
+    return { x: this.player.moveDirX, y: this.player.moveDirY };
   }
 
   /** Base projectile with all fields defaulted; specialized spawners tweak
@@ -2386,11 +2417,16 @@ export class RunWorld {
     velocity: number,
   ): void {
     const pr = this.baseProjectile(role, conf, color, conf.damage * (0.75 + 0.5 * velocity));
-    if (role === 'hat' && pr.evolved) {
+    // Evolved hi-hat is a lane, not a ricochet: every chip rails straight
+    // through the whole line it is fired down. Infinite pierce plus double
+    // life is the reach; the stagger below makes the stream read continuous.
+    const laneHat = role === 'hat' && pr.evolved;
+    if (laneHat) {
       pr.damage *= 1.30;
-      pr.speed *= 1.50;
-      pr.maxPierce = 4;
-      pr.pierce = 4;
+      pr.speed *= HAT_LANE.speedMul;
+      pr.maxPierce = Infinity;
+      pr.pierce = Infinity;
+      pr.lifeS *= HAT_LANE.lifetimeMul;
     }
     if (role === 'lead' && pr.evolved) {
       pr.damage *= 1.40;
@@ -2402,11 +2438,17 @@ export class RunWorld {
         pr.radius = Math.max(12, pr.radius * 1.7);
       }
     }
-    pr.vx = dir.x * conf.speed!;
-    pr.vy = dir.y * conf.speed!;
-    if (role === 'hat' && pr.evolved) {
-      pr.vx *= 1.50;
-      pr.vy *= 1.50;
+    // pr.speed above already carries the lane multiplier, so deriving the
+    // velocity from it keeps the `speed` field equal to |v| — applyRooftopWind
+    // reads that field for its push magnitude.
+    pr.vx = dir.x * pr.speed;
+    pr.vy = dir.y * pr.speed;
+    if (laneHat) {
+      // Stagger successive chips forward along the lane so a 16th-note wall
+      // draws as one continuous rail instead of a clump at the player.
+      const step = HAT_LANE.stagger[(this.triggerCounts.hat ?? 0) % HAT_LANE.stagger.length];
+      pr.x += dir.x * step;
+      pr.y += dir.y * step;
     }
     this.applyRooftopWind(pr);
     this.pushProjectile(pr);
@@ -2486,7 +2528,10 @@ export class RunWorld {
   }
 
   private applyRooftopWind(projectile: Projectile): void {
-    if (this.venue !== 'rooftop' || projectile.role === 'arp') return;
+    // Hi-hat is exempt on purpose: it is the one weapon the player aims by
+    // steering, so its lane has to point exactly where they walk in every
+    // venue. Wind bending it would read as the controls lying.
+    if (this.venue !== 'rooftop' || projectile.role === 'arp' || projectile.role === 'hat') return;
     const angle = (this.venueChapter * 1.7 + Math.floor(this.timeS / 20) * 0.37) % (Math.PI * 2);
     const push = projectile.speed * 0.18;
     projectile.vx += Math.cos(angle) * push;
@@ -2771,9 +2816,6 @@ export class RunWorld {
           this.fx?.push({ type: 'spark', x: e.x, y: e.y, color: pr.color, n: 4, spread: 12 });
         // Orbiters gate re-hits by time, so they never spend pierce on a hit.
         if (pr.role === 'arp') continue;
-        if (pr.role === 'hat' && pr.evolved && pr.hit.size < 4) {
-          this.retargetPrism(pr);
-        }
         pr.pierce -= 1;
         if (pr.pierce <= 0) {
           pr.lifeS = 0;
@@ -2785,28 +2827,6 @@ export class RunWorld {
         this.projectiles.splice(i, 1);
       }
     }
-  }
-
-  private retargetPrism(projectile: Projectile): void {
-    let best: Enemy | null = null;
-    let bestD = 260 * 260;
-    for (const enemy of this.enemies) {
-      if (enemy.dead || projectile.hit.has(enemy)) continue;
-      const dx = enemy.x - projectile.x;
-      const dy = enemy.y - projectile.y;
-      const d2 = dx * dx + dy * dy;
-      if (d2 < bestD) {
-        bestD = d2;
-        best = enemy;
-      }
-    }
-    if (!best) return;
-    const dx = best.x - projectile.x;
-    const dy = best.y - projectile.y;
-    const d = Math.hypot(dx, dy) || 1;
-    const speed = Math.hypot(projectile.vx, projectile.vy) || projectile.speed;
-    projectile.vx = (dx / d) * speed;
-    projectile.vy = (dy / d) * speed;
   }
 
   private reflectProjectileFromRail(projectile: Projectile, old: Point): void {
@@ -2831,7 +2851,6 @@ export class RunWorld {
         projectile.bounces -= 1;
         projectile.damage *= projectile.bounceRetention;
       }
-      if (projectile.role === 'hat' && projectile.evolved) this.retargetPrism(projectile);
       return;
     }
   }
@@ -2856,7 +2875,6 @@ export class RunWorld {
     if (!bounced) return;
     projectile.bounces -= 1;
     projectile.damage *= projectile.bounceRetention;
-    if (projectile.role === 'hat' && projectile.evolved) this.retargetPrism(projectile);
   }
 
   private spawnZone(

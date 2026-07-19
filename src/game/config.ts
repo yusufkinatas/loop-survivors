@@ -705,14 +705,16 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
     { damage: 9, speed: 680, radius: 8, lifetimeS: 1.5, pierce: 4 },
     { damage: 13, speed: 720, radius: 8, lifetimeS: 1.5, pierce: 6 },
   ],
-  // Dense stream of weak fast chips, wide scatter. Density IS the ladder;
-  // per-trigger damage barely moves. Tier I starts at 2 so even the quietest
-  // velocity roll (0.75x) reliably clears a 1-HP Static Mite in one hit.
+  // Dense stream of weak fast chips fired straight down the walk heading, no
+  // scatter — the player aims by steering. Density IS the ladder; per-trigger
+  // damage barely moves. Tier I starts at 2 so even the quietest velocity roll
+  // (0.75x) reliably clears a 1-HP Static Mite in one hit. The pierce ladder
+  // pays for losing auto-aim: a straight line has to be worth walking down.
   hat: [
-    { damage: 2, speed: 440, radius: 3, lifetimeS: 0.8, pierce: 1 },
-    { damage: 2, speed: 450, radius: 3, lifetimeS: 0.85, pierce: 1 },
-    { damage: 2, speed: 460, radius: 3, lifetimeS: 0.9, pierce: 1 },
-    { damage: 3, speed: 480, radius: 3, lifetimeS: 0.95, pierce: 2 },
+    { damage: 2, speed: 440, radius: 3, lifetimeS: 0.8, pierce: 2 },
+    { damage: 2, speed: 450, radius: 3, lifetimeS: 0.85, pierce: 2 },
+    { damage: 2, speed: 460, radius: 3, lifetimeS: 0.9, pierce: 3 },
+    { damage: 3, speed: 480, radius: 3, lifetimeS: 0.95, pierce: 4 },
   ],
   // Slow wide low wave that rolls through everything. The weight ladder:
   // per-trigger damage climbs harder than any other kit.
@@ -793,9 +795,9 @@ export const TIER_LINES: Partial<Record<Role, string[]>> = {
     'burst of shots every 4th bar',
   ],
   hat: [
-    'thin spray of fast chips',
+    'fast chips along your path',
     'twice the chips',
-    'denser spray',
+    'denser stream',
     'a wall of chips',
   ],
   bass: [
@@ -881,6 +883,16 @@ export const WEAPON_SHOVE: Partial<Record<Role, number>> = { snare: 8, clap: 12,
 /** Bell shatter: per-tier shard count, and the shard projectiles' stats. Shards
  *  fly out radially from the first hit; each is a small, short-lived bell shot
  *  that does not itself re-shatter. */
+/** Evolved hi-hat (Strobe Lane): the chips stop being a spread and become a
+ *  rail down the walk heading. Reach comes from speed + life + infinite
+ *  pierce; `stagger` pushes successive chips further along the lane so a
+ *  16th-note wall draws as one continuous streak instead of a clump. */
+export const HAT_LANE = {
+  speedMul: 1.5,
+  lifetimeMul: 2.0,
+  stagger: [0, 26, 52, 78],
+};
+
 export const BELL = {
   shards: [4, 5, 6, 8],
   shardSpeed: 320,

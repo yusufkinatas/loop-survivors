@@ -127,7 +127,7 @@ not merely another percentage upgrade.
 | --- | --- | --- |
 | Kick + High-Tops | **Redline Stomp** | Four floor strips cross the complete arena in one colossal stomp. |
 | Snare + Fast Forward | **Railshot** | An instant 900-range beam with unlimited pierce; every fourth hit fires twin rails. |
-| Hi-hat + Mirrorball | **Prism Rain** | Fast blades redirect through distinct targets in a controlled ricochet storm. |
+| Hi-hat + Mirrorball | **Strobe Lane** | A barrage of chips rails down the way you walk, piercing everything in the lane. |
 | Bass + Heavy Amp | **Subquake** | The directional wave becomes an expanding ring with unlimited pierce. |
 | Chord + Wide Lens | **Afterhours** | Huge drifting slow zones seek dense crowds and merge into larger supercells. |
 | Lead + Needle Tips | **Neon Serpent** | A homing serpent pierces six targets and grows a giant head every fifth trigger. |
