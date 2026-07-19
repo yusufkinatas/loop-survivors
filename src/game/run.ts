@@ -2295,7 +2295,7 @@ export class RunWorld {
       x: this.player.x,
       y: this.player.y,
       radius: 40,
-      maxRadius: (fat ? 480 : 360) * area,
+      maxRadius: (fat ? 300 : 230) * area,
       age: 0,
       lifeS: 1.2,
       damage: conf.damage * 1.55 * (fat ? 1.2 : 1) * (0.8 + 0.4 * velocity),

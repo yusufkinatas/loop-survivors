@@ -1250,9 +1250,13 @@ export class RunView {
     gfx.clear();
     for (const wave of tour.shockwaves ?? []) {
       if (Math.abs(wave.x - cameraX) > halfW || Math.abs(wave.y - cameraY) > halfH) continue;
-      const progress = Math.min(1, wave.age / Math.max(0.001, wave.lifeS));
-      const alpha = Math.pow(1 - progress, 0.65);
-      const radius = Math.max(4, wave.radius || wave.maxRadius * progress);
+      // age counts up while lifeS counts down, so age + lifeS is the invariant total life.
+      // Dividing by lifeS alone made the ring vanish at half the sweep while it kept damaging.
+      const progress = Math.min(1, wave.age / Math.max(0.001, wave.age + wave.lifeS));
+      // Hold the ring legible across the sweep it actually damages on, then fade out only at
+      // the very end. Same colors and widths as before, no fill: the edge stays honest.
+      const alpha = progress < 0.8 ? 1 - progress * 0.3125 : 0.75 - (progress - 0.8) / 0.2 * 0.45;
+      const radius = Math.max(4, wave.radius);
       gfx.poly(regularPixelPoly(20, radius, Math.PI / 20)
         .map((value, i) => snap(value + (i % 2 === 0 ? wave.x : wave.y))))
         .stroke({ width: 7, color: SOUNDWOOD.ink, alpha: alpha * 0.56 });
