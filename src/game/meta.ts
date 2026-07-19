@@ -4,7 +4,6 @@
 
 import type { Role } from '../audio/kits';
 import { ITEM_IDS, type ItemId } from './items';
-import { isVenueId, type VenueId } from './tour';
 
 export const META_SAVE_KEY = 'loop-survivors.meta.v2';
 export const LEGACY_META_SAVE_KEY = 'loop-survivors.meta.v1';
@@ -13,9 +12,6 @@ export const MILESTONE_IDS = [
   'first5m',
   'fullBand',
   'firstEvolution',
-  'hitlessHeadliner',
-  'loopCross',
-  'pressureBreak',
 ] as const;
 
 export type MilestoneId = (typeof MILESTONE_IDS)[number];
@@ -28,10 +24,8 @@ export interface MasteryProgress {
 
 export const CORE_WEAPONS: readonly Role[] = ['kick', 'snare', 'hat', 'bass', 'chord'];
 export const CORE_ITEMS: readonly ItemId[] = ['highTops', 'fastForward', 'mirrorball', 'wideLens'];
-export const CORE_VENUES: readonly VenueId[] = ['alley', 'warehouse', 'rooftop'];
 
 const META_WEAPONS: readonly Role[] = ['kick', 'snare', 'hat', 'bass', 'chord', 'clap', 'arp', 'lead', 'bell'];
-const META_VENUES: readonly VenueId[] = ['alley', 'warehouse', 'rooftop', 'metro', 'basement', 'dawn'];
 
 export const SHOP_OFFER_IDS = [
   'reroll1',
@@ -40,22 +34,18 @@ export const SHOP_OFFER_IDS = [
   'arp',
   'needleTips',
   'recoveryTape',
-  'metro',
   'lead',
   'extensionCable',
   'paddedJacket',
-  'basement',
   'bell',
   'magnetLanyard',
   'secondWind',
   'startItem',
   'reroll2',
-  'dawn',
-  'gold',
 ] as const;
 
 export type ShopOfferId = (typeof SHOP_OFFER_IDS)[number];
-export type ShopOfferKind = 'weapon' | 'item' | 'venue' | 'perk' | 'palette';
+export type ShopOfferKind = 'weapon' | 'item' | 'perk';
 
 export interface ShopOffer {
   id: ShopOfferId;
@@ -82,8 +72,6 @@ export const SHOP_OFFERS: readonly ShopOffer[] = [
     description: 'A rapid run of separate notes orbiting the player.' },
   { id: 'needleTips', kind: 'item', contentId: 'needleTips', name: 'Needle Tips', cost: 65, minOwned: 2,
     description: 'Piercing projectiles and the Lead evolution recipe.' },
-  { id: 'metro', kind: 'venue', contentId: 'metro', name: 'Last Train Metro', cost: 110, minOwned: 2,
-    description: 'A venue where train lanes erase enemies and threaten the player.' },
 
   { id: 'lead', kind: 'weapon', contentId: 'lead', name: 'Lead', cost: 130, minOwned: 5,
     description: 'A bright homing melody weapon.' },
@@ -91,8 +79,6 @@ export const SHOP_OFFERS: readonly ShopOffer[] = [
     description: 'Longer attacks and the Arp evolution recipe.' },
   { id: 'paddedJacket', kind: 'item', contentId: 'paddedJacket', name: 'Padded Jacket', cost: 85, minOwned: 5,
     description: 'Health, armor, and the Clap evolution recipe.' },
-  { id: 'basement', kind: 'venue', contentId: 'basement', name: 'Flooded Basement', cost: 140, minOwned: 5,
-    description: 'Slow puddles and longer zone attacks.' },
 
   { id: 'bell', kind: 'weapon', contentId: 'bell', name: 'Bell', cost: 180, minOwned: 8,
     description: 'Heavy crystal shots that shatter on impact.' },
@@ -100,15 +86,11 @@ export const SHOP_OFFERS: readonly ShopOffer[] = [
     description: 'Long-range pickup pull and the Bell evolution recipe.' },
   { id: 'secondWind', kind: 'perk', contentId: 'secondWind', name: 'Second Wind', cost: 160, minOwned: 8,
     description: 'Revive once per run at 30% health.' },
-  { id: 'startItem', kind: 'perk', contentId: 'startItem', name: 'Tour Loadout', cost: 150, minOwned: 8,
+  { id: 'startItem', kind: 'perk', contentId: 'startItem', name: 'Opening Loadout', cost: 150, minOwned: 8,
     description: 'Choose one unlocked passive to begin at tier I.' },
 
-  { id: 'reroll2', kind: 'perk', contentId: 'reroll2', name: 'Second Reroll', cost: 200, minOwned: 12,
+  { id: 'reroll2', kind: 'perk', contentId: 'reroll2', name: 'Second Reroll', cost: 200, minOwned: 11,
     description: 'Refresh a second ordinary level-up offer each run.' },
-  { id: 'dawn', kind: 'venue', contentId: 'dawn', name: 'Dawn Roof', cost: 220, minOwned: 12,
-    description: 'Healing light with much harsher contact damage.' },
-  { id: 'gold', kind: 'palette', contentId: 'gold', name: 'Headliner Gold', cost: 300, minOwned: 12,
-    description: 'A gold venue, enemy, and evolution palette.' },
 ] as const;
 
 const SHOP_BY_ID = new Map<ShopOfferId, ShopOffer>(SHOP_OFFERS.map((offer) => [offer.id, offer]));
@@ -122,11 +104,10 @@ export interface MetaV2 {
   lifetimeNotes: number;
   bestTimeS: number;
   lifetimeKills: number;
-  lifetimeHeadliners: number;
+  lifetimeChests: number;
   purchases: ShopOfferId[];
   unlockedWeapons: Role[];
   unlockedItems: ItemId[];
-  unlockedVenues: VenueId[];
   rerolls: number;
   secondWind: boolean;
   startItem?: ItemId;
@@ -158,11 +139,10 @@ export function defaultMetaState(): MetaV2 {
     lifetimeNotes: 0,
     bestTimeS: 0,
     lifetimeKills: 0,
-    lifetimeHeadliners: 0,
+    lifetimeChests: 0,
     purchases: [],
     unlockedWeapons: [...CORE_WEAPONS],
     unlockedItems: [...CORE_ITEMS],
-    unlockedVenues: [...CORE_VENUES],
     rerolls: 0,
     secondWind: false,
     milestones: [],
@@ -188,7 +168,6 @@ function addUnique<T>(array: T[], value: T): void {
 function rebuildUnlocks(state: MetaV2): void {
   state.unlockedWeapons = [...CORE_WEAPONS];
   state.unlockedItems = [...CORE_ITEMS];
-  state.unlockedVenues = [...CORE_VENUES];
   state.rerolls = 0;
   state.secondWind = false;
   for (const id of state.purchases) {
@@ -196,7 +175,6 @@ function rebuildUnlocks(state: MetaV2): void {
     if (!offer) continue;
     if (offer.kind === 'weapon') addUnique(state.unlockedWeapons, offer.contentId as Role);
     if (offer.kind === 'item') addUnique(state.unlockedItems, offer.contentId as ItemId);
-    if (offer.kind === 'venue') addUnique(state.unlockedVenues, offer.contentId as VenueId);
     if (id === 'reroll1') state.rerolls = Math.max(state.rerolls, 1);
     if (id === 'reroll2') state.rerolls = Math.max(state.rerolls, 2);
     if (id === 'secondWind') state.secondWind = true;
@@ -210,20 +188,18 @@ function rebuildUnlocks(state: MetaV2): void {
 function inferLegacyPurchases(raw: Record<string, unknown>): ShopOfferId[] {
   const weapons = filterIds(raw.unlockedWeapons, META_WEAPONS);
   const items = filterIds(raw.unlockedItems, ITEM_IDS);
-  const venues = filterIds(raw.unlockedVenues, META_VENUES);
   const purchases: ShopOfferId[] = [];
   for (const offer of SHOP_OFFERS) {
     if (offer.kind === 'weapon' && weapons.includes(offer.contentId as Role)) addUnique(purchases, offer.id);
     if (offer.kind === 'item' && items.includes(offer.contentId as ItemId)) addUnique(purchases, offer.id);
-    if (offer.kind === 'venue' && venues.includes(offer.contentId as VenueId)) addUnique(purchases, offer.id);
   }
   const rerolls = Math.floor(safeNumber(raw.rerolls));
   if (rerolls >= 1) addUnique(purchases, 'reroll1');
   if (rerolls >= 2) addUnique(purchases, 'reroll2');
   if (raw.secondWind === true) addUnique(purchases, 'secondWind');
   // Preserve perks that an old automatic rank had earned even when no starting
-  // passive was selected. These thresholds are the old rank-12 and rank-15
-  // lifetime reputation floors.
+  // passive was selected. This threshold is the old rank-12 lifetime
+  // reputation floor.
   const reputation = Math.floor(safeNumber(raw.reputation));
   if (reputation >= 2_255) addUnique(purchases, 'startItem');
   if (reputation >= 3_395) addUnique(purchases, 'gold');
@@ -237,7 +213,7 @@ function sanitize(raw: unknown): MetaV2 {
   state.runs = Math.floor(safeNumber(parsed.runs));
   state.bestTimeS = safeNumber(parsed.bestTimeS);
   state.lifetimeKills = Math.floor(safeNumber(parsed.lifetimeKills));
-  state.lifetimeHeadliners = Math.floor(safeNumber(parsed.lifetimeHeadliners));
+  state.lifetimeChests = Math.floor(safeNumber(parsed.lifetimeChests));
   state.milestones = filterIds(parsed.milestones, MILESTONE_IDS);
   state.seen = Array.isArray(parsed.seen)
     ? [...new Set(parsed.seen.filter((id): id is string => typeof id === 'string').slice(0, 256))]
@@ -284,13 +260,12 @@ export interface RunProgressInput {
   level?: number;
   kills: number;
   notesCollected: number;
-  headlinersKilled: number;
+  chestsOpened: number;
   evolutionsMade: number;
   milestones: readonly MilestoneId[];
   damageByRole?: Partial<Record<Role, number>>;
   killsByRole?: Partial<Record<Role, number>>;
   evolutionsByRole?: Partial<Record<Role, number>>;
-  venuesVisited?: readonly VenueId[];
 }
 
 export interface RunSettlement {
@@ -299,7 +274,6 @@ export interface RunSettlement {
   walletBefore: number;
   walletAfter: number;
   newMilestones: MilestoneId[];
-  newVenues: VenueId[];
   collection: CollectionProgress;
 }
 
@@ -376,14 +350,6 @@ export class MetaStore {
     return new Set(this.state.unlockedItems);
   }
 
-  unlockedVenueIds(): Set<VenueId> {
-    return new Set(this.state.unlockedVenues);
-  }
-
-  hasGoldPalette(): boolean {
-    return this.hasPurchase('gold');
-  }
-
   selectStartItem(item: ItemId | undefined): boolean {
     if (item === undefined) {
       delete this.state.startItem;
@@ -400,10 +366,6 @@ export class MetaStore {
     const milestoneSet = new Set(this.state.milestones);
     const newMilestones = [...new Set(run.milestones)].filter((id) => !milestoneSet.has(id));
     for (const id of newMilestones) addUnique(this.state.milestones, id);
-    const newVenues = [...new Set(run.venuesVisited ?? [])]
-      .filter(isVenueId)
-      .filter((id) => !this.state.seen.includes(`venue:${id}`));
-    for (const id of newVenues) addUnique(this.state.seen, `venue:${id}`);
 
     const notesEarned = Math.max(0, Math.floor(safeNumber(run.notesCollected)));
     const walletBefore = this.state.notes;
@@ -412,7 +374,7 @@ export class MetaStore {
     this.state.runs += 1;
     this.state.bestTimeS = Math.max(this.state.bestTimeS, Math.max(0, run.timeS));
     this.state.lifetimeKills += Math.max(0, Math.floor(run.kills));
-    this.state.lifetimeHeadliners += Math.max(0, Math.floor(run.headlinersKilled));
+    this.state.lifetimeChests += Math.max(0, Math.floor(run.chestsOpened));
 
     for (const role of META_WEAPONS) {
       const damage = safeNumber(run.damageByRole?.[role]);
@@ -432,7 +394,6 @@ export class MetaStore {
       walletBefore,
       walletAfter: this.state.notes,
       newMilestones,
-      newVenues,
       collection: this.collection(),
     };
   }
