@@ -185,7 +185,6 @@ const expectedEnemyLabels = {
   tank: 'Wallstack',
   darter: 'Needlejack',
   splitter: 'Crackbox',
-  charger: 'Rail Ram',
   circler: 'Orbit Leech',
   shielded: 'Phase Guard',
   elite: 'Blackout Idol',

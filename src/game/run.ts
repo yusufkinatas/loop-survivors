@@ -12,7 +12,6 @@ import {
   AIM_RANGE,
   ARP_OMEGA,
   BELL,
-  CHARGER,
   CIRCLER,
   DAMAGE_FEEDBACK,
   DARTER,
@@ -257,8 +256,6 @@ export interface Enemy {
   shieldHp: number;
   /** circler: +1/-1 orbit direction; 0 for others. */
   spin: number;
-  /** charger: telegraph countdown; 0 otherwise. */
-  windupT: number;
   /** Spawn origin. All classes count toward the periodic 300 check; scripted
    * bosses/events may themselves spawn beyond it up to the 500 hard cap. */
   spawnClass: 'regular' | 'boss' | 'event';
@@ -1717,7 +1714,6 @@ export class RunWorld {
       lastMoveY: 0,
       shieldHp: kind === 'shielded' ? scaledHp * SHIELDED.shieldMul : 0,
       spin: kind === 'circler' ? (this.rng() < 0.5 ? 1 : -1) : 0,
-      windupT: 0,
       spawnClass,
       moveX,
       moveY,
@@ -1880,39 +1876,6 @@ export class RunWorld {
           e.y += e.dashY * speed * dt;
         }
         continue;
-      }
-
-      if (e.kind === 'charger') {
-        // Telegraphed dash: stand and lock aim during windup, then commit a
-        // fast fixed-direction dash. Fairness (muted) is the wind-up pause +
-        // the rotating silhouette, not the fx ring.
-        if (e.dashing) {
-          e.dashT -= dt;
-          e.lastMoveX = e.dashX * CHARGER.dashSpeed;
-          e.lastMoveY = e.dashY * CHARGER.dashSpeed;
-          e.x += e.dashX * CHARGER.dashSpeed * dt;
-          e.y += e.dashY * CHARGER.dashSpeed * dt;
-          if (e.dashT <= 0) e.dashing = false; // recover -> approach
-          continue;
-        }
-        if (e.windupT > 0) {
-          e.windupT -= dt;
-          if (e.windupT <= 0) {
-            const dd = Math.hypot(p.x - e.x, p.y - e.y) || 1;
-            e.dashX = (p.x - e.x) / dd;
-            e.dashY = (p.y - e.y) / dd;
-            e.dashing = true;
-            e.dashT = CHARGER.dashS;
-          }
-          continue;
-        }
-        const cd = Math.hypot(p.x - e.x, p.y - e.y);
-        if (cd < CHARGER.triggerRange) {
-          e.windupT = CHARGER.windupS;
-          this.spawnRing(e.x, e.y, e.radius * 2.4, e.color, 0.4); // cosmetic telegraph
-          continue;
-        }
-        // else fall through to default chase at e.speed
       }
 
       if (e.kind === 'circler') {

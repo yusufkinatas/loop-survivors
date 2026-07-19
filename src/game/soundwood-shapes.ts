@@ -253,13 +253,6 @@ export function enemyContext(e: Enemy, shieldOn: boolean, frame: number): Graphi
         }
         break;
       }
-      case 'charger': {
-        darkSilhouette(g, [r * 1.58, 0, r * 0.38, -r * 0.9, -r * 0.96, -r * 0.72, -r * 0.58, 0, -r * 0.96, r * 0.72, r * 0.38, r * 0.9]);
-        g.poly([r * 1.25, 0, r * 0.28, -r * 0.58, -r * 0.68, -r * 0.48, -r * 0.4, 0, -r * 0.68, r * 0.48, r * 0.28, r * 0.58].map(snap)).fill(0xffffff);
-        for (const y of [-0.5, 0.5]) box(g, -r * 1.28, r * y - r * 0.1, r * 1.1, r * 0.2, SOUNDWOOD.ink);
-        box(g, r * 0.25, -r * 0.12, r * 0.7, r * 0.24, SOUNDWOOD.ink);
-        break;
-      }
       case 'circler': {
         g.poly(regularPixelPoly(12, r * 1.16, Math.PI / 12)).fill(SOUNDWOOD.ink);
         g.poly([r * 0.96, -r * 0.72, r * 0.2, -r * 0.98, -r * 0.72, -r * 0.65, -r * 0.92, 0, -r * 0.72, r * 0.65, r * 0.2, r * 0.98, r * 0.96, r * 0.72, r * 0.52, r * 0.28, r * 0.52, -r * 0.28].map(snap)).fill(0xffffff);

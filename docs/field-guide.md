@@ -214,7 +214,6 @@ behaviors stay deliberately readable even when the screen is crowded.
 | **Wallstack** | A slow, high-health endless-tour tank. |
 | **Needlejack** | Repeatedly aims, dashes in a straight line, stops, and aims again. |
 | **Crackbox** | A durable carrier that breaks into four Shardlings on death. |
-| **Rail Ram** | Stops for a clear warning, then commits to a fast straight charge. |
 | **Orbit Leech** | Circles the player at range instead of joining the direct pack. |
 | **Phase Guard** | Carries a shield equal to its health; the barrier must break first. |
 | **Blackout Idol** | A huge slow objective retained as a Sandbox-only stress-test fixture. |

@@ -300,7 +300,6 @@ function enemyFrame(enemy: Enemy, timeS: number): number {
     case 'flower':
     case 'mantis':
     case 'darter':
-    case 'charger':
       return Math.floor(timeS * 8 + enemy.id * 0.73) & 1;
     case 'zombie':
     case 'skeleton':
@@ -971,25 +970,6 @@ export class RunView {
     const halfH = this.world.worldH / 2 + 80;
     for (const enemy of this.world.enemies) {
       if (Math.abs(enemy.x - cameraX) > halfW || Math.abs(enemy.y - cameraY) > halfH) continue;
-      if (enemy.kind === 'charger' && enemy.windupT > 0) {
-        let dx = enemy.dashX;
-        let dy = enemy.dashY;
-        const length = Math.hypot(dx, dy);
-        if (length < 0.01) {
-          dx = this.world.player.x - enemy.x;
-          dy = this.world.player.y - enemy.y;
-        }
-        const norm = Math.hypot(dx, dy) || 1;
-        dx /= norm;
-        dy /= norm;
-        const reach = 170;
-        gfx.moveTo(snap(enemy.x), snap(enemy.y))
-          .lineTo(snap(enemy.x + dx * reach), snap(enemy.y + dy * reach))
-          .stroke({ width: 7, color: SOUNDWOOD.coral, alpha: 0.12 });
-        for (let i = 1; i <= 5; i++) {
-          pixelDiamond(gfx, enemy.x + dx * reach * i / 5, enemy.y + dy * reach * i / 5, 3, SOUNDWOOD.coral, 0.6);
-        }
-      }
       if ((enemy.kind === 'mantis' || enemy.kind === 'glowingBat' || enemy.kind === 'elite') && enemy.spawnClass !== 'regular') {
         gfx.poly(regularPixelPoly(12, enemy.radius * 1.7, Math.PI / 12)
           .map((value, i) => snap(value + (i % 2 === 0 ? enemy.x : enemy.y))))
@@ -1130,15 +1110,10 @@ export class RunView {
 
       if (enemy.kind === 'batSwarm' && (enemy.moveX !== 0 || enemy.moveY !== 0)) {
         gfx.rotation = Math.atan2(enemy.moveY, enemy.moveX);
-      } else if ((enemy.kind === 'darter' || enemy.kind === 'charger') && (enemy.dashX !== 0 || enemy.dashY !== 0)) {
+      } else if (enemy.kind === 'darter' && (enemy.dashX !== 0 || enemy.dashY !== 0)) {
         gfx.rotation = Math.atan2(enemy.dashY, enemy.dashX);
       } else if (enemy.lastMoveX < -0.01) {
         gfx.scale.x = -1;
-      }
-      if (enemy.kind === 'charger' && enemy.windupT > 0) {
-        const throb = 1 + 0.08 * (0.5 + 0.5 * Math.sin(this.world.timeS * 18));
-        gfx.scale.x *= throb;
-        gfx.scale.y = throb;
       }
     }
     for (const [enemy, gfx] of this.enemyGfx) {
