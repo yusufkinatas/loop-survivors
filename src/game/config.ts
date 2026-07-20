@@ -695,13 +695,6 @@ export interface WeaponConf {
 // per-TICK number that floors at 1, so their listed damage can't drop a full
 // third — their real output is damage x ticks x rate; they lean on coverage.
 export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
-  // Homing seeker per melody note: mid damage, never misses.
-  lead: [
-    { damage: 2, speed: 340, radius: 6, lifetimeS: 2.2, pierce: 1 },
-    { damage: 3, speed: 350, radius: 6, lifetimeS: 2.2, pierce: 1 },
-    { damage: 3, speed: 360, radius: 6, lifetimeS: 2.3, pierce: 1 },
-    { damage: 4, speed: 380, radius: 7, lifetimeS: 2.4, pierce: 2 },
-  ],
   // Whip: a wide forward slash that hits everything in a close cone. Melee
   // crowd control — no travel, instant, safest when the wall is on top of you.
   clap: [
@@ -725,12 +718,6 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
  *  change is discovered by ear. Lines state what the chart + stat change
  *  actually does. */
 export const TIER_LINES: Partial<Record<Role, string[]>> = {
-  lead: [
-    'a few homing seekers',
-    'more seekers',
-    'the full melody of seekers',
-    'denser seekers that pierce',
-  ],
   clap: [
     'a wide slash close to you',
     'wider, harder slash',
@@ -805,23 +792,6 @@ export const TWO_HANDS = {
 /** Bell shatter: per-tier shard count, and the shard projectiles' stats. Shards
  *  fly out radially from the first hit; each is a small, short-lived bell shot
  *  that does not itself re-shatter. */
-/** Evolved lead (Neon Serpent): a seeker that threads a line of bodies instead
- *  of stopping at the first. `basePierce` replaces lead's tier pierce outright,
- *  then goes through the build pipeline like every other finite pierce, so
- *  Needle Tips stacks on top of it (#146). It used to be written straight onto
- *  the projectile after the pipeline had run, which made Needle Tips a no-op on
- *  the very evolution it unlocks.
- *
- *  IN PRACTICE EVOLVED PIERCE IS ALWAYS 11, never 6 and never anything between.
- *  `eligibleEvolution` (items.ts) gates every evolution on its partner item
- *  being at ITEM_MAX_LEVEL, and Needle Tips caps at 5 — so a Neon Serpent can
- *  only exist alongside `extraPierce: 5`. The 6 below is not a floor a player
- *  ramps up from; it is one term of a constant sum. Change it and you are
- *  changing 11. */
-export const LEAD_SERPENT = {
-  basePierce: 6,
-};
-
 export const BELL = {
   shards: [4, 5, 6, 8],
   shardSpeed: 320,

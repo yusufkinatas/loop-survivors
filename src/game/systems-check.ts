@@ -31,6 +31,7 @@ import {
   CHORD,
   HAT,
   KICK,
+  LEAD,
   SNARE,
   WEAPON_MODULES,
   weaponTiers,
@@ -2420,24 +2421,24 @@ const chordTiers = CHORD.stats.tiers;
   assert.equal(WEAPONS.chord, undefined, 'the chord module is the only copy of the chord ladder');
   assert.equal(TIER_LINES.chord, undefined, 'the chord module is the only copy of the chord pedestal copy');
 
-  // THE TWO ROLE-KEYED TABLES, AND THE CHORD IS IN NEITHER. It took nothing
+  // THE ROLE-KEYED TABLES, AND THE CHORD IS IN NONE OF THEM. It took nothing
   // when it left — a zone tick lands damage and a slow and nothing else, no
-  // knock and no spark — so both absences are pinned the way the hat's block
-  // pins its own. WEAPON_SHOVE is exported; SPARK_HIT_ROLES is a private const
-  // in run.ts, so its membership is read out of the source rather than by
-  // exporting a table purely to assert something is missing from it.
+  // knock and no spark — so the absences are pinned the way the hat's block
+  // pins its own.
+  //
+  // ONE TABLE IS LEFT. SPARK_HIT_ROLES used to be read here too; the lead was
+  // its last member and the Set left run.ts with the lead module (#141), so
+  // what is asserted now is that it is GONE — no table, hence no way for a
+  // chord tick to be quietly added to one. WEAPON_SHOVE still carries the clap
+  // and is exported, so it is checked directly.
   assert(!('chord' in WEAPON_SHOVE), 'a chord tick has never had a knock, and must not gain one');
   {
     const runSource = readFileSync(new URL('./run.ts', import.meta.url), 'utf8');
-    const sparkRoles = /SPARK_HIT_ROLES = new Set<Role>\(\[([^\]]*)\]\)/.exec(runSource)?.[1];
-    assert(sparkRoles !== undefined,
-      'this check cannot find SPARK_HIT_ROLES in run.ts, so it is asserting nothing. Update the ' +
-      'pattern rather than deleting the check');
-    assert(sparkRoles.includes("'lead'"),
-      'guard integrity: lead is the last member of SPARK_HIT_ROLES and the set goes with it');
-    assert(!sparkRoles.includes("'chord'"),
-      'a chord tick pushes no spark and never has — its whole appearance is the view reading ' +
-      'world.zones');
+    assert(!/SPARK_HIT_ROLES/.test(runSource),
+      'SPARK_HIT_ROLES is back in run.ts. It was a role-keyed table inside the shared projectile ' +
+      'loop and it left with its last member (the lead, #141): a migrated weapon pushes its own ' +
+      'per-hit spark through ctx.fx from ProjectileBehavior.onHit. Reintroducing the table is a ' +
+      'per-weapon branch in shared physics, whichever weapon it is for');
   }
 
   const chordModule = WEAPON_MODULES.find((m) => m.role === 'chord')!;
@@ -2801,6 +2802,366 @@ function chordCtx(evolved = false): FakeCtx {
   assert.equal(ctx.slowLog.length, 0, 'and no delayed slow');
   assert.equal(ctx.fxLog.length, 0, 'and pushes no fx');
   assert.equal(ctx.rngDraws, 0, 'and never drew anything to begin with');
+}
+
+
+const leadTiers = LEAD.stats.tiers;
+
+// ---------------------------------------------------------------------------
+// The lead's tuning, pinned to LITERALS. Same rule as the kick, arp, snare,
+// hat, bass and chord blocks above: the right-hand sides are numbers a human
+// typed after reading the pre-#141 config.ts and run.ts, never an expression
+// that recomputes the module's own answer.
+//
+// THE LEAD'S NUMBERS WERE THE MOST SCATTERED OF ANY WEAPON SO FAR. Three of
+// them — `homing`, `turnRate`, `homingRange` — were not lead's on paper at all:
+// they were defaults inside RunWorld.baseProjectile, the world's shared
+// defaulting for every weapon's shot, with a `role === 'lead'` test carrying
+// the first. Only a lead shot could ever observe them, so they are this
+// weapon's tuning and they are pinned here.
+// ---------------------------------------------------------------------------
+{
+  // The per-tier ladder, verbatim from config.WEAPONS.lead. A DENSITY ladder
+  // first — the chart thickens — with pierce arriving only on the top rung.
+  assert.deepEqual(
+    leadTiers.map((t) => [t.damage, t.speed, t.radius, t.lifetimeS, t.pierce]),
+    [
+      [2, 340, 6, 2.2, 1],
+      [3, 350, 6, 2.2, 1],
+      [3, 360, 6, 2.3, 1],
+      [4, 380, 7, 2.4, 2],
+    ],
+    'the lead damage/speed/size/lifetime/pierce ladder moved',
+  );
+  assert.equal(leadTiers.length, TIER_COUNT, 'the lead ladder must have exactly TIER_COUNT rungs');
+  assert.deepEqual(LEAD.stats.tierLines, [
+    'a few homing seekers',
+    'more seekers',
+    'the full melody of seekers',
+    'denser seekers that pierce',
+  ], 'the lead pedestal copy moved');
+
+  // The base seeker.
+  assert.equal(LEAD.stats.aimSpread, 0.08, 'the lead aim jitter moved');
+  // WAS `homing: role === 'lead'` inside RunWorld.baseProjectile — the one
+  // per-weapon test in the world's shared projectile defaulting.
+  assert.equal(LEAD.stats.homing, true,
+    'a lead shot HOMES; that is the weapon. It is a field on the shot now, not a role test in ' +
+    'the world\'s spawner');
+  assert.equal(LEAD.stats.turnRate, 10, 'the base seeker turn rate moved');
+  assert.equal(LEAD.stats.homingRange, Infinity,
+    'the base seeker searches the WHOLE SCREEN. Infinity is a stated value here, not an absent ' +
+    'one — Neon Serpent\'s whole change of character is replacing it with a finite gate');
+  // WAS this weapon's membership of run.ts's SPARK_HIT_ROLES plus the two
+  // literals at the push site inside the shared loop.
+  assert.equal(LEAD.stats.sparkCount, 4, 'the lead hit-spark particle count moved');
+  assert.equal(LEAD.stats.sparkSpread, 12, 'the lead hit-spark spread moved');
+
+  // Neon Serpent.
+  assert.equal(LEAD.stats.serpentDamageMul, 1.40, 'the Neon Serpent damage multiplier moved');
+  assert.equal(LEAD.stats.serpentBasePierce, 6, 'the Neon Serpent signature pierce moved');
+  assert.equal(LEAD.stats.serpentTurnRate, 14, 'the Neon Serpent turn rate moved');
+  assert.equal(LEAD.stats.serpentHomingRange, 320, 'the Neon Serpent homing gate moved');
+  // THE CONSTANT SUM (#146). `serpentBasePierce` is an INPUT to the build's
+  // +pierce rule, not a write over its output, and the sum is invariant:
+  // eligibleEvolution gates every evolution on its partner item being at
+  // ITEM_MAX_LEVEL and Needle Tips grants +1 per level, so a Neon Serpent only
+  // ever exists alongside extraPierce 5. Eleven, never six, never anything
+  // between. This asserts the SUM, so raising the 6 without meaning to raise
+  // eleven fails here.
+  assert.equal(LEAD.stats.serpentBasePierce + itemMaxLevel('needleTips'), 11,
+    'evolved lead pierce is INVARIANTLY 11 — one term of a constant sum, not a floor a player ' +
+    'ramps up from. If Needle Tips\' ladder or its cap changed, this number changed with it');
+  assert.equal(ITEMS.needleTips.evolutionPartner, 'lead',
+    'the constant sum above only holds while Needle Tips is the lead\'s evolution ingredient');
+
+  // The supercharged shot.
+  assert.equal(LEAD.stats.superchargeCadence, 5, 'the Neon Serpent supercharge cadence moved');
+  assert.equal(LEAD.stats.superchargeDamageMul, 2, 'the supercharged damage multiplier moved');
+  // BOTH HALVES OF `max(12, radius * 1.7)` ARE LIVE, unlike the snare's
+  // unreachable width floor: at tier 4 with no area build the floor wins
+  // (7 * 1.7 = 11.9 -> 12), and with Wide Lens it does not (9.1 * 1.7 = 15.47).
+  // Checks L7a/L7b below exercise one real build on each side of that, so
+  // dropping either half fails behaviorally and not only here.
+  assert.equal(LEAD.stats.superchargeRadiusFloor, 12, 'the supercharged radius floor moved');
+  assert.equal(LEAD.stats.superchargeRadiusMul, 1.7, 'the supercharged radius multiplier moved');
+  assert(leadTiers[3].radius! * LEAD.stats.superchargeRadiusMul < LEAD.stats.superchargeRadiusFloor,
+    'the supercharge floor is documented as LIVE at tier 4 with no area build; if the ladder ever ' +
+    'clears it the floor stops being observable and L7a is silently checking the multiplier twice');
+
+  assert.equal(WEAPONS.lead, undefined, 'the lead module is the only copy of the lead ladder');
+  assert.equal(TIER_LINES.lead, undefined, 'the lead module is the only copy of the lead pedestal copy');
+  // The role-keyed tables. The lead was the LAST member of SPARK_HIT_ROLES, so
+  // the Set itself left run.ts with this module — that absence is asserted
+  // against the source in the chord block above. It was never in WEAPON_SHOVE:
+  // a seeker has never knocked anything and must not start.
+  assert(!('lead' in WEAPON_SHOVE), 'a lead hit has never had a knock, and must not gain one');
+  assert.deepEqual(WEAPON_SHOVE, { clap: 12 },
+    'WEAPON_SHOVE keeps the entries of the weapons that have NOT migrated (clap is the last one ' +
+    'and takes the table with it)');
+
+  const leadModule = WEAPON_MODULES.find((m) => m.role === 'lead')!;
+  assert.equal(leadModule.tickAt, undefined,
+    'the lead owns no damage pass: its seekers ride the shared projectile loop, homing search ' +
+    'and all');
+  const behavior = leadModule.create().projectile;
+  assert(behavior, 'the lead lends the shared projectile loop its hit rule');
+  // THE ABSENCE THAT MATTERS MOST IN THIS FILE. A seeker's motion is the shared
+  // loop's own homing path, driven by three FIELDS the module sets at spawn.
+  // A steer() that returned true would skip shared travel AND
+  // reflectProjectileFromArena together — and without Mirrorball `bounces` is 0
+  // and the rail path returns immediately, so a wrongly-steering module
+  // reproduces almost every scenario in the parity file exactly.
+  assert.equal(behavior.steer, undefined,
+    'a lead seeker rides SHARED travel and the arena rails: its homing is the loop\'s own ' +
+    'pr.homing path, fed by fields. Implementing steer() takes it off Mirrorball\'s bounces and ' +
+    'almost nothing else notices');
+  assert.equal(LEAD.role, 'lead');
+}
+
+/** A fake context set up for the lead, with a scripted rng. */
+function leadCtx(rngValues: number[], evolved = false): FakeCtx {
+  const ctx = new FakeCtx();
+  ctx.role = 'lead';
+  ctx.color = KIT_COLORS.lead;
+  ctx.evolved = evolved;
+  ctx.rngValues = rngValues;
+  return ctx;
+}
+
+/** Fire the way RunWorld.fireTrigger does: the world's per-role trigger counter
+ *  is bumped in the shared preamble BEFORE fire() runs, which is what makes the
+ *  FIFTH trigger the one where `% 5 === 0`. The counter is WORLD-owned and
+ *  never resets, so it also keeps ticking while the weapon is unevolved —
+ *  L6b is the check that would catch a module-local tally. */
+function leadFire(ctx: FakeCtx, inst: WeaponInstance, conf: WeaponConf): void {
+  ctx.triggerCount += 1;
+  inst.fire(ctx, conf);
+}
+
+// L1. ONE TRIGGER, ONE SEEKER, ONE DRAW — and the three homing fields, which
+// are the whole of what this module lends the shared loop's motion path.
+{
+  const ctx = leadCtx([0.5]);
+  const inst = LEAD.create();
+  ctx.targets.push(fakeTarget(300, 0));
+  leadFire(ctx, inst, leadTiers[3]);
+  assert.equal(ctx.rngDraws, 1, 'one lead trigger with a target in range draws exactly one rng value');
+  assert.equal(ctx.spawned.length, 1, 'one trigger, one seeker');
+  assert.equal(ctx.hits.length, 0, 'the lead deals no damage at fire time');
+  assert.equal(ctx.fxLog.length, 0, 'the lead pushes no fx at fire time');
+  const pr = ctx.spawned[0];
+  // LITERALS, from the tier-4 rung: 4 damage, 2 pierce, 380 speed, radius 7.
+  assert.equal(pr.damage, 4, 'a tier-4 seeker carries the pedestal damage');
+  assert.equal(pr.pierce, 2, 'an UNEVOLVED seeker keeps the tier\'s own pierce budget');
+  assert.equal(pr.maxPierce, 2);
+  assert.equal(pr.speed, 380);
+  assert.equal(pr.radius, 7);
+  // The three fields. Forgetting one does not crash and does not fail
+  // typecheck: it silently produces a shot that flies straight, or one that
+  // homes across the whole arena.
+  assert.equal(pr.homing, true, 'a seeker homes — the field the shared loop reads');
+  assert.equal(pr.turnRate, 10, 'a base seeker turns at its own rate, not the spawner\'s default');
+  assert.equal(pr.homingRange, Infinity, 'a base seeker searches the whole screen');
+  // rng 0.5 means zero jitter, and the only target sits due east.
+  assert.equal(round6(pr.vx), 380, 'velocity is derived from pr.speed along the aim line');
+  assert.equal(round6(pr.vy), 0);
+  assert.equal(round6(Math.hypot(pr.vx, pr.vy)), 380,
+    'the speed FIELD must stay equal to |v| — the bounce path reads it');
+}
+
+// L1b. THE MODULE SETS ALL THREE HOMING FIELDS ITSELF — it does not INHERIT
+// them from the spawner. This needs its own check because two of the three
+// values the module writes are the same values RunWorld.baseProjectile happens
+// to default to (turnRate 10, homingRange Infinity), so deleting either line
+// from the module is invisible to L1, to every scenario in the parity file, and
+// to a reader. It stops being invisible the moment the world's defaults move
+// for some other weapon's reason — and then it is a lead bug with no lead-side
+// cause. So: poison the freshly spawned shot, and assert the module overwrites
+// all three regardless of what it was handed.
+{
+  const ctx = leadCtx([0.5]);
+  const inst = LEAD.create();
+  const spawn = ctx.spawnProjectile.bind(ctx);
+  ctx.spawnProjectile = (conf, damage) => {
+    const pr = spawn(conf, damage);
+    pr.homing = false;
+    pr.turnRate = -1;
+    pr.homingRange = 7;
+    return pr;
+  };
+  ctx.targets.push(fakeTarget(300, 0));
+  leadFire(ctx, inst, leadTiers[3]);
+  const pr = ctx.spawned[0];
+  assert.equal(pr.homing, true, 'the lead arms `homing` itself; it is this weapon\'s tuning');
+  assert.equal(pr.turnRate, 10, 'the lead arms `turnRate` itself, and does not ride a world default');
+  assert.equal(pr.homingRange, Infinity,
+    'the lead arms `homingRange` itself. Infinity is a value this module states, not one it ' +
+    'inherits by saying nothing');
+}
+
+// L2. THE EMPTY-SCREEN DRAW. With nothing to aim at, the world picks a random
+// heading and THEN jitters it: two draws, not one. Only the draw count sees
+// this, and getting it wrong desynchronises the whole run's rng stream.
+{
+  const ctx = leadCtx([0, 0.5]);
+  const inst = LEAD.create();
+  leadFire(ctx, inst, leadTiers[0]);
+  assert.equal(ctx.rngDraws, 2, 'an empty screen costs the lead TWO draws, not one');
+  assert.equal(ctx.spawned.length, 1, 'an empty screen still fires the seeker');
+}
+
+// L3. DOUBLE TAKE fans extra seekers off ONE aim. Three shots, still one draw:
+// the aim is per TRIGGER, not per shot. Moving the draw into the fan loop
+// triples the draw count and desynchronises everything after it.
+{
+  const ctx = leadCtx([0.5]);
+  const inst = LEAD.create();
+  ctx.buildMods = { ...ctx.buildMods, extraProjectiles: 2 };
+  ctx.targets.push(fakeTarget(300, 0));
+  leadFire(ctx, inst, leadTiers[0]);
+  assert.equal(ctx.rngDraws, 1, 'Double Take fans off a SINGLE aim: one draw however many seekers');
+  assert.equal(ctx.spawned.length, 3, 'two extra projectiles means three seekers');
+  const angles = ctx.spawned.map((pr) => Math.atan2(pr.vy, pr.vx));
+  assert.equal(round6(angles[0]), 0, 'the first seeker rides the aim line itself');
+  assert.equal(round6(angles[1] + angles[2]), 0, 'the extras straddle the aim line symmetrically');
+}
+
+// L4. NEON SERPENT, as literals. Harder turn, finite gate, 1.40x damage — and
+// on a trigger that is not the fifth, an untouched radius.
+{
+  const ctx = leadCtx([0.5], true);
+  const inst = LEAD.create();
+  ctx.targets.push(fakeTarget(300, 0));
+  leadFire(ctx, inst, leadTiers[3]);
+  const pr = ctx.spawned[0];
+  assert.equal(round6(pr.damage), 5.6, 'a serpent hits for 4 * 1.40');
+  assert.equal(pr.turnRate, 14, 'a serpent turns harder than a base seeker');
+  assert.equal(pr.homingRange, 320,
+    'a serpent snaps to what is CLOSE instead of crossing the screen — the 320-unit gate, as a ' +
+    'field on the shot');
+  assert.equal(pr.homing, true, 'a serpent is still a seeker');
+  assert.equal(pr.radius, 7, 'a trigger that is not the fifth spawns an ordinary-sized serpent');
+}
+
+// L5. THE PIERCE GOES THROUGH THE BUILD, NOT OVER IT (#146). The signature 6 is
+// an INPUT to the +pierce rule; with Needle Tips at its cap — the only state a
+// Neon Serpent can exist in — the answer is ELEVEN. The shape to never restore
+// is a write of 6 onto the shot AFTER the pipeline, which made Needle Tips a
+// no-op on the very evolution it unlocks.
+{
+  const ctx = leadCtx([0.5], true);
+  const inst = LEAD.create();
+  ctx.buildMods = { ...ctx.buildMods, extraPierce: 5 };
+  ctx.targets.push(fakeTarget(300, 0));
+  // The tier conf arrives ALREADY BUILT, so its own pierce already carries the
+  // +5. The serpent replaces it outright and re-adds the same +5 — it does not
+  // stack on the built tier value.
+  leadFire(ctx, inst, { ...leadTiers[3], pierce: leadTiers[3].pierce! + 5 });
+  const pr = ctx.spawned[0];
+  assert.equal(pr.pierce, 11, 'a Neon Serpent at Needle Tips 5 pierces eleven bodies, always');
+  assert.equal(pr.maxPierce, 11, 'and its budget and its ceiling agree');
+}
+
+// L5b. And with no Needle Tips at all the sum is the bare signature number.
+// UNREACHABLE IN A REAL RUN — eligibleEvolution will not hand out a Neon
+// Serpent without the item at max level — but it is what pins the 6 as an
+// addend rather than as a constant the module writes out.
+{
+  const ctx = leadCtx([0.5], true);
+  const inst = LEAD.create();
+  ctx.targets.push(fakeTarget(300, 0));
+  leadFire(ctx, inst, leadTiers[3]);
+  assert.equal(ctx.spawned[0].pierce, 6, 'with no +pierce in the build the serpent pierces six');
+}
+
+// L6. THE SUPERCHARGE LANDS ON THE FIFTH TRIGGER, not the sixth. The counter is
+// bumped BEFORE fire() runs, so the first trigger reads 1.
+{
+  const ctx = leadCtx([0.5, 0.5, 0.5, 0.5, 0.5], true);
+  const inst = LEAD.create();
+  ctx.targets.push(fakeTarget(300, 0));
+  for (let i = 0; i < 5; i++) leadFire(ctx, inst, leadTiers[3]);
+  const damages = ctx.spawned.map((pr) => round6(pr.damage));
+  assert.deepEqual(damages, [5.6, 5.6, 5.6, 5.6, 11.2],
+    'the FIFTH serpent of the run is the supercharged one: 4 * 1.40 * 2');
+  assert.equal(ctx.spawned[4].radius, 12,
+    'the supercharged shot is fattened to max(12, 7 * 1.7) — the FLOOR wins at tier 4 with no ' +
+    'area build');
+}
+
+// L6b. THE COUNTER IS WORLD-OWNED AND TICKS WHILE THE WEAPON IS UNEVOLVED. Four
+// base triggers, then evolve, then one serpent — and that serpent is the fifth
+// trigger of the run, so it is supercharged. A module-local tally starting at
+// zero, or restarting at the evolution, puts the doubled shot on a different
+// beat and nothing else in this file would say why.
+{
+  const ctx = leadCtx([0.5, 0.5, 0.5, 0.5, 0.5]);
+  const inst = LEAD.create();
+  ctx.targets.push(fakeTarget(300, 0));
+  for (let i = 0; i < 4; i++) leadFire(ctx, inst, leadTiers[3]);
+  ctx.evolved = true;
+  leadFire(ctx, inst, leadTiers[3]);
+  assert.deepEqual(ctx.spawned.map((pr) => round6(pr.damage)), [4, 4, 4, 4, 11.2],
+    'base triggers still advance the fifth-shot counter: the first serpent after evolving lands ' +
+    'on trigger five and is supercharged');
+}
+
+// L7a/L7b. BOTH HALVES OF `max(12, radius * 1.7)` ARE LIVE, one real build on
+// each side. L6 above already covered the floor at tier 4; here it is again
+// beside the case where the multiplier wins, because dropping either half
+// leaves the other one still looking correct.
+{
+  // Wide Lens at max: areaMul 1.30 has already been applied to the conf, so the
+  // seeker starts at 9.1 and 9.1 * 1.7 = 15.47 clears the floor.
+  const ctx = leadCtx([0.5, 0.5, 0.5, 0.5, 0.5], true);
+  const inst = LEAD.create();
+  ctx.targets.push(fakeTarget(300, 0));
+  for (let i = 0; i < 5; i++) leadFire(ctx, inst, { ...leadTiers[3], radius: 9.1 });
+  assert.equal(round6(ctx.spawned[4].radius), 15.47,
+    'with an area build the MULTIPLIER wins: 9.1 * 1.7, no floor in sight');
+  assert.equal(round6(ctx.spawned[0].radius), 9.1, 'and an ordinary serpent is not fattened at all');
+}
+
+// L8. THE HIT RULE. This is where the lead's share of SPARK_HIT_ROLES landed:
+// the spark lands on the TARGET, carries the shot's colour, and the count and
+// spread are the ones the shared loop used to push. onHit returns TRUE — a
+// seeker spends pierce like every other projectile; only the arp is exempt.
+{
+  const ctx = leadCtx([0.5]);
+  const inst = LEAD.create();
+  ctx.targets.push(fakeTarget(300, 0));
+  leadFire(ctx, inst, leadTiers[3]);
+  const pr = ctx.spawned[0];
+  pr.x = 250;
+  pr.y = 10;
+  const target = ctx.targets[0];
+  assert.equal(inst.projectile!.onHit!(ctx, pr, target), true,
+    'a lead seeker spends pierce on a hit — only the arp is exempt (ADR-0002)');
+  assert.deepEqual(sparks(ctx).map((s) => [s.x, s.y, s.n, s.spread, s.color]),
+    [[300, 0, 4, 12, KIT_COLORS.lead]],
+    'the hit spark lands on the TARGET, with the count and spread the shared loop used to push');
+  assert.equal(ctx.shoveLog.length, 0, 'a lead hit knocks nothing — it never did');
+  assert.equal(ctx.hits.length, 0,
+    'onHit deals no damage of its own: the shared loop already dealt pr.damage before calling it');
+}
+
+// L9. reset() has nothing to drop. Every seeker lives in the world's projectile
+// array, which clearSandboxEntities empties itself — the module holds no
+// schedule, and no counter of its own to reset.
+{
+  const ctx = leadCtx([0.5], true);
+  const inst = LEAD.create();
+  ctx.targets.push(fakeTarget(60, 0));
+  leadFire(ctx, inst, leadTiers[3]);
+  const drawsBefore = ctx.rngDraws;
+  const spawnedBefore = ctx.spawned.length;
+  inst.reset();
+  assert.equal(ctx.hits.length, 0, 'a reset lead lands no delayed damage');
+  assert.equal(ctx.fxLog.length, 0, 'and pushes no fx');
+  assert.equal(ctx.rngDraws, drawsBefore, 'and draws nothing');
+  assert.equal(ctx.spawned.length, spawnedBefore,
+    'and does not retire shots it does not own the storage for');
 }
 
 // ---------------------------------------------------------------------------
@@ -3201,11 +3562,13 @@ function worldStrike(opts: {
 
   // ---- KNOWN INTERIM EXCEPTIONS ------------------------------------------
   //
-  // THIS LIST MUST BE EMPTY WHEN #141 FINISHES. Two role-keyed tables still sit
-  // in the shared projectile loop. Both are the personal tuning of a weapon
-  // that has not been extracted yet, and EACH ENTRY IS DELETED BY THE WEAPON
-  // THAT OWNS IT: when the weapon lands as a module the table moves into it (or
-  // becomes a field on the shot), and the entry here goes with it.
+  // THIS LIST MUST BE EMPTY WHEN #141 FINISHES, and it is down to ONE: the
+  // lead module (#141) took SPARK_HIT_ROLES with it — the Set, its lookup, and
+  // its entry here — leaving WEAPON_SHOVE as the last role-keyed table in the
+  // shared projectile loop. It is the personal tuning of a weapon that has not
+  // been extracted yet, and THE ENTRY IS DELETED BY THE WEAPON THAT OWNS IT:
+  // when the clap lands as a module the table moves into it (or becomes a field
+  // on the shot), and the entry here goes with it.
   //
   // The list is a RATCHET, not a permission slip:
   //   - anything NOT listed fails, so no new per-weapon table can appear;
@@ -3226,15 +3589,6 @@ function worldStrike(opts: {
         'the bass\'s 6 is BASS_STATS.shove, each applied from that module\'s own ' +
         'ProjectileBehavior.onHit, which is the slot this lookup occupies. Note the count stays ' +
         '1 — a weapon leaving a shared table shrinks the TABLE, not the number of lookups.',
-    },
-    {
-      snippet: 'SPARK_HIT_ROLES.has(pr.role)',
-      count: 1,
-      why: 'per-weapon hit spark, view-only (run.ts SPARK_HIT_ROLES: lead)',
-      deletedBy:
-        'the lead module (#141), now the only entry left. A migrated weapon pushes its own ' +
-        'visuals through ctx.fx — which is exactly how the SNARE left this set — so the set ' +
-        'and this entry go when lead does.',
     },
   ];
 

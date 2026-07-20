@@ -16,7 +16,6 @@ import {
   DAMAGE_FEEDBACK,
   DARTER,
   ENEMIES,
-  LEAD_SERPENT,
   MAD_FOREST_FRAMES,
   MAX_ALIVE_HARD,
   RUN,
@@ -64,16 +63,6 @@ import {
   type WeaponInstance,
   type WeaponTarget,
 } from './weapons';
-
-/** Roles that emit a per-hit spark on impact. Bounded to low-count roles so
- *  a 500-enemy event frame never floods the fx queue.
- *
- *  SHRINKING (#141). This is one of the two role-keyed tables the shared
- *  projectile loop still reads, and every entry is the personal tuning of a
- *  weapon that has not been extracted yet. The snare's entry left with the
- *  snare module, which pushes its own spark through ctx.fx; lead is the last
- *  one, and takes this set with it. */
-const SPARK_HIT_ROLES = new Set<Role>(['lead']);
 
 /** Source player sprite uses a feet anchor; the stored player position is its
  * circle center. This is the source feet offset normalized to H800. */
@@ -185,8 +174,9 @@ export interface Projectile {
   speed: number;
   color: number;
   hit: Set<Enemy>;
-  /** Total time alive. Behavior otherwise keys off role: lead homes, arp
-   *  orbits. */
+  /** Total time alive. Behavior otherwise keys off FIELDS, never off role: a
+   *  seeker homes because `homing` is true, an orbiter orbits because its
+   *  module steers it. */
   age: number;
   /** Orbit geometry around the player, and the re-hit cooldown so a slow sweep
    *  keeps chipping the same enemy. Written only by the weapon module that
@@ -206,6 +196,9 @@ export interface Projectile {
   bounces: number;
   bounceRetention: number;
   evolved: boolean;
+  /** How fast a homing shot may turn, radians per second. Meaningful only when
+   *  `homing` is set, so every value that reaches it comes from the spawner
+   *  that armed the shot (weapons/lead.ts, and bell's gravity shards). */
   turnRate: number;
   orbitDir: 1 | -1;
   gravity: boolean;
@@ -771,10 +764,6 @@ export class RunWorld {
       case 'bell': {
         // A note lobbed straight that shatters into shards on its first hit.
         for (const dir of this.aimFan(0.1)) this.spawnBell(dir, conf, color);
-        break;
-      }
-      case 'lead': {
-        for (const dir of this.aimFan(0.08)) this.spawnProjectile(t.role, dir, conf, color);
         break;
       }
     }
@@ -1887,7 +1876,15 @@ export class RunWorld {
   }
 
   /** Base projectile with all fields defaulted; specialized spawners tweak
-   *  the few that matter to them. */
+   *  the few that matter to them.
+   *
+   *  THE HOMING TRIO BELOW IS INERT HERE. `homing` was `role === 'lead'` until
+   *  the lead module took it (#141); it is plain false now, and a shot that
+   *  homes says so itself. `turnRate` and `homingRange` are only ever read
+   *  while `homing` is set, and every spawner that sets it also sets them
+   *  (weapons/lead.ts sets all three; bell's gravity shards set turnRate and
+   *  keep Infinity). Do not read these two as any weapon's tuning — a weapon's
+   *  numbers live in its own stats block. */
   private baseProjectile(role: Role, conf: WeaponConf, color: number, damage: number): Projectile {
     return {
       role,
@@ -1900,7 +1897,7 @@ export class RunWorld {
       pierce: conf.pierce ?? 1,
       maxPierce: conf.pierce ?? 1,
       lifeS: conf.lifetimeS!,
-      homing: role === 'lead',
+      homing: false,
       speed: conf.speed ?? 0,
       color,
       hit: new Set(),
@@ -1937,36 +1934,6 @@ export class RunWorld {
       }
     }
     this.projectiles.push(projectile);
-  }
-
-  private spawnProjectile(
-    role: Role,
-    dir: { x: number; y: number },
-    conf: WeaponConf,
-    color: number,
-  ): void {
-    const pr = this.baseProjectile(role, conf, color, conf.damage);
-    if (role === 'lead' && pr.evolved) {
-      pr.damage *= 1.40;
-      // The serpent threads a line of bodies: its own base pierce replaces
-      // lead's tier value, and the build's +pierce stacks on top of that floor
-      // exactly as it would for any other finite pierce.
-      pr.maxPierce = this.withExtraPierce(LEAD_SERPENT.basePierce);
-      pr.pierce = pr.maxPierce;
-      pr.turnRate = 14;
-      // The evolved seeker snaps to what is close instead of crossing the
-      // screen. Was a `pr.role !== 'lead'` test inside the shared loop.
-      pr.homingRange = 320;
-      if ((this.triggerCounts.lead ?? 0) % 5 === 0) {
-        pr.damage *= 2;
-        pr.radius = Math.max(12, pr.radius * 1.7);
-      }
-    }
-    // Deriving the velocity from pr.speed keeps the `speed` field equal to |v|,
-    // which the bounce path reads.
-    pr.vx = dir.x * pr.speed;
-    pr.vy = dir.y * pr.speed;
-    this.pushProjectile(pr);
   }
 
   /** Bell: a note lobbed straight that shatters into shards on its first hit.
@@ -2175,9 +2142,6 @@ export class RunWorld {
           this.fx?.push({ type: 'spark', x: e.x, y: e.y, color: pr.color, n: 6, spread: 14 });
           pr.shatter = 0;
         }
-        // Per-hit spark (view-only, bounded to low-count roles).
-        if (SPARK_HIT_ROLES.has(pr.role) && !pr.shard)
-          this.fx?.push({ type: 'spark', x: e.x, y: e.y, color: pr.color, n: 4, spread: 12 });
         // The shared pierce rule, and the one hook that can decline it. A
         // module returning false chips on a timer instead (ADR-0002); no hook
         // means spend, which is what every unmigrated role does today.

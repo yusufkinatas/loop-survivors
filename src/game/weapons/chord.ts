@@ -33,12 +33,14 @@
 // margin. Both halves of it must stay the SAME `tickS` stat: split them and the
 // renewal-before-expiry relationship changes silently.
 //
-// TWO ROLE-KEYED TABLES, NEITHER OF WHICH THE CHORD IS IN. It is absent from
-// config.WEAPON_SHOVE (clap only) and from run.ts's SPARK_HIT_ROLES (lead
-// only), so nothing shrank when this weapon left and a zone tick lands damage
-// and a slow and NOTHING else — no knock, no spark, no fx of any kind. Granting
-// one while tidying up is a behavior change; systems-check pins the absence
-// from both tables the way the hat's block does.
+// THE ROLE-KEYED TABLES, NONE OF WHICH THE CHORD IS IN. It was absent from
+// config.WEAPON_SHOVE and from run.ts's SPARK_HIT_ROLES alike, so nothing
+// shrank when this weapon left and a zone tick lands damage and a slow and
+// NOTHING else — no knock, no spark, no fx of any kind. Granting one while
+// tidying up is a behavior change; systems-check pins the absence the way the
+// hat's block does. SPARK_HIT_ROLES is gone entirely now — the lead was its
+// last member and took it (#141) — so what is pinned there is the Set's
+// absence from run.ts; WEAPON_SHOVE is down to the clap.
 
 import type { WeaponConf } from '../config';
 import { circlesOverlap } from '../spatial';

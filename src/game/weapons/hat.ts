@@ -57,7 +57,7 @@ export interface HatStats extends WeaponStats {
    *  maxed. On the LANE it is a total no-op, because the value below REPLACES
    *  whatever `applyBuild` computed rather than being an input the pipeline
    *  builds on. Evolved lead used to do exactly this with a hardcoded 6 and it
-   *  WAS a bug (LEAD_SERPENT.basePierce, #146) — but an infinity is not a floor
+   *  WAS a bug (LEAD_STATS.serpentBasePierce, #146) — but an infinity is not a floor
    *  to add to. There is no larger budget for the item to reach, so routing it
    *  through the pipeline the way lead's 6 now is would change nothing except
    *  make the code look like it did something.

@@ -17,9 +17,11 @@
 //     exactly what onHit is, so the snare's share of both is now `shove` and
 //     `spark*` below, applied by this module's own onHit.
 //
-// Neither table is deleted: WEAPON_SHOVE still carries clap and bass, and
-// SPARK_HIT_ROLES still carries lead. Each remaining entry leaves with its own
-// weapon, and the last one out takes the table.
+// Neither table was deleted here: at the time WEAPON_SHOVE still carried clap
+// and bass, and SPARK_HIT_ROLES still carried lead. Each remaining entry leaves
+// with its own weapon, and the last one out takes the table — which is exactly
+// what happened to SPARK_HIT_ROLES when the LEAD landed (#141). WEAPON_SHOVE is
+// down to the clap.
 //
 // Railshot spawns NOTHING. It is an instant damageLine — the same line sweep
 // the world used to own, which had no other caller — and its infinite pierce is
