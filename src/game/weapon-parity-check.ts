@@ -138,6 +138,45 @@ const KICK_FIELD: readonly (readonly [EnemyKind, number, number])[] = [
   ['zombie', 0, 200],
 ];
 
+/** `count` enemies evenly spaced on a circle of `radius` around the player,
+ *  starting at `phase`.
+ *
+ *  Every other weapon aims; the arp sweeps. Its geometry is entirely angular,
+ *  so the only field that gives an orbiter a comparable target at every phase
+ *  of its sweep — and therefore the only one that can see a change in HOW FAST
+ *  it sweeps or HOW OFTEN it is allowed to re-hit — is a ring. */
+function ring(
+  kind: EnemyKind,
+  radius: number,
+  count: number,
+  phase = 0,
+): readonly (readonly [EnemyKind, number, number])[] {
+  return Array.from({ length: count }, (_, i) => {
+    const a = phase + (Math.PI * 2 * i) / count;
+    return [kind, radius * Math.cos(a), radius * Math.sin(a)] as const;
+  });
+}
+
+/** Targets laid out against the arp's real orbit radii — 80 / 92 / 106 / 122
+ *  per tier, and the evolved orbit that breathes between 100 and 150. An
+ *  orbiter's own radius is 8-10 and a zombie's is ~21, so the swept band is
+ *  roughly the orbit radius +-29:
+ *    ring 80    the tier-1 orbit, on the nose
+ *    ring 122   the tier-4 orbit, on the nose, offset in phase so the two
+ *               rings never share an angle and a pass through one is not also
+ *               a pass through the other
+ *    45         inside every orbit — an orbiter must never reach it, which is
+ *               what makes "orbits the player" different from "a zone"
+ *    160 / -170 outside every base orbit; only the evolved orbit's outward
+ *               breath comes near. */
+const ARP_FIELD: readonly (readonly [EnemyKind, number, number])[] = [
+  ...ring('zombie', 80, 6),
+  ...ring('zombie', 122, 6, Math.PI / 6),
+  ['zombie', 45, 0],
+  ['zombie', 0, 160],
+  ['zombie', -170, 0],
+];
+
 export const SCENARIOS: readonly ParityScenario[] = [
   // ---- the kick, solo, across the whole tier ladder -----------------------
   // One block per tier because the ladder is not one shape scaled four ways:
@@ -316,6 +355,334 @@ export const SCENARIOS: readonly ParityScenario[] = [
     ],
     hp: 1e6,
     steps: [{ fire: 'kick' }, { frames: 30 }],
+  },
+
+  // ==========================================================================
+  // THE ARP (#140)
+  // ==========================================================================
+  // Recorded BEFORE the extraction, on the unchanged run.ts, per the order at
+  // the top of this file. The arp is the migration's stress test: unlike the
+  // kick it owns no pass of its own, so almost all of its behavior lives in
+  // the SHARED projectile loop as `pr.role === 'arp'` branches — orbit motion,
+  // the timer re-hit, the pierce exemption, the arena-rail exemption. None of
+  // that is reachable from a fake context, and none of it moves the digest
+  // unless a scenario actually sweeps something.
+
+  // ---- the orbit, solo, across the whole tier ladder ----------------------
+  // The ladder is a geometry ladder, not just a damage ladder: the orbit
+  // radius grows 80 -> 92 -> 106 -> 122 and the lifetime 2.0s -> 3.2s, so each
+  // tier sweeps a different ring for a different number of turns. Ending
+  // mid-flight is deliberate: a live orbiter's digested x,y IS its orbit
+  // angle, so ARP_OMEGA is under test through position, not just damage.
+  ...([1, 2, 3, 4] as const).map((tier): ParityScenario => ({
+    name: `arp base tier ${tier}, solo, damage meter`,
+    seed: 0xa2b000 + tier,
+    weapons: [['arp', tier]],
+    enemies: ARP_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'arp' }, { frames: 100 }],
+  })),
+
+  // The same ladder with natural hp, so kills, drops and the rng draws behind
+  // them are in the digest. Bats die to a single touch, so this pins WHICH
+  // enemies an orbiter reaches and in what ORDER; the chip-kill coverage that
+  // needs a target to survive several touches lives in the parked scenarios
+  // below.
+  ...([1, 4] as const).map((tier): ParityScenario => ({
+    name: `arp base tier ${tier}, solo, lethal`,
+    seed: 0xa2b100 + tier,
+    weapons: [['arp', tier]],
+    enemies: [...ring('bat', 80, 8), ...ring('bat', 122, 8, Math.PI / 8), ['zombie', 45, 0]],
+    steps: [{ fire: 'arp' }, { frames: 200 }],
+  })),
+
+  // ---- the timer re-hit (ADR-0002) ----------------------------------------
+  // WHY CIRCLERS. Every other enemy charges the player, so it crosses the
+  // swept band once and is gone — a target that leaves can only ever be hit
+  // once, and a scenario built on one is blind to the re-hit rule it claims to
+  // cover. The circler is the only body in the bestiary that HOLDS a radius
+  // (CIRCLER.orbitR = 150) and sweeps tangentially instead, so it is the only
+  // way to park something inside the orbit and leave it there.
+  //
+  // Wide Lens pushes the tier-4 orbit out to 122 * 1.15 ~= 140 and fattens the
+  // orbiter to radius 13, which puts the 150 ring inside the swept band;
+  // Extension Cable stretches the lifetime to ~4.5s, about 2.4 turns. Spins
+  // are +-1 per circler off the run rng, so some co-rotate with the orbiter
+  // (slow relative sweep, long dwell) and some counter-rotate (fast, short) —
+  // both relationships to ORBIT_REHIT_S in one scenario.
+  {
+    name: 'arp base tier 4, timer re-hit against circlers parked on the orbit',
+    seed: 0x0a2b17,
+    weapons: [['arp', 4]],
+    items: [['wideLens', 5], ['extensionCable', 5]],
+    enemies: ring('circler', 150, 10),
+    hp: 1e6,
+    steps: [{ fire: 'arp' }, { frames: 280 }],
+  },
+  // The same field with the circlers' natural 10hp against tier-4's 3 damage:
+  // four chips to a kill. Now the re-hit INTERVAL is not just a damage total,
+  // it is which frame each circler dies on, which gem drops when, and every
+  // rng draw downstream of that. One extra or one missing clear per second
+  // reorders the whole tail of the scenario.
+  {
+    name: 'arp base tier 4, chip-kills circlers on the re-hit timer',
+    seed: 0x0a2b18,
+    weapons: [['arp', 4]],
+    items: [['wideLens', 5], ['extensionCable', 5]],
+    enemies: ring('circler', 150, 10),
+    steps: [{ fire: 'arp' }, { frames: 280 }],
+  },
+  // Several orbiters layered on a beat grid, so re-hit windows from different
+  // spawn phases interleave over the same parked bodies. Each orbiter carries
+  // its OWN hit set and its OWN rehit countdown; a refactor that hoists either
+  // onto the weapon instead of the projectile collapses them into one shared
+  // schedule and this scenario moves.
+  {
+    name: 'arp base tier 4, four triggers on a beat grid over parked circlers',
+    seed: 0x0a2b19,
+    weapons: [['arp', 4]],
+    items: [['wideLens', 5], ['extensionCable', 5]],
+    enemies: ring('circler', 150, 10),
+    hp: 1e6,
+    steps: [
+      { fire: 'arp' }, { frames: 11 },
+      { fire: 'arp' }, { frames: 11 },
+      { fire: 'arp' }, { frames: 11 },
+      { fire: 'arp' }, { frames: 260 },
+    ],
+  },
+
+  // ---- the pierce exemption (ADR-0002) ------------------------------------
+  // Twenty circlers parked on the orbit and one orbiter that must sweep all of
+  // them, repeatedly, without being consumed. maxPierce on an orbiter is 1 —
+  // the spawner overwrites pierce with Infinity after baseProjectile has
+  // already defaulted maxPierce from the (absent) conf.pierce — so a single
+  // shared `pr.pierce -= 1` reaching this orbiter kills it on its FIRST touch,
+  // one hit into a scenario that records dozens.
+  //
+  // Needle Tips at max is in the build on purpose. It is pierce-only since
+  // #145 and the arp's ladder carries no pierce key, so it must stay a total
+  // no-op here (ADR-0002's "consequences"). It is also exactly what would mask
+  // a regression: with +5 pierce a wrongly-pierce-spending orbiter survives
+  // five hits instead of one and still looks vaguely alive. Twenty parked
+  // targets over 2.4 turns is far past anything +5 can cover.
+  {
+    name: 'arp base tier 4, pierce exemption through parked circlers',
+    seed: 0x0a2b91,
+    weapons: [['arp', 4]],
+    items: [['wideLens', 5], ['extensionCable', 5], ['needleTips', 5]],
+    enemies: ring('circler', 150, 20),
+    hp: 1e6,
+    steps: [{ fire: 'arp' }, { frames: 280 }],
+  },
+  // Big slow bodies rather than parked ones: an elite is radius 34, so the
+  // swept band is wide enough that a pass DWELLS inside one instead of
+  // clipping it. Different dwell-vs-interval relationship from the circlers,
+  // and it keeps a non-circler body in the re-hit coverage in case circler
+  // steering itself ever changes.
+  {
+    name: 'arp base tier 4, sweeping a ring of elites',
+    seed: 0x0a2b92,
+    weapons: [['arp', 4]],
+    items: [['extensionCable', 5]],
+    enemies: ring('elite', 122, 8),
+    hp: 1e6,
+    steps: [{ fire: 'arp' }, { frames: 280 }],
+  },
+
+  // ---- Event Horizon ------------------------------------------------------
+  // The evolved orbit is a different shape, not a bigger one: counter-rotating
+  // PAIRS, a radius that breathes 100..150 off pr.age instead of the stored
+  // orbitRadius, 1.25x size, 1.35x lifetime, 0.8x damage, and its own 0.45s
+  // re-hit instead of 0.35s. Rings at 100, 125 and 150 sit on the inner, mid
+  // and outer extremes of that breath, so the oscillation itself is in the
+  // digest — a mid-radius-only field would look identical to a fixed orbit.
+  {
+    name: 'arp evolved (Event Horizon), damage meter',
+    seed: 0x0e40e1,
+    weapons: [['arp', 4]],
+    items: [['extensionCable', 5]],
+    evolved: ['arp'],
+    enemies: [
+      ...ring('zombie', 100, 6),
+      ...ring('zombie', 125, 6, Math.PI / 6),
+      ...ring('zombie', 150, 6, Math.PI / 3),
+      ['zombie', 45, 0],
+      ['zombie', 210, 0],
+    ],
+    hp: 1e6,
+    steps: [{ fire: 'arp' }, { frames: 200 }],
+  },
+  // Event Horizon re-hits on 0.45s, not ORBIT_REHIT_S's 0.35s — a second,
+  // separate interval that the extraction has to keep separate. Circlers park
+  // at 150, which is exactly the outer extreme of the evolved breath, so the
+  // pair only reaches them at the top of each oscillation: the re-hit timer
+  // and the radius oscillation gate each other here, and neither one alone
+  // explains the recorded damage.
+  {
+    name: 'arp evolved (Event Horizon), 0.45s re-hit against parked circlers',
+    seed: 0x0e40e2,
+    weapons: [['arp', 4]],
+    items: [['extensionCable', 5]],
+    evolved: ['arp'],
+    enemies: ring('circler', 150, 10),
+    hp: 1e6,
+    steps: [{ fire: 'arp' }, { frames: 280 }],
+  },
+  {
+    name: 'arp evolved (Event Horizon), chip-kills parked circlers',
+    seed: 0x0e40e4,
+    weapons: [['arp', 4]],
+    items: [['extensionCable', 5]],
+    evolved: ['arp'],
+    enemies: ring('circler', 150, 10),
+    steps: [{ fire: 'arp' }, { frames: 280 }],
+  },
+  {
+    name: 'arp evolved (Event Horizon), lethal, splitters',
+    seed: 0x0e40e3,
+    weapons: [['arp', 4]],
+    items: [['extensionCable', 5]],
+    evolved: ['arp'],
+    // hp 6 against 2.4 evolved damage: three chips and a splitter bursts. So
+    // the re-hit cadence decides the FRAME each burst happens on, and each
+    // burst pushes four swarmers into the live enemy array that an
+    // never-dying orbiter then keeps sweeping — the collection grows under
+    // the loop that is walking it.
+    enemies: [...ring('splitter', 125, 6), ...ring('circler', 150, 4, 0.5)],
+    hp: 6,
+    steps: [{ fire: 'arp' }, { frames: 240 }],
+  },
+
+  // ---- the orbiter cap ----------------------------------------------------
+  // Event Horizon retires its oldest evolved orbiters down to 24 whenever a
+  // trigger pushes the count past it. Both ways of reaching the cap are here
+  // because they exercise different halves of the while-loop: creeping up on
+  // it two at a time, and blowing straight through it. Note the cap counts
+  // EVOLVED arp orbiters only, and splices by identity out of the shared
+  // projectile array — the inline 24 becomes a named stat in the extraction,
+  // and if that stat is read against the wrong population these move.
+  {
+    name: 'arp evolved, orbiter cap reached two at a time',
+    seed: 0x0ca900,
+    weapons: [['arp', 4]],
+    items: [['extensionCable', 5]],
+    evolved: ['arp'],
+    enemies: ring('zombie', 125, 8),
+    hp: 1e6,
+    steps: [
+      ...Array.from({ length: 15 }, () => [{ fire: 'arp' as const }, { frames: 3 }]).flat(),
+      { frames: 30 },
+    ],
+  },
+  {
+    name: 'arp evolved with Double Take, cap overshot in one trigger',
+    seed: 0x0ca901,
+    weapons: [['arp', 4]],
+    // Double Take turns one trigger into 6 counter-rotating PAIRS, i.e. 12
+    // orbiters, so the third trigger lands 36 and the cap has to retire 12 in
+    // one pass. Double Take is also the only item in this file that makes
+    // extraProjectiles non-zero, so the fan loops in both arp spawners run
+    // with count > 1 exactly here.
+    items: [['extensionCable', 5], ['doubleTake', 5]],
+    evolved: ['arp'],
+    enemies: ring('zombie', 125, 8),
+    hp: 1e6,
+    steps: [
+      { fire: 'arp' }, { frames: 4 },
+      { fire: 'arp' }, { frames: 4 },
+      { fire: 'arp' }, { frames: 40 },
+    ],
+  },
+
+  // ---- mid-evolve ---------------------------------------------------------
+  // A base orbiter still in the air when the arp evolves. pr.evolved is frozen
+  // at spawn, so that orbiter keeps its stored orbitRadius, its 0.35s re-hit
+  // and its base damage while the next trigger's Event Horizon pairs breathe
+  // around it on 0.45s. Base and evolved arp behavior coexist in the same
+  // shared loop, in the same frame, on the same role — the single seam most
+  // likely to be "simplified" into one mode flag by the extraction.
+  {
+    name: 'arp mid-evolve with a base orbiter still circling',
+    seed: 0x0a2ed0,
+    weapons: [['arp', 4]],
+    items: [['extensionCable', 5]],
+    enemies: ARP_FIELD,
+    hp: 1e6,
+    steps: [
+      { fire: 'arp' },
+      { frames: 30 },
+      { evolve: 'arp' },
+      { frames: 6 },
+      { fire: 'arp' },
+      { frames: 150 },
+    ],
+  },
+
+  // ---- the arp in a band --------------------------------------------------
+  // Ordering. The orbiter is the longest-lived thing any weapon spawns and it
+  // shares the shared projectile array, the shared spatial hash and the shared
+  // rng stream with eight weapons that have not moved yet. The arp draws
+  // exactly ONE rng value per trigger (its base orbit angle) no matter how
+  // many orbiters that trigger produces — the single easiest thing to get
+  // wrong by moving the draw inside the fan loop, and invisible to everything
+  // except rngDraws.
+  {
+    name: 'arp in a full band, base, damage meter',
+    seed: 0x0a2ba1,
+    weapons: [
+      ['kick', 4], ['snare', 4], ['hat', 4], ['bass', 4], ['chord', 4],
+      ['lead', 4], ['clap', 4], ['bell', 4], ['arp', 4],
+    ],
+    enemies: ARP_FIELD,
+    hp: 1e6,
+    steps: [
+      { fire: 'arp' }, { fire: 'kick' }, { fire: 'snare' }, { fire: 'hat' },
+      { fire: 'bass' }, { fire: 'chord' }, { fire: 'lead' }, { fire: 'clap' },
+      { fire: 'bell' },
+      { frames: 120 },
+    ],
+  },
+  {
+    name: 'arp in a full band, base, lethal',
+    seed: 0x0a2ba2,
+    weapons: [
+      ['kick', 4], ['snare', 4], ['hat', 4], ['bass', 4], ['chord', 4],
+      ['lead', 4], ['clap', 4], ['bell', 4], ['arp', 4],
+    ],
+    enemies: ARP_FIELD,
+    steps: [
+      { fire: 'arp' }, { fire: 'kick' }, { fire: 'snare' }, { fire: 'hat' },
+      { fire: 'bass' }, { fire: 'chord' }, { fire: 'lead' }, { fire: 'clap' },
+      { fire: 'bell' },
+      { frames: 120 },
+    ],
+  },
+  {
+    name: 'arp in a full evolved band with Double Take',
+    seed: 0x0a2ba3,
+    weapons: [
+      ['kick', 4], ['snare', 4], ['hat', 4], ['bass', 4], ['chord', 4],
+      ['lead', 4], ['clap', 4], ['bell', 4], ['arp', 4],
+    ],
+    // Every evolution item at max PLUS Double Take, which the kick's loaded
+    // band deliberately leaves out. extraProjectiles and orbitDistanceMul are
+    // both non-identity here, so the arp's fan count and its built orbit
+    // radius are both off their defaults.
+    items: [
+      ['highTops', 5], ['fastForward', 5], ['mirrorball', 5], ['heavyAmp', 5],
+      ['wideLens', 5], ['needleTips', 5], ['paddedJacket', 5],
+      ['extensionCable', 5], ['magnetLanyard', 5], ['doubleTake', 5],
+    ],
+    evolved: ['kick', 'snare', 'hat', 'bass', 'chord', 'lead', 'clap', 'bell', 'arp'],
+    enemies: ARP_FIELD,
+    hp: 1e6,
+    steps: [
+      { fire: 'arp' }, { fire: 'kick' }, { fire: 'snare' }, { fire: 'hat' },
+      { fire: 'bass' }, { fire: 'chord' }, { fire: 'lead' }, { fire: 'clap' },
+      { fire: 'bell' },
+      { frames: 120 },
+    ],
   },
 ];
 
