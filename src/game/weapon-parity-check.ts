@@ -773,6 +773,229 @@ const CLAP_TOUGH_FIELD: readonly (readonly [EnemyKind, number, number])[] = [
   ['shielded', 200, 0],
 ];
 
+/** WHERE EVERY BELL NOTE SHATTERS. The note is lobbed on `aimFan(0.1)` at the
+ *  nearest body and it detonates on its FIRST contact, so the whole weapon's
+ *  geometry hangs off one anchor. 150 is far enough that the burst's footprint
+ *  sits clear of the player and well inside AIM_RANGE (750), and a flower's
+ *  17.544 radius plus a tier-4 note's 7 means contact at 24.5 — comfortably
+ *  more than the +-15 units of lateral drift the 0.1-rad aim jitter can put on
+ *  the shot at this distance, so the anchor is hit on EVERY seed and the
+ *  shatter point is not seed-dependent. */
+const BELL_ANCHOR = 150;
+
+/** THE BURST, read as a reach ladder. A shard flies `BELL.shardSpeed` (320) for
+ *  `BELL.shardLifeS` (0.45) = 144 units and makes contact with a flower at
+ *  `shardRadius` 4 + 17.544 = 21.5, so a shard reaches a body whose centre is
+ *  within ~165.5 of the shatter point and NOTHING beyond it. The rings are cut
+ *  either side of that number:
+ *    48   struck within a couple of frames of the shatter
+ *    96   struck mid-flight
+ *    144  struck at the very end of a shard's life — the rung that moves if
+ *         either the 320 or the 0.45 does
+ *    200  OUT OF REACH at every base tier; the "the shards stopped here"
+ *         marker, and the rung that Extension Cable and Fast Forward bring
+ *         into range in the two item scenarios below
+ *
+ *  ARCS, NOT RINGS, and the reason is the one arcAt was written for: a full
+ *  ring around the anchor always has a member at (150 - R, 0), which is NEARER
+ *  the player than the anchor and would steal the aim lock, moving the very
+ *  point the whole field is measured from. Every bearing here stays inside
+ *  [-80, 80], so every body is at least 150 from the player and the anchor
+ *  wins the lock outright. The -x half of each burst therefore finds nothing,
+ *  which is deliberate: it means the SET of bodies a burst reaches depends on
+ *  the burst's base angle, so the single `this.rng()` draw at the top of
+ *  spawnShards is visible in world state and not only in `rngDraws`.
+ *
+ *  FLOWERS, for the reason BASS_SWEPT_FIELD and the lead fields spell out: a
+ *  flower crosses 8.9 units a second, so under 4 across a shard's whole 0.45s
+ *  life, and a body placed at radius R is still at radius R when the shard
+ *  arrives. Angular spacing on every ring clears a flower's 35.1-unit
+ *  separation distance, so world.update(0) leaves the field exactly as
+ *  written. */
+const BELL_BURST_FIELD: readonly (readonly [EnemyKind, number, number])[] = [
+  ['flower', BELL_ANCHOR, 0],
+  ...arcAt('flower', BELL_ANCHOR, 0, 48, [-75, -25, 25, 75]),
+  ...arcAt('flower', BELL_ANCHOR, 0, 96, [-80, -55, -30, -5, 20, 45, 70]),
+  ...arcAt('flower', BELL_ANCHOR, 0, 144, [-80, -60, -40, -20, 0, 20, 40, 60, 80]),
+  ...arcAt('flower', BELL_ANCHOR, 0, 200, [-75, -50, -25, 0, 25, 50, 75]),
+];
+
+/** The same field in SWARMERS for the lethal rows. A flower has 30 hp and a
+ *  tier-4 note deals 5 with shards at half that, so BELL_BURST_FIELD at natural
+ *  hp kills nothing at all and pins no drop, no kill tally and none of the rng
+ *  behind either. A swarmer has 5: the note one-shots the anchor at tier 4 and
+ *  a shard takes two. Swarmer radius is 9, so separation needs only 18 between
+ *  centres and every rung above clears it by a wide margin — the layout is
+ *  identical, only the body is smaller and killable. The contact distances
+ *  shrink with it (a shard reaches 144 + 13 = 157), which is why the 144 ring
+ *  is a near-miss here where it is a hit for flowers; that difference is
+ *  recorded, not accidental. */
+const BELL_BURST_SOFT_FIELD: readonly (readonly [EnemyKind, number, number])[] =
+  BELL_BURST_FIELD.map(([, x, y]) => ['swarmer', x, y] as const);
+
+/** THE FIRST-HIT RULE, which is the one thing about the base bell that no ring
+ *  can say. `pr.shatter` is zeroed the instant it fires, so a note with pierce
+ *  to spare passes through everything behind the first body WITHOUT bursting
+ *  again. Tier 4 carries pierce 2 and Needle Tips takes it to 7, so a file this
+ *  long is crossed end to end by one note that shattered exactly once — and a
+ *  module that re-armed the shatter, or shattered per hit, would put four more
+ *  bursts into the digest.
+ *
+ *  Spacing 60 against a flower's 35.1 separation, starting at 130 so the head
+ *  is an unambiguous aim lock, ending at 490 so the whole file is inside
+ *  AIM_RANGE and inside the arena rails. */
+const BELL_FILE: readonly (readonly [EnemyKind, number, number])[] = file(
+  'flower',
+  [130, 190, 250, 310, 370, 430, 490],
+);
+
+/** THE WELL, read as a pull ladder. A Gravity Bell note leaves a well of radius
+ *  `130 * areaMul` that drags every live, non-dummy body inside it toward the
+ *  centre at `pullSpeed` 140 for its 1.1s life. The well is centred where the
+ *  NOTE was on the contact frame, roughly 24.5 short of the anchor, so the
+ *  bearings below sample a spread of real distances either side of 130 rather
+ *  than four clean rungs — which is what a dense bracket needs to be.
+ *  Measured from the anchor:
+ *    45   deep inside the well on every bearing
+ *    90   inside on every bearing
+ *    125  straddles 130 once the standoff is applied: the +-80 bearings are in,
+ *         the on-axis one is out. The rung a change to the 130 moves first.
+ *    150  outside on the forward bearings, inside on the wide ones
+ *    210  outside on every bearing — the "the pull stopped here" marker
+ *
+ *  The pull is a DIRECT POSITION WRITE, not a shove: it does not touch
+ *  knockX/knockY and it is not scaled by knockbackMul, so the only channel it
+ *  shows up in is the enemy `pos=` field of the digest. That makes 140 readable
+ *  as a distance per frame from any scenario that stops mid-pull.
+ *
+ *  Flowers again, and here it matters more than anywhere: the well runs for
+ *  1.1s and a body that walked toward the player under its own power would
+ *  contaminate the pull with its own chase. A flower covers under 10 units in
+ *  that time against the 154 the well can drag it. */
+const BELL_WELL_FIELD: readonly (readonly [EnemyKind, number, number])[] = [
+  ['flower', BELL_ANCHOR, 0],
+  ...arcAt('flower', BELL_ANCHOR, 0, 45, [-70, -20, 30, 80]),
+  ...arcAt('flower', BELL_ANCHOR, 0, 90, [-75, -45, -15, 15, 45, 75]),
+  ...arcAt('flower', BELL_ANCHOR, 0, 125, [-80, -48, -16, 16, 48, 80]),
+  ...arcAt('flower', BELL_ANCHOR, 0, 150, [-75, -45, -15, 15, 45, 75]),
+  ...arcAt('flower', BELL_ANCHOR, 0, 210, [-60, -20, 20, 60]),
+];
+
+/** The well field in SWARMERS, for the lethal rows, for BELL_BURST_SOFT_FIELD's
+ *  reason. It also puts the well's `if (enemy.dead) continue;` under test for
+ *  the first time: bodies die INSIDE the radius while the well is still
+ *  running, and a well that kept dragging corpses would move their final
+ *  resting positions. */
+const BELL_WELL_SOFT_FIELD: readonly (readonly [EnemyKind, number, number])[] =
+  BELL_WELL_FIELD.map(([, x, y]) => ['swarmer', x, y] as const);
+
+/** The well's OTHER skip, and the only field in this file that carries a
+ *  sandbox prop. `updateGravityWells` steps over `enemy.dummy` as well as
+ *  `enemy.dead`, and nothing else in the harness has ever spawned a dummy, so
+ *  that line is currently unexecuted by every scenario in the file. A dummy
+ *  parked 60 from the anchor sits deep inside the well; if the module drops the
+ *  skip on the way out of run.ts, the dummy starts sliding and its `pos=` line
+ *  moves. The flowers around it are the control — they must slide, and it must
+ *  not.
+ *
+ *  The dummies are placed OFF the firing axis and farther from the player than
+ *  the anchor, so they neither take the aim lock nor block the note. A dummy's
+ *  radius is 22.8, so it needs 40.3 from any flower; every gap below clears
+ *  that. */
+const BELL_DUMMY_FIELD: readonly (readonly [EnemyKind, number, number])[] = [
+  ['flower', BELL_ANCHOR, 0],
+  ...arcAt('dummy', BELL_ANCHOR, 0, 60, [-55, 55]),
+  ...arcAt('flower', BELL_ANCHOR, 0, 60, [0]),
+  ...arcAt('flower', BELL_ANCHOR, 0, 115, [-75, -25, 25, 75]),
+];
+
+/** THE CAP, CROSSED ONCE AND ONLY JUST. A single body, and that is the whole
+ *  design. BELL_WALL_FIELD drives the shard population far past 36 and holds it
+ *  there, which is what the 36 itself needs — but it also means the oldest live
+ *  shard is amplified seventeen times over, and 1.08^17 is well past the
+ *  `damage * 3` ceiling, so every amplified shard in that scenario SATURATES.
+ *  Verified the hard way: mutating 1.08 to 1.10 against the wall scenario
+ *  changed nothing at all, because `min` threw the difference away.
+ *
+ *  So this field crosses the cap ONCE, by about ten. One flower at 110 catches
+ *  all three of a Double-Taken trigger's notes (the +-7-degree fan and the
+ *  +-0.1-rad jitter together are under 14 units of drift at that range, against
+ *  a 24.5-unit contact radius), so one trigger is 24 shards from effectively
+ *  one point — and with only that one body on the field most shards live their
+ *  full 0.45s instead of dying on the next thing they meet.
+ *
+ *  THREE triggers four frames apart, and the count is measured, not guessed:
+ *  two crossed nothing (the population peaked at 31), three take it to exactly
+ *  36 on the eighth burst and produce TWELVE amplifications. RECORDED: one
+ *  shard at dmg 6.295425, which is 2.5 * 1.08^12 — under the 7.5 ceiling, so
+ *  the rate is what the digest is holding and not the clamp. */
+const BELL_LONE_FIELD: readonly (readonly [EnemyKind, number, number])[] = [
+  ['flower', 110, 0],
+];
+
+/** THE WELL'S SEEKERS, ALIVE. The burst's ten shards are the only entities in
+ *  the game that carry `homing` with `turnRate` 4 and a floored `bounces` of 1,
+ *  and all three are digested per-shot fields — but ONLY while the shot is
+ *  still in the world. Against BELL_WELL_FIELD they are never observable at
+ *  all: the well spends 0.35s dragging bodies onto its own centre, which is
+ *  exactly where the shards then spawn, so all ten spend their pierce on the
+ *  frame after they appear and the `projectiles:` block is empty by the next
+ *  digest. Verified, not assumed — frames 41, 42, 43 and 45 all recorded zero
+ *  shots against that field.
+ *
+ *  So this field keeps the well EMPTY except for the anchor that creates it,
+ *  and parks its bodies at 220 from the anchor. That is:
+ *    outside the well's 130 radius, so nothing is ever dragged inward and the
+ *      centre stays clear;
+ *    outside a shard's 165.5 reach, so no shard ever arrives and spends its
+ *      pierce;
+ *    inside a gravity shard's homing range, which is Infinity, so all ten
+ *      still TURN toward them for their whole life.
+ *  Ten seekers curving at 4 rad/s toward targets they cannot reach, held in the
+ *  digest for as many frames as the scenario asks for. */
+const BELL_SEEKER_FIELD: readonly (readonly [EnemyKind, number, number])[] = [
+  // A SWARMER anchor, at natural hp, and the scenario deliberately omits `hp`.
+  // The anchor is the one body that is ALWAYS at the well's centre — the well
+  // is created where the note touched it — so an anchor that survives eats all
+  // ten shards on their first frame however empty the rest of the field is.
+  // Verified: a flower anchor here still recorded zero live shots. A swarmer
+  // has 5 hp against an evolved tier-4 note's 6.75, so it is dead and reaped
+  // before the burst at frame 40 and the centre is clear when the shards
+  // arrive. It costs this row its damage-meter reading and buys the only view
+  // of a gravity shard in the file, which is the better trade.
+  ['swarmer', BELL_ANCHOR, 0],
+  ...arcAt('flower', BELL_ANCHOR, 0, 220, [-80, -55, -30, -5, 20, 45, 70]),
+];
+
+/** THE 36-SHARD CAP. `spawnShards` refuses to add a 37th live shard and instead
+ *  AMPLIFIES the oldest one — `damage = min(damage * 1.08, damage * 3)` and
+ *  `lifeS = max(lifeS, shardLifeS)` — which is the strangest rule the bell
+ *  owns and the one most likely to be "cleaned up" during an extraction. It is
+ *  also the only rule in the weapon that is invisible unless more than 36
+ *  shards are alive at once, and no scenario above comes close: tier 4 throws
+ *  8 per note.
+ *
+ *  The recipe is Double Take at max (3 notes a trigger, so 24 shards) fired
+ *  four times inside one shard lifetime (0.45s = 27 frames), against a wall
+ *  close enough that all three notes of each trigger shatter within a frame or
+ *  two of leaving. That puts well past 36 shards in the air, so the branch is
+ *  taken repeatedly and the amplified shards' `dmg=` and `life=` lines are in
+ *  the digest.
+ *
+ *  A WALL, not a ring: every note of every fanned trigger has to meet a body
+ *  almost immediately, whatever the +-7-degree Double Take fan and the
+ *  +-0.1-rad jitter do to its heading. Flowers on a 40-unit pitch across the
+ *  full width of the fan, two rows deep, and hp comes from the scenario. */
+const BELL_WALL_FIELD: readonly (readonly [EnemyKind, number, number])[] = (() => {
+  const out: (readonly [EnemyKind, number, number])[] = [];
+  for (let row = 0; row < 2; row++) {
+    for (let i = -3; i <= 3; i++) {
+      out.push(['flower', 120 + row * 45, i * 40] as const);
+    }
+  }
+  return out;
+})();
+
 export const SCENARIOS: readonly ParityScenario[] = [
   // ---- the kick, solo, across the whole tier ladder -----------------------
   // One block per tier because the ladder is not one shape scaled four ways:
@@ -4579,6 +4802,657 @@ export const SCENARIOS: readonly ParityScenario[] = [
       { fire: 'bass' }, { fire: 'chord' }, { fire: 'lead' }, { fire: 'bell' },
       { fire: 'arp' },
       { frames: 60 },
+    ],
+  },
+
+  // ===========================================================================
+  // THE BELL (#141) — the last weapon out of run.ts.
+  //
+  // The bell is unlike everything above it in one structural way: it is the
+  // only weapon whose entities SPAWN OTHER ENTITIES, twice over. A note spawns
+  // shards; an evolved note spawns a well, and the well spawns shards of its
+  // own on a timer. So "the bell's footprint" is never one geometry — it is a
+  // chain, and each link has its own tuning, its own rng draw and its own frame
+  // it happens on. The scenarios below take the chain one link at a time and
+  // then put it back together.
+  //
+  // WHAT THE DIGEST DOES AND DOES NOT SEE. The `gravityWells:` line carries
+  // pos and lifeS ONLY. `radius`, `pullSpeed`, `burstT`, `burstDamage` and
+  // `burst` are not digested and have no direct channel at all, so every one of
+  // them is pinned INDIRECTLY here:
+  //   radius      which bodies moved (BELL_WELL_FIELD brackets 130)
+  //   pullSpeed   how far they moved on a scenario that stops mid-pull
+  //   burstT      a pair of scenarios that stop either side of the burst frame
+  //   burstDamage the damage the burst's shards deal
+  //   burst       the once-only spark in the ordered fx stream
+  // That is the reason the well block below is as long as it is: an under-cut
+  // well scenario pins nothing, because the well itself is nearly invisible.
+  // ===========================================================================
+
+  // TWO BELL CONSTANTS ARE UNOBSERVABLE THROUGH WORLD STATE, and saying so
+  // here is worth more than a scenario that pretends otherwise. Both were
+  // mutated against this baseline and both left all 238 entries identical:
+  //
+  //   `pr.shatter = 10` on an evolved note (spawnBell). It is DEAD CODE. The
+  //   shatter branch reads the count only on the non-gravity path, and an
+  //   evolved note always has `gravity` set, so the 10 is never used for
+  //   anything — the well's own burst passes a separate literal 10 to
+  //   spawnShards, and THAT one is pinned (mutating it to 9 is caught). An
+  //   extraction is free to drop the assignment; it must not "unify" the two
+  //   tens into one shared constant, because only one of them is live.
+  //
+  //   `if (enemy.dead) continue;` in updateGravityWells. `reapEnemies` runs at
+  //   the end of every RunWorld.update and splices every dead body out
+  //   unconditionally, so a corpse the well dragged is gone before any digest
+  //   can read its position. The guard is real defensive code — a body killed
+  //   during updateProjectiles IS still in the array when the wells run later
+  //   in the same frame — but its effect is discarded the same frame. It needs
+  //   a literal pin in systems-check, not a scenario here.
+  //
+  // The sibling guard on the same line, `if (enemy.dummy) continue;`, IS
+  // observable and IS pinned — dummies are never reaped — which is why
+  // BELL_DUMMY_FIELD exists and why the two are called out separately.
+
+  // ---- the note and the burst, solo, across the whole tier ladder ----------
+  // Three ladders at once, and BELL_BURST_FIELD reads all three. The note's own
+  // ladder is damage/speed/radius/lifetimeS/pierce out of config.WEAPONS.bell;
+  // the burst's is BELL.shards (4/5/6/8), which changes how many bodies the
+  // ring finds; and BELL.shardDamageMul (0.5) sets what each of them takes. A
+  // tier row edited anywhere has to move exactly one of these four.
+  //
+  // 40 frames is 0.667s: long enough for the note to cross the 125 units to the
+  // anchor (~19 frames at tier 4) and for the whole 0.45s burst to live and
+  // expire, so each entry is a COMPLETE burst rather than a snapshot of one.
+  ...([1, 2, 3, 4] as const).map((tier): ParityScenario => ({
+    name: `bell base tier ${tier}, solo, damage meter`,
+    seed: 0xbe1100 + tier,
+    weapons: [['bell', tier]],
+    enemies: BELL_BURST_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'bell' }, { frames: 40 }],
+  })),
+
+  // Natural hp, so kills, killsByRole, gem/note drops and both rng streams
+  // behind them enter the digest. Swarmers, for BELL_BURST_SOFT_FIELD's reason:
+  // a flower survives everything the bell can do to it and pins no drop at all.
+  ...([1, 4] as const).map((tier): ParityScenario => ({
+    name: `bell base tier ${tier}, solo, lethal`,
+    seed: 0xbe1120 + tier,
+    weapons: [['bell', tier]],
+    enemies: BELL_BURST_SOFT_FIELD,
+    steps: [{ fire: 'bell' }, { frames: 60 }],
+  })),
+
+  // ---- the shatter fires ONCE, on the first hit ---------------------------
+  // `pr.shatter = 0` at the bottom of the shatter branch is the whole rule, and
+  // it is invisible to every ring: a note that shattered on each of its two
+  // pierces would spray the same ring twice and look like a damage change. In a
+  // FILE it looks like what it is. Tier 4 carries pierce 2, so this note passes
+  // through the head AND the second body, and exactly one burst is in the fx
+  // stream. The Needle Tips row takes pierce to 7 and crosses the whole file,
+  // still on one burst — five more chances to re-shatter, none taken.
+  {
+    name: 'bell base tier 4, pierce 2 through the file, ONE shatter',
+    seed: 0xbe11f1,
+    weapons: [['bell', 4]],
+    enemies: BELL_FILE,
+    hp: 1e6,
+    steps: [{ fire: 'bell' }, { frames: 60 }],
+  },
+  {
+    name: 'bell base tier 4 with Needle Tips, pierce 7 down the file, still ONE shatter',
+    seed: 0xbe11f2,
+    weapons: [['bell', 4]],
+    items: [['needleTips', 5]],
+    enemies: BELL_FILE,
+    hp: 1e6,
+    steps: [{ fire: 'bell' }, { frames: 60 }],
+  },
+
+  // ---- +pierce reaches the SHARDS too, by a different route ---------------
+  // THE SITE THIS SCENARIO EXISTS FOR: run.ts computes the shard budget as
+  // `BELL.shardPierce + mods.extraPierce` — raw addition, NOT through
+  // `withExtraPierce`, which is the helper whose doc comment claims the +pierce
+  // rule lives "in one place". The two agree for the bell (1 is finite, so the
+  // helper's `Number.isFinite` guard takes the same branch), and routing the
+  // site through the helper during the extraction should therefore be
+  // behaviour-identical — but "should" is exactly the kind of claim this file
+  // exists to settle. Against BELL_BURST_FIELD each shard's budget goes from 1
+  // to 6, so a shard now walks a whole radial line of bodies instead of dying
+  // on the first, and the total is several times the row above it. If the
+  // routing is NOT identical, this entry moves.
+  {
+    name: 'bell base tier 4 with Needle Tips, the shards carry +pierce as well',
+    seed: 0xbe1131,
+    weapons: [['bell', 4]],
+    items: [['needleTips', 5]],
+    enemies: BELL_BURST_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'bell' }, { frames: 40 }],
+  },
+
+  // ---- the three build multipliers the shards read, one at a time ----------
+  // spawnShards reads FOUR build mods, and each one is a separate line that a
+  // module could drop without any of the others noticing:
+  //   durationMul       BELL.shardLifeS   0.45 -> 0.63 at Extension Cable 5
+  //   projectileSpeedMul BELL.shardSpeed  320  -> 384  at Fast Forward 5
+  //   areaMul           BELL.shardRadius  4    -> 5.2  at Wide Lens 5
+  //   extraPierce       BELL.shardPierce  (the row above)
+  // The first two both push the burst's reach past 165.5 and onto the 200 ring,
+  // which is precisely why that ring is in the field and empty in every row
+  // above. They reach it by different arithmetic — 384 * 0.45 = 172.8 against
+  // 320 * 0.63 = 201.6 — so the two entries are different, and a module that
+  // applied one multiplier where the other belonged would move both.
+  //
+  // Wide Lens is the subtlest: it widens the NOTE as well (radius 7 -> 9.1), so
+  // the note makes contact 2.1 units earlier and the entire burst is thrown
+  // from a different point. That coupling is real behaviour and is recorded.
+  {
+    name: 'bell base tier 4 with Extension Cable, the shards live 0.63s and reach the 200 ring',
+    seed: 0xbe1141,
+    weapons: [['bell', 4]],
+    items: [['extensionCable', 5]],
+    enemies: BELL_BURST_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'bell' }, { frames: 60 }],
+  },
+  {
+    name: 'bell base tier 4 with Fast Forward, the shards fly 384 and reach further',
+    seed: 0xbe1142,
+    weapons: [['bell', 4]],
+    items: [['fastForward', 5]],
+    enemies: BELL_BURST_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'bell' }, { frames: 40 }],
+  },
+  {
+    name: 'bell base tier 4 with Wide Lens, a wider note and wider shards',
+    seed: 0xbe1143,
+    weapons: [['bell', 4]],
+    items: [['wideLens', 5]],
+    enemies: BELL_BURST_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'bell' }, { frames: 40 }],
+  },
+
+  // ---- ONE rng draw per burst, and no more --------------------------------
+  // `spawnShards` opens with a single `this.rng()` for the burst's base angle
+  // and then lays the shards out at `base + (i / count) * 2 PI` — the count is
+  // NOT a draw count. A module that rolled per shard would produce a plausible
+  // spray and desynchronise every drop for the rest of the run, and `rngDraws`
+  // is the only line in the digest that catches it.
+  //
+  // Double Take at max makes the arithmetic unambiguous: ONE aim draw for the
+  // trigger, then THREE bursts of eight shards each. The recorded `rngDraws`
+  // therefore has to move by 4 for the trigger and not by 25. It also puts
+  // three bursts at three different points on the field at once, so the base
+  // angle is visible as three separate sprays rather than one.
+  {
+    name: 'bell base tier 4 with Double Take, three notes, three one-draw bursts',
+    seed: 0xbe1151,
+    weapons: [['bell', 4]],
+    items: [['doubleTake', 2]],
+    enemies: BELL_BURST_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'bell' }, { frames: 40 }],
+  },
+
+  // ---- the untargeted aim, the other rng shape ----------------------------
+  // `aimDir` draws ONCE when it has a target and TWICE when it does not — a
+  // whole random heading, then the jitter. Every bell scenario above has an
+  // anchor inside AIM_RANGE, so without this row the untargeted branch is never
+  // taken. LEAD_UNAIMED_RING is reused verbatim: a ring at 800 is outside the
+  // 750 gate for the bell exactly as it is for the lead, and reusing it keeps
+  // the two weapons' blind rows directly comparable.
+  //
+  // A tier-4 note covers 400 * 2.1 = 840 units, so whether the blind heading
+  // finds a ring member — and therefore whether the burst happens at all — is
+  // decided by the two draws. That makes this the one row where the aim draws
+  // are load-bearing for more than a count.
+  {
+    name: 'bell base tier 4, no target in AIM_RANGE, the two-draw aim',
+    seed: 0xbe1161,
+    weapons: [['bell', 4]],
+    enemies: LEAD_UNAIMED_RING,
+    hp: 1e6,
+    steps: [{ fire: 'bell' }, { frames: 140 }],
+  },
+
+  // ---- the note rides SHARED physics --------------------------------------
+  // The base note has no ProjectileBehavior of any kind: it travels on shared
+  // motion and it reflects off the arena rails like anything else. Nothing else
+  // in this block would notice a module that wrongly steered its own notes,
+  // because with no Mirrorball `bounces` is 0 and the rail path returns
+  // immediately. With Mirrorball at max the ring at 800 sits outside the rails
+  // (|x| < 739.6, |y| < 416), so a blind note meets a wall before it meets a
+  // body, `damage` drops by 0.85 a bounce and `bounces` counts down — both
+  // halves of the rail rule, on the digested projectile line.
+  {
+    name: 'bell base tier 4 with Mirrorball, the note rides the arena rails',
+    seed: 0xbe1171,
+    weapons: [['bell', 4]],
+    items: [['mirrorball', 5], ['extensionCable', 5]],
+    enemies: LEAD_UNAIMED_RING,
+    hp: 1e6,
+    steps: [{ fire: 'bell' }, { frames: 120 }],
+  },
+
+  // ---- repeated triggers --------------------------------------------------
+  // Four notes on a beat grid, so bursts from consecutive triggers overlap in
+  // the air and each note's own `hit` set has to stay its own. The gap is 11
+  // frames (0.183s), well inside a shard's 0.45s life.
+  {
+    name: 'bell base tier 4, four triggers on a beat grid',
+    seed: 0xbe1181,
+    weapons: [['bell', 4]],
+    enemies: BELL_BURST_FIELD,
+    hp: 1e6,
+    steps: [
+      { fire: 'bell' }, { frames: 11 },
+      { fire: 'bell' }, { frames: 11 },
+      { fire: 'bell' }, { frames: 11 },
+      { fire: 'bell' }, { frames: 60 },
+    ],
+  },
+
+  // ---- THE 36-SHARD CAP ---------------------------------------------------
+  // The strangest rule the bell owns, and the one no other scenario in this
+  // file can reach. Past 36 live shards `spawnShards` stops adding and instead
+  // AMPLIFIES the oldest live shard — `damage = min(damage * 1.08, damage * 3)`
+  // and `lifeS = max(lifeS, shardLifeS)` — so the overflow is not dropped, it
+  // is folded back in. Three separate constants live in that branch (36, 1.08,
+  // the 3x ceiling) and all three are readable off the `projectiles:` block,
+  // which digests `dmg=` and `life=` per shot.
+  //
+  // NOTE the `activeShards` filter is recomputed on EVERY iteration of the
+  // spawn loop, so within a single burst the cap can bind partway through and
+  // the shards before and after it take different paths. Four triggers of three
+  // notes against a wall keeps the count oscillating around 36 for the whole
+  // scenario, which is what exercises that rather than a single clean crossing.
+  {
+    name: 'bell base tier 4, the 36-shard cap and its 1.08 amplification',
+    seed: 0xbe1191,
+    weapons: [['bell', 4]],
+    items: [['doubleTake', 2]],
+    enemies: BELL_WALL_FIELD,
+    hp: 1e6,
+    steps: [
+      { fire: 'bell' }, { frames: 5 },
+      { fire: 'bell' }, { frames: 5 },
+      { fire: 'bell' }, { frames: 5 },
+      { fire: 'bell' }, { frames: 40 },
+    ],
+  },
+  // The same recipe with Extension Cable, so shards live 0.63s instead of 0.45
+  // and the population sits far above the cap for longer. This is where the 3x
+  // damage ceiling has its best chance of binding: an amplified shard that
+  // survives long enough to be amplified again and again walks 1.08 up toward
+  // it, and `min` is the only thing that stops it.
+  {
+    name: 'bell base tier 4, the cap held over, the 3x amplification ceiling',
+    seed: 0xbe1192,
+    weapons: [['bell', 4]],
+    items: [['doubleTake', 2], ['extensionCable', 5]],
+    enemies: BELL_WALL_FIELD,
+    hp: 1e6,
+    steps: [
+      { fire: 'bell' }, { frames: 4 },
+      { fire: 'bell' }, { frames: 4 },
+      { fire: 'bell' }, { frames: 4 },
+      { fire: 'bell' }, { frames: 4 },
+      { fire: 'bell' }, { frames: 40 },
+    ],
+  },
+
+  // The cap crossed ONCE, by about ten, so the amplification is readable as a
+  // RATE instead of as a saturated ceiling. See BELL_LONE_FIELD: this is the
+  // only entry in the file where 1.08 is visible at all, and the two cap
+  // scenarios above are the only ones where 36 and the 3x ceiling are. Three
+  // constants, three separate rows, none of them able to stand in for another.
+  {
+    name: 'bell base tier 4, the cap crossed once, 1.08 below the ceiling',
+    seed: 0xbe1193,
+    weapons: [['bell', 4]],
+    items: [['doubleTake', 2]],
+    enemies: BELL_LONE_FIELD,
+    hp: 1e6,
+    steps: [
+      { fire: 'bell' }, { frames: 4 },
+      { fire: 'bell' }, { frames: 4 },
+      { fire: 'bell' }, { frames: 27 },
+    ],
+  },
+
+  // ---- Gravity Bell, the well ---------------------------------------------
+  // The evolution replaces the burst outright: `gravity` is set on the note,
+  // and on contact the shatter branch pushes a GravityWell instead of calling
+  // spawnShards. The note also carries a flat 1.35 damage multiplier applied at
+  // spawn, on top of everything applyBuild already did — the only place in the
+  // weapon where base and evolved damage differ.
+  //
+  // 80 frames (1.333s) outlives the well's 1.1s, so this entry is a complete
+  // well: the pull, the burst at 0.35, the burst's shards and the retirement.
+  {
+    name: 'bell evolved (Gravity Bell), damage meter, a whole well',
+    seed: 0xbe11a1,
+    weapons: [['bell', 4]],
+    items: [['magnetLanyard', 5]],
+    evolved: ['bell'],
+    enemies: BELL_WELL_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'bell' }, { frames: 80 }],
+  },
+
+  // ---- the 130 radius and the 140 pull speed ------------------------------
+  // Stopped 6 frames after the well appears, so every body inside it has been
+  // dragged exactly six steps of `min(distance, 140 * dt)` = 14 units and no
+  // more. At that stopping point the two numbers are separable: WHICH bodies
+  // moved is the 130, and HOW FAR each moved is the 140. Run the well to
+  // completion instead and both saturate — a body pulled for 1.1s ends up at
+  // the centre regardless of how fast it got there.
+  //
+  // The `distance > 1` guard is in here too: nothing sits at the exact centre
+  // at frame 25, but by the long row above bodies have piled onto it, and the
+  // guard is what stops them jittering across it.
+  {
+    name: 'bell evolved (Gravity Bell), six frames of pull, the radius and the speed',
+    seed: 0xbe11a2,
+    weapons: [['bell', 4]],
+    items: [['magnetLanyard', 5]],
+    evolved: ['bell'],
+    enemies: BELL_WELL_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'bell' }, { frames: 25 }],
+  },
+  // Wide Lens is the ONLY build mod the well reads — `130 * areaMul` and
+  // nothing else; the 140, the 1.1 and the 0.35 are flat. At max that is 169,
+  // which brings the 150 ring fully in and reaches part of the 210 ring, and it
+  // must move NOTHING about how fast or how long the pull runs.
+  {
+    name: 'bell evolved (Gravity Bell) with Wide Lens, only the radius grows',
+    seed: 0xbe11a3,
+    weapons: [['bell', 4]],
+    items: [['magnetLanyard', 5], ['wideLens', 5]],
+    evolved: ['bell'],
+    enemies: BELL_WELL_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'bell' }, { frames: 25 }],
+  },
+
+  // ---- the 0.35s burst timer, from both sides -----------------------------
+  // `burstT` is a scheduled moment observed only on the frame that crosses it,
+  // so it cannot be pinned by a single scenario: any one stopping point is
+  // either before or after, and a 0.35 that became 0.30 would still be on the
+  // same side of it. THIS PAIR is the pin. The note lands on frame 19, the well
+  // ticks from that same frame (updateGravityWells runs after updateProjectiles
+  // in RunWorld.update), so the burst falls on frame 40. Frame 38 is two frames
+  // short of it and frame 41 is one past.
+  //
+  // The difference between the two recorded entries is the ENTIRE burst: ten
+  // shards in `projectiles:`, a `spark n=10 spread=24` in the ordered fx stream
+  // and the damage they deal. If both entries look alike, the pair has stopped
+  // working and the timer is unpinned again.
+  {
+    name: 'bell evolved (Gravity Bell), frame 38, the well has NOT burst',
+    seed: 0xbe11b1,
+    weapons: [['bell', 4]],
+    items: [['magnetLanyard', 5]],
+    evolved: ['bell'],
+    enemies: BELL_WELL_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'bell' }, { frames: 38 }],
+  },
+  {
+    name: 'bell evolved (Gravity Bell), frame 41, the burst has fired',
+    seed: 0xbe11b2,
+    weapons: [['bell', 4]],
+    items: [['magnetLanyard', 5]],
+    evolved: ['bell'],
+    enemies: BELL_WELL_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'bell' }, { frames: 41 }],
+  },
+
+  // ---- the 1.1s well lifetime, from both sides ----------------------------
+  // The same argument for the other scheduled moment. A well is retired the
+  // frame its lifeS crosses zero, 66 ticks after it appeared, so frame 83 has
+  // it still in `gravityWells:` with a small lifeS and frame 86 has the list
+  // empty. The pair is what separates "the well expired" from "the well was
+  // never created".
+  {
+    name: 'bell evolved (Gravity Bell), frame 83, the well is still pulling',
+    seed: 0xbe11b3,
+    weapons: [['bell', 4]],
+    items: [['magnetLanyard', 5]],
+    evolved: ['bell'],
+    enemies: BELL_WELL_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'bell' }, { frames: 83 }],
+  },
+  {
+    name: 'bell evolved (Gravity Bell), frame 86, the well is gone',
+    seed: 0xbe11b4,
+    weapons: [['bell', 4]],
+    items: [['magnetLanyard', 5]],
+    evolved: ['bell'],
+    enemies: BELL_WELL_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'bell' }, { frames: 86 }],
+  },
+
+  // ---- the burst's ten SEEKING shards -------------------------------------
+  // The well's shards are not the note's shards. `spawnShards(..., gravity =
+  // true)` flips three fields the base burst never sets — `homing`, `turnRate`
+  // 4, and `bounces = max(1, bounces)` — and zeroes `shatter` so a gravity
+  // shard can never start a chain of its own. Against BELL_SEEKER_FIELD — see
+  // its note for why no other field in this block can hold them — all ten are
+  // still in the air at frame 50, ten frames after the burst, so the digest
+  // carries their live `pos`, `v` and `bounces` lines:
+  //   bounces=1  with NO Mirrorball in the build. That is the max(1, ...)
+  //              on its own, and it is only ever visible on a live shard.
+  //   pos / v    a CURVE rather than a ray, which is turnRate 4 against the
+  //              base burst's straight lines two blocks up.
+  // Count is fixed at ten and does not read BELL.shards, so this is also the
+  // row where a module that reused the tier ladder for the burst would show.
+  {
+    name: 'bell evolved (Gravity Bell), the burst\'s ten seekers in flight',
+    seed: 0xbe11c1,
+    weapons: [['bell', 4]],
+    items: [['magnetLanyard', 5]],
+    evolved: ['bell'],
+    enemies: BELL_SEEKER_FIELD,
+    steps: [{ fire: 'bell' }, { frames: 50 }],
+  },
+
+  // ---- the well steps over dummies ----------------------------------------
+  // `if (enemy.dummy) continue;` inside updateGravityWells, which no scenario
+  // in this file has ever executed. See BELL_DUMMY_FIELD: two dummies sit deep
+  // inside the well with live flowers around them at comparable distances, so
+  // "the pull ran" and "the pull skipped the props" are told apart in one entry.
+  // Stopped at 25 for the pull scenario's reason — a saturated well would drag
+  // the flowers onto the centre and flatten the comparison.
+  {
+    name: 'bell evolved (Gravity Bell), the well does not drag a practice dummy',
+    seed: 0xbe11c2,
+    weapons: [['bell', 4]],
+    items: [['magnetLanyard', 5]],
+    evolved: ['bell'],
+    enemies: BELL_DUMMY_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'bell' }, { frames: 25 }],
+  },
+
+  // ---- the well, lethal ---------------------------------------------------
+  // Natural hp, so the well's OTHER skip — `if (enemy.dead) continue;` — runs
+  // for the first time: swarmers die inside the radius while it is still
+  // pulling, and a well that kept dragging corpses would move where each body
+  // came to rest and therefore where its gem dropped. Kills, killsByRole, drops
+  // and both rng streams are all in this entry.
+  {
+    name: 'bell evolved (Gravity Bell), lethal, the well steps over the dead',
+    seed: 0xbe11c3,
+    weapons: [['bell', 4]],
+    items: [['magnetLanyard', 5]],
+    evolved: ['bell'],
+    enemies: BELL_WELL_SOFT_FIELD,
+    steps: [{ fire: 'bell' }, { frames: 90 }],
+  },
+  // Splitters, at their natural 40 hp: each death bursts a knot of swarmers
+  // INSIDE a live well, so bodies appear mid-pull rather than being there from
+  // the start, and the burst's seekers acquire targets that did not exist when
+  // they spawned.
+  {
+    name: 'bell evolved (Gravity Bell), lethal, splitters burst inside the well',
+    seed: 0xbe11c4,
+    weapons: [['bell', 4]],
+    items: [['magnetLanyard', 5]],
+    evolved: ['bell'],
+    enemies: BELL_WELL_FIELD.map(([, dx, dy]) => ['splitter', dx, dy] as const),
+    steps: [{ fire: 'bell' }, { frames: 90 }],
+  },
+
+  // ---- the well does not follow the player --------------------------------
+  // A well is pinned to where the NOTE was on the contact frame and to nothing
+  // else — not to the player, not to the body it hit. Walking hard for the
+  // whole 1.1s is the only way to say so; if the well tracked the player its
+  // `pos=` line and every dragged body would come out somewhere else.
+  {
+    name: 'bell evolved (Gravity Bell), the well stays where the note landed',
+    seed: 0xbe11c5,
+    weapons: [['bell', 4]],
+    items: [['magnetLanyard', 5]],
+    evolved: ['bell'],
+    enemies: BELL_WELL_FIELD,
+    hp: 1e6,
+    steps: [
+      { fire: 'bell' },
+      { walk: [-1, 1] },
+      { frames: 80 },
+    ],
+  },
+
+  // ---- three wells at once, at three different phases ---------------------
+  // Double Take fans three evolved notes, which land a frame or two apart on
+  // different bodies, so three wells overlap with their pull fields, their
+  // burst timers and their retirements all staggered. `updateGravityWells`
+  // walks the array BACKWARDS and splices from it, so the order the three
+  // resolve in — and which one is credited with a body a pair of them share —
+  // is array order, and that is what this entry records.
+  {
+    name: 'bell evolved (Gravity Bell) with Double Take, three overlapping wells',
+    seed: 0xbe11c6,
+    weapons: [['bell', 4]],
+    items: [['magnetLanyard', 5], ['doubleTake', 2]],
+    evolved: ['bell'],
+    enemies: BELL_WELL_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'bell' }, { frames: 80 }],
+  },
+
+  // ---- mid-evolve ---------------------------------------------------------
+  // The bell's seam is sharper than any weapon before it, because `gravity` is
+  // stamped on a note AT SPAWN. A base note already in the air when the world
+  // evolves keeps its shards; the next trigger's note carries a well. So this
+  // scenario has both halves of the weapon live at the same instant — a base
+  // burst spraying while a well is pulling — which is a state no other entry in
+  // this block reaches and the exact state an extraction that reads
+  // `ctx.evolved` at TICK time instead of at SPAWN time would get wrong.
+  //
+  // Ten frames after the first trigger the note is halfway to the anchor and
+  // has not shattered yet, so it crosses the evolution boundary in flight.
+  {
+    name: 'bell mid-evolve with a base note still in flight',
+    seed: 0xbe11d1,
+    weapons: [['bell', 4]],
+    items: [['magnetLanyard', 5]],
+    enemies: BELL_WELL_FIELD,
+    hp: 1e6,
+    steps: [
+      { fire: 'bell' },
+      { frames: 10 },
+      { evolve: 'bell' },
+      { frames: 4 },
+      { fire: 'bell' },
+      { frames: 80 },
+    ],
+  },
+
+  // ---- the bell in a band -------------------------------------------------
+  // Ordering, and the bell's stake in it is the largest of any weapon: it is
+  // the only one that MOVES BODIES WITHOUT SHOVING THEM. The well writes
+  // enemy.x/enemy.y directly, so it does not race the shared knock channel the
+  // way the clap and the bass do — it silently relocates the input every other
+  // weapon in the frame is aiming at. `updateGravityWells` runs LAST of all the
+  // damage phases, after the projectile loop and all four tickWeapons slots, so
+  // within a frame every other weapon sees the positions the well left behind
+  // on the PREVIOUS frame. That is a fixed-point-in-the-frame fact and it is
+  // what these three entries hold still.
+  //
+  // The bell fires LAST in the base rows and FIRST in the evolved one, so both
+  // sides of the race are recorded.
+  {
+    name: 'bell in a full band, base, damage meter',
+    seed: 0xbe11e1,
+    weapons: [
+      ['kick', 4], ['snare', 4], ['hat', 4], ['bass', 4], ['chord', 4],
+      ['lead', 4], ['clap', 4], ['bell', 4], ['arp', 4],
+    ],
+    enemies: BELL_BURST_FIELD,
+    hp: 1e6,
+    steps: [
+      { fire: 'kick' }, { fire: 'snare' }, { fire: 'hat' }, { fire: 'bass' },
+      { fire: 'chord' }, { fire: 'lead' }, { fire: 'clap' }, { fire: 'arp' },
+      { fire: 'bell' },
+      { frames: 60 },
+    ],
+  },
+  {
+    name: 'bell in a full band, base, lethal',
+    seed: 0xbe11e2,
+    weapons: [
+      ['kick', 4], ['snare', 4], ['hat', 4], ['bass', 4], ['chord', 4],
+      ['lead', 4], ['clap', 4], ['bell', 4], ['arp', 4],
+    ],
+    // FLOWERS at natural 30 hp, for the reason the chord's, the lead's and the
+    // clap's lethal bands all spell out: five-hp swarmers are cleared by the
+    // other eight weapons before the bell's note has crossed 150 units, and the
+    // row would pin nothing about the bell at all.
+    enemies: BELL_BURST_FIELD,
+    steps: [
+      { fire: 'kick' }, { fire: 'snare' }, { fire: 'hat' }, { fire: 'bass' },
+      { fire: 'chord' }, { fire: 'lead' }, { fire: 'clap' }, { fire: 'arp' },
+      { fire: 'bell' },
+      { frames: 60 },
+    ],
+  },
+  {
+    name: 'bell in a full evolved band, loaded build, walking',
+    seed: 0xbe11e3,
+    weapons: [
+      ['kick', 4], ['snare', 4], ['hat', 4], ['bass', 4], ['chord', 4],
+      ['lead', 4], ['clap', 4], ['bell', 4], ['arp', 4],
+    ],
+    items: [
+      ['highTops', 5], ['fastForward', 5], ['mirrorball', 5], ['heavyAmp', 5],
+      ['wideLens', 5], ['needleTips', 5], ['paddedJacket', 5],
+      ['extensionCable', 5], ['magnetLanyard', 5], ['doubleTake', 2],
+    ],
+    evolved: ['kick', 'snare', 'hat', 'bass', 'chord', 'lead', 'clap', 'bell', 'arp'],
+    enemies: BELL_WELL_FIELD,
+    hp: 1e6,
+    // The bell FIRST, and TWICE, while the player walks: three wells from the
+    // first trigger are already dragging bodies out from under the other eight
+    // weapons' footprints before the second trigger's notes are thrown, and
+    // every shard multiplier in the build is off its default at once.
+    steps: [
+      { walk: [2, -1] },
+      { frames: 10 },
+      { fire: 'bell' }, { fire: 'kick' }, { fire: 'snare' }, { fire: 'hat' },
+      { fire: 'bass' }, { fire: 'chord' }, { fire: 'lead' }, { fire: 'clap' },
+      { fire: 'arp' },
+      { frames: 20 },
+      { fire: 'bell' },
+      { frames: 80 },
     ],
   },
 ];
