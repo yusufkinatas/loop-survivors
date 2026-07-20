@@ -177,6 +177,38 @@ const ARP_FIELD: readonly (readonly [EnemyKind, number, number])[] = [
   ['zombie', -170, 0],
 ];
 
+/** Enemies in single file straight down the +x axis, the direction the snare
+ *  aims when its only target sits there. A file is to a piercing shot what a
+ *  ring is to an orbiter: the only layout where "how many bodies does one shot
+ *  pass through" is readable off the digest at all. */
+function file(
+  kind: EnemyKind,
+  xs: readonly number[],
+): readonly (readonly [EnemyKind, number, number])[] {
+  return xs.map((x) => [kind, x, 0] as const);
+}
+
+/** The base snare's pierce ladder is 2 / 3 / 4 / 6, so the file has to be
+ *  LONGER than the largest budget or the top rung reads the same as the one
+ *  below it — the shot has to run out of pierce, not out of targets.
+ *
+ *  ELITES, not zombies, and the reason is the aim jitter. aimFan(0.08) rolls
+ *  the heading up to +-0.08 rad off the target, which at the far end of a
+ *  500-unit file is +-40 units of lateral drift; a zombie (radius 21) plus the
+ *  shot (radius 7) only covers 28 of that, so the LAST body in a zombie file
+ *  would be hit or missed depending on the seed and the ladder would stop being
+ *  the thing under test. An elite is radius 34, covers 41, and is spaced 70
+ *  apart so no two overlap. Elite speed is 48, the slowest body in the
+ *  bestiary, so the file barely deforms over the ~0.75s the shot takes to
+ *  cross it.
+ *
+ *  Eight bodies: six is exactly tier 4's budget, so #7 and #8 are the markers
+ *  that say the shot DIED rather than ran out of file. */
+const SNARE_FILE: readonly (readonly [EnemyKind, number, number])[] = file(
+  'elite',
+  [70, 140, 210, 280, 350, 420, 490, 560],
+);
+
 export const SCENARIOS: readonly ParityScenario[] = [
   // ---- the kick, solo, across the whole tier ladder -----------------------
   // One block per tier because the ladder is not one shape scaled four ways:
@@ -723,6 +755,450 @@ export const SCENARIOS: readonly ParityScenario[] = [
       { fire: 'arp' }, { fire: 'kick' }, { fire: 'snare' }, { fire: 'hat' },
       { fire: 'bass' }, { fire: 'chord' }, { fire: 'lead' }, { fire: 'clap' },
       { fire: 'bell' },
+      { frames: 120 },
+    ],
+  },
+
+  // ==========================================================================
+  // THE SNARE (#141)
+  // ==========================================================================
+  // Recorded BEFORE the extraction, on the unchanged run.ts, per the order at
+  // the top of this file.
+  //
+  // The snare is the third shape the migration has met. The kick owned a pass
+  // of its own; the arp owned the shared projectile loop through
+  // ProjectileBehavior. The snare owns NEITHER in its base form — it spawns
+  // plain shots that ride shared physics unchanged — and its whole identity
+  // splits across four places instead:
+  //
+  //   1. a pierce LADDER (2/3/4/6), spent by the shared pierce rule;
+  //   2. WEAPON_SHOVE.snare = 8, read inside the shared projectile loop from a
+  //      role-keyed table (config.ts), one of the two allowlisted role-keyed
+  //      tables in systems-check's INTERIM_EXCEPTIONS;
+  //   3. SPARK_HIT_ROLES containing 'snare', a second role-keyed table read in
+  //      the same loop, pushing a view-only spark per hit;
+  //   4. Railshot, which spawns no projectile at all — an instant damageLine
+  //      with NO pierce budget in the arithmetic anywhere.
+  //
+  // Items 2 and 3 are invisible to the world's entity arrays except through the
+  // knock channel and the ordered fx stream, and both of those are digested, so
+  // every scenario below that lands a base hit is also pinning them. That is
+  // deliberate: the extraction moves both into the module (a field on the shot
+  // for the shove, ctx.fx for the spark) and neither has any other cover.
+
+  // ---- the pierce ladder, solo, across the whole tier ladder ---------------
+  // One block per tier because the snare's ladder is a PIERCE ladder as much as
+  // a damage one: 2 -> 3 -> 4 -> 6 bodies per shot against damage 5 -> 7 -> 9
+  // -> 13. Against SNARE_FILE with absurd hp, each rung has a different, exact
+  // total (10 / 21 / 36 / 78) and a different count of shoved, sparked bodies,
+  // so an edit to either half of the ladder moves exactly one of these.
+  ...([1, 2, 3, 4] as const).map((tier): ParityScenario => ({
+    name: `snare base tier ${tier}, solo, pierce ladder`,
+    seed: 0x50a000 + tier,
+    weapons: [['snare', tier]],
+    enemies: SNARE_FILE,
+    // Absurd hp turns the file into a damage meter AND keeps every body in the
+    // file alive, which is what makes the pierce count readable: a body that
+    // dies is skipped by nothing here, but a body that dies stops recording the
+    // knock the shove gave it.
+    hp: 1e6,
+    steps: [{ fire: 'snare' }, { frames: 60 }],
+  })),
+
+  // The same ladder with natural hp, so kills, killsByRole, gem/note drops and
+  // the rng draws behind them are all in the digest. Zombies at 10hp against
+  // tier 1's 5 survive a touch and against tier 4's 13 do not, so the two rungs
+  // record genuinely different tails. The file is seven long: six is tier 4's
+  // pierce budget, so the seventh is the "the shot stopped here" marker.
+  ...([1, 4] as const).map((tier): ParityScenario => ({
+    name: `snare base tier ${tier}, solo, lethal file`,
+    seed: 0x50a100 + tier,
+    weapons: [['snare', tier]],
+    enemies: file('zombie', [55, 100, 145, 190, 235, 280, 325]),
+    steps: [{ fire: 'snare' }, { frames: 60 }],
+  })),
+
+  // Four triggers on a beat grid. Each shot carries its OWN hit set and its OWN
+  // pierce budget; a refactor that hoists either onto the weapon collapses four
+  // independent budgets into one shared one and this scenario moves. The gaps
+  // are short enough that all four shots are in the air together, so the file
+  // is being pierced by several shots at once.
+  {
+    name: 'snare base tier 4, four triggers on a beat grid',
+    seed: 0x50a17,
+    weapons: [['snare', 4]],
+    enemies: SNARE_FILE,
+    hp: 1e6,
+    steps: [
+      { fire: 'snare' }, { frames: 6 },
+      { fire: 'snare' }, { frames: 6 },
+      { fire: 'snare' }, { frames: 6 },
+      { fire: 'snare' }, { frames: 60 },
+    ],
+  },
+
+  // ---- the aim draw --------------------------------------------------------
+  // aimDir has two branches and they draw a DIFFERENT NUMBER OF TIMES: with a
+  // target inside AIM_RANGE (750) it draws once, for the jitter; with an empty
+  // screen it draws twice, once for a random heading and once for the jitter.
+  // Every other snare scenario here takes the first branch. This one takes the
+  // second — the ring sits at 800, outside AIM_RANGE — so the draw count is
+  // pinned on both sides and rngDraws catches a module that forgets the empty
+  // -screen roll. Stopping at 60 frames leaves the shot LIVE, and a live shot's
+  // digested x,y IS the random heading it rolled.
+  {
+    name: 'snare base tier 4, no target in aim range, random heading',
+    seed: 0x50a2a1,
+    weapons: [['snare', 4]],
+    enemies: ring('zombie', 800, 16),
+    hp: 1e6,
+    steps: [{ fire: 'snare' }, { frames: 60 }],
+  },
+
+  // ---- the fan -------------------------------------------------------------
+  // Double Take clamps at level 2, so a trigger is 3 shots. aimFan aims ONCE
+  // and fans around that heading, so the whole trigger costs the same rng draws
+  // as a single shot — the same "move the draw inside the loop" mistake the arp
+  // block calls out, in the weapon that actually goes through aimFan. Two
+  // triggers, so the second trigger's independent draw is recorded too.
+  //
+  // CONCENTRIC RINGS, not a file: the fanned shots leave on headings +-7
+  // degrees off the aim line, so a file down one axis is a field only the
+  // middle shot can see. Three rings also keep every body clear of every other
+  // — ring members are 78 units apart at the innermost radius against a
+  // zombie's 21 — so nothing here is moved by the separation pass and the
+  // three shots really do diverge across a field they each reach.
+  {
+    name: 'snare base tier 4 with Double Take, one aim draw fans three shots',
+    seed: 0x50a2fa,
+    weapons: [['snare', 4]],
+    items: [['doubleTake', 2]],
+    enemies: [
+      ...ring('zombie', 150, 12),
+      ...ring('zombie', 300, 12, Math.PI / 12),
+      ...ring('zombie', 460, 12),
+    ],
+    hp: 1e6,
+    steps: [
+      { fire: 'snare' }, { frames: 20 },
+      { fire: 'snare' }, { frames: 60 },
+    ],
+  },
+
+  // ---- shared physics the base snare rides unchanged ----------------------
+  // Base snare shots take shared travel AND the arena rails, which is the half
+  // of ProjectileBehavior the snare must NOT implement: an extraction that
+  // gives the snare a steer() returning true silently exempts it from the rails
+  // exactly the way the arp is exempted, and nothing but a bouncing shot
+  // notices. Mirrorball at 5 is 3 bounces at 85% retention; Fast Forward
+  // doubles the speed so the shot actually reaches a rail inside its 1.5s life.
+  // The rails sit at +-739 x and +-416 y for this canvas, and the aim anchor
+  // out on the diagonal sends the shot into the y rail first.
+  {
+    name: 'snare base tier 4 with Mirrorball, shots ride the arena rails',
+    seed: 0x50a80c,
+    weapons: [['snare', 4]],
+    items: [['mirrorball', 5], ['fastForward', 5]],
+    enemies: [
+      ['zombie', 300, 300],
+      ...ring('zombie', 520, 12),
+      ...ring('zombie', 700, 12, Math.PI / 12),
+    ],
+    hp: 1e6,
+    steps: [{ fire: 'snare' }, { frames: 70 }],
+  },
+
+  // ==========================================================================
+  // RAILSHOT
+  // ==========================================================================
+  // A different weapon wearing the same role: no projectile, no travel, no
+  // pierce budget. One damageLine of length 900 and half-width max(7, radius *
+  // 1.25) fired from the player along the aim heading, at 1.50x damage, shoving
+  // 16 * knockbackMul. It walks `this.enemies` in ARRAY ORDER, not hash order
+  // and not distance order, so the order of its damage (and of every rng draw a
+  // kill triggers) is the spawn order of the field.
+
+  // ---- the beam's geometry -------------------------------------------------
+  // ONE trigger, so triggerCounts.snare is 1 and the twin rails deliberately do
+  // NOT fire — this is the single-beam shape, and it is also what proves the
+  // every-fourth rule is a rule and not "always".
+  //
+  // MIND THE SEPARATION PASS. The harness runs one world.update(0) to build the
+  // spatial hash before anything fires, and that update also runs enemy-enemy
+  // separation, which SHOVES OVERLAPPING BODIES APART before the first trigger
+  // ever lands. Any two bodies placed closer than the sum of their radii are
+  // therefore not where this list says they are. The first version of this
+  // scenario bracketed the 900 with two elites 20 apart; radius 34 each, so
+  // separation pushed them to 896 and 964 and the bracket silently widened to
+  // +-30. It still LOOKED like a range pin, and changing 900 to 880 passed it.
+  // Every pair below is spaced past the sum of its radii on purpose.
+  //
+  // THE PINS, against tier 4 (conf.radius 8, so half-width max(7, 10) = 10).
+  // The reach cut is at along <= 900 + radius, so for a circler (radius 10) it
+  // falls at 910:
+  //   circler at 870   comfortably inside the reach
+  //   circler at 895   inside, and only 15 short of the cut
+  //   circler at 920   outside, and only 10 past it
+  //   circler diameter is 20 and they sit 25 apart, so separation leaves them
+  //   alone and the bracket really is 15 wide
+  //   swarmer +-24     lateral 24 > 10 + 9, outside the single beam; these are
+  //                    the bodies the twin rails exist to reach, and on a first
+  //                    trigger they must come through untouched
+  //   swarmer at 30    the aim anchor, nearest body, so the heading is ~0
+  // Aim jitter is +-0.02 rad here (Railshot aims tighter than the base shot),
+  // which is 18 units of lateral drift out at 900 against a circler's 10 plus
+  // the beam's 10, so the three on-axis bodies stay inside the beam's width and
+  // only their RANGE decides them.
+  {
+    name: 'snare evolved (Railshot), single beam, 900-range and width pins',
+    seed: 0x2a115e,
+    weapons: [['snare', 4]],
+    items: [['fastForward', 5]],
+    evolved: ['snare'],
+    enemies: [
+      ['swarmer', 30, 0],
+      ['circler', 870, 0],
+      ['circler', 895, 0],
+      ['circler', 920, 0],
+      ['swarmer', 200, 24],
+      ['swarmer', 200, -24],
+      ['zombie', 400, 0],
+      ['zombie', -300, 0],
+    ],
+    hp: 1e6,
+    steps: [{ fire: 'snare' }, { frames: 30 }],
+  },
+
+  // ---- every fourth trigger ------------------------------------------------
+  // FOUR FIRES WITH NO FRAMES BETWEEN THEM, on purpose. The twin rails are
+  // offset +-24 units perpendicular to the heading and are only 7 half-widths
+  // wide, so the bodies that separate "twin fired" from "twin did not" sit in a
+  // band a few units thick — and a single frame of enemy movement is wider than
+  // that band. Firing all four inside one frame freezes the field at exactly
+  // the placed geometry, which is the only way the boundary pins below mean
+  // anything. triggerCounts increments before the switch, so the FOURTH fire is
+  // the one where count % 4 === 0.
+  //
+  // THE PINS, at tier 4 (main half-width 10, twin half-width 7 at offset 24,
+  // swarmer radius 9, so a twin reaches out to 24 + 16 = 40):
+  //   +-24 at x 200    main misses (24 > 19), twin hits dead centre
+  //   +39.5 at x 20    main misses; distance from the +24 rail is 15.5, so the
+  //                    twin's 7 + the body's 9 = 16 just reaches it
+  //   -40.5 at x 20    main misses; distance from the -24 rail is 16.5, just
+  //                    past the same 16
+  // HALF-UNIT OFFSETS, deliberately. The first version of these pins sat at 39
+  // and 41, one unit either side, and that put the inside pin at a distance of
+  // exactly 15 — which is still inside a twin half-width of 6. Shrinking the
+  // 0.7 twin-width multiplier to 0.6 therefore changed nothing anywhere and the
+  // mutation passed green. Landing the pins at 15.5 and 16.5 puts the boundary
+  // BETWEEN them instead of on top of one, so the rule flips in both directions
+  // for the smallest change either constant can take.
+  //
+  // The inside pin and the outside pin sit on OPPOSITE rails, which is not
+  // decoration: they are one unit apart in lateral offset, and two swarmers
+  // (radius 9) that close get shoved apart by the separation pass in
+  // world.update(0) long before the first trigger, which would move the very
+  // boundary they exist to hold. On opposite rails they are 80 apart and stay
+  // put, and the two rails are exact mirror images, so one body per side pins
+  // the same number. Both sit at x 20, not further out, so the +-0.02 aim
+  // jitter has a lever arm of under half a unit on them; the aim anchor at x 30
+  // is still the nearest body (30 < 44.3) so it, not one of them, sets the
+  // heading.
+  //
+  // Twin damage is 0.65x the main beam's and twin shove is 8 against the main
+  // 16, so the two rails are separable in the digest by damage AND by knock —
+  // a body reached only by a twin records the smaller of each.
+  {
+    name: 'snare evolved (Railshot), fourth trigger fires the twin rails',
+    seed: 0x2a114a,
+    weapons: [['snare', 4]],
+    items: [['fastForward', 5]],
+    evolved: ['snare'],
+    enemies: [
+      ['swarmer', 30, 0],
+      ['swarmer', 200, 24],
+      ['swarmer', 200, -24],
+      ['swarmer', 20, 39.5],
+      ['swarmer', 20, -40.5],
+      ['zombie', 500, 0],
+    ],
+    hp: 1e6,
+    steps: [
+      { fire: 'snare' }, { fire: 'snare' }, { fire: 'snare' }, { fire: 'snare' },
+      { frames: 30 },
+    ],
+  },
+
+  // ---- infinite pierce is INFINITE ----------------------------------------
+  // Railshot's reach is not a large pierce number, it is the ABSENCE of one:
+  // damageLine has no pierce arithmetic at all. Fifteen zombies in single file
+  // out to x 900 is past anything a number would plausibly be, so an extraction
+  // that "helpfully" states the infinity as a stat and then feeds it through a
+  // finite path fails here and nowhere else.
+  //
+  // Needle Tips at max is in the build for the same reason ADR-0002's arp
+  // scenario carries it: +5 pierce is exactly what would MASK a regression by
+  // letting a wrongly-pierce-limited beam reach eleven bodies and still look
+  // roughly alive. Fifteen is well past that. (Unlike the arp, the snare's
+  // ladder does carry a pierce key, so Needle Tips is a real build here for the
+  // BASE weapon — it is only the evolved beam that must ignore it.)
+  {
+    name: 'snare evolved (Railshot), infinite pierce through a fifteen-deep file',
+    seed: 0x2a1191,
+    weapons: [['snare', 4]],
+    items: [['fastForward', 5], ['needleTips', 5]],
+    evolved: ['snare'],
+    enemies: file('zombie', [
+      60, 120, 180, 240, 300, 360, 420, 480, 540, 600, 660, 720, 780, 840, 900,
+    ]),
+    hp: 1e6,
+    steps: [{ fire: 'snare' }, { frames: 30 }],
+  },
+
+  // Natural hp, so the beam's kills, drops and the rng draws behind them are in
+  // the digest — and splitters, which push children into the LIVE enemy array
+  // that damageLine is walking, so the collection grows under the loop. Four
+  // triggers with no frames between, so the twin rails land on the fourth into
+  // a field the first three already reshaped.
+  {
+    name: 'snare evolved (Railshot), lethal file with splitters',
+    seed: 0x2a1115,
+    weapons: [['snare', 4]],
+    items: [['fastForward', 5]],
+    evolved: ['snare'],
+    enemies: [
+      ...file('splitter', [80, 160, 240, 320]),
+      ...file('zombie', [400, 470, 540, 610]),
+      ['circler', 200, 26],
+      ['circler', 200, -26],
+    ],
+    steps: [
+      { fire: 'snare' }, { fire: 'snare' }, { fire: 'snare' }, { fire: 'snare' },
+      { frames: 90 },
+    ],
+  },
+
+  // ---- the two shove constants --------------------------------------------
+  // Main rail 16, twin rails 8, both scaled by buildMods.knockbackMul and then
+  // again by each body's own knockbackMul inside shove(). Heavy Amp at 5 makes
+  // knockbackMul 1.20 so neither constant is sitting at identity, and the three
+  // bodies below have three different knockbackMul values (swarmer 1, zombie
+  // 0.8, ghost 0 — immune), so the whole chain from the constant to the knock
+  // channel is readable off one digest. Fourth trigger, so both constants are
+  // exercised in the same frame.
+  {
+    name: 'snare evolved (Railshot) with Heavy Amp, main and twin shove',
+    seed: 0x2a1158,
+    weapons: [['snare', 4]],
+    items: [['fastForward', 5], ['heavyAmp', 5]],
+    evolved: ['snare'],
+    enemies: [
+      ['swarmer', 30, 0],
+      ['swarmer', 200, 24],
+      ['swarmer', 200, -24],
+      ['zombie', 300, 0],
+      ['ghost', 380, 0],
+      ['zombie', 460, 24],
+    ],
+    hp: 1e6,
+    steps: [
+      { fire: 'snare' }, { fire: 'snare' }, { fire: 'snare' }, { fire: 'snare' },
+      { frames: 30 },
+    ],
+  },
+
+  // ---- mid-evolve ----------------------------------------------------------
+  // A base snare shot still travelling down the file when the snare evolves.
+  // The shot keeps its pierce budget, its shove and its per-hit spark and rides
+  // shared physics to the end of its life, while the next trigger resolves as
+  // an instant beam that spawns nothing. Base and evolved snare in the same
+  // frame on the same role — the seam an extraction is most likely to unify
+  // into one mode flag. Fast Forward is required for the evolution and doubles
+  // the in-flight shot's speed, so the base half of this scenario is also the
+  // only place the built `speed` is non-identity.
+  {
+    name: 'snare mid-evolve with a base shot still in flight',
+    seed: 0x50a2ed,
+    weapons: [['snare', 4]],
+    items: [['fastForward', 5]],
+    enemies: SNARE_FILE,
+    hp: 1e6,
+    steps: [
+      { fire: 'snare' },
+      { frames: 3 },
+      { evolve: 'snare' },
+      { frames: 3 },
+      { fire: 'snare' },
+      { frames: 60 },
+    ],
+  },
+
+  // ---- the snare in a band -------------------------------------------------
+  // Ordering. The snare shares the projectile array, the spatial hash, the rng
+  // stream and the WEAPON_SHOVE table with weapons that have not moved yet —
+  // clap and bass are the other two entries in that table, and lead is the
+  // other entry in SPARK_HIT_ROLES, so a band scenario is the only place a
+  // change to either table shows up as somebody ELSE'S damage moving.
+  {
+    name: 'snare in a full band, base, damage meter',
+    seed: 0x50aba1,
+    weapons: [
+      ['kick', 4], ['snare', 4], ['hat', 4], ['bass', 4], ['chord', 4],
+      ['lead', 4], ['clap', 4], ['bell', 4], ['arp', 4],
+    ],
+    enemies: SNARE_FILE,
+    hp: 1e6,
+    steps: [
+      { fire: 'snare' }, { fire: 'kick' }, { fire: 'hat' }, { fire: 'bass' },
+      { fire: 'chord' }, { fire: 'lead' }, { fire: 'clap' }, { fire: 'bell' },
+      { fire: 'arp' },
+      { frames: 120 },
+    ],
+  },
+  {
+    name: 'snare in a full band, base, lethal',
+    seed: 0x50aba2,
+    weapons: [
+      ['kick', 4], ['snare', 4], ['hat', 4], ['bass', 4], ['chord', 4],
+      ['lead', 4], ['clap', 4], ['bell', 4], ['arp', 4],
+    ],
+    enemies: [
+      ...file('zombie', [55, 100, 145, 190, 235, 280, 325]),
+      ...ring('zombie', 150, 8, Math.PI / 8),
+    ],
+    steps: [
+      { fire: 'snare' }, { fire: 'kick' }, { fire: 'hat' }, { fire: 'bass' },
+      { fire: 'chord' }, { fire: 'lead' }, { fire: 'clap' }, { fire: 'bell' },
+      { fire: 'arp' },
+      { frames: 120 },
+    ],
+  },
+  {
+    name: 'snare in a full evolved band, loaded build, four snare triggers',
+    seed: 0x50aba3,
+    weapons: [
+      ['kick', 4], ['snare', 4], ['hat', 4], ['bass', 4], ['chord', 4],
+      ['lead', 4], ['clap', 4], ['bell', 4], ['arp', 4],
+    ],
+    items: [
+      ['highTops', 5], ['fastForward', 5], ['mirrorball', 5], ['heavyAmp', 5],
+      ['wideLens', 5], ['needleTips', 5], ['paddedJacket', 5],
+      ['extensionCable', 5], ['magnetLanyard', 5], ['doubleTake', 2],
+    ],
+    evolved: ['kick', 'snare', 'hat', 'bass', 'chord', 'lead', 'clap', 'bell', 'arp'],
+    enemies: SNARE_FILE,
+    hp: 1e6,
+    // FOUR snare triggers, so the twin rails fire inside a loaded evolved band
+    // — the one place where the twin rails' 0.65x damage and 8 shove have to be
+    // told apart from eight other weapons' output on the same bodies in the
+    // same frame. Wide Lens is in the build, so conf.radius is 8 * 1.30 = 10.4
+    // and the beam's half-width is max(7, 13) = 13 rather than 10: the max() is
+    // under test as an expression, not just as a number.
+    steps: [
+      { fire: 'snare' }, { fire: 'kick' }, { fire: 'hat' }, { fire: 'bass' },
+      { fire: 'snare' }, { fire: 'chord' }, { fire: 'lead' }, { fire: 'clap' },
+      { fire: 'snare' }, { fire: 'bell' }, { fire: 'arp' },
+      { fire: 'snare' },
       { frames: 120 },
     ],
   },
