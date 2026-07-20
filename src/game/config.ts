@@ -20,6 +20,9 @@ export const RUN = {
   maxGems: 400,
   /** Currency pickups merge into an overflow note above this visual cap. */
   maxMusicNotes: 180,
+  /** Live projectile ceiling; the oldest shot is evicted past it. Double Take
+   * multiplies six weapons' spawn rate at once, so this guards the late tour. */
+  maxProjectiles: 600,
 };
 
 /** Rare one-use arena pickup. This is deliberately separate from Magnet
@@ -82,7 +85,12 @@ export const LEVELUP = {
   angles: [0, 120, 240] as const,
   /** Max duration of the cosmetic slow-mo / duck moment, real seconds. Ends
    *  early the instant the player collects a pick (see collectGroundPick). */
-  momentS: 1,
+  momentS: 2,
+  /** Shorter moment for a chest open. A five-minute mark can drop up to four
+   *  elite bosses, and their chests present one after another — four back-to-back
+   *  full-length slow-mos would read as the game stuttering rather than as four
+   *  separate celebrations. A level-up is rarer, so it keeps the full momentS. */
+  chestMomentS: 1,
   /** Time scale during the moment (composes with the dev timeScale). */
   slowScale: 0.75,
   /** Weapon (master) volume multiplier during the moment. */
@@ -110,7 +118,6 @@ export type EnemyKind =
   | 'tank'
   | 'darter'
   | 'splitter'
-  | 'charger'
   | 'circler'
   | 'shielded'
   | 'elite'
@@ -127,14 +134,17 @@ export type EnemyKind =
   | 'flower'
   | 'glowingBat'
   | 'mantis'
-  | 'batSwarm';
+  | 'batSwarm'
+  // Sandbox-only measurement prop. Never appears in a stage or endless row.
+  | 'dummy';
 
 /** Complete simulation catalog. The sandbox consumes this directly so an
  * opening-act change cannot hide endless-tour enemies from its controls. */
 export const ALL_ENEMY_KINDS: readonly EnemyKind[] = [
   'bat', 'redBat', 'redBat2', 'zombie', 'skeleton', 'ghost',
   'greenMudman', 'grayMudman', 'flower', 'glowingBat', 'mantis', 'batSwarm',
-  'swarmer', 'tank', 'darter', 'splitter', 'charger', 'circler', 'shielded', 'elite',
+  'swarmer', 'tank', 'darter', 'splitter', 'circler', 'shielded', 'elite',
+  'dummy',
 ] as const;
 
 export interface EnemyConf {
@@ -249,8 +259,6 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
   },
   /** Bursts into a knot of swarmers on death. The early-mid wall. */
   splitter: { radius: 14, speed: 70, hp: 40, damage: 14, xp: 5, color: 0xd35f8d },
-  /** Telegraphs, then commits a fast fixed-direction dash. Dodge check. */
-  charger: { radius: 12, speed: 60, hp: 35, damage: 18, xp: 5, color: 0xff594f },
   /** Fast, fragile, orbits the player at range and harasses. */
   circler: { radius: 10, speed: 170, hp: 10, damage: 12, xp: 2, color: 0xb868db },
   /** A shield pool absorbs damage before its hp; the mid-game wall. */
@@ -313,6 +321,19 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
     fixedDirection: true,
     knockback: 1,
   },
+  /** Sandbox measurement prop: undying, immobile, harmless. RunWorld special-
+   *  cases it in every mover and in damageEnemy; the values here only need to
+   *  give it a Moss Cabinet body and a colour that reads as scenery. */
+  dummy: {
+    radius: legacyEnemyRadius(34),
+    speed: 0,
+    hp: 1,
+    power: 0,
+    damage: 0,
+    xp: 0,
+    color: 0x8ba7a2,
+    knockback: 0,
+  },
   /** Spawn ring distance beyond the larger screen half-extent. */
   spawnMargin: 128,
   /** Soft cap on the steady-state horde (VS-density target, see gate B
@@ -351,7 +372,6 @@ export const ENEMY_LABELS: Record<EnemyKind, string> = {
   tank: 'Wallstack',
   darter: 'Needlejack',
   splitter: 'Crackbox',
-  charger: 'Rail Ram',
   circler: 'Orbit Leech',
   shielded: 'Phase Guard',
   elite: 'Blackout Idol',
@@ -367,6 +387,7 @@ export const ENEMY_LABELS: Record<EnemyKind, string> = {
   glowingBat: 'Signal Crown',
   mantis: 'The Shear',
   batSwarm: 'Static Rush',
+  dummy: 'Practice Cabinet',
 };
 
 /** Base spawn-time stats before endless-minute scaling. Contact `damage` is
@@ -399,7 +420,6 @@ export const ENEMY_BANDS = {
     tank: [0x6a7086, 0x94805e, 0xb06a46, 0xc04858],
     darter: [0xe08a5a, 0xe8a04a, 0xff7a3c, 0xff4658],
     splitter: [0x8fb46a, 0xa8b45e, 0xc09a4e, 0xc85a52],
-    charger: [0xd06a5a, 0xdc7a4a, 0xe85a3c, 0xff4046],
     circler: [0x6ac2d0, 0x6ab0c8, 0x7a9ad0, 0x9a6ad0],
     shielded: [0x9a86c0, 0xa07ab0, 0xb06a90, 0xc04858],
     elite: [0xd94f8a, 0xe0507a, 0xe85068, 0xff4050],
@@ -433,11 +453,6 @@ export const DARTER = {
  *  are swarmers (never split → no recursion). */
 export const SPLITTER = { childKind: 'swarmer' as EnemyKind, childCount: 4 };
 
-/** Charger: within triggerRange it stands still (windup), then commits a fast
- *  fixed-direction dash. dashSpeed is NOT run through speedScaleEnd (stays
- *  dodgeable, same rule as darter). */
-export const CHARGER = { triggerRange: 240, windupS: 0.7, dashS: 0.5, dashSpeed: 640 };
-
 /** Circler: orbits the player at this radius. */
 export const CIRCLER = { orbitR: 150 };
 
@@ -462,7 +477,7 @@ export type DirectorBeat =
  *  new kind as a telegraphed spike (its intro event), pressure climbs to a
  *  minute-end event cluster, then a short low-rate breather resets tension.
  *  Introduction order: swarmer 0:00, darter 0:40, circler 1:30, splitter
- *  2:30, charger 3:30, shielded 4:30, tank 5:30; elite recurs as an
+ *  2:30, shielded 4:30, tank 5:30; elite recurs as an
  *  objective event from 1:15. Danger scales via density + HP; the finale
  *  (7:00 on) drops the breathers and overruns any build. */
 export const SPAWN_DIRECTOR: DirectorBeat[] = [
@@ -502,13 +517,11 @@ export const SPAWN_DIRECTOR: DirectorBeat[] = [
     atS: 205,
     set: { rate: 14, mix: { swarmer: 0.78, darter: 0.08, circler: 0.08, splitter: 0.06 } },
   },
-  // -- 3:30 charger intro: the dodge check arrives from two sides.
-  { atS: 210, event: { formation: 'pincer', kind: 'charger', count: 8 } },
   {
     atS: 212,
     set: {
       rate: 15,
-      mix: { swarmer: 0.72, darter: 0.08, circler: 0.08, splitter: 0.06, charger: 0.06 },
+      mix: { swarmer: 0.72, darter: 0.08, circler: 0.08, splitter: 0.06 },
     },
   },
   // -- minute 4 spike: the biggest ring yet, breather after.
@@ -517,14 +530,14 @@ export const SPAWN_DIRECTOR: DirectorBeat[] = [
     atS: 242,
     set: {
       rate: 8,
-      mix: { swarmer: 0.72, darter: 0.08, circler: 0.08, splitter: 0.06, charger: 0.06 },
+      mix: { swarmer: 0.72, darter: 0.08, circler: 0.08, splitter: 0.06 },
     },
   }, // breather
   {
     atS: 256,
     set: {
       rate: 17,
-      mix: { swarmer: 0.72, darter: 0.08, circler: 0.08, splitter: 0.06, charger: 0.06 },
+      mix: { swarmer: 0.72, darter: 0.08, circler: 0.08, splitter: 0.06 },
     },
   },
   // -- 4:30 shielded intro: the mid-game wall closes in from all sides.
@@ -538,7 +551,6 @@ export const SPAWN_DIRECTOR: DirectorBeat[] = [
         darter: 0.08,
         circler: 0.08,
         splitter: 0.06,
-        charger: 0.05,
         shielded: 0.05,
       },
     },
@@ -555,7 +567,6 @@ export const SPAWN_DIRECTOR: DirectorBeat[] = [
         darter: 0.08,
         circler: 0.08,
         splitter: 0.06,
-        charger: 0.05,
         shielded: 0.05,
       },
     },
@@ -569,7 +580,6 @@ export const SPAWN_DIRECTOR: DirectorBeat[] = [
         darter: 0.08,
         circler: 0.08,
         splitter: 0.06,
-        charger: 0.05,
         shielded: 0.05,
       },
     },
@@ -585,7 +595,6 @@ export const SPAWN_DIRECTOR: DirectorBeat[] = [
         darter: 0.08,
         circler: 0.07,
         splitter: 0.06,
-        charger: 0.05,
         shielded: 0.05,
         tank: 0.05,
       },
@@ -603,7 +612,6 @@ export const SPAWN_DIRECTOR: DirectorBeat[] = [
         darter: 0.08,
         circler: 0.07,
         splitter: 0.06,
-        charger: 0.05,
         shielded: 0.05,
         tank: 0.05,
       },
@@ -618,14 +626,11 @@ export const SPAWN_DIRECTOR: DirectorBeat[] = [
         darter: 0.08,
         circler: 0.07,
         splitter: 0.06,
-        charger: 0.05,
         shielded: 0.05,
         tank: 0.05,
       },
     },
   },
-  // -- 6:40 charger pincer: the last dodge check before the finale.
-  { atS: 400, event: { formation: 'pincer', kind: 'charger', count: 12 } },
   // -- 7:00 finale: no more breathers, everything escalates until overrun.
   {
     atS: 420,
@@ -636,7 +641,6 @@ export const SPAWN_DIRECTOR: DirectorBeat[] = [
         darter: 0.09,
         circler: 0.07,
         splitter: 0.07,
-        charger: 0.06,
         shielded: 0.06,
         tank: 0.05,
       },
@@ -653,7 +657,6 @@ export const SPAWN_DIRECTOR: DirectorBeat[] = [
         darter: 0.1,
         circler: 0.07,
         splitter: 0.07,
-        charger: 0.06,
         shielded: 0.06,
         tank: 0.06,
       },
@@ -707,14 +710,16 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
     { damage: 9, speed: 680, radius: 8, lifetimeS: 1.5, pierce: 4 },
     { damage: 13, speed: 720, radius: 8, lifetimeS: 1.5, pierce: 6 },
   ],
-  // Dense stream of weak fast chips, wide scatter. Density IS the ladder;
-  // per-trigger damage barely moves. Tier I starts at 2 so even the quietest
-  // velocity roll (0.75x) reliably clears a 1-HP Static Mite in one hit.
+  // Dense stream of weak fast chips fired straight down the walk heading, no
+  // scatter — the player aims by steering. Density IS the ladder; per-trigger
+  // damage barely moves. Tier I starts at 2 so even the quietest velocity roll
+  // (0.75x) reliably clears a 1-HP Static Mite in one hit. The pierce ladder
+  // pays for losing auto-aim: a straight line has to be worth walking down.
   hat: [
-    { damage: 2, speed: 440, radius: 3, lifetimeS: 0.8, pierce: 1 },
-    { damage: 2, speed: 450, radius: 3, lifetimeS: 0.85, pierce: 1 },
-    { damage: 2, speed: 460, radius: 3, lifetimeS: 0.9, pierce: 1 },
-    { damage: 3, speed: 480, radius: 3, lifetimeS: 0.95, pierce: 2 },
+    { damage: 2, speed: 440, radius: 3, lifetimeS: 0.8, pierce: 2 },
+    { damage: 2, speed: 450, radius: 3, lifetimeS: 0.85, pierce: 2 },
+    { damage: 2, speed: 460, radius: 3, lifetimeS: 0.9, pierce: 3 },
+    { damage: 3, speed: 480, radius: 3, lifetimeS: 0.95, pierce: 4 },
   ],
   // Slow wide low wave that rolls through everything. The weight ladder:
   // per-trigger damage climbs harder than any other kit.
@@ -727,16 +732,22 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
   // Zone thrown onto the nearest pack: ticks damage and slows enemies
   // inside. Chip damage + control; the slow is the identity. NOTE: zone
   // `damage` is PER TICK (every ZONE_TICK_S) for the zone's whole life, so
-  // effective DPS = trigger rate x damage x (lifetimeS / ZONE_TICK_S). Keep
-  // per-tick numbers tiny; chart density and lifetime multiply them.
-  // Lifetime trimmed alongside the ~1/3 damage pass: per-tick is floored at 1
-  // so it can't drop a full third, so the zone's life is shortened instead to
-  // bring total tick output (and the slow duration) down in line.
+  // effective DPS = trigger rate x damage x (1 + floor(lifetimeS /
+  // ZONE_TICK_S)) — a zone spawns with tickT 0, so it always lands one tick
+  // immediately. Keep per-tick numbers tiny; chart density and lifetime
+  // multiply them.
+  // Lifetimes were once trimmed alongside the ~1/3 damage pass (per-tick is
+  // floored at 1, so it can't drop a full third). That trim made every zone
+  // die before the next trigger fired, so Chord read as ONE area teleporting
+  // around instead of a carpet building up. Lifetimes now outlive at least
+  // two trigger intervals, and ZONE_TICK_S was doubled to match: ticks per
+  // zone are unchanged at every tier, so total damage output is identical —
+  // only the visual and slow footprint grows.
   chord: [
-    { damage: 1, radius: 48, lifetimeS: 1.0 },
-    { damage: 1, radius: 56, lifetimeS: 1.15 },
-    { damage: 1, radius: 64, lifetimeS: 1.3 },
-    { damage: 2, radius: 76, lifetimeS: 1.45 },
+    { damage: 1, radius: 48, lifetimeS: 2.0 },
+    { damage: 1, radius: 56, lifetimeS: 2.2 },
+    { damage: 1, radius: 64, lifetimeS: 2.5 },
+    { damage: 2, radius: 76, lifetimeS: 2.8 },
   ],
   // Homing seeker per melody note: mid damage, never misses.
   lead: [
@@ -789,9 +800,9 @@ export const TIER_LINES: Partial<Record<Role, string[]>> = {
     'burst of shots every 4th bar',
   ],
   hat: [
-    'thin spray of fast chips',
+    'fast chips along your path',
     'twice the chips',
-    'denser spray',
+    'denser stream',
     'a wall of chips',
   ],
   bass: [
@@ -816,7 +827,7 @@ export const TIER_LINES: Partial<Record<Role, string[]>> = {
     'a wide slash close to you',
     'wider, harder slash',
     'sweeps a bigger arc',
-    'a huge slash all around you',
+    'the widest, hardest slash',
   ],
   arp: [
     'orbiting notes circle you',
@@ -841,10 +852,18 @@ export const VARIANT_EFFECTS = {
 /** How far weapons look for a target. */
 export const AIM_RANGE = 750;
 
+/** Angular offset between Double Take's extra shots and the aim line. Wide
+ *  enough to read as a spread, tight enough that aimed weapons stay aimed. */
+export const MULTISHOT_FAN_RAD = 7 * Math.PI / 180;
+
 /** Zone damage tick interval (chord). Slower than M1's 0.3: the zone now
  *  lands on the pack, so its per-tick reach is the whole horde — the slow
- *  is the identity, the damage is chip. */
-export const ZONE_TICK_S = 0.45;
+ *  is the identity, the damage is chip. Doubled from 0.45 when chord
+ *  lifetimes were raised so zones overlap: ticks per zone (1 + floor(lifeS /
+ *  ZONE_TICK_S)) come out identical at every tier, so the longer zones cost
+ *  no extra damage. Chord is the only weapon that spawns zones, so this
+ *  cannot spill onto another kit. */
+export const ZONE_TICK_S = 0.9;
 
 /** Chord zones: enemy speed multiplier while inside, and how far a zone
  *  can be thrown toward the nearest pack. */
@@ -864,11 +883,48 @@ export const SHOVE_S = 0.12;
 /** Per-weapon knock distance applied on hit (Feature 3). Absent = no shove. */
 export const WEAPON_SHOVE: Partial<Record<Role, number>> = { snare: 8, clap: 12, bass: 6 };
 
+// ---- the pincer weapon ----
+
+/** Two Hands (evolved clap): a clap is two hands meeting, so each trigger
+ *  picks the closest few enemies and snaps a pair of slabs shut on each one.
+ *  Deliberately tiny — the identity is high single-target damage plus an
+ *  inward tug that bunches the horde up for the rest of the band, NOT another
+ *  player-centred blast (that is what Subquake is for). Keep `pinchRadius`
+ *  well under Subquake's 288-375 unit ring. */
+export const TWO_HANDS = {
+  /** How many nearby enemies get their own pincer on a single trigger. */
+  targets: 3,
+  /** Seconds the two slabs take to travel from open to shut. */
+  closeS: 0.12,
+  /** How far out along the pinch axis each slab starts, in world units. */
+  openGap: 74,
+  /** Radius crushed at the pinch point once the hands meet. */
+  pinchRadius: 42,
+  /** Per-hit damage multiplier on the weapon's base damage — sits between
+   *  Railshot's 1.50 and Subquake's 1.55, because the footprint is a fraction
+   *  of either. */
+  damageMul: 1.52,
+  /** Radius over which survivors get dragged toward the pinch point. */
+  tugRadius: 96,
+  /** How far survivors are dragged inward. */
+  tug: 30,
+};
+
 // ---- the shatter weapon ----
 
 /** Bell shatter: per-tier shard count, and the shard projectiles' stats. Shards
  *  fly out radially from the first hit; each is a small, short-lived bell shot
  *  that does not itself re-shatter. */
+/** Evolved hi-hat (Strobe Lane): the chips stop being a spread and become a
+ *  rail down the walk heading. Reach comes from speed + life + infinite
+ *  pierce; `stagger` pushes successive chips further along the lane so a
+ *  16th-note wall draws as one continuous streak instead of a clump. */
+export const HAT_LANE = {
+  speedMul: 1.5,
+  lifetimeMul: 2.0,
+  stagger: [0, 26, 52, 78],
+};
+
 export const BELL = {
   shards: [4, 5, 6, 8],
   shardSpeed: 320,

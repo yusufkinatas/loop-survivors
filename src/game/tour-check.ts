@@ -37,7 +37,7 @@ export function runTourChecks(): void {
     'authored endless rows are mutable',
   );
 
-  same(waveRecipe(8).pattern, ['skeleton', 'charger'], 'minute-eight row drifted');
+  same(waveRecipe(8).pattern, ['skeleton', 'darter'], 'minute-eight row drifted');
   same(
     waveRecipe(9).pattern,
     ['ghost', 'circler', 'zombie'],
@@ -50,7 +50,7 @@ export function runTourChecks(): void {
   );
   same(
     waveRecipe(15).pattern,
-    ['skeleton', 'charger', 'ghost', 'circler', 'zombie'],
+    ['skeleton', 'darter', 'ghost', 'circler', 'zombie'],
     'minute-fifteen adjacent-row recipe drifted',
   );
   check(waveRecipe(8).floor === 244, 'minute-eight floor drifted');

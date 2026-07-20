@@ -16,7 +16,6 @@ function weightedThreat(enemy: Enemy, base: number): number {
   if (HEAVY_THREATS.has(enemy.kind)) weight *= 1.5;
   if (enemy.kind === 'batSwarm') weight *= 2.5;
   if (enemy.kind === 'darter' && enemy.dashing) weight *= 2;
-  if (enemy.kind === 'charger' && (enemy.dashing || enemy.windupT > 0)) weight *= 2;
   return weight;
 }
 

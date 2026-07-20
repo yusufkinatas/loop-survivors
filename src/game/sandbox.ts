@@ -19,6 +19,8 @@ import {
   ITEMS,
   ITEM_IDS,
   ITEM_MAX_LEVEL,
+  ITEM_NEUTRAL_CSS,
+  itemMaxLevel,
   type EvolutionDefinition,
   type ItemId,
 } from './items';
@@ -185,6 +187,10 @@ export function mountSandboxPanel(
   fixtureControls.style.marginLeft = '0';
   button(fixtureControls, 'ELITE BOSS', () => world.spawnSandboxBoss('mantis'));
   button(fixtureControls, 'MINUTE WAVE', () => world.spawnSandboxWave());
+  button(fixtureControls, 'SPAWN DUMMY', () => {
+    world.spawnEnemyAt('dummy', world.player.x + 190, world.player.y);
+  });
+  button(fixtureControls, 'CLEAR DUMMIES', () => world.clearDummies());
   const invulnButton = button(fixtureControls, 'INVULN', () => {
     world.invincible = !world.invincible;
   });
@@ -266,7 +272,7 @@ export function mountSandboxPanel(
   const itemControls = el('div', 'sb-btns sb-controls', build);
   itemControls.style.marginLeft = '0';
   button(itemControls, 'ALL V', () => {
-    for (const id of SANDBOX_ITEM_CATALOG) setItemLevel(id, ITEM_MAX_LEVEL);
+    for (const id of SANDBOX_ITEM_CATALOG) setItemLevel(id, itemMaxLevel(id));
   });
   button(itemControls, 'CLEAR ITEMS', () => {
     for (const id of SANDBOX_ITEM_CATALOG) setItemLevel(id, 0);
@@ -274,7 +280,7 @@ export function mountSandboxPanel(
   for (const id of SANDBOX_ITEM_CATALOG) {
     const item = ITEMS[id];
     const row = el('div', 'sb-loadout', build);
-    row.style.setProperty('--voice-color', `#${item.color.toString(16).padStart(6, '0')}`);
+    row.style.setProperty('--voice-color', ITEM_NEUTRAL_CSS);
     const info = el('div', 'sb-enemy-info', row);
     const name = el('span', 'sb-loadout-label', info, `${item.glyph} ${item.name}`);
     name.title = item.description;
@@ -287,7 +293,7 @@ export function mountSandboxPanel(
     );
     const controls = el('div', 'sb-btns', row);
     const choices: ChoiceButtons<number> = { value: () => world.items.get(id) ?? 0, options: [] };
-    for (let level = 0; level <= ITEM_MAX_LEVEL; level++) {
+    for (let level = 0; level <= itemMaxLevel(id); level++) {
       choices.options.push({
         value: level,
         button: button(controls, level === 0 ? '⏻' : String(level), () => setItemLevel(id, level)),
@@ -353,6 +359,9 @@ export function mountSandboxPanel(
   button(noteControls, 'DROP STAGE MAGNET', () => {
     world.spawnStageMagnetAt(world.player.x + 115, world.player.y);
   });
+  button(noteControls, 'DROP CHEST', () => {
+    world.spawnChestAt(world.player.x + 115, world.player.y);
+  });
   button(noteControls, 'PICKUP FIELD', () => {
     for (let i = 0; i < 18; i++) {
       const angle = (i / 18) * Math.PI * 2;
@@ -414,7 +423,7 @@ export function mountSandboxPanel(
   }
 
   function setItemLevel(id: ItemId, level: number): void {
-    const next = Math.max(0, Math.min(ITEM_MAX_LEVEL, Math.floor(level)));
+    const next = Math.max(0, Math.min(itemMaxLevel(id), Math.floor(level)));
     world.setItemLevelForSandbox(id, next);
     const partner = ITEMS[id].evolutionPartner;
     if (partner && next < ITEM_MAX_LEVEL) clearEvolution(partner);

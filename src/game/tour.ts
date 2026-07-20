@@ -88,7 +88,6 @@ export const TOUR_ENEMY_IDS = [
   'glowingBat',
   'mantis',
   'batSwarm',
-  'charger',
   'circler',
   'splitter',
   'shielded',
@@ -107,11 +106,11 @@ export interface EndlessWaveRow {
 
 /** Exact post-minute-eight roster rows. From minute 15 onward adjacent rows combine. */
 export const ENDLESS_WAVE_ROWS: readonly Readonly<EndlessWaveRow>[] = freezeWaveRows([
-  { id: 'm8-bone-charge', pattern: ['skeleton', 'charger'] },
+  { id: 'm8-bone-dash', pattern: ['skeleton', 'darter'] },
   { id: 'm9-haunt-orbit', pattern: ['ghost', 'circler', 'zombie'] },
   { id: 'm10-mud-split', pattern: ['greenMudman', 'splitter'] },
   { id: 'm11-shield-red', pattern: ['shielded', 'redBat2'] },
-  { id: 'm12-tank-flight', pattern: ['tank', 'bat', 'charger'] },
+  { id: 'm12-tank-flight', pattern: ['tank', 'bat', 'redBat2'] },
   { id: 'm13-gray-dash', pattern: ['grayMudman', 'darter'] },
   { id: 'm14-split-orbit-shield', pattern: ['splitter', 'circler', 'shielded'] },
 ]);

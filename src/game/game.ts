@@ -14,12 +14,12 @@ import { pushDamageFeedback } from './damage-feedback';
 import { createGreedyMover, createKiter, type AutoMover } from './auto-move';
 import { autoMove, Input, type AutoMoveMode } from './input';
 import { mountJoystick } from './joystick';
-import { rollOffers, type AnyPickOption } from './picks';
+import { rollOffers, rollStartingWeapons, type AnyPickOption } from './picks';
 import { RunWorld, KIT_COLORS, type VacuumResult } from './run';
 import { SIM_DT } from './timing';
 import { preloadRunArt, RunView, type GroundPickView } from './view';
 import { mountSandboxPanel, type SandboxPanel } from './sandbox';
-import { ITEMS, type EvolutionDefinition } from './items';
+import { ITEMS, ITEM_NEUTRAL_COLOR, type EvolutionDefinition } from './items';
 import { MetaStore, type RunSettlement } from './meta';
 import { mulberry32 } from './rng';
 
@@ -206,9 +206,13 @@ export async function bootGame(
     option: ShellPick;
   }
   let groundPicks: GroundItem[] = [];
+  // True while the run's opening weapon choice is the triangle on the ground.
+  // That pick is committed: it must never spend a purchased reroll.
+  let openingPickOut = false;
 
   function clearGroundPicks(): void {
     if (groundPicks.length > 0) groundPicks = [];
+    openingPickOut = false;
     view?.setGroundPicks([]);
   }
 
@@ -241,7 +245,7 @@ export async function bootGame(
         .filter(({ role }) => eligibleNow.has(role))
         .slice(0, 3)
         .map((evolution): EvolutionPick => ({ kind: 'evolution', evolution }));
-      if (evolutionOptions.length > 0) dropGroundPicks(w, evolutionOptions);
+      if (evolutionOptions.length > 0) dropGroundPicks(w, evolutionOptions, 'chest');
       else presentNextUpgrade();
       return;
     }
@@ -264,9 +268,17 @@ export async function bootGame(
     }
   }
 
+  /** How loudly a ground-pick drop is celebrated.
+   *  - `'level'`: the full LEVELUP.momentS slow-mo — a real level-up.
+   *  - `'chest'`: the same beat at LEVELUP.chestMomentS, because chests arrive
+   *    in bursts and present back to back.
+   *  - `'none'`: no slow-mo, no mix duck, no level cue and no HUD pulse (the
+   *    opening hire) — only the burst that reads as "here are your options". */
+  type Celebration = 'level' | 'chest' | 'none';
+
   /** Drop the offered options as items in a triangle around the player, shove
    *  the horde clear of them, and fire the cosmetic level-up moment. */
-  function dropGroundPicks(w: RunWorld, options: ShellPick[]): void {
+  function dropGroundPicks(w: RunWorld, options: ShellPick[], celebrate: Celebration = 'level'): void {
     const cx = w.player.x;
     const cy = w.player.y;
     const items: GroundItem[] = [];
@@ -290,9 +302,12 @@ export async function bootGame(
       } else if (option.kind === 'item') {
         const definition = ITEMS[option.item];
         const previous = w.items.get(option.item) ?? 0;
-        payload.push({ x, y, glyph: definition.glyph, color: definition.color,
+        payload.push({ x, y, glyph: definition.glyph, color: ITEM_NEUTRAL_COLOR,
           name: definition.name, level: previous > 0 ? `${previous} → ${option.tier}` : '1',
-          effect: definition.levelLines[option.tier - 1] });
+          effect: definition.levelLines[option.tier - 1],
+          // Teach the recipe once, when the passive is new. Later levels of the
+          // same item would only repeat a hint the player has already read.
+          evoRole: previous === 0 ? definition.evolutionPartner : undefined });
       } else if (option.kind === 'encore') {
         const role: Role = option.encore === 'heal' ? 'clap' : option.encore === 'damage' ? 'bass' : option.encore === 'move' ? 'kick' : 'chord';
         const label = option.encore === 'heal' ? 'Emergency Water' : option.encore === 'damage' ? 'Hotter Signal' : option.encore === 'move' ? 'Quick Change' : 'Wider Stage';
@@ -306,15 +321,17 @@ export async function bootGame(
     groundPicks = items;
     view?.setGroundPicks(payload);
     w.shoveEnemiesOut(cx, cy, LEVELUP.enemyPushRadius);
-    startLevelMoment(cx, cy);
+    if (celebrate === 'none') view?.levelBurst(cx, cy);
+    else startLevelMoment(cx, cy, celebrate === 'chest' ? LEVELUP.chestMomentS : LEVELUP.momentS);
   }
 
-  /** The satisfying beat: slowScale slow-mo plus a short mix dip. */
-  function startLevelMoment(cx: number, cy: number): void {
-    momentT = LEVELUP.momentS;
+  /** The satisfying beat: slowScale slow-mo plus a short mix dip, held for
+   *  `momentS` real seconds unless the player collects a pick first. */
+  function startLevelMoment(cx: number, cy: number, momentS: number): void {
+    momentT = momentS;
     momentScale = LEVELUP.slowScale;
     applyClockRate();
-    engine.duckWeapons(LEVELUP.duckDepth, LEVELUP.momentS);
+    engine.duckWeapons(LEVELUP.duckDepth, momentS);
     engine.playLevelCue();
     hud.levelPulse();
     view?.levelBurst(cx, cy);
@@ -332,9 +349,12 @@ export async function bootGame(
     const option = item.option;
     clearGroundPicks();
     if (option.kind === 'item') {
+      const firstCopy = (w.items.get(option.item) ?? 0) === 0;
       w.addItem(option.item, option.tier);
       const definition = ITEMS[option.item];
-      hud.showToast(`${definition.name} ${option.tier} · ${definition.levelLines[option.tier - 1]}`);
+      const partner = firstCopy ? definition.evolutionPartner : undefined;
+      const evoCopy = partner ? ` · EVO ${kits.get(partner)?.name ?? partner}` : '';
+      hud.showToast(`${definition.name} ${option.tier} · ${definition.levelLines[option.tier - 1]}${evoCopy}`);
       hud.levelPulse();
       view?.flourish(w.player.x, w.player.y);
       presentNextUpgrade();
@@ -386,6 +406,12 @@ export async function bootGame(
   function rerollGroundOffers(): void {
     const w = world;
     if (!w || state !== 'run' || rerollsLeft <= 0 || groundPicks.length === 0) return;
+    if (openingPickOut) {
+      // Rerolls are a purchased meta resource for in-run level-ups. The run's
+      // opening instrument is a committed choice and never spends one.
+      hud.showToast('The opening hire cannot be rerolled');
+      return;
+    }
     if (groundPicks.some((pick) => pick.option.kind === 'evolution')) {
       hud.showToast('Chest picks cannot be rerolled');
       return;
@@ -522,7 +548,7 @@ export async function bootGame(
     for (const role of ROLES) engine.setVoiceEnabled(role, false);
   }
 
-  function startRun(startingKit: Role, mode: AutoMoveMode = 'off'): void {
+  function startRun(mode: AutoMoveMode = 'off'): void {
     resetWorld();
     // Auto-move hands movement to a kiter or gem-hungry greedy mode;
     // manual keeps the keyboard/joystick.
@@ -539,9 +565,6 @@ export async function bootGame(
     w.powerMul = SOUNDSET.powerMul;
     view = new RunView(w, app.screen);
     app.stage.addChild(view.stage);
-    engine.setVoiceTier(startingKit, 1);
-    engine.setVoiceEnabled(startingKit, true);
-    w.addWeapon(startingKit, 1);
     hud.showHud(true);
     pauseButton.style.display = '';
     hud.renderBand(w.tiers, undefined, undefined, undefined, w.evolved);
@@ -549,6 +572,22 @@ export async function bootGame(
     syncTimeScaleControl(); // arm the timeScale slider for the live run
     void engine.ctx.resume();
     engine.clock.start();
+    // The run opens silent, on a choice of instrument rather than a fixed one.
+    // Three weapon pedestals drop around the player and collectGroundPick arms
+    // the chosen one on the next bar. This is deliberately NOT a level-up: no
+    // upgrade is enqueued and world level/XP are untouched, so the HUD still
+    // reads level 1 after the pick.
+    dropGroundPicks(
+      w,
+      rollStartingWeapons({
+        tiers: w.tiers,
+        unlockedRoles: meta.unlockedRoles(),
+        rng: Math.random,
+        timeS: 0,
+      }),
+      'none',
+    );
+    openingPickOut = true;
   }
 
   function startSandbox(): void {

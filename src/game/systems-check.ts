@@ -12,7 +12,7 @@ import {
   canDispatchPhraseBoundary,
   nextUnheardPhraseTime,
 } from '../audio/engine';
-import { EVOLUTIONS, ITEM_IDS, ITEMS, deriveBuildMods, type ItemId } from './items';
+import { EVOLUTIONS, ITEM_IDS, ITEMS, deriveBuildMods, itemMaxLevel, type ItemId } from './items';
 import {
   CORE_ITEMS,
   CORE_WEAPONS,
@@ -44,13 +44,20 @@ class MemoryStorage implements Storage {
 const allItems = new Map<ItemId, number>(ITEM_IDS.map((id) => [id, 5]));
 const mods = deriveBuildMods(allItems);
 assert.equal(mods.moveMul, 1.2);
-assert.equal(mods.projectileSpeedMul, 1.5);
+assert.equal(mods.projectileSpeedMul, 2.0);
 assert.equal(mods.extraPierce, 3);
 assert.equal(mods.bounceCount, 3);
 assert.equal(mods.damageMul, 1.25);
 assert.equal(mods.maxHpBonus, 40);
 assert.equal(mods.armorBonus, 2);
 assert.equal(mods.hpRegenPerSecond, 0.5);
+// Double Take stops at two levels, so the all-items-at-5 sweep clamps to 2.
+assert.equal(mods.extraProjectiles, 2);
+
+for (const id of ITEM_IDS) {
+  assert.equal(ITEMS[id].levelLines.length, itemMaxLevel(id),
+    `${id} must carry exactly one copy line per level it can reach`);
+}
 
 const evolutionRoles = Object.values(EVOLUTIONS).map(({ role }) => role);
 assert.equal(new Set(evolutionRoles).size, 9, 'every evolution must have a unique weapon');
@@ -58,8 +65,9 @@ const recipeItems = new Set(Object.values(EVOLUTIONS).map(({ item }) => item));
 const pairedItems = new Set(ITEM_IDS.filter((id) => ITEMS[id].evolutionPartner !== undefined));
 assert.deepEqual(recipeItems, pairedItems,
   'every paired passive should complete exactly one evolution recipe');
-assert.equal(ITEMS.recoveryTape.evolutionPartner, undefined,
-  'Recovery Tape should remain a standalone passive with no evolution recipe');
+const standaloneItems = new Set(ITEM_IDS.filter((id) => ITEMS[id].evolutionPartner === undefined));
+assert.deepEqual(standaloneItems, new Set<ItemId>(['recoveryTape', 'doubleTake']),
+  'Recovery Tape and Double Take are the deliberate standalone passives');
 assert.deepEqual(new Set(SANDBOX_ENEMY_CATALOG), new Set(ALL_ENEMY_KINDS),
   'the sandbox must expose every opening, endless, child, event, and boss enemy');
 assert.deepEqual(new Set(SANDBOX_ITEM_CATALOG), new Set(ITEM_IDS),
@@ -149,14 +157,14 @@ assert.equal(meta.purchase('heavyAmp'), false, 'a shop purchase must be one-time
 assert.equal(meta.shop().find(({ offer }) => offer.id === 'arp')!.shelfLocked, false);
 assert(meta.purchase('arp'));
 assert(meta.unlockedRoles().has('arp'));
-assert.equal(meta.state.notes, 412, 'shop costs must be deducted from the note wallet');
+assert.equal(meta.state.notes, 222, 'shop costs must be deducted from the note wallet');
 const roundTrippedMeta = new MetaStore(storage);
 assert.equal(roundTrippedMeta.state.version, 2);
-assert.equal(roundTrippedMeta.state.notes, 412, 'the v2 note wallet should round-trip');
+assert.equal(roundTrippedMeta.state.notes, 222, 'the v2 note wallet should round-trip');
 assert.deepEqual(roundTrippedMeta.state.purchases, ['heavyAmp', 'clap', 'arp'],
   'shop purchases should round-trip in purchase order');
 const recoveryMeta = new MetaStore(new MemoryStorage());
-recoveryMeta.grantNotes(50);
+recoveryMeta.grantNotes(100);
 assert(recoveryMeta.purchase('recoveryTape'), 'Recovery Tape should be buyable from the first shop shelf');
 assert(recoveryMeta.unlockedItemIds().has('recoveryTape'),
   'buying Recovery Tape should add it to the passive offer pool');
@@ -166,7 +174,6 @@ const expectedEnemyLabels = {
   tank: 'Wallstack',
   darter: 'Needlejack',
   splitter: 'Crackbox',
-  charger: 'Rail Ram',
   circler: 'Orbit Leech',
   shielded: 'Phase Guard',
   elite: 'Blackout Idol',
@@ -182,6 +189,7 @@ const expectedEnemyLabels = {
   glowingBat: 'Signal Crown',
   mantis: 'The Shear',
   batSwarm: 'Static Rush',
+  dummy: 'Practice Cabinet',
 } satisfies Record<EnemyKind, string>;
 assert.deepEqual(ENEMY_LABELS, expectedEnemyLabels,
   'every simulation archetype needs its complete fresh player-facing identity');
@@ -360,10 +368,57 @@ hatWorld.invincible = true;
 hatWorld.addWeapon('hat', 1);
 const weakestEnemy = hatWorld.spawnEnemyAt('bat', 80, 0)!;
 assert.equal(weakestEnemy.hp, 1, 'the Static Mite fixture should remain the 1-HP baseline');
+// Hi-hat fires along the walk heading now, which defaults to +x, so the target
+// has to sit ON that line. spawnEnemyAt takes a sprite-feet position and offsets
+// the circle center off-axis, so pin the center dead ahead of the player.
+weakestEnemy.x = hatWorld.player.x + 80;
+weakestEnemy.y = hatWorld.player.y;
 hatWorld.fireTrigger({ role: 'hat', time: 0, velocity: 1, step: 0, variant: 'closed' });
 for (let i = 0; i < 60 && !weakestEnemy.dead; i++) hatWorld.update(1 / 120);
 assert.equal(weakestEnemy.dead, true,
   'one base tier-I hi-hat trigger must be able to kill the weakest enemy');
+
+// Hi-hat is the Knife: it fires along the walk heading with zero scatter, and
+// it never consults enemy positions. Walking one direction must give the exact
+// same angle every trigger, with or without anything on screen.
+const laneWorld = new RunWorld({ width: 1280, height: 720 }, events, {
+  scripted: false,
+  fx: false,
+  rng: () => 0.5,
+  control: () => ({ x: 0, y: -1 }),
+});
+laneWorld.invincible = true;
+laneWorld.addWeapon('hat', 1);
+laneWorld.update(1 / 120);
+// An enemy far off the heading must not bend the shot.
+laneWorld.spawnEnemyAt('bat', 300, 0);
+const shotAngles: number[] = [];
+for (let i = 0; i < 2; i++) {
+  laneWorld.projectiles.length = 0;
+  laneWorld.fireTrigger({ role: 'hat', time: 0, velocity: 1, step: 0, variant: 'closed' });
+  const shot = laneWorld.projectiles[0];
+  assert.ok(shot, 'a hi-hat trigger must spawn a chip');
+  shotAngles.push(Math.atan2(shot.vy, shot.vx));
+}
+assert.equal(shotAngles[0], shotAngles[1],
+  'consecutive hi-hat shots on a constant heading must share one exact angle');
+assert.ok(Math.abs(shotAngles[0] - -Math.PI / 2) < 1e-9,
+  'hi-hat must fire along the walk heading, not at the nearest enemy');
+
+// No enemies at all: still fires along the heading, never a random fallback.
+const emptyLane = new RunWorld({ width: 1280, height: 720 }, events, {
+  scripted: false,
+  fx: false,
+  rng: () => 0.5,
+  control: () => ({ x: -1, y: 0 }),
+});
+emptyLane.invincible = true;
+emptyLane.addWeapon('hat', 1);
+emptyLane.update(1 / 120);
+emptyLane.projectiles.length = 0;
+emptyLane.fireTrigger({ role: 'hat', time: 0, velocity: 1, step: 0, variant: 'closed' });
+assert.ok(Math.abs(Math.atan2(emptyLane.projectiles[0].vy, emptyLane.projectiles[0].vx) - Math.PI) < 1e-9,
+  'hi-hat with an empty screen must still rail along the walk direction');
 
 const world = new RunWorld({ width: 1280, height: 720 }, events, {
   rng: () => 0.5,
@@ -449,22 +504,41 @@ redlineWorld.fireTrigger({ role: 'kick', time: 0, velocity: 1, step: 0 });
 assert(farHorizontal.dead && farVertical.dead,
   'Redline Stomp should cross the complete visible arena');
 
-const ovationWorld = new RunWorld({ width: 1280, height: 720 }, events, {
+const pincerWorld = new RunWorld({ width: 1280, height: 720 }, events, {
   scripted: false,
   fx: false,
   rng: () => 0.5,
 });
-ovationWorld.addWeapon('clap', 4);
-ovationWorld.addItem('paddedJacket', 5);
-assert(ovationWorld.evolve('clap'));
-const cornerEnemy = ovationWorld.spawnEnemyAt(
+pincerWorld.addWeapon('clap', 4);
+pincerWorld.addItem('paddedJacket', 5);
+assert(pincerWorld.evolve('clap'));
+// Three close enemies fill the pincer's target slots.
+const pinchTarget = pincerWorld.spawnEnemyAt('bat', 160, 0)!;
+pincerWorld.spawnEnemyAt('bat', 0, 150);
+pincerWorld.spawnEnemyAt('bat', -150, 0);
+// Well outside every pincer. The three enemies above fill all TWO_HANDS.targets
+// slots, so this one is never picked, and it sits 150 units from the nearest
+// pinch point — more than three times the 42-unit crush radius and past the
+// 96-unit inward tug. That local reach is the property this evolution exists to
+// hold: the hands crush what they grab instead of becoming a second
+// player-centred blast the way Subquake (a 288-375 unit ring) is meant to be.
+const bystander = pincerWorld.spawnEnemyAt('bat', 0, 300)!;
+const cornerEnemy = pincerWorld.spawnEnemyAt(
   'bat',
-  ovationWorld.worldW * 0.45,
-  ovationWorld.worldH * 0.45,
+  pincerWorld.worldW * 0.45,
+  pincerWorld.worldH * 0.45,
 )!;
-ovationWorld.update(0);
+pincerWorld.update(0);
+const targetHpBefore = pinchTarget.hp;
+const bystanderHpBefore = bystander.hp;
 const cornerHpBefore = cornerEnemy.hp;
-ovationWorld.fireTrigger({ role: 'clap', time: 0, velocity: 1, step: 0 });
-assert(cornerEnemy.hp < cornerHpBefore, 'Standing Ovation should reach the visible arena corners');
+pincerWorld.fireTrigger({ role: 'clap', time: 0, velocity: 1, step: 0 });
+assert(pinchTarget.hp === targetHpBefore, 'Two Hands damage lands when the hands meet, not on the trigger');
+// Step past the close time so the slabs snap shut.
+for (let i = 0; i < 12; i++) pincerWorld.update(1 / 60);
+assert(pinchTarget.hp < targetHpBefore, 'Two Hands should crush the enemy it picked');
+assert(bystander.hp === bystanderHpBefore,
+  'Two Hands must stay local: nothing at 300 units should be damaged');
+assert(cornerEnemy.hp === cornerHpBefore, 'Two Hands must not reach the arena corners');
 
 console.log('systems-check: items, note shop, Stage Magnet, enemies, endless director, and evolutions passed');

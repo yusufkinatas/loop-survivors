@@ -115,6 +115,9 @@ interface GroundPickBase {
   name: string;
   level: string;
   effect?: string;
+  /** Item picks only: the weapon this passive evolves, set on first pickup so
+   * the pedestal can show the recipe teaser. Passed straight to the pedestal. */
+  evoRole?: Role;
 }
 
 export type GroundPickView = GroundPickBase & (
@@ -177,6 +180,19 @@ const DMG_STYLE = new TextStyle({
   stroke: { color: SOUNDWOOD.ink, width: 5, join: 'round' },
 });
 
+/** Persistent readout above a sandbox practice target. Same typography as the
+ * transient damage numbers, one size up and centered so three stacked lines
+ * stay readable over the cabinet silhouette. */
+const DUMMY_LABEL_STYLE = new TextStyle({
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  fontSize: 16,
+  fontWeight: '900',
+  fill: 0xffffff,
+  align: 'center',
+  lineHeight: 18,
+  stroke: { color: SOUNDWOOD.ink, width: 5, join: 'round' },
+});
+
 const BANNER_STYLE = new TextStyle({
   fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
   fontSize: 18,
@@ -221,6 +237,12 @@ function multiplyTint(a: number, b: number): number {
   return (r << 16) | (g << 8) | blue;
 }
 
+/** Thousands-separated whole numbers: the readout is scanned mid-fight, and
+ * `18,340` reads at a glance where `18340.6` does not. */
+function formatDummyNumber(value: number): string {
+  return Math.round(value).toLocaleString('en-US');
+}
+
 function enemyFrame(enemy: Enemy, timeS: number): number {
   switch (enemy.kind) {
     case 'bat':
@@ -231,7 +253,6 @@ function enemyFrame(enemy: Enemy, timeS: number): number {
     case 'flower':
     case 'mantis':
     case 'darter':
-    case 'charger':
       return Math.floor(timeS * 8 + enemy.id * 0.73) & 1;
     case 'zombie':
     case 'skeleton':
@@ -345,6 +366,7 @@ export class RunView {
   private zoneLayer = new Container();
   private gemLayer = new Container();
   private enemyLayer = new Container();
+  private dummyLabelLayer = new Container();
   private attackLayer = new Container();
   private playerLayer = new Container();
   private rewardLayer = new Container();
@@ -375,6 +397,7 @@ export class RunView {
   private playerGfx: PlayerGfx;
 
   private enemyGfx = new Map<Enemy, EnemyGfx>();
+  private dummyLabels = new Map<Enemy, Text>();
   private projectileGfx = new Map<Projectile, ProjectileGfx>();
   private zoneGfx = new Map<Zone, ZoneGfx>();
   private gemGfx = new Map<Gem, GemGfx>();
@@ -423,6 +446,7 @@ export class RunView {
       this.zoneLayer,
       this.gemLayer,
       this.enemyLayer,
+      this.dummyLabelLayer,
       this.attackLayer,
       this.playerLayer,
       this.rewardLayer,
@@ -533,6 +557,7 @@ export class RunView {
     this.syncMusicNotes(cameraX, cameraY);
     this.syncStageMagnets(cameraX, cameraY);
     this.syncEnemies(cameraX, cameraY);
+    this.syncDummyLabels(cameraX, cameraY);
     this.syncProjectiles(cameraX, cameraY);
     this.drawTrails();
     this.drawTourAttacks(cameraX, cameraY);
@@ -569,6 +594,7 @@ export class RunView {
     this.stage.destroy({ children: true });
     this.floorTiles.length = 0;
     this.enemyGfx.clear();
+    this.dummyLabels.clear();
     this.projectileGfx.clear();
     this.zoneGfx.clear();
     this.gemGfx.clear();
@@ -785,25 +811,6 @@ export class RunView {
     const halfH = this.world.worldH / 2 + 80;
     for (const enemy of this.world.enemies) {
       if (Math.abs(enemy.x - cameraX) > halfW || Math.abs(enemy.y - cameraY) > halfH) continue;
-      if (enemy.kind === 'charger' && enemy.windupT > 0) {
-        let dx = enemy.dashX;
-        let dy = enemy.dashY;
-        const length = Math.hypot(dx, dy);
-        if (length < 0.01) {
-          dx = this.world.player.x - enemy.x;
-          dy = this.world.player.y - enemy.y;
-        }
-        const norm = Math.hypot(dx, dy) || 1;
-        dx /= norm;
-        dy /= norm;
-        const reach = 170;
-        gfx.moveTo(snap(enemy.x), snap(enemy.y))
-          .lineTo(snap(enemy.x + dx * reach), snap(enemy.y + dy * reach))
-          .stroke({ width: 7, color: SOUNDWOOD.coral, alpha: 0.12 });
-        for (let i = 1; i <= 5; i++) {
-          pixelDiamond(gfx, enemy.x + dx * reach * i / 5, enemy.y + dy * reach * i / 5, 3, SOUNDWOOD.coral, 0.6);
-        }
-      }
       if ((enemy.kind === 'mantis' || enemy.kind === 'glowingBat' || enemy.kind === 'elite') && enemy.spawnClass !== 'regular') {
         gfx.poly(regularPixelPoly(12, enemy.radius * 1.7, Math.PI / 12)
           .map((value, i) => snap(value + (i % 2 === 0 ? enemy.x : enemy.y))))
@@ -940,21 +947,52 @@ export class RunView {
 
       if (enemy.kind === 'batSwarm' && (enemy.moveX !== 0 || enemy.moveY !== 0)) {
         gfx.rotation = Math.atan2(enemy.moveY, enemy.moveX);
-      } else if ((enemy.kind === 'darter' || enemy.kind === 'charger') && (enemy.dashX !== 0 || enemy.dashY !== 0)) {
+      } else if (enemy.kind === 'darter' && (enemy.dashX !== 0 || enemy.dashY !== 0)) {
         gfx.rotation = Math.atan2(enemy.dashY, enemy.dashX);
       } else if (enemy.lastMoveX < -0.01) {
         gfx.scale.x = -1;
-      }
-      if (enemy.kind === 'charger' && enemy.windupT > 0) {
-        const throb = 1 + 0.08 * (0.5 + 0.5 * Math.sin(this.world.timeS * 18));
-        gfx.scale.x *= throb;
-        gfx.scale.y = throb;
       }
     }
     for (const [enemy, gfx] of this.enemyGfx) {
       if (!this.live.has(enemy)) {
         gfx.destroy();
         this.enemyGfx.delete(enemy);
+      }
+    }
+  }
+
+  /** One persistent readout per practice target, added and reaped by the same
+   *  live-set diff the enemy sprites use — so CLEAR DUMMIES and CLEAR ALL both
+   *  take their labels with them and never orphan a Text. */
+  private syncDummyLabels(cameraX: number, cameraY: number): void {
+    const halfW = this.world.worldW / 2 + 100;
+    const halfH = this.world.worldH / 2 + 100;
+    this.live.clear();
+    for (const enemy of this.world.enemies) {
+      if (!enemy.dummy || !enemy.readout) continue;
+      let label = this.dummyLabels.get(enemy);
+      if (!label) {
+        label = new Text({ text: '', style: DUMMY_LABEL_STYLE, roundPixels: true });
+        label.anchor.set(0.5, 1);
+        this.dummyLabels.set(enemy, label);
+        this.dummyLabelLayer.addChild(label);
+      }
+      this.live.add(enemy);
+      const visible = Math.abs(enemy.x - cameraX) < halfW && Math.abs(enemy.y - cameraY) < halfH;
+      label.renderable = visible;
+      if (!visible) continue;
+      const readout = enemy.readout;
+      const average = readout.total / Math.max(0.25, readout.aliveT);
+      label.text =
+        `DPS ${formatDummyNumber(this.world.dummyDps(enemy))}\n` +
+        `AVG ${formatDummyNumber(average)}\n` +
+        `TOTAL ${formatDummyNumber(readout.total)}`;
+      label.position.set(snap(enemy.x), snap(enemy.y - enemy.radius - 28));
+    }
+    for (const [enemy, label] of this.dummyLabels) {
+      if (!this.live.has(enemy)) {
+        label.destroy({ children: true });
+        this.dummyLabels.delete(enemy);
       }
     }
   }
@@ -996,6 +1034,8 @@ export class RunView {
     const liveTrails = new Set<Projectile>();
     let evolvedHatTrails = 0;
     for (const projectile of this.world.projectiles) {
+      // Cap held at 64 on purpose: the lane's chips all share one angle, so the
+      // nearest 64 already draw the whole rail — more would only overdraw it.
       const evolvedHat = projectile.role === 'hat' && roleIsEvolved(this.world, 'hat') && evolvedHatTrails++ < 64;
       if (!TRAIL_ROLES.has(projectile.role) && !evolvedHat) continue;
       liveTrails.add(projectile);
@@ -1008,9 +1048,11 @@ export class RunView {
       if (points.length > TRAIL_POINTS * 2) points.splice(0, points.length - TRAIL_POINTS * 2);
       for (let i = 0; i < points.length; i += 2) {
         const progress = (i + 2) / points.length;
-        const size = Math.max(1, snap(1 + progress * (evolvedHat ? 2 : 3)));
+        // The evolved hat is a lane now, so its streak reads brighter than the
+        // old ricochet trail — the rail itself is the weapon's tell.
+        const size = Math.max(1, snap(1 + progress * 3));
         this.trailGfx.rect(points[i] - Math.floor(size / 2), points[i + 1] - Math.floor(size / 2), size, size)
-          .fill({ color: projectile.color, alpha: progress * (evolvedHat ? 0.28 : 0.42) });
+          .fill({ color: projectile.color, alpha: progress * (evolvedHat ? 0.5 : 0.42) });
       }
     }
     for (const projectile of this.trails.keys()) if (!liveTrails.has(projectile)) this.trails.delete(projectile);
@@ -1024,9 +1066,13 @@ export class RunView {
     gfx.clear();
     for (const wave of tour.shockwaves ?? []) {
       if (Math.abs(wave.x - cameraX) > halfW || Math.abs(wave.y - cameraY) > halfH) continue;
-      const progress = Math.min(1, wave.age / Math.max(0.001, wave.lifeS));
-      const alpha = Math.pow(1 - progress, 0.65);
-      const radius = Math.max(4, wave.radius || wave.maxRadius * progress);
+      // age counts up while lifeS counts down, so age + lifeS is the invariant total life.
+      // Dividing by lifeS alone made the ring vanish at half the sweep while it kept damaging.
+      const progress = Math.min(1, wave.age / Math.max(0.001, wave.age + wave.lifeS));
+      // Hold the ring legible across the sweep it actually damages on, then fade out only at
+      // the very end. Same colors and widths as before, no fill: the edge stays honest.
+      const alpha = progress < 0.8 ? 1 - progress * 0.3125 : 0.75 - (progress - 0.8) / 0.2 * 0.45;
+      const radius = Math.max(4, wave.radius);
       gfx.poly(regularPixelPoly(20, radius, Math.PI / 20)
         .map((value, i) => snap(value + (i % 2 === 0 ? wave.x : wave.y))))
         .stroke({ width: 7, color: SOUNDWOOD.ink, alpha: alpha * 0.56 });

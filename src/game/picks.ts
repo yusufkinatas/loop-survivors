@@ -19,7 +19,7 @@ import {
 } from './band';
 import {
   ITEM_IDS,
-  ITEM_MAX_LEVEL,
+  itemMaxLevel,
   ITEM_SLOT_CAP,
   itemLevel,
   type ItemId,
@@ -153,7 +153,7 @@ function buildFinitePool(input: RollOffersInput): WeightedOption<BuildPickOption
     if (tier === 0) {
       if (itemSlotsFull || !input.unlockedItems.has(item)) continue;
       pool.push({ option: { kind: 'item', item, tier: 1 }, weight: NEW_ITEM_WEIGHT });
-    } else if (tier < ITEM_MAX_LEVEL) {
+    } else if (tier < itemMaxLevel(item)) {
       // As with an owned weapon, an item already in this run remains legal if
       // meta state is repaired underneath it.
       pool.push({ option: { kind: 'item', item, tier: tier + 1 }, weight: OWNED_ITEM_WEIGHT });
@@ -296,43 +296,50 @@ function rollConfiguredOffers(input: RollOffersInput): AnyPickOption[] {
   return selectFiniteOffers(pool, input.rng, forceItem);
 }
 
-function isConfiguredInput(
-  value: RollOffersInput | ReadonlyMap<Role, number>,
-): value is RollOffersInput {
-  return typeof value === 'object' && value !== null && 'tiers' in value;
+/** Full configured economy used by normal runs. */
+export function rollOffers(input: RollOffersInput): AnyPickOption[] {
+  return rollConfiguredOffers(input);
 }
 
-/** Full configured economy used by normal runs. */
-export function rollOffers(input: RollOffersInput): AnyPickOption[];
-/** Temporary compatibility form for the weapon-only live shell. */
-export function rollOffers(
-  tiers: ReadonlyMap<Role, number>,
-  rng: Rng,
-  timeS: number,
-): WeaponPickOption[];
-export function rollOffers(
-  inputOrTiers: RollOffersInput | ReadonlyMap<Role, number>,
-  legacyRng?: Rng,
-  legacyTimeS?: number,
-): AnyPickOption[] {
-  if (isConfiguredInput(inputOrTiers)) return rollConfiguredOffers(inputOrTiers);
-  if (!legacyRng || legacyTimeS === undefined) {
-    throw new Error('rollOffers: weapon-only form requires rng and timeS');
+export interface RollStartingWeaponsInput {
+  tiers: ReadonlyMap<Role, number>;
+  unlockedRoles: ReadonlySet<Role>;
+  rng: Rng;
+  timeS: number;
+}
+
+/**
+ * The opening hire: the three weapons a run starts by choosing between. This
+ * is not a level-up offer, so the pool holds only tier-0 hires — never an
+ * item, never an Encore, never an upgrade of something already owned. The
+ * usual gates still apply (soundset support, meta unlock, one weapon per band
+ * slot) and the draw goes through the same weighted rank, so a seeded run
+ * opens identically everywhere. Returns fewer than OFFER_COUNT only if fewer
+ * distinct slots are available.
+ */
+export function rollStartingWeapons(input: RollStartingWeaponsInput): WeaponPickOption[] {
+  const pool: WeightedOption<WeaponPickOption>[] = [];
+  for (const role of ROLES) {
+    if (!soundsetSupports(role)) continue;
+    if (!input.unlockedRoles.has(role)) continue;
+    const tier = Math.max(0, Math.min(TIER_COUNT, Math.floor(input.tiers.get(role) ?? 0)));
+    if (tier !== 0 || slotFilled(slotOf(role), input.tiers)) continue;
+    pool.push({
+      option: { kind: 'weapon', role, tier: 1 },
+      weight: weaponWeight(role, input.timeS),
+    });
   }
-  const legacyInput: RollOffersInput = {
-    tiers: inputOrTiers,
-    items: new Map<ItemId, number>(),
-    unlockedRoles: new Set(ROLES),
-    unlockedItems: new Set<ItemId>(),
-    rng: legacyRng,
-    timeS: legacyTimeS,
-    level: 1,
-  };
-  // With no unlocked items this path can only contain weapon options, and it
-  // deliberately preserves the old empty-pool result instead of introducing
-  // Encore cards before the shell knows how to render them.
-  const pool = buildFinitePool(legacyInput);
-  return selectFiniteOffers(pool, legacyRng, false).filter(
-    (option): option is WeaponPickOption => option.kind === 'weapon',
-  );
+
+  const selected: WeaponPickOption[] = [];
+  const usedSlots = new Set<Slot>();
+  // rankOptions returns the pool already ordered best-first, so taking in
+  // order keeps the weighted ordering the cards are drawn in.
+  for (const { option } of rankOptions(pool, input.rng)) {
+    if (selected.length >= OFFER_COUNT) break;
+    const slot = slotOf(option.role);
+    if (usedSlots.has(slot)) continue;
+    usedSlots.add(slot);
+    selected.push(option);
+  }
+  return selected;
 }

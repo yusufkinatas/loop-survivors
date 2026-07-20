@@ -3,7 +3,7 @@
 
 import { Container, Graphics, GraphicsContext, Text, TextStyle } from 'pixi.js';
 import type { Role } from '../audio/kits';
-import type { Enemy, Gem, MusicNotePickup, Projectile, StageMagnetPickup, Zone } from './run';
+import { KIT_COLORS, type Enemy, type Gem, type MusicNotePickup, type Projectile, type StageMagnetPickup, type Zone } from './run';
 import { SOUNDWOOD, hash2, regularPixelPoly, snap } from './soundwood-art';
 import { drawWeaponIcon } from './weaponicons';
 
@@ -164,6 +164,8 @@ export function enemyContext(e: Enemy, shieldOn: boolean, frame: number): Graphi
       case 'skeleton': hushWalker(g, r, frame, true); break;
       case 'greenMudman': hushCabinet(g, r, false, frame); break;
       case 'grayMudman': hushCabinet(g, r, true, frame); break;
+      // The practice target is a cabinet with its step pinned: it never walks.
+      case 'dummy': hushCabinet(g, r, false, 0); break;
       case 'ghost': {
         // Three displaced glass panes sell phasing without a face or sheet tail.
         const offset = frame ? r * 0.18 : -r * 0.18;
@@ -249,13 +251,6 @@ export function enemyContext(e: Enemy, shieldOn: boolean, frame: number): Graphi
             .stroke({ width: Math.max(2, snap(r * 0.15)), color: SOUNDWOOD.ink });
           pixelDiamond(g, Math.cos(a) * r * 0.45, Math.sin(a) * r * 0.45, r * 0.14, SOUNDWOOD.ink);
         }
-        break;
-      }
-      case 'charger': {
-        darkSilhouette(g, [r * 1.58, 0, r * 0.38, -r * 0.9, -r * 0.96, -r * 0.72, -r * 0.58, 0, -r * 0.96, r * 0.72, r * 0.38, r * 0.9]);
-        g.poly([r * 1.25, 0, r * 0.28, -r * 0.58, -r * 0.68, -r * 0.48, -r * 0.4, 0, -r * 0.68, r * 0.48, r * 0.28, r * 0.58].map(snap)).fill(0xffffff);
-        for (const y of [-0.5, 0.5]) box(g, -r * 1.28, r * y - r * 0.1, r * 1.1, r * 0.2, SOUNDWOOD.ink);
-        box(g, r * 0.25, -r * 0.12, r * 0.7, r * 0.24, SOUNDWOOD.ink);
         break;
       }
       case 'circler': {
@@ -623,6 +618,9 @@ interface RewardBase {
   name: string;
   level: string;
   effect?: string;
+  /** Item pedestals only: the weapon this passive evolves, shown once on the
+   * player's first pickup. Independent of the `role` xor `glyph` union. */
+  evoRole?: Role;
 }
 
 export type RewardSpec = RewardBase & (
@@ -656,6 +654,14 @@ const REWARD_EFFECT = new TextStyle({
   fontWeight: '800',
   fill: 0xffffff,
   letterSpacing: 0.25,
+  stroke: { color: SOUNDWOOD.ink, width: 3, join: 'round' },
+});
+const REWARD_EVO = new TextStyle({
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  fontSize: 11,
+  fontWeight: '900',
+  fill: 0xffd45c,
+  letterSpacing: 1,
   stroke: { color: SOUNDWOOD.ink, width: 3, join: 'round' },
 });
 const REWARD_GLYPH = new TextStyle({
@@ -694,7 +700,8 @@ export function makeRewardGfx(spec: RewardSpec): RewardGfx {
   if (icon instanceof Text) icon.anchor.set(0.5);
   icon.tint = spec.color;
   const labelPlate = new Graphics({ roundPixels: true });
-  const plateHeight = spec.effect ? 66 : 45;
+  const evoRole = spec.evoRole;
+  const plateHeight = (spec.effect ? 66 : 45) + (evoRole ? 20 : 0);
   labelPlate.roundRect(-84, 42, 168, plateHeight, 6).fill({ color: SOUNDWOOD.ink, alpha: 0.92 });
   labelPlate.rect(-78, 42, 156, 2).fill({ color: spec.color, alpha: 0.8 });
   const name = new Text({ text: spec.name.toUpperCase(), style: REWARD_NAME, roundPixels: true });
@@ -713,10 +720,25 @@ export function makeRewardGfx(spec: RewardSpec): RewardGfx {
     effect.position.set(0, 96);
     if (effect.width > 154) effect.scale.x = 154 / effect.width;
   }
+  // The recipe teaser: which weapon this passive can transform. Icon only, in
+  // that weapon's own hue — the mastery screen still owns the full recipe.
+  let evoTag: Text | null = null;
+  let evoIcon: Graphics | null = null;
+  if (evoRole) {
+    const y = (spec.effect ? 96 : 75) + 20;
+    evoTag = new Text({ text: 'EVO', style: REWARD_EVO, roundPixels: true });
+    evoTag.anchor.set(1, 0.5);
+    evoIcon = pixelGraphics(cachedPixelShape('reward-evo-icon:' + evoRole, (g) => drawWeaponIcon(g, evoRole, 9)));
+    evoIcon.tint = KIT_COLORS[evoRole];
+    const span = evoTag.width + 8 + 16;
+    evoTag.position.set(snap(-span / 2 + evoTag.width), y);
+    evoIcon.position.set(snap(span / 2 - 8), y);
+  }
   root.__beam = beam;
   root.__platform = platform;
   root.addChild(beam, glow, platform, icon, labelPlate, name, level);
   if (effect) root.addChild(effect);
+  if (evoTag && evoIcon) root.addChild(evoTag, evoIcon);
   return root;
 }
 

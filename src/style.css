@@ -684,8 +684,9 @@ input[type='range'] {
   font-size: var(--fs-xs);
 }
 
-/* Primary call-to-action on the start screen: every run opens on the kick,
-   so the one choice left is when to begin. */
+/* Primary call-to-action on the start screen: the first build choice happens
+   in the arena, on the opening weapon pedestals, so the one choice left here
+   is when to begin. */
 .start-btn {
   padding: 12px 40px;
   font-size: var(--fs-h2);
@@ -1571,7 +1572,8 @@ button.big {
 }
 
 .pause-item {
-  --item-color: var(--signal);
+  /* Passives are neutral by design; keep in sync with ITEM_NEUTRAL_COLOR. */
+  --item-color: #cfd8e3;
   display: grid;
   grid-template-columns: 30px minmax(0, 1fr);
   gap: 8px;
@@ -1608,6 +1610,14 @@ button.big {
   margin: 0;
   color: #b5c9bf;
   font: 700 10px/1.25 var(--font-mono);
+}
+
+/* Recipe reminder: which weapon this passive can evolve. Gold like the band
+   rack's evolved tag, so the two read as one language. */
+.pause-item-copy .pause-item-evo {
+  color: var(--gold);
+  font: 900 9px/1 var(--font-mono);
+  letter-spacing: 0.08em;
 }
 
 .sb-enemy-stats.passive-copy {

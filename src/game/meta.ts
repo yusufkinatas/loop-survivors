@@ -37,6 +37,7 @@ export const SHOP_OFFER_IDS = [
   'lead',
   'extensionCable',
   'paddedJacket',
+  'doubleTake',
   'bell',
   'magnetLanyard',
   'secondWind',
@@ -59,37 +60,39 @@ export interface ShopOffer {
 }
 
 export const SHOP_OFFERS: readonly ShopOffer[] = [
-  { id: 'reroll1', kind: 'perk', contentId: 'reroll1', name: 'First Reroll', cost: 35, minOwned: 0,
+  { id: 'reroll1', kind: 'perk', contentId: 'reroll1', name: 'First Reroll', cost: 70, minOwned: 0,
     description: 'Refresh one ordinary level-up offer per run.' },
-  { id: 'heavyAmp', kind: 'item', contentId: 'heavyAmp', name: 'Heavy Amp', cost: 45, minOwned: 0,
+  { id: 'heavyAmp', kind: 'item', contentId: 'heavyAmp', name: 'Heavy Amp', cost: 90, minOwned: 0,
     description: 'More damage and shove; completes the Bass evolution recipe.' },
-  { id: 'recoveryTape', kind: 'item', contentId: 'recoveryTape', name: 'Recovery Tape', cost: 50, minOwned: 0,
+  { id: 'recoveryTape', kind: 'item', contentId: 'recoveryTape', name: 'Recovery Tape', cost: 100, minOwned: 0,
     description: 'Slow health regeneration; a standalone passive with no evolution.' },
-  { id: 'clap', kind: 'weapon', contentId: 'clap', name: 'Clap', cost: 55, minOwned: 0,
+  { id: 'clap', kind: 'weapon', contentId: 'clap', name: 'Clap', cost: 110, minOwned: 0,
     description: 'A close circular blast that controls the crowd.' },
 
-  { id: 'arp', kind: 'weapon', contentId: 'arp', name: 'Arp', cost: 90, minOwned: 2,
+  { id: 'arp', kind: 'weapon', contentId: 'arp', name: 'Arp', cost: 180, minOwned: 2,
     description: 'A rapid run of separate notes orbiting the player.' },
-  { id: 'needleTips', kind: 'item', contentId: 'needleTips', name: 'Needle Tips', cost: 65, minOwned: 2,
+  { id: 'needleTips', kind: 'item', contentId: 'needleTips', name: 'Needle Tips', cost: 130, minOwned: 2,
     description: 'Piercing projectiles and the Lead evolution recipe.' },
 
-  { id: 'lead', kind: 'weapon', contentId: 'lead', name: 'Lead', cost: 130, minOwned: 5,
+  { id: 'lead', kind: 'weapon', contentId: 'lead', name: 'Lead', cost: 260, minOwned: 5,
     description: 'A bright homing melody weapon.' },
-  { id: 'extensionCable', kind: 'item', contentId: 'extensionCable', name: 'Extension Cable', cost: 75, minOwned: 5,
+  { id: 'extensionCable', kind: 'item', contentId: 'extensionCable', name: 'Extension Cable', cost: 150, minOwned: 5,
     description: 'Longer attacks and the Arp evolution recipe.' },
-  { id: 'paddedJacket', kind: 'item', contentId: 'paddedJacket', name: 'Padded Jacket', cost: 85, minOwned: 5,
+  { id: 'paddedJacket', kind: 'item', contentId: 'paddedJacket', name: 'Padded Jacket', cost: 170, minOwned: 5,
     description: 'Health, armor, and the Clap evolution recipe.' },
+  { id: 'doubleTake', kind: 'item', contentId: 'doubleTake', name: 'Double Take', cost: 280, minOwned: 5,
+    description: 'Two levels only: every projectile weapon fires one, then two extra shots.' },
 
-  { id: 'bell', kind: 'weapon', contentId: 'bell', name: 'Bell', cost: 180, minOwned: 8,
+  { id: 'bell', kind: 'weapon', contentId: 'bell', name: 'Bell', cost: 360, minOwned: 8,
     description: 'Heavy crystal shots that shatter on impact.' },
-  { id: 'magnetLanyard', kind: 'item', contentId: 'magnetLanyard', name: 'Magnet Lanyard', cost: 110, minOwned: 8,
+  { id: 'magnetLanyard', kind: 'item', contentId: 'magnetLanyard', name: 'Magnet Lanyard', cost: 220, minOwned: 8,
     description: 'Long-range pickup pull and the Bell evolution recipe.' },
-  { id: 'secondWind', kind: 'perk', contentId: 'secondWind', name: 'Second Wind', cost: 160, minOwned: 8,
+  { id: 'secondWind', kind: 'perk', contentId: 'secondWind', name: 'Second Wind', cost: 320, minOwned: 8,
     description: 'Revive once per run at 30% health.' },
-  { id: 'startItem', kind: 'perk', contentId: 'startItem', name: 'Opening Loadout', cost: 150, minOwned: 8,
+  { id: 'startItem', kind: 'perk', contentId: 'startItem', name: 'Opening Loadout', cost: 300, minOwned: 8,
     description: 'Choose one unlocked passive to begin at tier I.' },
 
-  { id: 'reroll2', kind: 'perk', contentId: 'reroll2', name: 'Second Reroll', cost: 200, minOwned: 11,
+  { id: 'reroll2', kind: 'perk', contentId: 'reroll2', name: 'Second Reroll', cost: 400, minOwned: 11,
     description: 'Refresh a second ordinary level-up offer each run.' },
 ] as const;
 
@@ -202,7 +205,6 @@ function inferLegacyPurchases(raw: Record<string, unknown>): ShopOfferId[] {
   // reputation floor.
   const reputation = Math.floor(safeNumber(raw.reputation));
   if (reputation >= 2_255) addUnique(purchases, 'startItem');
-  if (reputation >= 3_395) addUnique(purchases, 'gold');
   return purchases;
 }
 
