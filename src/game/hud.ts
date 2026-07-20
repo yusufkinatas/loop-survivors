@@ -7,7 +7,6 @@ import { type Kit, type Role } from '../audio/kits';
 import { SLOTS, SLOT_LABEL, ownerOfSlot, supportedRoster } from './band';
 import { EVOLUTION_BY_ROLE, ITEM_IDS, ITEMS, ITEM_NEUTRAL_CSS, type ItemId } from './items';
 import type { MetaStore, RunSettlement } from './meta';
-import { VENUES, isVenueId } from './tour';
 
 import { TIER_COUNT } from '../audio/charts';
 /** Tier numerals used by the band rack. */
@@ -37,13 +36,6 @@ export class Hud {
   private toastStack: HTMLElement;
   private rack: HTMLElement;
   private itemRack: HTMLElement;
-  private pressureMeter: HTMLElement;
-  private pressureFill: HTMLElement;
-  private pressureLabel: HTMLElement;
-  private pressureSegments: HTMLElement[] = [];
-  private lastPressureState = '';
-  private lastPressureDropBar = 0;
-  private venueLabel: HTMLElement;
   private rerollButton: HTMLButtonElement;
   private runInfoKey = '';
   private screen: HTMLElement | null = null;
@@ -62,20 +54,12 @@ export class Hud {
     const top = el('div', 'hud-top', this.bar);
     this.timer = el('span', 'hud-timer', top, '0:00');
     this.levelEl = el('span', 'hud-level', top, 'LV 1');
-    this.venueLabel = el('span', 'hud-venue', top, 'NEON ALLEY');
     this.noteEl = el('span', 'hud-notes', top, '♫ 0');
     const hp = el('div', 'meter hp', this.bar);
     this.hpFill = el('div', 'fill', hp);
     el('span', 'meter-cap', hp, 'HP');
     const xp = el('div', 'meter xp', this.bar);
     this.xpFill = el('div', 'fill', xp);
-    this.pressureMeter = el('div', 'meter pressure', this.bar);
-    this.pressureFill = el('div', 'fill', this.pressureMeter);
-    const pressureSegments = el('div', 'pressure-segments', this.pressureMeter);
-    for (let i = 0; i < 4; i++) {
-      this.pressureSegments.push(el('span', 'pressure-segment', pressureSegments));
-    }
-    this.pressureLabel = el('span', 'meter-cap pressure-cap', this.pressureMeter, 'PRESSURE 0%');
     this.bar.style.display = 'none';
 
     this.flash = el('div', 'hit-flash', root);
@@ -106,58 +90,14 @@ export class Hud {
   setRunInfo(
     items: ReadonlyMap<ItemId, number>,
     evolved: ReadonlySet<Role>,
-    pressureHeat: number,
-    pressureState: string,
-    pressureDropBar: number,
-    venue: string,
-    chapter: number,
     rerolls: number,
     notesCollected: number,
   ): void {
     const itemPart = [...items].map(([id, level]) => `${id}:${level}`).join('|');
     const evolvedPart = [...evolved].join('|');
-    const dropBar = Math.max(0, Math.min(4, Math.floor(pressureDropBar)));
-    const key = `${itemPart}/${evolvedPart}/${Math.round(pressureHeat)}/${pressureState}:${dropBar}/${venue}/${chapter}/${rerolls}/${notesCollected}`;
+    const key = `${itemPart}/${evolvedPart}/${rerolls}/${notesCollected}`;
     if (key === this.runInfoKey) return;
     this.runInfoKey = key;
-    const venueName = isVenueId(venue) ? VENUES[venue].name : venue.replace(/([A-Z])/g, ' $1');
-    this.venueLabel.textContent = `${venueName.toUpperCase()} · SET ${chapter + 1}`;
-    const isReady = pressureState === 'armed';
-    const isDrop = pressureState === 'drop';
-    const pressureChanged = pressureState !== this.lastPressureState ||
-      (isDrop && dropBar !== this.lastPressureDropBar);
-    const label = isDrop
-      ? `DROP ${Math.max(1, dropBar)}/4 · POWER MODE`
-      : isReady
-        ? 'DROP READY · NEXT PHRASE'
-        : `PRESSURE ${Math.round(pressureHeat)}%`;
-    this.pressureFill.style.width = `${isReady || isDrop ? 100 : Math.max(0, Math.min(100, pressureHeat))}%`;
-    this.pressureLabel.textContent = label;
-    this.pressureMeter.setAttribute('aria-label', isDrop
-      ? `${label}; damage plus 50 percent, area and shove plus 25 percent, ` +
-        'projectile speed plus 20 percent, movement plus 15 percent'
-      : label);
-    this.pressureMeter.classList.toggle('ready', isReady);
-    this.pressureMeter.classList.toggle('drop', isDrop);
-    this.pressureFill.classList.toggle('ready', isReady);
-    this.pressureFill.classList.toggle('drop', isDrop);
-    this.pressureLabel.classList.toggle('energized', isReady || isDrop);
-    for (let i = 0; i < this.pressureSegments.length; i++) {
-      const segment = this.pressureSegments[i];
-      const bar = i + 1;
-      segment.classList.toggle('ready', isReady);
-      segment.classList.toggle('on', isDrop && bar <= Math.max(1, dropBar));
-      segment.classList.toggle('current', isDrop && bar === Math.max(1, dropBar));
-    }
-    if (pressureChanged && (isReady || isDrop)) {
-      this.pressureMeter.classList.remove('phase-hit');
-      // Restart one short phase/bar hit; active Drop styling itself is static,
-      // so the HUD never becomes a permanent full-screen strobe.
-      void this.pressureMeter.offsetWidth;
-      this.pressureMeter.classList.add('phase-hit');
-    }
-    this.lastPressureState = pressureState;
-    this.lastPressureDropBar = dropBar;
     this.rerollButton.textContent = `REROLL ×${rerolls}`;
     this.rerollButton.disabled = rerolls <= 0;
     this.noteEl.textContent = `♫ ${notesCollected}`;
@@ -343,13 +283,8 @@ export class Hud {
     const s = this.newScreen();
     s.classList.add('start-screen');
     const hero = el('div', 'start-hero', s);
-    const art = document.createElement('img');
-    art.className = 'title-art';
-    art.src = '/art/soundwood-title.png';
-    art.alt = 'A neon pixel-art DJ stage surrounded by strange signal creatures in the Soundwood';
-    hero.appendChild(art);
     const title = el('div', 'title-lockup', hero);
-    el('span', 'eyebrow', title, 'THE INFINITE NIGHT TOUR');
+    el('span', 'eyebrow', title, 'THE INFINITE NIGHT');
     el('h1', '', title, 'LOOP SURVIVORS');
     el('p', 'sub', title, 'Build the track. Draw the arena. Survive until the crowd wins.');
 
@@ -371,12 +306,11 @@ export class Hud {
         ? 'Every shelf of the Afterhours Shop is yours.'
         : 'Defeat The Hush, collect its music notes, then choose what unlocks next.');
       el('span', 'reward-copy', rewards,
-        'Collected notes bank when the set ends. Shop purchases unlock new instruments, passives, venues, and perks.');
+        'Collected notes bank when the set ends. Shop purchases unlock new instruments, passives, and perks.');
 
       const collection = el('div', 'collection-strip', profile);
       el('span', '', collection, `${meta.state.unlockedWeapons.length}/9 WEAPONS`);
       el('span', '', collection, `${meta.state.unlockedItems.length}/${ITEM_IDS.length} PASSIVES`);
-      el('span', '', collection, `${meta.state.unlockedVenues.length}/6 VENUES`);
       el('span', '', collection, `${meta.state.rerolls} REROLLS`);
 
       if (meta.hasPurchase('startItem')) {
@@ -567,7 +501,6 @@ export class Hud {
       for (const [label, value] of [
         ['COLLECTION', `${settlement.collection.owned} / ${settlement.collection.total}`],
         ['NEW MILESTONES', String(settlement.newMilestones.length)],
-        ['NEW VENUES SEEN', String(settlement.newVenues.length)],
       ] as const) {
         const row = el('div', 'rep-row', breakdown);
         el('span', '', row, label);
@@ -587,7 +520,7 @@ export class Hud {
       }
       const next = el('div', 'next-reward end-next', rep);
       el('span', 'eyebrow', next, settlement.collection.complete
-        ? 'FULL TOUR COLLECTION'
+        ? 'FULL COLLECTION'
         : 'YOUR NEXT UNLOCK IS YOUR CHOICE');
       el('strong', '', next, settlement.collection.complete
         ? 'The Afterhours Shop is sold out.'

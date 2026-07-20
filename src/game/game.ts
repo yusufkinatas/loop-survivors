@@ -21,8 +21,6 @@ import { preloadRunArt, RunView, type GroundPickView } from './view';
 import { mountSandboxPanel, type SandboxPanel } from './sandbox';
 import { ITEMS, ITEM_NEUTRAL_COLOR, type EvolutionDefinition } from './items';
 import { MetaStore, type RunSettlement } from './meta';
-import { VENUE_AUDIO_SET } from '../audio/venue-audio';
-import { VENUE_IDS, isVenueId } from './tour';
 import { mulberry32 } from './rng';
 
 type State = 'start' | 'run' | 'end' | 'sandbox';
@@ -247,7 +245,7 @@ export async function bootGame(
         .filter(({ role }) => eligibleNow.has(role))
         .slice(0, 3)
         .map((evolution): EvolutionPick => ({ kind: 'evolution', evolution }));
-      if (evolutionOptions.length > 0) dropGroundPicks(w, evolutionOptions);
+      if (evolutionOptions.length > 0) dropGroundPicks(w, evolutionOptions, 'chest');
       else presentNextUpgrade();
       return;
     }
@@ -270,12 +268,17 @@ export async function bootGame(
     }
   }
 
+  /** How loudly a ground-pick drop is celebrated.
+   *  - `'level'`: the full LEVELUP.momentS slow-mo — a real level-up.
+   *  - `'chest'`: the same beat at LEVELUP.chestMomentS, because chests arrive
+   *    in bursts and present back to back.
+   *  - `'none'`: no slow-mo, no mix duck, no level cue and no HUD pulse (the
+   *    opening hire) — only the burst that reads as "here are your options". */
+  type Celebration = 'level' | 'chest' | 'none';
+
   /** Drop the offered options as items in a triangle around the player, shove
-   *  the horde clear of them, and fire the cosmetic level-up moment. Pass
-   *  celebrate=false for a drop that is not a reward (the opening hire): the
-   *  pedestals still appear and the horde is still cleared, but nothing claims
-   *  the player gained a level. */
-  function dropGroundPicks(w: RunWorld, options: ShellPick[], celebrate = true): void {
+   *  the horde clear of them, and fire the cosmetic level-up moment. */
+  function dropGroundPicks(w: RunWorld, options: ShellPick[], celebrate: Celebration = 'level'): void {
     const cx = w.player.x;
     const cy = w.player.y;
     const items: GroundItem[] = [];
@@ -318,25 +321,17 @@ export async function bootGame(
     groundPicks = items;
     view?.setGroundPicks(payload);
     w.shoveEnemiesOut(cx, cy, LEVELUP.enemyPushRadius);
-    // No slow-mo, no mix duck, no level cue and no HUD pulse for the opening
-    // hire — only the burst that reads as "here are your options".
-    if (celebrate) startLevelMoment(cx, cy);
-    else view?.levelBurst(cx, cy);
+    if (celebrate === 'none') view?.levelBurst(cx, cy);
+    else startLevelMoment(cx, cy, celebrate === 'chest' ? LEVELUP.chestMomentS : LEVELUP.momentS);
   }
 
-  /** The satisfying beat: normally slowScale slow-mo + a short mix dip. An
-   * earned or live Pressure Drop keeps full momentum, so a reward arriving in
-   * the scheduler's lookahead window cannot weaken the opening downbeat. */
-  function startLevelMoment(cx: number, cy: number): void {
-    if (world?.pressureState === 'armed' || world?.pressureState === 'drop') {
-      endLevelMoment();
-      engine.restoreWeapons(0.025);
-    } else {
-      momentT = LEVELUP.momentS;
-      momentScale = LEVELUP.slowScale;
-      applyClockRate();
-      engine.duckWeapons(LEVELUP.duckDepth, LEVELUP.momentS);
-    }
+  /** The satisfying beat: slowScale slow-mo plus a short mix dip, held for
+   *  `momentS` real seconds unless the player collects a pick first. */
+  function startLevelMoment(cx: number, cy: number, momentS: number): void {
+    momentT = momentS;
+    momentScale = LEVELUP.slowScale;
+    applyClockRate();
+    engine.duckWeapons(LEVELUP.duckDepth, momentS);
     engine.playLevelCue();
     hud.levelPulse();
     view?.levelBurst(cx, cy);
@@ -418,7 +413,7 @@ export async function bootGame(
       return;
     }
     if (groundPicks.some((pick) => pick.option.kind === 'evolution')) {
-      hud.showToast('Encore Cases cannot be rerolled');
+      hud.showToast('Chest picks cannot be rerolled');
       return;
     }
     rerollsLeft -= 1;
@@ -443,72 +438,6 @@ export async function bootGame(
     if (minute > 0) hud.showToast(`PRESSURE ${minute} · enemies scale up`);
   };
 
-  const updateArenaVenue = (venue: string): void => {
-    const id = isVenueId(venue) ? venue : 'alley';
-    void engine.setAudioSet(VENUE_AUDIO_SET[id]);
-    hud.showToast(`NEW VENUE · ${venue.replace(/\b\w/g, (letter) => letter.toUpperCase())}`);
-  };
-
-  /** One Pressure Drop conductor for the run and Sandbox. Full pressure waits
-   * without a penalty, then the positive buff spans exactly one heard phrase:
-   * actions precede same-time weapon triggers at bars 1-4 and at the exit. */
-  const schedulePressureDrop = (w: RunWorld, arena: 'run' | 'sandbox'): void => {
-    const conductorToken = w.newPressureConductor();
-    const conductorIsLive = (): boolean =>
-      world === w && state === arena && w.pressureConductorIsCurrent(conductorToken);
-    hud.showToast('PRESSURE FULL · DROP ON NEXT PHRASE');
-    engine.atNextPhrase((startAudioTime) => {
-      if (!conductorIsLive()) return;
-      // The scheduler is looking ahead. Restore tempo/mix now so the first
-      // Drop downbeat itself cannot be pre-scheduled through a reward dip.
-      endLevelMoment();
-      engine.restoreWeapons(0.025);
-      engine.setPressureDropLift(true, startAudioTime);
-      engine.playPressureDropBar(1, startAudioTime);
-      engine.atAudioTime(startAudioTime, () => {
-        if (!conductorIsLive()) return;
-        // Defend the heard boundary too: any later UI path that introduced a
-        // transient duck after lookahead scheduling is canceled at impact.
-        endLevelMoment();
-        engine.restoreWeapons(0.025);
-        w.beginPressureDrop();
-        w.pulsePressureDropBar(1);
-      });
-
-      const queueBarPulse = (bar: number): void => {
-        engine.atNextBar((barAudioTime) => {
-          if (
-            !conductorIsLive() ||
-            (w.pressureState !== 'armed' && w.pressureState !== 'drop')
-          ) return;
-          // A delayed scheduler may catch up past several grid lines. Advance
-          // world state in timestamp order, but never pile missed accents onto
-          // the first audible instant after the stall.
-          if (barAudioTime > engine.ctx.currentTime + 1e-6) {
-            engine.playPressureDropBar(bar, barAudioTime);
-          }
-          engine.atAudioTime(barAudioTime, () => {
-            if (!conductorIsLive() || w.pressureState !== 'drop') return;
-            w.pulsePressureDropBar(bar);
-          });
-          if (bar < 4) queueBarPulse(bar + 1);
-        });
-      };
-      queueBarPulse(2);
-
-      // Registered from inside the phrase-start flush, so this necessarily
-      // lands on the following phrase boundary: exactly four complete bars.
-      engine.atNextPhrase((finishAudioTime) => {
-        if (!conductorIsLive()) return;
-        engine.setPressureDropLift(false, finishAudioTime);
-        engine.atAudioTime(finishAudioTime, () => {
-          if (!conductorIsLive()) return;
-          w.finishPressureDrop();
-        });
-      }, startAudioTime, true);
-    });
-  };
-
   const events = {
     onLevelUp(level: number): void {
       enqueueUpgrade(level);
@@ -525,27 +454,17 @@ export async function bootGame(
     onMinute(minute: number): void {
       updateArenaMinute(minute);
     },
-    onEncoreCase(): void {
+    onChest(): void {
       const w = world;
       if (!w || state !== 'run') return;
       const choices = w.eligibleEvolutions();
       if (choices.length === 0) {
         w.applyEncoreChoice('heal');
-        hud.showToast('Encore Case · +15 HP (no recipe ready)');
+        hud.showToast('Chest · +15 HP (no recipe ready)');
         return;
       }
       pendingEvolutionChoices.push(choices);
       presentNextUpgrade();
-    },
-    onPressureArmed(): void {
-      const w = world;
-      if (!w) return;
-      schedulePressureDrop(w, 'run');
-    },
-    onPressureBreak(active: boolean): void {
-      hud.showToast(active
-        ? 'DROP · DAMAGE +50% · AREA/SHOVE +25% · SHOT SPEED +20% · MOVE +15%'
-        : 'DROP COMPLETE · RECHARGING');
     },
     onStageMagnet(result: VacuumResult): void {
       engine.playStageMagnetCue();
@@ -553,9 +472,6 @@ export async function bootGame(
       hud.showToast(total > 0
         ? `STAGE MAGNET · ${total} PICKUPS INBOUND`
         : 'STAGE MAGNET · FLOOR CLEAR');
-    },
-    onVenueChanged(venue: string): void {
-      updateArenaVenue(venue);
     },
     onMilestone(id: string): void {
       hud.showToast(`MILESTONE · ${id.replace(/([A-Z])/g, ' $1').toUpperCase()}`);
@@ -577,13 +493,13 @@ export async function bootGame(
     onMinute(minute: number): void {
       updateArenaMinute(minute);
     },
-    onEncoreCase(): void {
+    onChest(): void {
       const w = world;
       if (!w || state !== 'sandbox') return;
       const evolution = w.eligibleEvolutions()[0];
       if (!evolution) {
         w.applyEncoreChoice('heal');
-        hud.showToast('Encore Case · +15 HP (no recipe ready)');
+        hud.showToast('Chest · +15 HP (no recipe ready)');
         return;
       }
       w.evolve(evolution.role);
@@ -591,24 +507,12 @@ export async function bootGame(
       hud.renderBand(w.tiers, undefined, undefined, undefined, w.evolved);
       hud.showToast(`EVOLVED · ${evolution.name}`);
     },
-    onPressureArmed(): void {
-      const w = world;
-      if (w) schedulePressureDrop(w, 'sandbox');
-    },
-    onPressureBreak(active: boolean): void {
-      hud.showToast(active
-        ? 'DROP · DAMAGE +50% · AREA/SHOVE +25% · SHOT SPEED +20% · MOVE +15%'
-        : 'DROP COMPLETE · RECHARGING');
-    },
     onStageMagnet(result: VacuumResult): void {
       engine.playStageMagnetCue();
       const total = result.gems + result.notes;
       hud.showToast(total > 0
         ? `STAGE MAGNET · ${total} PICKUPS INBOUND`
         : 'STAGE MAGNET · FLOOR CLEAR');
-    },
-    onVenueChanged(venue: string): void {
-      updateArenaVenue(venue);
     },
     onMilestone(id: string): void {
       hud.showToast(`MILESTONE · ${id.replace(/([A-Z])/g, ' $1').toUpperCase()}`);
@@ -653,9 +557,7 @@ export async function bootGame(
     const w: RunWorld = new RunWorld(app.screen, events, {
       control: () => playerControl(w),
       startingItem: meta.state.startItem,
-      unlockedVenues: meta.state.unlockedVenues,
       secondWind: meta.state.secondWind,
-      headlinerGold: meta.hasGoldPalette(),
     });
     world = w;
     w.player.hp = w.playerMaxHp;
@@ -663,7 +565,6 @@ export async function bootGame(
     w.powerMul = SOUNDSET.powerMul;
     view = new RunView(w, app.screen);
     app.stage.addChild(view.stage);
-    void engine.setAudioSet('midnight-warehouse');
     hud.showHud(true);
     pauseButton.style.display = '';
     hud.renderBand(w.tiers, undefined, undefined, undefined, w.evolved);
@@ -684,7 +585,7 @@ export async function bootGame(
         rng: Math.random,
         timeS: 0,
       }),
-      false,
+      'none',
     );
     openingPickOut = true;
   }
@@ -695,14 +596,12 @@ export async function bootGame(
       scripted: false,
       rng: mulberry32(0x5eed),
       control: () => playerControl(w),
-      unlockedVenues: VENUE_IDS,
     });
     world = w;
     w.powerMul = SOUNDSET.powerMul;
     w.invincible = true;
     view = new RunView(w, app.screen);
     app.stage.addChild(view.stage);
-    void engine.setAudioSet(VENUE_AUDIO_SET.alley);
     sandboxPanel = mountSandboxPanel(root, engine, w, {
       onLoadout: () => {
         hud.renderBand(w.tiers, undefined, deactivatedRoles, pendingRoles, w.evolved);
@@ -742,13 +641,12 @@ export async function bootGame(
       level: world.level,
       kills: world.kills,
       notesCollected: world.notesCollected,
-      headlinersKilled: world.headlinersKilled,
+      chestsOpened: world.chestsOpened,
       evolutionsMade: world.evolutionsMade,
       milestones: [...world.milestones],
       damageByRole: world.damageByRole,
       killsByRole: world.killsByRole,
       evolutionsByRole: world.evolutionsByRole,
-      venuesVisited: [...world.venuesVisited],
     });
     hud.showEnd(
       false,
@@ -937,11 +835,6 @@ export async function bootGame(
       hud.setRunInfo(
         w.items,
         w.evolved,
-        w.pressureHeat,
-        w.pressureState,
-        w.pressureDropBar,
-        w.venue,
-        w.venueChapter,
         rerollsLeft,
         w.notesCollected,
       );

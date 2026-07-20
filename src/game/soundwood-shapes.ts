@@ -742,54 +742,17 @@ export function makeRewardGfx(spec: RewardSpec): RewardGfx {
   return root;
 }
 
-export interface VenueGateSpec {
-  venue: string;
+export interface ChestSpec {
   x: number;
   y: number;
-  side: -1 | 1;
-  selected: boolean;
-  benefit: string;
-  danger: string;
-}
-
-export interface VenueGateGfx extends Container {
-  __venue: string;
-  __selected: boolean;
-  __beam: Graphics;
-  __arch: Container;
-}
-
-export interface TourCaseSpec {
-  x: number;
-  y: number;
-  minute: number;
   color: number;
 }
 
-export interface TourCaseGfx extends Container {
+export interface ChestGfx extends Container {
   __beam: Graphics;
   __case: Container;
 }
 
-const GATE_TITLE = new TextStyle({
-  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-  fontSize: 17,
-  fontWeight: '900',
-  fill: 0xffffff,
-  letterSpacing: 1.2,
-  stroke: { color: SOUNDWOOD.ink, width: 6, join: 'round' },
-});
-const GATE_COPY = new TextStyle({
-  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-  fontSize: 9,
-  fontWeight: '700',
-  fill: 0xffffff,
-  align: 'center',
-  wordWrap: true,
-  wordWrapWidth: 176,
-  lineHeight: 11,
-  stroke: { color: SOUNDWOOD.ink, width: 3, join: 'round' },
-});
 const CASE_LABEL = new TextStyle({
   fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
   fontSize: 12,
@@ -799,86 +762,10 @@ const CASE_LABEL = new TextStyle({
   stroke: { color: SOUNDWOOD.ink, width: 5, join: 'round' },
 });
 
-function venueAccent(venue: string): number {
-  switch (venue) {
-    case 'warehouse': return SOUNDWOOD.coral;
-    case 'rooftop': return SOUNDWOOD.magenta;
-    case 'metro': return SOUNDWOOD.cyanHot;
-    case 'basement': return 0xb6ff5a;
-    case 'dawn': return SOUNDWOOD.amber;
-    default: return SOUNDWOOD.cyan;
-  }
-}
-
-/** A five-minute venue choice is a stage-sized portal, not a pickup-sized
- * trinket: readable title, two-line risk/reward copy, and a skyward beam. */
-export function makeVenueGateGfx(spec: VenueGateSpec): VenueGateGfx {
-  const root = new Container() as VenueGateGfx;
-  const color = venueAccent(spec.venue);
-  const beam = new Graphics({ roundPixels: true });
-  beam.poly([-60, 25, -31, -242, 31, -242, 60, 25])
-    .fill({ color, alpha: spec.selected ? 0.15 : 0.07 });
-  beam.rect(-11, -254, 22, 278).fill({ color: 0xffffff, alpha: spec.selected ? 0.18 : 0.08 });
-  for (let i = 0; i < 8; i++) {
-    const x = -42 + (i * 29) % 84;
-    const y = -208 + i * 27;
-    beam.rect(x, y, i % 2 ? 3 : 5, i % 2 ? 5 : 3).fill({ color, alpha: 0.72 });
-  }
-  beam.blendMode = 'add';
-
-  const glow = makePixelGlow(92, color, spec.selected ? 0.46 : 0.32);
-  const arch = new Container();
-  const stone = new Graphics({ roundPixels: true });
-  stone.poly([-79, 41, -79, -70, -62, -112, -34, -137, 0, -146, 34, -137, 62, -112, 79, -70, 79, 41].map(snap))
-    .stroke({ width: 18, color: SOUNDWOOD.ink, alpha: 0.98 });
-  stone.poly([-69, 37, -69, -66, -54, -103, -29, -125, 0, -133, 29, -125, 54, -103, 69, -66, 69, 37].map(snap))
-    .stroke({ width: 6, color, alpha: spec.selected ? 1 : 0.74 });
-  stone.poly(regularPixelPoly(12, 82, Math.PI / 12).map((v, i) => snap(v + (i % 2 === 0 ? 0 : 38))))
-    .fill(SOUNDWOOD.ink)
-    .stroke({ width: 5, color, alpha: 0.9 });
-  for (const sx of [-1, 1]) {
-    stone.rect(sx * 63 - 9, -58, 18, 91).fill(SOUNDWOOD.ink);
-    for (let i = 0; i < 4; i++) stone.rect(sx * 63 - 5, -48 + i * 23, 10, 5).fill({ color, alpha: 0.55 });
-  }
-  if (spec.selected) {
-    stone.poly(regularPixelPoly(8, 28, Math.PI / 8).map((v, i) => snap(v + (i % 2 === 0 ? 0 : -87))))
-      .fill({ color, alpha: 0.38 })
-      .stroke({ width: 3, color: 0xffffff, alpha: 0.8 });
-  }
-  arch.addChild(stone);
-
-  const plate = new Graphics({ roundPixels: true });
-  plate.rect(-94, -127, 188, 35).fill({ color: SOUNDWOOD.ink, alpha: 0.96 });
-  plate.rect(-88, -127, 176, 3).fill({ color, alpha: 0.9 });
-  const title = new Text({ text: spec.venue.replace(/([A-Z])/g, ' $1').toUpperCase(), style: GATE_TITLE, roundPixels: true });
-  title.anchor.set(0.5);
-  title.position.set(0, -108);
-  title.tint = color;
-  const benefit = new Text({ text: '+ ' + spec.benefit, style: GATE_COPY, roundPixels: true });
-  benefit.anchor.set(0.5, 0);
-  benefit.position.set(0, 86);
-  benefit.tint = SOUNDWOOD.cyanHot;
-  const danger = new Text({ text: '− ' + spec.danger, style: GATE_COPY, roundPixels: true });
-  danger.anchor.set(0.5, 0);
-  danger.position.set(0, 112);
-  danger.tint = SOUNDWOOD.coral;
-  const selected = new Text({ text: spec.selected ? 'ROUTE LOCKED' : 'WALK THROUGH', style: CASE_LABEL, roundPixels: true });
-  selected.anchor.set(0.5);
-  selected.position.set(0, 58);
-  selected.tint = spec.selected ? SOUNDWOOD.amber : 0xffffff;
-
-  root.__venue = spec.venue;
-  root.__selected = spec.selected;
-  root.__beam = beam;
-  root.__arch = arch;
-  root.addChild(beam, glow, arch, plate, title, selected, benefit, danger);
-  return root;
-}
-
-/** Encore cases are minute rewards: a bright road case with chunky metal
- * corners, a literal handle, and a beam tall enough to find through a horde. */
-export function makeTourCaseGfx(spec: TourCaseSpec): TourCaseGfx {
-  const root = new Container() as TourCaseGfx;
+/** Chests are elite/boss drops: a bright road case with chunky metal corners,
+ * a literal handle, and a beam tall enough to find through a horde. */
+export function makeChestGfx(spec: ChestSpec): ChestGfx {
+  const root = new Container() as ChestGfx;
   const beam = new Graphics({ roundPixels: true });
   beam.rect(-26, -164, 52, 180).fill({ color: spec.color, alpha: 0.07 });
   beam.rect(-9, -178, 18, 194).fill({ color: spec.color, alpha: 0.15 });
@@ -901,16 +788,13 @@ export function makeTourCaseGfx(spec: TourCaseSpec): TourCaseGfx {
   body.rect(-5, -3, 10, 14).fill(0xdde5ec);
   body.rect(-2, 0, 4, 6).fill(SOUNDWOOD.ink);
   caseRoot.addChild(body);
-  const label = new Text({ text: 'ENCORE', style: CASE_LABEL, roundPixels: true });
+  const label = new Text({ text: 'CHEST', style: CASE_LABEL, roundPixels: true });
   label.anchor.set(0.5);
   label.position.set(0, 45);
   label.tint = spec.color;
-  const minute = new Text({ text: `MINUTE ${spec.minute}`, style: GATE_COPY, roundPixels: true });
-  minute.anchor.set(0.5);
-  minute.position.set(0, 62);
   root.__beam = beam;
   root.__case = caseRoot;
-  root.addChild(beam, glow, caseRoot, label, minute);
+  root.addChild(beam, glow, caseRoot, label);
   return root;
 }
 

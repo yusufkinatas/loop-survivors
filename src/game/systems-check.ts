@@ -1,5 +1,5 @@
-// Dependency-free integration checks for the systems added to the endless
-// tour. Run with `npm run verify`; failures throw and produce a non-zero exit.
+// Dependency-free integration checks for the endless-run systems. Run with
+// `npm run verify`; failures throw and produce a non-zero exit.
 
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
@@ -15,7 +15,6 @@ import {
 import { EVOLUTIONS, ITEM_IDS, ITEMS, deriveBuildMods, itemMaxLevel, type ItemId } from './items';
 import {
   CORE_ITEMS,
-  CORE_VENUES,
   CORE_WEAPONS,
   MILESTONE_IDS,
   MetaStore,
@@ -28,9 +27,8 @@ import {
   SANDBOX_ENEMY_CATALOG,
   SANDBOX_EVOLUTION_CATALOG,
   SANDBOX_ITEM_CATALOG,
-  SANDBOX_VENUE_CATALOG,
 } from './sandbox';
-import { endlessScale, VENUE_IDS, waveRecipe } from './tour';
+import { endlessScale, waveRecipe } from './tour';
 
 class MemoryStorage implements Storage {
   private readonly values = new Map<string, string>();
@@ -79,8 +77,6 @@ assert.deepEqual(
   new Set(evolutionRoles),
   'the sandbox must expose every weapon evolution',
 );
-assert.deepEqual(new Set(SANDBOX_VENUE_CATALOG), new Set(VENUE_IDS),
-  'the sandbox must expose every Infinite Night Tour venue');
 assert.deepEqual(new Set(AFTERHOURS_ROLES), new Set(evolutionRoles),
   'the fresh audio kit must cover every live weapon');
 assert.equal(
@@ -119,7 +115,7 @@ const paletteFiles = AUDIO_SET_LIST.flatMap((set) =>
     (specs ?? []).map((spec) => ({ set, spec })),
   ),
 );
-assert.equal(paletteFiles.length, 18, 'three complete six-file house palettes must ship');
+assert.equal(paletteFiles.length, 6, 'the single six-file house palette must ship');
 for (const { set, spec } of paletteFiles) {
   const relativePath = `${set.sampleRoot}/${spec.file}`.replace(/^\//, 'public/');
   assert(existsSync(new URL(relativePath, `file://${repositoryRoot}/`)),
@@ -133,10 +129,9 @@ const settlement = meta.settleRun({
   level: 12,
   kills: 400,
   notesCollected: 602,
-  headlinersKilled: 2,
+  chestsOpened: 2,
   evolutionsMade: 3,
   milestones: MILESTONE_IDS,
-  venuesVisited: ['alley', 'warehouse'],
 });
 assert.equal(settlement.notesEarned, 602);
 assert.equal(settlement.walletBefore, 0);
@@ -145,8 +140,6 @@ assert.deepEqual(meta.unlockedRoles(), new Set(CORE_WEAPONS),
   'run performance must not automatically unlock shop weapons');
 assert.deepEqual(meta.unlockedItemIds(), new Set(CORE_ITEMS),
   'run performance must not automatically unlock shop passives');
-assert.deepEqual(meta.unlockedVenueIds(), new Set(CORE_VENUES),
-  'run performance must not automatically unlock shop venues');
 assert.equal(settlement.collection.owned, 0);
 assert.equal(settlement.collection.total, SHOP_OFFERS.length);
 assert.equal(settlement.collection.complete, false);
@@ -175,18 +168,6 @@ recoveryMeta.grantNotes(100);
 assert(recoveryMeta.purchase('recoveryTape'), 'Recovery Tape should be buyable from the first shop shelf');
 assert(recoveryMeta.unlockedItemIds().has('recoveryTape'),
   'buying Recovery Tape should add it to the passive offer pool');
-const repeatVenueSettlement = meta.settleRun({
-  timeS: 0,
-  level: 1,
-  kills: 0,
-  notesCollected: 0,
-  headlinersKilled: 0,
-  evolutionsMade: 0,
-  milestones: [],
-  venuesVisited: ['alley', 'warehouse'],
-});
-assert.deepEqual(repeatVenueSettlement.newVenues, [],
-  'venue discovery should only be recorded on a career first visit');
 
 const expectedEnemyLabels = {
   swarmer: 'Shardling',
@@ -307,13 +288,13 @@ magnetWorld.spawnMusicNoteAt(-120, 0, 3);
 const offscreenX = magnetWorld.player.x + magnetWorld.worldW;
 magnetWorld.spawnGemAt(offscreenX, 0, 2);
 magnetWorld.spawnMusicNoteAt(offscreenX, 30, 1);
-magnetWorld.encoreCases.push({ x: 100, y: 0, minute: 0, color: 0xffd45c });
+magnetWorld.chests.push({ x: 100, y: 0, color: 0xffd45c });
 magnetWorld.update(0);
 assert.equal(magnetWorld.stageMagnets.length, 0, 'walking onto a Stage Magnet should consume it once');
 assert.deepEqual(vacuumEvents, [{ gems: 2, notes: 1 }],
   'the vacuum snapshot should include only currently visible loose resources');
-assert.equal(magnetWorld.encoreCases.length, 1,
-  'Stage Magnet must not auto-collect the decision-bearing Encore Case');
+assert.equal(magnetWorld.chests.length, 1,
+  'Stage Magnet must not auto-collect the decision-bearing chest');
 const laterGem = { x: 160, y: 0, xp: 1, tier: 'blue' as const };
 const laterNote = { x: -160, y: 0, value: 1, tier: 'note' as const };
 magnetWorld.gems.push(laterGem);
@@ -454,15 +435,28 @@ world.update(0.6);
 assert(world.enemyCount >= waveRecipe(8).minimum,
   'the endless director should backfill its live population floor');
 
-const headlinerWorld = new RunWorld({ width: 1280, height: 720 }, events, {
+const bossWaveWorld = new RunWorld({ width: 1280, height: 720 }, events, {
   rng: () => 0.5,
   fx: false,
 });
-headlinerWorld.invincible = true;
-headlinerWorld.timeS = 599.99;
-headlinerWorld.update(0.02);
-assert(headlinerWorld.enemies.some((enemy) => enemy.headliner),
-  'five-minute tour marks should spawn a Headliner');
+bossWaveWorld.invincible = true;
+bossWaveWorld.timeS = 599.99;
+bossWaveWorld.update(0.02);
+assert(bossWaveWorld.enemies.some((enemy) => enemy.spawnClass === 'boss'),
+  'five-minute endless marks should spawn elite bosses');
+
+const chestWorld = new RunWorld({ width: 1280, height: 720 }, events, {
+  scripted: false,
+  fx: false,
+  rng: () => 0.5,
+});
+chestWorld.invincible = true;
+const bossEnemy = chestWorld.spawnSandboxBoss('mantis')!;
+bossEnemy.hp = 1;
+bossEnemy.shieldHp = 0;
+chestWorld.killVisible();
+assert.equal(chestWorld.chests.length, 1,
+  'a defeated elite boss should drop exactly one chest on the ground');
 
 assert(waveRecipe(15).pattern.length > waveRecipe(14).pattern.length,
   'late endless rows should combine adjacent enemy families');
@@ -496,214 +490,6 @@ healWorld.player.hp = 1;
 healWorld.applyEncoreChoice('heal');
 assert.equal(healWorld.player.hp, 16, 'Encore healing should grant exactly 15 HP');
 
-const goldWorld = new RunWorld({ width: 1280, height: 720 }, events, {
-  fx: false,
-  headlinerGold: true,
-});
-assert.equal(goldWorld.headlinerGold, true, 'the final career cosmetic must reach the live world');
-
-const gateWorld = new RunWorld({ width: 1280, height: 720 }, events, {
-  scripted: false,
-  fx: false,
-  rng: () => 0.5,
-  unlockedVenues: ['alley', 'warehouse', 'rooftop'],
-});
-gateWorld.invincible = true;
-gateWorld.timeS = 279.99;
-gateWorld.update(0.02);
-assert.equal(gateWorld.venueGates.length, 2);
-assert(gateWorld.venueGates.every(({ venue }) => venue !== gateWorld.venue),
-  'a tour gate must never offer the current venue');
-const firstGate = gateWorld.venueGates[0];
-gateWorld.player.x = firstGate.x;
-gateWorld.player.y = firstGate.y;
-gateWorld.update(0.01);
-gateWorld.timeS = 299.99;
-gateWorld.update(0.02);
-assert.equal(gateWorld.venue, firstGate.venue);
-assert(gateWorld.venuesVisited.has(firstGate.venue));
-gateWorld.timeS = 579.99;
-gateWorld.update(0.02);
-assert(gateWorld.venueGates.every(({ venue }) => venue !== gateWorld.venue),
-  'later gates must still exclude the current venue');
-assert(!gateWorld.venuesVisited.has(gateWorld.venueGates[0].venue),
-  'unvisited venues should sort before revisits');
-
-const railWorld = new RunWorld({ width: 1280, height: 720 }, events, {
-  scripted: false,
-  fx: false,
-  rng: () => 0.5,
-});
-railWorld.timeS = 49.99;
-railWorld.update(0.02);
-railWorld.timeS = 55.99;
-railWorld.update(0.02);
-assert.equal(railWorld.neonRail?.phase, 'preview');
-assert.equal(railWorld.neonRail?.points.length, 2);
-assert.equal(Math.hypot(
-  railWorld.neonRail!.points[1].x - railWorld.neonRail!.points[0].x,
-  railWorld.neonRail!.points[1].y - railWorld.neonRail!.points[0].y,
-), 120, 'a stationary Neon Loop should fall back to a visible 120-unit rail');
-
-function enemyTravel(venue: 'warehouse' | 'alley'): number {
-  const probe = new RunWorld({ width: 1280, height: 720 }, events, {
-    scripted: false,
-    fx: false,
-    rng: () => 0.5,
-  });
-  probe.invincible = true;
-  probe.venue = venue;
-  const enemy = probe.spawnEnemyAt('zombie', 500, 0)!;
-  const start = enemy.x;
-  probe.update(0.1);
-  return start - enemy.x;
-}
-const warehouseTravel = enemyTravel('warehouse');
-const alleyTravel = enemyTravel('alley');
-assert(Math.abs(alleyTravel / warehouseTravel - 1.12) < 0.01,
-  'venue speed danger should be applied live to the existing crowd');
-
-const pressureWorld = new RunWorld({ width: 1280, height: 720 }, events, {
-  scripted: false,
-  fx: false,
-  rng: () => 0.5,
-});
-pressureWorld.invincible = true;
-pressureWorld.addWeapon('kick', 4);
-pressureWorld.pressureState = 'cooldown';
-pressureWorld.pressureCooldownT = 45;
-pressureWorld.pressureHeat = 0;
-pressureWorld.spawnEnemyAt('bat', 25, 0);
-pressureWorld.fireTrigger({ role: 'kick', time: 0, velocity: 1, step: 0 });
-pressureWorld.update(1 / 60);
-assert.equal(pressureWorld.pressureHeat, 0,
-  'close kills must not recharge Pressure Drop during cooldown');
-pressureWorld.clearSandboxEntities();
-pressureWorld.pressureState = 'armed';
-pressureWorld.pressureHeat = 100;
-const shovedByDrop = pressureWorld.spawnEnemyAt('zombie', 40, 0)!;
-shovedByDrop.speed = 0;
-pressureWorld.beginPressureDrop();
-assert.equal(pressureWorld.pressureState, 'drop');
-pressureWorld.update(0.12);
-assert(Math.hypot(shovedByDrop.x - pressureWorld.player.x, shovedByDrop.y - pressureWorld.player.y) >= 220,
-  'the Drop opening should create breathing room without dealing damage');
-assert.equal(shovedByDrop.dead, false, 'the opening shove must not become free damage');
-assert.equal(pressureWorld.buildMods.damageMul, 1,
-  'weapon damage is lifted once at impact, not duplicated in build transforms');
-assert.equal(pressureWorld.buildMods.moveMul, 1.15);
-assert.equal(pressureWorld.buildMods.areaMul, 1.25);
-assert.equal(pressureWorld.buildMods.projectileSpeedMul, 1,
-  'the Drop speed lift is resolved live so in-flight projectiles benefit');
-assert.equal(pressureWorld.buildMods.knockbackMul, 1,
-  'the Drop shove lift is resolved at impact so existing attacks benefit');
-pressureWorld.addWeapon('snare', 1);
-pressureWorld.fireTrigger({ role: 'snare', time: 2, velocity: 0.9, step: 4 });
-assert.equal(pressureWorld.projectiles.length, 1,
-  'weapons must keep firing immediately throughout the Drop');
-assert.equal(pressureWorld.projectiles[0].speed, 650,
-  'temporary projectile speed must not be baked in past the Drop boundary');
-pressureWorld.pulsePressureDropBar(4);
-assert.equal(pressureWorld.pressureDropBar, 4);
-pressureWorld.finishPressureDrop();
-assert.equal(pressureWorld.pressureState, 'cooldown');
-assert.equal(pressureWorld.pressureDropBar, 0);
-assert.equal(pressureWorld.pressureCooldownT, 45);
-assert.equal(pressureWorld.buildMods.moveMul, 1,
-  'temporary Drop modifiers must leave no residue after the phrase');
-
-function snareTravelDuringPressure(state: 'charging' | 'drop'): number {
-  const probe = new RunWorld({ width: 1280, height: 720 }, events, {
-    scripted: false,
-    fx: false,
-    rng: () => 0.5,
-  });
-  probe.invincible = true;
-  probe.pressureState = state;
-  probe.addWeapon('snare', 1);
-  probe.fireTrigger({ role: 'snare', time: 0, velocity: 1, step: 0 });
-  const projectile = probe.projectiles[0];
-  const startX = projectile.x;
-  const startY = projectile.y;
-  probe.update(0.05);
-  return Math.hypot(projectile.x - startX, projectile.y - startY);
-}
-const regularSnareTravel = snareTravelDuringPressure('charging');
-const dropSnareTravel = snareTravelDuringPressure('drop');
-assert(Math.abs(dropSnareTravel / regularSnareTravel - 1.2) < 1e-9,
-  'all moving projectiles should travel exactly 20% faster during the Drop');
-
-function snareDamageDuringPressure(state: 'charging' | 'drop'): number {
-  const probe = new RunWorld({ width: 1280, height: 720 }, events, {
-    scripted: false,
-    fx: false,
-    rng: () => 0.5,
-  });
-  probe.invincible = true;
-  probe.pressureState = state;
-  probe.addWeapon('snare', 1);
-  const target = probe.spawnEnemyAt('zombie', 300, 0)!;
-  target.hp = 1000;
-  target.speed = 0;
-  target.damage = 0;
-  probe.fireTrigger({ role: 'snare', time: 0, velocity: 1, step: 0 });
-  for (let i = 0; i < 120 && target.hp === 1000; i++) probe.update(1 / 120);
-  return 1000 - target.hp;
-}
-const regularSnareDamage = snareDamageDuringPressure('charging');
-const dropSnareDamage = snareDamageDuringPressure('drop');
-assert(regularSnareDamage > 0, 'the Pressure damage fixture must land its control hit');
-assert.equal(dropSnareDamage, regularSnareDamage * 1.5,
-  'weapon impacts during the Drop should deal exactly 50% more damage');
-
-function subquakeRadiusDuringPressure(state: 'charging' | 'drop'): number {
-  const probe = new RunWorld({ width: 1280, height: 720 }, events, {
-    scripted: false,
-    fx: false,
-    rng: () => 0.5,
-  });
-  probe.pressureState = state;
-  probe.addWeapon('bass', 4);
-  probe.addItem('heavyAmp', 5);
-  assert(probe.evolve('bass'));
-  probe.fireTrigger({ role: 'bass', time: 0, velocity: 1, step: 0, variant: 'fat' });
-  return probe.shockwaves[0].maxRadius;
-}
-const regularSubquakeRadius = subquakeRadiusDuringPressure('charging');
-const dropSubquakeRadius = subquakeRadiusDuringPressure('drop');
-assert.equal(dropSubquakeRadius, regularSubquakeRadius * 1.25,
-  'Subquake must inherit the full Drop area bonus despite its authored radius');
-
-function bellShardRadiusDuringPressure(state: 'charging' | 'drop'): number {
-  const probe = new RunWorld({ width: 1280, height: 720 }, events, {
-    scripted: false,
-    fx: false,
-    rng: () => 0.5,
-  });
-  probe.invincible = true;
-  probe.pressureState = state;
-  probe.addWeapon('bell', 1);
-  const target = probe.spawnEnemyAt('zombie', 100, 0)!;
-  target.hp = 1000;
-  target.speed = 0;
-  target.damage = 0;
-  probe.fireTrigger({ role: 'bell', time: 0, velocity: 1, step: 0 });
-  for (let i = 0; i < 120 && !probe.projectiles.some(({ shard }) => shard); i++) {
-    probe.update(1 / 120);
-  }
-  return probe.projectiles.find(({ shard }) => shard)!.radius;
-}
-const regularBellShardRadius = bellShardRadiusDuringPressure('charging');
-const dropBellShardRadius = bellShardRadiusDuringPressure('drop');
-assert.equal(dropBellShardRadius, regularBellShardRadius * 1.25,
-  'Bell shards spawned during the Drop must inherit its area bonus');
-
-const pressureConductorToken = pressureWorld.newPressureConductor();
-assert.equal(pressureWorld.pressureConductorIsCurrent(pressureConductorToken), true);
-pressureWorld.cancelPressureConductor();
-assert.equal(pressureWorld.pressureConductorIsCurrent(pressureConductorToken), false,
-  'manual Sandbox controls must invalidate only their queued Pressure conductor');
-
 const redlineWorld = new RunWorld({ width: 1280, height: 720 }, events, {
   scripted: false,
   fx: false,
@@ -730,11 +516,12 @@ assert(pincerWorld.evolve('clap'));
 const pinchTarget = pincerWorld.spawnEnemyAt('bat', 160, 0)!;
 pincerWorld.spawnEnemyAt('bat', 0, 150);
 pincerWorld.spawnEnemyAt('bat', -150, 0);
-// Well outside every pincer: 300 units is more than seven times the 42-unit
-// crush radius and four times the open gap the slabs travel. It also sits past
-// the outer edge of a regular 230-unit Subquake wave, which is the comparison
-// this evolution exists to fail — the hands stay local instead of turning into
-// a second player-centred blast.
+// Well outside every pincer. The three enemies above fill all TWO_HANDS.targets
+// slots, so this one is never picked, and it sits 150 units from the nearest
+// pinch point — more than three times the 42-unit crush radius and past the
+// 96-unit inward tug. That local reach is the property this evolution exists to
+// hold: the hands crush what they grab instead of becoming a second
+// player-centred blast the way Subquake (a 288-375 unit ring) is meant to be.
 const bystander = pincerWorld.spawnEnemyAt('bat', 0, 300)!;
 const cornerEnemy = pincerWorld.spawnEnemyAt(
   'bat',
@@ -751,7 +538,7 @@ assert(pinchTarget.hp === targetHpBefore, 'Two Hands damage lands when the hands
 for (let i = 0; i < 12; i++) pincerWorld.update(1 / 60);
 assert(pinchTarget.hp < targetHpBefore, 'Two Hands should crush the enemy it picked');
 assert(bystander.hp === bystanderHpBefore,
-  'Two Hands must stay far tighter than Subquake: nothing at 300 units should be damaged');
+  'Two Hands must stay local: nothing at 300 units should be damaged');
 assert(cornerEnemy.hp === cornerHpBefore, 'Two Hands must not reach the arena corners');
 
 console.log('systems-check: items, note shop, Stage Magnet, enemies, endless director, and evolutions passed');

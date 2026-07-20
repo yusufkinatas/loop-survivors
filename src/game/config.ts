@@ -86,6 +86,11 @@ export const LEVELUP = {
   /** Max duration of the cosmetic slow-mo / duck moment, real seconds. Ends
    *  early the instant the player collects a pick (see collectGroundPick). */
   momentS: 2,
+  /** Shorter moment for a chest open. A five-minute mark can drop up to four
+   *  elite bosses, and their chests present one after another — four back-to-back
+   *  full-length slow-mos would read as the game stuttering rather than as four
+   *  separate celebrations. A level-up is rarer, so it keeps the full momentS. */
+  chestMomentS: 1,
   /** Time scale during the moment (composes with the dev timeScale). */
   slowScale: 0.75,
   /** Weapon (master) volume multiplier during the moment. */
@@ -885,7 +890,7 @@ export const WEAPON_SHOVE: Partial<Record<Role, number>> = { snare: 8, clap: 12,
  *  Deliberately tiny — the identity is high single-target damage plus an
  *  inward tug that bunches the horde up for the rest of the band, NOT another
  *  player-centred blast (that is what Subquake is for). Keep `pinchRadius`
- *  well under Subquake's 230-300 unit ring. */
+ *  well under Subquake's 288-375 unit ring. */
 export const TWO_HANDS = {
   /** How many nearby enemies get their own pincer on a single trigger. */
   targets: 3,

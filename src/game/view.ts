@@ -34,8 +34,7 @@ import {
   makePlayerGfx,
   makeProjectileGfx,
   makeRewardGfx,
-  makeTourCaseGfx,
-  makeVenueGateGfx,
+  makeChestGfx,
   makeSceneryCell,
   makeStageMagnetGfx,
   makeZoneGfx,
@@ -48,8 +47,7 @@ import {
   type RewardGfx,
   type SceneryCell,
   type StageMagnetGfx,
-  type TourCaseGfx,
-  type VenueGateGfx,
+  type ChestGfx,
 } from './soundwood-shapes';
 
 const FLOOR_SCALE = 0.5;
@@ -82,54 +80,20 @@ interface StructuralGravityWell {
   color: number;
 }
 
-interface StructuralTourCase {
+interface StructuralChest {
   x: number;
   y: number;
-  minute: number;
   color: number;
 }
 
-interface StructuralVenueGate {
-  venue: string;
-  x: number;
-  y: number;
-  side: -1 | 1;
-  selected: boolean;
-  benefit: string;
-  danger: string;
-}
-
-interface StructuralNeonRail {
-  points: Array<{ x: number; y: number }>;
-  phase: 'recording' | 'preview' | 'solid';
-  lifeS: number;
-  crossedItself: boolean;
-}
-
 interface StructuralTourWorld {
-  venue?: string;
-  venueChapter?: number;
-  venueTransitionT?: number;
-  venueGates?: StructuralVenueGate[];
-  neonRail?: StructuralNeonRail | null;
-  pressureHeat?: number;
-  pressureState?: 'charging' | 'armed' | 'drop' | 'cooldown';
-  pressureDropBar?: number;
-  trainLane?: { y: number; warningT: number; activeT: number } | null;
   shockwaves?: StructuralShockwave[];
   gravityWells?: StructuralGravityWell[];
-  encoreCases?: StructuralTourCase[];
+  chests?: StructuralChest[];
 }
 
-const VENUE_PALETTES: Record<string, { tint: number; accent: number; secondary: number }> = {
-  alley: { tint: 0xf1ffff, accent: SOUNDWOOD.cyan, secondary: SOUNDWOOD.magenta },
-  warehouse: { tint: 0xffe4dc, accent: SOUNDWOOD.coral, secondary: SOUNDWOOD.amber },
-  rooftop: { tint: 0xffe8fb, accent: SOUNDWOOD.magenta, secondary: SOUNDWOOD.violet },
-  metro: { tint: 0xe1f3ff, accent: SOUNDWOOD.cyanHot, secondary: SOUNDWOOD.coral },
-  basement: { tint: 0xe4ffde, accent: 0xb6ff5a, secondary: SOUNDWOOD.violet },
-  dawn: { tint: 0xffe2bc, accent: SOUNDWOOD.amber, secondary: SOUNDWOOD.coral },
-};
-const HEADLINER_GOLD_PALETTE = { tint: 0xffefc2, accent: 0xffd45c, secondary: 0xff9d45 } as const;
+/** The single arena color palette. */
+const ARENA_PALETTE = { tint: 0xf1ffff, accent: SOUNDWOOD.cyan, secondary: SOUNDWOOD.magenta } as const;
 
 export const GLOW = { alpha: 0.28, scale: 1.8, blend: 'add' as const };
 
@@ -256,28 +220,14 @@ function evolvedCount(world: RunWorld): number {
   return count;
 }
 
+/** A slowly advancing cosmetic chapter (every five minutes) that deepens the
+ * arena tint and fires a "crowd surge" burst. */
 function visualChapter(world: RunWorld): number {
-  const record = world as unknown as Record<string, unknown>;
-  const explicit = record.visualChapter ?? record.chapter;
-  if (typeof explicit === 'number' && Number.isFinite(explicit)) return Math.max(0, Math.floor(explicit));
-  return Math.max(0, Math.floor(world.timeS / 60));
+  return Math.max(0, Math.floor(world.timeS / 300));
 }
 
 function tourWorld(world: RunWorld): StructuralTourWorld {
   return world as unknown as StructuralTourWorld;
-}
-
-function venuePalette(world: RunWorld): { tint: number; accent: number; secondary: number } {
-  if (world.headlinerGold) return HEADLINER_GOLD_PALETTE;
-  return VENUE_PALETTES[tourWorld(world).venue ?? 'alley'] ?? VENUE_PALETTES.alley;
-}
-
-function mixColor(a: number, b: number, amount: number): number {
-  const t = Math.max(0, Math.min(1, amount));
-  const channel = (shift: number): number => Math.round(
-    ((a >> shift) & 0xff) * (1 - t) + ((b >> shift) & 0xff) * t,
-  );
-  return (channel(16) << 16) | (channel(8) << 8) | channel(0);
 }
 
 function multiplyTint(a: number, b: number): number {
@@ -427,7 +377,7 @@ export class RunView {
   private floorFallback = new Graphics({ roundPixels: true });
   private floorTileLayer = new Container();
   private floorShade = new Graphics({ roundPixels: true });
-  private venueEnvironmentGfx = new Graphics({ roundPixels: true });
+  private environmentFloorGfx = new Graphics({ roundPixels: true });
   private floorTexture: Texture | null = null;
   private floorTiles: FloorTile[] = [];
   private floorColumns = 0;
@@ -454,8 +404,7 @@ export class RunView {
   private musicNoteGfx = new Map<MusicNotePickup, MusicNoteGfx>();
   private stageMagnetGfx = new Map<StageMagnetPickup, StageMagnetGfx>();
   private scenery = new Map<string, SceneryCell>();
-  private venueGateGfx = new Map<StructuralVenueGate, VenueGateGfx>();
-  private tourCaseGfx = new Map<StructuralTourCase, TourCaseGfx>();
+  private chestGfx = new Map<StructuralChest, ChestGfx>();
   private groundPickGfx: RewardGfx[] = [];
   private pops: Pop[] = [];
   private floaters: Floater[] = [];
@@ -478,7 +427,7 @@ export class RunView {
     this.playerGfx = makePlayerGfx(RUN.playerRadius);
 
     this.tiledGroundLayer.addChild(this.floorFallback, this.floorTileLayer, this.floorShade);
-    this.environmentLayer.addChild(this.venueEnvironmentGfx);
+    this.environmentLayer.addChild(this.environmentFloorGfx);
     this.zoneLayer.addChild(this.systemZoneGfx, this.telegraphGfx);
     this.attackLayer.addChild(
       this.trailGfx,
@@ -599,10 +548,10 @@ export class RunView {
     this.chapter = nextChapter;
 
     this.updateFloor(cameraX, cameraY);
-    this.drawVenueEnvironment(cameraX, cameraY);
+    this.drawArenaEnvironment(cameraX, cameraY);
     this.updateScenery(cameraX, cameraY);
     this.syncZones();
-    this.drawTourZones(cameraX, cameraY);
+    this.drawSystemZones(cameraX, cameraY);
     this.drawEnemyTelegraphs(cameraX, cameraY);
     this.syncGems(cameraX, cameraY);
     this.syncMusicNotes(cameraX, cameraY);
@@ -616,7 +565,7 @@ export class RunView {
     this.updateFloaters(dt);
     this.updatePlayer();
     this.updateGroundPicks();
-    this.syncTourRewards();
+    this.syncChests();
     this.drawForeground(cameraX, cameraY);
     this.drawFlash(cameraX, cameraY);
 
@@ -652,8 +601,7 @@ export class RunView {
     this.musicNoteGfx.clear();
     this.stageMagnetGfx.clear();
     this.scenery.clear();
-    this.venueGateGfx.clear();
-    this.tourCaseGfx.clear();
+    this.chestGfx.clear();
     this.groundPickGfx.length = 0;
     this.pops.length = 0;
     this.floaters.length = 0;
@@ -712,7 +660,7 @@ export class RunView {
       const centerIy = Math.floor(cameraY / FLOOR_TILE_SIZE);
       const firstIx = centerIx - Math.floor(columns / 2);
       const firstIy = centerIy - Math.floor(rows / 2);
-      const palette = venuePalette(this.world);
+      const palette = ARENA_PALETTE;
       const tint = multiplyTint(CHAPTER_TINTS[this.chapter % CHAPTER_TINTS.length], palette.tint);
       let index = 0;
       for (let row = 0; row < rows; row++) {
@@ -736,20 +684,19 @@ export class RunView {
     this.floorShade.clear();
     this.floorShade.rect(snap(left - 80), snap(top - 80), snap(width + 160), snap(height + 160))
       .fill({ color: SOUNDWOOD.ink, alpha: texture ? 0.39 : 0.08 });
-    const palette = venuePalette(this.world);
+    const palette = ARENA_PALETTE;
     const chapterColor = this.chapter % 2 === 0 ? palette.accent : palette.secondary;
     this.floorShade.rect(snap(left - 80), snap(top - 80), snap(width + 160), snap(height + 160))
       .fill({ color: chapterColor, alpha: Math.min(0.042, 0.008 + this.chapter * 0.003) });
   }
 
-  /** Venue motifs are sparse floor paint and architecture shadows, never
-   * colliders. Their silhouettes change the read of the endless arena while
-   * remaining much dimmer than enemies, pickups, and attack telegraphs. */
-  private drawVenueEnvironment(cameraX: number, cameraY: number): void {
-    const gfx = this.venueEnvironmentGfx;
-    const tour = tourWorld(this.world);
-    const venue = tour.venue ?? 'alley';
-    const palette = venuePalette(this.world);
+  /** Arena floor motifs: sparse floor paint and architecture shadows, never
+   * colliders. Cable loops and drain grates give the endless arena a
+   * deliberately urban read while staying much dimmer than enemies, pickups,
+   * and attack telegraphs. */
+  private drawArenaEnvironment(cameraX: number, cameraY: number): void {
+    const gfx = this.environmentFloorGfx;
+    const palette = ARENA_PALETTE;
     const width = this.world.worldW;
     const height = this.world.worldH;
     const left = cameraX - width / 2 - 100;
@@ -763,72 +710,17 @@ export class RunView {
     const maxY = Math.floor(bottom / cell);
     gfx.clear();
 
-    if (venue === 'metro') {
-      const railGap = 360;
-      const firstRailY = Math.floor(top / railGap) * railGap;
-      for (let y = firstRailY; y <= bottom; y += railGap) {
-        for (const offset of [-18, 18]) {
-          gfx.moveTo(snap(left), snap(y + offset)).lineTo(snap(right), snap(y + offset))
-            .stroke({ width: 5, color: SOUNDWOOD.ink, alpha: 0.48 });
-          gfx.moveTo(snap(left), snap(y + offset)).lineTo(snap(right), snap(y + offset))
-            .stroke({ width: 2, color: palette.accent, alpha: 0.12 });
-        }
-        for (let x = Math.floor(left / 48) * 48; x < right; x += 48) {
-          gfx.rect(snap(x), snap(y - 27), 5, 54).fill({ color: SOUNDWOOD.barkLight, alpha: 0.16 });
-        }
-      }
-    }
-
     for (let iy = minY; iy <= maxY; iy++) {
       for (let ix = minX; ix <= maxX; ix++) {
         const h = hash2(ix, iy, 4401);
         if (h < 0.64) continue;
         const x = ix * cell + cell * (0.25 + hash2(ix, iy, 4403) * 0.5);
         const y = iy * cell + cell * (0.25 + hash2(ix, iy, 4409) * 0.5);
-        if (venue === 'warehouse') {
-          const w = 48 + snap(h * 28);
-          const hgt = 36 + snap(hash2(ix, iy, 4417) * 34);
-          gfx.rect(snap(x - w / 2), snap(y - hgt / 2), snap(w), snap(hgt))
-            .fill({ color: SOUNDWOOD.ink, alpha: 0.2 })
-            .stroke({ width: 4, color: palette.accent, alpha: 0.09 });
-          for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
-            pixelDiamond(gfx, x + sx * (w / 2 - 7), y + sy * (hgt / 2 - 7), 2, palette.secondary, 0.22);
-          }
-        } else if (venue === 'rooftop') {
-          gfx.rect(snap(x - 34), snap(y - 23), 68, 46)
-            .fill({ color: SOUNDWOOD.ink, alpha: 0.25 })
-            .stroke({ width: 3, color: palette.secondary, alpha: 0.11 });
-          for (let i = 0; i < 5; i++) {
-            gfx.rect(snap(x - 24 + i * 12), snap(y - 13), 4, 26)
-              .fill({ color: palette.accent, alpha: 0.09 });
-          }
-          const wind = hash2(ix, iy, 4421) > 0.5 ? 1 : -1;
-          gfx.poly([x + wind * 47, y, x + wind * 36, y - 7, x + wind * 36, y + 7].map(snap))
-            .fill({ color: palette.accent, alpha: 0.16 });
-        } else if (venue === 'basement') {
-          const puddle = [
-            x - 46, y - 4, x - 23, y - 18, x + 25, y - 14, x + 51, y + 2,
-            x + 23, y + 17, x - 28, y + 14,
-          ].map(snap);
-          gfx.poly(puddle).fill({ color: palette.accent, alpha: 0.055 });
-          gfx.poly(puddle).stroke({ width: 2, color: palette.secondary, alpha: 0.1 });
-          gfx.rect(snap(x - 22), snap(y - 1), 44, 3).fill({ color: palette.accent, alpha: 0.12 });
-        } else if (venue === 'dawn') {
-          const reach = 75 + h * 45;
-          gfx.poly([
-            x - 22, y - reach, x + 12, y - reach, x + 48, y + reach,
-            x - 14, y + reach,
-          ].map(snap)).fill({ color: palette.accent, alpha: 0.032 });
-          pixelDiamond(gfx, x, y, 4, palette.secondary, 0.16);
-        } else if (venue !== 'metro') {
-          // Alley cable loops and drain grates preserve Soundwood's root-like
-          // shapes while making the opening venue feel deliberately urban.
-          gfx.poly(regularPixelPoly(8, 28 + h * 18, Math.PI / 8)
-            .map((value, i) => snap(value + (i % 2 === 0 ? x : y))))
-            .stroke({ width: 4, color: SOUNDWOOD.ink, alpha: 0.24 });
-          gfx.rect(snap(x - 13), snap(y - 8), 26, 16)
-            .stroke({ width: 2, color: palette.accent, alpha: 0.1 });
-        }
+        gfx.poly(regularPixelPoly(8, 28 + h * 18, Math.PI / 8)
+          .map((value, i) => snap(value + (i % 2 === 0 ? x : y))))
+          .stroke({ width: 4, color: SOUNDWOOD.ink, alpha: 0.24 });
+        gfx.rect(snap(x - 13), snap(y - 8), 26, 16)
+          .stroke({ width: 2, color: palette.accent, alpha: 0.1 });
       }
     }
   }
@@ -887,35 +779,10 @@ export class RunView {
     }
   }
 
-  private drawTourZones(cameraX: number, cameraY: number): void {
+  private drawSystemZones(cameraX: number, cameraY: number): void {
     const gfx = this.systemZoneGfx;
     const tour = tourWorld(this.world);
-    const palette = venuePalette(this.world);
     gfx.clear();
-
-    const lane = tour.trainLane;
-    if (lane && (lane.warningT > 0 || lane.activeT > 0)) {
-      const left = cameraX - this.world.worldW / 2 - 30;
-      const right = cameraX + this.world.worldW / 2 + 30;
-      const active = lane.activeT > 0;
-      const pulse = 0.5 + 0.5 * Math.sin(this.world.timeS * (active ? 16 : 8));
-      const bandHalf = active ? 44 : 34;
-      gfx.rect(snap(left), snap(lane.y - bandHalf), snap(right - left), snap(bandHalf * 2))
-        .fill({ color: active ? palette.accent : SOUNDWOOD.coral, alpha: active ? 0.13 : 0.045 + pulse * 0.035 });
-      for (const offset of [-bandHalf, bandHalf]) {
-        gfx.moveTo(snap(left), snap(lane.y + offset)).lineTo(snap(right), snap(lane.y + offset))
-          .stroke({ width: active ? 6 : 3, color: active ? 0xffffff : SOUNDWOOD.coral, alpha: active ? 0.62 : 0.34 + pulse * 0.22 });
-      }
-      for (let x = Math.floor(left / 74) * 74; x < right; x += 74) {
-        const dir = (Math.floor(x / 74) & 1) ? -1 : 1;
-        gfx.poly([
-          x - 13, lane.y - dir * 9,
-          x, lane.y + dir * 6,
-          x + 13, lane.y - dir * 9,
-          x, lane.y - dir * 1,
-        ].map(snap)).fill({ color: active ? 0xffffff : SOUNDWOOD.coral, alpha: active ? 0.44 : 0.24 });
-      }
-    }
 
     for (const well of tour.gravityWells ?? []) {
       if (
@@ -934,35 +801,6 @@ export class RunView {
           .stroke({ width: Math.max(1, 5 - ring), color: ring === 3 ? well.color : 0xffffff, alpha: (0.42 - ring * 0.07) * lifePulse });
       }
       pixelDiamond(gfx, well.x, well.y, Math.max(5, well.radius * 0.12), 0x02040c, 0.95);
-    }
-
-    const rail = tour.neonRail;
-    if (rail && rail.points.length > 1) {
-      const points = rail.points.slice(0, 512);
-      const phaseAlpha = rail.phase === 'recording'
-        ? 0.42
-        : rail.phase === 'preview' ? 0.5 + Math.sin(this.world.timeS * 8) * 0.18 : 0.78;
-      const drawRailStroke = (width: number, color: number, alpha: number): void => {
-        if (rail.phase === 'recording') {
-          for (let i = 1; i < points.length; i++) {
-            if (i % 2 === 0) continue;
-            gfx.moveTo(snap(points[i - 1].x), snap(points[i - 1].y))
-              .lineTo(snap(points[i].x), snap(points[i].y));
-          }
-          gfx.stroke({ width, color, alpha });
-        } else {
-          gfx.moveTo(snap(points[0].x), snap(points[0].y));
-          for (let i = 1; i < points.length; i++) gfx.lineTo(snap(points[i].x), snap(points[i].y));
-          gfx.stroke({ width, color, alpha });
-        }
-      };
-      drawRailStroke(13, SOUNDWOOD.ink, 0.9);
-      drawRailStroke(7, rail.crossedItself ? SOUNDWOOD.magenta : SOUNDWOOD.cyan, phaseAlpha);
-      drawRailStroke(2, 0xffffff, phaseAlpha * 0.8);
-      const markerStep = Math.max(1, Math.floor(points.length / 14));
-      for (let i = 0; i < points.length; i += markerStep) {
-        pixelDiamond(gfx, points[i].x, points[i].y, rail.phase === 'solid' ? 4 : 3, 0xffffff, phaseAlpha * 0.72);
-      }
     }
   }
 
@@ -1101,11 +939,7 @@ export class RunView {
         gfx.__shield = shield;
       }
       gfx.position.set(snap(enemy.x), snap(enemy.y));
-      gfx.tint = enemy.flashT > 0
-        ? 0xffffff
-        : this.world.headlinerGold
-          ? mixColor(enemy.color, HEADLINER_GOLD_PALETTE.accent, 0.68)
-          : enemy.color;
+      gfx.tint = enemy.flashT > 0 ? 0xffffff : enemy.color;
       gfx.rotation = 0;
       gfx.scale.set(1);
       if (enemy.kind === 'ghost') gfx.alpha = 0.78 + Math.sin(this.world.timeS * 3 + enemy.id) * 0.08;
@@ -1261,17 +1095,13 @@ export class RunView {
 
   private updatePlayer(): void {
     const player = this.world.player;
-    const tour = tourWorld(this.world);
-    const heat = Math.max(0, Math.min(1, tour.pressureHeat ?? 0));
     this.playerGfx.position.set(snap(player.x), snap(player.y));
     this.playerGfx.__body.scale.x = player.facingX;
-    const pulse = 1 + Math.sin(this.world.timeS * (3.8 + heat * 5)) * (0.035 + heat * 0.035);
+    const pulse = 1 + Math.sin(this.world.timeS * 3.8) * 0.035;
     this.playerGfx.__halo.scale.set(pulse);
-    this.playerGfx.__halo.alpha = Math.min(1, (evolvedCount(this.world) > 0 ? 1 : 0.78) + heat * 0.16);
+    this.playerGfx.__halo.alpha = evolvedCount(this.world) > 0 ? 1 : 0.78;
     this.playerGfx.__marker.scale.set(1 + Math.sin(this.world.timeS * 6) * 0.06);
-    this.playerGfx.__marker.tint = tour.pressureState === 'drop'
-      ? SOUNDWOOD.cyanHot
-      : tour.pressureState === 'armed' ? SOUNDWOOD.amber : 0xffffff;
+    this.playerGfx.__marker.tint = 0xffffff;
     this.playerGfx.__body.alpha = player.iframesT > 0 && Math.floor(this.world.timeS * 18) % 2 === 0 ? 0.42 : 1;
     // Marker and halo never flicker: even during damage the player stays findable.
     this.playerGfx.__marker.alpha = 1;
@@ -1290,52 +1120,30 @@ export class RunView {
       : 0;
   }
 
-  private syncTourRewards(): void {
+  private syncChests(): void {
     const tour = tourWorld(this.world);
-    const liveGates = new Set<StructuralVenueGate>();
-    const liveCases = new Set<StructuralTourCase>();
-    for (const gate of tour.venueGates ?? []) {
-      let gfx = this.venueGateGfx.get(gate);
-      if (!gfx || gfx.__venue !== gate.venue || gfx.__selected !== gate.selected) {
-        gfx?.destroy({ children: true });
-        gfx = makeVenueGateGfx(gate);
-        this.venueGateGfx.set(gate, gfx);
-        this.tourRewardLayer.addChild(gfx);
-      }
-      gfx.position.set(snap(gate.x), snap(gate.y));
-      const pulse = 1 + Math.sin(this.world.timeS * 3.2 + gate.side) * 0.025;
-      gfx.__arch.scale.set(pulse);
-      gfx.__beam.alpha = gate.selected ? 0.95 : 0.58 + Math.sin(this.world.timeS * 2.4 + gate.side) * 0.14;
-      liveGates.add(gate);
-    }
-    for (const [gate, gfx] of this.venueGateGfx) {
-      if (liveGates.has(gate)) continue;
-      gfx.destroy({ children: true });
-      this.venueGateGfx.delete(gate);
-    }
-
-    for (const tourCase of tour.encoreCases ?? []) {
-      let gfx = this.tourCaseGfx.get(tourCase);
+    const liveChests = new Set<StructuralChest>();
+    for (const chest of tour.chests ?? []) {
+      let gfx = this.chestGfx.get(chest);
       if (!gfx) {
-        gfx = makeTourCaseGfx(tourCase);
-        this.tourCaseGfx.set(tourCase, gfx);
+        gfx = makeChestGfx(chest);
+        this.chestGfx.set(chest, gfx);
         this.tourRewardLayer.addChild(gfx);
       }
-      gfx.position.set(snap(tourCase.x), snap(tourCase.y));
-      const pulse = 1 + Math.sin(this.world.timeS * 4.6 + tourCase.minute) * 0.05;
+      gfx.position.set(snap(chest.x), snap(chest.y));
+      const pulse = 1 + Math.sin(this.world.timeS * 4.6 + chest.x * 0.05) * 0.05;
       gfx.__case.scale.set(pulse);
-      gfx.__beam.alpha = 0.58 + Math.sin(this.world.timeS * 3 + tourCase.minute) * 0.18;
-      liveCases.add(tourCase);
+      gfx.__beam.alpha = 0.58 + Math.sin(this.world.timeS * 3 + chest.x * 0.05) * 0.18;
+      liveChests.add(chest);
     }
-    for (const [tourCase, gfx] of this.tourCaseGfx) {
-      if (liveCases.has(tourCase)) continue;
+    for (const [chest, gfx] of this.chestGfx) {
+      if (liveChests.has(chest)) continue;
       gfx.destroy({ children: true });
-      this.tourCaseGfx.delete(tourCase);
+      this.chestGfx.delete(chest);
     }
   }
 
   private spawnWorldBanner(label: string, x: number, y: number, color: number, evolution: boolean): void {
-    if (evolution && this.world.headlinerGold) color = HEADLINER_GOLD_PALETTE.accent;
     const gfx = new Graphics({ roundPixels: true });
     const sides = evolution ? 16 : 12;
     gfx.poly(regularPixelPoly(sides, evolution ? 86 : 66, Math.PI / sides))
@@ -1363,65 +1171,6 @@ export class RunView {
     this.floaters.push({ txt: text, x: snap(x), y: textY, t: 0, dur: evolution ? 1.25 : 0.95, vy: 16 });
     this.flashes.push({ start: this.world.timeS, dur: evolution ? 0.82 : 0.44, color, alpha: evolution ? 0.28 : 0.16 });
     this.pushShake(evolution ? 8 : 4, evolution ? 0.55 : 0.3);
-  }
-
-  /** One short, readable hit at each bar of the four-bar Pressure Drop. The
-   * geometry, flash, and shake all expire; the Drop's persistent energy stays
-   * in the segmented HUD and edge color instead of becoming a screen strobe. */
-  private spawnPressureDropPulse(label: string, x: number, y: number, bar: number, color: number): void {
-    const gfx = new Graphics({ roundPixels: true });
-    gfx.poly(regularPixelPoly(12, 58, Math.PI / 12))
-      .stroke({ width: 5, color: 0xffffff, alpha: 0.9 });
-    gfx.poly(regularPixelPoly(8, 36, Math.PI / 8))
-      .stroke({ width: 3, color: 0xffffff, alpha: 0.62 });
-    for (let i = 0; i < 4; i++) {
-      const angle = i * Math.PI / 2;
-      pixelDiamond(
-        gfx,
-        Math.cos(angle) * 76,
-        Math.sin(angle) * 76,
-        i < bar ? 6 : 3,
-        0xffffff,
-        i < bar ? 0.96 : 0.32,
-      );
-    }
-    gfx.tint = color;
-    gfx.position.set(snap(x), snap(y));
-    gfx.scale.set(this.reducedMotion ? 1 : 0.28);
-    gfx.blendMode = 'add';
-    this.fxLayer.addChild(gfx);
-    this.pops.push({
-      gfx,
-      t: 0,
-      dur: 0.68,
-      fromScale: this.reducedMotion ? 1 : 0.28,
-      toScale: this.reducedMotion ? 1 : 1.95,
-    });
-
-    const text = new Text({ text: label.toUpperCase(), style: BANNER_STYLE, roundPixels: true });
-    text.anchor.set(0.5);
-    text.tint = color;
-    // Keep the complete bar subtitle (especially "· FINALE") inside a phone
-    // viewport after the world layer's height-normalized camera scale.
-    const bannerScale = Math.min(1, Math.max(0.68, (this.world.worldW - 32) / text.width));
-    text.scale.set(bannerScale);
-    const textY = snap(y - 58);
-    text.position.set(snap(x), textY);
-    this.floaterLayer.addChild(text);
-    this.floaters.push({
-      txt: text,
-      x: snap(x),
-      y: textY,
-      t: 0,
-      dur: 0.82,
-      vy: 13,
-      baseScale: bannerScale,
-      staticMotion: this.reducedMotion,
-    });
-    if (!this.reducedMotion) {
-      this.flashes.push({ start: this.world.timeS, dur: 0.26, color, alpha: 0.1 + bar * 0.012 });
-      this.pushShake(3 + bar * 0.55, 0.22);
-    }
   }
 
   private spawnFx(fx: FxEvent): void {
@@ -1581,9 +1330,7 @@ export class RunView {
         break;
       }
       case 'pressure': {
-        const dropBar = /^DROP\s+([1-4])\/4\b/i.exec(fx.label);
-        if (dropBar) this.spawnPressureDropPulse(fx.label, fx.x, fx.y, Number(dropBar[1]), fx.color);
-        else this.spawnWorldBanner(fx.label, fx.x, fx.y, fx.color, false);
+        this.spawnWorldBanner(fx.label, fx.x, fx.y, fx.color, false);
         break;
       }
       case 'evolution':
@@ -1681,10 +1428,7 @@ export class RunView {
   }
 
   private chapterBurst(x: number, y: number, chapter: number): void {
-    // Pressure Drop owns the center-screen celebration lane for its four bars;
-    // the minute toast still reports scaling without burying the finale.
-    if (tourWorld(this.world).pressureState === 'drop') return;
-    const palette = venuePalette(this.world);
+    const palette = ARENA_PALETTE;
     const color = chapter % 2 === 0 ? palette.accent : palette.secondary;
     for (const [radius, sides] of [[110, 12], [165, 16], [225, 8]] as const) {
       const gfx = new Graphics({ roundPixels: true });
@@ -1757,36 +1501,6 @@ export class RunView {
       gfx.rect(snap(x), snap(y), i % 4 === 0 ? 4 : 3, i % 4 === 0 ? 2 : 4)
         .fill({ color, alpha: i % 5 === 0 ? 0.25 : 0.18 });
     }
-
-    const tour = tourWorld(this.world);
-    const heat = Math.max(0, Math.min(1, tour.pressureHeat ?? 0));
-    const dropActive = tour.pressureState === 'drop';
-    const visualHeat = dropActive || tour.pressureState === 'armed' ? 1 : heat;
-    if (visualHeat > 0.04) {
-      const pressureColor = dropActive
-        ? SOUNDWOOD.cyanHot
-        : tour.pressureState === 'armed' ? SOUNDWOOD.amber : SOUNDWOOD.coral;
-      const pressureAlpha = dropActive
-        ? 0.3
-        : (0.08 + visualHeat * 0.26) * (0.78 + Math.sin(this.world.timeS * 9) * 0.22);
-      const blocks = 12;
-      for (let i = 0; i < blocks; i++) {
-        if (i / blocks > visualHeat) continue;
-        const y = top + height - 22 - i * Math.max(10, (height - 70) / blocks);
-        const blockH = Math.max(4, Math.min(12, height / blocks - 5));
-        gfx.rect(snap(left + 6), snap(y), 8 + (i % 3) * 4, snap(blockH))
-          .fill({ color: pressureColor, alpha: pressureAlpha });
-        gfx.rect(snap(left + width - 14 - (i % 3) * 4), snap(y), 8 + (i % 3) * 4, snap(blockH))
-          .fill({ color: pressureColor, alpha: pressureAlpha });
-      }
-      const corner = 42 + visualHeat * 22;
-      for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
-        const x = sx < 0 ? left + 5 : left + width - 5;
-        const y = sy < 0 ? top + 5 : top + height - 5;
-        gfx.moveTo(snap(x + sx * -corner), snap(y)).lineTo(snap(x), snap(y)).lineTo(snap(x), snap(y + sy * -corner))
-          .stroke({ width: 3, color: pressureColor, alpha: pressureAlpha * 0.82 });
-      }
-    }
   }
 
   private drawFlash(cameraX: number, cameraY: number): void {
@@ -1805,12 +1519,6 @@ export class RunView {
         alpha = candidate;
         color = flash.color;
       }
-    }
-    const transition = Math.max(0, tourWorld(this.world).venueTransitionT ?? 0);
-    const transitionAlpha = Math.min(0.3, transition * 0.13);
-    if (transitionAlpha > alpha) {
-      alpha = transitionAlpha;
-      color = venuePalette(this.world).accent;
     }
     if (alpha <= 0) {
       this.flashGfx.alpha = 0;

@@ -44,7 +44,7 @@ spawned enemies.
 | Enemy movement | +0.75% per minute, capped at +30% for visual clarity |
 | Experience value | +1.5% per minute |
 | Track speed | +0.2% per minute, capped at +8% |
-| Headliner health | Adds another 40% of base health at each five-minute step |
+| Boss health | Adds another 40% of base health at each five-minute step |
 
 From minute 12, ordinary enemies can become gold-marked **Amped** variants.
 They have 2.2 times the health, deal 25% more damage, give three times the
@@ -56,33 +56,29 @@ eventually meets a crowd it cannot clear.
 
 Gold music notes are career currency, separate from blue experience gems.
 Ordinary enemies have a small drop chance, and a seventh kill after six misses
-guarantees a note. Strong ordinary enemies can drop notes worth two
-or three; bosses drop 10; Headliners drop 25. Notes are physical pickups, so
-the player must collect them before the run ends. Pickup-range bonuses also
-help pull them in.
+guarantees a note. Strong ordinary enemies can drop notes worth two or three;
+bosses drop 10. Notes are physical pickups, so the player must collect them
+before the run ends. Pickup-range bonuses also help pull them in.
 
 Collected notes bank into the career wallet when the run ends. Spend them in
 the **Afterhours Shop** on the title screen. Unlocks are never granted
 automatically for surviving, leveling, or reaching a rank: **the player always
 chooses what to buy**. Buying enough items reveals later shelves.
 
-The starting collection contains Kick, Snare, Hi-hat, Bass, and Chord; four
-passives (High-Tops, Fast Forward, Mirrorball, and Wide Lens); and Neon Alley,
-Midnight Warehouse, and Velvet Rooftop.
+The starting collection contains Kick, Snare, Hi-hat, Bass, and Chord, plus
+four passives (High-Tops, Fast Forward, Mirrorball, and Wide Lens).
 
 | Shelf opens after | Purchases available |
 | --- | --- |
 | 0 owned | First Reroll (70), Heavy Amp (90), Recovery Tape (100), Clap (110) |
-| 2 owned | Arp (180), Needle Tips (130), Last Metro (220) |
-| 5 owned | Lead (260), Extension Cable (150), Padded Jacket (170), Double Take (280), Acid Basement (280) |
-| 8 owned | Bell (360), Magnet Lanyard (220), Second Wind (320), Tour Loadout (300) |
-| 12 owned | Second Reroll (400), Dawn Afterparty (440), Headliner Gold (600) |
+| 2 owned | Arp (180), Needle Tips (130) |
+| 5 owned | Lead (260), Extension Cable (150), Padded Jacket (170), Double Take (280) |
+| 8 owned | Bell (360), Magnet Lanyard (220), Second Wind (320), Opening Loadout (300) |
+| 11 owned | Second Reroll (400) |
 
-Second Wind revives the player once per run at 30% health. Tour Loadout lets
-the player choose one unlocked passive to start at tier I. Headliner Gold is a
-cosmetic gold treatment for venues, enemies, and evolutions; it grants no
-combat power. There are no repeatable permanent damage, health, or speed
-purchases.
+Second Wind revives the player once per run at 30% health. Opening Loadout lets
+the player choose one unlocked passive to start at tier I. There are no
+repeatable permanent damage, health, or speed purchases.
 
 ## Rare floor pickup: Stage Magnet
 
@@ -96,9 +92,9 @@ note currently visible on the screen. They surge into the player at high speed
 through their normal collection rules, so experience multipliers, queued
 level-ups, note values, and pickup bonuses remain correct. New drops created
 after the activation are not pulled. The Stage Magnet deliberately leaves
-level-up reward pedestals, Encore Cases, and venue gates alone because those
-are player choices rather than loose resources. It is also separate from the
-permanent **Magnet Lanyard** passive.
+level-up reward pedestals and chests alone because those are player choices
+rather than loose resources. It is also separate from the permanent **Magnet
+Lanyard** passive.
 
 ## The eleven passive items
 
@@ -125,9 +121,9 @@ an evolution ingredient.
 ## The nine weapon evolutions
 
 Raise a weapon to tier IV and its paired passive to level five. The next
-collected Encore Case offers any completed recipe. An evolution changes the
-attack pattern, visual language, audio processing, and damage behavior; it is
-not merely another percentage upgrade.
+collected chest offers any completed recipe. An evolution changes the attack
+pattern, visual language, audio processing, and damage behavior; it is not
+merely another percentage upgrade.
 
 | Maxed recipe | Evolution | What it becomes |
 | --- | --- | --- |
@@ -145,56 +141,17 @@ Once every ordinary weapon and passive reward is exhausted, level-ups become
 **Encore** choices: heal 15 health, add 2% run-only damage (up to 20%), add 2%
 movement speed (up to 10%), or add 3% area (up to 15%).
 
-## The Infinite Night Tour
+## Elite bosses and chests
 
-At every five-minute transition, two route gates appear before the venue
-changes. Walk through one to choose the next stop. Each venue has one readable
-advantage and one danger, and it also selects a matching drum-sound set.
+Elite and boss enemies are the Vampire-Survivors-style objectives of a run.
+The authored opening act sends a boss at each five-minute mark and elite
+objectives in between, and from minute eight the endless director keeps
+spawning periodic gold-marked elite bosses whose health scales with the run.
 
-| Venue | Rule |
-| --- | --- |
-| **Neon Alley — Wall Runner** | Moving projectiles gain one free bounce; enemies move 12% faster. |
-| **Midnight Warehouse — Moving Spotlights** | Enemies in the light take 20% more damage; the player moves 8% slower outside it. |
-| **Velvet Rooftop — Crosswind** | Wind shifts projectile speed and direction by up to 18%; enemies move 8% faster. |
-| **Last Metro — Last Train** | Every 40 seconds, a warned lane deals 30 player damage and clears ordinary enemies. |
-| **Acid Basement — Flooded Floor** | Puddles slow enemies 30% and the player 10%; zones last 20% longer. |
-| **Dawn Afterparty — First Light** | Standing in light heals 1 health every 2 seconds; contact damage is 25% higher. |
-
-## Three signature run systems
-
-### Neon Loop
-
-During seconds 50–56 of each minute, Neon Loop records the player's path. It
-shows a preview for the final four seconds, then becomes a solid glowing rail
-for 24 seconds after the minute changes. Enemies crossing it are slowed by 30%.
-Moving player projectiles receive one free reflection from it, losing 15% power
-but gaining a little lifetime; later reflections consume normal Mirrorball
-bounces. Crossing the recorded path over itself creates especially useful
-rail geometry and records a career milestone.
-
-### Pressure Drop
-
-Pressure rises while enemies crowd within the player's body radius plus 130
-units and gains an extra two points from close-range kills. Empty space drains
-it; taking a hit removes 30 points only while it is still charging. Once the
-HUD reads **DROP READY**, the earned reward cannot be canceled. The next
-complete **four-bar phrase**—the next block of four repeating musical
-measures—opens with a 220-unit shove that clears space around the player. For
-all four bars, the player gains **+50% damage**, **+25% area** (how much ground
-attacks cover), **+25% knockback** (how far hits push enemies), **+20%
-projectile speed**, and **+15% movement speed**. The HUD counts **DROP 1/4**
-through **DROP 4/4**, while the ordinary track and attacks continue normally.
-Each bar opens with its own impact cue and arena pulse; the first lands deepest,
-the fourth adds a rising sweep, and the weapon mix gets a small clean lift for
-the whole phrase. The fourth bar ends the power window and starts a 45-second
-cooldown.
-
-### Headliners and Encore Cases
-
-Headliners are gold-marked bosses at five-minute pressure points. Later tour
-stops can send up to four at once. A defeated Headliner drops 25 music notes
-and a physical Encore Case. If a maxed weapon/passive recipe is ready, the case
-offers an evolution. If no recipe is ready, collecting it restores 15 health.
+Every defeated elite or boss drops a **chest** on the ground. Chests are not
+magnetized, so the player walks onto one to open it. If a maxed weapon/passive
+recipe is ready, the chest offers an evolution; otherwise it restores 15
+health. Bosses also drop 10 music notes.
 
 ## The Hush bestiary
 
@@ -217,15 +174,15 @@ behaviors stay deliberately readable even when the screen is crowded.
 | **Signal Crown** | A scaling, knockbackable boss that can award an upgrade. |
 | **The Shear** | A huge 500-base-health boss that cannot be knocked back. |
 | **Shardling** | A tiny chaser released four at a time when a Crackbox breaks. |
-| **Wallstack** | A slow, high-health endless-tour tank. |
+| **Wallstack** | A slow, high-health endless-run tank. |
 | **Needlejack** | Repeatedly aims, dashes in a straight line, stops, and aims again. |
 | **Crackbox** | A durable carrier that breaks into four Shardlings on death. |
 | **Orbit Leech** | Circles the player at range instead of joining the direct pack. |
 | **Phase Guard** | Carries a shield equal to its health; the barrier must break first. |
-| **Blackout Idol** | A huge slow objective retained as a Sandbox-only stress-test fixture. |
+| **Blackout Idol** | A huge slow elite objective; it drops a chest on death. |
 | **Practice Cabinet** | A Sandbox-only target that never moves, never hits back, and never dies; it prints live damage per second instead. |
 
-## Audio and venue palettes
+## Audio
 
 The soundtrack uses **house music** — dance music built around a steady
 four-count beat. The nine live weapons were voiced from scratch with Web Audio,
@@ -234,41 +191,34 @@ prerecorded song loop. Pitched weapons always use a safe shared set of notes,
 so build choices can change the arrangement without making it clash.
 
 A **drum palette** is one complete set of kick, snare, clap, hi-hat, and accent
-sounds. The game ships three:
+sounds. The game ships one:
 
 - **Midnight Warehouse:** deep club kick, smoky snap, crisp metal ticks, and a
-  dry wooden accent. Used by Neon Alley and Acid Basement.
-- **Velvet Rooftop:** round clean kick, softer drums, airy cymbals, and a bright
-  triangle accent. Used by Velvet Rooftop and Dawn Afterparty.
-- **Acid Circuit:** hard electronic kick, filtered snares, tiny ticks, and
-  glitch percussion. Used by Midnight Warehouse and Last Metro.
+  dry wooden accent.
 
-The final instrument channels are calibrated after any venue palette is
-loaded: Hi-hat runs at about 71% of its old channel level, while Chord runs at
-133% and Arp at 178%. Evolution loudness adjustments multiply those calibrated
-levels instead of resetting them, so the balance stays consistent all night.
+The final instrument channels are calibrated after the drum palette is loaded:
+Hi-hat runs at about 71% of its old channel level, while Chord runs at 133% and
+Arp at 178%. Evolution loudness adjustments multiply those calibrated levels
+instead of resetting them, so the balance stays consistent all night.
 
-The 18 drum samples are CC0 public-domain recordings. Every file was trimmed,
+The 6 drum samples are CC0 public-domain recordings. Every file was trimmed,
 level-balanced, converted to mono 44.1 kHz WAV, probed, and fully decoded with
 FFmpeg. Exact provenance is in `docs/audio-sources.md`.
 
-## The four-tab Sandbox
+## The three-tab Sandbox
 
 The Sandbox runs the real arena with the automatic stage director disabled.
 Its controls are deliberately reversible, so it can test a system without
 altering the player's career.
 
 - **Combat:** set threat/player level; spawn all 20 enemy fixtures near the
-  player, in groups of eight, or as rings; create a Headliner or complete
+  player, in groups of eight, or as rings; create an elite boss or complete
   minute wave; drop or clear practice dummies; toggle invulnerability; clear
   the arena.
 - **Build:** set every live weapon tier and all eleven passive levels; assemble
   or clear a full loadout; toggle each of the nine complete evolution recipes;
   inspect the live combined modifiers.
-- **Tour:** switch among all six venues, open the real walk-through route-gate
-  demo, and read their rules; arm or start Pressure Drop, pulse each of its four
-  bars, end/reset it, and install or clear a figure-eight Neon Loop.
 - **Career:** use a disposable in-memory note wallet; create physical notes,
-  XP pickup fields, Stage Magnets, and Encore Cases; trigger the full-screen
-  vacuum; grant testing currency; exercise the real gated 19-offer Afterhours
-  Shop. Nothing in this tab touches the player save.
+  XP pickup fields, Stage Magnets, and chests; trigger the full-screen vacuum;
+  grant testing currency; exercise the real gated Afterhours Shop. Nothing in
+  this tab touches the player save.
