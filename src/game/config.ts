@@ -897,12 +897,18 @@ export const HAT_LANE = {
 };
 
 /** Evolved lead (Neon Serpent): a seeker that threads a line of bodies instead
- *  of stopping at the first. `basePierce` replaces lead's tier pierce outright —
- *  6 is the evolution's signature number, the one its description quotes — but
- *  it is a FLOOR, not a ceiling: it goes through the build pipeline like every
- *  other finite pierce, so Needle Tips stacks on top of it (#146). It used to
- *  be written straight onto the projectile after the pipeline had run, which
- *  made Needle Tips a no-op on the very evolution it unlocks. */
+ *  of stopping at the first. `basePierce` replaces lead's tier pierce outright,
+ *  then goes through the build pipeline like every other finite pierce, so
+ *  Needle Tips stacks on top of it (#146). It used to be written straight onto
+ *  the projectile after the pipeline had run, which made Needle Tips a no-op on
+ *  the very evolution it unlocks.
+ *
+ *  IN PRACTICE EVOLVED PIERCE IS ALWAYS 11, never 6 and never anything between.
+ *  `eligibleEvolution` (items.ts) gates every evolution on its partner item
+ *  being at ITEM_MAX_LEVEL, and Needle Tips caps at 5 — so a Neon Serpent can
+ *  only exist alongside `extraPierce: 5`. The 6 below is not a floor a player
+ *  ramps up from; it is one term of a constant sum. Change it and you are
+ *  changing 11. */
 export const LEAD_SERPENT = {
   basePierce: 6,
 };

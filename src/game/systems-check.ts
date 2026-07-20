@@ -1517,13 +1517,34 @@ function worldStrike(opts: {
 //
 // SO THE RULE IS INVERTED. Instead of blacklisting spellings of a branch — an
 // endless game the writer always wins — a protected method may not mention a
-// role AT ALL except in the handful of approved, opaque forms listed below.
-// Naming a weapon is the thing being banned, not one syntax for naming it:
+// role AT ALL except in the handful of approved, opaque forms listed below:
 //   1. no access to a role-bearing property (`.role`, `.source`) survives
 //      unless it matches an approved form exactly, and
 //   2. no Role name may appear as a string literal in a protected method.
-// Together those catch equality (either kind), switch dispatch, a role parked
-// in a local, role-keyed object/Map/Set lookups, and `.includes` on a role.
+// Those catch equality (either kind), switch dispatch, a role parked in a
+// local read via `.role`, role-keyed object/Map/Set lookups, and `.includes`.
+//
+// ---------------------------------------------------------------------------
+// READ THIS BEFORE YOU TRUST IT. This check is a TRIPWIRE, NOT AN ENFORCEMENT.
+// It is a text scan, and text scans lose. Every one of these was verified to
+// pass a full green `npm run verify` against the commit that introduced this
+// guard:
+//   - `const { role: rr } = pr;`     destructuring, so no `.role` survives
+//   - `pr['role']`                   bracket access, so the dot never appears
+//   - a per-weapon `switch` moved into a NEW private method that the protected
+//     method simply calls — the branch sits one call frame outside the scan
+// The third is not exotic; it is the ordinary refactor anyone reaches for, and
+// it defeats this check completely. The INTERIM_EXCEPTIONS count below has the
+// same weakness: it bounds one exact SPELLING, not one USE, so a second use
+// written differently slips through.
+//
+// So do not read a green systems-check as proof that shared physics is free of
+// per-weapon branches. It proves only that nobody wrote one the obvious way.
+// The real fix is structural — give the shared loops a view of a projectile
+// that has no `role` field at all, so a branch will not COMPILE — and that is
+// tracked as its own issue for #141's finish line. Until then this catches the
+// careless case and review catches the rest.
+// ---------------------------------------------------------------------------
 //
 // SPAWNERS ARE NOT COVERED and deliberately so: baseProjectile and
 // spawnProjectile still branch on role for the four unmigrated projectile
@@ -1761,8 +1782,7 @@ function worldStrike(opts: {
     'A SHARED PHYSICS LOOP NAMED A WEAPON (#140).\n\n' +
     'The world\'s shared loops — the projectile loop, the arena rails, and the zone, shockwave\n' +
     'and gravity-well loops — own travel, collision and lifetime for EVERY weapon, and they are\n' +
-    'not allowed to know which weapon a thing came from. Seven extractions (#141) are built on\n' +
-    'that. Offending lines:\n\n' +
+    'not allowed to know which weapon a thing came from. Offending lines:\n\n' +
     offenses.join('\n') +
     '\n\nWhat to do instead, in order of preference:\n' +
     '  1. Motion or hit rules -> the weapon module, lent back through\n' +

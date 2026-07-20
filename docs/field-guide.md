@@ -132,7 +132,7 @@ merely another percentage upgrade.
 | Hi-hat + Mirrorball | **Strobe Lane** | A barrage of chips rails down the way you walk, piercing everything in the lane. |
 | Bass + Heavy Amp | **Subquake** | The directional wave becomes an expanding ring with unlimited pierce. |
 | Chord + Wide Lens | **Afterhours** | Huge drifting slow zones seek dense crowds and merge into larger supercells. |
-| Lead + Needle Tips | **Neon Serpent** | A homing serpent pierces six targets — more with further Needle Tips levels — and grows a giant head every fifth trigger. |
+| Lead + Needle Tips | **Neon Serpent** | A homing serpent pierces eleven targets and grows a giant head every fifth trigger. |
 | Clap + Padded Jacket | **Two Hands** | Paired slabs snap shut on the nearest few enemies, crushing them and dragging survivors inward. |
 | Arp + Extension Cable | **Event Horizon** | Counter-rotating pairs form a dense, breathing crown around the player. |
 | Bell + Magnet Lanyard | **Gravity Bell** | Impact pulls the crowd inward, then shatters into ten seeking crystals. |
