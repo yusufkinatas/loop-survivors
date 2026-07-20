@@ -695,14 +695,6 @@ export interface WeaponConf {
 // per-TICK number that floors at 1, so their listed damage can't drop a full
 // third — their real output is damage x ticks x rate; they lean on coverage.
 export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
-  // Backbeat sniper: few, fast, hard-hitting, drills a line. The premium
-  // single-target trigger — sparse chart, so each hit is a statement.
-  snare: [
-    { damage: 5, speed: 650, radius: 7, lifetimeS: 1.4, pierce: 2 },
-    { damage: 7, speed: 650, radius: 7, lifetimeS: 1.4, pierce: 3 },
-    { damage: 9, speed: 680, radius: 8, lifetimeS: 1.5, pierce: 4 },
-    { damage: 13, speed: 720, radius: 8, lifetimeS: 1.5, pierce: 6 },
-  ],
   // Dense stream of weak fast chips fired straight down the walk heading, no
   // scatter — the player aims by steering. Density IS the ladder; per-trigger
   // damage barely moves. The floor of 2 dates from when velocity could roll a
@@ -774,12 +766,6 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
  *  change is discovered by ear. Lines state what the chart + stat change
  *  actually does. */
 export const TIER_LINES: Partial<Record<Role, string[]>> = {
-  snare: [
-    'piercing shot on the backbeat',
-    'fires twice as often, pierces 1 more',
-    'adds weak ghost shots, pierces 1 more',
-    'burst of shots every 4th bar',
-  ],
   hat: [
     'fast chips along your path',
     'twice the chips',
@@ -851,8 +837,13 @@ export const WORLD_SCALE = 800 / 456;
 /** How long an enemy rides a weapon shove before resuming its chase. */
 export const SHOVE_S = 0.12;
 
-/** Per-weapon knock distance applied on hit (Feature 3). Absent = no shove. */
-export const WEAPON_SHOVE: Partial<Record<Role, number>> = { snare: 8, clap: 12, bass: 6 };
+/** Per-weapon knock distance applied on hit (Feature 3). Absent = no shove.
+ *
+ *  SHRINKING (#141). Each entry is the personal tuning of a weapon that has not
+ *  been extracted yet, and each leaves with its own module — the snare's 8 went
+ *  into SNARE_STATS.shove, applied from the snare module's own onHit. The last
+ *  weapon out takes this table with it. */
+export const WEAPON_SHOVE: Partial<Record<Role, number>> = { clap: 12, bass: 6 };
 
 // ---- the pincer weapon ----
 

@@ -69,8 +69,14 @@ import {
 } from './weapons';
 
 /** Roles that emit a per-hit spark on impact. Bounded to low-count roles so
- *  a 500-enemy event frame never floods the fx queue. */
-const SPARK_HIT_ROLES = new Set<Role>(['snare', 'lead']);
+ *  a 500-enemy event frame never floods the fx queue.
+ *
+ *  SHRINKING (#141). This is one of the two role-keyed tables the shared
+ *  projectile loop still reads, and every entry is the personal tuning of a
+ *  weapon that has not been extracted yet. The snare's entry left with the
+ *  snare module, which pushes its own spark through ctx.fx; lead is the last
+ *  one, and takes this set with it. */
+const SPARK_HIT_ROLES = new Set<Role>(['lead']);
 
 /** Source player sprite uses a feet anchor; the stored player position is its
  * circle center. This is the source feet offset normalized to H800. */
@@ -78,8 +84,6 @@ export const PLAYER_FOOT_OFFSET = {
   x: 1 * WORLD_SCALE,
   y: 7 * WORLD_SCALE,
 } as const;
-
-interface Point { x: number; y: number }
 
 /** Rolling window for the sandbox dummy's live DPS. Weapons fire on the beat
  * grid, so a one-second average would jitter between "kick landed" and
@@ -512,6 +516,9 @@ export class RunWorld {
       get worldH() { return world.worldH; },
       get buildMods() { return world.buildMods; },
       rng: () => world.rng(),
+      get triggerCount() { return world.triggerCounts[role] ?? 0; },
+      aimDir: (spread) => world.aimDir(spread),
+      aimFan: (spread) => world.aimFan(spread),
       near: (x, y, r) => world.hash.query(x, y, r, buf),
       all: () => world.enemies,
       damage: (t, amount) => world.damageEnemy(t as Enemy, amount, role),
@@ -713,13 +720,6 @@ export class RunWorld {
         for (const dir of this.aimFan(0.08)) this.spawnProjectile('bass', dir, conf, color);
         break;
       }
-      case 'snare':
-        if (evolved) {
-          this.fireRailshot(conf, color);
-          break;
-        }
-        for (const dir of this.aimFan(0.08)) this.spawnProjectile(t.role, dir, conf, color);
-        break;
       case 'hat': {
         // Knife: fires straight along the walk heading with zero scatter, so
         // the player aims by steering. Never consults nearestEnemy — with an
@@ -1658,49 +1658,6 @@ export class RunWorld {
 
   // ---- weapons ----
 
-  private damageLine(
-    x: number,
-    y: number,
-    dir: Point,
-    length: number,
-    halfWidth: number,
-    damage: number,
-    source: Role,
-    shove: number,
-  ): number {
-    let hits = 0;
-    for (const enemy of this.enemies) {
-      if (enemy.dead) continue;
-      const px = enemy.x - x;
-      const py = enemy.y - y;
-      const along = px * dir.x + py * dir.y;
-      const across = Math.abs(px * -dir.y + py * dir.x);
-      if (along < -enemy.radius || along > length + enemy.radius || across > halfWidth + enemy.radius) continue;
-      this.damageEnemy(enemy, damage, source);
-      if (shove > 0) this.shove(enemy, x, y, shove);
-      hits += 1;
-    }
-    return hits;
-  }
-
-  private fireRailshot(conf: WeaponConf, color: number): void {
-    const dir = this.aimDir(0.02);
-    const damage = conf.damage * 1.50;
-    const width = Math.max(7, (conf.radius ?? 7) * 1.25);
-    this.damageLine(this.player.x, this.player.y, dir, 900, width, damage, 'snare', 16 * this.buildMods.knockbackMul);
-    this.fx?.push({ type: 'beam', x: this.player.x, y: this.player.y, x2: this.player.x + dir.x * 900, y2: this.player.y + dir.y * 900, width: width * 2, color });
-    if ((this.triggerCounts.snare ?? 0) % 4 === 0) {
-      const nx = -dir.y * 24;
-      const ny = dir.x * 24;
-      for (const side of [-1, 1] as const) {
-        const x = this.player.x + nx * side;
-        const y = this.player.y + ny * side;
-        this.damageLine(x, y, dir, 900, width * 0.7, damage * 0.65, 'snare', 8 * this.buildMods.knockbackMul);
-        this.fx?.push({ type: 'beam', x, y, x2: x + dir.x * 900, y2: y + dir.y * 900, width, color });
-      }
-    }
-  }
-
   /** Two Hands: a clap is two hands meeting, so each trigger picks the closest
    *  few enemies and snaps a slab pair shut on each of them. Target-picked and
    *  tiny on purpose — the base weapon's cone is short-ranged, and the roster
@@ -2198,8 +2155,9 @@ export class RunWorld {
         if (e.dead || pr.hit.has(e) || !circlesOverlap(pr, e)) continue;
         pr.hit.add(e);
         this.damageEnemy(e, pr.damage, pr.role);
-        // Shove (sim, deterministic): snare 20 / bass 10. Writes only the
-        // shared knock channel.
+        // Shove (sim, deterministic) for the projectile weapons that have not
+        // migrated yet. Writes only the shared knock channel. A migrated weapon
+        // does this from its own ProjectileBehavior.onHit instead.
         const sh = (WEAPON_SHOVE[pr.role] ?? 0) * this.buildMods.knockbackMul;
         if (sh) this.shove(e, pr.x, pr.y, sh);
         // The note shatters into a radial burst of shards on its first hit.

@@ -89,6 +89,33 @@ export interface WeaponContext {
    *  replaced, at the same statement. The kick draws ZERO times. */
   rng(): number;
 
+  /** How many times THIS weapon has been triggered in this run, including the
+   *  trigger currently being served. RunWorld.fireTrigger increments the
+   *  world's per-role counter as part of its shared preamble, BEFORE it calls
+   *  fire(), so the fourth trigger reads 4 and Railshot's `% 4 === 0` cadence
+   *  is true on it — not on the fifth.
+   *
+   *  A LIVE getter over the world's counter, never module state. The world
+   *  keeps counting whether or not a weapon is migrated, and nothing resets it,
+   *  so a module-local tally would be a second source of truth that reset() and
+   *  the sandbox loadout editor could drift apart from. */
+  readonly triggerCount: number;
+
+  /** The world's auto-aim, as a unit vector: toward the nearest live enemy
+   *  inside AIM_RANGE, then jittered by +/- `spread` radians.
+   *
+   *  THE DRAW COUNT IS NOT CONSTANT. With a target it draws ONCE (the jitter);
+   *  with an empty screen it draws TWICE (a random heading, then the jitter).
+   *  That asymmetry is part of a run's rng identity, which is why aiming is a
+   *  world query and not something a module reimplements over all(). */
+  aimDir(spread: number): { x: number; y: number };
+
+  /** Aim ONCE, then hand back one direction per shot this trigger owes —
+   *  Double Take's extra shots alternate to either side of the aim line so the
+   *  volley stays centred. Exactly one aimDir() no matter how many directions
+   *  come back, so the draw count above is per TRIGGER, not per shot. */
+  aimFan(spread: number): Array<{ x: number; y: number }>;
+
   /** Candidates from THIS frame's spatial-hash snapshot, in hash bucket order
    *  (cells minX..maxX outer, minY..maxY inner, insertion order within a
    *  bucket). A SUPERSET including dead enemies; callers still run the exact
@@ -186,9 +213,11 @@ export interface WeaponContext {
 // with the first weapon that needs it — chord for zones, bass for shockwaves,
 // bell for gravity wells.
 //
-// No nearestEnemy / nearestEnemies / aimDir / aimFan / fanAround / moveDir /
-// triggerCount: the kick uses none of them, and every member here is a tax on
-// every fake context.
+// No nearestEnemy / nearestEnemies / fanAround / moveDir: the three weapons
+// migrated so far need none of them, and every member here is a tax on every
+// fake context. aimDir/aimFan/triggerCount left this list with the snare
+// (#141), which needed all three; fanAround and moveDir belong to the hat,
+// which aims off its walk heading instead, and nearestEnemies to the clap.
 //
 // No `world`, no mutable arrays, no `tiers`, no `level`, no `powerMul`, no
 // `applyBuild` — `conf` arrives already built.

@@ -21,13 +21,14 @@ import {
   MetaStore,
   SHOP_OFFERS,
 } from './meta';
-import { ALL_ENEMY_KINDS, ENEMY_LABELS, RUN, SHOVE_S, STAGE_MAGNET, TIER_LINES, WEAPONS, type EnemyKind } from './config';
+import { AIM_RANGE, ALL_ENEMY_KINDS, ENEMY_LABELS, MULTISHOT_FAN_RAD, RUN, SHOVE_S, STAGE_MAGNET, TIER_LINES, WEAPON_SHOVE, WEAPONS, type EnemyKind } from './config';
 import { rollOffers } from './picks';
 import { mulberry32 } from './rng';
 import { KIT_COLORS, RunWorld, type FxEvent, type Projectile, type RunEvents } from './run';
 import {
   ARP,
   KICK,
+  SNARE,
   WEAPON_MODULES,
   weaponTiers,
   type WeaponContext,
@@ -698,6 +699,40 @@ class FakeCtx implements WeaponContext {
     this.rngDraws += 1;
     return next;
   }
+  /** Triggers served so far. RunWorld increments its per-role counter BEFORE
+   *  calling fire(), so a check that wants "the fourth trigger" bumps this the
+   *  same way — see snareCtx.fire(). */
+  triggerCount = 0;
+  /** The world's auto-aim, reproduced from RunWorld.aimDir/aimFan side by side
+   *  with them. Faithful in the one respect that matters most: the DRAW COUNT.
+   *  One draw with a target in AIM_RANGE, TWO with an empty screen, exactly one
+   *  aimDir per aimFan however many directions come back. */
+  aimDir(spread: number): { x: number; y: number } {
+    let best: FakeTarget | null = null;
+    let bestD = AIM_RANGE * AIM_RANGE;
+    for (const t of this.targets) {
+      if (t.dead) continue;
+      const d = (t.x - this.player.x) ** 2 + (t.y - this.player.y) ** 2;
+      if (d < bestD) { bestD = d; best = t; }
+    }
+    let ang = best
+      ? Math.atan2(best.y - this.player.y, best.x - this.player.x)
+      : this.rng() * Math.PI * 2;
+    ang += (this.rng() * 2 - 1) * spread;
+    return { x: Math.cos(ang), y: Math.sin(ang) };
+  }
+  aimFan(spread: number): Array<{ x: number; y: number }> {
+    const base = this.aimDir(spread);
+    const count = 1 + this.buildMods.extraProjectiles;
+    if (count <= 1) return [base];
+    const baseAngle = Math.atan2(base.y, base.x);
+    const dirs: Array<{ x: number; y: number }> = [];
+    for (let i = 0; i < count; i++) {
+      const ang = baseAngle + Math.ceil(i / 2) * (i % 2 === 1 ? 1 : -1) * MULTISHOT_FAN_RAD;
+      dirs.push({ x: Math.cos(ang), y: Math.sin(ang) });
+    }
+    return dirs;
+  }
   near(x: number, y: number, r: number): readonly WeaponTarget[] {
     return this.targets.filter((t) => Math.hypot(t.x - x, t.y - y) <= r + t.radius);
   }
@@ -709,7 +744,15 @@ class FakeCtx implements WeaponContext {
     f.hp -= amount;
     if (f.hp <= 0) f.dead = true;
   }
-  shove(_t: WeaponTarget, _x: number, _y: number, d: number): void { this.knocks.push(`shove:${d}`); }
+  /** Every shove with its target and origin. `knocks` above records only the
+   *  distance and is asserted verbatim by the kick's checks, so the snare's
+   *  rails — which care WHICH body got pushed and from WHERE — get their own
+   *  log rather than widening that string. */
+  readonly shoveLog: Array<{ t: FakeTarget; x: number; y: number; d: number }> = [];
+  shove(t: WeaponTarget, x: number, y: number, d: number): void {
+    this.knocks.push(`shove:${d}`);
+    this.shoveLog.push({ t: t as FakeTarget, x, y, d });
+  }
   setKnock(_t: WeaponTarget, vx: number, vy: number, s: number): void {
     this.knocks.push(`knock:${vx},${vy},${s}`);
   }
@@ -1230,6 +1273,348 @@ function arpCtx(rngValues: number[], evolved = false): FakeCtx {
   assert.equal(ctx.fxLog.length, 0, 'the arp pushes no fx at all');
 }
 
+const snareTiers = SNARE.stats.tiers;
+
+// ---------------------------------------------------------------------------
+// The snare's tuning, pinned to LITERALS. Same rule as the kick and arp blocks
+// above: the right-hand sides are numbers a human typed after reading the
+// pre-#141 run.ts and config.ts, never an expression that reads the value it is
+// checking.
+// ---------------------------------------------------------------------------
+{
+  // The per-tier ladder, verbatim from config.WEAPONS.snare. A PIERCE ladder as
+  // much as a damage one: 2 -> 3 -> 4 -> 6 bodies per shot.
+  assert.deepEqual(
+    snareTiers.map((t) => [t.damage, t.speed, t.radius, t.lifetimeS, t.pierce]),
+    [
+      [5, 650, 7, 1.4, 2],
+      [7, 650, 7, 1.4, 3],
+      [9, 680, 8, 1.5, 4],
+      [13, 720, 8, 1.5, 6],
+    ],
+    'the snare damage/speed/size/lifetime/pierce ladder moved',
+  );
+  assert.equal(snareTiers.length, TIER_COUNT, 'the snare ladder must have exactly TIER_COUNT rungs');
+  assert.deepEqual(SNARE.stats.tierLines, [
+    'piercing shot on the backbeat',
+    'fires twice as often, pierces 1 more',
+    'adds weak ghost shots, pierces 1 more',
+    'burst of shots every 4th bar',
+  ], 'the snare pedestal copy moved');
+
+  // The base shot.
+  assert.equal(SNARE.stats.aimSpread, 0.08, 'the base snare aim jitter moved');
+  // WAS WEAPON_SHOVE.snare, a role-keyed table entry read inside the shared
+  // projectile loop. It is the snare's own tuning and this is now its only copy.
+  assert.equal(SNARE.stats.shove, 8, 'the base snare knock distance moved (was WEAPON_SHOVE.snare)');
+  // WAS the snare's membership of run.ts's SPARK_HIT_ROLES plus the two
+  // literals at the push site inside the shared loop.
+  assert.equal(SNARE.stats.sparkCount, 4, 'the snare hit-spark particle count moved');
+  assert.equal(SNARE.stats.sparkSpread, 12, 'the snare hit-spark spread moved');
+
+  // Railshot.
+  assert.equal(SNARE.stats.railAimSpread, 0.02, 'the Railshot aim jitter moved');
+  assert.equal(SNARE.stats.railRange, 900, 'the Railshot reach moved');
+  assert.equal(SNARE.stats.railDamageMul, 1.5, 'the Railshot damage multiplier moved');
+  assert.equal(SNARE.stats.railWidthMul, 1.25, 'the Railshot beam width multiplier moved');
+  assert.equal(SNARE.stats.railShove, 16, 'the Railshot knock distance moved');
+  assert.equal(SNARE.stats.railBeamWidthMul, 2, 'the drawn Railshot beam width moved');
+  // The two literals inside the old `Math.max(7, (conf.radius ?? 7) * 1.25)`.
+  // NEITHER IS REACHABLE by any legal build — every shipped rung sets radius,
+  // and the smallest rung times the multiplier is 8.75, already clear of the
+  // floor at the minimum legal areaMul of 1. They are pinned here BECAUSE no
+  // behavioral check can reach them; ported verbatim rather than dropped.
+  assert.equal(SNARE.stats.railWidthFloor, 7, 'the (unreachable) Railshot width floor moved');
+  assert.equal(SNARE.stats.railRadiusFallback, 7, 'the (unreachable) Railshot radius fallback moved');
+  assert(
+    Math.min(...snareTiers.map((t) => t.radius!)) * SNARE.stats.railWidthMul > SNARE.stats.railWidthFloor,
+    'the Railshot width floor is documented as unreachable; if a ladder rung ever drops under it ' +
+    'the floor becomes live behavior and needs a real check, not a literal pin',
+  );
+
+  // The twin rails.
+  assert.equal(SNARE.stats.twinCadence, 4, 'the Railshot twin-rail cadence moved');
+  assert.equal(SNARE.stats.twinOffset, 24, 'the twin rail offset moved');
+  assert.equal(SNARE.stats.twinWidthMul, 0.7, 'the twin rail width moved');
+  assert.equal(SNARE.stats.twinDamageMul, 0.65, 'the twin rail damage moved');
+  assert.equal(SNARE.stats.twinShove, 8, 'the twin rail knock distance moved');
+  assert.equal(SNARE.stats.twinBeamWidthMul, 1, 'the drawn twin beam width moved');
+
+  assert.equal(WEAPONS.snare, undefined, 'the snare module is the only copy of the snare ladder');
+  assert.equal(TIER_LINES.snare, undefined, 'the snare module is the only copy of the snare pedestal copy');
+  // The role-keyed tables the snare used to share. Its entry left with it; the
+  // OTHER entries must not have left with it, because those weapons have not
+  // moved and their shove still comes off this table inside the shared loop.
+  assert.equal(WEAPON_SHOVE.snare, undefined,
+    'the snare\'s share of WEAPON_SHOVE moved into SNARE_STATS.shove');
+  assert.deepEqual(WEAPON_SHOVE, { clap: 12, bass: 6 },
+    'WEAPON_SHOVE keeps the entries of the weapons that have NOT migrated');
+
+  const snareModule = WEAPON_MODULES.find((m) => m.role === 'snare')!;
+  assert.equal(snareModule.tickAt, undefined,
+    'the snare owns no damage pass: base shots ride the shared projectile loop and Railshot ' +
+    'resolves inside fire()');
+  const behavior = snareModule.create().projectile;
+  assert(behavior, 'the snare lends the shared projectile loop its hit rule');
+  assert.equal(behavior.steer, undefined,
+    'a snare shot rides SHARED travel and the arena rails unchanged — implementing steer() would ' +
+    'silently take it off both, which is the half of ProjectileBehavior this weapon must not have');
+  assert.equal(SNARE.role, 'snare');
+}
+
+/** A fake context set up for the snare, with a scripted rng. */
+function snareCtx(rngValues: number[], evolved = false): FakeCtx {
+  const ctx = new FakeCtx();
+  ctx.role = 'snare';
+  ctx.color = KIT_COLORS.snare;
+  ctx.evolved = evolved;
+  ctx.rngValues = rngValues;
+  return ctx;
+}
+
+/** Fire the way RunWorld.fireTrigger does: the world's per-role trigger counter
+ *  is bumped in the shared preamble BEFORE fire() runs, which is what makes the
+ *  FOURTH trigger the one where `% 4 === 0`. Getting this backwards moves the
+ *  twin rails onto the fifth trigger and nothing else changes. */
+function snareFire(ctx: FakeCtx, inst: WeaponInstance, conf: WeaponConf): void {
+  ctx.triggerCount += 1;
+  inst.fire(ctx, conf);
+}
+
+const sparks = (ctx: FakeCtx): Array<Extract<FxEvent, { type: 'spark' }>> =>
+  ctx.fxLog.filter((e): e is Extract<FxEvent, { type: 'spark' }> => e.type === 'spark');
+const beams = (ctx: FakeCtx): Array<Extract<FxEvent, { type: 'beam' }>> =>
+  ctx.fxLog.filter((e): e is Extract<FxEvent, { type: 'beam' }> => e.type === 'beam');
+
+// S1. ONE TRIGGER, ONE SHOT, ONE DRAW. The base snare spawns a plain projectile
+// and deals no damage at fire time; the aim costs exactly one rng value when
+// there is something to aim at.
+{
+  const ctx = snareCtx([0.5]);
+  const inst = SNARE.create();
+  ctx.targets.push(fakeTarget(300, 0));
+  snareFire(ctx, inst, snareTiers[3]);
+  assert.equal(ctx.rngDraws, 1, 'one snare trigger with a target in range draws exactly one rng value');
+  assert.equal(ctx.spawned.length, 1, 'one trigger, one shot');
+  assert.equal(ctx.hits.length, 0, 'the base snare deals no damage at fire time');
+  assert.equal(ctx.fxLog.length, 0, 'the base snare pushes no fx at fire time');
+  const pr = ctx.spawned[0];
+  // LITERALS, from the tier-4 rung: 13 damage, 6 pierce, 720 speed.
+  assert.equal(pr.damage, 13, 'a tier-4 shot carries the pedestal damage');
+  assert.equal(pr.pierce, 6, 'a tier-4 shot carries the pedestal pierce budget');
+  assert.equal(pr.maxPierce, 6);
+  assert.equal(pr.speed, 720);
+  // rng 0.5 means zero jitter, and the only target sits due east.
+  assert.equal(round6(pr.vx), 720, 'velocity is derived from pr.speed along the aim line');
+  assert.equal(round6(pr.vy), 0);
+  assert.equal(round6(Math.hypot(pr.vx, pr.vy)), 720,
+    'the speed FIELD must stay equal to |v| — the bounce path reads it');
+}
+
+// S2. THE EMPTY-SCREEN DRAW. With nothing to aim at, the world picks a random
+// heading and THEN jitters it: two draws, not one. Only the draw count sees
+// this, and getting it wrong desynchronises the whole run's rng stream.
+{
+  const ctx = snareCtx([0, 0.5]);
+  const inst = SNARE.create();
+  snareFire(ctx, inst, snareTiers[0]);
+  assert.equal(ctx.rngDraws, 2, 'an empty screen costs the snare TWO draws, not one');
+  assert.equal(ctx.spawned.length, 1, 'an empty screen still fires the shot');
+}
+
+// S3. DOUBLE TAKE fans extra shots off ONE aim. Three shots, still one draw.
+{
+  const ctx = snareCtx([0.5]);
+  const inst = SNARE.create();
+  ctx.buildMods = { ...ctx.buildMods, extraProjectiles: 2 };
+  ctx.targets.push(fakeTarget(300, 0));
+  snareFire(ctx, inst, snareTiers[0]);
+  assert.equal(ctx.rngDraws, 1, 'Double Take fans off a SINGLE aim: one draw however many shots');
+  assert.equal(ctx.spawned.length, 3, 'two extra projectiles means three shots');
+  const angles = ctx.spawned.map((pr) => Math.atan2(pr.vy, pr.vx));
+  assert.equal(round6(angles[0]), 0, 'the first shot rides the aim line itself');
+  assert.equal(round6(angles[1] + angles[2]), 0, 'the extras straddle the aim line symmetrically');
+}
+
+// S4. THE HIT RULE. This is where the snare's share of BOTH role-keyed tables
+// landed: the shove that was WEAPON_SHOVE.snare and the spark that was
+// SPARK_HIT_ROLES. onHit returns TRUE, so a snare shot spends pierce like every
+// other projectile — its ladder IS a pierce ladder.
+{
+  const ctx = snareCtx([0.5]);
+  const inst = SNARE.create();
+  ctx.targets.push(fakeTarget(300, 0));
+  snareFire(ctx, inst, snareTiers[3]);
+  const pr = ctx.spawned[0];
+  pr.x = 250;
+  pr.y = 10;
+  const target = ctx.targets[0];
+  assert.equal(inst.projectile!.onHit!(ctx, pr, target), true,
+    'a snare shot spends pierce on a hit — only the arp is exempt (ADR-0002)');
+  // A LITERAL 8: the number that used to be WEAPON_SHOVE.snare.
+  assert.deepEqual(ctx.shoveLog.map((s) => [s.x, s.y, s.d]), [[250, 10, 8]],
+    'the hit shove pushes away from the SHOT, at the snare\'s own knock distance');
+  assert.deepEqual(sparks(ctx).map((s) => [s.x, s.y, s.n, s.spread, s.color]),
+    [[300, 0, 4, 12, KIT_COLORS.snare]],
+    'the hit spark lands on the TARGET, with the count and spread the shared loop used to push');
+}
+
+// S5. The shove is scaled by the build, and a build that cancels knockback
+// cancels the shove entirely rather than calling it with zero — the `if (sh)`
+// the shared loop had, ported verbatim.
+{
+  const scaled = snareCtx([0.5]);
+  scaled.buildMods = { ...scaled.buildMods, knockbackMul: 2 };
+  const scaledInst = SNARE.create();
+  scaled.targets.push(fakeTarget(300, 0));
+  snareFire(scaled, scaledInst, snareTiers[0]);
+  scaledInst.projectile!.onHit!(scaled, scaled.spawned[0], scaled.targets[0]);
+  assert.deepEqual(scaled.shoveLog.map((s) => s.d), [16], 'the build scales the hit shove');
+
+  const none = snareCtx([0.5]);
+  none.buildMods = { ...none.buildMods, knockbackMul: 0 };
+  const noneInst = SNARE.create();
+  none.targets.push(fakeTarget(300, 0));
+  snareFire(none, noneInst, snareTiers[0]);
+  noneInst.projectile!.onHit!(none, none.spawned[0], none.targets[0]);
+  assert.deepEqual(none.shoveLog, [], 'a zeroed knockback build shoves not at all');
+  assert.equal(sparks(none).length, 1, 'the spark is view-only and does not depend on the shove');
+}
+
+// S6. RAILSHOT IS INSTANT AND ITS PIERCE IS GENUINELY INFINITE.
+//
+// Not "a big number": there is no pierce budget in the rail path at all, which
+// is why this check is a fifteen-deep file rather than an assertion about a
+// stat. A rail that ever grew a budget — even Infinity fed through arithmetic —
+// would still pass a stat check and fail here the moment the budget was finite.
+{
+  const ctx = snareCtx([0.5], true);
+  const inst = SNARE.create();
+  const file = Array.from({ length: 15 }, (_, i) => fakeTarget(40 + i * 40, 0));
+  ctx.targets.push(...file);
+  snareFire(ctx, inst, snareTiers[3]);
+  assert.equal(ctx.spawned.length, 0, 'Railshot spawns no projectile — it resolves inside the trigger');
+  assert.equal(ctx.hits.length, 15, 'a rail drills the WHOLE file; it has no pierce budget to spend');
+  // LITERAL: tier-4 damage 13 * 1.50.
+  for (const hit of ctx.hits) assert.equal(round6(hit.amount), 19.5, 'every body in the file takes full rail damage');
+  assert.deepEqual(ctx.shoveLog.map((s) => s.d), Array(15).fill(16), 'every body in the file is shoved');
+  assert.equal(sparks(ctx).length, 0, 'Railshot pushes beams, not per-hit sparks');
+  // LITERALS: reach 900, drawn width 2 * max(7, 8 * 1.25) = 20.
+  assert.deepEqual(beams(ctx).map((b) => [b.x, b.y, round6(b.x2), round6(b.y2), b.width]),
+    [[0, 0, 900, 0, 20]], 'one rail, drawn along its whole 900 reach');
+}
+
+// S7. THE RAIL CORRIDOR. Reach and half-width are both measured against the
+// body's own radius, so a body is caught if it OVERLAPS the corridor.
+{
+  const ctx = snareCtx([0.5], true);
+  const inst = SNARE.create();
+  // The aim anchor must be the CLOSEST body, or the rail points somewhere else.
+  const anchor = fakeTarget(5, 0);              // in range, and the aim anchor
+  const justInside = fakeTarget(910, 0);        // 910 <= 900 + 12
+  const justOutside = fakeTarget(913, 0);       // 913 >  900 + 12
+  const behind = fakeTarget(-13, 0);            // -13 < -12, behind the player
+  const wide = fakeTarget(400, 23);             // 23 > 10 + 12, outside the band
+  const edge = fakeTarget(400, 21);             // 21 <= 10 + 12, inside it
+  ctx.targets.push(anchor, justInside, justOutside, behind, wide, edge);
+  snareFire(ctx, inst, snareTiers[3]);
+  assert.deepEqual(ctx.hits.map((h) => h.t), [anchor, justInside, edge],
+    'the rail catches exactly the bodies overlapping its 900-long, 10-half-wide corridor');
+}
+
+// S8. DAMAGE ORDER IS THE FIELD'S ARRAY ORDER — spawn order — not distance
+// order and not hash order. Every rng draw a kill triggers rides on this, so it
+// is behavior. `ctx.all()` is the matching primitive; `ctx.near()` is not.
+{
+  const ctx = snareCtx([0.5], true);
+  const inst = SNARE.create();
+  const far = fakeTarget(600, 0);
+  const near = fakeTarget(80, 0);
+  const mid = fakeTarget(300, 0);
+  ctx.targets.push(far, near, mid);
+  snareFire(ctx, inst, snareTiers[0]);
+  assert.deepEqual(ctx.hits.map((h) => h.t), [far, near, mid],
+    'a rail damages in the order the field was spawned in, NOT nearest-first');
+}
+
+// S9. THE TWIN CADENCE. Every fourth trigger fires a pair of rails either side
+// of the main one. The world bumps its trigger counter BEFORE fire(), so it is
+// trigger 4 — not 5 — and triggers 1-3 draw a single beam.
+{
+  const ctx = snareCtx([0.5, 0.5, 0.5, 0.5], true);
+  const inst = SNARE.create();
+  // Radius 20, deliberately: a twin sits 24 off the axis with a half-width of
+  // 7, so a body has to be fat enough to reach it. A default radius-12 body on
+  // the axis is missed by both twins, and this check would then pin nothing
+  // about them.
+  ctx.targets.push(fakeTarget(300, 0, { radius: 20 }));
+  for (let i = 0; i < 3; i++) {
+    ctx.fxLog.length = 0;
+    snareFire(ctx, inst, snareTiers[3]);
+    assert.equal(beams(ctx).length, 1, `trigger ${i + 1} fires a single rail`);
+  }
+  ctx.fxLog.length = 0;
+  ctx.hits.length = 0;
+  ctx.shoveLog.length = 0;
+  snareFire(ctx, inst, snareTiers[3]);
+  const twinBeams = beams(ctx);
+  assert.equal(twinBeams.length, 3, 'the fourth trigger fires the main rail plus TWIN rails');
+  // LITERALS: offset 24 either side of the aim line, main drawn at 20 wide and
+  // a twin at 10 — the twin is drawn NARROWER than the corridor it damages
+  // (half-width 7 means a 14-wide band). That mismatch is ported verbatim.
+  assert.deepEqual(twinBeams.map((b) => [round6(b.x), round6(b.y), b.width]),
+    [[0, 0, 20], [0, -24, 10], [0, 24, 10]],
+    'main rail first, then the twin at -1, then the twin at +1');
+  // Damage: the axis body is hit by all three rails. LITERALS: 13 * 1.5 and
+  // 13 * 1.5 * 0.65.
+  assert.deepEqual(ctx.hits.map((h) => round6(h.amount)), [19.5, 12.675, 12.675],
+    'a body on the axis takes the main rail and both twins');
+}
+
+// S10. TWIN SHOVE ORDER IS LOAD-BEARING. ctx.shove ASSIGNS the knock vector
+// rather than max()ing it, so on a twin trigger the LAST rail to touch a body
+// wins: a body on the axis ends up carrying the TWIN's smaller knock, not the
+// main rail's. Batching the damage or reordering the rails moves this.
+{
+  const ctx = snareCtx([0.5, 0.5, 0.5, 0.5], true);
+  const inst = SNARE.create();
+  ctx.targets.push(fakeTarget(300, 0, { radius: 20 }));
+  for (let i = 0; i < 4; i++) snareFire(ctx, inst, snareTiers[3]);
+  // LITERALS: 16 for the main rail, 8 for each twin.
+  assert.deepEqual(ctx.shoveLog.slice(-3).map((s) => [round6(s.y), s.d]),
+    [[0, 16], [-24, 8], [24, 8]],
+    'main rail, then twin(-1), then twin(+1) — the last one to touch a body sets its knock');
+}
+
+// S11. MID-EVOLVE. Base shots already in flight keep the base hit rule; the
+// module's onHit does not consult ctx.evolved, exactly as the role-keyed tables
+// it replaced did not.
+{
+  const ctx = snareCtx([0.5, 0.5], false);
+  const inst = SNARE.create();
+  ctx.targets.push(fakeTarget(300, 0));
+  snareFire(ctx, inst, snareTiers[3]);
+  const inFlight = ctx.spawned[0];
+  ctx.evolved = true;
+  ctx.hits.length = 0;
+  ctx.shoveLog.length = 0;
+  inst.projectile!.onHit!(ctx, inFlight, ctx.targets[0]);
+  assert.deepEqual(ctx.shoveLog.map((s) => s.d), [8],
+    'a base shot still in flight when the snare evolves keeps the base knock');
+}
+
+// S12. reset() has nothing to drop: base shots live in the world's projectile
+// array and Railshot leaves nothing behind at all. Pinned so that stays true.
+{
+  const ctx = snareCtx([0.5], true);
+  const inst = SNARE.create();
+  ctx.targets.push(fakeTarget(300, 0));
+  snareFire(ctx, inst, snareTiers[0]);
+  const before = ctx.hits.length;
+  inst.reset();
+  assert.equal(ctx.hits.length, before, 'a reset snare lands no delayed damage');
+}
+
 // ---------------------------------------------------------------------------
 // 11. THE WORLD SIDE OF THE SEAM: the tick call site.
 //
@@ -1630,19 +2015,23 @@ function worldStrike(opts: {
     {
       snippet: 'WEAPON_SHOVE[pr.role]',
       count: 1,
-      why: 'per-weapon knockback on a projectile hit (config.ts WEAPON_SHOVE: snare 8, clap 12, bass 6)',
+      why: 'per-weapon knockback on a projectile hit (config.ts WEAPON_SHOVE: clap 12, bass 6)',
       deletedBy:
-        'the snare, bass and clap modules (#141). Each weapon\'s number is its own tuning; ' +
-        'the last one out takes WEAPON_SHOVE and this entry with it. A shove is a shared ' +
-        'primitive already — ctx.shove — so a module needs nothing new to keep doing this.',
+        'the bass and clap modules (#141). Each weapon\'s number is its own tuning; the last ' +
+        'one out takes WEAPON_SHOVE and this entry with it. A shove is a shared primitive ' +
+        'already — ctx.shove — so a module needs nothing new to keep doing this. The SNARE has ' +
+        'already left: its 8 is SNARE_STATS.shove, applied from the snare module\'s own ' +
+        'ProjectileBehavior.onHit, which is the slot this lookup occupies. Note the count stays ' +
+        '1 — one weapon leaving a shared table shrinks the TABLE, not the number of lookups.',
     },
     {
       snippet: 'SPARK_HIT_ROLES.has(pr.role)',
       count: 1,
-      why: 'per-weapon hit spark, view-only (run.ts SPARK_HIT_ROLES: snare, lead)',
+      why: 'per-weapon hit spark, view-only (run.ts SPARK_HIT_ROLES: lead)',
       deletedBy:
-        'the snare and lead modules (#141). A migrated weapon pushes its own visuals through ' +
-        'ctx.fx, so this set has no reason to exist once both are out.',
+        'the lead module (#141), now the only entry left. A migrated weapon pushes its own ' +
+        'visuals through ctx.fx — which is exactly how the SNARE left this set — so the set ' +
+        'and this entry go when lead does.',
     },
   ];
 
