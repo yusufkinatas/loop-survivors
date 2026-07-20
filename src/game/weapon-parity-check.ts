@@ -93,7 +93,21 @@ export type ParityStep =
   | { readonly frames: number }
   /** Evolve mid-scenario, so the base -> evolved transition is captured with a
    *  base strike still in flight. */
-  | { readonly evolve: Role };
+  | { readonly evolve: Role }
+  /** Set the movement stick for every frame from here on, as a raw (not
+   *  necessarily unit) control vector. Added for the hi-hat (#141), the one
+   *  weapon that aims by STEERING: it fires down player.moveDirX/Y and never
+   *  consults nearestEnemy, so with a stick that is never touched every hat
+   *  scenario would fire down the +x the player is initialised to and the
+   *  heading would not be under test at all.
+   *
+   *  INERT FOR EVERY SCENARIO THAT DOES NOT USE IT. RunWorld's default control
+   *  is `() => ({ x: 0, y: 0 })` and the harness now supplies a function that
+   *  returns exactly that until a `walk` step changes it, so no pre-existing
+   *  baseline entry moves. `{ walk: [0, 0] }` stops the player WITHOUT
+   *  resetting the heading, which is the rule movePlayer states and the only
+   *  way to script it. */
+  | { readonly walk: readonly [number, number] };
 
 export interface ParityScenario {
   readonly name: string;
@@ -1202,6 +1216,644 @@ export const SCENARIOS: readonly ParityScenario[] = [
       { frames: 120 },
     ],
   },
+
+  // ==========================================================================
+  // THE HI-HAT (#141)
+  // ==========================================================================
+  // Recorded BEFORE the extraction, on the unchanged run.ts, per the order at
+  // the top of this file.
+  //
+  // The hat is the fourth shape the migration has met, and the first whose
+  // identity is a QUESTION IT DOES NOT ASK. Every other weapon so far consults
+  // the world to decide where its output goes — the kick reads its facing, the
+  // arp orbits the player, the snare calls aimDir. The hat calls
+  // `fanAround(this.moveDir())`: it fires straight down player.moveDirX/Y with
+  // zero scatter, never touches nearestEnemy, and therefore DRAWS NO RNG AT
+  // FIRE TIME AT ALL. That last fact is the single easiest thing to lose in an
+  // extraction — `aimFan(0)` looks like a tidier spelling of the same line and
+  // is not: it targets, and it draws once (twice on an empty screen). rngDraws
+  // is what catches it, and it only catches it if a scenario fires the hat
+  // without anything else drawing, which is why the solo blocks below all sit
+  // at absurd hp.
+  //
+  // ROLE-KEYED TABLES: THE HAT IS IN NEITHER, and that is a finding, not an
+  // omission. WEAPON_SHOVE is { clap: 12, bass: 6 } and SPARK_HIT_ROLES is
+  // { lead } — the hat appears in neither, so unlike the snare it takes no
+  // share of either table with it and neither INTERIM_EXCEPTIONS entry changes.
+  // A hat chip lands damage and nothing else: no knock, no spark. The scenarios
+  // below record that ABSENCE (every hat-only hit leaves knock at 0,0,0 and
+  // pushes no fx), so an extraction that "tidies up" by giving the hat a shove
+  // or a spark it never had fails here.
+  //
+  // WHAT THE HAT OWNS, and where each one is readable:
+  //   - the tier ladder, damage 2/2/2/3 and pierce 2/2/3/4 against speed
+  //     440/450/460/480, radius 3, lifetime 0.8/0.85/0.9/0.95;
+  //   - HAT_LANE.speedMul 1.5, HAT_LANE.lifetimeMul 2.0, the inline evolved
+  //     1.30 damage multiplier and the evolved pierce of Infinity;
+  //   - HAT_LANE.stagger [0, 26, 52, 78], cycled on triggerCounts.hat.
+  // Most of those are pinned TWICE over. A projectile's digest line carries
+  // `r=`, `dmg=`, `pierce=/maxPierce`, `life=` and `v=` directly, so any
+  // scenario that ends with a chip still in the air pins the whole stat row as
+  // a literal; the fields and files below pin them again BEHAVIOURALLY, as
+  // which bodies a chip actually reaches. Both halves matter: the literal pin
+  // catches a changed number, the behavioural pin catches a number that is
+  // still right but is no longer being READ.
+
+  /** Zombies in single file straight down +x, the heading the player is
+   *  initialised to. Spaced 50 against a zombie's radius of ~21.05, so the
+   *  separation pass inside world.update(0) leaves every one of them exactly
+   *  where this list puts it (50 > 42.11).
+   *
+   *  SIX DEEP because the base ladder is a PIERCE ladder — 2 / 2 / 3 / 4 — and
+   *  a file shorter than the top rung makes tier 4 read the same as "ran out of
+   *  bodies". Six also fits inside tier 1's REACH (speed 440 x lifetime 0.8s =
+   *  352 units, and the file's far end starts at 305 and walks toward the
+   *  player while the chip flies), so every rung is limited by pierce and never
+   *  by range. That separation is the point: it makes the two halves of the
+   *  ladder fail independently. */
+  ...([1, 2, 3, 4] as const).map((tier): ParityScenario => ({
+    name: `hat base tier ${tier}, solo, pierce ladder down the walk heading`,
+    seed: 0x4a7000 + tier,
+    weapons: [['hat', tier]],
+    enemies: file('zombie', [55, 105, 155, 205, 255, 305]),
+    // Absurd hp so the file stays six deep for the whole flight: a body that
+    // died would be skipped, and "the chip stopped after N" would stop meaning
+    // "the chip had N pierce".
+    hp: 1e6,
+    steps: [{ fire: 'hat' }, { frames: 60 }],
+  })),
+
+  /** The same ladder, stopped while the chip is STILL IN THE AIR and with
+   *  nothing within reach to stop it. This is the literal pin: the digested
+   *  projectile line carries radius, damage, pierce/maxPierce, remaining life
+   *  and velocity, so all five numbers of a tier's stats block are recorded as
+   *  values rather than only as consequences.
+   *
+   *  It is also the only place tiers 1 and 2 are TOLD APART. Their damage (2)
+   *  and pierce (2) are identical, so against the file above they land the same
+   *  8 total damage on the same two bodies and the two rungs are
+   *  indistinguishable; only speed (440 vs 450) and lifetime (0.8 vs 0.85)
+   *  differ, and both of those are only visible on a live chip. The ring sits
+   *  at 900, outside any tier's reach, so it populates the spatial hash without
+   *  ever being touched. */
+  ...([1, 2, 3, 4] as const).map((tier): ParityScenario => ({
+    name: `hat base tier ${tier}, solo, one live chip pins the stat row`,
+    seed: 0x4a7100 + tier,
+    weapons: [['hat', tier]],
+    enemies: ring('zombie', 900, 10),
+    hp: 1e6,
+    steps: [{ fire: 'hat' }, { frames: 20 }],
+  })),
+
+  // The same ladder with natural hp, so kills, killsByRole, gem/note drops and
+  // the rng draws behind them are all in the digest. BATS, at 1hp: the base
+  // hat's whole ladder is damage 2 or 3, so against anything tougher the pierce
+  // budget runs out long before a body dies and the lethal half of the coverage
+  // records nothing. A bat dies to any chip, so the file turns directly into
+  // "which bodies did the chip reach, in what order" — and the drops that
+  // follow are the ONLY rng this weapon is responsible for, since it draws none
+  // of its own.
+  ...([1, 4] as const).map((tier): ParityScenario => ({
+    name: `hat base tier ${tier}, solo, lethal bat file`,
+    seed: 0x4a7200 + tier,
+    weapons: [['hat', tier]],
+    // Bat radius ~12.28, spaced 40, so 40 > 24.56 and separation leaves them be.
+    enemies: file('bat', [50, 90, 130, 170, 210, 250]),
+    steps: [{ fire: 'hat' }, { frames: 60 }],
+  })),
+
+  // ---- the heading IS the aim ---------------------------------------------
+  // The scenario the whole weapon rests on. The three nearest bodies in the
+  // world sit BEHIND the player, so any extraction that reaches for aimDir or
+  // aimFan — the obvious "every other weapon does it this way" move — empties
+  // the first trigger into them and misses the +x file entirely. Then the
+  // player TURNS and fires again: the second trigger must go up +y, which no
+  // amount of targeting explains, because the +y file is farther away than the
+  // bodies behind and farther than what is left of the +x file.
+  //
+  // Note the player is genuinely walking here, so the world is moving under the
+  // weapon: the +y file's offsets are measured from the ORIGINAL player
+  // position and the player has climbed ~32 units toward them by the time the
+  // second trigger lands. Chips spawn at the player, so the heading is under
+  // test against a moving origin, which is the real playing condition.
+  {
+    name: 'hat base tier 4, the walk heading aims it, not the nearest enemy',
+    seed: 0x4a7a13,
+    weapons: [['hat', 4]],
+    enemies: [
+      ['zombie', -45, 0],
+      ['zombie', -95, 0],
+      ['zombie', -145, 0],
+      ...file('zombie', [150, 200, 250, 300]),
+      ['zombie', 0, 150],
+      ['zombie', 0, 200],
+      ['zombie', 0, 250],
+      ['zombie', 0, 300],
+    ],
+    hp: 1e6,
+    steps: [
+      { fire: 'hat' },
+      { frames: 20 },
+      { walk: [0, 1] },
+      { frames: 12 },
+      { fire: 'hat' },
+      { frames: 40 },
+    ],
+  },
+
+  // ---- standing still keeps the heading -----------------------------------
+  // movePlayer only writes moveDirX/Y when the stick's magnitude clears 0.001,
+  // so releasing it holds the last heading instead of zeroing it. That guard is
+  // one `if` and it is entirely invisible until somebody stops walking: without
+  // it the heading becomes (0, 0), the chip's velocity becomes (0, 0), and a
+  // stationary chip sits on the player hitting whatever happens to touch it.
+  // The player walks -y, stops for ten frames, and only THEN fires; the file is
+  // down -y and the decoys are down +x, so a heading that reset to the (1, 0)
+  // the player started at is caught here too, not just a zeroed one.
+  {
+    name: 'hat base tier 4, standing still keeps the last walk heading',
+    seed: 0x4a75717,
+    weapons: [['hat', 4]],
+    enemies: [
+      ['zombie', 0, -60],
+      ['zombie', 0, -110],
+      ['zombie', 0, -160],
+      ['zombie', 0, -210],
+      ['zombie', 60, 0],
+      ['zombie', 110, 0],
+    ],
+    hp: 1e6,
+    steps: [
+      { walk: [0, -1] },
+      { frames: 10 },
+      { walk: [0, 0] },
+      { frames: 10 },
+      { fire: 'hat' },
+      { frames: 40 },
+    ],
+  },
+
+  // ---- the heading is NORMALIZED ------------------------------------------
+  // A diagonal stick. moveDir hands back a unit vector, so the chip's speed on
+  // a diagonal is the same 480 it is on an axis, split ~339.41 / ~339.41. Drop
+  // the normalization and a diagonal chip travels at 480 on EACH axis, i.e.
+  // ~1.41x its stated speed — a bug that never shows on the axis-aligned
+  // headings every other scenario here uses. The chip is still live at the end,
+  // so `v=` records the two components as literals.
+  {
+    name: 'hat base tier 4, a diagonal walk heading stays unit length',
+    seed: 0x4a7d1a6,
+    weapons: [['hat', 4]],
+    enemies: [
+      ['zombie', 106, 106],
+      ['zombie', 156, 156],
+      ['zombie', 205, 205],
+      ['zombie', 250, -250],
+    ],
+    hp: 1e6,
+    steps: [
+      { walk: [1, 1] },
+      { frames: 8 },
+      { fire: 'hat' },
+      { frames: 20 },
+    ],
+  },
+
+  // ---- Double Take fans around the HEADING --------------------------------
+  // fanAround exists so the hat can fan without ever consulting nearestEnemy;
+  // aimFan is `fanAround(aimDir(spread))`. The two are one call apart and an
+  // extraction that collapses them changes both WHERE the volley goes and how
+  // many times the run draws. Double Take clamps at level 2, so a trigger is 3
+  // chips at the heading and +-7 degrees off it.
+  //
+  // The three bodies at x 400 sit on those three lanes exactly: at 400 units
+  // out, 7 degrees is 48.7 of lateral offset, which clears a zombie's 42.11
+  // separation diameter so the field is where this list puts it. The pair at
+  // +-100 lateral is outside every lane and must stay untouched. The decoy at
+  // -40 is much nearer than any of them and is the aim magnet.
+  //
+  // TWO triggers, and the SECOND volley is still in the air at the end, so all
+  // three headings are in the digest as velocities as well as as hits — and
+  // rngDraws must stay at whatever the drops cost and not one draw more,
+  // because three chips still cost zero aim rolls.
+  //
+  // The first volley is given 50 frames, not 20. Twenty leaves the chips short
+  // of a field 400 units out and the scenario records three velocity vectors
+  // and no damage at all — which pins the headings but not the CONSEQUENCE of
+  // them, and it is the consequence that says the lanes are still lanes.
+  {
+    name: 'hat base tier 4 with Double Take, three chips fan around the heading',
+    seed: 0x4a72fa,
+    weapons: [['hat', 4]],
+    items: [['doubleTake', 2]],
+    enemies: [
+      ['zombie', -40, 0],
+      ['zombie', 400, 0],
+      ['zombie', 397, 48.7],
+      ['zombie', 397, -48.7],
+      ['zombie', 400, 100],
+      ['zombie', 400, -100],
+    ],
+    hp: 1e6,
+    steps: [
+      { fire: 'hat' }, { frames: 50 },
+      { fire: 'hat' }, { frames: 20 },
+    ],
+  },
+
+  // ---- the chip is THREE UNITS WIDE ---------------------------------------
+  // radius 3 is the smallest number any weapon in the game carries, and it is
+  // the one stat the hat's ladder never changes across four tiers — which makes
+  // it exactly the kind of value an extraction can drop, round, or inherit from
+  // a neighbour without anything noticing.
+  //
+  // FLOWERS, not zombies, and that is the whole reason this scenario can pin
+  // anything. The bracket here is half a unit wide, and a zombie closes ~44.6
+  // units a second: by the time a chip reaches it, a zombie has walked several
+  // units off the offset this list states and the bracket has moved with it. A
+  // flower's speed is ~8.92, the slowest body in the bestiary by a factor of
+  // five, so over the ~0.1-0.4s of a chip's flight it drifts about half a unit
+  // and the placed geometry is still, near enough, the geometry under test.
+  //
+  // MIND THE FRAME CYCLE. A flower is not one size. MAD_FOREST_FRAMES lists TWO
+  // frames for it (26 and 32 wide, so radius ~17.544 and ~21.053) and pushEnemy
+  // picks `counter % frames.length` — a per-kind cycling counter, not a roll —
+  // so successive flowers ALTERNATE radius in spawn order. That is 3.5 units of
+  // swing, seven times the bracket. The first version of this scenario listed
+  // its two pins first and second, which handed them different bodies to be
+  // measured against; the outer pin came out 21.053 wide, the boundary moved to
+  // 24.05, and a chip of radius 3 sailed straight into a pin placed to be
+  // outside it. Both mutations passed green.
+  //
+  // So THE ORDER OF THIS LIST IS LOAD-BEARING: pin, witness, pin. Positions 1
+  // and 3 are both frame 0 (~17.544) and the witness in the middle absorbs
+  // frame 1. Inserting or removing an enemy here re-deals every radius.
+  //
+  // THE PINS, against a shared flower radius of ~17.544, so contact is at
+  // 17.544 + 3 = ~20.544:
+  //   lateral 20.5 at x 60    inside, and drifts to ~19.54 by contact — so a
+  //                           chip of radius 2 (threshold 19.544) MISSES it
+  //   lateral 21.5 at x 200   outside, and drifts to ~21.0 by contact — so a
+  //                           chip of radius 4 (threshold 21.544) HITS it
+  // The boundary sits BETWEEN the two pins, so the smallest change radius can
+  // take flips one of them, and the two directions flip different pins:
+  // radius 2 records 0/3/0, radius 3 records 3/3/0, radius 4 records 3/3/3.
+  // The pins sit 140 apart in x so the separation pass cannot push them into
+  // each other and move the very offsets they exist to hold.
+  {
+    name: 'hat base tier 4, the chip is three units wide',
+    seed: 0x4a7241,
+    weapons: [['hat', 4]],
+    enemies: [
+      ['flower', 60, 20.5],
+      // On-axis witness, and the frame-1 absorber. It proves the chip really
+      // did fly down +x, so a run where BOTH pins go quiet reads as "missed
+      // both" and not as "never fired".
+      ['flower', 320, 0],
+      ['flower', 200, 21.5],
+    ],
+    hp: 1e6,
+    steps: [{ fire: 'hat' }, { frames: 40 }],
+  },
+
+  // ---- four triggers on a beat grid ---------------------------------------
+  // The hat is the densest weapon in the game — density IS its ladder — so
+  // several chips sharing the file is its normal condition, not an edge case.
+  // Each chip carries its OWN hit set and its OWN pierce budget; a refactor
+  // that hoists either onto the weapon collapses four independent budgets into
+  // one shared one and this scenario moves. The gaps are short enough that all
+  // four are in the air together.
+  {
+    name: 'hat base tier 4, four triggers on a beat grid',
+    seed: 0x4a7b17,
+    weapons: [['hat', 4]],
+    enemies: file('zombie', [55, 105, 155, 205, 255, 305]),
+    hp: 1e6,
+    steps: [
+      { fire: 'hat' }, { frames: 5 },
+      { fire: 'hat' }, { frames: 5 },
+      { fire: 'hat' }, { frames: 5 },
+      { fire: 'hat' }, { frames: 50 },
+    ],
+  },
+
+  // ==========================================================================
+  // STROBE LANE
+  // ==========================================================================
+  // Same weapon, four multipliers deeper: damage x1.30, HAT_LANE.speedMul 1.5,
+  // HAT_LANE.lifetimeMul 2.0 and pierce overwritten to Infinity, plus a spawn
+  // offset cycled out of HAT_LANE.stagger. At tier 4 that is damage 3.9 at
+  // speed 720 for 1.9s — 1368 units of reach against the base chip's 456.
+  //
+  // MIRRORBALL IS NOT OPTIONAL HERE. Strobe Lane's partner item is Mirrorball,
+  // and eligibleEvolution gates every evolution on its partner sitting at max
+  // level, so a Strobe Lane can only ever exist alongside bounceCount 3 and
+  // bounceRetention 0.85. Every evolved chip in the real game bounces, and 1368
+  // units of reach is nearly twice the 739.6 the x rail sits at for this
+  // canvas, so it is not a corner the player has to go looking for — a lane
+  // chip reaches the wall as a matter of course. That is its own scenario
+  // below, because the ADR-0002 shape (a module claiming steer() and silently
+  // exempting itself from the rails) is available to any extraction, and only a
+  // chip that reaches a rail notices.
+
+  // ---- the lane, damage meter ---------------------------------------------
+  // Twelve deep and stopped before the chip reaches the rail, so this scenario
+  // is pure reach and pure per-body damage with no reflection in it. The base
+  // chip's 456 units of travel dies around the fifth body; the lane crosses the
+  // whole file. Cut either multiplier and the file's far end goes quiet.
+  {
+    name: 'hat evolved (Strobe Lane), lane damage meter',
+    seed: 0x4a75e01,
+    weapons: [['hat', 4]],
+    items: [['mirrorball', 5]],
+    evolved: ['hat'],
+    enemies: file('zombie', [55, 105, 155, 205, 255, 305, 355, 405, 455, 505, 555, 605]),
+    hp: 1e6,
+    steps: [{ fire: 'hat' }, { frames: 55 }],
+  },
+
+  // ---- infinite pierce is INFINITE ----------------------------------------
+  // The lane's reach is not a large pierce number, it is the absence of one:
+  // spawnProjectile writes Infinity over whatever the build pipeline produced.
+  // Fifteen bodies is past anything a number would plausibly be.
+  //
+  // NEEDLE TIPS AT MAX, for the reason ADR-0002's arp scenario and the snare's
+  // beam both carry it: +5 pierce is exactly what would MASK a regression, by
+  // letting a wrongly-finite lane reach nine bodies and still look roughly
+  // alive. It also pins a real asymmetry the extraction has to keep — the hat's
+  // ladder DOES carry a pierce key, so Needle Tips is a live, stacking build on
+  // the base weapon (tier 4 goes 4 -> 9), and a total no-op on the lane, which
+  // overwrites the pipeline's answer rather than building on it. That is the
+  // opposite of what #146 made Neon Serpent do, and it is correct here: an
+  // infinity is not a floor to add to.
+  {
+    name: 'hat evolved (Strobe Lane), infinite pierce through a fifteen-deep file',
+    seed: 0x4a75e91,
+    weapons: [['hat', 4]],
+    items: [['mirrorball', 5], ['needleTips', 5]],
+    evolved: ['hat'],
+    enemies: file('zombie', [
+      50, 96, 142, 188, 234, 280, 326, 372, 418, 464, 510, 556, 602, 648, 694,
+    ]),
+    hp: 1e6,
+    steps: [{ fire: 'hat' }, { frames: 58 }],
+  },
+
+  // ---- the stagger cycle --------------------------------------------------
+  // HAT_LANE.stagger pushes each successive chip further along the lane so a
+  // 16th-note wall draws as one streak instead of a clump at the player. It is
+  // indexed by triggerCounts.hat, which increments BEFORE the switch, so the
+  // FIRST trigger of a run takes stagger[1] = 26 and the fourth takes
+  // stagger[0] = 0. Five triggers, so the cycle wraps and the fifth is proved
+  // to land back on 26 rather than running off the end of the array.
+  //
+  // Two frames between triggers and all five still in the air at the end: five
+  // chips travelling at a uniform 12 units a frame from five different starting
+  // offsets, so the digest is the stagger table read straight off the
+  // projectile positions. Change any entry and exactly one line moves; change
+  // the modulo and the wrap moves.
+  {
+    name: 'hat evolved (Strobe Lane), five triggers cycle the lane stagger',
+    seed: 0x4a757a6,
+    weapons: [['hat', 4]],
+    items: [['mirrorball', 5]],
+    evolved: ['hat'],
+    enemies: file('zombie', [120, 220, 320, 420, 520]),
+    hp: 1e6,
+    steps: [
+      { fire: 'hat' }, { frames: 2 },
+      { fire: 'hat' }, { frames: 2 },
+      { fire: 'hat' }, { frames: 2 },
+      { fire: 'hat' }, { frames: 2 },
+      { fire: 'hat' }, { frames: 6 },
+    ],
+  },
+
+  // ---- the lane rides the arena rails -------------------------------------
+  // Mirrorball at max comes with the evolution, so bounceCount 3 and
+  // bounceRetention 0.85 are the lane's PERMANENT condition. The rail sits at
+  // 739.6 for this canvas and the lane reaches 1368, so the chip crosses it,
+  // flips vx, loses 15% of its damage and comes back down the file it just
+  // cleared — hitting nobody a second time, because the hit set persists.
+  //
+  // A lane chip must therefore ride shared travel and shared reflection, which
+  // is the half of ProjectileBehavior the hat must NOT implement: a steer()
+  // that returns true positions the chip itself and skips the rails silently,
+  // exactly the way the arp is exempted, and nothing but a chip that reaches a
+  // wall would ever notice. The chip is live at the end, so `bounces=` and the
+  // retained `dmg=` are both literal pins on top of the behavioural one.
+  {
+    name: 'hat evolved (Strobe Lane), the lane rails off the arena bounds',
+    seed: 0x4a75ba1,
+    weapons: [['hat', 4]],
+    items: [['mirrorball', 5]],
+    evolved: ['hat'],
+    enemies: [
+      ...file('zombie', [120, 260, 400, 540, 680]),
+      // Off-axis bodies on the return leg, so the reflected chip has something
+      // to prove it is still armed with.
+      ['zombie', 300, 30],
+      ['zombie', 500, -30],
+    ],
+    hp: 1e6,
+    steps: [{ fire: 'hat' }, { frames: 100 }],
+  },
+
+  // ---- lethal ------------------------------------------------------------
+  // Natural-ish hp so kills, drops and the rng behind them land. hp 6 against
+  // the lane's 3.9 is two chips to a kill, so the TRIGGER CADENCE decides which
+  // frame each body dies on. Splitters push four swarmers each into the live
+  // enemy array the chip is walking, and an infinite-pierce chip keeps sweeping
+  // the collection that just grew under it.
+  {
+    name: 'hat evolved (Strobe Lane), lethal file with splitters',
+    seed: 0x4a75111,
+    weapons: [['hat', 4]],
+    items: [['mirrorball', 5]],
+    evolved: ['hat'],
+    enemies: [
+      ...file('splitter', [70, 130, 190, 250]),
+      ...file('zombie', [330, 390, 450, 510]),
+    ],
+    hp: 6,
+    steps: [
+      { fire: 'hat' }, { frames: 8 },
+      { fire: 'hat' }, { frames: 8 },
+      { fire: 'hat' }, { frames: 60 },
+    ],
+  },
+
+  // ---- the lane still steers ----------------------------------------------
+  // Evolving does not change what aims the weapon: Strobe Lane is still fired
+  // down the walk heading and still asks the world nothing. Same turn as the
+  // base scenario above, with the lane's reach — so the +y file is 1368 units
+  // of lane rather than 456, and a targeting regression that the base scenario
+  // catches by a near miss is caught here by a mile.
+  {
+    name: 'hat evolved (Strobe Lane), the walk heading still aims it',
+    seed: 0x4a75a13,
+    weapons: [['hat', 4]],
+    items: [['mirrorball', 5]],
+    evolved: ['hat'],
+    enemies: [
+      ['zombie', -45, 0],
+      ['zombie', -95, 0],
+      ...file('zombie', [150, 250, 350, 450]),
+      ['zombie', 0, 150],
+      ['zombie', 0, 250],
+      ['zombie', 0, 350],
+      ['zombie', 0, 450],
+    ],
+    hp: 1e6,
+    steps: [
+      { fire: 'hat' },
+      { frames: 20 },
+      { walk: [0, 1] },
+      { frames: 12 },
+      { fire: 'hat' },
+      { frames: 40 },
+    ],
+  },
+
+  // ---- mid-evolve ---------------------------------------------------------
+  // A base chip four frames down the lane when the hat evolves. pr.evolved is
+  // frozen at spawn, so that chip keeps its finite pierce of 4, its 480 speed,
+  // its 0.95s life and its damage of 3, and it received NO stagger — while the
+  // next trigger spawns 26 units out at 720 with infinite pierce and 3.9
+  // damage, overtakes it, and crosses the file it will never reach. Base and
+  // evolved hat in the same frame on the same role, in the same shared
+  // projectile loop: the seam an extraction is most likely to unify into one
+  // mode flag read at tick time instead of at spawn time.
+  //
+  // The trigger arithmetic matters and is worth stating: the first trigger is
+  // count 1 and is BASE, so it takes no stagger at all; the second is count 2
+  // and is evolved, so it takes stagger[2] = 52, NOT the 26 a fresh evolved hat
+  // would take. The counter does not reset on evolution and the extraction must
+  // not make it.
+  //
+  // THE FILE IS SPLIT, and deliberately. A continuous ten-deep file spends the
+  // base chip's four pierce inside twenty frames and it is gone long before the
+  // scenario ends — leaving a digest with one projectile line in it and no
+  // record that the two modes were ever in the array together at all. Three
+  // bodies close in (inside the base chip's 456 units of reach, and one short
+  // of its pierce budget) then a gap, then four more out past 456 where only
+  // the lane reaches: the base chip lives out its whole 0.95s with a pierce to
+  // spare, so BOTH chips are in the digest at the end, one behind the other,
+  // with different speeds, lifetimes, pierce budgets and damage.
+  {
+    name: 'hat mid-evolve with a base chip still in the lane',
+    seed: 0x4a72ed0,
+    weapons: [['hat', 4]],
+    items: [['mirrorball', 5]],
+    enemies: file('zombie', [55, 105, 155, 500, 560, 620, 680]),
+    hp: 1e6,
+    steps: [
+      { fire: 'hat' },
+      { frames: 4 },
+      { evolve: 'hat' },
+      { frames: 4 },
+      { fire: 'hat' },
+      { frames: 40 },
+    ],
+  },
+
+  // ---- the hat in a band --------------------------------------------------
+  // Ordering. The hat shares the projectile array, the spatial hash and the rng
+  // stream with weapons that have not moved yet, and it is the one weapon in
+  // the band that contributes ZERO draws of its own — so in a band scenario the
+  // hat's draw discipline is only visible as everybody ELSE's rolls landing in
+  // the right order. An extraction that starts calling aimDir shifts every
+  // subsequent draw in the frame, and these three scenarios are where that
+  // shows up as another weapon's damage moving.
+  //
+  // The hat fires FIRST in each, so its chips are in the array before the other
+  // eight weapons' entities are, which is the ordering the extraction has to
+  // reproduce.
+  {
+    name: 'hat in a full band, base, damage meter',
+    seed: 0x4a7ba1,
+    weapons: [
+      ['kick', 4], ['snare', 4], ['hat', 4], ['bass', 4], ['chord', 4],
+      ['lead', 4], ['clap', 4], ['bell', 4], ['arp', 4],
+    ],
+    enemies: file('zombie', [55, 105, 155, 205, 255, 305]),
+    hp: 1e6,
+    steps: [
+      { fire: 'hat' }, { fire: 'kick' }, { fire: 'snare' }, { fire: 'bass' },
+      { fire: 'chord' }, { fire: 'lead' }, { fire: 'clap' }, { fire: 'bell' },
+      { fire: 'arp' },
+      { frames: 120 },
+    ],
+  },
+  {
+    name: 'hat in a full band, base, lethal',
+    seed: 0x4a7ba2,
+    weapons: [
+      ['kick', 4], ['snare', 4], ['hat', 4], ['bass', 4], ['chord', 4],
+      ['lead', 4], ['clap', 4], ['bell', 4], ['arp', 4],
+    ],
+    // SPLITTERS AT 40HP, NOT ZOMBIES AT 10, and that is the difference between
+    // this scenario covering the hat and not covering it at all. The hat is by
+    // some distance the slowest weapon in the band to arrive AND the weakest
+    // per hit: a chip does 3 and takes seven frames just to reach a body 55
+    // units out, while the kick resolves synchronously at fire time and the
+    // snare's shot pierces six. Against a file of 10hp zombies the other eight
+    // weapons had cleared the entire field by frame 35, with the chip still
+    // 160 units short of the last body — the recorded digest had no `hat=` line
+    // in damageByRole at all, a band scenario for the hat in which the hat did
+    // nothing. A 40hp body survives the opening volley, so the chip arrives to
+    // a field that is still standing and the ordering is genuinely under test.
+    // Splitters also burst into swarmers as the band kills them, which grows
+    // the enemy array under every loop walking it.
+    //
+    // The file starts at 200, past the kick's ~149-unit strip, for the same
+    // reason: something has to still be alive out where a chip can reach it.
+    enemies: [
+      ...file('splitter', [200, 250, 300, 350, 400, 450]),
+      ...ring('splitter', 300, 8, Math.PI / 8),
+    ],
+    steps: [
+      { fire: 'hat' }, { fire: 'kick' }, { fire: 'snare' }, { fire: 'bass' },
+      { fire: 'chord' }, { fire: 'lead' }, { fire: 'clap' }, { fire: 'bell' },
+      { fire: 'arp' },
+      { frames: 120 },
+    ],
+  },
+  {
+    name: 'hat in a full evolved band, loaded build, walking',
+    seed: 0x4a7ba3,
+    weapons: [
+      ['kick', 4], ['snare', 4], ['hat', 4], ['bass', 4], ['chord', 4],
+      ['lead', 4], ['clap', 4], ['bell', 4], ['arp', 4],
+    ],
+    items: [
+      ['highTops', 5], ['fastForward', 5], ['mirrorball', 5], ['heavyAmp', 5],
+      ['wideLens', 5], ['needleTips', 5], ['paddedJacket', 5],
+      ['extensionCable', 5], ['magnetLanyard', 5], ['doubleTake', 2],
+    ],
+    evolved: ['kick', 'snare', 'hat', 'bass', 'chord', 'lead', 'clap', 'bell', 'arp'],
+    enemies: [
+      ...file('zombie', [55, 105, 155, 205, 255, 305]),
+      ...ring('zombie', 260, 12, Math.PI / 12),
+    ],
+    hp: 1e6,
+    // THE ONLY BAND SCENARIO IN THIS FILE WHERE THE PLAYER MOVES. Nine weapons
+    // firing while the origin slides is the real playing condition and nothing
+    // else here covers it; for the hat specifically it is the only band
+    // scenario where the heading is not the (1, 0) default, so a band-level
+    // targeting regression cannot hide behind the two agreeing by accident.
+    // Four hat triggers, so the stagger cycle runs inside a loaded band and the
+    // lane's 26/52/78/0 have to be told apart from eight other weapons' output.
+    steps: [
+      { walk: [2, -1] },
+      { frames: 10 },
+      { fire: 'hat' }, { fire: 'kick' }, { fire: 'snare' }, { fire: 'bass' },
+      { fire: 'hat' }, { fire: 'chord' }, { fire: 'lead' }, { fire: 'clap' },
+      { fire: 'hat' }, { fire: 'bell' }, { fire: 'arp' },
+      { fire: 'hat' },
+      { frames: 120 },
+    ],
+  },
 ];
 
 // ------------------------------------------------------------------ digest --
@@ -1335,6 +1987,11 @@ function runScenario(s: ParityScenario): string[] {
   const rng = () => { draws.main += 1; return base(); };
   const magnetRng = () => { draws.magnet += 1; return magnetBase(); };
 
+  // The movement stick, driven by `walk` steps. Starts at the zero vector,
+  // which is byte-for-byte what RunWorld defaults `control` to, so supplying
+  // this function cannot move a scenario that never walks.
+  const stick = { x: 0, y: 0 };
+
   const world = new RunWorld(VIEW, SILENT_EVENTS, {
     // No stage director: waves would spawn on their own schedule and the
     // scenario would stop being hand-placed.
@@ -1346,6 +2003,7 @@ function runScenario(s: ParityScenario): string[] {
     // deterministic here, but pinning it explicitly keeps a change to that
     // derivation from silently rewriting every baseline.
     stageMagnetRng: magnetRng,
+    control: () => stick,
   });
   world.invincible = true;
 
@@ -1379,6 +2037,9 @@ function runScenario(s: ParityScenario): string[] {
       world.fireTrigger({ role: step.fire, time: 0, velocity: 1, step: 0 });
     } else if ('evolve' in step) {
       assert(world.evolve(step.evolve), `${s.name}: mid-scenario evolve of ${step.evolve} failed`);
+    } else if ('walk' in step) {
+      stick.x = step.walk[0];
+      stick.y = step.walk[1];
     } else {
       for (let i = 0; i < step.frames; i++) world.update(SIM_DT);
     }
