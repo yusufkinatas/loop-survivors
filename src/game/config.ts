@@ -712,9 +712,11 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
   ],
   // Dense stream of weak fast chips fired straight down the walk heading, no
   // scatter — the player aims by steering. Density IS the ladder; per-trigger
-  // damage barely moves. Tier I starts at 2 so even the quietest velocity roll
-  // (0.75x) reliably clears a 1-HP Static Mite in one hit. The pierce ladder
-  // pays for losing auto-aim: a straight line has to be worth walking down.
+  // damage barely moves. The floor of 2 dates from when velocity could roll a
+  // chip down to 0.75x and it still had to clear a 1-HP Static Mite; damage is
+  // flat now, so the floor is pure headroom and is a retune candidate. The
+  // pierce ladder pays for losing auto-aim: a straight line has to be worth
+  // walking down.
   hat: [
     { damage: 2, speed: 440, radius: 3, lifetimeS: 0.8, pierce: 2 },
     { damage: 2, speed: 450, radius: 3, lifetimeS: 0.85, pierce: 2 },
@@ -815,7 +817,7 @@ export const TIER_LINES: Partial<Record<Role, string[]>> = {
     'zone on the nearest pack: damage + slow',
     'zones twice as often',
     'bigger, longer zones',
-    'adds huge lingering zones every 4th bar',
+    'the biggest, longest, hardest zones',
   ],
   lead: [
     'a few homing seekers',
@@ -841,12 +843,6 @@ export const TIER_LINES: Partial<Record<Role, string[]>> = {
     'sharper shards, further',
     'a burst of shards, pierces',
   ],
-};
-
-/** Chord tier 4's pads get a matching gameplay peak: the same weapon, scaled
- *  up. */
-export const VARIANT_EFFECTS = {
-  chordPad: { radiusMul: 1.5, lifetimeMul: 2.0, damageMul: 0.6 },
 };
 
 /** How far weapons look for a target. */
@@ -890,7 +886,7 @@ export const WEAPON_SHOVE: Partial<Record<Role, number>> = { snare: 8, clap: 12,
  *  Deliberately tiny — the identity is high single-target damage plus an
  *  inward tug that bunches the horde up for the rest of the band, NOT another
  *  player-centred blast (that is what Subquake is for). Keep `pinchRadius`
- *  well under Subquake's 288-375 unit ring. */
+ *  well under Subquake's 288 unit ring. */
 export const TWO_HANDS = {
   /** How many nearby enemies get their own pincer on a single trigger. */
   targets: 3,

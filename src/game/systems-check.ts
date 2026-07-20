@@ -477,13 +477,67 @@ assert.equal(evolutionWorld.eligibleEvolutions().length, 0);
 
 evolutionWorld.spawnEnemyAt('tank', 100, 0);
 for (const role of evolutionRoles) {
-  evolutionWorld.fireTrigger({ role, time: 0, velocity: 1, step: 0, variant: role === 'bass' ? 'fat' : undefined });
+  evolutionWorld.fireTrigger({ role, time: 0, velocity: 1, step: 0 });
 }
 evolutionWorld.update(1 / 60);
 const evolvedOutputCount = evolutionWorld.projectiles.length + evolutionWorld.zones.length +
   evolutionWorld.shockwaves.length + evolutionWorld.gravityWells.length + (evolutionWorld.fx?.length ?? 0);
 assert(evolvedOutputCount > evolutionRoles.length,
   'evolved triggers should create their expanded gameplay and visual patterns');
+
+// Variants and velocity are sound-only (docs/adr/0001): what a chart event says
+// about the sound — which sample, how loud — must never cross into the world.
+// Two identically built worlds, one fed the quietest plain triggers and one fed
+// the loudest with a variant named on every trigger, have to produce the same
+// gameplay down to the number: same damage, same footprint, same enemies left
+// standing. ('pad' and 'fat' are the two variants that used to move the world;
+// naming one on every role is deliberately more than any real chart would do.)
+function soundOnlyOutput(expression: 'loud' | 'quiet', evolved: boolean): string {
+  const probe = new RunWorld({ width: 1280, height: 720 }, events, {
+    scripted: false,
+    fx: false,
+    rng: () => 0.5,
+  });
+  probe.invincible = true;
+  for (const role of evolutionRoles) probe.addWeapon(role, 4);
+  if (evolved) {
+    for (const [item] of allItems) probe.addItem(item, 5);
+    for (const role of evolutionRoles) assert(probe.evolve(role));
+  }
+  // Dead ahead of the player and inside the base clap's 108-unit tier-IV reach,
+  // so every weapon — including the short cone — has the same thing to hit in
+  // both worlds. spawnEnemyAt places a sprite-feet position and offsets the
+  // circle center off it, so pin the center afterwards the way the hi-hat check
+  // does. Absurd HP makes it a damage meter: a target that dies in both worlds
+  // hides exactly the difference this check exists to catch.
+  const target = probe.spawnEnemyAt('tank', probe.player.x + 90, probe.player.y)!;
+  target.x = probe.player.x + 90;
+  target.y = probe.player.y;
+  target.hp = 1e6;
+  // Populate the spatial hash at the pinned position: the cone and blast
+  // weapons query it, and an unbuilt hash makes them all silently miss.
+  probe.update(0);
+  for (const role of evolutionRoles) {
+    probe.fireTrigger(expression === 'loud'
+      ? { role, time: 0, velocity: 1, step: 0, variant: role === 'bass' ? 'fat' : 'pad' }
+      : { role, time: 0, velocity: 0.05, step: 0 });
+  }
+  // Spawn-time damage and footprint: what velocity and the variants used to bend.
+  const spawned = [
+    probe.projectiles.map((p) => [p.role, p.damage, p.radius, p.lifeS, p.x, p.y, p.vx, p.vy]),
+    probe.zones.map((z) => [z.damage, z.radius, z.lifeS]),
+    probe.shockwaves.map((s) => [s.damage, s.maxRadius, s.lifeS]),
+  ];
+  // Then let it play out, so the delayed hits (the clap cone, Two Hands' crush)
+  // land and show up as damage actually dealt.
+  for (let i = 0; i < 30; i++) probe.update(1 / 60);
+  return JSON.stringify([spawned, probe.enemies.map((e) => e.hp)]);
+}
+
+for (const evolved of [false, true]) {
+  assert.equal(soundOnlyOutput('loud', evolved), soundOnlyOutput('quiet', evolved),
+    `velocity and variant must not change ${evolved ? 'evolved' : 'base'} damage or footprint`);
+}
 
 const healWorld = new RunWorld({ width: 1280, height: 720 }, events, { fx: false });
 healWorld.player.hp = 1;
@@ -521,7 +575,7 @@ pincerWorld.spawnEnemyAt('bat', -150, 0);
 // pinch point — more than three times the 42-unit crush radius and past the
 // 96-unit inward tug. That local reach is the property this evolution exists to
 // hold: the hands crush what they grab instead of becoming a second
-// player-centred blast the way Subquake (a 288-375 unit ring) is meant to be.
+// player-centred blast the way Subquake (a 288-unit ring) is meant to be.
 const bystander = pincerWorld.spawnEnemyAt('bat', 0, 300)!;
 const cornerEnemy = pincerWorld.spawnEnemyAt(
   'bat',

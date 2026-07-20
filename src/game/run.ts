@@ -27,7 +27,6 @@ import {
   SHOVE_S,
   SPLITTER,
   TWO_HANDS,
-  VARIANT_EFFECTS,
   WEAPON_SHOVE,
   WEAPONS,
   ZONE_SLOW_MUL,
@@ -620,7 +619,9 @@ export class RunWorld {
   }
 
   /** The coupling point: a scheduled trigger fires this kit's weapon at the
-   *  owned tier. Variant peaks (chord pad) scale the same weapon. */
+   *  owned tier. What the chart says about the sound — its variant and its
+   *  velocity — stays in the mix and never reaches the world: every trigger
+   *  of a weapon deals the same damage over the same footprint. */
   fireTrigger(t: ScheduledTrigger): void {
     const tier = this.tiers.get(t.role);
     if (!tier) return;
@@ -628,18 +629,8 @@ export class RunWorld {
     // an owned (hence supported) role, so the entry is always present.
     let conf: WeaponConf = WEAPONS[t.role]![tier - 1];
     const color = KIT_COLORS[t.role];
-    const v = t.velocity;
     const p = this.player;
 
-    if (t.role === 'chord' && t.variant === 'pad') {
-      const fx = VARIANT_EFFECTS.chordPad;
-      conf = {
-        ...conf,
-        radius: conf.radius! * fx.radiusMul,
-        lifetimeS: conf.lifetimeS! * fx.lifetimeMul,
-        damage: conf.damage * fx.damageMul,
-      };
-    }
     // Single build-transform pipeline (D1): tempo compensation, folded in one
     // place — balance code multiplies here.
     conf = this.applyBuild(t.role, conf);
@@ -676,61 +667,59 @@ export class RunWorld {
         // Thrown at the nearest enemy, not dropped underfoot: the zone has
         // to land where the horde actually is to be worth a pick.
         const target = this.nearestEnemy(ZONE_THROW_RANGE);
-        // Loud chords stamp a bigger zone (velocity → size).
-        const zc = { ...conf, radius: conf.radius! * (0.85 + 0.3 * v) };
-        this.spawnZone(target?.x ?? p.x, target?.y ?? p.y, zc, color, 'chord', evolved);
+        this.spawnZone(target?.x ?? p.x, target?.y ?? p.y, conf, color, 'chord', evolved);
         break;
       }
       case 'clap': {
         if (evolved) {
-          this.fireTwoHands(conf, color, v);
+          this.fireTwoHands(conf, color);
           break;
         }
         // Whip: a wide forward slash in the aim direction, hitting a cone.
         const aim = this.aimDir(0);
         const ang = Math.atan2(aim.y, aim.x);
-        const reach = conf.radius! * (0.9 + 0.2 * v);
-        this.damageCone(p.x, p.y, ang, conf.arc!, reach, conf.damage * (0.85 + 0.3 * v), 'clap', WEAPON_SHOVE.clap);
+        const reach = conf.radius!;
+        this.damageCone(p.x, p.y, ang, conf.arc!, reach, conf.damage, 'clap', WEAPON_SHOVE.clap);
         this.fx?.push({ type: 'arc', x: p.x, y: p.y, angle: ang, arc: conf.arc!, radius: reach, color });
         break;
       }
       case 'bell': {
         // A note lobbed straight that shatters into shards on its first hit.
-        for (const dir of this.aimFan(0.1)) this.spawnBell(dir, conf, color, v);
+        for (const dir of this.aimFan(0.1)) this.spawnBell(dir, conf, color);
         break;
       }
       case 'arp': {
         // King Bible: an orbiter per note, circling the player.
-        if (evolved) this.spawnEventHorizon(conf, color, v);
-        else this.spawnOrbiter(conf, color, v);
+        if (evolved) this.spawnEventHorizon(conf, color);
+        else this.spawnOrbiter(conf, color);
         break;
       }
       case 'bass': {
         if (evolved) {
-          this.spawnSubquake(conf, color, v, t.variant === 'fat');
+          this.spawnSubquake(conf, color);
           break;
         }
         // One wide rolling wave per trigger; Double Take fans extra waves.
-        for (const dir of this.aimFan(0.08)) this.spawnProjectile('bass', dir, conf, color, v);
+        for (const dir of this.aimFan(0.08)) this.spawnProjectile('bass', dir, conf, color);
         break;
       }
       case 'snare':
         if (evolved) {
-          this.fireRailshot(conf, color, v);
+          this.fireRailshot(conf, color);
           break;
         }
-        for (const dir of this.aimFan(0.08)) this.spawnProjectile(t.role, dir, conf, color, v);
+        for (const dir of this.aimFan(0.08)) this.spawnProjectile(t.role, dir, conf, color);
         break;
       case 'hat': {
         // Knife: fires straight along the walk heading with zero scatter, so
         // the player aims by steering. Never consults nearestEnemy — with an
         // empty screen it still rails along the direction of travel.
         // Double Take's extra shots fan around the heading, never off it.
-        for (const dir of this.fanAround(this.moveDir())) this.spawnProjectile('hat', dir, conf, color, v);
+        for (const dir of this.fanAround(this.moveDir())) this.spawnProjectile('hat', dir, conf, color);
         break;
       }
       case 'lead': {
-        for (const dir of this.aimFan(0.08)) this.spawnProjectile(t.role, dir, conf, color, v);
+        for (const dir of this.aimFan(0.08)) this.spawnProjectile(t.role, dir, conf, color);
         break;
       }
     }
@@ -1703,9 +1692,9 @@ export class RunWorld {
     return hits;
   }
 
-  private fireRailshot(conf: WeaponConf, color: number, velocity: number): void {
+  private fireRailshot(conf: WeaponConf, color: number): void {
     const dir = this.aimDir(0.02);
-    const damage = conf.damage * 1.50 * (0.8 + 0.4 * velocity);
+    const damage = conf.damage * 1.50;
     const width = Math.max(7, (conf.radius ?? 7) * 1.25);
     this.damageLine(this.player.x, this.player.y, dir, 900, width, damage, 'snare', 16 * this.buildMods.knockbackMul);
     this.fx?.push({ type: 'beam', x: this.player.x, y: this.player.y, x2: this.player.x + dir.x * 900, y2: this.player.y + dir.y * 900, width: width * 2, color });
@@ -1727,9 +1716,9 @@ export class RunWorld {
    *  already has three player-centred blasts (Subquake, Redline Stomp,
    *  Afterhours). The inward tug on the crush is the point: it bunches the
    *  horde for the rest of the band. */
-  private fireTwoHands(conf: WeaponConf, color: number, velocity: number): void {
+  private fireTwoHands(conf: WeaponConf, color: number): void {
     const p = this.player;
-    const damage = conf.damage * TWO_HANDS.damageMul * (0.85 + 0.3 * velocity);
+    const damage = conf.damage * TWO_HANDS.damageMul;
     const targets = this.nearestEnemies(AIM_RANGE, TWO_HANDS.targets);
     if (targets.length === 0) {
       // Nothing in reach: still clap, just ahead of the player, so the beat
@@ -1819,16 +1808,16 @@ export class RunWorld {
     }
   }
 
-  private spawnSubquake(conf: WeaponConf, color: number, velocity: number, fat: boolean): void {
+  private spawnSubquake(conf: WeaponConf, color: number): void {
     const area = this.buildMods.areaMul;
     this.shockwaves.push({
       x: this.player.x,
       y: this.player.y,
       radius: 40,
-      maxRadius: (fat ? 375 : 288) * area,
+      maxRadius: 288 * area,
       age: 0,
       lifeS: 1.2,
-      damage: conf.damage * 1.55 * (fat ? 1.2 : 1) * (0.8 + 0.4 * velocity),
+      damage: conf.damage * 1.55,
       shove: 14 * this.buildMods.knockbackMul,
       color,
       source: 'bass',
@@ -1987,9 +1976,8 @@ export class RunWorld {
     dir: { x: number; y: number },
     conf: WeaponConf,
     color: number,
-    velocity: number,
   ): void {
-    const pr = this.baseProjectile(role, conf, color, conf.damage * (0.75 + 0.5 * velocity));
+    const pr = this.baseProjectile(role, conf, color, conf.damage);
     // Evolved hi-hat is a lane, not a ricochet: every chip rails straight
     // through the whole line it is fired down. Infinite pierce plus double
     // life is the reach; the stagger below makes the stream read continuous.
@@ -2027,14 +2015,14 @@ export class RunWorld {
   }
 
   /** Arp: an orbiter that circles the player, chipping what it sweeps. */
-  private spawnOrbiter(conf: WeaponConf, color: number, velocity: number): void {
+  private spawnOrbiter(conf: WeaponConf, color: number): void {
     // One random base angle per trigger; Double Take's copies space themselves
     // evenly around the ring from it, so a crown reads as a ring not a clump.
     const baseAngle = this.rng() * Math.PI * 2;
     const count = 1 + this.buildMods.extraProjectiles;
     for (let i = 0; i < count; i++) {
       const angle = baseAngle + (Math.PI * 2 * i) / count;
-      const pr = this.baseProjectile('arp', conf, color, conf.damage * (0.8 + 0.4 * velocity));
+      const pr = this.baseProjectile('arp', conf, color, conf.damage);
       pr.pierce = Infinity;
       pr.orbitAngle = angle;
       pr.orbitRadius = conf.orbitRadius!;
@@ -2044,7 +2032,7 @@ export class RunWorld {
     }
   }
 
-  private spawnEventHorizon(conf: WeaponConf, color: number, velocity: number): void {
+  private spawnEventHorizon(conf: WeaponConf, color: number): void {
     const baseAngle = this.rng() * Math.PI * 2;
     // Double Take adds whole counter-rotating pairs, spaced around the orbit.
     const pairs = 1 + this.buildMods.extraProjectiles;
@@ -2056,7 +2044,7 @@ export class RunWorld {
           radius: (conf.radius ?? 8) * 1.25,
           lifetimeS: (conf.lifetimeS ?? 2) * 1.35,
         };
-        const pr = this.baseProjectile('arp', evolvedConf, color, conf.damage * 0.8 * (0.8 + 0.4 * velocity));
+        const pr = this.baseProjectile('arp', evolvedConf, color, conf.damage * 0.8);
         pr.pierce = Infinity;
         pr.orbitAngle = angle;
         pr.orbitRadius = conf.orbitRadius!;
@@ -2083,10 +2071,9 @@ export class RunWorld {
     dir: { x: number; y: number },
     conf: WeaponConf,
     color: number,
-    velocity: number,
   ): void {
     const tier = this.tiers.get('bell') ?? 1;
-    const pr = this.baseProjectile('bell', conf, color, conf.damage * (0.8 + 0.4 * velocity));
+    const pr = this.baseProjectile('bell', conf, color, conf.damage);
     pr.vx = dir.x * conf.speed!;
     pr.vy = dir.y * conf.speed!;
     pr.shatter = BELL.shards[tier - 1] ?? BELL.shards[0];
