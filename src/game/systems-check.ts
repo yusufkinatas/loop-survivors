@@ -22,6 +22,7 @@ import {
 } from './meta';
 import { ALL_ENEMY_KINDS, ENEMY_LABELS, RUN, SHOVE_S, STAGE_MAGNET, TIER_LINES, WEAPONS, type EnemyKind } from './config';
 import { rollOffers } from './picks';
+import { mulberry32 } from './rng';
 import { KIT_COLORS, RunWorld, type FxEvent, type RunEvents } from './run';
 import {
   KICK,
@@ -544,6 +545,18 @@ function soundOnlyOutput(expression: 'loud' | 'quiet', evolved: boolean): string
   return JSON.stringify([spawned, probe.enemies.map((e) => e.hp)]);
 }
 
+// NOTE ON WHAT THIS CAN AND CANNOT CATCH. Both operands are produced by the
+// same code at the same commit, so this is a SELF-COMPARISON: it proves the two
+// runs agree with each other, never that either agrees with yesterday. Any
+// drift that moves loud and quiet equally — a halved damage tier, a shrunken
+// footprint — cancels out and this stays green. It is also built with
+// rng: () => 0.5, so it cannot see rng draw-order change at all.
+//
+// That is not a flaw; it is the exact shape ADR-0001 needs, and it should stay
+// this way. It just is not a regression net. The regression net is the recorded
+// golden baseline in weapon-parity-check.ts, which compares against a digest
+// captured at a known-good commit and counts rng draws. The two are
+// complementary and neither substitutes for the other.
 for (const evolved of [false, true]) {
   assert.equal(soundOnlyOutput('loud', evolved), soundOnlyOutput('quiet', evolved),
     `velocity and variant must not change ${evolved ? 'evolved' : 'base'} damage or footprint`);
@@ -688,6 +701,65 @@ class FakeCtx implements WeaponContext {
 
 const kickTiers = KICK.stats.tiers;
 
+// ---------------------------------------------------------------------------
+// The kick's tuning, pinned to LITERALS.
+//
+// #139 moved these numbers out of run.ts and promised "values unchanged". A
+// promise is only worth something if something can catch it being broken, and
+// the checks below this block cannot: they assert module output AGAINST the
+// stats block (`kickTiers[3].damage * KICK.stats.evolvedDamageMul`), so both
+// sides of the assertion move together and any edit to a stat is self-
+// consistent. Halving the damage ladder used to leave every one of them green.
+//
+// So: literals. The right-hand side of each assertion below is a number a human
+// typed after reading the pre-#139 run.ts, not an expression that reads the
+// value it is checking. That is the entire point — a later refactor cannot
+// quietly move one of these and still pass.
+//
+// These are BALANCE numbers. If one legitimately changes, this block is
+// supposed to fail, and updating it is how the change gets reviewed.
+// ---------------------------------------------------------------------------
+{
+  // WORLD_SCALE (800 / 456) is irrational-looking enough that the products are
+  // pinned rounded, with the authored H800 figure shown in the comment.
+  const round6 = (n: number): number => Math.round(n * 1e6) / 1e6;
+
+  // The per-tier damage ladder. Mapped from Whip levels 1, 3, 5 and 8.
+  assert.deepEqual(
+    kickTiers.map((t) => [t.damage, t.area, t.amount]),
+    [
+      [3, 1, 1],
+      [5, 1, 2],
+      [9, 1.1, 2],
+      [15, 1.2, 2],
+    ],
+    'the kick damage/area/amount ladder moved',
+  );
+  assert.equal(kickTiers.length, TIER_COUNT, 'the kick ladder must have exactly TIER_COUNT rungs');
+
+  // Strip geometry, in H800 world units.
+  assert.equal(round6(KICK.stats.stripBaseWidth), 149.122807, 'stripBaseWidth moved (85 * WORLD_SCALE)');
+  assert.equal(round6(KICK.stats.stripBaseHeight), 38.596491, 'stripBaseHeight moved (22 * WORLD_SCALE)');
+  assert.equal(KICK.stats.growS, 0.1, 'the strip grow ramp moved');
+  assert.equal(KICK.stats.liveS, 0.2, 'the strip lifetime moved');
+  assert.equal(KICK.stats.followUpDelayS, 0.1, 'the follow-up gap moved');
+  assert.equal(KICK.stats.queryPad, 48, 'the hash query pad moved');
+
+  // Redline Stomp.
+  assert.equal(KICK.stats.evolvedDamageMul, 1.35, 'Redline Stomp damage multiplier moved');
+  assert.equal(KICK.stats.evolvedReachFrac, 0.58, 'Redline Stomp arm length moved');
+  assert.equal(KICK.stats.evolvedHalfFrac, 0.75, 'Redline Stomp arm thickness moved');
+  assert.equal(KICK.stats.evolvedShove, 18, 'Redline Stomp push distance moved');
+
+  // Identity, not tuning, but equally load-bearing: buildsAsProjectile false is
+  // what keeps Needle Tips' projectileDamageMul off the kick, and tickAt is the
+  // phase name the world's tick call site has to match.
+  assert.equal(KICK.stats.buildsAsProjectile, false, 'the kick must not build as a projectile');
+  assert.equal(buildsAsProjectile('kick'), false);
+  assert.equal(KICK.tickAt, 'strikes', 'the kick ticks in the strikes phase');
+  assert.equal(KICK.role, 'kick');
+}
+
 // 1. The base strip defers ENTIRELY: no damage and no fx at fire time.
 {
   const ctx = new FakeCtx();
@@ -803,7 +875,9 @@ const kickTiers = KICK.stats.tiers;
   inst.fire(ctx, kickTiers[3]);
   assert.equal(ctx.hits.length, 1, 'Redline Stomp damages on the trigger, with no tick');
   assert.equal(ctx.hits[0].t, onArm);
-  assert.equal(ctx.hits[0].amount, kickTiers[3].damage * KICK.stats.evolvedDamageMul);
+  // A LITERAL, deliberately: `kickTiers[3].damage * KICK.stats.evolvedDamageMul`
+  // would move with the very stats this is meant to hold still. 15 * 1.35.
+  assert.equal(ctx.hits[0].amount, 20.25);
   assert.deepEqual(ctx.seq, ['damage', 'beam', 'beam', 'beam', 'beam'],
     'Redline Stomp pushes every beam after its damage');
   const beams = ctx.fxLog.filter((e): e is Extract<FxEvent, { type: 'beam' }> => e.type === 'beam');
@@ -839,6 +913,131 @@ const kickTiers = KICK.stats.tiers;
   ctx.step(inst, 20);
   assert.equal(ctx.hits.length, 0, 'a reset weapon lands no delayed damage');
   assert.equal(ctx.fxLog.length, 0, 'a reset weapon pushes no delayed fx');
+}
+
+// ---------------------------------------------------------------------------
+// 11. THE WORLD SIDE OF THE SEAM: the tick call site.
+//
+// Every check above (1-10) drives the module through a fake context and calls
+// inst.tick() directly. That pins the module's contract and pins nothing about
+// how the WORLD calls it. RunWorld.update() ticks migrated weapons by phase —
+// `this.tickWeapons('strikes', dt)` — and TickPhase has five legal names, so
+// mis-wiring that line to a phase no module declares is a clean compile, a
+// silent no-op, and every one of checks 1-10 still passing while all base kick
+// damage becomes zero.
+//
+// So: a REAL RunWorld. Add the weapon, place an enemy at a known offset, fire
+// one trigger, step real frames through update(), and assert the hp dropped by
+// a LITERAL amount. Nothing here reads KICK.stats; the numbers on the right are
+// the ones a designer would recognize off the pedestal.
+//
+// EVERY WEAPON THAT MIGRATES LATER NEEDS THIS. `worldStrike` is the reusable
+// shape: it is role-agnostic, so a new weapon is a new call, not a new harness.
+// The broad behavioral net lives next door in weapon-parity-check.ts; this is
+// the small, named, obvious-on-failure version.
+// ---------------------------------------------------------------------------
+
+/** Drive one trigger of one weapon through a REAL RunWorld and report what it
+ *  did to hand-placed enemies. Deterministic: seeded rng, fixed step, fixed
+ *  canvas, no stage director. */
+function worldStrike(opts: {
+  role: Role;
+  tier: number;
+  /** Item to max out, when the scenario needs an evolution or a build number. */
+  item?: ItemId;
+  evolve?: boolean;
+  /** [dx, dy] offsets from the player. Circle centers are pinned after spawn. */
+  offsets: readonly (readonly [number, number])[];
+  /** Frames of 1/60 to run after the trigger. Zero for weapons that resolve
+   *  synchronously at fire time. */
+  frames: number;
+}): { drops: number[]; damageDealt: number; world: RunWorld } {
+  const world = new RunWorld({ width: 1280, height: 720 }, events, {
+    scripted: false,
+    fx: false,
+    rng: mulberry32(0x7e57),
+  });
+  world.invincible = true;
+  world.addWeapon(opts.role, opts.tier);
+  if (opts.item) world.addItem(opts.item, 5);
+  if (opts.evolve) assert(world.evolve(opts.role), `${opts.role} is not eligible to evolve`);
+
+  const placed = opts.offsets.map(([dx, dy]) => {
+    const e = world.spawnEnemyAt('zombie', world.player.x + dx, world.player.y + dy)!;
+    // spawnEnemyAt takes a sprite-feet position and stores an offset circle
+    // center, so pin the center or the geometry under test is off by the foot
+    // offset. Absurd hp makes each enemy a damage meter: a target that dies
+    // hides exactly the difference this check exists to measure.
+    e.x = world.player.x + dx;
+    e.y = world.player.y + dy;
+    e.hp = 1e6;
+    return e;
+  });
+  // Build the spatial hash at the pinned positions; the strip queries it.
+  world.update(0);
+
+  const before = placed.map((e) => e.hp);
+  world.fireTrigger({ role: opts.role, time: 0, velocity: 1, step: 0 });
+  for (let i = 0; i < opts.frames; i++) world.update(1 / 60);
+
+  return {
+    drops: placed.map((e, i) => before[i] - e.hp),
+    damageDealt: world.damageByRole[opts.role] ?? 0,
+    world,
+  };
+}
+
+{
+  // Deep inside the strip at every tier, so this measures DAMAGE and nothing
+  // else. One trigger, one hit, and the drop is the pedestal number.
+  // Twelve frames is exactly KICK liveS at 1/60 — the whole strike.
+  const ladder = [3, 5, 9, 15];
+  for (let tier = 1; tier <= 4; tier++) {
+    const { drops, damageDealt } = worldStrike({
+      role: 'kick',
+      tier,
+      offsets: [[40, 0]],
+      frames: 12,
+    });
+    assert.equal(drops[0], ladder[tier - 1],
+      `a tier-${tier} kick trigger must take exactly ${ladder[tier - 1]} hp off an enemy ` +
+      'inside the strip, through RunWorld.update() — a zero here means the world never ' +
+      "ticked the module (check RunWorld.update's tickWeapons phase against KICK.tickAt)");
+    assert.equal(damageDealt, ladder[tier - 1],
+      `tier-${tier} kick damage must be attributed to the kick`);
+  }
+
+  // The strip is a FACING-SIDE strip of finite reach, and this is where that
+  // shape is measured against the world's own spatial hash rather than a
+  // hand-written near() filter. Tier 1 deliberately: no opposite-side follow-up
+  // to muddy which side got hit.
+  //   40   deep inside          -> hit
+  //   110  inside full reach    -> hit  (a halved stripBaseWidth loses this one)
+  //   200  past the strip       -> miss
+  //   -60  behind the player    -> miss (facing is +X)
+  //   40 x 26  inside thickness -> hit  (a halved stripBaseHeight loses this one)
+  const reach = worldStrike({
+    role: 'kick',
+    tier: 1,
+    offsets: [[40, 0], [110, 0], [200, 0], [-60, 0], [40, 26]],
+    frames: 12,
+  });
+  assert.deepEqual(reach.drops, [3, 3, 0, 0, 3],
+    'the base strip reaches one facing side, out to its full width and thickness, and no further');
+
+  // Redline Stomp resolves synchronously at fire time — zero frames — and the
+  // drop carries the evolution multiplier. 15 * 1.35.
+  const stomp = worldStrike({
+    role: 'kick',
+    tier: 4,
+    item: 'highTops',
+    evolve: true,
+    // On the +X arm, on the +Y arm, and out in a corner the cross cannot reach.
+    offsets: [[600, 0], [0, 300], [500, 300]],
+    frames: 0,
+  });
+  assert.deepEqual(stomp.drops, [20.25, 20.25, 0],
+    'Redline Stomp crosses the arena for 15 * 1.35 damage and does not fill the corners');
 }
 
 console.log('systems-check: items, note shop, Stage Magnet, enemies, endless director, evolutions, and weapon modules passed');
