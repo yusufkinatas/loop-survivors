@@ -276,6 +276,133 @@ const BASS_QUAKE_FIELD: readonly (readonly [EnemyKind, number, number])[] = [
   ...ring('flower', 360, 12, 1.26),
 ];
 
+/** Bodies on an arc of `radius` around a point OFFSET FROM THE PLAYER by
+ *  (cx, cy), at the listed angles in degrees.
+ *
+ *  Added for the chord (#141), and the offset centre is the whole reason it
+ *  exists. Every other weapon so far fires from the player, so a ring around
+ *  the player is a ring around the thing under test. A chord zone is THROWN:
+ *  it lands on the nearest enemy and its geometry is measured from THERE, so
+ *  the field has to be built around a point that is not the origin.
+ *
+ *  THE ANGLES ARE THE CONSTRAINT, not decoration. The zone lands on whichever
+ *  body is nearest the PLAYER, so every other body in the field must be
+ *  FARTHER from the player than the anchor is or it steals the throw and the
+ *  centre of the geometry moves. With the anchor out along +x at (cx, 0),
+ *  keeping every arc angle inside [-90, 90] guarantees exactly that:
+ *  |(cx + R cos t, R sin t)| >= cx for every cos t >= 0. */
+function arcAt(
+  kind: EnemyKind,
+  cx: number,
+  cy: number,
+  radius: number,
+  degrees: readonly number[],
+): readonly (readonly [EnemyKind, number, number])[] {
+  return degrees.map((deg) => {
+    const a = (deg * Math.PI) / 180;
+    return [kind, cx + radius * Math.cos(a), cy + radius * Math.sin(a)] as const;
+  });
+}
+
+/** Where every base chord scenario throws its zone: far enough out that the
+ *  zone's whole footprint sits away from the player, close enough to be well
+ *  inside ZONE_THROW_RANGE (420). */
+const CHORD_ANCHOR = 170;
+
+/** A comb of concentric arcs around the thrown zone's centre, cut so that each
+ *  of the four base tiers reaches a DIFFERENT set of them.
+ *
+ *  SWARMERS, and the size is the reason. The chord's radius ladder is
+ *  48 / 56 / 64 / 76 — four boundaries EIGHT UNITS APART — and damageArea
+ *  resolves a hit as `circlesOverlap`, i.e. at `zone.radius + body.radius`. A
+ *  zombie (radius 21.05) or a flower (17.5, and it alternates) is wider than
+ *  the gap between two rungs, so two arcs cut to separate tier 2 from tier 3
+ *  would be closer together than one body is wide and the separation pass in
+ *  world.update(0) would shove them into each other before anything fired. A
+ *  swarmer is radius 9 — 18 across, the smallest body in the game that is not
+ *  a darter — so arcs eight units apart survive separation once they are
+ *  stepped 22.5 degrees in phase, and the ladder becomes readable.
+ *
+ *  THE CUTS, against contact distances of 57 / 65 / 73 / 85:
+ *    arc 53   inside every tier
+ *    arc 61   tiers 2, 3, 4      (t1's reach stops at 57)
+ *    arc 69   tiers 3, 4         (t2's stops at 65)
+ *    arc 79   tier 4 only        (t3's stops at 73)
+ *    arc 89   no tier reaches it — the "the zone stopped here" marker
+ *  Every cut clears its nearest boundary by at least four units, which is more
+ *  than the 1.58 a swarmer walks in the single frame these scenarios run
+ *  before the zone's first tick lands.
+ *
+ *  The anchor sits at the head of the list so it is unambiguously the throw
+ *  target: it is the only body at distance CHORD_ANCHOR and every arc angle is
+ *  inside [-90, 90], so nothing else can tie it, let alone beat it. */
+const CHORD_ARC_FIELD: readonly (readonly [EnemyKind, number, number])[] = [
+  ['swarmer', CHORD_ANCHOR, 0],
+  ...arcAt('swarmer', CHORD_ANCHOR, 0, 53, [-90, -45, 0, 45, 90]),
+  ...arcAt('swarmer', CHORD_ANCHOR, 0, 61, [-67.5, -22.5, 22.5, 67.5]),
+  ...arcAt('swarmer', CHORD_ANCHOR, 0, 69, [-90, -45, 0, 45, 90]),
+  ...arcAt('swarmer', CHORD_ANCHOR, 0, 79, [-67.5, -22.5, 22.5, 67.5]),
+  ...arcAt('swarmer', CHORD_ANCHOR, 0, 89, [-90, -45, 0, 45, 90]),
+];
+
+/** Bodies parked inside a thrown zone plus one witness outside it, for the
+ *  scenarios that pin the SLOW rather than the damage.
+ *
+ *  ZOMBIES, and here the speed is the point rather than the problem. A zone's
+ *  slow is only ever visible as a body moving less far than it should, and the
+ *  digest records `lastMove=` — the exact per-frame velocity movEnemies chose,
+ *  AFTER `speed *= e.zoneSlowMul`. A zombie walks 44.65 units a second, so
+ *  0.55 of that is a difference of 20 units a second in a digested number; a
+ *  flower's 8.9 would put the whole signal down in the fourth decimal.
+ *
+ *  THE WITNESS IS OFF TO THE SIDE, not further down the axis, and the first
+ *  version of this field got that wrong. A zombie parked 120 units past the
+ *  zone — comfortably outside tier 4's reach of 97 — WALKS 52 UNITS toward the
+ *  player over the 70 frames these scenarios run and ends up inside the zone
+ *  after all, recording a slowed lastMove and quietly deleting the control. At
+ *  (200, 400) it is 400 from the zone centre and closes on the PLAYER, not on
+ *  the zone, so it is still 350 clear at the end and still outside even the
+ *  evolved 174-unit reach. It records the UNSLOWED lastMove in the same digest,
+ *  so "everything slowed" and "nothing slowed" are told apart without reading a
+ *  second scenario — and at 447 from the player it can never steal the throw
+ *  from the anchor at 200.
+ *
+ *  Spacing is 50 on the arc against a zombie's 42.11 diameter, so separation
+ *  leaves the field alone. */
+const CHORD_SLOW_FIELD: readonly (readonly [EnemyKind, number, number])[] = [
+  ['zombie', 200, 0],
+  ...arcAt('zombie', 200, 0, 50, [-90, -30, 30, 90]),
+  ['zombie', 200, 400],
+];
+
+/** Sixty-one bodies laid out so that the drift target Afterhours picks under
+ *  its SAMPLING STRIDE is a different body from the one it would pick if it
+ *  scanned the whole array. See the scenario for the arithmetic.
+ *
+ *  Even array indices are a loose ring at 300; odd indices are a packed grid
+ *  parked far off at +x; the throw anchor is appended LAST so it does not
+ *  shift the parity of everything behind it. */
+const CHORD_STRIDE_FIELD: readonly (readonly [EnemyKind, number, number])[] = (() => {
+  const out: (readonly [EnemyKind, number, number])[] = [];
+  for (let i = 0; i < 30; i++) {
+    const a = (Math.PI * 2 * i) / 30;
+    // EVEN index: loose ring, 62.8 apart, so each member's neighbour count
+    // inside the 120-unit radius is exactly itself plus its two neighbours.
+    out.push(['flower', 300 * Math.cos(a), 300 * Math.sin(a)] as const);
+    // ODD index: a 6-wide grid on 50-unit spacing, parked 700+ units out on
+    // the OPPOSITE side, where nothing on the ring can see it. Every member has
+    // 9-plus neighbours. Opposite side on purpose: it makes "the stride picked
+    // the ring" and "a full scan picked the grid" point the drift in two
+    // directions 180 degrees apart, instead of two nearby bearings that a
+    // digest would separate only in the second decimal.
+    out.push(['flower', -700 - (i % 6) * 50, -100 + Math.floor(i / 6) * 50] as const);
+  }
+  // Index 60. Nearest to the player at 150, and 150 from the nearest ring
+  // member, so it neither steals a neighbour count nor ties the throw.
+  out.push(['flower', 0, -150] as const);
+  return out;
+})();
+
 export const SCENARIOS: readonly ParityScenario[] = [
   // ---- the kick, solo, across the whole tier ladder -----------------------
   // One block per tier because the ladder is not one shape scaled four ways:
@@ -2547,6 +2674,646 @@ export const SCENARIOS: readonly ParityScenario[] = [
       { fire: 'bass' }, { fire: 'bell' }, { fire: 'arp' },
       { fire: 'bass' },
       { frames: 160 },
+    ],
+  },
+
+  // ==========================================================================
+  // THE CHORD (#141)
+  // ==========================================================================
+  // Recorded BEFORE the extraction, on the unchanged run.ts, per the order at
+  // the top of this file.
+  //
+  // The chord is the sixth shape the migration has met and the first that owns
+  // an ENTITY TYPE nobody else uses. The kick owned a pass; the arp owned the
+  // shared projectile loop through ProjectileBehavior; the snare, hat and bass
+  // rode shared physics. The chord is the only weapon in the game that spawns
+  // a Zone, and `updateZones` — a SHARED loop, inside the zero-branches guard's
+  // protected set — is today almost entirely chord code:
+  //
+  //   1. THE THROW. It is the only weapon that does not fire from the player.
+  //      `nearestEnemy(ZONE_THROW_RANGE)` picks a body inside 420 and the zone
+  //      lands on that body's CENTRE; with nothing in range it drops underfoot.
+  //      This extraction is the one that adds ctx.nearestEnemy.
+  //   2. THE TICK GRID. A zone spawns with `tickT` 0, so it lands one tick
+  //      IMMEDIATELY and then every ZONE_TICK_S (0.9s) for its whole life. The
+  //      per-tier `damage` is per tick, not per trigger.
+  //   3. THE SLOW. Each tick writes `slowT = ZONE_TICK_S + 0.15` and folds
+  //      `zoneSlowMul = min(zoneSlowMul, z.slowMul)` onto everything it covers
+  //      — ZONE_SLOW_MUL 0.55 base, 0.42 evolved. The min is a COMBINATION
+  //      rule, not an assignment, and it only shows itself when two zones of
+  //      different strengths cover the same body.
+  //   4. AFTERHOURS: a 65-unit-a-second DRIFT toward the densest pack, and
+  //      pairwise MERGING with three separate caps.
+  //
+  // WHAT THE DIGEST DOES AND DOES NOT SEE. The zone line carries
+  // `pos / r / dmg / life / tick / evolved`, so conf.radius, conf.lifetimeS,
+  // conf.damage, the evolved 1.55 / 1.35 / 1.25 multipliers, ZONE_TICK_S and
+  // every merge cap are pinned AS LITERALS by any scenario that ends with a
+  // zone alive. It does NOT carry `slowMul`, `driftSpeed`, `damageCap` or
+  // `slow`, so those four have to be pinned BEHAVIOURALLY:
+  //   - slowMul through `lastMove=`, the exact per-frame velocity moveEnemies
+  //     chose after `speed *= e.zoneSlowMul`;
+  //   - slow / slowT through `slow=` on the enemy line;
+  //   - driftSpeed through where the zone has walked to;
+  //   - damageCap through a merged zone's damage — see the cascade scenario,
+  //     which is the only one that gets anywhere near it.
+  //
+  // THE CHORD DRAWS NO RNG AT FIRE TIME. nearestEnemy is a scan and spawnZone
+  // rolls nothing, so a chord trigger costs zero draws — and the scenarios
+  // below prove it by arithmetic rather than by a zero: every solo scenario
+  // with absurd hp records `rngDraws: 1`, the fixed setup cost every scenario
+  // in this file pays, and the ones that fire ONE trigger, FOUR triggers and
+  // TEN triggers all record that same 1. That is the same trap the hat block
+  // describes: `aimDir` is a one-line-tidier spelling of the throw and it DRAWS
+  // (twice on an empty screen), which nothing but rngDraws would catch — and
+  // under a per-trigger draw those three counts would read 1, 4 and 10.
+  //
+  // ROLE-KEYED TABLES: THE CHORD IS IN NEITHER, and like the hat that is a
+  // finding rather than an omission. WEAPON_SHOVE is { clap: 12 } and
+  // SPARK_HIT_ROLES is { lead }; a chord tick lands damage and a slow and
+  // nothing else. Every scenario below records that ABSENCE — knock stays
+  // 0,0,0 on every body a zone covers, and the fx stream carries `dmg` events
+  // and death rings only — so an extraction that "tidies up" by giving the
+  // zone a shove or a spark it never had fails here.
+
+  // ---- the base ladder, as literals ---------------------------------------
+  // One live zone and one body under it. The digested zone line is the tier's
+  // whole stats block written out: radius 48/56/64/76, lifetime 2.0/2.2/2.5/2.8
+  // and damage 1/1/1/2, plus `tick=` holding ZONE_TICK_S minus the one frame
+  // that has elapsed since the spawn tick fired. The ring at 900 populates the
+  // spatial hash without ever being in reach.
+  //
+  // ONE FRAME, deliberately: it is the shortest run that proves `tickT` starts
+  // at ZERO. A zone that started its timer at ZONE_TICK_S instead would have
+  // dealt nothing at all by here, and the damage line is what says otherwise.
+  ...([1, 2, 3, 4] as const).map((tier): ParityScenario => ({
+    name: `chord base tier ${tier}, solo, one live zone pins the stat row`,
+    seed: 0xc40d00 + tier,
+    weapons: [['chord', tier]],
+    enemies: [['swarmer', CHORD_ANCHOR, 0], ...ring('zombie', 900, 8)],
+    hp: 1e6,
+    steps: [{ fire: 'chord' }, { frames: 1 }],
+  })),
+
+  // ---- the base ladder, as consequences -----------------------------------
+  // The same four rungs read as WHICH BODIES the zone actually covers, against
+  // the arc comb. The literal pin above catches a changed radius; this one
+  // catches a radius that is still right but is no longer being READ — and it
+  // catches the reach RULE as well as the number, because damageArea resolves
+  // at `zone.radius + body.radius` and an extraction that compared against the
+  // bare radius would drop the innermost arc at every tier.
+  ...([1, 2, 3, 4] as const).map((tier): ParityScenario => ({
+    name: `chord base tier ${tier}, solo, the radius comb`,
+    seed: 0xc40c00 + tier,
+    weapons: [['chord', tier]],
+    enemies: CHORD_ARC_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'chord' }, { frames: 1 }],
+  })),
+
+  // ---- the tick grid -------------------------------------------------------
+  // A whole zone life at 60fps. ZONE_TICK_S is 0.9 and a zone lands one tick on
+  // spawn, so the tick count is 1 + floor(lifetimeS / 0.9): FOUR ticks at tier
+  // 4 (2.8s) and THREE at tier 1 (2.0s). That relationship is the one config.ts
+  // spells out at length and the one a "tidy" extraction is most likely to
+  // break by starting the timer full — which costs exactly one tick per zone at
+  // every tier and nothing else.
+  //
+  // Both rungs run past the zone's death (200 frames is 3.33s), so the digest
+  // also records the retirement: an empty zones list, and a total damage figure
+  // that stops climbing. The swarmers walk in toward the player while this
+  // happens, which is real and deterministic — a body that walks OUT of a zone
+  // between ticks is exactly the case that separates "damage per tick" from
+  // "damage per zone".
+  ...([1, 4] as const).map((tier): ParityScenario => ({
+    name: `chord base tier ${tier}, solo, a whole zone life on the tick grid`,
+    seed: 0xc40719 + tier,
+    weapons: [['chord', tier]],
+    enemies: CHORD_ARC_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'chord' }, { frames: 200 }],
+  })),
+
+  // ---- the throw -----------------------------------------------------------
+  // ZONE_THROW_RANGE is 420 and nearestEnemy compares SQUARED distances with a
+  // strict `<`, so the boundary is exactly 420 from the player. These two
+  // scenarios bracket it ten units apart, and the difference between them is
+  // not a damage total but the zone's own digested POSITION: at 415 the zone
+  // lands on the body, at 425 it lands underfoot and the body — 425 out against
+  // tier 4's reach of 76 + 17.5 — is never touched at all.
+  //
+  // FLOWERS, because the throw is resolved at fire time from the placed
+  // geometry and a flower is the one body slow enough (8.9 a second) that the
+  // placed geometry is still the geometry when the scenario ends. The ring at
+  // 900 is out of range in both, so it can never be the target.
+  {
+    name: 'chord base tier 4, thrown at the nearest body inside the 420 range',
+    seed: 0xc40417,
+    weapons: [['chord', 4]],
+    enemies: [['flower', 415, 0], ...ring('zombie', 900, 8)],
+    hp: 1e6,
+    steps: [{ fire: 'chord' }, { frames: 1 }],
+  },
+  {
+    name: 'chord base tier 4, nothing inside the 420 range drops it underfoot',
+    seed: 0xc40425,
+    weapons: [['chord', 4]],
+    enemies: [['flower', 425, 0], ...ring('zombie', 900, 8)],
+    hp: 1e6,
+    steps: [{ fire: 'chord' }, { frames: 1 }],
+  },
+
+  // ---- the zone does not follow the player ---------------------------------
+  // A base zone's driftSpeed is 0: it is a carpet laid on the ground, not an
+  // aura. The player fires, then walks away for a second and a half. The zone's
+  // digested position must not move by one unit, and the arc comb it was thrown
+  // onto must keep taking ticks while the player leaves.
+  //
+  // This is the shape the bass block calls out for Subquake and it is available
+  // to any extraction: a module that keeps a reference to the player and
+  // re-anchors its entity every tick looks tidier than one that copies two
+  // numbers at spawn, and nothing but a scenario where the player MOVES ever
+  // notices the difference.
+  {
+    name: 'chord base tier 4, the zone stays where it landed when the player walks off',
+    seed: 0xc40a1c,
+    weapons: [['chord', 4]],
+    enemies: CHORD_ARC_FIELD,
+    hp: 1e6,
+    steps: [
+      { fire: 'chord' },
+      { frames: 5 },
+      { walk: [-1, 0] },
+      { frames: 90 },
+    ],
+  },
+
+  // ---- the slow ------------------------------------------------------------
+  // The half of the weapon that is NOT damage, and the half with the thinnest
+  // cover: `slowMul` is not a digested field on the zone, so the only trace
+  // ZONE_SLOW_MUL leaves anywhere is a body moving more slowly than it should.
+  // `lastMove=` records exactly that, frame by frame, and the unslowed witness
+  // out at (200, 400) records what the same body does when no zone holds it.
+  //
+  // SEVENTY FRAMES, which is 1.167s, and the number is chosen against the two
+  // constants that gate each other here. slowT is set to ZONE_TICK_S + 0.15 =
+  // 1.05 and the next tick lands at 0.9, so the slow is RENEWED before it
+  // expires and a held body never gets a full-speed frame. Cut the 0.15 to 0
+  // and the two numbers meet exactly; cut ZONE_TICK_S's renewal and a gap opens
+  // in the middle of the run. Either way a `lastMove` line moves.
+  {
+    name: 'chord base tier 4, the zone slows what it holds',
+    seed: 0xc4051040,
+    weapons: [['chord', 4]],
+    enemies: CHORD_SLOW_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'chord' }, { frames: 70 }],
+  },
+
+  // ---- several zones at once ----------------------------------------------
+  // Four triggers on a beat grid. Base zone lifetimes were deliberately raised
+  // past two trigger intervals (config.ts says so at length) precisely so that
+  // zones OVERLAP and the chord reads as a carpet building up rather than one
+  // area teleporting around — so several live zones is the weapon's normal
+  // condition, not an edge case.
+  //
+  // Each zone carries its OWN tickT, so the four tick grids interleave rather
+  // than firing together; a refactor that hoists the timer onto the weapon
+  // collapses four independent schedules into one and this scenario moves. Base
+  // zones must ALSO never merge — the merge pass skips anything that is not
+  // evolved — so the digest has to end with four separate zone lines, not one
+  // fat one.
+  {
+    name: 'chord base tier 4, four triggers on a beat grid',
+    seed: 0xc40b17,
+    weapons: [['chord', 4]],
+    enemies: CHORD_ARC_FIELD,
+    hp: 1e6,
+    steps: [
+      { fire: 'chord' }, { frames: 11 },
+      { fire: 'chord' }, { frames: 11 },
+      { fire: 'chord' }, { frames: 11 },
+      { fire: 'chord' }, { frames: 120 },
+    ],
+  },
+
+  // ---- lethal --------------------------------------------------------------
+  // Natural hp, so kills, killsByRole, gem/note drops and every rng draw behind
+  // them are in the digest — the half of the coverage the damage-meter
+  // scenarios above deliberately give up.
+  //
+  // BATS at 1hp, because the base chord's damage ladder is 1 or 2 PER TICK and
+  // against anything tougher the zone expires long before a body dies. A bat
+  // dies to any tick, so the field turns directly into "which bodies did this
+  // tick cover, in what order" — and the hash query order behind that ordering
+  // is itself part of what the extraction must reproduce.
+  {
+    name: 'chord base tier 4, solo, lethal bat pack',
+    seed: 0xc4011e7,
+    weapons: [['chord', 4]],
+    enemies: [
+      ['bat', CHORD_ANCHOR, 0],
+      ...arcAt('bat', CHORD_ANCHOR, 0, 40, [-90, -45, 0, 45, 90]),
+      ...arcAt('bat', CHORD_ANCHOR, 0, 70, [-67.5, -22.5, 22.5, 67.5]),
+      ...arcAt('bat', CHORD_ANCHOR, 0, 100, [-90, -45, 0, 45, 90]),
+    ],
+    steps: [{ fire: 'chord' }, { frames: 120 }],
+  },
+  // Splitters at 4hp against tier 4's 2 damage a tick: two ticks and a body
+  // bursts, which means the TICK CADENCE decides the frame each burst happens
+  // on. Each burst pushes four swarmers into the live enemy array, and
+  // damageArea is walking a query buffer taken from the spatial hash before the
+  // burst — so the collection grows under the loop, and the newcomers are only
+  // reached on the NEXT tick. That ordering is part of what "behavior
+  // unchanged" has to mean.
+  {
+    name: 'chord base tier 4, solo, lethal with splitters',
+    seed: 0xc4015917,
+    weapons: [['chord', 4]],
+    enemies: [
+      ['splitter', CHORD_ANCHOR, 0],
+      ...arcAt('splitter', CHORD_ANCHOR, 0, 55, [-90, -30, 30, 90]),
+      ...arcAt('splitter', CHORD_ANCHOR, 0, 95, [-60, 0, 60]),
+    ],
+    hp: 4,
+    steps: [{ fire: 'chord' }, { frames: 200 }],
+  },
+
+  // ==========================================================================
+  // AFTERHOURS
+  // ==========================================================================
+  // WIDE LENS IS NOT OPTIONAL HERE, and it changes the geometry of every
+  // scenario below. Afterhours' partner item is Wide Lens and eligibleEvolution
+  // gates every evolution on its partner sitting at max level, so an Afterhours
+  // zone can only ever exist alongside areaMul 1.30. applyBuild multiplies
+  // conf.radius by areaMul BEFORE spawnZone multiplies it by 1.55, so a tier-4
+  // Afterhours zone is 76 * 1.30 * 1.55 = 153.14 units across, never 117.8.
+  // Both multipliers are in the digested `r=`, in that order.
+  //
+  // The evolution is four separate changes on top of that: radius x1.55,
+  // lifetime x1.35, damage x1.25, slowMul 0.42 instead of 0.55 — plus two
+  // behaviours the base zone does not have at all, the drift and the merge.
+
+  // THERE IS NO TIER LADDER HERE, and that is a rule rather than a gap:
+  // eligibleEvolution refuses any weapon below tier 4, so an Afterhours zone
+  // only ever exists at 76 * 1.30 * 1.55. Every scenario below is tier 4 for
+  // that reason, and the consequences run deeper than scenario bookkeeping —
+  // see the merge block.
+
+  // ---- the evolved multipliers, as literals -------------------------------
+  // One live zone, one frame. Every one of the three spawn multipliers is a
+  // separate factor in a separate digested field, so an edit to any one of them
+  // moves exactly one number.
+  {
+    name: 'chord evolved (Afterhours), one live zone pins the multipliers',
+    seed: 0xaf7e04,
+    weapons: [['chord', 4]],
+    items: [['wideLens', 5]],
+    evolved: ['chord'],
+    enemies: [['swarmer', CHORD_ANCHOR, 0], ...ring('zombie', 900, 8)],
+    hp: 1e6,
+    steps: [{ fire: 'chord' }, { frames: 1 }],
+  },
+
+  // ---- the harder slow -----------------------------------------------------
+  // The same field and the same seventy frames as the base slow scenario, so
+  // the two digests are readable side by side: every `lastMove` under an
+  // Afterhours zone is 18.7 units a frame — 0.42 of a zombie's walk — where the
+  // base scenario records 24.5, which is 0.55 of it. The witness stays outside
+  // both zones and records the full 44.65 in both, so the pair of digests
+  // separates "the slow got stronger" from "everything got slower".
+  {
+    name: 'chord evolved (Afterhours), the harder slow',
+    seed: 0xaf75104,
+    weapons: [['chord', 4]],
+    items: [['wideLens', 5]],
+    evolved: ['chord'],
+    enemies: CHORD_SLOW_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'chord' }, { frames: 70 }],
+  },
+
+  // ---- the drift -----------------------------------------------------------
+  // Afterhours zones walk. Every frame the zone picks the live enemy with the
+  // most neighbours inside 120 units and steps `driftSpeed * dt` toward it,
+  // clamped to the remaining distance — 65 units a second, and driftSpeed is
+  // NOT a digested field, so where the zone has got to is the only record of
+  // it.
+  //
+  // The field is a lone throw anchor at 200 and a packed file out at 520-870.
+  // The anchor has one neighbour (itself); the file's middle members have five,
+  // so the drift target is a file member and the zone leaves the body it landed
+  // on and crosses 162 units of open ground toward the pack over 150 frames.
+  // A zone that had learned to follow the PLAYER instead would walk the other
+  // way; a zone that had lost its drift would still be sitting on the anchor.
+  {
+    name: 'chord evolved (Afterhours), the zone drifts toward the densest pack',
+    seed: 0xaf7d21f7,
+    weapons: [['chord', 4]],
+    items: [['wideLens', 5]],
+    evolved: ['chord'],
+    enemies: [['flower', 200, 0], ...file('flower', [520, 570, 620, 670, 720, 770, 820, 870])],
+    hp: 1e6,
+    steps: [{ fire: 'chord' }, { frames: 150 }],
+  },
+
+  // ---- the drift target is SAMPLED, not scanned ---------------------------
+  // The single strangest line in the whole weapon, and the one an extraction is
+  // most likely to "clean up" into something that reads better and behaves
+  // differently:
+  //
+  //     for (let sample = 0; sample < this.enemies.length;
+  //          sample += Math.max(1, Math.floor(this.enemies.length / 30)))
+  //
+  // It is a STRIDE over the enemy array, not a scan of it. Under thirty bodies
+  // the stride is 1 and it happens to look like a scan, which is why every
+  // other scenario in this block is blind to it: they all run small fields.
+  // With SIXTY-ONE bodies the stride is 2, and only EVEN array indices are ever
+  // considered as drift targets.
+  //
+  // CHORD_STRIDE_FIELD is built so that the parity of an index is the whole
+  // answer. Even indices are a loose ring at 300 where every member has exactly
+  // three neighbours; odd indices are a packed grid parked 700 units out at -x
+  // where every member has nine or more. So:
+  //   - as written (stride 2, evens only): the best sampled body is the first
+  //     ring member, at (300, 0), and the zone drifts toward +x;
+  //   - scanning every body (stride 1): a grid member wins outright and the
+  //     zone drifts toward -x, 180 degrees the other way.
+  // The throw anchor is appended LAST, at index 60, so it does not shift the
+  // parity of everything behind it, and it sits 150 from the player (nearest,
+  // so it takes the throw) and 150 from the nearest ring member (so it neither
+  // ties the throw nor inflates anybody's neighbour count).
+  //
+  // Ties are resolved by `>` against a bestNeighbors seeded at -1, i.e. FIRST
+  // sampled wins, so the target is pinned to one exact body and not to a set.
+  {
+    name: 'chord evolved (Afterhours), the drift target is sampled with a stride',
+    seed: 0xaf751de,
+    weapons: [['chord', 4]],
+    items: [['wideLens', 5]],
+    evolved: ['chord'],
+    enemies: CHORD_STRIDE_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'chord' }, { frames: 120 }],
+  },
+
+  // ---- the merge -----------------------------------------------------------
+  // Afterhours zones that overlap fuse, pairwise, once per zone per frame,
+  // AFTER the tick pass — which is why the pass order matters: each original
+  // zone lands its currently scheduled tick at most once before it is absorbed.
+  // The survivor is the NEWER zone (the loop walks the array from the top down
+  // and `a` is the higher index), and it takes an area-weighted centroid, a
+  // radius of `min(180, sqrt(ra^2 + rb^2))`, a lifetime of
+  // `min(4.5, max + min * 0.25)` and a damage of
+  // `min(a.damageCap, a.damage + b.damage * 0.5)`.
+  //
+  // A FINDING, recorded here because the extraction has to know it: THE RADIUS
+  // CAP ALWAYS BINDS. Afterhours only exists at tier 4 with Wide Lens at max,
+  // so every fresh zone is exactly 153.14 across and the very first merge asks
+  // for sqrt(2) * 153.14 = 216.57 — already past 180. There is no reachable
+  // state in which `Math.sqrt(totalArea)` decides a merged radius: the answer
+  // is 180 on the first merge and 180 forever after. So these scenarios pin the
+  // CAP, and the sqrt underneath it is pinned only as "whatever it produces is
+  // at least 180". An extraction may not read that as licence to drop the
+  // formula — it must be ported verbatim — but a mutation to the sqrt alone
+  // will NOT fail this harness, and that has to be said out loud rather than
+  // discovered later.
+  //
+  // The lifetime cap is different, and both sides of it are covered below: a
+  // fresh pair asks for 3.78 + 0.945 = 4.725 and is clamped to 4.5, while a
+  // pair whose older half has decayed past 2.88 seconds of life is NOT clamped
+  // and the `max + min * 0.25` arithmetic decides the answer outright.
+
+  // Two triggers eleven frames apart, both zones essentially fresh: the merge
+  // asks for 216.57 radius and 4.725 lifetime and is clamped on BOTH. This is
+  // the scenario that fails if either cap is removed.
+  {
+    name: 'chord evolved (Afterhours), two fresh zones merge and both caps bind',
+    seed: 0xaf7c1a4,
+    weapons: [['chord', 4]],
+    items: [['wideLens', 5]],
+    evolved: ['chord'],
+    enemies: [['flower', 200, 0], ...arcAt('flower', 200, 0, 90, [-60, 0, 60])],
+    hp: 1e6,
+    steps: [
+      { fire: 'chord' }, { frames: 11 },
+      { fire: 'chord' }, { frames: 40 },
+    ],
+  },
+  // The same pair NINETY FRAMES apart, and the gap is the whole point. The
+  // older zone has burned 1.5 of its 3.78 seconds by the time the second lands,
+  // so `max + min * 0.25` comes out at 3.78 + 2.28 * 0.25 = 4.35 — UNDER the
+  // 4.5 cap — and the merged lifetime is the formula's answer rather than the
+  // clamp's. This is the scenario that fails if the 0.25 coefficient moves, or
+  // if `max`/`min` are swapped, or if somebody replaces the pair with an
+  // average; the fresh-pair scenario above cannot see any of those, because the
+  // clamp swallows all of them.
+  {
+    name: 'chord evolved (Afterhours), a decayed partner leaves the lifetime un-clamped',
+    seed: 0xaf7de4c,
+    weapons: [['chord', 4]],
+    items: [['wideLens', 5]],
+    evolved: ['chord'],
+    enemies: [['flower', 200, 0], ...arcAt('flower', 200, 0, 90, [-60, 0, 60])],
+    hp: 1e6,
+    steps: [
+      { fire: 'chord' }, { frames: 90 },
+      { fire: 'chord' }, { frames: 60 },
+    ],
+  },
+  // Four triggers on a beat grid, so the merge runs three times in a row and
+  // the DAMAGE accumulator is the thing under test rather than the geometry.
+  // The survivor is always the newest zone, so each merge is
+  // `2.5 + previous * 0.5`: 3.75, then 4.375, then 4.6875 — a convergent series
+  // that walks toward 5 and can never reach the 7.5 cap. Three separate rungs
+  // of it are in one digest, so the 0.5 coefficient and the "newest survives"
+  // direction both have cover.
+  {
+    name: 'chord evolved (Afterhours), four triggers accumulate merged damage',
+    seed: 0xaf7ca9,
+    weapons: [['chord', 4]],
+    items: [['wideLens', 5]],
+    evolved: ['chord'],
+    enemies: [['flower', 200, 0], ...arcAt('flower', 200, 0, 90, [-60, 0, 60])],
+    hp: 1e6,
+    steps: [
+      { fire: 'chord' }, { frames: 6 },
+      { fire: 'chord' }, { frames: 6 },
+      { fire: 'chord' }, { frames: 6 },
+      { fire: 'chord' }, { frames: 60 },
+    ],
+  },
+  // TEN TRIGGERS INSIDE ONE FRAME. Ten zones stack on the same point, and the
+  // merge pass then cascades: it walks down the array fusing pairs, skipping an
+  // extra index after each fusion (`i -= 1; break;` plus the loop's own `i--`),
+  // so ONE pass halves the population rather than reducing it by one. That
+  // index arithmetic is the most delicate thing in the whole loop and it has no
+  // other cover — with one merge per frame the `i -= 1` is unobservable.
+  //
+  // It is also the only route anywhere near `damageCap` (spawn damage x3, so
+  // 7.5). Under sequential triggers the accumulator converges on 5 and the cap
+  // can NEVER bind; only a cascade, where the absorbed zone is itself already a
+  // merge, pushes past that. Whether it reaches the clamp is recorded rather
+  // than asserted — the digest says what the number is, and the extraction has
+  // to reproduce it.
+  {
+    name: 'chord evolved (Afterhours), a same-frame cascade of merges',
+    seed: 0xaf7ca5c,
+    weapons: [['chord', 4]],
+    items: [['wideLens', 5]],
+    evolved: ['chord'],
+    enemies: [['flower', 200, 0], ...arcAt('flower', 200, 0, 90, [-60, 0, 60])],
+    hp: 1e6,
+    steps: [
+      { fire: 'chord' }, { fire: 'chord' }, { fire: 'chord' }, { fire: 'chord' },
+      { fire: 'chord' }, { fire: 'chord' }, { fire: 'chord' }, { fire: 'chord' },
+      { fire: 'chord' }, { fire: 'chord' },
+      { frames: 60 },
+    ],
+  },
+
+  // ---- lethal --------------------------------------------------------------
+  // Natural-ish hp under a drifting, merging zone. Splitters at 6hp against
+  // 2.5 damage a tick is three ticks to a burst, so the tick grid decides the
+  // frame each burst lands on; the bursts push swarmers into the array the zone
+  // is walking; and the zone MOVES while all of that happens, so which bodies
+  // it covers changes between ticks. Two triggers, so a merge is in the middle
+  // of it.
+  {
+    name: 'chord evolved (Afterhours), lethal with splitters',
+    seed: 0xaf7115,
+    weapons: [['chord', 4]],
+    items: [['wideLens', 5]],
+    evolved: ['chord'],
+    enemies: [
+      ['splitter', CHORD_ANCHOR, 0],
+      ...arcAt('splitter', CHORD_ANCHOR, 0, 60, [-90, -30, 30, 90]),
+      ...arcAt('splitter', CHORD_ANCHOR, 0, 110, [-60, 0, 60]),
+      ...arcAt('splitter', CHORD_ANCHOR, 0, 160, [-45, 45]),
+    ],
+    hp: 6,
+    steps: [
+      { fire: 'chord' }, { frames: 20 },
+      { fire: 'chord' }, { frames: 200 },
+    ],
+  },
+
+  // ---- mid-evolve ----------------------------------------------------------
+  // A base zone still ticking when the chord evolves, and the two of them
+  // overlapping the same bodies. `evolved` is frozen on the zone at spawn, so
+  // the base zone must keep its 98.8 radius, its 2.8-second life, its 0.55
+  // slow and its ZERO drift while an Afterhours zone breathes 153 units across
+  // it, walks at 65 a second, and tries to merge — and CANNOT, because the
+  // merge pass skips any zone that is not evolved. Base and evolved chord in
+  // the same frame in the same array, which is the seam an extraction is most
+  // likely to unify into one mode flag read at tick time instead of at spawn
+  // time.
+  //
+  // It is also the ONLY place the slow's combination rule is visible.
+  // `e.zoneSlowMul = Math.min(e.zoneSlowMul, z.slowMul)` is a min, not an
+  // assignment, so a body covered by both zones walks at 0.42 and not at 0.55
+  // and not at 0.231 — three different answers that only differ when the two
+  // strengths differ. Every other scenario here has one slowMul in play and
+  // cannot tell a min from a write.
+  {
+    name: 'chord mid-evolve with a base zone still holding the pack',
+    seed: 0xc402ed0,
+    weapons: [['chord', 4]],
+    items: [['wideLens', 5]],
+    enemies: CHORD_SLOW_FIELD,
+    hp: 1e6,
+    steps: [
+      { fire: 'chord' },
+      { frames: 20 },
+      { evolve: 'chord' },
+      { frames: 6 },
+      { fire: 'chord' },
+      { frames: 140 },
+    ],
+  },
+
+  // ---- the chord in a band -------------------------------------------------
+  // Ordering. A zone is the longest-lived entity any weapon leaves on the field
+  // (2.8s base, 3.78 evolved, up to 4.5 merged) and it is the only one that
+  // writes to a channel — `zoneSlowMul` — that every OTHER weapon then reads
+  // indirectly, because a slowed body is somewhere different when the next
+  // weapon's shot arrives. So the chord in a band is not just eight weapons of
+  // noise around it: it is the one weapon whose output changes where everybody
+  // else's output lands.
+  //
+  // The chord fires FIRST in each, so its zone is on the field before the other
+  // eight weapons' entities are.
+  {
+    name: 'chord in a full band, base, damage meter',
+    seed: 0xc40ba1,
+    weapons: [
+      ['kick', 4], ['snare', 4], ['hat', 4], ['bass', 4], ['chord', 4],
+      ['lead', 4], ['clap', 4], ['bell', 4], ['arp', 4],
+    ],
+    enemies: CHORD_ARC_FIELD,
+    hp: 1e6,
+    steps: [
+      { fire: 'chord' }, { fire: 'kick' }, { fire: 'snare' }, { fire: 'hat' },
+      { fire: 'bass' }, { fire: 'lead' }, { fire: 'clap' }, { fire: 'bell' },
+      { fire: 'arp' },
+      { frames: 200 },
+    ],
+  },
+  {
+    name: 'chord in a full band, base, lethal',
+    seed: 0xc40ba2,
+    weapons: [
+      ['kick', 4], ['snare', 4], ['hat', 4], ['bass', 4], ['chord', 4],
+      ['lead', 4], ['clap', 4], ['bell', 4], ['arp', 4],
+    ],
+    // SPLITTERS AT 40HP, for the reason the bass's lethal band scenario spells
+    // out: the chord deals 2 damage a tick and needs its target to still be
+    // standing several ticks later, and against 10hp bodies the other eight
+    // weapons clear the field inside the first half-second.
+    enemies: [
+      ['splitter', CHORD_ANCHOR, 0],
+      ...arcAt('splitter', CHORD_ANCHOR, 0, 60, [-90, -30, 30, 90]),
+      ...arcAt('splitter', CHORD_ANCHOR, 0, 110, [-60, 0, 60]),
+    ],
+    steps: [
+      { fire: 'chord' }, { fire: 'kick' }, { fire: 'snare' }, { fire: 'hat' },
+      { fire: 'bass' }, { fire: 'lead' }, { fire: 'clap' }, { fire: 'bell' },
+      { fire: 'arp' },
+      { frames: 200 },
+    ],
+  },
+  {
+    name: 'chord in a full evolved band, loaded build, walking',
+    seed: 0xc40ba3,
+    weapons: [
+      ['kick', 4], ['snare', 4], ['hat', 4], ['bass', 4], ['chord', 4],
+      ['lead', 4], ['clap', 4], ['bell', 4], ['arp', 4],
+    ],
+    items: [
+      ['highTops', 5], ['fastForward', 5], ['mirrorball', 5], ['heavyAmp', 5],
+      ['wideLens', 5], ['needleTips', 5], ['paddedJacket', 5],
+      ['extensionCable', 5], ['magnetLanyard', 5], ['doubleTake', 2],
+    ],
+    evolved: ['kick', 'snare', 'hat', 'bass', 'chord', 'lead', 'clap', 'bell', 'arp'],
+    enemies: CHORD_ARC_FIELD,
+    hp: 1e6,
+    // EXTENSION CABLE is in this build and nowhere else in the chord block, so
+    // this is the only scenario where durationMul is non-identity and the
+    // zone's lifetime is 2.8 * 1.32 * 1.35 rather than 2.8 * 1.35 — applyBuild
+    // and the evolution multiplier stacking in that order, inside a band.
+    //
+    // THREE chord triggers while the player WALKS, so three zones land at three
+    // different points along the walk and then drift and merge on a field eight
+    // other weapons are also working. A zone that had learned to follow the
+    // player is caught here a second time, with everybody else's output on the
+    // same bodies to hide behind.
+    steps: [
+      { walk: [2, -1] },
+      { frames: 10 },
+      { fire: 'chord' }, { fire: 'kick' }, { fire: 'snare' }, { fire: 'hat' },
+      { fire: 'chord' }, { fire: 'bass' }, { fire: 'lead' }, { fire: 'clap' },
+      { fire: 'chord' }, { fire: 'bell' }, { fire: 'arp' },
+      { frames: 200 },
     ],
   },
 ];
