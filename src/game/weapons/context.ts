@@ -11,8 +11,9 @@
 // Add one when a weapon actually needs it, never speculatively.
 
 import type { Role } from '../../audio/kits';
+import type { WeaponConf } from '../config';
 import type { BuildMods } from '../items';
-import type { FxEvent } from '../run';
+import type { FxEvent, Projectile } from '../run';
 
 /** Everything a weapon module may READ off an enemy — eight fields, all
  *  readonly. `Enemy` satisfies this structurally, so the world hands its REAL
@@ -139,16 +140,51 @@ export interface WeaponContext {
   /** Queue a visual. A no-op when the world was built with fx:false, so a
    *  module never branches on whether effects are enabled. */
   fx(event: FxEvent): void;
+
+  // ---------------- projectiles (#140) ----------------
+  //
+  // The kick spawned nothing, so #139 left every spawn effect off this
+  // interface deliberately, to be designed by the first weapon that needed one.
+  // The arp is that weapon. STORAGE STAYS WORLD-SIDE — view.ts iterates
+  // world.projectiles and the live-shot ceiling in pushProjectile has to hold
+  // across every weapon at once — so what a module gets is a spawn effect plus
+  // a query over its OWN shots, exactly as the note at the bottom of this file
+  // predicted.
+
+  /** Spawn one projectile attributed to this weapon. Routes to the world's own
+   *  baseProjectile + pushProjectile — the module owns none of the defaulting
+   *  and none of the ceiling.
+   *
+   *  Returns the LIVE object, already in the world, so the module can set the
+   *  few fields only it understands (the arp's orbit angle, radius and
+   *  direction). It is genuinely mutable, unlike WeaponTarget: the seam already
+   *  hands modules real Projectiles through ProjectileBehavior.steer, which
+   *  cannot do its job without writing pr.x and pr.y. One mutable type, used
+   *  consistently, beats a parallel readonly view that steer() would have to
+   *  cast away anyway. */
+  spawnProjectile(conf: WeaponConf, damage: number): Projectile;
+
+  /** This weapon's live projectiles, in world-array order — oldest spawned
+   *  first. A fresh array per call, so it is safe to splice from while
+   *  retiring. Does NOT include other weapons' shots: a module cannot see, let
+   *  alone retire, another weapon's projectiles. */
+  projectiles(): readonly Projectile[];
+
+  /** Remove one projectile from the world immediately, by identity. Event
+   *  Horizon's orbiter cap is the only caller: it retires its own oldest
+   *  orbiters at fire time rather than waiting for them to expire. */
+  retireProjectile(projectile: Projectile): void;
 }
 
 // ---- deliberately ABSENT ----
 //
-// No spawnProjectile/spawnZone/spawnShockwave/spawnGravityWell: the kick spawns
-// nothing, and designing a spawn effect now means designing blind against eight
-// unmigrated weapons. Entities the view reads (view.ts iterates world.zones,
-// world.shockwaves, world.gravityWells) will keep world-side STORAGE; the module
-// gets a spawn effect plus a query over its own records. Decide it with the
-// first weapon that needs it.
+// No spawnZone/spawnShockwave/spawnGravityWell: #140 needed projectiles and
+// added exactly projectiles. Entities the view reads (view.ts iterates
+// world.zones, world.shockwaves, world.gravityWells) keep world-side STORAGE;
+// each gets a spawn effect plus a query over the module's own records, on the
+// shape spawnProjectile/projectiles/retireProjectile above set. Decide each one
+// with the first weapon that needs it — chord for zones, bass for shockwaves,
+// bell for gravity wells.
 //
 // No nearestEnemy / nearestEnemies / aimDir / aimFan / fanAround / moveDir /
 // triggerCount: the kick uses none of them, and every member here is a tax on

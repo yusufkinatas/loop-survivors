@@ -3,6 +3,7 @@
 
 import type { Role } from '../../audio/kits';
 import { TIER_LINES, WEAPONS, type WeaponConf } from '../config';
+import { ARP } from './arp';
 import { KICK } from './kick';
 import type { WeaponModule } from './module';
 
@@ -16,6 +17,7 @@ export {
   type WeaponStats,
 } from './module';
 export { KICK, type KickStats } from './kick';
+export { ARP, type ArpStats } from './arp';
 
 /** Weapons that own their behavior behind the weapon context. A role absent
  *  here still branches inside run.ts; this array emptying run.ts's switch is
@@ -24,7 +26,7 @@ export { KICK, type KickStats } from './kick';
  *  ORDERED. Array order is the tick order WITHIN a phase and is behavioral —
  *  reordering it reorders damage and therefore the rng stream. Across phases,
  *  TickPhase decides; array order never overrides it. */
-export const WEAPON_MODULES: readonly WeaponModule[] = [KICK];
+export const WEAPON_MODULES: readonly WeaponModule[] = [KICK, ARP];
 
 const BY_ROLE = new Map<Role, WeaponModule>(WEAPON_MODULES.map((m) => [m.role, m]));
 
@@ -46,7 +48,7 @@ export function weaponTierLines(role: Role): readonly string[] | undefined {
 
 /** The world's former hardcoded projectile-role set, verbatim. Deletes itself
  *  as weapons migrate. */
-const LEGACY_PROJECTILE_ROLES = new Set<Role>(['snare', 'hat', 'bass', 'lead', 'bell', 'arp']);
+const LEGACY_PROJECTILE_ROLES = new Set<Role>(['snare', 'hat', 'bass', 'lead', 'bell']);
 
 export function buildsAsProjectile(role: Role): boolean {
   const m = BY_ROLE.get(role);

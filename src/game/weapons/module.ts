@@ -36,13 +36,16 @@ export interface WeaponStats {
 
 /** Behavior the SHARED projectile loop delegates.
  *
- *  DECLARED NOW, WIRED IN #140. The kick leaves both undefined and this issue
- *  does not touch updateProjectiles. The shape ships with the tracer because it
- *  is the one genuinely contentious decision the seam has to survive, and
- *  because ADR-0002 requires the arp's exemptions to become stats rather than
- *  permanent `pr.role === 'arp'` branches. It maps one-to-one onto the existing
- *  if/else in updateProjectiles, so it costs nothing to reserve and prevents an
- *  interface change across all nine modules later. */
+ *  DECLARED BY #139, WIRED BY #140, and it needed no change to fit: the arp's
+ *  three `pr.role === 'arp'` branches mapped one-to-one onto these two hooks,
+ *  orbit motion and the arena-rail exemption collapsing into steer()'s single
+ *  return value exactly as the shape predicted.
+ *
+ *  These two hooks are now the ONLY route by which a weapon may affect the
+ *  shared projectile loop. Since #140 that loop contains no per-weapon branch
+ *  at all, and systems-check reads its source to keep it that way. A weapon
+ *  whose motion does not fit here belongs in a field on the projectile, set by
+ *  its own spawner — not in a branch. */
 export interface ProjectileBehavior {
   /** Replaces shared motion. Return true = "I positioned it myself", which
    *  skips shared travel AND reflectProjectileFromArena — both ADR-0002
@@ -103,6 +106,8 @@ export interface WeaponInstance {
    *  there is nothing to reset. */
   reset(): void;
 
-  /** #140. Unwired in #139. */
+  /** Motion and hit rules this weapon lends the shared projectile loop. Omit
+   *  for a weapon whose shots ride unchanged shared physics, or that spawns no
+   *  projectiles at all (the kick). The arp is the first implementor. */
   readonly projectile?: ProjectileBehavior;
 }

@@ -675,7 +675,8 @@ export interface WeaponConf {
   pierce?: number;
   /** clap: half-angle of the forward damage cone (radians). */
   arc?: number;
-  /** arp: radius of the orbit around the player. */
+  /** arp: radius of the orbit around the player. Read by the arp module, and
+   *  by applyBuild for Wide Lens' orbitDistanceMul. */
   orbitRadius?: number;
   /** kick: Whip-style hitbox scale (1 = 258 x 39 at the reference view). */
   area?: number;
@@ -758,14 +759,6 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
     { damage: 4, radius: 98, arc: 0.8 },
     { damage: 6, radius: 108, arc: 0.9 },
   ],
-  // King Bible: notes that orbit the player, a rotating shield of damage.
-  // Each trigger adds one orbiter; a melody makes a ring.
-  arp: [
-    { damage: 2, radius: 8, lifetimeS: 2.0, orbitRadius: 80 },
-    { damage: 2, radius: 8, lifetimeS: 2.4, orbitRadius: 92 },
-    { damage: 2, radius: 9, lifetimeS: 2.8, orbitRadius: 106 },
-    { damage: 3, radius: 10, lifetimeS: 3.2, orbitRadius: 122 },
-  ],
   // Bell (band, Melody): a note lobbed straight that shatters into shards on
   // its first hit (shard count per tier in BELL). radius = the shot's own size.
   bell: [
@@ -817,12 +810,6 @@ export const TIER_LINES: Partial<Record<Role, string[]>> = {
     'sweeps a bigger arc',
     'the widest, hardest slash',
   ],
-  arp: [
-    'orbiting notes circle you',
-    'the orbit lasts longer',
-    'a wider, longer orbit',
-    'a dense ring of orbiters',
-  ],
   bell: [
     'a note that shatters into shards',
     'more shards on the shatter',
@@ -851,11 +838,6 @@ export const ZONE_TICK_S = 0.9;
  *  can be thrown toward the nearest pack. */
 export const ZONE_SLOW_MUL = 0.55;
 export const ZONE_THROW_RANGE = 420;
-
-/** Arp orbiters sweep around the player at this angular speed (rad/s) and
- *  can re-hit an enemy every ORBIT_REHIT_S, so a slow sweep keeps chipping. */
-export const ARP_OMEGA = 3.4;
-export const ORBIT_REHIT_S = 0.35;
 
 // ---- weapon feel constants (Feature 3) ----
 

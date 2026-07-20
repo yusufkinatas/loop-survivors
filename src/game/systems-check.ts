@@ -2,6 +2,7 @@
 // `npm run verify`; failures throw and produce a non-zero exit.
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { Role } from '../audio/kits';
@@ -23,8 +24,9 @@ import {
 import { ALL_ENEMY_KINDS, ENEMY_LABELS, RUN, SHOVE_S, STAGE_MAGNET, TIER_LINES, WEAPONS, type EnemyKind } from './config';
 import { rollOffers } from './picks';
 import { mulberry32 } from './rng';
-import { KIT_COLORS, RunWorld, type FxEvent, type RunEvents } from './run';
+import { KIT_COLORS, RunWorld, type FxEvent, type Projectile, type RunEvents } from './run';
 import {
+  ARP,
   KICK,
   WEAPON_MODULES,
   buildsAsProjectile,
@@ -33,6 +35,7 @@ import {
   type WeaponInstance,
   type WeaponTarget,
 } from './weapons';
+import type { WeaponConf } from './config';
 import { TIER_COUNT } from '../audio/charts';
 import {
   SANDBOX_ENEMY_CATALOG,
@@ -637,8 +640,12 @@ for (const m of WEAPON_MODULES) {
 }
 assert.equal(WEAPONS.kick, undefined, 'the kick module is the only copy of the kick ladder');
 assert.equal(TIER_LINES.kick, undefined, 'the kick module is the only copy of the kick pedestal copy');
+assert.equal(WEAPONS.arp, undefined, 'the arp module is the only copy of the arp ladder');
+assert.equal(TIER_LINES.arp, undefined, 'the arp module is the only copy of the arp pedestal copy');
 assert.equal(buildsAsProjectile('kick'), false,
   'the kick must stay outside projectileDamageMul, as applyBuild had it');
+assert.equal(buildsAsProjectile('arp'), true,
+  'the arp was in the world legacy projectile-role set and must keep that answer');
 assert.equal(new Set(WEAPON_MODULES.map((m) => m.role)).size, WEAPON_MODULES.length,
   'one module per weapon');
 
@@ -683,7 +690,19 @@ class FakeCtx implements WeaponContext {
    *  Redline Stomp pushes its beams AFTER. Both orderings are pinned. */
   readonly seq: string[] = [];
 
-  rng(): number { throw new Error('the kick must draw nothing from the run stream'); }
+  /** Values this weapon is allowed to draw, in order. NULL means "this weapon
+   *  must draw nothing", which is what makes the kick's zero-draw contract an
+   *  executable assertion rather than a comment. The arp draws exactly once per
+   *  trigger, so its checks hand it a script. */
+  rngValues: number[] | null = null;
+  rngDraws = 0;
+  rng(): number {
+    if (this.rngValues === null) throw new Error(`${this.role} must draw nothing from the run stream`);
+    const next = this.rngValues.shift();
+    assert(next !== undefined, `${this.role} drew more rng values than the check supplied`);
+    this.rngDraws += 1;
+    return next;
+  }
   near(x: number, y: number, r: number): readonly WeaponTarget[] {
     return this.targets.filter((t) => Math.hypot(t.x - x, t.y - y) <= r + t.radius);
   }
@@ -700,6 +719,44 @@ class FakeCtx implements WeaponContext {
     this.knocks.push(`knock:${vx},${vy},${s}`);
   }
   fx(e: FxEvent): void { this.fxLog.push(e); this.seq.push(e.type); }
+  /** Projectiles this fake world is holding. Mirrors RunWorld.projectiles
+   *  closely enough for the arp: append on spawn, splice by identity on
+   *  retire, array order is spawn order. */
+  readonly spawned: Projectile[] = [];
+  spawnProjectile(conf: WeaponConf, damage: number): Projectile {
+    // The defaulting RunWorld.baseProjectile does, kept side by side with it.
+    const pr: Projectile = {
+      role: this.role, x: this.player.x, y: this.player.y, vx: 0, vy: 0,
+      radius: conf.radius!, damage, pierce: conf.pierce ?? 1, maxPierce: conf.pierce ?? 1,
+      lifeS: conf.lifetimeS!, homing: false, speed: conf.speed ?? 0, color: this.color,
+      hit: new Set(), age: 0, orbitAngle: 0, orbitRadius: 0, rehitT: 0, homingRange: Infinity,
+      shatter: 0, shard: false, bounces: this.buildMods.bounceCount,
+      bounceRetention: this.buildMods.bounceRetention, evolved: this.evolved,
+      turnRate: 10, orbitDir: 1, gravity: false,
+    };
+    this.spawned.push(pr);
+    this.seq.push('spawn');
+    return pr;
+  }
+  projectiles(): readonly Projectile[] {
+    return this.spawned.filter((pr) => pr.role === this.role);
+  }
+  retireProjectile(pr: Projectile): void {
+    const index = this.spawned.indexOf(pr);
+    if (index >= 0) this.spawned.splice(index, 1);
+  }
+  /** Advance every live orbiter one frame through the module's own steer hook,
+   *  the way RunWorld.updateProjectiles does. */
+  steer(inst: WeaponInstance, n: number): void {
+    for (let i = 0; i < n; i++) {
+      this.timeS += 1 / 60;
+      for (const pr of this.spawned) {
+        pr.age += 1 / 60;
+        pr.lifeS -= 1 / 60;
+        inst.projectile!.steer!(this, pr, 1 / 60);
+      }
+    }
+  }
   step(inst: WeaponInstance, n: number): void {
     for (let i = 0; i < n; i++) { this.timeS += 1 / 60; inst.tick!(this, 1 / 60); }
   }
@@ -925,6 +982,264 @@ const kickTiers = KICK.stats.tiers;
 }
 
 // ---------------------------------------------------------------------------
+// THE ARP (#140, #144).
+//
+// The arp is the migration's stress test: its behavior did not live in its own
+// functions, it lived INSIDE RunWorld's shared projectile loop as three
+// `pr.role === 'arp'` branches. Those are now ProjectileBehavior.steer and
+// .onHit on the module, so the checks below drive them the way the shared loop
+// does — spawn through the context, then step steer() a frame at a time.
+// ---------------------------------------------------------------------------
+
+const arpTiers = ARP.stats.tiers;
+/** Same rounding the kick block uses, hoisted: several arp checks compare
+ *  products of the stats they are pinning. */
+const round6 = (n: number): number => Math.round(n * 1e6) / 1e6;
+
+// ---------------------------------------------------------------------------
+// The arp's tuning, pinned to LITERALS. Same rule as the kick block above: the
+// right-hand sides are numbers a human typed after reading the pre-#140 run.ts
+// and config.ts, never an expression that reads the value it is checking.
+// ---------------------------------------------------------------------------
+{
+  // The per-tier ladder, verbatim from config.WEAPONS.arp. A geometry ladder as
+  // much as a damage one: the orbit widens 80 -> 92 -> 106 -> 122.
+  assert.deepEqual(
+    arpTiers.map((t) => [t.damage, t.radius, t.lifetimeS, t.orbitRadius]),
+    [
+      [2, 8, 2.0, 80],
+      [2, 8, 2.4, 92],
+      [2, 9, 2.8, 106],
+      [3, 10, 3.2, 122],
+    ],
+    'the arp damage/size/lifetime/orbit ladder moved',
+  );
+  assert.equal(arpTiers.length, TIER_COUNT, 'the arp ladder must have exactly TIER_COUNT rungs');
+
+  // #144: the timer re-hit, as named stats. These two numbers were ORBIT_REHIT_S
+  // in config.ts and a bare 0.45 sitting in two places in run.ts. They are the
+  // arp's identity (ADR-0002) and they are BALANCE numbers: chipping every
+  // 0.35s instead of every 0.5s is a different weapon.
+  assert.equal(ARP.stats.rehitS, 0.35, 'the base orbiter re-hit interval moved (was ORBIT_REHIT_S)');
+  assert.equal(ARP.stats.evolvedRehitS, 0.45, 'the Event Horizon re-hit interval moved');
+  assert.equal(ARP.stats.spendsPierce, false,
+    'an orbiter must never spend pierce — it chips on a timer instead (ADR-0002)');
+
+  assert.equal(ARP.stats.omega, 3.4, 'the orbit sweep speed moved (was ARP_OMEGA)');
+
+  // Event Horizon.
+  assert.equal(ARP.stats.evolvedOrbitRadius, 125, 'the Event Horizon orbit radius moved');
+  assert.equal(ARP.stats.evolvedOrbitBreath, 25, 'the Event Horizon breath amplitude moved');
+  assert.equal(ARP.stats.evolvedBreathRate, 3.2, 'the Event Horizon breath rate moved');
+  assert.equal(ARP.stats.evolvedRadiusMul, 1.25, 'the Event Horizon orbiter size moved');
+  assert.equal(ARP.stats.evolvedLifetimeMul, 1.35, 'the Event Horizon orbiter lifetime moved');
+  assert.equal(ARP.stats.evolvedDamageMul, 0.8, 'the Event Horizon per-orbiter damage moved');
+  assert.equal(ARP.stats.evolvedRadiusFallback, 8, 'the Event Horizon radius fallback moved');
+  assert.equal(ARP.stats.evolvedLifetimeFallbackS, 2, 'the Event Horizon lifetime fallback moved');
+  // Was an inline `while (evolvedOrbiters.length > 24)` in run.ts.
+  assert.equal(ARP.stats.evolvedOrbiterCap, 24, 'the Event Horizon orbiter cap moved');
+
+  assert.equal(ARP.stats.buildsAsProjectile, true, 'the arp builds as a projectile');
+  // Read through the roster, not off ARP: `satisfies WeaponModule` narrows the
+  // literal, so ARP.tickAt is not even a property to compare.
+  const arpModule = WEAPON_MODULES.find((m) => m.role === 'arp')!;
+  assert.equal(arpModule.tickAt, undefined,
+    'the arp owns no damage pass: its orbiters ride the shared projectile loop');
+  assert(arpModule.create().projectile,
+    'the arp lends the shared projectile loop its motion through ProjectileBehavior');
+  assert.equal(ARP.role, 'arp');
+  // The breath must never reach the player and never leave the swept band, or
+  // "orbits you" quietly becomes "a zone centered on you".
+  assert(ARP.stats.evolvedOrbitBreath < ARP.stats.evolvedOrbitRadius,
+    'the Event Horizon breath must never collapse the orbit onto the player');
+  assert.equal(round6(ARP.stats.evolvedOrbitRadius - ARP.stats.evolvedOrbitBreath), 100);
+  assert.equal(round6(ARP.stats.evolvedOrbitRadius + ARP.stats.evolvedOrbitBreath), 150);
+}
+
+/** A fake context set up for the arp, with a scripted rng. */
+function arpCtx(rngValues: number[], evolved = false): FakeCtx {
+  const ctx = new FakeCtx();
+  ctx.role = 'arp';
+  ctx.color = KIT_COLORS.arp;
+  ctx.evolved = evolved;
+  ctx.rngValues = rngValues;
+  return ctx;
+}
+
+// A1. One trigger draws EXACTLY ONE rng value and puts one orbiter on the ring.
+// The draw count is the thing: the arp's single base-angle draw per trigger, no
+// matter how many orbiters that trigger makes, is the easiest thing in this
+// whole extraction to get wrong and the hardest to notice.
+{
+  const ctx = arpCtx([0.25]);
+  const inst = ARP.create();
+  inst.fire(ctx, arpTiers[3]);
+  assert.equal(ctx.rngDraws, 1, 'one arp trigger draws exactly one rng value');
+  assert.equal(ctx.spawned.length, 1, 'one trigger, one orbiter');
+  const pr = ctx.spawned[0];
+  // 0.25 * 2pi = pi/2, so the orbiter starts straight above the player at the
+  // tier-4 orbit radius of 122.
+  assert.equal(round6(pr.orbitAngle), round6(Math.PI / 2));
+  assert.equal(pr.orbitRadius, 122, 'the orbiter sits on the tier orbit radius');
+  assert.equal(round6(Math.hypot(pr.x - ctx.player.x, pr.y - ctx.player.y)), 122);
+  assert.equal(pr.pierce, Infinity, 'an orbiter spawns with infinite pierce (ADR-0002)');
+  assert.equal(pr.rehitT, 0, 'a base orbiter arms its re-hit timer on its first step');
+  assert.equal(pr.damage, 3, 'a tier-4 orbiter carries the pedestal damage');
+  assert.equal(pr.evolved, false);
+  assert.equal(ctx.hits.length, 0, 'the arp deals no damage at fire time');
+}
+
+// A2. ORBIT MOTION. steer() returns TRUE — "I positioned this one myself" — and
+// that single return value is what keeps the shared travel step and the arena
+// rails off an orbiter. The angle advances by omega, the radius never does.
+{
+  const ctx = arpCtx([0]);
+  const inst = ARP.create();
+  inst.fire(ctx, arpTiers[3]);
+  const pr = ctx.spawned[0];
+  assert.equal(inst.projectile!.steer!(ctx, pr, 1 / 60), true,
+    'an orbiter steers itself, which is what exempts it from travel and the arena rails');
+  // 3.4 rad/s at 1/60 s. A LITERAL: reading ARP.stats.omega here would move
+  // with the very stat this is holding still.
+  assert.equal(round6(pr.orbitAngle), round6(3.4 / 60));
+  assert.equal(round6(pr.x), round6(Math.cos(3.4 / 60) * 122));
+  assert.equal(round6(pr.y), round6(Math.sin(3.4 / 60) * 122));
+
+  // A full sweep: the distance from the player is constant, so an orbiter never
+  // reaches inside its own orbit and never leaves it. That is the whole
+  // difference between "orbits you" and "a zone centered on you".
+  ctx.steer(inst, 120);
+  assert.equal(round6(Math.hypot(pr.x - ctx.player.x, pr.y - ctx.player.y)), 122,
+    'the orbit radius never changes for a base orbiter');
+  // 121 frames of 3.4 rad/s is more than a full revolution (2pi = 6.28 rad).
+  assert(pr.orbitAngle > Math.PI * 2, 'the orbiter completes a revolution in its lifetime');
+}
+
+// A3. The orbit is bound to the PLAYER, not to the arena. Moving the player
+// re-centers every orbiter on the next step, which is the underlying reason
+// ADR-0002 exempts orbiters from the arena rails.
+{
+  const ctx = arpCtx([0]);
+  const inst = ARP.create();
+  inst.fire(ctx, arpTiers[0]);
+  const pr = ctx.spawned[0];
+  ctx.player = { x: 500, y: -300, facingX: 1 };
+  ctx.steer(inst, 1);
+  assert.equal(round6(Math.hypot(pr.x - 500, pr.y - -300)), 80,
+    'an orbiter follows the player it orbits');
+}
+
+// A4. THE TIMER RE-HIT (#144, ADR-0002). The hit set is what stops a projectile
+// touching the same enemy twice; an orbiter empties it on a clock instead of
+// dying, so a slow sweep keeps chipping. 0.35s at 1/60 is 21 frames.
+{
+  const ctx = arpCtx([0]);
+  const inst = ARP.create();
+  inst.fire(ctx, arpTiers[3]);
+  const pr = ctx.spawned[0];
+  // The first step arms the timer (a base orbiter spawns with rehitT 0).
+  ctx.steer(inst, 1);
+  assert.equal(round6(pr.rehitT), 0.35, 'the base re-hit timer arms at 0.35s');
+  (pr.hit as Set<unknown>).add({});
+  ctx.steer(inst, 20);
+  assert.equal(pr.hit.size, 1, 'the same enemy is off-limits until the re-hit timer expires');
+  ctx.steer(inst, 2);
+  assert.equal(pr.hit.size, 0, 'after 0.35s the orbiter may chip the same enemy again');
+  assert.equal(round6(pr.rehitT), 0.35, 're-arming uses the same 0.35s interval, every time');
+}
+
+// A5. THE PIERCE EXEMPTION, ported AS-IS (#138 resolved as intended, ADR-0002).
+// onHit() returning false is the whole exemption: the shared loop skips its
+// `pr.pierce -= 1` and the orbiter survives its own sweep.
+{
+  const ctx = arpCtx([0]);
+  const inst = ARP.create();
+  inst.fire(ctx, arpTiers[3]);
+  const pr = ctx.spawned[0];
+  assert.equal(inst.projectile!.onHit!(ctx, pr, fakeTarget(0, 0)), false,
+    'an orbiter never spends pierce on a hit — it gates re-hits by time instead');
+  // Ten hits in a row, and it is still whole.
+  for (let i = 0; i < 10; i++) {
+    assert.equal(inst.projectile!.onHit!(ctx, pr, fakeTarget(i, 0)), false);
+  }
+  assert.equal(pr.pierce, Infinity, 'nothing in the hit path may consume an orbiter');
+}
+
+// A6. EVENT HORIZON: counter-rotating pairs, one draw, its own re-hit interval.
+{
+  const ctx = arpCtx([0], true);
+  const inst = ARP.create();
+  inst.fire(ctx, arpTiers[3]);
+  assert.equal(ctx.rngDraws, 1, 'one Event Horizon trigger draws exactly one rng value');
+  assert.equal(ctx.spawned.length, 2, 'Event Horizon spawns a counter-rotating PAIR per trigger');
+  const [cw, ccw] = ctx.spawned;
+  assert.deepEqual([cw.orbitDir, ccw.orbitDir], [1, -1], 'the pair counter-rotates');
+  assert.equal(round6(Math.abs(cw.orbitAngle - ccw.orbitAngle)), round6(Math.PI),
+    'the pair starts on opposite sides of the orbit');
+  // LITERALS: 3 * 0.8, 10 * 1.25, 3.2 * 1.35.
+  assert.equal(round6(cw.damage), 2.4, 'an Event Horizon orbiter trades punch for count');
+  assert.equal(round6(cw.radius), 12.5);
+  assert.equal(round6(cw.lifeS), 4.32);
+  assert.equal(cw.pierce, Infinity);
+  assert.equal(cw.evolved, true);
+  assert.equal(cw.rehitT, 0.45, 'Event Horizon arms its own 0.45s re-hit interval at spawn');
+}
+
+// A7. The evolved orbit BREATHES: it ignores the tier orbitRadius and sweeps
+// between 100 and 150 on the orbiter's own age. A fixed-radius evolved orbit
+// would pass every other check in this file.
+{
+  const ctx = arpCtx([0], true);
+  const inst = ARP.create();
+  inst.fire(ctx, arpTiers[3]);
+  const pr = ctx.spawned[0];
+  const radii: number[] = [];
+  for (let i = 0; i < 120; i++) {
+    ctx.steer(inst, 1);
+    radii.push(Math.hypot(pr.x - ctx.player.x, pr.y - ctx.player.y));
+  }
+  const min = Math.min(...radii);
+  const max = Math.max(...radii);
+  assert(min >= 100 - 1e-9 && max <= 150 + 1e-9,
+    'the Event Horizon orbit stays inside 100..150');
+  assert(max - min > 45, 'the Event Horizon orbit must actually breathe, not sit at a radius');
+  assert(min < 122, 'the breath reaches inside the tier-4 orbit it replaces');
+}
+
+// A8. THE ORBITER CAP. Event Horizon retires its OLDEST evolved orbiters down
+// to 24 whenever a trigger pushes it over. Two per trigger, so trigger 13 is
+// the first one that has to retire anything.
+{
+  const ctx = arpCtx(Array.from({ length: 20 }, (_, i) => i / 20), true);
+  const inst = ARP.create();
+  inst.fire(ctx, arpTiers[3]);
+  const firstPair = [...ctx.spawned];
+  for (let i = 1; i < 20; i++) inst.fire(ctx, arpTiers[3]);
+  assert.equal(ctx.spawned.length, 24,
+    'twenty triggers make forty orbiters; the cap holds the live count at 24');
+  for (const old of firstPair) {
+    assert(!ctx.spawned.includes(old), 'the cap retires the OLDEST orbiters, not the newest');
+  }
+  // Twelve triggers is exactly the cap, so nothing is retired at the boundary.
+  const under = arpCtx(Array.from({ length: 12 }, (_, i) => i / 12), true);
+  const underInst = ARP.create();
+  for (let i = 0; i < 12; i++) underInst.fire(under, arpTiers[3]);
+  assert.equal(under.spawned.length, 24, 'exactly at the cap, nothing is retired');
+}
+
+// A9. reset() has nothing to drop — every orbiter lives in the world's own
+// projectile array, which clearSandboxEntities empties. Pinned so that stays
+// true: a future arp that schedules something owes this check a body.
+{
+  const ctx = arpCtx([0]);
+  const inst = ARP.create();
+  inst.fire(ctx, arpTiers[0]);
+  inst.reset();
+  assert.equal(ctx.hits.length, 0, 'a reset arp lands no delayed damage');
+  assert.equal(ctx.fxLog.length, 0, 'the arp pushes no fx at all');
+}
+
+// ---------------------------------------------------------------------------
 // 11. THE WORLD SIDE OF THE SEAM: the tick call site.
 //
 // Every check above (1-10) drives the module through a fake context and calls
@@ -957,6 +1272,12 @@ function worldStrike(opts: {
   evolve?: boolean;
   /** [dx, dy] offsets from the player. Circle centers are pinned after spawn. */
   offsets: readonly (readonly [number, number])[];
+  /** Park the targets: speed 0, so they stay exactly where they were placed.
+   *  Weapons that resolve in a frame or two do not need it. An arp orbiter
+   *  takes 1.85s to come around, and a chasing zombie has walked off the ring
+   *  long before then — freezing is what makes the placement mean anything for
+   *  a weapon measured over seconds instead of frames. */
+  frozen?: boolean;
   /** Frames of 1/60 to run after the trigger. Zero for weapons that resolve
    *  synchronously at fire time. */
   frames: number;
@@ -980,6 +1301,7 @@ function worldStrike(opts: {
     e.x = world.player.x + dx;
     e.y = world.player.y + dy;
     e.hp = 1e6;
+    if (opts.frozen) e.speed = 0;
     return e;
   });
   // Build the spatial hash at the pinned positions; the strip queries it.
@@ -1047,6 +1369,87 @@ function worldStrike(opts: {
   });
   assert.deepEqual(stomp.drops, [20.25, 20.25, 0],
     'Redline Stomp crosses the arena for 15 * 1.35 damage and does not fill the corners');
+}
+
+{
+  // THE WORLD SIDE OF ProjectileBehavior. Nothing but RunWorld.updateProjectiles
+  // ever calls steer() or onHit(), so a mis-wired loop is a silent zero here
+  // while every fake-context check above stays green.
+  //
+  // A tier-4 orbiter: radius 122, 3.4 rad/s, 3.2s of life — a bit under two
+  // full revolutions, so an enemy sitting on the ring is swept at least once.
+  //   122  on the ring     -> chipped
+  //   20   inside the orbit-> never touched (an orbit is not a zone)
+  //   300  outside         -> never touched (an orbiter never leaves its orbit)
+  // 200 frames is 3.33s, just past the orbiter's 3.2s life, so the whole
+  // lifetime is inside the window and expiry is under test too.
+  const orbit = worldStrike({
+    role: 'arp',
+    tier: 4,
+    offsets: [[122, 0], [20, 0], [300, 0]],
+    frozen: true,
+    frames: 200,
+  });
+  assert(orbit.drops[0] > 0,
+    'a tier-4 orbiter must chip an enemy sitting on its orbit, through RunWorld.update() — ' +
+    'a zero here means the shared projectile loop never called ARP.projectile.steer()');
+  assert.equal(orbit.drops[0] % 3, 0, 'every chip from a tier-4 orbiter is exactly 3 damage');
+  assert.equal(orbit.drops[1], 0, 'an orbiter never reaches inside its own orbit');
+  assert.equal(orbit.drops[2], 0, 'an orbiter never leaves its orbit');
+
+  // THE PIERCE EXEMPTION, measured through the real loop (ADR-0002). Twelve
+  // enemies parked on the ring and ONE orbiter that has to sweep all of them.
+  // maxPierce on an orbiter is 1, so a shared `pr.pierce -= 1` reaching it kills
+  // it on its first touch and this comes out at exactly 3.
+  const ring = Array.from({ length: 12 }, (_, i) => {
+    const a = (Math.PI * 2 * i) / 12;
+    return [122 * Math.cos(a), 122 * Math.sin(a)] as const;
+  });
+  const sweep = worldStrike({ role: 'arp', tier: 4, offsets: ring, frozen: true, frames: 200 });
+  assert(sweep.damageDealt >= 12 * 3,
+    'one orbiter must sweep a whole ring: it chips on a timer and never spends pierce ' +
+    '(ADR-0002). Exactly 3 here means the shared pierce rule consumed it on its first hit');
+  assert.equal(sweep.world.projectiles.filter((pr) => pr.role === 'arp').length, 0,
+    'the orbiter still dies of old age, like every other projectile');
+}
+
+// ---------------------------------------------------------------------------
+// THE RULE #140 EXISTS TO ESTABLISH: the shared projectile physics has ZERO
+// per-weapon branches, permanently.
+//
+// This is the one invariant seven more extractions depend on, and it is exactly
+// the kind of rule that decays the moment it is only written down. Weapon eight
+// will have some motion that "just needs one small branch here", and a code
+// review is a bad place to catch it. So: read the source of the shared loop and
+// the arena rails, and fail if a role comparison ever reappears in either.
+//
+// Weapon-specific motion belongs to the owning weapon module, lent back through
+// ProjectileBehavior. Anything else a shot needs is a FIELD ON THE SHOT, set by
+// whatever spawned it — that is how the arp's orbit and the evolved lead's
+// homing range both left this loop.
+//
+// SPAWNERS ARE NOT COVERED and deliberately so: baseProjectile and
+// spawnProjectile still branch on role for the four unmigrated projectile
+// weapons, and each of those branches leaves with its own weapon's module.
+// ---------------------------------------------------------------------------
+{
+  const source = readFileSync(new URL('./run.ts', import.meta.url), 'utf8');
+  const start = source.indexOf('  private updateProjectiles(');
+  const end = source.indexOf('  private spawnZone(');
+  assert(start > 0 && end > start,
+    'the shared-loop guard cannot find updateProjectiles..spawnZone in run.ts — fix the guard, ' +
+    'do not delete it');
+  const sharedPhysics = source
+    .slice(start, end)
+    // Comments talk ABOUT the branches that used to be here; only code counts.
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/[^\n]*/g, '');
+  const offenders = sharedPhysics.match(/\.role\s*[=!]==/g) ?? [];
+  assert.deepEqual(offenders, [],
+    'the shared projectile loop and the arena rails must contain NO per-weapon branch (#140). ' +
+    "Found a `.role ===` comparison. Weapon-specific motion belongs to the weapon module, " +
+    'lent back through ProjectileBehavior.steer/onHit; anything else belongs on the projectile ' +
+    'as a field set at spawn.');
 }
 
 console.log('systems-check: items, note shop, Stage Magnet, enemies, endless director, evolutions, and weapon modules passed');

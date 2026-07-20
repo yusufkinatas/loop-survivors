@@ -11,7 +11,6 @@ import type { ScheduledTrigger } from '../audio/engine';
 import {
   AIM_RANGE,
   MULTISHOT_FAN_RAD,
-  ARP_OMEGA,
   BELL,
   CIRCLER,
   DAMAGE_FEEDBACK,
@@ -20,7 +19,6 @@ import {
   HAT_LANE,
   MAD_FOREST_FRAMES,
   MAX_ALIVE_HARD,
-  ORBIT_REHIT_S,
   RUN,
   STAGE_MAGNET,
   SHIELDED,
@@ -63,6 +61,7 @@ import {
 import {
   WEAPON_MODULES,
   weaponTiers,
+  type ProjectileBehavior,
   type TickPhase,
   type WeaponContext,
   type WeaponInstance,
@@ -182,11 +181,16 @@ export interface Projectile {
   /** Total time alive. Behavior otherwise keys off role: lead homes, arp
    *  orbits. */
   age: number;
-  /** arp: orbit geometry around the player, and the re-hit cooldown so a slow
-   *  sweep keeps chipping the same enemy. */
+  /** Orbit geometry around the player, and the re-hit cooldown so a slow sweep
+   *  keeps chipping the same enemy. Written only by the weapon module that
+   *  steers this shot (the arp); the shared loop never reads them. */
   orbitAngle: number;
   orbitRadius: number;
   rehitT: number;
+  /** How far a homing shot will look for a target. Infinity means "the whole
+   *  screen". A FIELD, not a role test: the shared loop asks the shot, never
+   *  which weapon fired it. */
+  homingRange: number;
   /** bell: shards to spawn on this shot's first hit (0 for a shard itself, so
    *  shards never re-shatter). */
   shatter: number;
@@ -492,13 +496,14 @@ export class RunWorld {
    *  implements. */
   private makeWeaponContext(role: Role): WeaponContext {
     const world = this;
+    const color = KIT_COLORS[role];
     // This context's private scratch buffer, so one weapon can never corrupt
     // another's iteration. SpatialHash.query truncates on entry, so contents
     // and order are unchanged from the shared queryBuf.
     const buf: Enemy[] = [];
     return {
       role,
-      color: KIT_COLORS[role],
+      color,
       get evolved() { return world.evolved.has(role); },
       get timeS() { return world.timeS; },
       get player() { return world.player; },
@@ -517,7 +522,27 @@ export class RunWorld {
         e.knockT = s;
       },
       fx: (event) => { world.fx?.push(event); },
+      // Storage stays world-side: view.ts iterates world.projectiles and
+      // pushProjectile's live-shot ceiling has to hold across every weapon at
+      // once. The module gets a spawn effect and a query over its own shots.
+      spawnProjectile: (conf, damage) => {
+        const projectile = world.baseProjectile(role, conf, color, damage);
+        world.pushProjectile(projectile);
+        return projectile;
+      },
+      projectiles: () => world.projectiles.filter((projectile) => projectile.role === role),
+      retireProjectile: (projectile) => {
+        const index = world.projectiles.indexOf(projectile);
+        if (index >= 0) world.projectiles.splice(index, 1);
+      },
     };
+  }
+
+  /** The motion and hit rules a migrated weapon lends the SHARED projectile
+   *  loop, or undefined when no module owns the role. This lookup is what
+   *  replaced `pr.role === 'arp'`: the loop asks the roster, never the role. */
+  private projectileBehavior(role: Role): ProjectileBehavior | undefined {
+    return this.weapons.get(role)?.projectile;
   }
 
   /** Tick every migrated weapon pinned to this damage phase. Phase order is
@@ -676,12 +701,6 @@ export class RunWorld {
       case 'bell': {
         // A note lobbed straight that shatters into shards on its first hit.
         for (const dir of this.aimFan(0.1)) this.spawnBell(dir, conf, color);
-        break;
-      }
-      case 'arp': {
-        // King Bible: an orbiter per note, circling the player.
-        if (evolved) this.spawnEventHorizon(conf, color);
-        else this.spawnOrbiter(conf, color);
         break;
       }
       case 'bass': {
@@ -1913,6 +1932,7 @@ export class RunWorld {
       turnRate: 10,
       orbitDir: 1,
       gravity: false,
+      homingRange: Infinity,
     };
   }
 
@@ -1958,6 +1978,9 @@ export class RunWorld {
       pr.maxPierce = 6;
       pr.pierce = 6;
       pr.turnRate = 14;
+      // The evolved seeker snaps to what is close instead of crossing the
+      // screen. Was a `pr.role !== 'lead'` test inside the shared loop.
+      pr.homingRange = 320;
       if ((this.triggerCounts.lead ?? 0) % 5 === 0) {
         pr.damage *= 2;
         pr.radius = Math.max(12, pr.radius * 1.7);
@@ -1976,56 +1999,6 @@ export class RunWorld {
       pr.y += dir.y * step;
     }
     this.pushProjectile(pr);
-  }
-
-  /** Arp: an orbiter that circles the player, chipping what it sweeps. */
-  private spawnOrbiter(conf: WeaponConf, color: number): void {
-    // One random base angle per trigger; Double Take's copies space themselves
-    // evenly around the ring from it, so a crown reads as a ring not a clump.
-    const baseAngle = this.rng() * Math.PI * 2;
-    const count = 1 + this.buildMods.extraProjectiles;
-    for (let i = 0; i < count; i++) {
-      const angle = baseAngle + (Math.PI * 2 * i) / count;
-      const pr = this.baseProjectile('arp', conf, color, conf.damage);
-      pr.pierce = Infinity;
-      pr.orbitAngle = angle;
-      pr.orbitRadius = conf.orbitRadius!;
-      pr.x = this.player.x + Math.cos(angle) * pr.orbitRadius;
-      pr.y = this.player.y + Math.sin(angle) * pr.orbitRadius;
-      this.pushProjectile(pr);
-    }
-  }
-
-  private spawnEventHorizon(conf: WeaponConf, color: number): void {
-    const baseAngle = this.rng() * Math.PI * 2;
-    // Double Take adds whole counter-rotating pairs, spaced around the orbit.
-    const pairs = 1 + this.buildMods.extraProjectiles;
-    for (let pair = 0; pair < pairs; pair++) {
-      for (const dir of [1, -1] as const) {
-        const angle = baseAngle + (Math.PI * pair) / pairs + (dir === 1 ? 0 : Math.PI);
-        const evolvedConf = {
-          ...conf,
-          radius: (conf.radius ?? 8) * 1.25,
-          lifetimeS: (conf.lifetimeS ?? 2) * 1.35,
-        };
-        const pr = this.baseProjectile('arp', evolvedConf, color, conf.damage * 0.8);
-        pr.pierce = Infinity;
-        pr.orbitAngle = angle;
-        pr.orbitRadius = conf.orbitRadius!;
-        pr.orbitDir = dir;
-        pr.rehitT = 0.45;
-        pr.evolved = true;
-        pr.x = this.player.x + Math.cos(angle) * pr.orbitRadius;
-        pr.y = this.player.y + Math.sin(angle) * pr.orbitRadius;
-        this.pushProjectile(pr);
-      }
-    }
-    const evolvedOrbiters = this.projectiles.filter((projectile) => projectile.role === 'arp' && projectile.evolved);
-    while (evolvedOrbiters.length > 24) {
-      const oldest = evolvedOrbiters.shift()!;
-      const index = this.projectiles.indexOf(oldest);
-      if (index >= 0) this.projectiles.splice(index, 1);
-    }
   }
 
   /** Bell: a note lobbed straight that shatters into shards on its first hit.
@@ -2157,8 +2130,13 @@ export class RunWorld {
     }
   }
 
+  /** The SHARED projectile loop. It owns travel, arena rails, the hit pass and
+   *  the pierce rule for EVERY weapon, and — since #140 — it contains no
+   *  per-weapon branch at all. Weapon-specific motion belongs to the owning
+   *  weapon module, which lends it back through ProjectileBehavior; anything
+   *  else a shot needs is a FIELD ON THE SHOT, set by whatever spawned it.
+   *  Adding a `pr.role === '...'` here is the thing this loop exists not to do. */
   private updateProjectiles(dt: number): void {
-    const p = this.player;
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const pr = this.projectiles[i];
       const step = dt;
@@ -2166,19 +2144,13 @@ export class RunWorld {
       pr.age += step;
       pr.lifeS -= step;
 
-      if (pr.role === 'arp') {
-        // Orbit the player; clear the hit set on a cooldown so a slow sweep
-        // keeps chipping the same enemy instead of touching it once.
-        pr.orbitAngle += ARP_OMEGA * pr.orbitDir * step;
-        const orbitRadius = pr.evolved ? 125 + Math.sin(pr.age * 3.2) * 25 : pr.orbitRadius;
-        pr.x = p.x + Math.cos(pr.orbitAngle) * orbitRadius;
-        pr.y = p.y + Math.sin(pr.orbitAngle) * orbitRadius;
-        pr.rehitT -= step;
-        if (pr.rehitT <= 0) {
-          pr.hit.clear();
-          pr.rehitT = pr.evolved ? 0.45 : ORBIT_REHIT_S;
-        }
-      } else {
+      // A module that steers its own shots positions them itself, which skips
+      // shared travel AND the arena rails together (the arp's two ADR-0002
+      // exemptions). No module, or a module that only nudged velocity: shared
+      // motion runs, exactly as it always has.
+      const behavior = this.projectileBehavior(pr.role);
+      const steered = behavior?.steer?.(this.weaponCtx.get(pr.role)!, pr, step) ?? false;
+      if (!steered) {
         if (pr.homing) {
           let best: Enemy | null = null;
           let bestD = Infinity;
@@ -2187,7 +2159,7 @@ export class RunWorld {
             const dx = e.x - pr.x;
             const dy = e.y - pr.y;
             const d = dx * dx + dy * dy;
-            if (d < bestD && (!pr.evolved || pr.role !== 'lead' || d <= 320 * 320)) {
+            if (d < bestD && d <= pr.homingRange * pr.homingRange) {
               bestD = d;
               best = e;
             }
@@ -2219,9 +2191,10 @@ export class RunWorld {
         // shared knock channel.
         const sh = (WEAPON_SHOVE[pr.role] ?? 0) * this.buildMods.knockbackMul;
         if (sh) this.shove(e, pr.x, pr.y, sh);
-        // Bell: the note shatters into a radial burst of shards on its first
-        // hit. shatter is 0 on a shard, so shards never re-shatter.
-        if (pr.role === 'bell' && pr.shatter > 0) {
+        // The note shatters into a radial burst of shards on its first hit.
+        // shatter is 0 on every shot but a bell note, and 0 on a shard, so
+        // shards never re-shatter and no role compare is needed to say so.
+        if (pr.shatter > 0) {
           if (pr.gravity) {
             this.gravityWells.push({
               x: pr.x, y: pr.y, radius: 130 * this.buildMods.areaMul, lifeS: 1.1, pullSpeed: 140,
@@ -2236,8 +2209,11 @@ export class RunWorld {
         // Per-hit spark (view-only, bounded to low-count roles).
         if (SPARK_HIT_ROLES.has(pr.role) && !pr.shard)
           this.fx?.push({ type: 'spark', x: e.x, y: e.y, color: pr.color, n: 4, spread: 12 });
-        // Orbiters gate re-hits by time, so they never spend pierce on a hit.
-        if (pr.role === 'arp') continue;
+        // The shared pierce rule, and the one hook that can decline it. A
+        // module returning false chips on a timer instead (ADR-0002); no hook
+        // means spend, which is what every unmigrated role does today.
+        const spendsPierce = behavior?.onHit?.(this.weaponCtx.get(pr.role)!, pr, e) ?? true;
+        if (!spendsPierce) continue;
         pr.pierce -= 1;
         if (pr.pierce <= 0) {
           pr.lifeS = 0;
@@ -2251,8 +2227,11 @@ export class RunWorld {
     }
   }
 
+  /** Arena rails. Only ever reached from the shared-travel path, so a shot a
+   *  module steered itself never gets here — which is how the arp's rail
+   *  exemption survives without naming the arp. */
   private reflectProjectileFromArena(projectile: Projectile): void {
-    if (projectile.bounces <= 0 || projectile.role === 'arp') return;
+    if (projectile.bounces <= 0) return;
     const minX = this.player.x - this.worldW * 0.52;
     const maxX = this.player.x + this.worldW * 0.52;
     const minY = this.player.y - this.worldH * 0.52;
