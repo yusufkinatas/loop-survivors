@@ -403,6 +403,123 @@ const CHORD_STRIDE_FIELD: readonly (readonly [EnemyKind, number, number])[] = ((
   return out;
 })();
 
+/** FLOWERS for every lead geometry pin, and the reason is sharper here than
+ *  anywhere else in this file. The lead is the only weapon that STEERS AFTER IT
+ *  LEAVES THE PLAYER: every frame it re-picks the nearest body it has not
+ *  already hit and turns toward it at `turnRate` rad/s. So a lead pin is never
+ *  "was this body inside a footprint at time T" — it is "which body was nearest
+ *  the seeker at every one of the ~140 frames it was alive", and a target that
+ *  walks re-answers that question continuously. A zombie closes 44.65 units a
+ *  second and would move 98 units over a tier-4 seeker's 2.2s life, which is
+ *  more than the gaps these fields are cut to. A flower moves 8.9 — under 20
+ *  units across a whole seeker — so a flower placed at radius R is still, to
+ *  within half a body, at radius R when the turn arrives.
+ *
+ *  Flower radius is 17.544, so a tier-4 seeker (radius 7) makes contact at
+ *  24.5 and separation inside world.update(0) needs 35.1 between any two
+ *  bodies. Every gap below clears both by a wide margin.
+ *
+ *  All lead fields also stay inside the ARENA RAILS — |x| < 739.6, |y| < 416 at
+ *  this VIEW — so that the one scenario that DOES carry Mirrorball is the only
+ *  place a bounce can happen, and a rail reflection never leaks into a pin that
+ *  is about homing. */
+
+/** A zig-zag a seeker can only thread by TURNING, alternating sides of the
+ *  firing axis as it goes out. This is the field that puts `turnRate` under
+ *  test: 10 rad/s base against 14 evolved is not a damage difference, it is a
+ *  different curve, a different arrival frame at each body, and — when the turn
+ *  is too slow to make the next corner — a different SET of bodies reached.
+ *  A straight file could not tell the two apart at all.
+ *
+ *  The head sits alone at 120 with the next body at 260, so `nearestEnemy` has
+ *  an unambiguous aim lock and the trigger's angle is not seed-dependent. */
+const LEAD_CHAIN_FIELD: readonly (readonly [EnemyKind, number, number])[] = [
+  ['flower', 120, 0],
+  ['flower', 230, 120],
+  ['flower', 300, -110],
+  ['flower', 430, 90],
+  ['flower', 470, -140],
+  ['flower', 600, 60],
+  ['flower', 640, -90],
+  ['flower', 720, 30],
+];
+
+/** The 320-UNIT HOMING GATE, from both sides, through world state.
+ *
+ *  `pr.homingRange` is Infinity on a base seeker and 320 on a Neon Serpent —
+ *  a FIELD set at spawn since #140, so it is not a branch anything can read off
+ *  the shared loop, and today it is pinned ONLY by a pair of asserts in
+ *  systems-check. This field puts it in the digest instead.
+ *
+ *  The shape: a BAIT at 60 takes the aim lock and the first hit, which puts it
+ *  in the shot's hit set and frees the seeker to look for a second target.
+ *  Every other body then sits off the firing axis, so a turn is the only way to
+ *  it, and the distances are cut against 320 measured FROM THE BAIT:
+ *    (0, 250)    257 from the bait   inside the gate; both modes reach it
+ *    (0, -300)   306 from the bait but 550 from (0, 250), so which hop the
+ *                seeker is on decides whether it is a candidate at all — the
+ *                marker that says the recorded chain is an ORDER, not a count
+ *    (-520, 0)   580 from the bait, 574 from (0, 250), and on the far side of
+ *                the player from everything else, so no point on the reachable
+ *                path is ever within 320 of it. Only unrestricted base homing
+ *                crosses to it.
+ *  RECORDED: base takes the bait, (0, 250) and then the long crossing to
+ *  (-520, 0) — three bodies, 12 damage. A Neon Serpent stops after two, at
+ *  11.2. That gap between two baseline entries built from the identical field
+ *  and the identical build IS the 320.
+ *
+ *  Extension Cable is in both gate scenarios so a base seeker has the 3.36s of
+ *  life it needs to actually make the far crossing — otherwise "the base seeker
+ *  did not reach it" would mean "it expired", not "the gate is Infinity". */
+const LEAD_GATE_FIELD: readonly (readonly [EnemyKind, number, number])[] = [
+  ['flower', 60, 0],
+  ['flower', 0, 250],
+  ['flower', 0, -300],
+  ['flower', -520, 0],
+];
+
+/** Thirteen bodies in single file, which is to the lead's pierce budget what
+ *  SNARE_FILE is to the snare's — except the budgets here are far bigger, so
+ *  the file has to be far longer.
+ *
+ *  THE BUDGETS: base tier 4 is pierce 2, and with Needle Tips at max it is 7.
+ *  Neon Serpent is `LEAD_SERPENT.basePierce` (6) put THROUGH applyBuild, so it
+ *  is 6 + 5 = 11 — and per #146 eleven is the only value it ever has, because
+ *  `eligibleEvolution` will not hand out the evolution unless Needle Tips is
+ *  already at ITEM_MAX_LEVEL. Thirteen bodies is past both budgets, so in each
+ *  case the last bodies in the file are the markers that say the seeker DIED OF
+ *  PIERCE rather than ran out of targets — which is the only way a change to
+ *  the 6 shows up as anything other than a number nobody reads.
+ *
+ *  Spacing 50 against a flower's 35.1 diameter, ending at 680 so the whole file
+ *  is inside the arena rails and inside AIM_RANGE (750). A tier-4 seeker covers
+ *  912 units in its life, comfortably past the end. */
+const LEAD_PIERCE_FILE: readonly (readonly [EnemyKind, number, number])[] = file(
+  'flower',
+  [80, 130, 180, 230, 280, 330, 380, 430, 480, 530, 580, 630, 680],
+);
+
+/** Every body OUTSIDE AIM_RANGE (750), which is the only way to reach the
+ *  lead's second rng shape.
+ *
+ *  `aimDir` draws ONCE when it has a target (the ±0.08 jitter) and TWICE when
+ *  it does not (a whole random heading, then the jitter). Every other lead
+ *  scenario in this file has a target, so without this one the untargeted
+ *  branch is never taken and a module that drew the heading unconditionally —
+ *  or skipped the jitter draw — would move nothing. `rngDraws` is the only
+ *  channel that catches it.
+ *
+ *  It doubles as the cleanest statement of the gate: a base seeker's Infinity
+ *  homing locks onto a ring member 800 units away and curves out to it, and a
+ *  Neon Serpent's 320 leaves it blind for its whole life and it flies the
+ *  random heading straight. Ring spacing is 419 on the arc, so separation never
+ *  touches it. */
+const LEAD_UNAIMED_RING: readonly (readonly [EnemyKind, number, number])[] = ring(
+  'flower',
+  800,
+  12,
+);
+
 export const SCENARIOS: readonly ParityScenario[] = [
   // ---- the kick, solo, across the whole tier ladder -----------------------
   // One block per tier because the ladder is not one shape scaled four ways:
@@ -3314,6 +3431,502 @@ export const SCENARIOS: readonly ParityScenario[] = [
       { fire: 'chord' }, { fire: 'bass' }, { fire: 'lead' }, { fire: 'clap' },
       { fire: 'chord' }, { fire: 'bell' }, { fire: 'arp' },
       { frames: 200 },
+    ],
+  },
+
+  // ==========================================================================
+  // THE LEAD (#141)
+  // ==========================================================================
+  // Recorded BEFORE the extraction, on the unchanged run.ts, per the order at
+  // the top of this file.
+  //
+  // The lead is the seventh shape the migration has met, and it is the first
+  // weapon whose identity is mostly INSIDE THE SHARED LOOP'S OWN MOTION rather
+  // than beside it. It spawns plain projectiles like the snare — but with
+  // `homing: true`, so the shared loop re-picks a target and turns the shot
+  // every frame it is alive. Nothing about that is a branch any more: since
+  // #140 the whole of it is FIELDS ON THE SHOT, set at spawn —
+  //
+  //   pr.homing        true, from `role === 'lead'` in baseProjectile;
+  //   pr.turnRate      10 base, 14 evolved;
+  //   pr.homingRange   Infinity base, 320 evolved (this is the field #140
+  //                    created to get `pr.role !== 'lead'` out of the loop);
+  //
+  // — which means the lead is the weapon with the most behavior that the
+  // shared loop will happily keep executing after the extraction, on values the
+  // module is now responsible for setting. A module that forgets one of these
+  // does not crash and does not fail a type check; it silently spawns a shot
+  // that flies straight, or one that homes across the whole arena.
+  //
+  // The rest of its identity:
+  //   - a tier ladder that is a PIERCE ladder as well (1/1/1/2), aimed with
+  //     aimFan(0.08);
+  //   - Neon Serpent: damage x1.40, turnRate 14, the 320 gate, and
+  //     `LEAD_SERPENT.basePierce` (6) routed THROUGH applyBuild, so evolved
+  //     pierce is invariantly 11 (#146);
+  //   - a SUPERCHARGED EVERY FIFTH TRIGGER: damage x2 and
+  //     `radius = max(12, radius * 1.7)`, gated on `triggerCounts.lead % 5`,
+  //     a WORLD-OWNED counter that also ticks while the weapon is unevolved;
+  //   - SPARK_HIT_ROLES, of which the lead is now the last member. Its per-hit
+  //     spark (n=4, spread=12, in pr.color) is view-only and reaches the digest
+  //     ONLY through the ordered fx stream, so every scenario below that lands
+  //     a hit is also the only cover that table has. The extraction takes the
+  //     lead's share through ctx.fx the way the snare did, and deletes the Set,
+  //     its lookup, and its INTERIM_EXCEPTIONS entry with it.
+
+  // ---- the tier ladder, solo ----------------------------------------------
+  // Base pierce is 1 on tiers 1-3, so a bare seeker dies on the body it was
+  // aimed at and these four scenarios read as a damage ladder plus the FRAME
+  // AND PLACE the shot died: speed 340/350/360/380 decides when it arrives at
+  // the head of the chain, and tier 4's pierce 2 is the first rung that reaches
+  // a second body at all — which it can only do by turning.
+  ...([1, 2, 3, 4] as const).map((tier): ParityScenario => ({
+    name: `lead base tier ${tier}, solo, damage meter`,
+    seed: 0x1ead00 + tier,
+    weapons: [['lead', tier]],
+    enemies: LEAD_CHAIN_FIELD,
+    // Absurd hp turns every body into a damage meter AND keeps it in the
+    // homing candidate set for the whole flight, which is what makes the
+    // threading order readable: a body that dies stops being a target and the
+    // seeker's next turn changes with it.
+    hp: 1e6,
+    steps: [{ fire: 'lead' }, { frames: 150 }],
+  })),
+
+  // The same ladder with a pierce budget, which is the only way the ladder's
+  // OTHER three numbers become observable. Needle Tips at max lifts base pierce
+  // to 6/6/6/7, so every rung threads the whole zig-zag and `speed`, `radius`
+  // and `lifetimeS` all decide where the seeker is when the tail of the chain
+  // comes up. Ending mid-flight is deliberate for the same reason it is in the
+  // arp block: a live seeker's digested x,y,vx,vy IS its accumulated turn
+  // history, so turnRate is under test through position, not only damage.
+  ...([1, 2, 3, 4] as const).map((tier): ParityScenario => ({
+    name: `lead base tier ${tier}, Needle Tips, threads the chain`,
+    seed: 0x1ead10 + tier,
+    weapons: [['lead', tier]],
+    items: [['needleTips', 5]],
+    enemies: LEAD_CHAIN_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'lead' }, { frames: 150 }],
+  })),
+
+  // Natural hp, so kills, killsByRole, gem/note drops and the rng draws behind
+  // them are in the digest. BATS, because a bat dies to one touch of any lead
+  // tier and a flower (30hp) dies to none — so this is the scenario where the
+  // homing candidate set SHRINKS UNDER THE SEEKER, one body per hit, and the
+  // recorded chain is a record of the order it chose. The bats drift ~62 units
+  // a second toward the player, which is exactly why they are not used for any
+  // geometry pin above; here the order and the drops are the point.
+  ...([1, 4] as const).map((tier): ParityScenario => ({
+    name: `lead base tier ${tier}, solo, lethal`,
+    seed: 0x1ead20 + tier,
+    weapons: [['lead', tier]],
+    items: [['needleTips', 5]],
+    enemies: LEAD_CHAIN_FIELD.map(([, dx, dy]) => ['bat', dx, dy] as const),
+    steps: [{ fire: 'lead' }, { frames: 150 }],
+  })),
+
+  // The ladder caught IN FLIGHT, and this block exists because the two above
+  // did not catch it. Every other lead scenario ends with the seeker gone —
+  // spent on pierce or expired — and a dead projectile contributes NO line to
+  // the digest, so `lifetimeS` is only ever visible as "did it reach one more
+  // body before it died". Moving tier 1's 2.2 to 2.3 changed nothing anywhere
+  // in this file: 34 extra units of travel landed in the same gap.
+  //
+  // So: the out-of-range ring, where there is nothing within 750 to shorten the
+  // flight, Needle Tips so an incidental hit cannot end it, and a 90-frame tail
+  // against lives of 2.2-2.4s. Every tier's seeker is STILL ALIVE at the digest
+  // and its projectile line carries `life=` (lifetimeS minus 1.5s), `pos=` and
+  // `v=` (speed 340/350/360/380) and `r=` (6/6/6/7) as four separately
+  // falsifiable numbers per rung, none of which needs a hit to be readable.
+  ...([1, 2, 3, 4] as const).map((tier): ParityScenario => ({
+    name: `lead base tier ${tier}, ladder caught in flight`,
+    seed: 0x1ead90 + tier,
+    weapons: [['lead', tier]],
+    items: [['needleTips', 5]],
+    enemies: LEAD_UNAIMED_RING,
+    hp: 1e6,
+    steps: [{ fire: 'lead' }, { frames: 90 }],
+  })),
+
+  // ---- the pierce ladder against a file that outlasts it -------------------
+  // A file is the layout where "how many bodies does one seeker pass through"
+  // is readable straight off the digest. Thirteen bodies against a budget of 7
+  // means the tail of the file is untouched and the seeker is GONE, which is
+  // the difference between "ran out of pierce" and "ran out of targets".
+  {
+    name: 'lead base tier 4, Needle Tips, pierce runs out inside the file',
+    seed: 0x1eadf1,
+    weapons: [['lead', 4]],
+    items: [['needleTips', 5]],
+    enemies: LEAD_PIERCE_FILE,
+    hp: 1e6,
+    steps: [{ fire: 'lead' }, { frames: 150 }],
+  },
+  // The same file with NO Needle Tips: pierce 2, so the shot stops two bodies
+  // in. The pair brackets `applyBuild`'s `withExtraPierce` on the lead's own
+  // tier value — the half of the pierce pipeline that the Neon Serpent
+  // scenarios below cannot see, because there the base is LEAD_SERPENT's 6.
+  {
+    name: 'lead base tier 4, bare pierce 2 in the same file',
+    seed: 0x1eadf2,
+    weapons: [['lead', 4]],
+    enemies: LEAD_PIERCE_FILE,
+    hp: 1e6,
+    steps: [{ fire: 'lead' }, { frames: 150 }],
+  },
+
+  // ---- the homing gate, from both sides ------------------------------------
+  // Base homing is UNRESTRICTED: `pr.homingRange` is Infinity, so the seeker
+  // will cross the player and the whole arena to reach the far body at
+  // (-520, 0). Extension Cable is here so it has the life to do it — otherwise
+  // "did not reach" would mean "expired".
+  {
+    name: 'lead base tier 4, unrestricted homing across the gate field',
+    seed: 0x1ead31,
+    weapons: [['lead', 4]],
+    items: [['needleTips', 5], ['extensionCable', 5]],
+    enemies: LEAD_GATE_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'lead' }, { frames: 250 }],
+  },
+  // The identical field, the identical build, the identical script — the ONLY
+  // difference is the evolution, so the diff between these two baseline entries
+  // is the 320-unit gate and nothing else. Widening it, or losing it to a
+  // default of Infinity, moves this entry toward the one above.
+  {
+    name: 'lead evolved (Neon Serpent), the 320-unit gate on the same field',
+    seed: 0x1ead32,
+    weapons: [['lead', 4]],
+    items: [['needleTips', 5], ['extensionCable', 5]],
+    evolved: ['lead'],
+    enemies: LEAD_GATE_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'lead' }, { frames: 250 }],
+  },
+
+  // ---- the untargeted aim draw --------------------------------------------
+  // Every other lead scenario has a body inside AIM_RANGE, so `aimDir` takes
+  // its targeted path and draws ONCE. Here nothing is inside 750, so it draws
+  // TWICE — a whole random heading, then the ±0.08 jitter on top. rngDraws is
+  // the only channel that records the difference, and a module that drew the
+  // heading unconditionally would produce a perfectly plausible shot while
+  // desynchronizing every drop for the rest of the run.
+  {
+    name: 'lead base tier 4, no target in AIM_RANGE, two aim draws',
+    seed: 0x1ead41,
+    weapons: [['lead', 4]],
+    items: [['needleTips', 5], ['extensionCable', 5]],
+    enemies: LEAD_UNAIMED_RING,
+    hp: 1e6,
+    steps: [{ fire: 'lead' }, { frames: 200 }],
+  },
+  // Same two draws, and then the gate: a Neon Serpent fired at nothing is blind
+  // at spawn, because every body on the ring is 800 away and its search stops
+  // at 320. So it flies the random heading in a straight line and only ever
+  // sees a ring member if its own travel carries it within 320 of one — which
+  // over 3.36s of life it does, exactly once, 800-odd units from where it
+  // started. A base seeker on the identical field curves out to a target from
+  // frame one. The pair is the cleanest statement in this block of what the
+  // gate changes: not how hard the seeker hits, but WHEN it is allowed to look.
+  {
+    name: 'lead evolved (Neon Serpent), fired blind at an out-of-range ring',
+    seed: 0x1ead42,
+    weapons: [['lead', 4]],
+    items: [['needleTips', 5], ['extensionCable', 5]],
+    evolved: ['lead'],
+    enemies: LEAD_UNAIMED_RING,
+    hp: 1e6,
+    steps: [{ fire: 'lead' }, { frames: 200 }],
+  },
+
+  // ---- Neon Serpent --------------------------------------------------------
+  // Damage x1.40, turnRate 14 instead of 10, and pierce 11. Needle Tips at max
+  // is not an option here: `eligibleEvolution` refuses the evolution without
+  // it, which is exactly why 11 is the only pierce a Neon Serpent ever has.
+  {
+    name: 'lead evolved (Neon Serpent), damage meter on the chain',
+    seed: 0x1ead51,
+    weapons: [['lead', 4]],
+    items: [['needleTips', 5]],
+    evolved: ['lead'],
+    enemies: LEAD_CHAIN_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'lead' }, { frames: 150 }],
+  },
+  // Pierce 11 against thirteen bodies: the budget runs out two short of the end
+  // of the file, so the two survivors at 630 and 680 ARE the recorded value of
+  // `LEAD_SERPENT.basePierce + extraPierce`. Change the 6 and the file's tail
+  // moves; that is the only way that constant is observable at all.
+  {
+    name: 'lead evolved (Neon Serpent), pierce 11 runs out inside the file',
+    seed: 0x1ead52,
+    weapons: [['lead', 4]],
+    items: [['needleTips', 5]],
+    evolved: ['lead'],
+    enemies: LEAD_PIERCE_FILE,
+    hp: 1e6,
+    steps: [{ fire: 'lead' }, { frames: 150 }],
+  },
+  // Lethal, with splitters at 6hp against 5.6 evolved damage: one touch bursts
+  // each one and pushes four swarmers into the LIVE enemy array that the
+  // seeker is still homing through. The candidate set grows under the shot
+  // mid-flight, and every turn after the first burst is taken against bodies
+  // that did not exist when the trigger fired.
+  {
+    name: 'lead evolved (Neon Serpent), lethal, splitters burst under the seeker',
+    seed: 0x1ead53,
+    weapons: [['lead', 4]],
+    items: [['needleTips', 5]],
+    evolved: ['lead'],
+    enemies: LEAD_CHAIN_FIELD.map(([, dx, dy]) => ['splitter', dx, dy] as const),
+    hp: 6,
+    steps: [{ fire: 'lead' }, { frames: 150 }],
+  },
+
+  // ---- the fifth trigger ---------------------------------------------------
+  // `(triggerCounts.lead ?? 0) % 5 === 0` doubles a Neon Serpent's damage and
+  // fattens it to `max(12, radius * 1.7)`. triggerCounts is incremented by the
+  // world BEFORE the weapon runs, so the first trigger is count 1 and the FIFTH
+  // is the supercharged one — an off-by-one here is a whole different shot on a
+  // whole different beat, and nothing but a multi-trigger scenario sees it.
+  //
+  // Six triggers four frames apart, then a 40-frame tail: total 64 frames
+  // against a 144-frame life, so ALL SIX SEEKERS ARE STILL ALIVE in the digest
+  // with their own damage and radius on the projectile line. The fifth stands
+  // out from the other five by inspection, which is what makes this readable as
+  // a pin and not just a total.
+  //
+  // NO WIDE LENS, so the built radius is 7 and `7 * 1.7 = 11.9` loses to the
+  // floor: this entry records the CLAMPED branch of that max().
+  {
+    name: 'lead evolved, six triggers, the fifth is supercharged',
+    seed: 0x1ead61,
+    weapons: [['lead', 4]],
+    items: [['needleTips', 5]],
+    evolved: ['lead'],
+    enemies: LEAD_CHAIN_FIELD,
+    hp: 1e6,
+    steps: [
+      { fire: 'lead' }, { frames: 4 },
+      { fire: 'lead' }, { frames: 4 },
+      { fire: 'lead' }, { frames: 4 },
+      { fire: 'lead' }, { frames: 4 },
+      { fire: 'lead' }, { frames: 4 },
+      { fire: 'lead' }, { frames: 40 },
+    ],
+  },
+  // The OTHER branch of the same max(). Wide Lens at max is areaMul 1.30, so
+  // the built radius is 9.1 and `9.1 * 1.7 = 15.47` beats the floor of 12.
+  // Without this pair, a module that dropped the floor — or dropped the 1.7 —
+  // would still reproduce the entry above exactly, because at tier 4 with no
+  // area build the two branches happen to agree to within the clamp.
+  {
+    name: 'lead evolved with Wide Lens, the fifth trigger clears the radius floor',
+    seed: 0x1ead62,
+    weapons: [['lead', 4]],
+    items: [['needleTips', 5], ['wideLens', 5]],
+    evolved: ['lead'],
+    enemies: LEAD_CHAIN_FIELD,
+    hp: 1e6,
+    steps: [
+      { fire: 'lead' }, { frames: 4 },
+      { fire: 'lead' }, { frames: 4 },
+      { fire: 'lead' }, { frames: 4 },
+      { fire: 'lead' }, { frames: 4 },
+      { fire: 'lead' }, { frames: 4 },
+      { fire: 'lead' }, { frames: 40 },
+    ],
+  },
+
+  // ---- mid-evolve ----------------------------------------------------------
+  // THE COUNTER IS WORLD-OWNED AND IT DOES NOT RESET. Three triggers fired
+  // UNEVOLVED still advance triggerCounts.lead to 3, so the second trigger
+  // after the evolution is the run's FIFTH and is the supercharged one. An
+  // extraction that moves the counter into the module and starts it at zero —
+  // or starts it at the evolution — puts the doubled shot on a different beat
+  // and moves only this entry.
+  {
+    name: 'lead mid-evolve, base triggers still advance the fifth-shot counter',
+    seed: 0x1ead71,
+    weapons: [['lead', 4]],
+    items: [['needleTips', 5]],
+    enemies: LEAD_CHAIN_FIELD,
+    hp: 1e6,
+    steps: [
+      { fire: 'lead' }, { frames: 4 },
+      { fire: 'lead' }, { frames: 4 },
+      { fire: 'lead' }, { frames: 4 },
+      { evolve: 'lead' },
+      { fire: 'lead' }, { frames: 4 },
+      { fire: 'lead' }, { frames: 40 },
+    ],
+  },
+  // A BASE seeker still in the air when the lead evolves. Every evolved value
+  // is frozen onto the shot at spawn — pierce, turnRate, homingRange, damage —
+  // so that seeker keeps hunting at Infinity range with a 10 rad/s turn while
+  // the next trigger's serpent is gated at 320 and turns at 14, in the same
+  // frame, in the same shared loop, on the same role. That is the seam an
+  // extraction most wants to collapse into one mode flag read at tick time.
+  {
+    name: 'lead mid-evolve with a base seeker still hunting',
+    seed: 0x1ead72,
+    weapons: [['lead', 4]],
+    items: [['needleTips', 5], ['extensionCable', 5]],
+    enemies: LEAD_GATE_FIELD,
+    hp: 1e6,
+    steps: [
+      { fire: 'lead' },
+      { frames: 6 },
+      { evolve: 'lead' },
+      { frames: 6 },
+      { fire: 'lead' },
+      { frames: 250 },
+    ],
+  },
+
+  // ---- Double Take ---------------------------------------------------------
+  // The lead aims ONCE per trigger and fans the result: `aimFan(0.08)` is one
+  // `aimDir` call feeding `fanAround`, so three seekers cost the same one rng
+  // draw a single seeker does, and they leave MULTISHOT_FAN_RAD apart around
+  // the aim line. Moving the draw inside the fan loop — the mutation the arp
+  // block calls the single easiest thing to get wrong — triples rngDraws and
+  // scatters the volley. Two triggers, so the second trigger's independent
+  // draw is recorded too.
+  {
+    name: 'lead base tier 4 with Double Take, three seekers from one aim draw',
+    seed: 0x1ead81,
+    weapons: [['lead', 4]],
+    items: [['needleTips', 5], ['doubleTake', 5]],
+    enemies: LEAD_CHAIN_FIELD,
+    hp: 1e6,
+    steps: [
+      { fire: 'lead' }, { frames: 20 },
+      { fire: 'lead' }, { frames: 150 },
+    ],
+  },
+
+  // ---- the arena rails -----------------------------------------------------
+  // THE LEAD IS A RAIL USER, and this is the pair that says so. The arp's
+  // ProjectileBehavior.steer returns TRUE, which skips shared travel AND
+  // reflectProjectileFromArena together (ADR-0002). The lead's must return
+  // FALSE: it only nudges velocity and then lets shared motion and the rails
+  // run. Nothing else in this file would notice the difference — with no
+  // Mirrorball, `bounces` is 0 and the rail path returns immediately, so a lead
+  // module that wrongly steered its own shots would reproduce every other entry
+  // here exactly.
+  //
+  // Mirrorball at max is 3 bounces retaining 0.85, and the ring at 800 sits
+  // outside the rails (|x| < 739.6, |y| < 416) so the seeker meets a wall
+  // before it meets a body. `damage` on the digested projectile line drops by a
+  // factor of 0.85 per bounce and `bounces` counts down, so both halves of the
+  // rail rule are recorded, not just the reflection. RECORDED: the base seeker
+  // spends all three bounces and lands at damage 2.4565, i.e. 4 * 0.85^3; the
+  // evolved one spends one and sits at 4.76, i.e. 5.6 * 0.85. Two different
+  // bounce counts and the same retention, in two entries.
+  {
+    name: 'lead base tier 4 with Mirrorball, homing into the arena rails',
+    seed: 0x1ead91,
+    weapons: [['lead', 4]],
+    items: [['needleTips', 5], ['mirrorball', 5], ['extensionCable', 5]],
+    enemies: LEAD_UNAIMED_RING,
+    hp: 1e6,
+    steps: [{ fire: 'lead' }, { frames: 200 }],
+  },
+  // The evolved half: blind at 320, so it rides the rails on a fixed heading
+  // with no homing correction at all until a bounce happens to carry it within
+  // reach of the ring. Pure rail geometry, uncontaminated by turning.
+  {
+    name: 'lead evolved (Neon Serpent) with Mirrorball, blind off the rails',
+    seed: 0x1ead92,
+    weapons: [['lead', 4]],
+    items: [['needleTips', 5], ['mirrorball', 5], ['extensionCable', 5]],
+    evolved: ['lead'],
+    enemies: LEAD_UNAIMED_RING,
+    hp: 1e6,
+    steps: [{ fire: 'lead' }, { frames: 200 }],
+  },
+
+  // ---- the lead in a band --------------------------------------------------
+  // Ordering, and for the lead it is sharper than for any weapon so far. Every
+  // other weapon's footprint is decided at fire time; the lead's is decided
+  // every frame, against the LIVE enemy array. So when eight other weapons are
+  // killing, shoving and slowing bodies in the same frame, they are not noise
+  // around the seeker — they are its input. A kill by the kick two phases
+  // earlier removes a homing candidate and the seeker turns somewhere else.
+  //
+  // The lead fires FIRST in each, so its seekers are on the field before the
+  // other eight weapons' entities are.
+  {
+    name: 'lead in a full band, base, damage meter',
+    seed: 0x1eadb1,
+    weapons: [
+      ['kick', 4], ['snare', 4], ['hat', 4], ['bass', 4], ['chord', 4],
+      ['lead', 4], ['clap', 4], ['bell', 4], ['arp', 4],
+    ],
+    items: [['needleTips', 5]],
+    enemies: LEAD_CHAIN_FIELD,
+    hp: 1e6,
+    steps: [
+      { fire: 'lead' }, { fire: 'kick' }, { fire: 'snare' }, { fire: 'hat' },
+      { fire: 'bass' }, { fire: 'chord' }, { fire: 'clap' }, { fire: 'bell' },
+      { fire: 'arp' },
+      { frames: 150 },
+    ],
+  },
+  {
+    name: 'lead in a full band, base, lethal',
+    seed: 0x1eadb2,
+    weapons: [
+      ['kick', 4], ['snare', 4], ['hat', 4], ['bass', 4], ['chord', 4],
+      ['lead', 4], ['clap', 4], ['bell', 4], ['arp', 4],
+    ],
+    items: [['needleTips', 5]],
+    // SPLITTERS at natural 40hp, for the reason the chord's lethal band spells
+    // out: against 10hp bodies the other eight weapons clear the field inside
+    // the first half-second and the seeker spends its life with nothing to hunt
+    // — which pins nothing. At 40hp the field survives long enough that the
+    // candidate set is still shrinking while the seeker is still turning.
+    enemies: LEAD_CHAIN_FIELD.map(([, dx, dy]) => ['splitter', dx, dy] as const),
+    steps: [
+      { fire: 'lead' }, { fire: 'kick' }, { fire: 'snare' }, { fire: 'hat' },
+      { fire: 'bass' }, { fire: 'chord' }, { fire: 'clap' }, { fire: 'bell' },
+      { fire: 'arp' },
+      { frames: 150 },
+    ],
+  },
+  {
+    name: 'lead in a full evolved band, loaded build, walking',
+    seed: 0x1eadb3,
+    weapons: [
+      ['kick', 4], ['snare', 4], ['hat', 4], ['bass', 4], ['chord', 4],
+      ['lead', 4], ['clap', 4], ['bell', 4], ['arp', 4],
+    ],
+    // Every evolution item at max PLUS Double Take, so the fan count, the
+    // pierce, the radius, the speed and the lifetime a Neon Serpent spawns with
+    // are all off their defaults at once — and Mirrorball is in it, so the
+    // rails are live for the seekers in a band as well.
+    items: [
+      ['highTops', 5], ['fastForward', 5], ['mirrorball', 5], ['heavyAmp', 5],
+      ['wideLens', 5], ['needleTips', 5], ['paddedJacket', 5],
+      ['extensionCable', 5], ['magnetLanyard', 5], ['doubleTake', 2],
+    ],
+    evolved: ['kick', 'snare', 'hat', 'bass', 'chord', 'lead', 'clap', 'bell', 'arp'],
+    enemies: LEAD_CHAIN_FIELD,
+    hp: 1e6,
+    // FIVE lead triggers while the player walks, so the supercharged fifth
+    // lands inside a full evolved band, on a field the other eight weapons are
+    // also working, with the player somewhere other than where the first
+    // trigger fired from.
+    steps: [
+      { walk: [2, -1] },
+      { frames: 10 },
+      { fire: 'lead' }, { fire: 'kick' }, { fire: 'snare' }, { fire: 'hat' },
+      { fire: 'lead' }, { fire: 'bass' }, { fire: 'chord' }, { fire: 'clap' },
+      { fire: 'lead' }, { fire: 'bell' }, { fire: 'arp' },
+      { fire: 'lead' }, { frames: 6 },
+      { fire: 'lead' },
+      { frames: 150 },
     ],
   },
 ];
