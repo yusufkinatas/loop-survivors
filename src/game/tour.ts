@@ -54,28 +54,6 @@ export function endlessScale(minute: number): EndlessScale {
   };
 }
 
-/** Every whole minute crossed in `(previousS, nowS]`; safe for large frames. */
-export function crossedMinuteNumbers(previousS: number, nowS: number): number[] {
-  const from = Math.max(0, finiteOr(previousS, 0));
-  const to = Math.max(0, finiteOr(nowS, 0));
-  if (to <= from) return [];
-  const first = Math.floor(from / 60) + 1;
-  const last = Math.floor(to / 60);
-  const crossed: number[] = [];
-  for (let minute = first; minute <= last; minute++) crossed.push(minute);
-  return crossed;
-}
-
-/** A 1..0 envelope for the visible/audio threat bump at each minute mark. */
-export function minuteScalePulse(nowS: number, durationS = 1.8): number {
-  const now = Math.max(0, finiteOr(nowS, 0));
-  const duration = Math.max(Number.EPSILON, finiteOr(durationS, 1.8));
-  const sinceBoundary = now % 60;
-  if (now < 60 || sinceBoundary >= duration) return 0;
-  const t = sinceBoundary / duration;
-  return (1 - t) * (1 - t);
-}
-
 export const TOUR_ENEMY_IDS = [
   'bat',
   'redBat',
