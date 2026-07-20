@@ -695,19 +695,6 @@ export interface WeaponConf {
 // per-TICK number that floors at 1, so their listed damage can't drop a full
 // third — their real output is damage x ticks x rate; they lean on coverage.
 export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
-  // Dense stream of weak fast chips fired straight down the walk heading, no
-  // scatter — the player aims by steering. Density IS the ladder; per-trigger
-  // damage barely moves. The floor of 2 dates from when velocity could roll a
-  // chip down to 0.75x and it still had to clear a 1-HP Static Mite; damage is
-  // flat now, so the floor is pure headroom and is a retune candidate. The
-  // pierce ladder pays for losing auto-aim: a straight line has to be worth
-  // walking down.
-  hat: [
-    { damage: 2, speed: 440, radius: 3, lifetimeS: 0.8, pierce: 2 },
-    { damage: 2, speed: 450, radius: 3, lifetimeS: 0.85, pierce: 2 },
-    { damage: 2, speed: 460, radius: 3, lifetimeS: 0.9, pierce: 3 },
-    { damage: 3, speed: 480, radius: 3, lifetimeS: 0.95, pierce: 4 },
-  ],
   // Slow wide low wave that rolls through everything. The weight ladder:
   // per-trigger damage climbs harder than any other kit.
   bass: [
@@ -766,12 +753,6 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
  *  change is discovered by ear. Lines state what the chart + stat change
  *  actually does. */
 export const TIER_LINES: Partial<Record<Role, string[]>> = {
-  hat: [
-    'fast chips along your path',
-    'twice the chips',
-    'denser stream',
-    'a wall of chips',
-  ],
   bass: [
     'slow piercing wave',
     'waves twice as often',
@@ -877,16 +858,6 @@ export const TWO_HANDS = {
 /** Bell shatter: per-tier shard count, and the shard projectiles' stats. Shards
  *  fly out radially from the first hit; each is a small, short-lived bell shot
  *  that does not itself re-shatter. */
-/** Evolved hi-hat (Strobe Lane): the chips stop being a spread and become a
- *  rail down the walk heading. Reach comes from speed + life + infinite
- *  pierce; `stagger` pushes successive chips further along the lane so a
- *  16th-note wall draws as one continuous streak instead of a clump. */
-export const HAT_LANE = {
-  speedMul: 1.5,
-  lifetimeMul: 2.0,
-  stagger: [0, 26, 52, 78],
-};
-
 /** Evolved lead (Neon Serpent): a seeker that threads a line of bodies instead
  *  of stopping at the first. `basePierce` replaces lead's tier pierce outright,
  *  then goes through the build pipeline like every other finite pierce, so

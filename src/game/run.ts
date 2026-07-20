@@ -16,7 +16,6 @@ import {
   DAMAGE_FEEDBACK,
   DARTER,
   ENEMIES,
-  HAT_LANE,
   LEAD_SERPENT,
   MAD_FOREST_FRAMES,
   MAX_ALIVE_HARD,
@@ -519,6 +518,8 @@ export class RunWorld {
       get triggerCount() { return world.triggerCounts[role] ?? 0; },
       aimDir: (spread) => world.aimDir(spread),
       aimFan: (spread) => world.aimFan(spread),
+      moveDir: () => world.moveDir(),
+      fanAround: (base) => world.fanAround(base),
       near: (x, y, r) => world.hash.query(x, y, r, buf),
       all: () => world.enemies,
       damage: (t, amount) => world.damageEnemy(t as Enemy, amount, role),
@@ -718,14 +719,6 @@ export class RunWorld {
         }
         // One wide rolling wave per trigger; Double Take fans extra waves.
         for (const dir of this.aimFan(0.08)) this.spawnProjectile('bass', dir, conf, color);
-        break;
-      }
-      case 'hat': {
-        // Knife: fires straight along the walk heading with zero scatter, so
-        // the player aims by steering. Never consults nearestEnemy — with an
-        // empty screen it still rails along the direction of travel.
-        // Double Take's extra shots fan around the heading, never off it.
-        for (const dir of this.fanAround(this.moveDir())) this.spawnProjectile('hat', dir, conf, color);
         break;
       }
       case 'lead': {
@@ -1847,7 +1840,8 @@ export class RunWorld {
 
   /** Spread this trigger's shots around an already-chosen direction. Split out
    *  of aimFan so the hat can fan around its walk heading without ever
-   *  consulting nearestEnemy. */
+   *  consulting nearestEnemy; reached from a module through
+   *  WeaponContext.fanAround. */
   private fanAround(base: { x: number; y: number }): Array<{ x: number; y: number }> {
     const count = 1 + this.buildMods.extraProjectiles;
     if (count <= 1) return [base];
@@ -1861,8 +1855,9 @@ export class RunWorld {
     return dirs;
   }
 
-  /** The player's walk heading as a unit vector. No targeting, no jitter: two
-   *  triggers while holding one direction produce the exact same angle. */
+  /** The player's walk heading as a unit vector. No targeting, no jitter, no
+   *  rng draw: two triggers while holding one direction produce the exact same
+   *  angle. The hat's whole aim, reached through WeaponContext.moveDir. */
   private moveDir(): { x: number; y: number } {
     return { x: this.player.moveDirX, y: this.player.moveDirY };
   }
@@ -1927,17 +1922,6 @@ export class RunWorld {
     color: number,
   ): void {
     const pr = this.baseProjectile(role, conf, color, conf.damage);
-    // Evolved hi-hat is a lane, not a ricochet: every chip rails straight
-    // through the whole line it is fired down. Infinite pierce plus double
-    // life is the reach; the stagger below makes the stream read continuous.
-    const laneHat = role === 'hat' && pr.evolved;
-    if (laneHat) {
-      pr.damage *= 1.30;
-      pr.speed *= HAT_LANE.speedMul;
-      pr.maxPierce = Infinity;
-      pr.pierce = Infinity;
-      pr.lifeS *= HAT_LANE.lifetimeMul;
-    }
     if (role === 'lead' && pr.evolved) {
       pr.damage *= 1.40;
       // The serpent threads a line of bodies: its own base pierce replaces
@@ -1954,18 +1938,10 @@ export class RunWorld {
         pr.radius = Math.max(12, pr.radius * 1.7);
       }
     }
-    // pr.speed above already carries the lane multiplier, so deriving the
-    // velocity from it keeps the `speed` field equal to |v| — the bounce path
-    // and the hi-hat lane stagger both read that field.
+    // Deriving the velocity from pr.speed keeps the `speed` field equal to |v|,
+    // which the bounce path reads.
     pr.vx = dir.x * pr.speed;
     pr.vy = dir.y * pr.speed;
-    if (laneHat) {
-      // Stagger successive chips forward along the lane so a 16th-note wall
-      // draws as one continuous rail instead of a clump at the player.
-      const step = HAT_LANE.stagger[(this.triggerCounts.hat ?? 0) % HAT_LANE.stagger.length];
-      pr.x += dir.x * step;
-      pr.y += dir.y * step;
-    }
     this.pushProjectile(pr);
   }
 

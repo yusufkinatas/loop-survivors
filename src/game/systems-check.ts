@@ -27,6 +27,7 @@ import { mulberry32 } from './rng';
 import { KIT_COLORS, RunWorld, type FxEvent, type Projectile, type RunEvents } from './run';
 import {
   ARP,
+  HAT,
   KICK,
   SNARE,
   WEAPON_MODULES,
@@ -722,7 +723,17 @@ class FakeCtx implements WeaponContext {
     return { x: Math.cos(ang), y: Math.sin(ang) };
   }
   aimFan(spread: number): Array<{ x: number; y: number }> {
-    const base = this.aimDir(spread);
+    return this.fanAround(this.aimDir(spread));
+  }
+  /** The persisted walk heading. Initialised to (1, 0) the way RunWorld
+   *  initialises the player, and only ever overwritten by a check that means
+   *  to — which is exactly how standing still keeps the last heading. */
+  moveDirX = 1;
+  moveDirY = 0;
+  moveDir(): { x: number; y: number } {
+    return { x: this.moveDirX, y: this.moveDirY };
+  }
+  fanAround(base: { x: number; y: number }): Array<{ x: number; y: number }> {
     const count = 1 + this.buildMods.extraProjectiles;
     if (count <= 1) return [base];
     const baseAngle = Math.atan2(base.y, base.x);
@@ -1613,6 +1624,243 @@ const beams = (ctx: FakeCtx): Array<Extract<FxEvent, { type: 'beam' }>> =>
   const before = ctx.hits.length;
   inst.reset();
   assert.equal(ctx.hits.length, before, 'a reset snare lands no delayed damage');
+}
+
+const hatTiers = HAT.stats.tiers;
+
+// ---------------------------------------------------------------------------
+// The hat's tuning, pinned to LITERALS. Same rule as the kick, arp and snare
+// blocks above: the right-hand sides are numbers a human typed after reading
+// the pre-#141 config.ts and run.ts, never an expression that reads the value
+// it is checking.
+// ---------------------------------------------------------------------------
+{
+  // The per-tier ladder, verbatim from config.WEAPONS.hat. Density is the
+  // ladder — per-trigger damage barely moves (2/2/2/3) while the chart carries
+  // the growth — and the pierce ladder pays for having no auto-aim.
+  assert.deepEqual(
+    hatTiers.map((t) => [t.damage, t.speed, t.radius, t.lifetimeS, t.pierce]),
+    [
+      [2, 440, 3, 0.8, 2],
+      [2, 450, 3, 0.85, 2],
+      [2, 460, 3, 0.9, 3],
+      [3, 480, 3, 0.95, 4],
+    ],
+    'the hat damage/speed/size/lifetime/pierce ladder moved',
+  );
+  assert.equal(hatTiers.length, TIER_COUNT, 'the hat ladder must have exactly TIER_COUNT rungs');
+  assert.deepEqual(HAT.stats.tierLines, [
+    'fast chips along your path',
+    'twice the chips',
+    'denser stream',
+    'a wall of chips',
+  ], 'the hat pedestal copy moved');
+
+  // Strobe Lane. The three multipliers were `1.30` inline in run.ts's spawner
+  // and HAT_LANE.speedMul / HAT_LANE.lifetimeMul in config.ts.
+  assert.equal(HAT.stats.laneDamageMul, 1.30, 'the Strobe Lane damage multiplier moved');
+  assert.equal(HAT.stats.laneSpeedMul, 1.5, 'the Strobe Lane speed multiplier moved (was HAT_LANE.speedMul)');
+  assert.equal(HAT.stats.laneLifetimeMul, 2.0, 'the Strobe Lane lifetime multiplier moved (was HAT_LANE.lifetimeMul)');
+  // WAS a bare `Infinity` written onto the shot at the spawn site.
+  assert.equal(HAT.stats.lanePierce, Infinity, 'the Strobe Lane pierce moved');
+  assert.deepEqual([...HAT.stats.laneStagger], [0, 26, 52, 78],
+    'the Strobe Lane spawn stagger moved (was HAT_LANE.stagger)');
+
+  assert.equal(WEAPONS.hat, undefined, 'the hat module is the only copy of the hat ladder');
+  assert.equal(TIER_LINES.hat, undefined, 'the hat module is the only copy of the hat pedestal copy');
+  // The hat was in NEITHER role-keyed table: a chip lands damage and nothing
+  // else. Pinned so that a later tidy-up cannot quietly grant it a knock.
+  assert(!('hat' in WEAPON_SHOVE), 'a hat chip has never had a knock, and must not gain one');
+
+  const hatModule = WEAPON_MODULES.find((m) => m.role === 'hat')!;
+  assert.equal(hatModule.tickAt, undefined,
+    'the hat owns no damage pass: every chip rides the world\'s shared projectile loop');
+  assert.equal(hatModule.create().projectile, undefined,
+    'a hat chip rides SHARED travel, the arena rails and the shared pierce rule unchanged, and ' +
+    'lands damage and nothing else on a hit. Implementing steer() would take the lane off the ' +
+    'rails — and Mirrorball is Strobe Lane\'s partner item, so every lane chip bounces');
+  assert.equal(HAT.role, 'hat');
+}
+
+/** A fake context set up for the hat. Its rng() THROWS by default, which is
+ *  what turns "the hat never draws from the run stream" into an executable
+ *  assertion: this weapon aims by steering, so a single draw anywhere in fire()
+ *  is a desynchronised run. */
+function hatCtx(evolved = false): FakeCtx {
+  const ctx = new FakeCtx();
+  ctx.role = 'hat';
+  ctx.color = KIT_COLORS.hat;
+  ctx.evolved = evolved;
+  return ctx;
+}
+
+/** Fire the way RunWorld.fireTrigger does: the world's per-role counter is
+ *  bumped in the shared preamble BEFORE fire() runs. The lane's stagger cycles
+ *  on that counter, so getting this backwards shifts every chip's spawn offset
+ *  by one rung. */
+function hatFire(ctx: FakeCtx, inst: WeaponInstance, conf: WeaponConf): void {
+  ctx.triggerCount += 1;
+  inst.fire(ctx, conf);
+}
+
+// H1. ONE TRIGGER, ONE CHIP, ZERO DRAWS. The base hat fires down the walk
+// heading and costs nothing from the run stream: FakeCtx.rng() throws.
+{
+  const ctx = hatCtx();
+  const inst = HAT.create();
+  hatFire(ctx, inst, hatTiers[3]);
+  assert.equal(ctx.rngDraws, 0, 'a hat trigger draws NOTHING — it steers, it does not aim');
+  assert.equal(ctx.spawned.length, 1, 'one trigger, one chip');
+  assert.equal(ctx.hits.length, 0, 'the hat deals no damage at fire time');
+  assert.equal(ctx.fxLog.length, 0, 'the hat pushes no fx at fire time');
+  const pr = ctx.spawned[0];
+  // LITERALS, from the tier-4 rung: 3 damage, 4 pierce, 480 speed, 0.95s.
+  assert.equal(pr.damage, 3, 'a tier-4 chip carries the pedestal damage');
+  assert.equal(pr.pierce, 4, 'a tier-4 chip carries the pedestal pierce budget');
+  assert.equal(pr.maxPierce, 4);
+  assert.equal(pr.speed, 480);
+  assert.equal(pr.lifeS, 0.95);
+  // The heading a run starts on, never walked: due east, and no jitter at all.
+  assert.equal(round6(pr.vx), 480, 'velocity is derived from pr.speed along the walk heading');
+  assert.equal(round6(pr.vy), 0);
+  assert.equal(round6(Math.hypot(pr.vx, pr.vy)), 480,
+    'the speed FIELD must stay equal to |v| — the bounce path reads it');
+  assert.equal(pr.x, 0, 'an unevolved chip spawns on the player, with no stagger');
+  assert.equal(pr.y, 0);
+}
+
+// H2. THE HEADING IS NOT THE TARGET. This is the identity that separates the
+// hat from every weapon migrated before it. An enemy sits due north and the
+// player walks due south; the chip goes SOUTH. If fire() ever reaches for
+// aimDir/aimFan, rng() throws and this check says so by name.
+{
+  const ctx = hatCtx();
+  const inst = HAT.create();
+  ctx.targets.push(fakeTarget(0, -200));
+  ctx.moveDirX = 0;
+  ctx.moveDirY = 1;
+  hatFire(ctx, inst, hatTiers[0]);
+  const pr = ctx.spawned[0];
+  assert.equal(round6(pr.vx), 0, 'the chip ignores the enemy and follows the heading');
+  assert.equal(round6(pr.vy), 440, 'due south, at the tier-1 speed');
+  assert.equal(ctx.rngDraws, 0, 'aiming would have cost a draw; steering costs none');
+}
+
+// H3. STANDING STILL STILL FIRES. movePlayer only overwrites the heading when
+// the stick clears its deadzone, so a stopped player keeps the last one. Drop
+// that and the heading becomes a zero vector and every chip spawns with zero
+// velocity — a silent, total loss of the weapon.
+{
+  const ctx = hatCtx();
+  const inst = HAT.create();
+  ctx.moveDirX = -1;
+  ctx.moveDirY = 0;
+  hatFire(ctx, inst, hatTiers[3]);
+  // Two triggers while the heading never changes produce the exact same angle.
+  hatFire(ctx, inst, hatTiers[3]);
+  assert.deepEqual(ctx.spawned.map((pr) => [round6(pr.vx), round6(pr.vy)]), [[-480, 0], [-480, 0]],
+    'a held heading fires the same angle every trigger — no jitter, no drift');
+}
+
+// H4. DOUBLE TAKE FANS AROUND THE HEADING, NEVER OFF IT — and still draws
+// nothing. The offsets are the shared MULTISHOT_FAN_RAD ladder (0, +1, -1),
+// applied to the walk heading rather than to an aim line.
+{
+  const ctx = hatCtx();
+  const inst = HAT.create();
+  ctx.buildMods = { ...ctx.buildMods, extraProjectiles: 2 };
+  hatFire(ctx, inst, hatTiers[3]);
+  assert.equal(ctx.spawned.length, 3, 'Double Take at level 2 makes three chips');
+  assert.equal(ctx.rngDraws, 0, 'a fanned volley is still zero draws — the fan is arithmetic');
+  const angles = ctx.spawned.map((pr) => round6(Math.atan2(pr.vy, pr.vx)));
+  assert.deepEqual(angles, [0, round6(MULTISHOT_FAN_RAD), round6(-MULTISHOT_FAN_RAD)],
+    'the extra chips alternate either side of the heading, centred on it');
+}
+
+// H5. STROBE LANE: the four multipliers, on one chip, against the tier-4 rung.
+// 3 x 1.30 damage, 480 x 1.5 speed, 0.95 x 2.0 life, and pierce written over
+// with Infinity.
+{
+  const ctx = hatCtx(true);
+  const inst = HAT.create();
+  hatFire(ctx, inst, hatTiers[3]);
+  const pr = ctx.spawned[0];
+  assert.equal(round6(pr.damage), 3.9, 'a lane chip hits 1.30x the tier damage');
+  assert.equal(pr.speed, 720, 'a lane chip travels 1.5x tier speed');
+  assert.equal(round6(Math.hypot(pr.vx, pr.vy)), 720,
+    'the velocity carries the lane speed, so the speed FIELD still equals |v|');
+  assert.equal(round6(pr.lifeS), 1.9, 'a lane chip lives twice as long');
+  assert.equal(pr.pierce, Infinity, 'a lane chip rails through the whole file');
+  assert.equal(pr.maxPierce, Infinity);
+  // 720 x 1.9 = 1368 units of reach, which is why the lane crosses the arena
+  // rails as a matter of course rather than as an edge case.
+  assert.equal(round6(pr.speed * pr.lifeS), 1368, 'the lane\'s reach is speed x life');
+}
+
+// H6. THE STAGGER CYCLES ON THE TRIGGER COUNT, AND THE COUNT DOES NOT RESET ON
+// EVOLUTION. Four lane triggers walk the whole [0, 26, 52, 78] ring and wrap.
+// The offset is along the heading, so it is a spawn position, not a velocity.
+{
+  const ctx = hatCtx(true);
+  const inst = HAT.create();
+  for (let i = 0; i < 5; i++) hatFire(ctx, inst, hatTiers[3]);
+  // triggerCount runs 1..5, so the first chip takes stagger[1 % 4] = 26.
+  assert.deepEqual(ctx.spawned.map((pr) => round6(pr.x)), [26, 52, 78, 0, 26],
+    'successive lane chips are pushed further along the heading, then wrap');
+  assert.deepEqual(ctx.spawned.map((pr) => round6(pr.y)), [0, 0, 0, 0, 0],
+    'the stagger runs along the heading and nowhere else');
+}
+
+// H7. EVOLVING MID-RUN DOES NOT RESTART THE STAGGER RING. One base trigger,
+// then evolve: the next chip takes stagger[2] = 52, not the 26 a hat that had
+// only ever fired one trigger as a lane would take. The counter is the world's,
+// running since the first trigger of the run.
+{
+  const ctx = hatCtx();
+  const inst = HAT.create();
+  hatFire(ctx, inst, hatTiers[3]);
+  ctx.evolved = true;
+  hatFire(ctx, inst, hatTiers[3]);
+  assert.equal(round6(ctx.spawned[1].x), 52,
+    'the stagger ring keeps counting across the evolution — it is the world\'s trigger counter');
+}
+
+// H8. NEEDLE TIPS: a real stacking build on the base hat, a total no-op on the
+// lane. `conf` arrives ALREADY BUILT, so the item's +5 pierce is already in it
+// (tier-4 4 -> 9); the base chip carries that 9, and the lane overwrites it
+// with Infinity.
+//
+// THAT OVERWRITE LOOKS EXACTLY LIKE THE BUG #146 FIXED on evolved lead, and it
+// is not one. Lead wrote a finite 6 over the pipeline's answer, so the item had
+// a bigger number it should have reached; there is no number above Infinity for
+// the item to reach here. Pinned in both directions so a future "fix" that
+// routes lane pierce through the pipeline has to argue with this check.
+{
+  const built: WeaponConf = { ...hatTiers[3], pierce: hatTiers[3].pierce! + 5 };
+  assert.equal(built.pierce, 9, 'Needle Tips at level 5 takes a tier-4 chip to 9 bodies');
+
+  const base = hatCtx();
+  hatFire(base, HAT.create(), built);
+  assert.equal(base.spawned[0].pierce, 9, 'the base hat spends the pierce the build gave it');
+  assert.equal(base.spawned[0].maxPierce, 9);
+
+  const lane = hatCtx(true);
+  hatFire(lane, HAT.create(), built);
+  assert.equal(lane.spawned[0].pierce, Infinity,
+    'Strobe Lane overwrites the built pierce, which makes Needle Tips a no-op on it. Correct ' +
+    'here (an infinity is not a floor to add to) and NOT the #146 shape it resembles');
+}
+
+// H9. reset() has nothing to drop: every chip lives in the world's projectile
+// array, which clearSandboxEntities empties. Pinned so that stays true.
+{
+  const ctx = hatCtx(true);
+  const inst = HAT.create();
+  hatFire(ctx, inst, hatTiers[0]);
+  inst.reset();
+  assert.equal(ctx.hits.length, 0, 'a reset hat lands no delayed damage');
+  assert.equal(ctx.fxLog.length, 0, 'the hat pushes no fx at all');
+  assert.equal(ctx.rngDraws, 0, 'and it never drew anything to begin with');
 }
 
 // ---------------------------------------------------------------------------

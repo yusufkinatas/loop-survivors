@@ -116,6 +116,23 @@ export interface WeaponContext {
    *  come back, so the draw count above is per TRIGGER, not per shot. */
   aimFan(spread: number): Array<{ x: number; y: number }>;
 
+  /** The player's persisted WALK HEADING as a unit vector. No targeting, no
+   *  jitter, and NO RNG DRAW AT ALL — two triggers while holding one direction
+   *  produce the exact same angle. The hat is the only weapon that aims by
+   *  steering, and this is the whole of how.
+   *
+   *  Standing still keeps the LAST heading rather than zeroing it (movePlayer
+   *  only writes it when the stick clears its deadzone), and the player starts
+   *  the run pointing at (1, 0), so this never comes back as a zero vector. */
+  moveDir(): { x: number; y: number };
+
+  /** Spread this trigger's shots around an ALREADY-CHOSEN direction — the same
+   *  Double Take fan aimFan applies, minus the aiming. Split out of aimFan for
+   *  the hat, which fans around its walk heading and must never consult a
+   *  target: `fanAround(moveDir())` is not a spelling of `aimFan(0)`, it is the
+   *  version that draws no rng. */
+  fanAround(base: { x: number; y: number }): Array<{ x: number; y: number }>;
+
   /** Candidates from THIS frame's spatial-hash snapshot, in hash bucket order
    *  (cells minX..maxX outer, minY..maxY inner, insertion order within a
    *  bucket). A SUPERSET including dead enemies; callers still run the exact
@@ -213,11 +230,12 @@ export interface WeaponContext {
 // with the first weapon that needs it — chord for zones, bass for shockwaves,
 // bell for gravity wells.
 //
-// No nearestEnemy / nearestEnemies / fanAround / moveDir: the three weapons
-// migrated so far need none of them, and every member here is a tax on every
-// fake context. aimDir/aimFan/triggerCount left this list with the snare
-// (#141), which needed all three; fanAround and moveDir belong to the hat,
-// which aims off its walk heading instead, and nearestEnemies to the clap.
+// No nearestEnemy / nearestEnemies: the four weapons migrated so far need
+// neither, and every member here is a tax on every fake context.
+// aimDir/aimFan/triggerCount left this list with the snare (#141), which needed
+// all three; fanAround and moveDir left with the hat (#141), which aims off its
+// walk heading instead of ever consulting a target. nearestEnemy belongs to
+// chord (which throws its zone at one) and nearestEnemies to the clap.
 //
 // No `world`, no mutable arrays, no `tiers`, no `level`, no `powerMul`, no
 // `applyBuild` — `conf` arrives already built.
