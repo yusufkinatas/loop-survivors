@@ -23,8 +23,6 @@ import {
   SHIELDED,
   SHOVE_S,
   SPLITTER,
-  TWO_HANDS,
-  WEAPON_SHOVE,
   WORLD_SCALE,
   madForestEnemyStats,
   xpPickupMultiplier,
@@ -251,25 +249,6 @@ export interface GravityWell {
   burst: boolean;
 }
 
-/** One Two Hands pincer in flight: two slabs standing off along `angle` from
- *  (x, y), travelling inward to meet at `closesAt`. */
-interface ClapPinch {
-  x: number;
-  y: number;
-  /** Axis the two slabs travel along, in radians. */
-  angle: number;
-  /** Simulation time at which the hands meet and the damage lands. */
-  closesAt: number;
-  /** Total travel time, so the view can be fed a halfway frame. */
-  closeS: number;
-  gap: number;
-  radius: number;
-  damage: number;
-  color: number;
-  /** Set once the halfway visual has been emitted. */
-  midShown: boolean;
-}
-
 /** A treasure chest dropped by a defeated elite/boss enemy. Walk into it to
  *  open it: it grants a weapon evolution when one is ready, otherwise health. */
 export interface Chest {
@@ -426,7 +405,6 @@ export class RunWorld {
   readonly shockwaves: Shockwave[] = [];
   readonly gravityWells: GravityWell[] = [];
   readonly chests: Chest[] = [];
-  private readonly clapPinches: ClapPinch[] = [];
 
   secondWindReady = false;
 
@@ -521,6 +499,7 @@ export class RunWorld {
       fanAround: (base) => world.fanAround(base),
       near: (x, y, r) => world.hash.query(x, y, r, buf),
       nearestEnemy: (range) => world.nearestEnemy(range),
+      nearestEnemies: (range, count) => world.nearestEnemies(range, count),
       all: () => world.enemies,
       damage: (t, amount) => world.damageEnemy(t as Enemy, amount, role),
       shove: (t, fx, fy, d) => world.shove(t as Enemy, fx, fy, d),
@@ -731,13 +710,11 @@ export class RunWorld {
     // for an owned (hence supported) role, so the entry is always present.
     let conf: WeaponConf = weaponTiers(t.role)![tier - 1];
     const color = KIT_COLORS[t.role];
-    const p = this.player;
 
     // Single build-transform pipeline (D1): tempo compensation, folded in one
     // place — balance code multiplies here.
     conf = this.applyBuild(conf);
     this.triggerCounts[t.role] = (this.triggerCounts[t.role] ?? 0) + 1;
-    const evolved = this.evolved.has(t.role);
 
     // A migrated weapon owns its whole identity behind the weapon context; the
     // switch below is the shrinking remainder.
@@ -748,19 +725,6 @@ export class RunWorld {
     }
 
     switch (t.role) {
-      case 'clap': {
-        if (evolved) {
-          this.fireTwoHands(conf, color);
-          break;
-        }
-        // Whip: a wide forward slash in the aim direction, hitting a cone.
-        const aim = this.aimDir(0);
-        const ang = Math.atan2(aim.y, aim.x);
-        const reach = conf.radius!;
-        this.damageCone(p.x, p.y, ang, conf.arc!, reach, conf.damage, 'clap', WEAPON_SHOVE.clap);
-        this.fx?.push({ type: 'arc', x: p.x, y: p.y, angle: ang, arc: conf.arc!, radius: reach, color });
-        break;
-      }
       case 'bell': {
         // A note lobbed straight that shatters into shards on its first hit.
         for (const dir of this.aimFan(0.1)) this.spawnBell(dir, conf, color);
@@ -920,7 +884,7 @@ export class RunWorld {
     this.hash.clear();
     for (const e of this.enemies) if (!e.dead) this.hash.insert(e);
     this.tickWeapons('strikes', dt);
-    this.updateClapPinches();
+    this.tickWeapons('pinches', dt);
     this.updateProjectiles(dt);
     this.tickWeapons('zones', dt);
     this.tickWeapons('shockwaves', dt);
@@ -1375,7 +1339,6 @@ export class RunWorld {
     this.gravityWells.length = 0;
     if (this.fx) this.fx.length = 0;
     for (const inst of this.weapons.values()) inst.reset();
-    this.clapPinches.length = 0;
     this.overflowGem = null;
     this.overflowMusicNote = null;
     this.noteDropPity = 0;
@@ -1692,103 +1655,12 @@ export class RunWorld {
 
   // ---- weapons ----
 
-  /** Two Hands: a clap is two hands meeting, so each trigger picks the closest
-   *  few enemies and snaps a slab pair shut on each of them. Target-picked and
-   *  tiny on purpose — the base weapon's cone is short-ranged, and the roster
-   *  already has three player-centred blasts (Subquake, Redline Stomp,
-   *  Afterhours). The inward tug on the crush is the point: it bunches the
-   *  horde for the rest of the band. */
-  private fireTwoHands(conf: WeaponConf, color: number): void {
-    const p = this.player;
-    const damage = conf.damage * TWO_HANDS.damageMul;
-    const targets = this.nearestEnemies(AIM_RANGE, TWO_HANDS.targets);
-    if (targets.length === 0) {
-      // Nothing in reach: still clap, just ahead of the player, so the beat
-      // reads on screen and an empty field does not eat the trigger.
-      const aim = this.aimDir(0);
-      this.spawnPinch(p.x + aim.x * TWO_HANDS.openGap, p.y + aim.y * TWO_HANDS.openGap,
-        Math.atan2(aim.y, aim.x), damage, color);
-      return;
-    }
-    for (const target of targets) {
-      this.spawnPinch(target.x, target.y, Math.atan2(target.y - p.y, target.x - p.x), damage, color);
-    }
-  }
-
-  /** Queue one pincer centred on (x, y), its slabs standing off along `angle`. */
-  private spawnPinch(x: number, y: number, angle: number, damage: number, color: number): void {
-    const area = this.buildMods.areaMul;
-    const pinch: ClapPinch = {
-      x,
-      y,
-      angle,
-      closesAt: this.timeS + TWO_HANDS.closeS,
-      closeS: TWO_HANDS.closeS,
-      gap: TWO_HANDS.openGap * area,
-      radius: TWO_HANDS.pinchRadius * area,
-      damage,
-      color,
-      midShown: false,
-    };
-    this.clapPinches.push(pinch);
-    this.drawPinchHands(pinch, 1);
-  }
-
-  /** The two slabs, drawn as short bars broadside to the pinch axis at
-   *  `t` of their standoff (1 = fully open, 0 = met). */
-  private drawPinchHands(pinch: ClapPinch, t: number): void {
-    if (!this.fx) return;
-    const ax = Math.cos(pinch.angle);
-    const ay = Math.sin(pinch.angle);
-    const half = pinch.radius * 1.15;
-    for (const side of [-1, 1] as const) {
-      const cx = pinch.x + ax * pinch.gap * t * side;
-      const cy = pinch.y + ay * pinch.gap * t * side;
-      this.fx.push({
-        type: 'beam',
-        x: cx + ay * half,
-        y: cy - ax * half,
-        x2: cx - ay * half,
-        y2: cy + ax * half,
-        width: 5,
-        color: pinch.color,
-      });
-    }
-  }
-
-  private updateClapPinches(): void {
-    for (let i = this.clapPinches.length - 1; i >= 0; i--) {
-      const pinch = this.clapPinches[i];
-      if (pinch.closesAt > this.timeS) {
-        if (!pinch.midShown && pinch.closesAt - this.timeS <= pinch.closeS * 0.5) {
-          pinch.midShown = true;
-          this.drawPinchHands(pinch, 0.45);
-        }
-        continue;
-      }
-      // The crush itself: no shove, because the whole move pulls inward.
-      this.damageArea(pinch.x, pinch.y, pinch.radius, pinch.damage, 'clap', 0);
-      this.dragInward(pinch.x, pinch.y, TWO_HANDS.tugRadius * this.buildMods.areaMul,
-        TWO_HANDS.tug * this.buildMods.knockbackMul);
-      this.fx?.push({ type: 'slam', x: pinch.x, y: pinch.y, radius: pinch.radius, color: pinch.color });
-      this.fx?.push({ type: 'spark', x: pinch.x, y: pinch.y, color: pinch.color, n: 6, spread: pinch.radius * 0.7 });
-      this.clapPinches.splice(i, 1);
-    }
-  }
-
-  /** Drag every enemy within `radius` toward (x, y) by up to `dist`. Runs
-   *  through shove() with the origin mirrored through the enemy, so knockback
-   *  resistance and the Drop lift apply exactly as they do on a push. */
-  private dragInward(x: number, y: number, radius: number, dist: number): void {
-    if (dist <= 0) return;
-    const near = this.hash.query(x, y, radius + 24, this.queryBuf);
-    for (const e of near) {
-      if (e.dead) continue;
-      const d = Math.hypot(e.x - x, e.y - y);
-      if (d > radius || d < 1) continue;
-      this.shove(e, 2 * e.x - x, 2 * e.y - y, Math.min(dist, d));
-    }
-  }
+  // The clap left this file with the clap module (#141), and it took more than
+  // its own tuning: the pincer type, the pincer array, the queue's reset, and
+  // the world's damageCone and damageArea helpers all went with it, since Two
+  // Hands and the base cone were their last callers. What remains is the
+  // GENERIC query nearestEnemies, below with the world's other aiming queries,
+  // which the module reaches through ctx.nearestEnemies.
 
   // Shockwaves left this file with the bass module (#141). The world still
   // STORES them — view.ts draws world.shockwaves and clearSandboxEntities
@@ -2032,39 +1904,6 @@ export class RunWorld {
     }
   }
 
-  /** Clap: damage every enemy inside a forward cone (also point-blank). */
-  private damageCone(
-    x: number,
-    y: number,
-    angle: number,
-    halfArc: number,
-    reach: number,
-    damage: number,
-    source: Role,
-    shove = 0,
-  ): void {
-    const near = this.hash.query(x, y, reach + 24, this.queryBuf);
-    for (const e of near) {
-      if (e.dead) continue;
-      const dx = e.x - x;
-      const dy = e.y - y;
-      const d = Math.hypot(dx, dy);
-      if (d > reach + e.radius) continue;
-      if (d < 34) {
-        this.damageEnemy(e, damage, source);
-        if (shove) this.shove(e, x, y, shove);
-        continue;
-      }
-      let diff = Math.atan2(dy, dx) - angle;
-      while (diff > Math.PI) diff -= Math.PI * 2;
-      while (diff < -Math.PI) diff += Math.PI * 2;
-      if (Math.abs(diff) <= halfArc) {
-        this.damageEnemy(e, damage, source);
-        if (shove) this.shove(e, x, y, shove);
-      }
-    }
-  }
-
   /** The SHARED projectile loop. It owns travel, arena rails, the hit pass and
    *  the pierce rule for EVERY weapon, and — since #140 — it contains no
    *  per-weapon branch at all. Weapon-specific motion belongs to the owning
@@ -2122,11 +1961,12 @@ export class RunWorld {
         if (e.dead || pr.hit.has(e) || !circlesOverlap(pr, e)) continue;
         pr.hit.add(e);
         this.damageEnemy(e, pr.damage, pr.role);
-        // Shove (sim, deterministic) for the projectile weapons that have not
-        // migrated yet. Writes only the shared knock channel. A migrated weapon
-        // does this from its own ProjectileBehavior.onHit instead.
-        const sh = (WEAPON_SHOVE[pr.role] ?? 0) * this.buildMods.knockbackMul;
-        if (sh) this.shove(e, pr.x, pr.y, sh);
+        // The per-weapon shove lookup that stood here is GONE (#141). It read
+        // the WEAPON_SHOVE table by pr.role — the last role-keyed table in this
+        // loop and the last entry in INTERIM_EXCEPTIONS; the clap module took
+        // the table with it. A weapon that knocks on a projectile hit does it from its own
+        // ProjectileBehavior.onHit now — see SNARE_STATS.shove and
+        // BASS_STATS.shove, both applied that way.
         // The note shatters into a radial burst of shards on its first hit.
         // shatter is 0 on every shot but a bell note, and 0 on a shard, so
         // shards never re-shatter and no role compare is needed to say so.
@@ -2192,27 +2032,6 @@ export class RunWorld {
   // tick() runs in the 'zones' phase where updateZones used to stand. That
   // method was inside the shared-physics guard's protected set, so this is the
   // first extraction that shrank the guard rather than working around it.
-
-  private damageArea(
-    x: number,
-    y: number,
-    radius: number,
-    damage: number,
-    source?: Role,
-    shove = 0,
-  ): number {
-    const near = this.hash.query(x, y, radius + 24, this.queryBuf);
-    const area = { x, y, radius };
-    let hits = 0;
-    for (const e of near) {
-      if (!e.dead && circlesOverlap(area, e)) {
-        this.damageEnemy(e, damage, source);
-        if (shove) this.shove(e, x, y, shove);
-        hits += 1;
-      }
-    }
-    return hits;
-  }
 
   // ---- pickups and juice ----
 

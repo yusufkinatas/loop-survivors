@@ -695,14 +695,6 @@ export interface WeaponConf {
 // per-TICK number that floors at 1, so their listed damage can't drop a full
 // third — their real output is damage x ticks x rate; they lean on coverage.
 export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
-  // Whip: a wide forward slash that hits everything in a close cone. Melee
-  // crowd control — no travel, instant, safest when the wall is on top of you.
-  clap: [
-    { damage: 2, radius: 80, arc: 0.65 },
-    { damage: 3, radius: 88, arc: 0.72 },
-    { damage: 4, radius: 98, arc: 0.8 },
-    { damage: 6, radius: 108, arc: 0.9 },
-  ],
   // Bell (band, Melody): a note lobbed straight that shatters into shards on
   // its first hit (shard count per tier in BELL). radius = the shot's own size.
   bell: [
@@ -718,12 +710,6 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
  *  change is discovered by ear. Lines state what the chart + stat change
  *  actually does. */
 export const TIER_LINES: Partial<Record<Role, string[]>> = {
-  clap: [
-    'a wide slash close to you',
-    'wider, harder slash',
-    'sweeps a bigger arc',
-    'the widest, hardest slash',
-  ],
   bell: [
     'a note that shatters into shards',
     'more shards on the shatter',
@@ -751,41 +737,16 @@ export const WORLD_SCALE = 800 / 456;
 /** How long an enemy rides a weapon shove before resuming its chase. */
 export const SHOVE_S = 0.12;
 
-/** Per-weapon knock distance applied on hit (Feature 3). Absent = no shove.
- *
- *  SHRINKING (#141). Each entry is the personal tuning of a weapon that has not
- *  been extracted yet, and each leaves with its own module — the snare's 8 went
- *  into SNARE_STATS.shove and the bass's 6 into BASS_STATS.shove, each applied
- *  from that module's own onHit. CLAP IS THE LAST ENTRY, and takes this table
- *  with it. */
-export const WEAPON_SHOVE: Partial<Record<Role, number>> = { clap: 12 };
-
-// ---- the pincer weapon ----
-
-/** Two Hands (evolved clap): a clap is two hands meeting, so each trigger
- *  picks the closest few enemies and snaps a pair of slabs shut on each one.
- *  Deliberately tiny — the identity is high single-target damage plus an
- *  inward tug that bunches the horde up for the rest of the band, NOT another
- *  player-centred blast (that is what Subquake is for). Keep `pinchRadius`
- *  well under Subquake's 288 unit ring. */
-export const TWO_HANDS = {
-  /** How many nearby enemies get their own pincer on a single trigger. */
-  targets: 3,
-  /** Seconds the two slabs take to travel from open to shut. */
-  closeS: 0.12,
-  /** How far out along the pinch axis each slab starts, in world units. */
-  openGap: 74,
-  /** Radius crushed at the pinch point once the hands meet. */
-  pinchRadius: 42,
-  /** Per-hit damage multiplier on the weapon's base damage — sits between
-   *  Railshot's 1.50 and Subquake's 1.55, because the footprint is a fraction
-   *  of either. */
-  damageMul: 1.52,
-  /** Radius over which survivors get dragged toward the pinch point. */
-  tugRadius: 96,
-  /** How far survivors are dragged inward. */
-  tug: 30,
-};
+// WEAPON_SHOVE IS GONE (#141). It was a role-keyed table of per-weapon knock
+// distances, read inside the world's shared projectile loop, and it shrank one
+// weapon at a time: the snare's 8 became SNARE_STATS.shove, the bass's 6 became
+// BASS_STATS.shove, and the clap's 12 — the last entry — became CLAP_STATS.shove
+// when the clap module landed. A weapon that knocks on a hit applies its own
+// number now, from its own module.
+//
+// TWO_HANDS is gone with it, into the same module: base and evolved behavior
+// belong to one weapon module, so the evolution's tuning cannot live in a
+// separate table in config.
 
 // ---- the shatter weapon ----
 

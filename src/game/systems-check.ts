@@ -21,7 +21,7 @@ import {
   MetaStore,
   SHOP_OFFERS,
 } from './meta';
-import { AIM_RANGE, ALL_ENEMY_KINDS, ENEMY_LABELS, MULTISHOT_FAN_RAD, RUN, SHOVE_S, STAGE_MAGNET, TIER_LINES, WEAPON_SHOVE, WEAPONS, type EnemyKind } from './config';
+import { AIM_RANGE, ALL_ENEMY_KINDS, ENEMY_LABELS, MULTISHOT_FAN_RAD, RUN, SHOVE_S, STAGE_MAGNET, TIER_LINES, WEAPONS, type EnemyKind } from './config';
 import { rollOffers } from './picks';
 import { mulberry32 } from './rng';
 import { KIT_COLORS, RunWorld, type FxEvent, type Projectile, type RunEvents, type Shockwave, type Zone } from './run';
@@ -29,6 +29,7 @@ import {
   ARP,
   BASS,
   CHORD,
+  CLAP,
   HAT,
   KICK,
   LEAD,
@@ -773,6 +774,21 @@ class FakeCtx implements WeaponContext {
     }
     return best;
   }
+  /** RunWorld.nearestEnemies, reproduced side by side with it: ARRAY order in,
+   *  SQUARED distances, a STRICT `<` against `range * range`, a sort by that
+   *  distance, and the first `count` out. NO RNG DRAW — Two Hands' whole
+   *  zero-draw contract with a target on screen is that this is not aimDir. */
+  nearestEnemies(range: number, count: number): readonly WeaponTarget[] {
+    const maxD = range * range;
+    const found: Array<{ t: FakeTarget; d: number }> = [];
+    for (const t of this.targets) {
+      if (t.dead) continue;
+      const d = (t.x - this.player.x) ** 2 + (t.y - this.player.y) ** 2;
+      if (d < maxD) found.push({ t, d });
+    }
+    found.sort((a, b) => a.d - b.d);
+    return found.slice(0, count).map((f) => f.t);
+  }
   all(): readonly WeaponTarget[] { return this.targets; }
   damage(t: WeaponTarget, amount: number): void {
     const f = t as FakeTarget;
@@ -1441,14 +1457,11 @@ const snareTiers = SNARE.stats.tiers;
 
   assert.equal(WEAPONS.snare, undefined, 'the snare module is the only copy of the snare ladder');
   assert.equal(TIER_LINES.snare, undefined, 'the snare module is the only copy of the snare pedestal copy');
-  // The role-keyed tables the snare used to share. Its entry left with it; the
-  // OTHER entries must not have left with it, because those weapons have not
-  // moved and their shove still comes off this table inside the shared loop.
-  assert.equal(WEAPON_SHOVE.snare, undefined,
-    'the snare\'s share of WEAPON_SHOVE moved into SNARE_STATS.shove');
-  assert.deepEqual(WEAPON_SHOVE, { clap: 12 },
-    'WEAPON_SHOVE keeps the entries of the weapons that have NOT migrated (the bass\'s 6 left ' +
-    'with the bass module in #141; clap is the last one and takes the table with it)');
+  // The role-keyed table the snare used to share is GONE. WEAPON_SHOVE lost its
+  // last entry with the CLAP module (#141), so there is no table left to assert
+  // the snare's absence from; what replaced that assertion is the source scan in
+  // the clap block below, which pins the whole table's absence for every weapon
+  // at once. SNARE_STATS.shove above is the snare's only copy of its 8.
 
   const snareModule = WEAPON_MODULES.find((m) => m.role === 'snare')!;
   assert.equal(snareModule.tickAt, undefined,
@@ -1758,8 +1771,12 @@ const hatTiers = HAT.stats.tiers;
   assert.equal(WEAPONS.hat, undefined, 'the hat module is the only copy of the hat ladder');
   assert.equal(TIER_LINES.hat, undefined, 'the hat module is the only copy of the hat pedestal copy');
   // The hat was in NEITHER role-keyed table: a chip lands damage and nothing
-  // else. Pinned so that a later tidy-up cannot quietly grant it a knock.
-  assert(!('hat' in WEAPON_SHOVE), 'a hat chip has never had a knock, and must not gain one');
+  // else. Both tables are gone now (SPARK_HIT_ROLES with the lead, WEAPON_SHOVE
+  // with the clap), so the absence is pinned where it can still be falsified —
+  // no stat on this module holds a knock, and inventing one is the tidy-up this
+  // line exists to fail.
+  assert.deepEqual(Object.keys(HAT.stats).filter((k) => /shove|knock/i.test(k)), [],
+    'a hat chip has never had a knock, and must not gain one');
 
   const hatModule = WEAPON_MODULES.find((m) => m.role === 'hat')!;
   assert.equal(hatModule.tickAt, undefined,
@@ -2025,11 +2042,10 @@ const bassTiers = BASS.stats.tiers;
 
   assert.equal(WEAPONS.bass, undefined, 'the bass module is the only copy of the bass ladder');
   assert.equal(TIER_LINES.bass, undefined, 'the bass module is the only copy of the bass pedestal copy');
-  // The bass's 6 left WEAPON_SHOVE; clap's 12 keeps the table alive.
-  assert.deepEqual(Object.keys(WEAPON_SHOVE), ['clap'],
-    'the bass knock is BASS_STATS.shove now, applied from the module\'s own onHit. Clap is the ' +
-    'last entry in WEAPON_SHOVE, and takes the table and its INTERIM_EXCEPTIONS entry with it');
-  assert.equal(WEAPON_SHOVE.clap, 12, 'clap\'s own tuning is untouched by the bass leaving');
+  // The bass's 6 left WEAPON_SHOVE, and the clap's 12 — the last entry — took
+  // the table itself (#141). BASS_STATS.shove above is the bass's only copy,
+  // applied from the module's own onHit; the table's absence is pinned by the
+  // source scan in the clap block below.
 
   const bassModule = WEAPON_MODULES.find((m) => m.role === 'bass')!;
   assert.equal(bassModule.tickAt, 'shockwaves',
@@ -2426,12 +2442,13 @@ const chordTiers = CHORD.stats.tiers;
   // knock and no spark — so the absences are pinned the way the hat's block
   // pins its own.
   //
-  // ONE TABLE IS LEFT. SPARK_HIT_ROLES used to be read here too; the lead was
-  // its last member and the Set left run.ts with the lead module (#141), so
-  // what is asserted now is that it is GONE — no table, hence no way for a
-  // chord tick to be quietly added to one. WEAPON_SHOVE still carries the clap
-  // and is exported, so it is checked directly.
-  assert(!('chord' in WEAPON_SHOVE), 'a chord tick has never had a knock, and must not gain one');
+  // BOTH TABLES ARE GONE. SPARK_HIT_ROLES left run.ts with the lead module
+  // (#141) and WEAPON_SHOVE left config.ts with the clap module, each with its
+  // last member — so what is asserted now is that neither is back, and hence
+  // that there is no table a chord tick could quietly be added to. The chord's
+  // own side of it is that no stat on this module holds a knock.
+  assert.deepEqual(Object.keys(CHORD.stats).filter((k) => /shove|knock/i.test(k)), [],
+    'a chord tick has never had a knock, and must not gain one');
   {
     const runSource = readFileSync(new URL('./run.ts', import.meta.url), 'utf8');
     assert(!/SPARK_HIT_ROLES/.test(runSource),
@@ -2895,10 +2912,8 @@ const leadTiers = LEAD.stats.tiers;
   // the Set itself left run.ts with this module — that absence is asserted
   // against the source in the chord block above. It was never in WEAPON_SHOVE:
   // a seeker has never knocked anything and must not start.
-  assert(!('lead' in WEAPON_SHOVE), 'a lead hit has never had a knock, and must not gain one');
-  assert.deepEqual(WEAPON_SHOVE, { clap: 12 },
-    'WEAPON_SHOVE keeps the entries of the weapons that have NOT migrated (clap is the last one ' +
-    'and takes the table with it)');
+  assert.deepEqual(Object.keys(LEAD.stats).filter((k) => /shove|knock/i.test(k)), [],
+    'a lead hit has never had a knock, and must not gain one');
 
   const leadModule = WEAPON_MODULES.find((m) => m.role === 'lead')!;
   assert.equal(leadModule.tickAt, undefined,
@@ -3162,6 +3177,440 @@ function leadFire(ctx: FakeCtx, inst: WeaponInstance, conf: WeaponConf): void {
   assert.equal(ctx.rngDraws, drawsBefore, 'and draws nothing');
   assert.equal(ctx.spawned.length, spawnedBefore,
     'and does not retire shots it does not own the storage for');
+}
+
+
+const clapTiers = CLAP.stats.tiers;
+
+// ---------------------------------------------------------------------------
+// The clap's tuning, pinned to LITERALS. Same rule as every module block above:
+// the right-hand sides are numbers a human typed after reading the pre-#141
+// config.ts and run.ts, never an expression that recomputes the module's own
+// answer.
+//
+// THE CLAP IS THE WEAPON THAT EMPTIED THE ROLE-KEYED TABLES. WEAPON_SHOVE's
+// last entry was its 12, so the table, its import, BOTH of its read sites in
+// run.ts and its INTERIM_EXCEPTIONS entry in the shared-physics guard all left
+// with this module. TWO_HANDS went the same way, into the same stats block,
+// because base and evolved behavior belong to one weapon module.
+// ---------------------------------------------------------------------------
+{
+  // The per-tier ladder, verbatim from config.WEAPONS.clap. Damage, reach and
+  // arc all widen together — the Whip's whole ladder is "more slash".
+  assert.deepEqual(
+    clapTiers.map((t) => [t.damage, t.radius, t.arc]),
+    [
+      [2, 80, 0.65],
+      [3, 88, 0.72],
+      [4, 98, 0.8],
+      [6, 108, 0.9],
+    ],
+    'the clap damage/reach/arc ladder moved',
+  );
+  assert.equal(clapTiers.length, TIER_COUNT, 'the clap ladder must have exactly TIER_COUNT rungs');
+  assert.deepEqual(CLAP.stats.tierLines, [
+    'a wide slash close to you',
+    'wider, harder slash',
+    'sweeps a bigger arc',
+    'the widest, hardest slash',
+  ], 'the clap pedestal copy moved');
+
+  // The base cone. WAS config.WEAPON_SHOVE.clap and the bare `d < 34` inside
+  // RunWorld.damageCone.
+  assert.equal(CLAP.stats.shove, 12, 'the cone knock distance moved (was WEAPON_SHOVE.clap)');
+  assert.equal(CLAP.stats.pointBlankRadius, 34, 'the point-blank exemption radius moved');
+
+  // Two Hands, all of it verbatim from config.TWO_HANDS.
+  assert.equal(CLAP.stats.targets, 3, 'the Two Hands target count moved');
+  assert.equal(CLAP.stats.closeS, 0.12, 'the Two Hands close time moved');
+  assert.equal(CLAP.stats.openGap, 74, 'the Two Hands slab standoff moved');
+  assert.equal(CLAP.stats.pinchRadius, 42, 'the Two Hands crush radius moved');
+  assert.equal(CLAP.stats.damageMul, 1.52, 'the Two Hands damage multiplier moved');
+  assert.equal(CLAP.stats.tugRadius, 96, 'the Two Hands tug radius moved');
+  assert.equal(CLAP.stats.tug, 30, 'the Two Hands tug distance moved');
+  // `closeS` NEEDS THIS LITERAL MORE THAN ANY OTHER STAT IN THE FILE. Both
+  // scheduled moments a pincer has are observed only on the frame that crosses
+  // them, so 0.12 and 0.13 land on the same frame and the parity baseline cannot
+  // separate them (0.11 and 0.14 it can). The sub-frame residue is covered by
+  // the line above and by nothing else — deleting it silently removes the only
+  // check on an eighth of this constant's range.
+  assert(CLAP.stats.closeS * CLAP.stats.handMidFraction < 1 / 60 * 4,
+    'the halfway visual is documented as landing inside the close window; if closeS grows past ' +
+    'the point where that is frame-visible, the timing checks below are measuring the wrong frame');
+
+  // The slabs and the crush spark: every one of these was a bare literal in
+  // run.ts's drawPinchHands or updateClapPinches.
+  assert.equal(CLAP.stats.handHalfLengthMul, 1.15, 'the drawn slab half-length moved');
+  assert.equal(CLAP.stats.handWidth, 5, 'the drawn slab thickness moved');
+  // Read out BEFORE the two literal pins below: assert.equal narrows what it is
+  // handed, so comparing the two fields afterwards would compare two literal
+  // types and stop being a runtime check at all.
+  assert.notEqual(CLAP.stats.handMidT, CLAP.stats.handMidFraction,
+    'the hands are DRAWN slightly past halfway (0.45) at the halfway MOMENT (0.5). Two numbers, ' +
+    'and folding them into one would make the close read linear instead of snapping');
+  assert.equal(CLAP.stats.handMidFraction, 0.5, 'the halfway-visual moment moved');
+  assert.equal(CLAP.stats.handMidT, 0.45, 'the halfway-visual standoff moved');
+  assert.equal(CLAP.stats.sparkCount, 6, 'the crush spark particle count moved');
+  assert.equal(CLAP.stats.sparkSpreadMul, 0.7, 'the crush spark spread moved');
+
+  assert.equal(WEAPONS.clap, undefined, 'the clap module is the only copy of the clap ladder');
+  assert.equal(TIER_LINES.clap, undefined, 'the clap module is the only copy of the clap pedestal copy');
+
+  // THE TABLES ARE GONE, AND THIS IS THE CHECK THAT SAYS SO FOR ALL OF THEM.
+  // Every other module block used to assert its own absence from WEAPON_SHOVE;
+  // there is no table left to be absent from, so what is pinned instead is that
+  // neither table is back — in config.ts, where WEAPON_SHOVE and TWO_HANDS
+  // lived, or in run.ts, where they were read. A reintroduced role-keyed table
+  // is a per-weapon branch in shared code whichever weapon it is for.
+  {
+    const configSource = readFileSync(new URL('./config.ts', import.meta.url), 'utf8');
+    const runSource = readFileSync(new URL('./run.ts', import.meta.url), 'utf8');
+    assert(!/WEAPON_SHOVE\s*[:=]/.test(configSource) && !/WEAPON_SHOVE\[/.test(runSource),
+      'WEAPON_SHOVE is back. It was a role-keyed table of per-weapon knock distances read inside ' +
+      'the world\'s shared projectile loop, and it left with its last member (the clap, #141): a ' +
+      'migrated weapon applies its own knock through ctx.shove, from fire() or from its own ' +
+      'ProjectileBehavior.onHit. See SNARE_STATS.shove, BASS_STATS.shove and CLAP_STATS.shove');
+    assert(!/TWO_HANDS\s*[:=]/.test(configSource),
+      'TWO_HANDS is back in config.ts. An evolution\'s tuning belongs to the same module as the ' +
+      'base weapon\'s — that is what "one module per weapon" means — and it is CLAP_STATS now');
+  }
+
+  const clapModule = WEAPON_MODULES.find((m) => m.role === 'clap')!;
+  assert.equal(clapModule.tickAt, 'pinches',
+    'the clap owns the pincer pass, in the phase RunWorld.updateClapPinches used to stand in — ' +
+    'after the strikes and before the shared projectile loop');
+  // THE ABSENCE THAT DEFINES THIS WEAPON. The clap is MELEE: the base cone
+  // resolves synchronously inside fire() and a pincer resolves in tick(), so
+  // nothing it makes ever enters the shared projectile loop and it has nothing
+  // to lend it. An empty ProjectileBehavior would advertise a relationship that
+  // does not exist.
+  assert.equal(clapModule.create().projectile, undefined,
+    'the clap spawns no projectile at all — it is the only melee weapon in the roster besides ' +
+    'the kick, and like the kick it lends the shared projectile loop nothing');
+  assert.equal(CLAP.role, 'clap');
+  // NO STATE ON THE MODULE VALUE. The pinch queue is the most stateful thing any
+  // weapon owns, and systems-check builds many RunWorlds in one process; a queue
+  // parked here would leak pincers between them. C11 proves two instances are
+  // independent; this proves there is nowhere for shared state to hide.
+  assert.deepEqual(Object.keys(CLAP).sort(), ['create', 'role', 'stats', 'tickAt'],
+    'the clap module VALUE is static — role, stats, a phase and a factory. Any other field on it ' +
+    'is per-run state on a singleton');
+}
+
+/** A fake context set up for the clap. Its rng() THROWS by default: Two Hands
+ *  with a body on screen picks targets WITHOUT jittering and must draw nothing,
+ *  so that is an executable assertion rather than a comment. The base cone and
+ *  the empty-field branch, which do aim, get an explicit script. */
+function clapCtx(evolved = false, rngValues: number[] | null = null): FakeCtx {
+  const ctx = new FakeCtx();
+  ctx.role = 'clap';
+  ctx.color = KIT_COLORS.clap;
+  ctx.evolved = evolved;
+  ctx.rngValues = rngValues;
+  return ctx;
+}
+
+/** Every shove this context recorded, as [wasThisTarget, originX, originY, dist]
+ *  rounded — the clap is the only weapon whose two knock paths use DIFFERENT
+ *  origins (the player for the cone, the mirrored body for the tug). */
+function shoves(ctx: FakeCtx): Array<[number, number, number]> {
+  return ctx.shoveLog.map((s) => [round6(s.x), round6(s.y), round6(s.d)]);
+}
+
+// C1. ONE TRIGGER, ONE SWEEP, ONE DRAW. The cone resolves synchronously at fire
+// time — no projectile, no schedule — and the tier-4 row is a LITERAL 6.
+{
+  const ctx = clapCtx(false, [0.5]);
+  const inst = CLAP.create();
+  const inArc = fakeTarget(60, 0);
+  const behind = fakeTarget(0, 60);
+  const tooFar = fakeTarget(200, 0);
+  ctx.targets.push(inArc, behind, tooFar);
+  inst.fire(ctx, clapTiers[3]);
+  assert.equal(ctx.rngDraws, 1, 'a clap trigger with a target in range draws exactly one rng value');
+  assert.equal(ctx.spawned.length, 0, 'the clap spawns no projectile — it is melee');
+  assert.deepEqual(ctx.hits.map((h) => [h.t === inArc, h.amount]), [[true, 6]],
+    'only the body inside the cone is hit, for the tier-4 pedestal damage');
+  assert.equal(behind.hp, 1e6, 'a body 90 degrees off the aim line is outside a 0.9 half-arc');
+  assert.equal(tooFar.hp, 1e6, 'a body past reach + its own radius is untouched');
+  // The arc fx is pushed AFTER the damage: every kill this sweep makes, and
+  // every drop rolled behind it, lands before the visual is queued.
+  assert.deepEqual(ctx.seq, ['damage', 'arc'], 'damage first, then the arc visual');
+  const arc = ctx.fxLog[0];
+  assert.equal(arc.type, 'arc');
+  assert.deepEqual([arc.x, arc.y, round6(arc.angle), arc.arc, arc.radius, arc.color],
+    [0, 0, 0, 0.9, 108, KIT_COLORS.clap],
+    'the arc is drawn at the player, along the aim line, at the tier\'s own arc and reach');
+}
+
+// C2. THE POINT-BLANK EXEMPTION, bracketed. A body inside 34 is hit REGARDLESS
+// of the cone's angle — that is why a Whip has no blind spot — and one just
+// outside it takes the angular test and fails it. Both probes sit directly
+// BEHIND the aim line, which is the only place the exemption is visible.
+{
+  const ctx = clapCtx(false, [0.5]);
+  const inst = CLAP.create();
+  const anchor = fakeTarget(17, 0);
+  const inside = fakeTarget(-33.5, 0);
+  const outside = fakeTarget(-34.5, 0);
+  ctx.targets.push(anchor, inside, outside);
+  inst.fire(ctx, clapTiers[3]);
+  assert.equal(inside.hp, 1e6 - 6, 'a body inside the point-blank radius is hit from behind');
+  assert.equal(outside.hp, 1e6, 'a body just outside it takes the angular test, and is behind');
+  assert.equal(anchor.hp, 1e6 - 6, 'the aim anchor is hit too — it is inside the exemption itself');
+}
+
+// C3. REACH IS MEASURED TO THE BODY'S EDGE, not its centre: `d > reach + radius`.
+// A fat enemy is caught by its own radius where a swarmer at the same centre
+// distance would not be.
+{
+  const ctx = clapCtx(false, [0.5]);
+  const inst = CLAP.create();
+  const grazing = fakeTarget(119, 0);
+  const clear = fakeTarget(121, 0);
+  ctx.targets.push(grazing, clear);
+  inst.fire(ctx, clapTiers[3]);
+  assert.equal(grazing.hp, 1e6 - 6, 'reach 108 plus the body\'s own 12 reaches a centre at 119');
+  assert.equal(clear.hp, 1e6, 'and does not reach one at 121');
+}
+
+// C4. THE CONE'S KNOCK IS RAW. This is the clap's share of WEAPON_SHOVE, in the
+// slot the table lookup occupied — and the call site never scaled it by
+// buildMods.knockbackMul, unlike the shared projectile loop's copy of the very
+// same lookup and unlike this weapon's own evolved tug (C8). Heavy Amp at full
+// strength moves it not at all. The parity baseline pins both sides, so
+// "tidying" the two into agreement fails there as well as here.
+{
+  const ctx = clapCtx(false, [0.5]);
+  const inst = CLAP.create();
+  const target = fakeTarget(60, 0);
+  ctx.targets.push(target);
+  ctx.buildMods = { ...ctx.buildMods, knockbackMul: 1.5 };
+  inst.fire(ctx, clapTiers[3]);
+  assert.deepEqual(shoves(ctx), [[0, 0, 12]],
+    'the cone knock is a flat 12, pushed away from the PLAYER (the swing origin) and NOT scaled ' +
+    'by knockbackMul. It never was; the tug is the half of this weapon that scales');
+}
+
+// C5. THE EMPTY-SCREEN DRAW. With nothing to aim at the world picks a random
+// heading and then jitters it, so the trigger costs TWO draws instead of one. A
+// module that reached for nearestEnemy to save the draw would reproduce every
+// hit in this file and desynchronise the whole run.
+{
+  const ctx = clapCtx(false, [0.25, 0.5]);
+  const inst = CLAP.create();
+  inst.fire(ctx, clapTiers[3]);
+  assert.equal(ctx.rngDraws, 2, 'an empty screen costs the clap TWO draws, not one and not zero');
+  assert.equal(ctx.hits.length, 0, 'and connects with nothing');
+  assert.equal(ctx.fxLog.length, 1, 'the sweep is still drawn — an empty field does not eat the beat');
+}
+
+// C6. TWO HANDS: THREE PINCERS, ZERO DRAWS, NO DAMAGE YET. The evolution picks
+// targets with nearestEnemies, which LOOKS WITHOUT JITTERING — the rng() below
+// throws, so the zero-draw contract is executable. Nothing is damaged at fire
+// time; the whole weapon is deferred to tick().
+{
+  const ctx = clapCtx(true);
+  const inst = CLAP.create();
+  const near1 = fakeTarget(100, 0);
+  const near2 = fakeTarget(0, 120);
+  const near3 = fakeTarget(-140, 0);
+  const spare = fakeTarget(0, -300);
+  ctx.targets.push(near1, near2, near3, spare);
+  inst.fire(ctx, clapTiers[3]);
+  assert.equal(ctx.rngDraws, 0, 'Two Hands draws NOTHING with a body on screen');
+  assert.equal(ctx.hits.length, 0, 'Two Hands deals no damage at fire time — the hands have to meet');
+  assert.equal(ctx.spawned.length, 0, 'and spawns no projectile');
+  // Two slabs drawn per pincer, three pincers, and the fourth body gets none.
+  assert.equal(ctx.fxLog.length, 6, 'three pincers, two slabs each, drawn fully open');
+  assert(ctx.fxLog.every((e) => e.type === 'beam'), 'the slabs are beams');
+  // The first pincer is centred on the NEAREST body, and its slabs stand off by
+  // `openGap` along the axis from the player to that body — here +x, so the two
+  // bars sit at x = 100 -/+ 74 and run broadside (along y).
+  const first = ctx.fxLog[0];
+  assert.equal(first.type, 'beam');
+  const half = 42 * 1.15;
+  assert.deepEqual([round6(first.x), round6(first.y), round6(first.x2), round6(first.y2), first.width],
+    [round6(100 - 74), round6(-half), round6(100 - 74), round6(half), 5],
+    'the far slab stands off by openGap and runs broadside to the pinch axis');
+}
+
+// C6b. THE TARGET CAP IS THE STAT, and the pincers come out NEAREST FIRST —
+// which is the opposite of the order tick() resolves them in (C10).
+{
+  const ctx = clapCtx(true);
+  const inst = CLAP.create();
+  for (const d of [400, 100, 250, 180, 320]) ctx.targets.push(fakeTarget(d, 0));
+  inst.fire(ctx, clapTiers[3]);
+  const centres = ctx.fxLog.filter((e) => e.type === 'beam')
+    .map((e) => round6((e as { x: number; x2: number }).x))
+    .filter((_, i) => i % 2 === 0);
+  assert.deepEqual(centres, [100 - 74, 180 - 74, 250 - 74],
+    'exactly `targets` pincers, on the three CLOSEST bodies, in nearest-first order');
+}
+
+// C7. TWO HANDS ON AN EMPTY FIELD claps AHEAD OF THE PLAYER instead of eating
+// the trigger — the one branch of this weapon with no damage in it at all, so
+// its whole pin is the fx stream. It aims, so it costs the empty-screen TWO
+// draws even though the base weapon's cone is nowhere in sight.
+{
+  const ctx = clapCtx(true, [0.25, 0.5]);
+  const inst = CLAP.create();
+  inst.fire(ctx, clapTiers[3]);
+  assert.equal(ctx.rngDraws, 2, 'an empty field costs Two Hands two draws — it falls back to aimDir');
+  assert.equal(ctx.fxLog.length, 2, 'exactly ONE pincer, clapped ahead of the player');
+  assert.equal(ctx.hits.length, 0, 'and it damages nothing at fire time');
+  // rng 0.25 -> a heading of pi/2, jitter 0.5 -> no offset. The pincer centre is
+  // 74 units up-screen, and the slabs stand off 74 further along the same axis.
+  const [a, b] = ctx.fxLog as Array<{ type: string; x: number; y: number }>;
+  assert.equal(round6(a.y + b.y) / 2, 74,
+    'the pincer is centred openGap ahead of the player along the chosen heading');
+}
+
+// C8. THE PINCH STATE MACHINE, FRAME BY FRAME: nothing before the halfway
+// moment, ONE halfway visual, then the crush and the tug together on the frame
+// that crosses `closesAt`.
+//
+// The probe bodies are added AFTER the trigger on purpose. A pincer centre is
+// frozen at fire time, so this measures what a CLOSED pair does to whatever is
+// standing there — without those bodies stealing the other two pincer slots.
+{
+  const ctx = clapCtx(true);
+  const inst = CLAP.create();
+  const centre = fakeTarget(100, 0);
+  ctx.targets.push(centre);
+  inst.fire(ctx, clapTiers[3]);
+  ctx.fxLog.length = 0;
+  ctx.seq.length = 0;
+
+  const crushed = fakeTarget(150, 0);
+  const tugged = fakeTarget(170, 0);
+  const untouched = fakeTarget(199, 0);
+  // Inside the `d < 1` guard, which is not a distance the horde is ever likely
+  // to occupy on the frame a pincer closes — the parity baseline cannot reach
+  // it, so this is the only check on it. It stops a body from being shoved
+  // along a direction that is numerically meaningless, and it is a floor on the
+  // DISTANCE, not on the tug.
+  const onTop = fakeTarget(100.75, 0);
+  ctx.targets.push(crushed, tugged, untouched, onTop);
+
+  ctx.timeS = 0.05;
+  inst.tick!(ctx, 1 / 60);
+  assert.equal(ctx.fxLog.length, 0, 'before the halfway moment a pincer does nothing at all');
+
+  ctx.timeS = 0.07;
+  inst.tick!(ctx, 1 / 60);
+  assert.equal(ctx.fxLog.length, 2, 'the halfway visual is two slabs, part-closed');
+  const mid = ctx.fxLog[0] as { x: number };
+  assert.equal(round6(mid.x), round6(100 - 74 * 0.45),
+    'the halfway slabs are drawn at handMidT of the gap — 0.45, not 0.5');
+
+  ctx.timeS = 0.08;
+  inst.tick!(ctx, 1 / 60);
+  assert.equal(ctx.fxLog.length, 2, 'the halfway visual is emitted ONCE — midShown is a latch');
+
+  assert.equal(ctx.hits.length, 0, 'and nothing has been damaged yet');
+
+  ctx.timeS = 0.12;
+  inst.tick!(ctx, 1 / 60);
+  // 6 * 1.52 = 9.12: the tier-4 damage through the evolution's multiplier.
+  assert.deepEqual(ctx.hits.map((h) => [h.t === centre, h.t === crushed, h.t === onTop, round6(h.amount)]),
+    [[true, false, false, 9.12], [false, true, false, 9.12], [false, false, true, 9.12]],
+    'the crush hits what the closed hands overlap, for damage x damageMul');
+  assert.equal(untouched.hp, 1e6, 'a body 99 units out is past both the crush and the tug');
+  // The tug: mirrored origin, so the push is INWARD, and `Math.min(tug, d)`
+  // clamps it. The body sitting ON the centre is skipped entirely by the `d < 1`
+  // guard rather than being shoved along an undefined direction.
+  assert.deepEqual(shoves(ctx), [[200, 0, 30], [240, 0, 30]],
+    'survivors inside tugRadius are dragged inward by tug, from an origin mirrored through the ' +
+    'body. NEITHER the body ON the pinch centre nor the one 0.75 units off it is shoved: both ' +
+    'are inside the d < 1 guard, which is a floor on the DISTANCE and the only thing keeping a ' +
+    'body on the centre from being pushed along an undefined direction');
+  assert.deepEqual(ctx.seq.slice(-2), ['slam', 'spark'],
+    'the crush\'s visuals are pushed AFTER its damage and its tug, slam then spark');
+  const spark = ctx.fxLog[ctx.fxLog.length - 1];
+  assert.equal(spark.type, 'spark');
+  assert.deepEqual([spark.x, spark.y, spark.n, round6(spark.spread)], [100, 0, 6, round6(42 * 0.7)],
+    'the spark carries sparkCount particles over sparkSpreadMul of the pinch radius');
+
+  // The pincer is retired by its own crush: a second tick does nothing.
+  ctx.timeS = 0.2;
+  const hitsBefore = ctx.hits.length;
+  inst.tick!(ctx, 1 / 60);
+  assert.equal(ctx.hits.length, hitsBefore, 'a pincer crushes ONCE and leaves');
+}
+
+// C9. THE TUG'S CLAMP IS NOT SCALED BY ANYTHING. `Math.min(tug, d)` is applied
+// AFTER knockbackMul, so a body close to the pinch centre is dragged by its own
+// distance and Heavy Amp does nothing to it, while a body further out gets the
+// full scaled pull. Three baseline rows depend on this; here it is as one pair.
+{
+  const ctx = clapCtx(true);
+  const inst = CLAP.create();
+  ctx.buildMods = { ...ctx.buildMods, knockbackMul: 1.5 };
+  ctx.targets.push(fakeTarget(100, 0));
+  inst.fire(ctx, clapTiers[3]);
+  ctx.shoveLog.length = 0;
+  ctx.targets.length = 0;
+  ctx.targets.push(fakeTarget(120, 0), fakeTarget(150, 0));
+  ctx.timeS = 0.12;
+  inst.tick!(ctx, 1 / 60);
+  assert.deepEqual(shoves(ctx).map((s) => s[2]), [20, 45],
+    'a body 20 units from the centre is dragged 20 — the clamp, unscaled — while one at 50 gets ' +
+    'the full 30 x 1.5. Applying knockbackMul after the clamp instead would give 30 and 45');
+}
+
+// C10. THE QUEUE RESOLVES BACKWARDS. Three pincers from one trigger close on the
+// same frame, and tick() walks the array LAST-SPAWNED-FIRST — the reverse of the
+// nearest-first order fireTwoHands filled it in. While nothing dies the order is
+// invisible; the moment a body sits inside two crushes with little hp left it
+// decides which pinch is credited with the kill and where in the fx stream the
+// drop lands. Reversing this loop moves exactly one parity scenario.
+{
+  const ctx = clapCtx(true);
+  const inst = CLAP.create();
+  for (const d of [100, 200, 300]) ctx.targets.push(fakeTarget(d, 0));
+  inst.fire(ctx, clapTiers[3]);
+  ctx.fxLog.length = 0;
+  ctx.timeS = 0.12;
+  inst.tick!(ctx, 1 / 60);
+  assert.deepEqual(ctx.fxLog.filter((e) => e.type === 'slam').map((e) => (e as { x: number }).x),
+    [300, 200, 100],
+    'pincers resolve last-spawned-first, which is FARTHEST-first here — the reverse of the ' +
+    'nearest-first order they were queued in');
+}
+
+// C11. reset() DROPS EVERY PINCER IN FLIGHT, silently. A scheduled crush is
+// exactly the "delayed strike pointer" clearSandboxEntities promises will not
+// survive, and dropping one must not land its damage, push its slam, or draw.
+//
+// The second half is the check that would catch pinch state parked on the module
+// singleton: two instances, one reset, and the other still owes its crush.
+{
+  const ctxA = clapCtx(true);
+  const ctxB = clapCtx(true);
+  const instA = CLAP.create();
+  const instB = CLAP.create();
+  ctxA.targets.push(fakeTarget(100, 0));
+  ctxB.targets.push(fakeTarget(100, 0));
+  instA.fire(ctxA, clapTiers[3]);
+  instB.fire(ctxB, clapTiers[3]);
+  ctxA.fxLog.length = 0;
+  ctxB.fxLog.length = 0;
+
+  instA.reset();
+  assert.equal(ctxA.hits.length, 0, 'a reset clap lands no delayed damage');
+  assert.equal(ctxA.fxLog.length, 0, 'and pushes no fx');
+  assert.equal(ctxA.rngDraws, 0, 'and draws nothing');
+
+  ctxA.timeS = 0.12;
+  ctxB.timeS = 0.12;
+  instA.tick!(ctxA, 1 / 60);
+  instB.tick!(ctxB, 1 / 60);
+  assert.equal(ctxA.hits.length, 0, 'the dropped pincer never closes');
+  assert.equal(ctxB.hits.length, 1,
+    'and the OTHER world\'s pincer is untouched by it. If the pinch queue lived on the module ' +
+    'value instead of the instance, one world\'s reset would empty every other world\'s');
 }
 
 // ---------------------------------------------------------------------------
@@ -3562,35 +4011,26 @@ function worldStrike(opts: {
 
   // ---- KNOWN INTERIM EXCEPTIONS ------------------------------------------
   //
-  // THIS LIST MUST BE EMPTY WHEN #141 FINISHES, and it is down to ONE: the
-  // lead module (#141) took SPARK_HIT_ROLES with it — the Set, its lookup, and
-  // its entry here — leaving WEAPON_SHOVE as the last role-keyed table in the
-  // shared projectile loop. It is the personal tuning of a weapon that has not
-  // been extracted yet, and THE ENTRY IS DELETED BY THE WEAPON THAT OWNS IT:
-  // when the clap lands as a module the table moves into it (or becomes a field
-  // on the shot), and the entry here goes with it.
+  // THE LIST IS EMPTY, AND THAT IS #141'S FINISH LINE FOR THIS GUARD. It held
+  // one entry per role-keyed table that shared physics still read: SPARK_HIT_ROLES
+  // left with the lead module and WEAPON_SHOVE with the CLAP module (#141), each
+  // taking its last member, its lookup and its entry here at once. The shared
+  // projectile loop now names a role only through the two GENERIC forms above —
+  // attribution, and the module seam — neither of which grows a case when a
+  // weapon is added.
   //
-  // The list is a RATCHET, not a permission slip:
+  // The list is a RATCHET, not a permission slip, and an EMPTY one is a stronger
+  // ratchet than a short one:
   //   - anything NOT listed fails, so no new per-weapon table can appear;
-  //   - `count` is exact, so a second use of a listed table fails too;
+  //   - `count` is exact, so a second use of a listed table would fail too;
   //   - an entry that is listed but no longer in the source fails as STALE, so
-  //     removing the code FORCES removing the entry. That is the only reason a
-  //     shrinking list actually shrinks instead of being left behind.
-  const INTERIM_EXCEPTIONS: readonly InterimException[] = [
-    {
-      snippet: 'WEAPON_SHOVE[pr.role]',
-      count: 1,
-      why: 'per-weapon knockback on a projectile hit (config.ts WEAPON_SHOVE: clap 12)',
-      deletedBy:
-        'the CLAP module (#141), now the only entry left. Each weapon\'s number is its own ' +
-        'tuning; the last one out takes WEAPON_SHOVE and this entry with it. A shove is a ' +
-        'shared primitive already — ctx.shove — so a module needs nothing new to keep doing ' +
-        'this. Two weapons have already left this way: the snare\'s 8 is SNARE_STATS.shove and ' +
-        'the bass\'s 6 is BASS_STATS.shove, each applied from that module\'s own ' +
-        'ProjectileBehavior.onHit, which is the slot this lookup occupies. Note the count stays ' +
-        '1 — a weapon leaving a shared table shrinks the TABLE, not the number of lookups.',
-    },
-  ];
+  //     removing the code FORCES removing the entry. That is why this list
+  //     actually reached empty instead of being left behind.
+  //
+  // ADDING AN ENTRY HERE IS NOW A REGRESSION, not a step. There is no unmigrated
+  // weapon left whose tuning could justify one: bell is the last weapon out of
+  // run.ts and its gravity wells are its own, not a table read by a shared loop.
+  const INTERIM_EXCEPTIONS: readonly InterimException[] = [];
 
   // ---- source reading -----------------------------------------------------
 

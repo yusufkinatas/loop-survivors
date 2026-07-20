@@ -160,6 +160,25 @@ export interface WeaponContext {
    *  closest body, so an exact tie goes to whichever spawned earlier. */
   nearestEnemy(range: number): WeaponTarget | null;
 
+  /** The `count` closest LIVE enemies inside `range` of the player, NEAREST
+   *  FIRST. For weapons that work on more than one picked target at a time —
+   *  Two Hands is the only one, and it snaps a pincer shut on each.
+   *
+   *  DRAWS NO RNG, like nearestEnemy. Fewer than `count` come back when the
+   *  screen is thin, and an EMPTY ARRAY when nothing is in range; Two Hands
+   *  branches on that emptiness, so the length is meaningful and not a
+   *  convenience.
+   *
+   *  Reads the world's enemy array, keeps everything with a squared distance
+   *  STRICTLY below `range * range`, then SORTS by that distance. The sort is
+   *  Array.prototype.sort — not stable across equal distances by specification,
+   *  though V8's is — so two bodies at exactly the same distance are not
+   *  guaranteed to be handed back in spawn order. Nothing today depends on it.
+   *
+   *  NOT a repeated nearestEnemy: that one hands back the FIRST strictly closest
+   *  body and has no notion of a second place. */
+  nearestEnemies(range: number, count: number): readonly WeaponTarget[];
+
   /** The world's LIVE enemy array, in array order, by reference — not a copy,
    *  not a snapshot. Includes practice dummies and enemies spawned this frame
    *  that are not yet in the hash, both of which Redline Stomp hits today.
@@ -382,12 +401,13 @@ export interface ShockwaveSpec {
 // left waiting for the first weapon that needs it: bell, for gravity wells. It
 // is not speculatively added here.
 //
-// No nearestEnemies: every member here is a tax on every fake context.
-// aimDir/aimFan/triggerCount left this list with the snare (#141), which needed
-// all three; fanAround and moveDir left with the hat (#141), which aims off its
-// walk heading instead of ever consulting a target; nearestEnemy and slow left
-// with the chord (#141), which throws its zone at one body and slows everything
-// under it. nearestEnemies still belongs to the clap.
+// Every member here is a tax on every fake context, so each one arrived with
+// the weapon that needed it. aimDir/aimFan/triggerCount left this list with the
+// snare (#141), which needed all three; fanAround and moveDir left with the hat
+// (#141), which aims off its walk heading instead of ever consulting a target;
+// nearestEnemy and slow left with the chord (#141), which throws its zone at one
+// body and slows everything under it; nearestEnemies left with the clap (#141),
+// whose Two Hands is the only weapon that picks SEVERAL targets at once.
 //
 // No `world`, no mutable arrays, no `tiers`, no `level`, no `powerMul`, no
 // `applyBuild` — `conf` arrives already built.
