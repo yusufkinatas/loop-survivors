@@ -24,14 +24,16 @@ import {
 import { AIM_RANGE, ALL_ENEMY_KINDS, ENEMY_LABELS, MULTISHOT_FAN_RAD, RUN, SHOVE_S, STAGE_MAGNET, TIER_LINES, WEAPON_SHOVE, WEAPONS, type EnemyKind } from './config';
 import { rollOffers } from './picks';
 import { mulberry32 } from './rng';
-import { KIT_COLORS, RunWorld, type FxEvent, type Projectile, type RunEvents } from './run';
+import { KIT_COLORS, RunWorld, type FxEvent, type Projectile, type RunEvents, type Shockwave } from './run';
 import {
   ARP,
+  BASS,
   HAT,
   KICK,
   SNARE,
   WEAPON_MODULES,
   weaponTiers,
+  type ShockwaveSpec,
   type WeaponContext,
   type WeaponInstance,
   type WeaponTarget,
@@ -794,6 +796,31 @@ class FakeCtx implements WeaponContext {
     const index = this.spawned.indexOf(pr);
     if (index >= 0) this.spawned.splice(index, 1);
   }
+  /** Shockwaves this fake world is holding. Mirrors RunWorld's array for the
+   *  bass: append on spawn, splice by identity on retire, array order is spawn
+   *  order — and, exactly like the real one, NOTHING here grows or resolves a
+   *  ring. That is entirely the module's tick(). */
+  readonly rings: Shockwave[] = [];
+  spawnShockwave(spec: ShockwaveSpec): Shockwave {
+    // The defaulting RunWorld.makeWeaponContext does, kept side by side with
+    // it: the module supplies geometry and payload, the world supplies identity
+    // and bookkeeping.
+    const wave: Shockwave = {
+      x: spec.x, y: spec.y, radius: spec.radius, maxRadius: spec.maxRadius,
+      age: 0, lifeS: spec.lifeS, damage: spec.damage, shove: spec.shove,
+      color: this.color, source: this.role, hit: new Set(),
+    };
+    this.rings.push(wave);
+    this.seq.push('shockwave');
+    return wave;
+  }
+  shockwaves(): readonly Shockwave[] {
+    return this.rings.filter((wave) => wave.source === this.role);
+  }
+  retireShockwave(wave: Shockwave): void {
+    const index = this.rings.indexOf(wave);
+    if (index >= 0) this.rings.splice(index, 1);
+  }
   /** Advance every live orbiter one frame through the module's own steer hook,
    *  the way RunWorld.updateProjectiles does. */
   steer(inst: WeaponInstance, n: number): void {
@@ -1358,8 +1385,9 @@ const snareTiers = SNARE.stats.tiers;
   // moved and their shove still comes off this table inside the shared loop.
   assert.equal(WEAPON_SHOVE.snare, undefined,
     'the snare\'s share of WEAPON_SHOVE moved into SNARE_STATS.shove');
-  assert.deepEqual(WEAPON_SHOVE, { clap: 12, bass: 6 },
-    'WEAPON_SHOVE keeps the entries of the weapons that have NOT migrated');
+  assert.deepEqual(WEAPON_SHOVE, { clap: 12 },
+    'WEAPON_SHOVE keeps the entries of the weapons that have NOT migrated (the bass\'s 6 left ' +
+    'with the bass module in #141; clap is the last one and takes the table with it)');
 
   const snareModule = WEAPON_MODULES.find((m) => m.role === 'snare')!;
   assert.equal(snareModule.tickAt, undefined,
@@ -1863,6 +1891,396 @@ function hatFire(ctx: FakeCtx, inst: WeaponInstance, conf: WeaponConf): void {
   assert.equal(ctx.rngDraws, 0, 'and it never drew anything to begin with');
 }
 
+const bassTiers = BASS.stats.tiers;
+
+// ---------------------------------------------------------------------------
+// The bass's tuning, pinned to LITERALS. Same rule as the kick, arp, snare and
+// hat blocks above: the right-hand sides are numbers a human typed after
+// reading the pre-#141 config.ts and run.ts, never an expression that reads the
+// value it is checking.
+//
+// ONE OF THESE HAS A SPAWN-TIME HALF THAT IS UNREACHABLE FROM WORLD STATE, and
+// that is exactly why it is here. `quakeStartRadius` (40) is written onto a new
+// ring and then overwritten by the first growth step before anything reads it;
+// the baseline agent verified that by mutating run.ts's spawn-time 40 to 44 and
+// watching all 110 parity scenarios stay green. The module writes both the
+// spawn value and the growth-curve base from this ONE stat, so the stat is
+// observable — but the spawn-time write on its own still is not, and check B5
+// plus the literal below are its only cover.
+// ---------------------------------------------------------------------------
+{
+  // The per-tier ladder, verbatim from config.WEAPONS.bass. The weight ladder:
+  // per-trigger damage climbs harder than any other kit, and pierce is Infinity
+  // at every rung — the wave is stopped by its lifetime and by nothing else.
+  assert.deepEqual(
+    bassTiers.map((t) => [t.damage, t.speed, t.radius, t.lifetimeS, t.pierce]),
+    [
+      [3, 135, 22, 2.3, Infinity],
+      [5, 140, 28, 2.4, Infinity],
+      [8, 145, 34, 2.5, Infinity],
+      [13, 150, 42, 2.6, Infinity],
+    ],
+    'the bass damage/speed/size/lifetime/pierce ladder moved',
+  );
+  assert.equal(bassTiers.length, TIER_COUNT, 'the bass ladder must have exactly TIER_COUNT rungs');
+  assert.deepEqual(BASS.stats.tierLines, [
+    'slow piercing wave',
+    'waves twice as often',
+    'heavier, wider waves',
+    'massive wave every 4th bar',
+  ], 'the bass pedestal copy moved');
+
+  // The base wave.
+  assert.equal(BASS.stats.aimSpread, 0.08, 'the bass aim spread moved');
+  // WAS `WEAPON_SHOVE.bass`, read by role inside the shared projectile loop.
+  assert.equal(BASS.stats.shove, 6, 'the base wave knock moved (was WEAPON_SHOVE.bass)');
+
+  // Subquake. Every one of these was a bare literal in run.ts's spawnSubquake
+  // or updateShockwaves.
+  assert.equal(BASS.stats.quakeStartRadius, 40, 'the Subquake start radius moved');
+  assert.equal(BASS.stats.quakeMaxRadius, 288, 'the Subquake max radius moved');
+  assert.equal(BASS.stats.quakeLifeS, 1.2, 'the Subquake lifetime moved');
+  assert.equal(BASS.stats.quakeGrowthS, 1.2, 'the Subquake growth duration moved');
+  assert.equal(BASS.stats.quakeDamageMul, 1.55, 'the Subquake damage multiplier moved');
+  assert.equal(BASS.stats.quakeShove, 14, 'the Subquake knock moved');
+  // TWO stats that happen to hold the same number, and they must stay two. A
+  // ring dying exactly as it finishes expanding is a coincidence of tuning, not
+  // a structural identity; folding them into one would make it one silently.
+  assert.equal(BASS.stats.quakeLifeS, BASS.stats.quakeGrowthS,
+    'today a Subquake dies as it finishes growing — if that ever stops being true, this line ' +
+    'is the one to delete, NOT one of the two stats above');
+
+  // NO PIERCE BUDGET AND NO HIT CAP ANYWHERE. Infinity on both halves of this
+  // weapon is the absence of arithmetic, not a number, so the falsifiable form
+  // of "there is no cap" is that no stat exists to hold one. A future
+  // `quakeMaxHits` would be a real behavior change wearing documentation's
+  // clothes (the same argument Railshot's block makes).
+  assert.deepEqual(
+    Object.keys(BASS.stats).filter((k) => /pierce|cap|max(hits|targets|bodies)/i.test(k)),
+    [],
+    'Subquake has no pierce budget, no target count and no hit cap — inventing a stat to ' +
+    '"state" its infinite pierce would put a finite number on a path that has none',
+  );
+
+  assert.equal(WEAPONS.bass, undefined, 'the bass module is the only copy of the bass ladder');
+  assert.equal(TIER_LINES.bass, undefined, 'the bass module is the only copy of the bass pedestal copy');
+  // The bass's 6 left WEAPON_SHOVE; clap's 12 keeps the table alive.
+  assert.deepEqual(Object.keys(WEAPON_SHOVE), ['clap'],
+    'the bass knock is BASS_STATS.shove now, applied from the module\'s own onHit. Clap is the ' +
+    'last entry in WEAPON_SHOVE, and takes the table and its INTERIM_EXCEPTIONS entry with it');
+  assert.equal(WEAPON_SHOVE.clap, 12, 'clap\'s own tuning is untouched by the bass leaving');
+
+  const bassModule = WEAPON_MODULES.find((m) => m.role === 'bass')!;
+  assert.equal(bassModule.tickAt, 'shockwaves',
+    'the bass owns the shockwave pass, in the phase RunWorld.updateShockwaves used to stand in ' +
+    '— after the shared projectile loop and the zones, before the gravity wells');
+  assert.equal(bassModule.create().projectile!.steer, undefined,
+    'a base wave rides SHARED travel and the arena rails unchanged. Implementing steer() would ' +
+    'exempt it from reflectProjectileFromArena exactly the way the arp is exempted, and only a ' +
+    'bouncing wave would ever notice');
+  assert.equal(BASS.role, 'bass');
+}
+
+/** A fake context set up for the bass. Its rng() THROWS by default: Subquake
+ *  aims at nothing and draws nothing, and the module's tick() must not draw
+ *  either, so both are executable assertions rather than comments. The base
+ *  volley, which does aim, gets an explicit script. */
+function bassCtx(evolved = false, rngValues: number[] | null = null): FakeCtx {
+  const ctx = new FakeCtx();
+  ctx.role = 'bass';
+  ctx.color = KIT_COLORS.bass;
+  ctx.evolved = evolved;
+  ctx.rngValues = rngValues;
+  return ctx;
+}
+
+// B1. ONE TRIGGER, ONE WAVE, and the tier-4 stat row as LITERALS. A target in
+// range means aimDir takes its one-draw branch; 0.5 is the jitter's identity,
+// so the wave leaves along the aim line.
+{
+  const ctx = bassCtx(false, [0.5]);
+  const inst = BASS.create();
+  ctx.targets.push(fakeTarget(300, 0));
+  inst.fire(ctx, bassTiers[3]);
+  assert.equal(ctx.rngDraws, 1, 'a base bass trigger costs exactly one draw — the aim jitter');
+  assert.equal(ctx.spawned.length, 1, 'one trigger, one wave');
+  assert.equal(ctx.rings.length, 0, 'the BASE bass spawns no ring');
+  assert.equal(ctx.hits.length, 0, 'the base bass deals no damage at fire time');
+  assert.equal(ctx.fxLog.length, 0, 'the base bass pushes no fx at fire time');
+  const pr = ctx.spawned[0];
+  assert.equal(pr.damage, 13, 'a tier-4 wave carries the pedestal damage');
+  assert.equal(pr.speed, 150);
+  assert.equal(pr.radius, 42);
+  assert.equal(pr.lifeS, 2.6);
+  // INFINITE PIERCE, as the literal Infinity and not a large number. The shared
+  // rule subtracts one on every hit and never bites.
+  assert.equal(pr.pierce, Infinity, 'a wave rolls through everything');
+  assert.equal(pr.maxPierce, Infinity);
+  assert.equal(round6(pr.vx), 150, 'velocity is derived from pr.speed along the aim line');
+  assert.equal(round6(pr.vy), 0);
+  assert.equal(round6(Math.hypot(pr.vx, pr.vy)), 150,
+    'the speed FIELD must stay equal to |v| — the bounce path reads it');
+}
+
+// B2. DOUBLE TAKE FANS FROM ONE AIM. Three waves, still one draw: the "move the
+// draw inside the loop" mistake would cost three and desynchronise the run.
+{
+  const ctx = bassCtx(false, [0.5]);
+  const inst = BASS.create();
+  ctx.targets.push(fakeTarget(300, 0));
+  ctx.buildMods = { ...ctx.buildMods, extraProjectiles: 2 };
+  inst.fire(ctx, bassTiers[3]);
+  assert.equal(ctx.spawned.length, 3, 'Double Take at level 2 makes three waves');
+  assert.equal(ctx.rngDraws, 1, 'one aim per trigger, however many waves come off it');
+  const angles = ctx.spawned.map((pr) => round6(Math.atan2(pr.vy, pr.vx)));
+  assert.deepEqual(angles, [0, round6(MULTISHOT_FAN_RAD), round6(-MULTISHOT_FAN_RAD)],
+    'the extra waves alternate either side of the aim line, centred on it');
+}
+
+// B3. THE 6-UNIT KNOCK, FROM ONHIT, AND NOTHING ELSE. This is the bass's share
+// of WEAPON_SHOVE, in the slot the table lookup occupied. The shove is measured
+// from the WAVE, and the hit pushes NO spark: bass has never been in
+// SPARK_HIT_ROLES and must not gain one.
+{
+  const ctx = bassCtx(false, [0.5]);
+  const inst = BASS.create();
+  const target = fakeTarget(300, 0);
+  ctx.targets.push(target);
+  inst.fire(ctx, bassTiers[3]);
+  const pr = ctx.spawned[0];
+  pr.x = 290;
+  pr.y = 4;
+  const spends = inst.projectile!.onHit!(ctx, pr, target);
+  assert.equal(spends, true,
+    'a bass wave spends pierce like every other shot — its ladder just carries Infinity, and ' +
+    'Infinity minus one is Infinity. Returning false here would be the arp\'s timer exemption');
+  assert.deepEqual(ctx.shoveLog.map((s) => [s.t === target, s.x, s.y, s.d]), [[true, 290, 4, 6]],
+    'the knock is 6, away from the wave\'s own position');
+  assert.equal(ctx.fxLog.length, 0,
+    'a bass hit lands damage and a knock and NOTHING else — no spark, ever');
+  assert.equal(ctx.hits.length, 0, 'onHit does not deal the damage; the shared loop already did');
+}
+
+// B4. HEAVY AMP SCALES THE BASE KNOCK. buildMods.knockbackMul 1.20 takes the 6
+// to 7.2, which is the whole of what the item does to this half of the weapon.
+{
+  const ctx = bassCtx(false, [0.5]);
+  const inst = BASS.create();
+  const target = fakeTarget(300, 0);
+  ctx.targets.push(target);
+  ctx.buildMods = { ...ctx.buildMods, knockbackMul: 1.2 };
+  inst.fire(ctx, bassTiers[3]);
+  inst.projectile!.onHit!(ctx, ctx.spawned[0], target);
+  assert.equal(round6(ctx.shoveLog[0].d), 7.2, 'the base knock scales with buildMods.knockbackMul');
+}
+
+// B5. SUBQUAKE: ONE RING, ZERO DRAWS, ZERO FX, ZERO PROJECTILES. rng() throws
+// here, so "the evolution aims at nothing" is executable — and the ring's whole
+// spawn row is pinned as literals against the tier-4 rung, including the start
+// radius that no world-state check can ever see.
+{
+  const ctx = bassCtx(true);
+  const inst = BASS.create();
+  ctx.targets.push(fakeTarget(300, 0));
+  inst.fire(ctx, bassTiers[3]);
+  assert.equal(ctx.rngDraws, 0, 'Subquake does not aim, so it costs nothing from the run stream');
+  assert.equal(ctx.spawned.length, 0, 'Subquake spawns no projectile at all');
+  assert.equal(ctx.fxLog.length, 0,
+    'Subquake pushes NO fx: its entire visual is the view reading world.shockwaves');
+  assert.equal(ctx.hits.length, 0, 'the ring deals its damage in tick(), not at fire time');
+  assert.equal(ctx.rings.length, 1, 'one trigger, one ring');
+  const wave = ctx.rings[0];
+  assert.equal(wave.x, 0, 'the ring is anchored at the fire-time player position');
+  assert.equal(wave.y, 0);
+  assert.equal(wave.radius, 40,
+    'the ring is BORN at 40. tick() overwrites this on the first step, so no world-state check ' +
+    'can see it and this literal is its only cover');
+  assert.equal(wave.maxRadius, 288, 'and grows to 288 at areaMul 1');
+  assert.equal(wave.lifeS, 1.2);
+  assert.equal(wave.age, 0);
+  assert.equal(round6(wave.damage), 20.15, 'tier-4 13 x 1.55');
+  assert.equal(wave.shove, 14);
+  assert.equal(wave.source, 'bass', 'attribution is the world\'s to fill in, not the module\'s');
+  assert.equal(wave.color, KIT_COLORS.bass);
+  assert.equal(wave.hit.size, 0);
+}
+
+// B6. THE RING READS areaMul AND NEVER READS conf.radius. Those two are easy to
+// confuse now that both modes sit behind one stats block, so the conf handed in
+// here carries an absurd radius: if the ring ever read it, maxRadius would be
+// that number instead of 288 x 1.30.
+{
+  const ctx = bassCtx(true);
+  const inst = BASS.create();
+  ctx.buildMods = { ...ctx.buildMods, areaMul: 1.3 };
+  inst.fire(ctx, { ...bassTiers[3], radius: 9999 });
+  assert.equal(round6(ctx.rings[0].maxRadius), 374.4, 'the ring grows with areaMul (288 x 1.30)');
+}
+
+// B7. THE RING'S KNOCK SCALES WITH knockbackMul, and Heavy Amp is Subquake's
+// own evolution item, so 14 is never sitting at identity in a real run.
+{
+  const ctx = bassCtx(true);
+  const inst = BASS.create();
+  ctx.buildMods = { ...ctx.buildMods, knockbackMul: 1.2 };
+  inst.fire(ctx, bassTiers[3]);
+  assert.equal(round6(ctx.rings[0].shove), 16.8, 'the ring knock scales with buildMods.knockbackMul');
+}
+
+// B8. THE GROWTH CURVE, READ OFF THE RING ITSELF. `40 + (max - 40) * min(1, age
+// / 1.2)`: linear from the start radius to the max over the growth duration,
+// then CLAMPED. Three readings — a third of the way, the moment it tops out,
+// and the clamp — separate the three constants, which one reading could not.
+//
+// The ring is retired in the same pass it deals its last damage in, which is
+// the pin on it living exactly as long as it takes to finish growing.
+{
+  const ctx = bassCtx(true);
+  const inst = BASS.create();
+  inst.fire(ctx, bassTiers[3]);
+  const wave = ctx.rings[0];
+  ctx.step(inst, 24);                                  // age 0.4 = a third
+  assert.equal(round6(wave.radius), 122.666667, 'a third of the way: 40 + 248 / 3');
+  ctx.step(inst, 48);                                  // age 1.2 exactly
+  assert.equal(round6(wave.radius), 288, 'the ring tops out at its max radius');
+  assert.equal(ctx.rings.length, 0,
+    'and dies in the same pass: the ring lives exactly as long as it takes to expand');
+  assert.equal(ctx.rngDraws, 0, 'growing a ring draws nothing');
+  assert.equal(ctx.fxLog.length, 0, 'and pushes nothing');
+}
+
+// B9. THE RING DOES NOT FOLLOW THE PLAYER. ctx.player is documented as a LIVE
+// getter and the kick depends on it being one, which makes reading it from
+// tick() the obvious shape — and it is wrong here. The player walks 400 units
+// away after the trigger; a ring that had followed him would sweep the body
+// parked beside his new position and leave the one beside the old.
+{
+  const ctx = bassCtx(true);
+  const inst = BASS.create();
+  // 40 units out: inside the ring's first step (radius 43.44 + a body's 12) and
+  // 400 units from where the player ends up. Its twin sits the same 40 units
+  // from the DESTINATION, well outside a ring that stayed put — the ring never
+  // grows past 288 + 12, so the two can never both be swept.
+  const atOrigin = fakeTarget(40, 0);
+  const atDestination = fakeTarget(440, 0);
+  ctx.targets.push(atOrigin, atDestination);
+  inst.fire(ctx, bassTiers[3]);
+  ctx.player = { x: 400, y: 0, facingX: 1 };
+  ctx.step(inst, 1);
+  assert.deepEqual(ctx.hits.map((h) => h.t === atOrigin), [true],
+    'the ring stays where it was fired: it swept the body by its ORIGIN, not the one by the ' +
+    'player\'s new position');
+  assert.equal(round6(ctx.shoveLog[0].x), 0, 'and it shoves away from that anchor');
+  assert.equal(round6(ctx.shoveLog[0].y), 0);
+}
+
+// B10. ONCE PER BODY, AND NO CAP ON BODIES. The `hit` set is the only thing
+// between "the edge crossed you" and "you are inside the ring", and everything
+// here is inside it for most of its life. Thirty bodies, one trigger, one hit
+// each — a lost hit set is not a subtle regression, it is ~70x the damage, and
+// an invented `maxHits` stat fails at whatever number it picked.
+{
+  const ctx = bassCtx(true);
+  const inst = BASS.create();
+  for (let i = 0; i < 30; i++) {
+    const angle = (Math.PI * 2 * i) / 30;
+    ctx.targets.push(fakeTarget(Math.cos(angle) * 100, Math.sin(angle) * 100));
+  }
+  inst.fire(ctx, bassTiers[3]);
+  ctx.step(inst, 72);
+  assert.equal(ctx.hits.length, 30, 'every one of the thirty bodies was hit — there is no cap');
+  assert.equal(new Set(ctx.hits.map((h) => h.t)).size, 30, 'and each was hit exactly ONCE');
+  assert.deepEqual(ctx.hits.map((h) => round6(h.amount)), new Array(30).fill(20.15));
+}
+
+// B11. THE RING WALKS ctx.all() IN ARRAY ORDER — spawn order, not distance
+// order, which is what an expanding ring looks like it should have and is not.
+// Every rng draw a kill triggers lands in this order, so it is behavior. The
+// three bodies below are placed FARTHEST FIRST, so array order and distance
+// order are exact opposites.
+//
+// ALL THREE ARE INSIDE THE RING'S FIRST STEP (reach 43.44 + a body's 12), on
+// purpose: order is only decidable inside ONE pass. Spread them out and the
+// edge reaches them on different frames, and what the hit list records is the
+// passage of time rather than the iteration order this check is about.
+{
+  const ctx = bassCtx(true);
+  const inst = BASS.create();
+  const far = fakeTarget(0, 50);
+  const mid = fakeTarget(0, 35);
+  const nearBody = fakeTarget(0, 10);
+  ctx.targets.push(far, mid, nearBody);
+  inst.fire(ctx, bassTiers[3]);
+  ctx.step(inst, 1);
+  assert.equal(ctx.hits.length, 3, 'one pass, all three bodies');
+  assert.deepEqual(ctx.hits.map((h) => h.t), [far, mid, nearBody],
+    'damage order is the order the field was spawned in, not the order the edge reaches it');
+}
+
+// B12. THE ENEMY ARRAY IS LIVE AND GROWS UNDER THE LOOP. `ctx.all()` hands back
+// the world's real array by reference, and a JS array iterator re-reads length,
+// so a splitter killed by this ring pushes children that THIS SAME RING visits
+// in THIS SAME PASS — already inside its radius, so hit immediately. A
+// defensive `[...ctx.all()]` in the module deletes those hits and every draw
+// behind them, and nothing else in this file would notice.
+{
+  class SplittingCtx extends FakeCtx {
+    burst = false;
+    override damage(t: WeaponTarget, amount: number): void {
+      super.damage(t, amount);
+      if (this.burst) return;
+      this.burst = true;
+      // A child at the parent's position: already inside the ring.
+      this.targets.push(fakeTarget((t as FakeTarget).x, (t as FakeTarget).y));
+    }
+  }
+  const ctx = new SplittingCtx();
+  ctx.role = 'bass';
+  ctx.color = KIT_COLORS.bass;
+  ctx.evolved = true;
+  const inst = BASS.create();
+  ctx.targets.push(fakeTarget(0, 20));
+  inst.fire(ctx, bassTiers[3]);
+  ctx.step(inst, 1);
+  assert.equal(ctx.hits.length, 2,
+    'the child pushed by the parent\'s own hit is visited by the same ring in the same pass');
+  assert.equal(ctx.targets.length, 2);
+}
+
+// B13. MID-EVOLVE. A base wave still in flight when the bass evolves keeps the
+// base hit rule: onHit does not consult ctx.evolved, exactly as the role-keyed
+// table it replaced did not. The two modes coexist in two different arrays.
+{
+  const ctx = bassCtx(false, [0.5]);
+  const inst = BASS.create();
+  const target = fakeTarget(300, 0);
+  ctx.targets.push(target);
+  inst.fire(ctx, bassTiers[3]);
+  const inFlight = ctx.spawned[0];
+  ctx.evolved = true;
+  inst.fire(ctx, bassTiers[3]);
+  assert.equal(ctx.rings.length, 1, 'the next trigger is a ring');
+  assert.equal(ctx.spawned.length, 1, 'and the wave already in flight is still there');
+  inst.projectile!.onHit!(ctx, inFlight, target);
+  assert.deepEqual(ctx.shoveLog.map((s) => s.d), [6],
+    'a base wave still in flight when the bass evolves keeps the base knock, not the ring\'s 14');
+}
+
+// B14. reset() has nothing to drop. Base waves live in the world's projectile
+// array and rings in the world's shockwave array, and clearSandboxEntities
+// empties both itself — the module holds no schedule of its own. Pinned so that
+// stays true, and so a reset never draws or pushes anything.
+{
+  const ctx = bassCtx(true);
+  const inst = BASS.create();
+  ctx.targets.push(fakeTarget(60, 0));
+  inst.fire(ctx, bassTiers[3]);
+  inst.reset();
+  assert.equal(ctx.hits.length, 0, 'a reset bass lands no delayed damage');
+  assert.equal(ctx.fxLog.length, 0, 'and pushes no fx');
+  assert.equal(ctx.rngDraws, 0, 'and never drew anything to begin with');
+}
+
 // ---------------------------------------------------------------------------
 // 11. THE WORLD SIDE OF THE SEAM: the tick call site.
 //
@@ -2189,13 +2607,22 @@ function worldStrike(opts: {
   /** The shared loops every weapon's entities ride. #140 named the projectile
    *  loop and the arena rails; it named shared ZONE physics too, and the zone,
    *  shockwave and gravity-well loops were never scanned at all. They are now:
-   *  chord, bass and bell migrate into those loops next, and each will arrive
-   *  wanting "one small branch here". */
+   *  chord and bell migrate into two of those loops next, and each will arrive
+   *  wanting "one small branch here".
+   *
+   *  `updateShockwaves` was on this list and is NOT any more, because the bass
+   *  extraction (#141) DELETED it: shockwave storage stays on the world, but
+   *  the growth/damage/retire loop moved wholesale into weapons/bass.ts, which
+   *  is now the array's sole mutator. That is the outcome this guard exists to
+   *  push toward, not a hole in it — a method removed from here because the
+   *  code left run.ts is the good ending, a method removed because it was
+   *  RENAMED is the bad one, and the `methodBody` assert below is what tells
+   *  the two apart for everything still listed. When zones and wells follow,
+   *  this list shrinks to the two genuinely shared projectile loops. */
   const PROTECTED_METHODS = [
     'updateProjectiles',
     'reflectProjectileFromArena',
     'updateZones',
-    'updateShockwaves',
     'updateGravityWells',
   ] as const;
 
@@ -2230,10 +2657,10 @@ function worldStrike(opts: {
       snippet: 'this.damageArea(z.x, z.y, z.radius, z.damage, z.source)',
       why: 'damage attribution for a zone tick',
     },
-    {
-      snippet: 'this.damageEnemy(enemy, wave.damage, wave.source)',
-      why: 'damage attribution for a shockwave hit',
-    },
+    // `this.damageEnemy(enemy, wave.damage, wave.source)` was here, approved as
+    // damage attribution for a shockwave hit. It went with the whole shockwave
+    // loop when the bass extracted (#141); the module bills its ring through
+    // ctx.damage, whose role is bound at construction and cannot be forged.
   ];
 
   interface InterimException extends RoleUse {
@@ -2263,14 +2690,15 @@ function worldStrike(opts: {
     {
       snippet: 'WEAPON_SHOVE[pr.role]',
       count: 1,
-      why: 'per-weapon knockback on a projectile hit (config.ts WEAPON_SHOVE: clap 12, bass 6)',
+      why: 'per-weapon knockback on a projectile hit (config.ts WEAPON_SHOVE: clap 12)',
       deletedBy:
-        'the bass and clap modules (#141). Each weapon\'s number is its own tuning; the last ' +
-        'one out takes WEAPON_SHOVE and this entry with it. A shove is a shared primitive ' +
-        'already — ctx.shove — so a module needs nothing new to keep doing this. The SNARE has ' +
-        'already left: its 8 is SNARE_STATS.shove, applied from the snare module\'s own ' +
+        'the CLAP module (#141), now the only entry left. Each weapon\'s number is its own ' +
+        'tuning; the last one out takes WEAPON_SHOVE and this entry with it. A shove is a ' +
+        'shared primitive already — ctx.shove — so a module needs nothing new to keep doing ' +
+        'this. Two weapons have already left this way: the snare\'s 8 is SNARE_STATS.shove and ' +
+        'the bass\'s 6 is BASS_STATS.shove, each applied from that module\'s own ' +
         'ProjectileBehavior.onHit, which is the slot this lookup occupies. Note the count stays ' +
-        '1 — one weapon leaving a shared table shrinks the TABLE, not the number of lookups.',
+        '1 — a weapon leaving a shared table shrinks the TABLE, not the number of lookups.',
     },
     {
       snippet: 'SPARK_HIT_ROLES.has(pr.role)',

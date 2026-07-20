@@ -4,12 +4,13 @@
 import type { Role } from '../../audio/kits';
 import { TIER_LINES, WEAPONS, type WeaponConf } from '../config';
 import { ARP } from './arp';
+import { BASS } from './bass';
 import { HAT } from './hat';
 import { KICK } from './kick';
 import { SNARE } from './snare';
 import type { WeaponModule } from './module';
 
-export type { WeaponContext, WeaponPlayer, WeaponTarget } from './context';
+export type { ShockwaveSpec, WeaponContext, WeaponPlayer, WeaponTarget } from './context';
 export {
   TICK_PHASES,
   type TickPhase,
@@ -22,6 +23,7 @@ export { KICK, type KickStats } from './kick';
 export { ARP, type ArpStats } from './arp';
 export { SNARE, type SnareStats } from './snare';
 export { HAT, type HatStats } from './hat';
+export { BASS, type BassStats } from './bass';
 
 /** Weapons that own their behavior behind the weapon context. A role absent
  *  here still branches inside run.ts; this array emptying run.ts's switch is
@@ -30,7 +32,7 @@ export { HAT, type HatStats } from './hat';
  *  ORDERED. Array order is the tick order WITHIN a phase and is behavioral —
  *  reordering it reorders damage and therefore the rng stream. Across phases,
  *  TickPhase decides; array order never overrides it. */
-export const WEAPON_MODULES: readonly WeaponModule[] = [KICK, ARP, SNARE, HAT];
+export const WEAPON_MODULES: readonly WeaponModule[] = [KICK, ARP, SNARE, HAT, BASS];
 
 const BY_ROLE = new Map<Role, WeaponModule>(WEAPON_MODULES.map((m) => [m.role, m]));
 

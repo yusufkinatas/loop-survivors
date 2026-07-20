@@ -695,14 +695,6 @@ export interface WeaponConf {
 // per-TICK number that floors at 1, so their listed damage can't drop a full
 // third — their real output is damage x ticks x rate; they lean on coverage.
 export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
-  // Slow wide low wave that rolls through everything. The weight ladder:
-  // per-trigger damage climbs harder than any other kit.
-  bass: [
-    { damage: 3, speed: 135, radius: 22, lifetimeS: 2.3, pierce: Infinity },
-    { damage: 5, speed: 140, radius: 28, lifetimeS: 2.4, pierce: Infinity },
-    { damage: 8, speed: 145, radius: 34, lifetimeS: 2.5, pierce: Infinity },
-    { damage: 13, speed: 150, radius: 42, lifetimeS: 2.6, pierce: Infinity },
-  ],
   // Zone thrown onto the nearest pack: ticks damage and slows enemies
   // inside. Chip damage + control; the slow is the identity. NOTE: zone
   // `damage` is PER TICK (every ZONE_TICK_S) for the zone's whole life, so
@@ -753,12 +745,6 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
  *  change is discovered by ear. Lines state what the chart + stat change
  *  actually does. */
 export const TIER_LINES: Partial<Record<Role, string[]>> = {
-  bass: [
-    'slow piercing wave',
-    'waves twice as often',
-    'heavier, wider waves',
-    'massive wave every 4th bar',
-  ],
   chord: [
     'zone on the nearest pack: damage + slow',
     'zones twice as often',
@@ -822,9 +808,10 @@ export const SHOVE_S = 0.12;
  *
  *  SHRINKING (#141). Each entry is the personal tuning of a weapon that has not
  *  been extracted yet, and each leaves with its own module — the snare's 8 went
- *  into SNARE_STATS.shove, applied from the snare module's own onHit. The last
- *  weapon out takes this table with it. */
-export const WEAPON_SHOVE: Partial<Record<Role, number>> = { clap: 12, bass: 6 };
+ *  into SNARE_STATS.shove and the bass's 6 into BASS_STATS.shove, each applied
+ *  from that module's own onHit. CLAP IS THE LAST ENTRY, and takes this table
+ *  with it. */
+export const WEAPON_SHOVE: Partial<Record<Role, number>> = { clap: 12 };
 
 // ---- the pincer weapon ----
 

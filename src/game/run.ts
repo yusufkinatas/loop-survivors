@@ -65,6 +65,7 @@ import {
   type TickPhase,
   type WeaponContext,
   type WeaponInstance,
+  type WeaponTarget,
 } from './weapons';
 
 /** Roles that emit a per-hit spark on impact. Bounded to low-count roles so
@@ -237,7 +238,10 @@ export interface Shockwave {
   shove: number;
   color: number;
   source: Role;
-  hit: Set<Enemy>;
+  /** Bodies this ring has already crossed, so each takes its damage once.
+   *  Typed as the weapon-facing view because the owning weapon module (#141)
+   *  is the only code that reads or writes it — the world just carries it. */
+  hit: Set<WeaponTarget>;
 }
 
 export interface GravityWell {
@@ -544,6 +548,32 @@ export class RunWorld {
         const index = world.projectiles.indexOf(projectile);
         if (index >= 0) world.projectiles.splice(index, 1);
       },
+      // Shockwave storage stays world-side for the same reason projectile
+      // storage does: view.ts draws world.shockwaves and clearSandboxEntities
+      // empties it. The world owns the ARRAY; the module owns everything that
+      // happens to what is in it. There is no world-side shockwave loop.
+      spawnShockwave: (spec) => {
+        const wave: Shockwave = {
+          x: spec.x,
+          y: spec.y,
+          radius: spec.radius,
+          maxRadius: spec.maxRadius,
+          age: 0,
+          lifeS: spec.lifeS,
+          damage: spec.damage,
+          shove: spec.shove,
+          color,
+          source: role,
+          hit: new Set(),
+        };
+        world.shockwaves.push(wave);
+        return wave;
+      },
+      shockwaves: () => world.shockwaves.filter((wave) => wave.source === role),
+      retireShockwave: (wave) => {
+        const index = world.shockwaves.indexOf(wave);
+        if (index >= 0) world.shockwaves.splice(index, 1);
+      },
     };
   }
 
@@ -712,15 +742,6 @@ export class RunWorld {
         for (const dir of this.aimFan(0.1)) this.spawnBell(dir, conf, color);
         break;
       }
-      case 'bass': {
-        if (evolved) {
-          this.spawnSubquake(conf, color);
-          break;
-        }
-        // One wide rolling wave per trigger; Double Take fans extra waves.
-        for (const dir of this.aimFan(0.08)) this.spawnProjectile('bass', dir, conf, color);
-        break;
-      }
       case 'lead': {
         for (const dir of this.aimFan(0.08)) this.spawnProjectile(t.role, dir, conf, color);
         break;
@@ -882,7 +903,7 @@ export class RunWorld {
     this.updateClapPinches();
     this.updateProjectiles(dt);
     this.updateZones(dt);
-    this.updateShockwaves(dt);
+    this.tickWeapons('shockwaves', dt);
     this.updateGravityWells(dt);
     this.updateStageMagnets(dt);
     this.updateGems(dt);
@@ -1749,40 +1770,12 @@ export class RunWorld {
     }
   }
 
-  private spawnSubquake(conf: WeaponConf, color: number): void {
-    const area = this.buildMods.areaMul;
-    this.shockwaves.push({
-      x: this.player.x,
-      y: this.player.y,
-      radius: 40,
-      maxRadius: 288 * area,
-      age: 0,
-      lifeS: 1.2,
-      damage: conf.damage * 1.55,
-      shove: 14 * this.buildMods.knockbackMul,
-      color,
-      source: 'bass',
-      hit: new Set(),
-    });
-  }
-
-  private updateShockwaves(dt: number): void {
-    for (let i = this.shockwaves.length - 1; i >= 0; i--) {
-      const wave = this.shockwaves[i];
-      wave.age += dt;
-      wave.lifeS -= dt;
-      wave.radius = 40 + (wave.maxRadius - 40) * Math.min(1, wave.age / 1.2);
-      for (const enemy of this.enemies) {
-        if (enemy.dead || wave.hit.has(enemy)) continue;
-        if (Math.hypot(enemy.x - wave.x, enemy.y - wave.y) <= wave.radius + enemy.radius) {
-          wave.hit.add(enemy);
-          this.damageEnemy(enemy, wave.damage, wave.source);
-          this.shove(enemy, wave.x, wave.y, wave.shove);
-        }
-      }
-      if (wave.lifeS <= 0) this.shockwaves.splice(i, 1);
-    }
-  }
+  // Shockwaves left this file with the bass module (#141). The world still
+  // STORES them — view.ts draws world.shockwaves and clearSandboxEntities
+  // empties it — but it no longer spawns, grows, resolves or retires one:
+  // weapons/bass.ts owns all four through ctx.spawnShockwave / ctx.shockwaves /
+  // ctx.retireShockwave, and its tick() runs in the 'shockwaves' phase where
+  // updateShockwaves used to stand.
 
   private nearestEnemy(range: number): Enemy | null {
     const p = this.player;

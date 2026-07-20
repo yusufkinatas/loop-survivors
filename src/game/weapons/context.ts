@@ -13,7 +13,7 @@
 import type { Role } from '../../audio/kits';
 import type { WeaponConf } from '../config';
 import type { BuildMods } from '../items';
-import type { FxEvent, Projectile } from '../run';
+import type { FxEvent, Projectile, Shockwave } from '../run';
 
 /** Everything a weapon module may READ off an enemy — eight fields, all
  *  readonly. `Enemy` satisfies this structurally, so the world hands its REAL
@@ -218,17 +218,72 @@ export interface WeaponContext {
    *  Horizon's orbiter cap is the only caller: it retires its own oldest
    *  orbiters at fire time rather than waiting for them to expire. */
   retireProjectile(projectile: Projectile): void;
+
+  // ---------------- shockwaves (#141) ----------------
+  //
+  // The bass is the weapon the note at the bottom of this file reserved these
+  // for, and it needed them for its EVOLUTION rather than its base mode: a
+  // Subquake is an expanding ring living in world.shockwaves, an array the view
+  // draws and clearSandboxEntities empties. So STORAGE STAYS WORLD-SIDE for
+  // exactly the reason projectile storage did, and what a module gets is a
+  // spawn effect plus a query over its OWN rings — the same three-member shape
+  // spawnProjectile/projectiles/retireProjectile set.
+  //
+  // What is DIFFERENT here, and the reason this trio is not just a copy: the
+  // world has no update loop for these any more. RunWorld.updateShockwaves is
+  // gone, and the module's own tick() (tickAt 'shockwaves') is the only code
+  // that grows a ring, tests it against bodies or retires it. The module is the
+  // array's SOLE MUTATOR; the world only stores and draws.
+
+  /** Spawn one shockwave attributed to this weapon, and return the LIVE object
+   *  already in the world so the module's tick() can grow it.
+   *
+   *  The module supplies the geometry and the payload; the world supplies the
+   *  identity (`source`, `color`) and the bookkeeping every ring starts with
+   *  (`age` 0, an empty `hit` set) — a module cannot forge attribution here any
+   *  more than it can through damage(). */
+  spawnShockwave(spec: ShockwaveSpec): Shockwave;
+
+  /** This weapon's live shockwaves, in world-array order — oldest spawned
+   *  first. A fresh array per call, so it is safe to retire from while walking
+   *  it. Does NOT include another weapon's rings. */
+  shockwaves(): readonly Shockwave[];
+
+  /** Remove one shockwave from the world immediately, by identity. This is how
+   *  a ring that has run out of life leaves; there is no world-side sweep. */
+  retireShockwave(wave: Shockwave): void;
+}
+
+/** Everything a module chooses about a new shockwave. Deliberately NOT the
+ *  whole Shockwave: `source`, `color`, `age` and `hit` are the world's to fill
+ *  in, so they cannot be got wrong from a module. */
+export interface ShockwaveSpec {
+  /** Ring centre, in world coordinates. A POINT, not a body: Subquake anchors
+   *  at the fire-time player position and never moves afterwards, which is why
+   *  this is passed once at spawn rather than re-read in tick(). */
+  readonly x: number;
+  readonly y: number;
+  /** Radius the ring starts at, before its first growth step. */
+  readonly radius: number;
+  /** Radius it reaches at the end of its growth. */
+  readonly maxRadius: number;
+  /** Seconds the ring lives. */
+  readonly lifeS: number;
+  /** Damage dealt to each body the edge crosses, once each. */
+  readonly damage: number;
+  /** Knock distance away from the ring's CENTRE on that hit, already scaled by
+   *  buildMods.knockbackMul — the world does not scale it again. */
+  readonly shove: number;
 }
 
 // ---- deliberately ABSENT ----
 //
-// No spawnZone/spawnShockwave/spawnGravityWell: #140 needed projectiles and
-// added exactly projectiles. Entities the view reads (view.ts iterates
-// world.zones, world.shockwaves, world.gravityWells) keep world-side STORAGE;
-// each gets a spawn effect plus a query over the module's own records, on the
-// shape spawnProjectile/projectiles/retireProjectile above set. Decide each one
-// with the first weapon that needs it — chord for zones, bass for shockwaves,
-// bell for gravity wells.
+// No spawnZone/spawnGravityWell: #140 needed projectiles and added exactly
+// projectiles; the bass (#141) needed shockwaves and added exactly shockwaves,
+// on the shape spawnProjectile/projectiles/retireProjectile set — world-side
+// STORAGE, a spawn effect, a query over the module's own records. The two
+// remaining entity kinds keep waiting for the first weapon that needs them:
+// chord for zones, bell for gravity wells. Neither is speculatively added here.
 //
 // No nearestEnemy / nearestEnemies: the four weapons migrated so far need
 // neither, and every member here is a tax on every fake context.
