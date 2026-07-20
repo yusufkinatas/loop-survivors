@@ -45,12 +45,3 @@ export function weaponTiers(role: Role): readonly WeaponConf[] | undefined {
 export function weaponTierLines(role: Role): readonly string[] | undefined {
   return BY_ROLE.get(role)?.stats.tierLines ?? TIER_LINES[role];
 }
-
-/** The world's former hardcoded projectile-role set, verbatim. Deletes itself
- *  as weapons migrate. */
-const LEGACY_PROJECTILE_ROLES = new Set<Role>(['snare', 'hat', 'bass', 'lead', 'bell']);
-
-export function buildsAsProjectile(role: Role): boolean {
-  const m = BY_ROLE.get(role);
-  return m ? m.stats.buildsAsProjectile : LEGACY_PROJECTILE_ROLES.has(role);
-}

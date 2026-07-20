@@ -23,7 +23,8 @@
     "  fx dmg x=38.528324 y=-29.83208 amount=3 color=16734780",
     "  fx dmg x=37.853607 y=11.458575 amount=3 color=16734780",
     "  fx dmg x=106.317132 y=-21.539519 amount=3 color=16734780",
-    "rngDraws: 1"
+    "rngDraws: 1",
+    "magnetRngDraws: 0"
   ],
   "kick base tier 2, solo, damage meter": [
     "enemies:",
@@ -51,7 +52,8 @@
     "  fx dmg x=106.317132 y=-21.539519 amount=5 color=16734780",
     "  fx whip x=0 y=0 side=-1 area=1 color=16734780",
     "  fx dmg x=-53.450425 y=-22.400565 amount=5 color=16734780",
-    "rngDraws: 1"
+    "rngDraws: 1",
+    "magnetRngDraws: 0"
   ],
   "kick base tier 3, solo, damage meter": [
     "enemies:",
@@ -79,7 +81,8 @@
     "  fx dmg x=106.317132 y=-21.539519 amount=9 color=16734780",
     "  fx whip x=0 y=0 side=-1 area=1.1 color=16734780",
     "  fx dmg x=-53.450425 y=-22.400565 amount=9 color=16734780",
-    "rngDraws: 1"
+    "rngDraws: 1",
+    "magnetRngDraws: 0"
   ],
   "kick base tier 4, solo, damage meter": [
     "enemies:",
@@ -108,7 +111,8 @@
     "  fx whip x=0 y=0 side=-1 area=1.2 color=16734780",
     "  fx dmg x=194.812078 y=-21.419502 amount=15 color=16734780",
     "  fx dmg x=-53.450425 y=-22.400565 amount=15 color=16734780",
-    "rngDraws: 1"
+    "rngDraws: 1",
+    "magnetRngDraws: 0"
   ],
   "kick base tier 1, solo, lethal": [
     "enemies:",
@@ -134,7 +138,8 @@
     "  fx dmg x=38.528324 y=-29.83208 amount=3 color=16734780",
     "  fx dmg x=37.853607 y=11.458575 amount=3 color=16734780",
     "  fx dmg x=106.317132 y=-21.539519 amount=3 color=16734780",
-    "rngDraws: 1"
+    "rngDraws: 1",
+    "magnetRngDraws: 0"
   ],
   "kick base tier 4, solo, lethal": [
     "enemies:",
@@ -164,7 +169,8 @@
     "  fx death x=194.812078 y=-0.36687 radius=21.052632 color=13072988 elite=false",
     "  fx dmg x=-53.450425 y=-22.400565 amount=15 color=16734780",
     "  fx death x=-53.450425 y=-1.347934 radius=21.052632 color=13072988 elite=false",
-    "rngDraws: 11"
+    "rngDraws: 11",
+    "magnetRngDraws: 5"
   ],
   "kick base tier 4, four triggers on a beat grid": [
     "enemies:",
@@ -214,7 +220,8 @@
     "  fx whip x=0 y=0 side=-1 area=1.2 color=16734780",
     "  fx dmg x=198.298362 y=-21.172965 amount=15 color=16734780",
     "  fx dmg x=-56.87367 y=-21.696045 amount=15 color=16734780",
-    "rngDraws: 1"
+    "rngDraws: 1",
+    "magnetRngDraws: 0"
   ],
   "kick evolved (Redline Stomp), damage meter": [
     "enemies:",
@@ -251,7 +258,8 @@
     "  fx beam x=0 y=0 x2=-824.888889 y2=0 width=69.473684 color=16734780",
     "  fx beam x=0 y=0 x2=0 y2=464 width=69.473684 color=16734780",
     "  fx beam x=0 y=0 x2=0 y2=-464 width=69.473684 color=16734780",
-    "rngDraws: 1"
+    "rngDraws: 1",
+    "magnetRngDraws: 0"
   ],
   "kick evolved (Redline Stomp), lethal, splitters": [
     "enemies:",
@@ -280,7 +288,8 @@
     "  fx beam x=0 y=0 x2=-824.888889 y2=0 width=69.473684 color=16734780",
     "  fx beam x=0 y=0 x2=0 y2=464 width=69.473684 color=16734780",
     "  fx beam x=0 y=0 x2=0 y2=-464 width=69.473684 color=16734780",
-    "rngDraws: 3"
+    "rngDraws: 3",
+    "magnetRngDraws: 1"
   ],
   "kick mid-evolve with a base strip in flight": [
     "enemies:",
@@ -321,7 +330,8 @@
     "  fx beam x=0 y=0 x2=0 y2=464 width=69.473684 color=16734780",
     "  fx beam x=0 y=0 x2=0 y2=-464 width=69.473684 color=16734780",
     "  fx dmg x=-56.177667 y=-22.295014 amount=15 color=16734780",
-    "rngDraws: 1"
+    "rngDraws: 1",
+    "magnetRngDraws: 0"
   ],
   "kick in a full band, base, damage meter": [
     "enemies:",
@@ -397,7 +407,8 @@
     "  fx dmg x=28.699531 y=3.575789 amount=2 color=5111688",
     "  fx dmg x=32.152195 y=-38.387675 amount=2 color=5111688",
     "  fx dmg x=110.459238 y=-17.707898 amount=2 color=5111688",
-    "rngDraws: 8"
+    "rngDraws: 8",
+    "magnetRngDraws: 0"
   ],
   "kick in a full band, base, lethal": [
     "enemies:",
@@ -444,7 +455,8 @@
     "  fx death x=194.812078 y=-0.36687 radius=21.052632 color=13072988 elite=false",
     "  fx dmg x=0.812148 y=152.212333 amount=4 color=16739286",
     "  fx spark x=0.812148 y=173.264964 color=16739286 n=4 spread=12",
-    "rngDraws: 17"
+    "rngDraws: 17",
+    "magnetRngDraws: 5"
   ],
   "kick in a full evolved band, loaded build": [
     "enemies:",
@@ -562,7 +574,8 @@
     "  fx dmg x=17.440063 y=-53.36724 amount=3 color=5111688",
     "  fx dmg x=26.251279 y=4.58381 amount=3 color=5111688",
     "  fx dmg x=51.748876 y=-28.92329 amount=3 color=5111688",
-    "rngDraws: 6"
+    "rngDraws: 6",
+    "magnetRngDraws: 0"
   ],
   "kick base tier 4 against shielded and knock-immune bodies": [
     "enemies:",
@@ -588,7 +601,8 @@
     "  fx dmg x=102.616038 y=-46.32202 amount=15 color=16734780",
     "  fx dmg x=105.435461 y=-7.838308 amount=15 color=16734780",
     "  fx whip x=0 y=0 side=-1 area=1.2 color=16734780",
-    "rngDraws: 1"
+    "rngDraws: 1",
+    "magnetRngDraws: 0"
   ],
   "arp base tier 1, solo, damage meter": [
     "enemies:",
@@ -633,7 +647,8 @@
     "  fx dmg x=74.489911 y=-23.236892 amount=2 color=3401410",
     "  fx dmg x=72.811035 y=-22.647053 amount=2 color=3401410",
     "  fx dmg x=64.132519 y=18.27533 amount=2 color=3401410",
-    "rngDraws: 2"
+    "rngDraws: 2",
+    "magnetRngDraws: 0"
   ],
   "arp base tier 2, solo, damage meter": [
     "enemies:",
@@ -678,7 +693,8 @@
     "  fx dmg x=63.471381 y=16.488616 amount=2 color=3401410",
     "  fx dmg x=9.687814 y=42.595717 amount=2 color=3401410",
     "  fx dmg x=1.090485 y=83.813906 amount=2 color=3401410",
-    "rngDraws: 2"
+    "rngDraws: 2",
+    "magnetRngDraws: 0"
   ],
   "arp base tier 3, solo, damage meter": [
     "enemies:",
@@ -717,7 +733,8 @@
     "  fx dmg x=2.000082 y=-109.678299 amount=2 color=3401410",
     "  fx dmg x=65.698502 y=-64.744193 amount=2 color=3401410",
     "  fx dmg x=1.015197 y=83.569914 amount=2 color=3401410",
-    "rngDraws: 2"
+    "rngDraws: 2",
+    "magnetRngDraws: 0"
   ],
   "arp base tier 4, solo, damage meter": [
     "enemies:",
@@ -755,7 +772,8 @@
     "  fx dmg x=84.882933 y=24.303034 amount=3 color=3401410",
     "  fx dmg x=1.426022 y=102.399633 amount=3 color=3401410",
     "  fx dmg x=-109.998505 y=-25.704835 amount=3 color=3401410",
-    "rngDraws: 2"
+    "rngDraws: 2",
+    "magnetRngDraws: 0"
   ],
   "arp base tier 1, solo, lethal": [
     "enemies:",
@@ -794,7 +812,8 @@
     "  fx death x=62.637388 y=-28.0071 radius=12.280702 color=15760038 elite=false",
     "  fx dmg x=60.398224 y=-10.426083 amount=2 color=3401410",
     "  fx death x=60.398224 y=1.854619 radius=12.280702 color=15760038 elite=false",
-    "rngDraws: 12"
+    "rngDraws: 12",
+    "magnetRngDraws: 5"
   ],
   "arp base tier 4, solo, lethal": [
     "enemies:",
@@ -830,7 +849,8 @@
     "  fx death x=111.740299 y=-46.319646 radius=12.280702 color=15760038 elite=false",
     "  fx dmg x=103.340458 y=29.895993 amount=3 color=3401410",
     "  fx death x=103.340458 y=42.176695 radius=12.280702 color=15760038 elite=false",
-    "rngDraws: 6"
+    "rngDraws: 6",
+    "magnetRngDraws: 2"
   ],
   "arp base tier 4, timer re-hit against circlers parked on the orbit": [
     "enemies:",
@@ -879,7 +899,8 @@
     "  fx dmg x=-28.768146 y=-162.980417 amount=3 color=3401410",
     "  fx dmg x=2.328413 y=-166.248987 amount=3 color=3401410",
     "  fx dmg x=26.821014 y=-163.730176 amount=3 color=3401410",
-    "rngDraws: 12"
+    "rngDraws: 12",
+    "magnetRngDraws: 0"
   ],
   "arp base tier 4, chip-kills circlers on the re-hit timer": [
     "enemies:",
@@ -929,7 +950,8 @@
     "  fx dmg x=-14.125421 y=137.086193 amount=3 color=3401410",
     "  fx dmg x=-44.701892 y=129.326395 amount=3 color=3401410",
     "  fx dmg x=-61.886045 y=118.639621 amount=3 color=3401410",
-    "rngDraws: 12"
+    "rngDraws: 12",
+    "magnetRngDraws: 0"
   ],
   "arp base tier 4, four triggers on a beat grid over parked circlers": [
     "enemies:",
@@ -1059,7 +1081,93 @@
     "  fx dmg x=25.281143 y=132.244031 amount=3 color=3401410",
     "  fx dmg x=-133.651871 y=52.035581 amount=3 color=3401410",
     "  fx dmg x=-147.699865 y=-4.01918 amount=3 color=3401410",
-    "rngDraws: 15"
+    "rngDraws: 15",
+    "magnetRngDraws: 0"
+  ],
+  "arp base tier 4 with Double Take, three orbiters from one draw": [
+    "enemies:",
+    "  #1 circler hp=999997 shield=0 pos=19.587268,-155.617692 dead=0 knock=0,0,0 flash=-0.003333 slow=0 lastMove=168.143303,25.056531",
+    "  #2 circler hp=999997 shield=0 pos=40.755375,-154.892107 dead=0 knock=0,0,0 flash=-0.003333 slow=0 lastMove=161.848741,52.00947",
+    "  #3 circler hp=999997 shield=0 pos=-13.183089,-153.158372 dead=0 knock=0,0,0 flash=-0.003333 slow=0 lastMove=169.471975,-13.388417",
+    "  #4 circler hp=999958 shield=0 pos=-128.180384,-49.171061 dead=0 knock=0,0,0 flash=-0.003333 slow=0 lastMove=-78.075728,151.010531",
+    "  #5 circler hp=999985 shield=0 pos=166.014288,7.720224 dead=0 knock=0,0,0 flash=-0.003333 slow=0 lastMove=-23.500404,168.367844",
+    "  #6 circler hp=999997 shield=0 pos=93.86765,-112.979845 dead=0 knock=0,0,0 flash=-0.003333 slow=0 lastMove=-126.211167,-113.889162",
+    "  #7 circler hp=999967 shield=0 pos=21.118914,-135.676427 dead=0 knock=0,0,0 flash=0.063333 slow=0 lastMove=-164.510999,-42.8501",
+    "  #8 circler hp=999991 shield=0 pos=23.671324,158.795906 dead=0 knock=0,0,0 flash=-0.003333 slow=0 lastMove=-169.289033,15.531362",
+    "  #9 circler hp=999994 shield=0 pos=144.837664,-4.147111 dead=0 knock=0,0,0 flash=-0.003333 slow=0 lastMove=4.486862,-169.940778",
+    "  #10 circler hp=999997 shield=0 pos=148.22089,16.852309 dead=0 knock=0,0,0 flash=-0.003333 slow=0 lastMove=20.379623,-168.774023",
+    "  #11 circler hp=999994 shield=0 pos=-106.174067,-110.596737 dead=0 knock=0,0,0 flash=-0.003333 slow=0 lastMove=123.117222,-117.226915",
+    "  #12 circler hp=999994 shield=0 pos=-36.189938,-148.152407 dead=0 knock=0,0,0 flash=-0.003333 slow=0 lastMove=165.08093,-40.599097",
+    "  #13 zombie hp=1000000 shield=0 pos=46.509186,-4.465765 dead=0 knock=0,0,0 flash=0 slow=0 lastMove=-43.444102,-9.994627",
+    "  #14 zombie hp=1000000 shield=0 pos=21.777964,29.716343 dead=0 knock=0,0,0 flash=0 slow=0 lastMove=-14.827708,-42.040714",
+    "  #15 zombie hp=1000000 shield=0 pos=-20.925399,30.322737 dead=0 knock=0,0,0 flash=0 slow=0 lastMove=23.557841,-37.845881",
+    "  #16 zombie hp=1000000 shield=0 pos=-35.576361,-9.574093 dead=0 knock=0,0,0 flash=0 slow=0 lastMove=44.365746,-4.354667",
+    "  #17 zombie hp=1000000 shield=0 pos=-22.443517,-49.680269 dead=0 knock=0,0,0 flash=0 slow=0 lastMove=27.937644,34.738604",
+    "  #18 zombie hp=1000000 shield=0 pos=16.26708,-33.056358 dead=0 knock=0,0,0 flash=0 slow=0 lastMove=-20.107253,39.786693",
+    "projectiles:",
+    "  arp pos=-116.350833,36.694462 v=0,0 r=10 dmg=3 pierce=Infinity/1 life=0.146667 age=4.333333 bounces=0 evolved=0",
+    "  arp pos=26.39708,-119.110009 v=0,0 r=10 dmg=3 pierce=Infinity/1 life=0.146667 age=4.333333 bounces=0 evolved=0",
+    "  arp pos=89.953753,82.415546 v=0,0 r=10 dmg=3 pierce=Infinity/1 life=0.146667 age=4.333333 bounces=0 evolved=0",
+    "  arp pos=117.545886,-32.664424 v=0,0 r=10 dmg=3 pierce=Infinity/1 life=0.813333 age=3.666667 bounces=0 evolved=0",
+    "  arp pos=-30.484722,118.129936 v=0,0 r=10 dmg=3 pierce=Infinity/1 life=0.813333 age=3.666667 bounces=0 evolved=0",
+    "  arp pos=-87.061164,-85.465512 v=0,0 r=10 dmg=3 pierce=Infinity/1 life=0.813333 age=3.666667 bounces=0 evolved=0",
+    "zones:",
+    "shockwaves:",
+    "gravityWells:",
+    "pickups:",
+    "  gems=0 notes=0 magnets=0 chests=0",
+    "run:",
+    "  kills=0 level=1 xp=0 playerHp=120 timeS=4.333333",
+    "damageByRole:",
+    "  arp=132",
+    "killsByRole:",
+    "fx (ordered):",
+    "  fx dmg x=-123.486174 y=-1.633065 amount=3 color=3401410",
+    "  fx dmg x=79.229506 y=-107.914663 amount=3 color=3401410",
+    "  fx dmg x=45.181832 y=107.572097 amount=3 color=3401410",
+    "  fx dmg x=23.319855 y=115.667916 amount=3 color=3401410",
+    "  fx dmg x=-100.247584 y=-96.105448 amount=3 color=3401410",
+    "  fx dmg x=-87.282582 y=-111.424718 amount=3 color=3401410",
+    "  fx dmg x=132.999129 y=-12.872861 amount=3 color=3401410",
+    "  fx dmg x=-88.383755 y=-112.525891 amount=3 color=3401410",
+    "  fx dmg x=-66.64001 y=-125.559129 amount=3 color=3401410",
+    "  fx dmg x=-89.743093 y=93.885229 amount=3 color=3401410",
+    "  fx dmg x=-104.351986 y=85.36206 amount=3 color=3401410",
+    "  fx dmg x=-109.45348 y=67.611019 amount=3 color=3401410",
+    "  fx dmg x=94.654827 y=90.1494 amount=3 color=3401410",
+    "  fx dmg x=136.536835 y=-33.769333 amount=3 color=3401410",
+    "  fx dmg x=-94.571104 y=76.285429 amount=3 color=3401410",
+    "  fx dmg x=38.80432 y=111.977869 amount=3 color=3401410",
+    "  fx dmg x=117.148889 y=69.004166 amount=3 color=3401410",
+    "  fx dmg x=69.075716 y=99.001245 amount=3 color=3401410",
+    "  fx dmg x=-47.775501 y=-136.035653 amount=3 color=3401410",
+    "  fx dmg x=-37.496138 y=-140.799368 amount=3 color=3401410",
+    "  fx dmg x=98.084202 y=76.579381 amount=3 color=3401410",
+    "  fx dmg x=-136.812305 y=0.954899 amount=3 color=3401410",
+    "  fx dmg x=118.228612 y=48.884805 amount=3 color=3401410",
+    "  fx dmg x=-33.124467 y=114.165074 amount=3 color=3401410",
+    "  fx dmg x=135.593466 y=10.331526 amount=3 color=3401410",
+    "  fx dmg x=2.195721 y=121.775655 amount=3 color=3401410",
+    "  fx dmg x=-123.865254 y=-74.464738 amount=3 color=3401410",
+    "  fx dmg x=7.833805 y=122.339949 amount=3 color=3401410",
+    "  fx dmg x=-122.739952 y=-77.065021 amount=3 color=3401410",
+    "  fx dmg x=139.427297 y=-26.174622 amount=3 color=3401410",
+    "  fx dmg x=42.712018 y=117.195019 amount=3 color=3401410",
+    "  fx dmg x=-102.756736 y=84.366446 amount=3 color=3401410",
+    "  fx dmg x=77.164791 y=104.555772 amount=3 color=3401410",
+    "  fx dmg x=114.7681 y=-85.939369 amount=3 color=3401410",
+    "  fx dmg x=110.476943 y=78.468628 amount=3 color=3401410",
+    "  fx dmg x=89.048287 y=-119.533189 amount=3 color=3401410",
+    "  fx dmg x=138.469764 y=11.942008 amount=3 color=3401410",
+    "  fx dmg x=27.984101 y=-145.595432 amount=3 color=3401410",
+    "  fx dmg x=-11.137808 y=-151.147949 amount=3 color=3401410",
+    "  fx dmg x=114.761211 y=-91.510195 amount=3 color=3401410",
+    "  fx dmg x=-67.481879 y=-126.442204 amount=3 color=3401410",
+    "  fx dmg x=-97.223236 y=-103.598042 amount=3 color=3401410",
+    "  fx dmg x=-119.531312 y=-73.791349 amount=3 color=3401410",
+    "  fx dmg x=23.772408 y=-146.112601 amount=3 color=3401410",
+    "rngDraws: 15",
+    "magnetRngDraws: 0"
   ],
   "arp base tier 4, pierce exemption through parked circlers": [
     "enemies:",
@@ -1146,7 +1254,8 @@
     "  fx dmg x=130.03941 y=47.452335 amount=3 color=3401410",
     "  fx dmg x=108.641954 y=81.358662 amount=3 color=3401410",
     "  fx dmg x=112.478144 y=77.188392 amount=3 color=3401410",
-    "rngDraws: 22"
+    "rngDraws: 22",
+    "magnetRngDraws: 0"
   ],
   "arp base tier 4, sweeping a ring of elites": [
     "enemies:",
@@ -1192,7 +1301,8 @@
     "  fx dmg x=-66.124112 y=-93.033654 amount=3 color=3401410",
     "  fx dmg x=64.332697 y=-87.600465 amount=3 color=3401410",
     "  fx dmg x=61.533345 y=48.053782 amount=3 color=3401410",
-    "rngDraws: 2"
+    "rngDraws: 2",
+    "magnetRngDraws: 0"
   ],
   "arp evolved (Event Horizon), damage meter": [
     "enemies:",
@@ -1271,7 +1381,8 @@
     "  fx dmg x=101.200976 y=-49.697112 amount=2 color=3401410",
     "  fx dmg x=58.103676 y=-107.737711 amount=2 color=3401410",
     "  fx dmg x=104.424507 y=-7.459895 amount=2 color=3401410",
-    "rngDraws: 2"
+    "rngDraws: 2",
+    "magnetRngDraws: 0"
   ],
   "arp evolved (Event Horizon), 0.45s re-hit against parked circlers": [
     "enemies:",
@@ -1326,7 +1437,8 @@
     "  fx dmg x=-146.094045 y=39.176598 amount=2 color=3401410",
     "  fx dmg x=-153.765835 y=11.932662 amount=2 color=3401410",
     "  fx dmg x=-142.216788 y=-3.750561 amount=2 color=3401410",
-    "rngDraws: 12"
+    "rngDraws: 12",
+    "magnetRngDraws: 0"
   ],
   "arp evolved (Event Horizon), chip-kills parked circlers": [
     "enemies:",
@@ -1379,7 +1491,8 @@
     "  fx dmg x=24.37478 y=132.29118 amount=2 color=3401410",
     "  fx dmg x=-19.092987 y=134.460784 amount=2 color=3401410",
     "  fx dmg x=128.911711 y=-75.817067 amount=2 color=3401410",
-    "rngDraws: 12"
+    "rngDraws: 12",
+    "magnetRngDraws: 0"
   ],
   "arp evolved (Event Horizon), lethal, splitters": [
     "enemies:",
@@ -1419,7 +1532,8 @@
     "  fx dmg x=44.044581 y=134.721914 amount=2 color=3401410",
     "  fx dmg x=84.819225 y=115.299095 amount=2 color=3401410",
     "  fx dmg x=149.089199 y=2.963983 amount=2 color=3401410",
-    "rngDraws: 8"
+    "rngDraws: 8",
+    "magnetRngDraws: 1"
   ],
   "arp evolved, orbiter cap reached two at a time": [
     "enemies:",
@@ -1492,46 +1606,53 @@
     "  fx dmg x=68.078296 y=-90.914749 amount=2 color=3401410",
     "  fx dmg x=-65.038169 y=-91.056043 amount=2 color=3401410",
     "  fx dmg x=64.784774 y=-87.910496 amount=2 color=3401410",
-    "rngDraws: 16"
+    "rngDraws: 16",
+    "magnetRngDraws: 0"
   ],
-  "arp evolved with Double Take, cap overshot in one trigger": [
+  "arp evolved with Double Take, cap overshot by a whole trigger": [
     "enemies:",
-    "  #1 zombie hp=999990.4 shield=0 pos=89.572245,-4.090844 dead=0 knock=0,0,0 flash=-0.003333 slow=0 lastMove=-44.284694,-5.113555",
-    "  #2 zombie hp=999992.8 shield=0 pos=66.070046,60.571909 dead=0 knock=0,0,0 flash=-0.003333 slow=0 lastMove=-27.897877,-34.770548",
-    "  #3 zombie hp=999992.8 shield=0 pos=1.667418,89.375843 dead=0 knock=0,0,0 flash=-0.003333 slow=0 lastMove=2.084272,-44.530196",
-    "  #4 zombie hp=999992.8 shield=0 pos=-64.107861,62.267115 dead=0 knock=0,0,0 flash=-0.003333 slow=0 lastMove=30.350609,-32.65154",
-    "  #5 zombie hp=999990.4 shield=0 pos=-89.528411,-3.691506 dead=0 knock=0,0,0 flash=-0.003333 slow=0 lastMove=44.339486,-4.614383",
-    "  #6 zombie hp=999992.8 shield=0 pos=-60.368134,-66.326425 dead=0 knock=0,0,0 flash=-0.003333 slow=0 lastMove=35.025267,27.577404",
-    "  #7 zombie hp=999992.8 shield=0 pos=2.076121,-89.397324 dead=0 knock=0,0,0 flash=-0.003333 slow=0 lastMove=2.595152,44.503345",
-    "  #8 zombie hp=999992.8 shield=0 pos=62.040173,-64.35432 dead=0 knock=0,0,0 flash=-0.003333 slow=0 lastMove=-32.935219,30.042535",
+    "  #1 zombie hp=999985.6 shield=0 pos=83.667619,-4.772651 dead=0 knock=0,0,0 flash=-0.003333 slow=0 lastMove=-44.284694,-5.113555",
+    "  #2 zombie hp=999988 shield=0 pos=62.350329,55.935836 dead=0 knock=0,0,0 flash=-0.003333 slow=0 lastMove=-27.897877,-34.770548",
+    "  #3 zombie hp=999990.4 shield=0 pos=1.945321,83.438484 dead=0 knock=0,0,0 flash=-0.003333 slow=0 lastMove=2.084272,-44.530196",
+    "  #4 zombie hp=999988 shield=0 pos=-60.061113,57.913577 dead=0 knock=0,0,0 flash=-0.003333 slow=0 lastMove=30.350609,-32.65154",
+    "  #5 zombie hp=999985.6 shield=0 pos=-83.61648,-4.306757 dead=0 knock=0,0,0 flash=-0.003333 slow=0 lastMove=44.339486,-4.614383",
+    "  #6 zombie hp=999988 shield=0 pos=-55.698098,-62.649437 dead=0 knock=0,0,0 flash=-0.003333 slow=0 lastMove=35.025267,27.577404",
+    "  #7 zombie hp=999988 shield=0 pos=2.422142,-83.463544 dead=0 knock=0,0,0 flash=-0.003333 slow=0 lastMove=2.595152,44.503345",
+    "  #8 zombie hp=999988 shield=0 pos=57.64881,-60.348648 dead=0 knock=0,0,0 flash=-0.003333 slow=0 lastMove=-32.935219,30.042535",
     "projectiles:",
-    "  arp pos=-18.606889,137.480452 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.248 age=0.8 bounces=0 evolved=1",
-    "  arp pos=115.040856,-77.541553 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.248 age=0.8 bounces=0 evolved=1",
-    "  arp pos=-128.365009,52.626188 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.248 age=0.8 bounces=0 evolved=1",
-    "  arp pos=124.673383,60.857527 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.248 age=0.8 bounces=0 evolved=1",
-    "  arp pos=-109.75812,-84.854264 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.248 age=0.8 bounces=0 evolved=1",
-    "  arp pos=9.632527,138.399081 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.248 age=0.8 bounces=0 evolved=1",
-    "  arp pos=-47.300171,-134.786765 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.314667 age=0.733333 bounces=0 evolved=1",
-    "  arp pos=-116.937251,82.039365 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.314667 age=0.733333 bounces=0 evolved=1",
-    "  arp pos=93.078677,-108.356532 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.314667 age=0.733333 bounces=0 evolved=1",
-    "  arp pos=-129.5168,-60.250947 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.314667 age=0.733333 bounces=0 evolved=1",
-    "  arp pos=140.378848,26.430233 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.314667 age=0.733333 bounces=0 evolved=1",
-    "  arp pos=-12.579549,-142.290313 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.314667 age=0.733333 bounces=0 evolved=1",
-    "  arp pos=-125.482858,74.921152 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.381333 age=0.666667 bounces=0 evolved=1",
-    "  arp pos=51.37479,136.820165 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.381333 age=0.666667 bounces=0 evolved=1",
-    "  arp pos=-127.62505,-71.210767 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.381333 age=0.666667 bounces=0 evolved=1",
-    "  arp pos=-92.802344,112.901955 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.381333 age=0.666667 bounces=0 evolved=1",
-    "  arp pos=-2.142192,-146.131918 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.381333 age=0.666667 bounces=0 evolved=1",
-    "  arp pos=-144.177133,-23.91821 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.381333 age=0.666667 bounces=0 evolved=1",
+    "  arp pos=15.487028,-133.101835 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.181333 age=0.866667 bounces=0 evolved=1",
+    "  arp pos=-64.910516,117.228714 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.181333 age=0.866667 bounces=0 evolved=1",
+    "  arp pos=123.013084,-53.138757 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.181333 age=0.866667 bounces=0 evolved=1",
+    "  arp pos=-133.978302,2.400201 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.181333 age=0.866667 bounces=0 evolved=1",
+    "  arp pos=107.526056,79.963077 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.181333 age=0.866667 bounces=0 evolved=1",
+    "  arp pos=-69.067786,-114.828513 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.181333 age=0.866667 bounces=0 evolved=1",
+    "  arp pos=-138.23391,11.767637 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.248 age=0.8 bounces=0 evolved=1",
+    "  arp pos=100.725314,95.401794 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.248 age=0.8 bounces=0 evolved=1",
+    "  arp pos=-79.308028,-113.830259 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.248 age=0.8 bounces=0 evolved=1",
+    "  arp pos=-32.25772,134.931577 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.248 age=0.8 bounces=0 evolved=1",
+    "  arp pos=58.925882,-125.597896 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.248 age=0.8 bounces=0 evolved=1",
+    "  arp pos=-132.983034,39.529784 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.248 age=0.8 bounces=0 evolved=1",
+    "  arp pos=-135.206896,-46.085501 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.314667 age=0.733333 bounces=0 evolved=1",
+    "  arp pos=-7.741858,142.635345 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.314667 age=0.733333 bounces=0 evolved=1",
+    "  arp pos=-27.692234,-140.135357 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.314667 age=0.733333 bounces=0 evolved=1",
+    "  arp pos=-127.396762,64.613027 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.314667 age=0.733333 bounces=0 evolved=1",
+    "  arp pos=107.514662,-94.049856 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.314667 age=0.733333 bounces=0 evolved=1",
+    "  arp pos=-119.654904,-78.022318 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.314667 age=0.733333 bounces=0 evolved=1",
+    "  arp pos=-70.095661,-128.240886 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.381333 age=0.666667 bounces=0 evolved=1",
+    "  arp pos=-138.674677,46.135242 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.381333 age=0.666667 bounces=0 evolved=1",
+    "  arp pos=76.012034,-124.825066 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.381333 age=0.666667 bounces=0 evolved=1",
+    "  arp pos=-109.29163,-97.028172 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.381333 age=0.666667 bounces=0 evolved=1",
+    "  arp pos=146.107696,3.41582 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.381333 age=0.666667 bounces=0 evolved=1",
+    "  arp pos=29.383047,-143.163414 v=0,0 r=12.5 dmg=2.4 pierce=Infinity/1 life=5.381333 age=0.666667 bounces=0 evolved=1",
     "zones:",
     "shockwaves:",
     "gravityWells:",
     "pickups:",
     "  gems=0 notes=0 magnets=0 chests=0",
     "run:",
-    "  kills=0 level=1 xp=0 playerHp=120 timeS=0.8",
+    "  kills=0 level=1 xp=0 playerHp=120 timeS=0.933333",
     "damageByRole:",
-    "  arp=62.4",
+    "  arp=98.4",
     "killsByRole:",
     "fx (ordered):",
     "  fx dmg x=-87.804593 y=-108.981356 amount=2 color=3401410",
@@ -1555,12 +1676,28 @@
     "  fx dmg x=83.738701 y=61.540625 amount=2 color=3401410",
     "  fx dmg x=-82.824069 y=61.3496 amount=2 color=3401410",
     "  fx dmg x=82.808772 y=60.381607 amount=2 color=3401410",
+    "  fx dmg x=115.404983 y=-22.160568 amount=2 color=3401410",
+    "  fx dmg x=-115.393111 y=-22.052415 amount=2 color=3401410",
+    "  fx dmg x=-80.79954 y=-103.465875 amount=2 color=3401410",
+    "  fx dmg x=82.343808 y=59.802097 amount=2 color=3401410",
+    "  fx dmg x=-81.306539 y=59.717023 amount=2 color=3401410",
     "  fx dmg x=0.605535 y=-135.668518 amount=2 color=3401410",
     "  fx dmg x=-79.632031 y=-102.546628 amount=2 color=3401410",
+    "  fx dmg x=0.69204 y=-134.185073 amount=2 color=3401410",
     "  fx dmg x=113.190748 y=-22.416246 amount=2 color=3401410",
+    "  fx dmg x=80.483949 y=57.484061 amount=2 color=3401410",
+    "  fx dmg x=-78.464522 y=-101.627381 amount=2 color=3401410",
+    "  fx dmg x=112.45267 y=-22.501472 amount=2 color=3401410",
+    "  fx dmg x=-112.437146 y=-22.36004 amount=2 color=3401410",
     "  fx dmg x=112.45267 y=-22.501472 amount=2 color=3401410",
     "  fx dmg x=-111.698154 y=-22.436946 amount=2 color=3401410",
-    "rngDraws: 4"
+    "  fx dmg x=0.821798 y=-131.959906 amount=2 color=3401410",
+    "  fx dmg x=0.66002 y=89.84614 amount=2 color=3401410",
+    "  fx dmg x=-78.271478 y=56.451869 amount=2 color=3401410",
+    "  fx dmg x=75.76318 y=-97.924674 amount=2 color=3401410",
+    "  fx dmg x=74.11642 y=-96.422547 amount=2 color=3401410",
+    "rngDraws: 6",
+    "magnetRngDraws: 0"
   ],
   "arp mid-evolve with a base orbiter still circling": [
     "enemies:",
@@ -1609,7 +1746,8 @@
     "  fx dmg x=-13.156943 y=-97.923885 amount=2 color=3401410",
     "  fx dmg x=-7.931548 y=71.182683 amount=2 color=3401410",
     "  fx dmg x=-8.46584 y=70.674106 amount=2 color=3401410",
-    "rngDraws: 3"
+    "rngDraws: 3",
+    "magnetRngDraws: 0"
   ],
   "arp in a full band, base, damage meter": [
     "enemies:",
@@ -1722,7 +1860,8 @@
     "  fx dmg x=75.296747 y=-24.274047 amount=2 color=5111688",
     "  fx dmg x=84.738933 y=26.323356 amount=2 color=5111688",
     "  fx dmg x=81.517333 y=23.809397 amount=3 color=3401410",
-    "rngDraws: 8"
+    "rngDraws: 8",
+    "magnetRngDraws: 0"
   ],
   "arp in a full band, base, lethal": [
     "enemies:",
@@ -1801,7 +1940,8 @@
     "  fx dmg x=7.107168 y=-94.443516 amount=2 color=5111688",
     "  fx dmg x=15.636084 y=35.295409 amount=2 color=5111688",
     "  fx dmg x=32.125532 y=-54.518224 amount=2 color=5111688",
-    "rngDraws: 20"
+    "rngDraws: 20",
+    "magnetRngDraws: 7"
   ],
   "arp in a full evolved band with Double Take": [
     "enemies:",
@@ -2180,6 +2320,7 @@
     "  fx dmg x=96.207951 y=-44.299735 amount=3 color=3401410",
     "  fx dmg x=100.965318 y=18.455897 amount=3 color=3401410",
     "  fx dmg x=-124.360188 y=-26.180252 amount=3 color=3401410",
-    "rngDraws: 8"
+    "rngDraws: 8",
+    "magnetRngDraws: 0"
   ]
 }

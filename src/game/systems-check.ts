@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import type { Role } from '../audio/kits';
+import { ROLES, type Role } from '../audio/kits';
 import { AUDIO_SET_LIST } from '../audio/audio-sets';
 import { AFTERHOURS_ROLES, AFTERHOURS_VARIANTS } from '../audio/kits/afterhours';
 import {
@@ -29,7 +29,6 @@ import {
   ARP,
   KICK,
   WEAPON_MODULES,
-  buildsAsProjectile,
   weaponTiers,
   type WeaponContext,
   type WeaponInstance,
@@ -642,10 +641,6 @@ assert.equal(WEAPONS.kick, undefined, 'the kick module is the only copy of the k
 assert.equal(TIER_LINES.kick, undefined, 'the kick module is the only copy of the kick pedestal copy');
 assert.equal(WEAPONS.arp, undefined, 'the arp module is the only copy of the arp ladder');
 assert.equal(TIER_LINES.arp, undefined, 'the arp module is the only copy of the arp pedestal copy');
-assert.equal(buildsAsProjectile('kick'), false,
-  'the kick must stay outside projectileDamageMul, as applyBuild had it');
-assert.equal(buildsAsProjectile('arp'), true,
-  'the arp was in the world legacy projectile-role set and must keep that answer');
 assert.equal(new Set(WEAPON_MODULES.map((m) => m.role)).size, WEAPON_MODULES.length,
   'one module per weapon');
 
@@ -817,11 +812,8 @@ const kickTiers = KICK.stats.tiers;
   assert.equal(KICK.stats.evolvedHalfFrac, 0.75, 'Redline Stomp arm thickness moved');
   assert.equal(KICK.stats.evolvedShove, 18, 'Redline Stomp push distance moved');
 
-  // Identity, not tuning, but equally load-bearing: buildsAsProjectile false is
-  // what keeps Needle Tips' projectileDamageMul off the kick, and tickAt is the
-  // phase name the world's tick call site has to match.
-  assert.equal(KICK.stats.buildsAsProjectile, false, 'the kick must not build as a projectile');
-  assert.equal(buildsAsProjectile('kick'), false);
+  // Identity, not tuning, but equally load-bearing: tickAt is the phase name
+  // the world's tick call site has to match.
   assert.equal(KICK.tickAt, 'strikes', 'the kick ticks in the strikes phase');
   assert.equal(KICK.role, 'kick');
 }
@@ -1039,7 +1031,6 @@ const round6 = (n: number): number => Math.round(n * 1e6) / 1e6;
   // Was an inline `while (evolvedOrbiters.length > 24)` in run.ts.
   assert.equal(ARP.stats.evolvedOrbiterCap, 24, 'the Event Horizon orbiter cap moved');
 
-  assert.equal(ARP.stats.buildsAsProjectile, true, 'the arp builds as a projectile');
   // Read through the roster, not off ARP: `satisfies WeaponModule` narrows the
   // literal, so ARP.tickAt is not even a property to compare.
   const arpModule = WEAPON_MODULES.find((m) => m.role === 'arp')!;
@@ -1281,6 +1272,12 @@ function worldStrike(opts: {
   /** Frames of 1/60 to run after the trigger. Zero for weapons that resolve
    *  synchronously at fire time. */
   frames: number;
+  /** Runs BETWEEN the trigger and the frames, on the real world. The pierce
+   *  exemption check below is the only caller: it needs to reach into a live
+   *  orbiter and give it a finite pierce budget, because the budget a spawner
+   *  arms is Infinity and Infinity is arithmetically immune to the very rule
+   *  the check exists to measure. */
+  afterFire?: (world: RunWorld) => void;
 }): { drops: number[]; damageDealt: number; world: RunWorld } {
   const world = new RunWorld({ width: 1280, height: 720 }, events, {
     scripted: false,
@@ -1309,6 +1306,7 @@ function worldStrike(opts: {
 
   const before = placed.map((e) => e.hp);
   world.fireTrigger({ role: opts.role, time: 0, velocity: 1, step: 0 });
+  opts.afterFire?.(world);
   for (let i = 0; i < opts.frames; i++) world.update(1 / 60);
 
   return {
@@ -1397,36 +1395,135 @@ function worldStrike(opts: {
   assert.equal(orbit.drops[1], 0, 'an orbiter never reaches inside its own orbit');
   assert.equal(orbit.drops[2], 0, 'an orbiter never leaves its orbit');
 
-  // THE PIERCE EXEMPTION, measured through the real loop (ADR-0002). Twelve
-  // enemies parked on the ring and ONE orbiter that has to sweep all of them.
-  // maxPierce on an orbiter is 1, so a shared `pr.pierce -= 1` reaching it kills
-  // it on its first touch and this comes out at exactly 3.
+  // THE PIERCE EXEMPTION, measured through the real loop (ADR-0002).
+  //
+  // WHY THIS IS NOT JUST "one orbiter sweeps twelve enemies". It used to be,
+  // and that check was VACUOUS: an arp spawner arms its orbiters with Infinity
+  // pierce (armOrbiterPierce), and `Infinity - 1` is still Infinity, so the
+  // shared `pr.pierce -= 1` can run on every single hit and the orbiter never
+  // dies. Deleting ARP.projectile.onHit entirely — replacing it with `return
+  // true` — left the whole sweep, all 35 parity scenarios and every check in
+  // this file green. Nothing measured the exemption.
+  //
+  // So: hand ONE live orbiter a FINITE pierce budget, then sweep it through the
+  // ring. That is the only way the question becomes answerable from outside.
+  //   onHit declining the rule  -> the budget is never touched: 12 enemies
+  //                                chipped and pierce comes back at exactly 3.
+  //   the rule applied          -> the budget is spent on hits 1, 2 and 3, the
+  //                                orbiter's lifeS is zeroed on the third, and
+  //                                the remaining nine enemies are never reached.
+  // The budget of 3 is a probe, not a tuning number: it exists only inside this
+  // check, and it is smaller than the ring so the difference is unmissable.
   const ring = Array.from({ length: 12 }, (_, i) => {
     const a = (Math.PI * 2 * i) / 12;
     return [122 * Math.cos(a), 122 * Math.sin(a)] as const;
   });
-  const sweep = worldStrike({ role: 'arp', tier: 4, offsets: ring, frozen: true, frames: 200 });
+  const PROBE_PIERCE = 3;
+  let probed: Projectile | undefined;
+  const sweep = worldStrike({
+    role: 'arp',
+    tier: 4,
+    offsets: ring,
+    frozen: true,
+    frames: 200,
+    afterFire: (world) => {
+      probed = world.projectiles.find((pr) => pr.role === 'arp');
+      assert(probed, 'an arp trigger must put an orbiter in the world');
+      probed.pierce = PROBE_PIERCE;
+      probed.maxPierce = PROBE_PIERCE;
+    },
+  });
+  assert.equal(sweep.drops.filter((d) => d > 0).length, 12,
+    'one orbiter must chip ALL twelve enemies on its ring even while carrying a pierce budget ' +
+    `of only ${PROBE_PIERCE}: it chips on a timer and never spends pierce (ADR-0002). Fewer ` +
+    'than twelve here means the shared pierce rule reached an orbiter and killed it mid-sweep — ' +
+    'check that ARP.projectile.onHit still returns ARP_STATS.spendsPierce (false).');
+  assert.equal(probed!.pierce, PROBE_PIERCE,
+    'the shared projectile loop must never decrement an orbiter pierce budget. A value below ' +
+    `${PROBE_PIERCE} means onHit returned true and the orbiter is spending pierce like every ` +
+    'other shot, which is the mechanism ADR-0002 exists to exempt it from.');
   assert(sweep.damageDealt >= 12 * 3,
-    'one orbiter must sweep a whole ring: it chips on a timer and never spends pierce ' +
-    '(ADR-0002). Exactly 3 here means the shared pierce rule consumed it on its first hit');
+    'one orbiter must sweep a whole ring, chipping every enemy on it for the tier-4 damage');
   assert.equal(sweep.world.projectiles.filter((pr) => pr.role === 'arp').length, 0,
     'the orbiter still dies of old age, like every other projectile');
+
+  // And the belt: with no probe, a real orbiter carries the budget its own stat
+  // implies. This is the assertion that keeps armOrbiterPierce derived from
+  // ARP_STATS.spendsPierce rather than being a bare `pr.pierce = Infinity`.
+  const armed = worldStrike({ role: 'arp', tier: 4, offsets: [[122, 0]], frozen: true, frames: 0 });
+  const orbiter = armed.world.projectiles.find((pr) => pr.role === 'arp')!;
+  assert.equal(orbiter.pierce, ARP.stats.spendsPierce ? orbiter.maxPierce : Infinity,
+    'an orbiter is armed with the pierce budget ARP_STATS.spendsPierce implies — the stat is ' +
+    'the single source, not a literal at the spawn site');
+}
+
+{
+  // NEON SERPENT'S 320-UNIT HOMING GATE. Collateral of #140: the arp extraction
+  // rewrote this out of the shared loop (it was a `pr.role !== 'lead'` test)
+  // and onto the shot as `pr.homingRange`. That made it an UNMIGRATED weapon's
+  // behavior, moved by another weapon's commit and pinned by nothing —
+  // `pr.homingRange = Infinity`, which deletes the gate outright, passed every
+  // check and all 35 parity scenarios. So it is pinned here, from both sides.
+  //
+  // The shape: a BAIT enemy at +60 on the firing axis takes the aim lock and
+  // the first hit, which puts it in the shot's hit set and frees the seeker to
+  // look for a second target. The second target then sits OFF the firing axis,
+  // so the only way it is ever reached is a homing turn.
+  //   250 off-axis -> inside the gate  -> homed onto and chipped
+  //   500 off-axis -> outside the gate -> never touched; the seeker rails past
+  // Tier 4 with pierce 6 and 380 speed over 2.4s travels ~912 units, so reach
+  // is not what stops it at 500 — the gate is.
+  const NEON = { role: 'lead' as const, tier: 4, item: 'needleTips' as const, evolve: true };
+  const inside = worldStrike({ ...NEON, offsets: [[60, 0], [0, 250]], frozen: true, frames: 150 });
+  assert(inside.drops[1] > 0,
+    'Neon Serpent must home onto a target 250 units away — inside its 320-unit gate. A zero ' +
+    'here means the seeker stopped homing at all (check pr.homingRange and pr.homing at spawn)');
+  const outside = worldStrike({ ...NEON, offsets: [[60, 0], [0, 500]], frozen: true, frames: 150 });
+  assert.equal(outside.drops[1], 0,
+    'Neon Serpent must NOT home onto a target 500 units away: it snaps to what is close ' +
+    'instead of crossing the screen, and that is the 320-unit gate on pr.homingRange set in ' +
+    'spawnProjectile. Damage here means the gate was widened or removed — it is an unmigrated ' +
+    "weapon's tuning, so it does not move without the lead's own issue saying so.");
 }
 
 // ---------------------------------------------------------------------------
-// THE RULE #140 EXISTS TO ESTABLISH: the shared projectile physics has ZERO
-// per-weapon branches, permanently.
+// THE RULE #140 EXISTS TO ESTABLISH: the world's SHARED physics loops contain
+// ZERO per-weapon branches, permanently.
 //
 // This is the one invariant seven more extractions depend on, and it is exactly
 // the kind of rule that decays the moment it is only written down. Weapon eight
 // will have some motion that "just needs one small branch here", and a code
-// review is a bad place to catch it. So: read the source of the shared loop and
-// the arena rails, and fail if a role comparison ever reappears in either.
+// review is a bad place to catch it. So the rule is read out of run.ts's own
+// source and enforced.
 //
 // Weapon-specific motion belongs to the owning weapon module, lent back through
 // ProjectileBehavior. Anything else a shot needs is a FIELD ON THE SHOT, set by
 // whatever spawned it — that is how the arp's orbit and the evolved lead's
-// homing range both left this loop.
+// homing range both left the projectile loop.
+//
+// WHAT THE FIRST VERSION OF THIS GUARD GOT WRONG (fixed here, #140 follow-up).
+// It matched `/\.role\s*[=!]==/`, i.e. strict equality on a `.role` property
+// access, over a slice of source taken BETWEEN two method names. Every one of
+// these went into updateProjectiles and passed the full `npm run verify`:
+//
+//     if (p.role != 'kick') { ... }                            // loose equality
+//     switch (p.role) { case 'arp': break; default: break; }   // switch
+//     const r = pr.role; if (r === 'bell') { ... }             // via a local
+//     if (({ arp: 1 } as Record<string, number>)[pr.role]) {}  // keyed lookup
+//
+// and moving reflectProjectileFromArena below spawnZone dropped it out of the
+// scanned slice while the guard's own integrity assert stayed green. Coverage
+// defined by source ORDERING is not coverage.
+//
+// SO THE RULE IS INVERTED. Instead of blacklisting spellings of a branch — an
+// endless game the writer always wins — a protected method may not mention a
+// role AT ALL except in the handful of approved, opaque forms listed below.
+// Naming a weapon is the thing being banned, not one syntax for naming it:
+//   1. no access to a role-bearing property (`.role`, `.source`) survives
+//      unless it matches an approved form exactly, and
+//   2. no Role name may appear as a string literal in a protected method.
+// Together those catch equality (either kind), switch dispatch, a role parked
+// in a local, role-keyed object/Map/Set lookups, and `.includes` on a role.
 //
 // SPAWNERS ARE NOT COVERED and deliberately so: baseProjectile and
 // spawnProjectile still branch on role for the four unmigrated projectile
@@ -1434,22 +1531,277 @@ function worldStrike(opts: {
 // ---------------------------------------------------------------------------
 {
   const source = readFileSync(new URL('./run.ts', import.meta.url), 'utf8');
-  const start = source.indexOf('  private updateProjectiles(');
-  const end = source.indexOf('  private spawnZone(');
-  assert(start > 0 && end > start,
-    'the shared-loop guard cannot find updateProjectiles..spawnZone in run.ts — fix the guard, ' +
-    'do not delete it');
-  const sharedPhysics = source
-    .slice(start, end)
-    // Comments talk ABOUT the branches that used to be here; only code counts.
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/\/\/[^\n]*/g, '');
-  const offenders = sharedPhysics.match(/\.role\s*[=!]==/g) ?? [];
-  assert.deepEqual(offenders, [],
-    'the shared projectile loop and the arena rails must contain NO per-weapon branch (#140). ' +
-    "Found a `.role ===` comparison. Weapon-specific motion belongs to the weapon module, " +
-    'lent back through ProjectileBehavior.steer/onHit; anything else belongs on the projectile ' +
-    'as a field set at spawn.');
+
+  /** The shared loops every weapon's entities ride. #140 named the projectile
+   *  loop and the arena rails; it named shared ZONE physics too, and the zone,
+   *  shockwave and gravity-well loops were never scanned at all. They are now:
+   *  chord, bass and bell migrate into those loops next, and each will arrive
+   *  wanting "one small branch here". */
+  const PROTECTED_METHODS = [
+    'updateProjectiles',
+    'reflectProjectileFromArena',
+    'updateZones',
+    'updateShockwaves',
+    'updateGravityWells',
+  ] as const;
+
+  /** One approved way for a shared loop to name a role. */
+  interface RoleUse {
+    /** The EXACT source text, matched literally. Reformatting the line is
+     *  supposed to trip the staleness check below — an approved form is
+     *  approved as written, not as a pattern that might grow to fit. */
+    readonly snippet: string;
+    readonly why: string;
+  }
+
+  /** THE ONLY FORMS in which a shared loop may name a role at all. In every one
+   *  the role is an OPAQUE key: it is handed to damage attribution, or to the
+   *  generic module seam that turns "some role" into "that weapon's own code".
+   *  None of them asks WHICH weapon it is, and none of them grows a case when a
+   *  tenth weapon appears. That is the test for adding one here. */
+  const GENERIC_ROLE_USE: readonly RoleUse[] = [
+    {
+      snippet: 'this.projectileBehavior(pr.role)',
+      why: 'the generic module seam: a role in, that weapon\'s own steer/onHit out',
+    },
+    {
+      snippet: 'this.weaponCtx.get(pr.role)!',
+      why: 'the generic module seam: a role in, that weapon\'s own context out',
+    },
+    {
+      snippet: 'this.damageEnemy(e, pr.damage, pr.role)',
+      why: 'damage ATTRIBUTION — which weapon gets the credit, not which weapon acts',
+    },
+    {
+      snippet: 'this.damageArea(z.x, z.y, z.radius, z.damage, z.source)',
+      why: 'damage attribution for a zone tick',
+    },
+    {
+      snippet: 'this.damageEnemy(enemy, wave.damage, wave.source)',
+      why: 'damage attribution for a shockwave hit',
+    },
+  ];
+
+  interface InterimException extends RoleUse {
+    /** Exact number of occurrences allowed across ALL protected methods. Exact,
+     *  not a minimum: a SECOND use of an allowed table is a new per-weapon
+     *  branch and has to be argued for. */
+    readonly count: number;
+    /** The weapon whose extraction deletes this entry. */
+    readonly deletedBy: string;
+  }
+
+  // ---- KNOWN INTERIM EXCEPTIONS ------------------------------------------
+  //
+  // THIS LIST MUST BE EMPTY WHEN #141 FINISHES. Two role-keyed tables still sit
+  // in the shared projectile loop. Both are the personal tuning of a weapon
+  // that has not been extracted yet, and EACH ENTRY IS DELETED BY THE WEAPON
+  // THAT OWNS IT: when the weapon lands as a module the table moves into it (or
+  // becomes a field on the shot), and the entry here goes with it.
+  //
+  // The list is a RATCHET, not a permission slip:
+  //   - anything NOT listed fails, so no new per-weapon table can appear;
+  //   - `count` is exact, so a second use of a listed table fails too;
+  //   - an entry that is listed but no longer in the source fails as STALE, so
+  //     removing the code FORCES removing the entry. That is the only reason a
+  //     shrinking list actually shrinks instead of being left behind.
+  const INTERIM_EXCEPTIONS: readonly InterimException[] = [
+    {
+      snippet: 'WEAPON_SHOVE[pr.role]',
+      count: 1,
+      why: 'per-weapon knockback on a projectile hit (config.ts WEAPON_SHOVE: snare 8, clap 12, bass 6)',
+      deletedBy:
+        'the snare, bass and clap modules (#141). Each weapon\'s number is its own tuning; ' +
+        'the last one out takes WEAPON_SHOVE and this entry with it. A shove is a shared ' +
+        'primitive already — ctx.shove — so a module needs nothing new to keep doing this.',
+    },
+    {
+      snippet: 'SPARK_HIT_ROLES.has(pr.role)',
+      count: 1,
+      why: 'per-weapon hit spark, view-only (run.ts SPARK_HIT_ROLES: snare, lead)',
+      deletedBy:
+        'the snare and lead modules (#141). A migrated weapon pushes its own visuals through ' +
+        'ctx.fx, so this set has no reason to exist once both are out.',
+    },
+  ];
+
+  // ---- source reading -----------------------------------------------------
+
+  /** Blank out comments — and optionally string bodies — character for
+   *  character, so every index into the result still lines up with the original
+   *  source and a reported line number is the real one. run.ts contains no
+   *  regex literals; if one ever appears inside a protected method the brace
+   *  matcher below has to learn about it. */
+  const mask = (src: string, alsoStrings: boolean): string => {
+    const out = src.split('');
+    const blank = (from: number, to: number): void => {
+      for (let k = from; k < to; k++) if (out[k] !== '\n') out[k] = ' ';
+    };
+    let i = 0;
+    while (i < src.length) {
+      const c = src[i];
+      if (c === '/' && src[i + 1] === '/') {
+        const nl = src.indexOf('\n', i);
+        const stop = nl < 0 ? src.length : nl;
+        blank(i, stop);
+        i = stop;
+      } else if (c === '/' && src[i + 1] === '*') {
+        const close = src.indexOf('*/', i + 2);
+        const stop = close < 0 ? src.length : close + 2;
+        blank(i, stop);
+        i = stop;
+      } else if (c === '"' || c === "'" || c === '`') {
+        let j = i + 1;
+        while (j < src.length && src[j] !== c) j += src[j] === '\\' ? 2 : 1;
+        j = Math.min(j + 1, src.length);
+        if (alsoStrings) blank(i + 1, j - 1);
+        i = j;
+      } else {
+        i += 1;
+      }
+    }
+    return out.join('');
+  };
+
+  const noComments = mask(source, false);
+  const noStrings = mask(noComments, true);
+
+  const lineOf = (index: number): number => {
+    let n = 1;
+    for (let k = 0; k < index; k++) if (source[k] === '\n') n += 1;
+    return n;
+  };
+  const lineAt = (index: number): string => {
+    const from = source.lastIndexOf('\n', index) + 1;
+    const to = source.indexOf('\n', index);
+    return source.slice(from, to < 0 ? source.length : to).trim();
+  };
+
+  /** Locate one RunWorld method BY NAME and return its body's [start, end).
+   *
+   *  By name, never by "everything between method A and method B": the previous
+   *  guard sliced updateProjectiles..spawnZone, so MOVING a method below
+   *  spawnZone silently removed it from the scanned region while the guard's
+   *  own integrity assert stayed green. A method that cannot be found fails
+   *  loudly here — the guard is never allowed to quietly scan nothing. */
+  const methodBody = (name: string): { start: number; end: number } => {
+    const marker = `\n  private ${name}(`;
+    const at = noStrings.indexOf(marker);
+    assert(at >= 0,
+      `the shared-physics guard cannot find RunWorld.${name} in run.ts. If it was renamed or ` +
+      'made non-private, update PROTECTED_METHODS — do not delete the entry. An unfindable ' +
+      'protected method means this guard is scanning nothing, which is worse than no guard.');
+    assert(noStrings.indexOf(marker, at + 1) < 0,
+      `run.ts declares RunWorld.${name} twice; the guard cannot tell which one it protects`);
+    let i = at + marker.length - 1;
+    let depth = 0;
+    for (; i < noStrings.length; i++) {
+      if (noStrings[i] === '(') depth += 1;
+      else if (noStrings[i] === ')') {
+        depth -= 1;
+        if (depth === 0) { i += 1; break; }
+      }
+    }
+    const open = noStrings.indexOf('{', i);
+    assert(open > 0, `the shared-physics guard cannot find the body of RunWorld.${name}`);
+    depth = 0;
+    for (i = open; i < noStrings.length; i++) {
+      if (noStrings[i] === '{') depth += 1;
+      else if (noStrings[i] === '}') {
+        depth -= 1;
+        if (depth === 0) return { start: open, end: i + 1 };
+      }
+    }
+    throw new Error(`the shared-physics guard cannot find the end of RunWorld.${name}`);
+  };
+
+  // ---- the scan -----------------------------------------------------------
+
+  /** Properties that carry a role. `pr.role` on a projectile, `z.source` on a
+   *  zone and `wave.source` on a shockwave are the same thing wearing two
+   *  names, so both are watched. */
+  const ROLE_BEARING = /\.(role|source)\b/g;
+  const ROLE_LITERAL = new RegExp(`['"\`](${ROLES.join('|')})['"\`]`, 'g');
+
+  const seen = new Map<string, number>();
+  const offenses: string[] = [];
+
+  for (const name of PROTECTED_METHODS) {
+    const { start, end } = methodBody(name);
+    assert(end - start > 120,
+      `RunWorld.${name} came back as an almost-empty body; the guard is misreading run.ts`);
+
+    // Blank every approved form, counting it. What is LEFT is unaccounted for —
+    // that inversion is what makes a novel spelling fail by default.
+    let region = noStrings.slice(start, end);
+    for (const { snippet } of [...GENERIC_ROLE_USE, ...INTERIM_EXCEPTIONS]) {
+      let from = 0;
+      for (;;) {
+        const at = region.indexOf(snippet, from);
+        if (at < 0) break;
+        region = region.slice(0, at) + ' '.repeat(snippet.length) + region.slice(at + snippet.length);
+        from = at + snippet.length;
+        seen.set(snippet, (seen.get(snippet) ?? 0) + 1);
+      }
+    }
+
+    for (const m of region.matchAll(ROLE_BEARING)) {
+      offenses.push(`  run.ts:${lineOf(start + m.index)} in ${name}()  ${lineAt(start + m.index)}`);
+    }
+    // Strings are back for this pass: a role spelled out inside a protected
+    // method is a per-weapon branch even when the role never came off a
+    // property — `const r = pr.role` gets caught above, `if (r === 'bell')`
+    // gets caught here, and either one alone is enough.
+    for (const m of noComments.slice(start, end).matchAll(ROLE_LITERAL)) {
+      offenses.push(`  run.ts:${lineOf(start + m.index)} in ${name}()  ${lineAt(start + m.index)}`);
+    }
+  }
+
+  assert.deepEqual(offenses, [],
+    'A SHARED PHYSICS LOOP NAMED A WEAPON (#140).\n\n' +
+    'The world\'s shared loops — the projectile loop, the arena rails, and the zone, shockwave\n' +
+    'and gravity-well loops — own travel, collision and lifetime for EVERY weapon, and they are\n' +
+    'not allowed to know which weapon a thing came from. Seven extractions (#141) are built on\n' +
+    'that. Offending lines:\n\n' +
+    offenses.join('\n') +
+    '\n\nWhat to do instead, in order of preference:\n' +
+    '  1. Motion or hit rules -> the weapon module, lent back through\n' +
+    '     ProjectileBehavior.steer / ProjectileBehavior.onHit (see weapons/arp.ts).\n' +
+    '  2. Anything else the shot needs -> a FIELD ON THE SHOT, set by its own spawner. That is\n' +
+    '     how the evolved lead\'s homing range left this loop: `pr.homingRange = 320` at spawn,\n' +
+    '     and the loop just reads a number.\n' +
+    '  3. Genuinely generic use of the role (attribution, or the module seam) -> add it to\n' +
+    '     GENERIC_ROLE_USE above, but only if it would not grow a case when a tenth weapon\n' +
+    '     appears. If it would, it is a branch.\n' +
+    '  4. Interim per-weapon tuning that a #141 extraction will take away -> only by an explicit\n' +
+    '     entry in INTERIM_EXCEPTIONS naming the weapon that deletes it. That list is supposed\n' +
+    '     to shrink to empty; adding to it is a decision, not a workaround.');
+
+  for (const e of INTERIM_EXCEPTIONS) {
+    const found = seen.get(e.snippet) ?? 0;
+    assert.equal(found, e.count,
+      `STALE OR GROWN INTERIM EXCEPTION: \`${e.snippet}\` is listed with count ${e.count} but ` +
+      `appears ${found} time(s) in the shared loops.\n` +
+      (found === 0
+        ? '  It is GONE from the source — which is the good outcome. Delete its entry from\n' +
+          '  INTERIM_EXCEPTIONS in systems-check.ts. The list only shrinks because leaving a dead\n' +
+          '  entry behind fails here; that is the whole ratchet.\n' +
+          `  (It was: ${e.why}, to be removed by ${e.deletedBy})`
+        : found > e.count
+          ? '  It GREW. A second use of a role-keyed table is a new per-weapon branch in shared\n' +
+            '  physics. Move it into the owning weapon module instead of raising the count.'
+          : '  Its source text changed (a rename or a reformat), so the guard is no longer\n' +
+            '  matching the real line. Update the snippet to the exact new text — the form is\n' +
+            '  approved as written, not as a pattern.'));
+  }
+  for (const g of GENERIC_ROLE_USE) {
+    assert((seen.get(g.snippet) ?? 0) >= 1,
+      `STALE GENERIC ROLE USE: \`${g.snippet}\` is no longer anywhere in the shared loops.\n` +
+      `  It was approved because: ${g.why}\n` +
+      '  If the line was legitimately removed, delete this entry. If it was only renamed or\n' +
+      '  reformatted, update the snippet to the exact new text — otherwise the guard is quietly\n' +
+      '  approving nothing while the real line goes unchecked.');
+  }
 }
 
 console.log('systems-check: items, note shop, Stage Magnet, enemies, endless director, evolutions, and weapon modules passed');

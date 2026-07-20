@@ -28,10 +28,6 @@ export interface WeaponStats {
    *  TIER_LINES, which today has NO reader anywhere in src/ — relocating it
    *  must not "helpfully" wire it into the pedestal. */
   readonly tierLines: readonly [string, string, string, string];
-  /** Whether applyBuild applies projectileDamageMul to this weapon. Replaces
-   *  the hardcoded role set in applyBuild — the last per-weapon branch in the
-   *  build pipeline. kick: false. */
-  readonly buildsAsProjectile: boolean;
 }
 
 /** Behavior the SHARED projectile loop delegates.
@@ -82,9 +78,10 @@ export interface WeaponInstance {
    *  applyBuild, triggerCounts increment.
    *
    *  `conf` is ALREADY BUILT — damage carries powerMul * antonioMight *
-   *  damageMul (and projectileDamageMul for roles where buildsAsProjectile is
-   *  true, from which the kick is excluded), and `area` carries areaMul. A
-   *  module must not re-apply any of it.
+   *  damageMul, and `area` carries areaMul. applyBuild has been role-
+   *  independent since Needle Tips went pierce-only (#145), so there is nothing
+   *  per-weapon left in the build pipeline for a module to declare. A module
+   *  must not re-apply any of it.
    *
    *  The mode is ctx.evolved. fire() may resolve damage synchronously (Redline
    *  Stomp does; the shell calls fireTrigger from the audio trigger listener,

@@ -452,6 +452,36 @@ export const SCENARIOS: readonly ParityScenario[] = [
     ],
   },
 
+  // ---- the base fan: Double Take WITHOUT the evolution ---------------------
+  // spawnOrbiters' fan loop had NO coverage before this. Both Double Take
+  // scenarios in this file set evolved:['arp'], so every one of them ran
+  // fireEventHorizon and the BASE spawner never once ran with count > 1. That
+  // left the arp's most delicate contract untested: exactly ONE rng draw per
+  // trigger, no matter how many orbiters the trigger produces, with the copies
+  // spaced evenly around the ring from that single angle. Moving
+  // `const baseAngle = ctx.rng() * Math.PI * 2` from above the fan loop to
+  // inside it — the mutation the header above calls the single easiest thing to
+  // get wrong — passed all 35 scenarios. It fails here, twice over: the three
+  // orbiters no longer sit 120 degrees apart on one ring, and the arp starts
+  // drawing three times per trigger instead of once, which moves rngDraws and
+  // therefore desynchronizes every draw the rest of the run makes.
+  //
+  // Double Take clamps at level 2 (systems-check pins extraProjectiles === 2),
+  // so this is 3 orbiters per trigger, 120 degrees apart. Two triggers, so the
+  // second trigger's independent draw is in the digest as well.
+  {
+    name: 'arp base tier 4 with Double Take, three orbiters from one draw',
+    seed: 0x0a2b1d,
+    weapons: [['arp', 4]],
+    items: [['extensionCable', 5], ['doubleTake', 5]],
+    enemies: [...ring('circler', 122, 12), ...ring('zombie', 80, 6)],
+    hp: 1e6,
+    steps: [
+      { fire: 'arp' }, { frames: 40 },
+      { fire: 'arp' }, { frames: 220 },
+    ],
+  },
+
   // ---- the pierce exemption (ADR-0002) ------------------------------------
   // Twenty circlers parked on the orbit and one orbiter that must sweep all of
   // them, repeatedly, without being consumed. maxPierce on an orbiter is 1 —
@@ -576,19 +606,30 @@ export const SCENARIOS: readonly ParityScenario[] = [
     ],
   },
   {
-    name: 'arp evolved with Double Take, cap overshot in one trigger',
+    name: 'arp evolved with Double Take, cap overshot by a whole trigger',
     seed: 0x0ca901,
     weapons: [['arp', 4]],
-    // Double Take turns one trigger into 6 counter-rotating PAIRS, i.e. 12
-    // orbiters, so the third trigger lands 36 and the cap has to retire 12 in
-    // one pass. Double Take is also the only item in this file that makes
-    // extraProjectiles non-zero, so the fan loops in both arp spawners run
-    // with count > 1 exactly here.
+    // THE ARITHMETIC, because the version of this scenario before the #140
+    // follow-up got it wrong and the wrong number was load-bearing. Double Take
+    // CLAMPS AT LEVEL 2 (systems-check pins extraProjectiles === 2), so a
+    // trigger is 3 pairs = 6 orbiters — not the 6 pairs / 12 orbiters the old
+    // comment claimed. At 6 per trigger, three triggers reach 18 against a cap
+    // of 24 and the retire loop never ran at all: the scenario was named for
+    // an overshoot it could not produce, and disabling the cap outright left
+    // it green.
+    //
+    // FIVE triggers. Four land exactly 24 — ON the cap, which retires nothing,
+    // pinning the boundary as > and not >= — and the fifth lands 30, so one
+    // pass retires SIX orbiters and the while-loop genuinely loops. The frame
+    // gaps stay short so nothing expires on its own and every retirement is
+    // the cap's doing.
     items: [['extensionCable', 5], ['doubleTake', 5]],
     evolved: ['arp'],
     enemies: ring('zombie', 125, 8),
     hp: 1e6,
     steps: [
+      { fire: 'arp' }, { frames: 4 },
+      { fire: 'arp' }, { frames: 4 },
       { fire: 'arp' }, { frames: 4 },
       { fire: 'arp' }, { frames: 4 },
       { fire: 'arp' }, { frames: 40 },
@@ -666,9 +707,10 @@ export const SCENARIOS: readonly ParityScenario[] = [
       ['lead', 4], ['clap', 4], ['bell', 4], ['arp', 4],
     ],
     // Every evolution item at max PLUS Double Take, which the kick's loaded
-    // band deliberately leaves out. extraProjectiles and orbitDistanceMul are
-    // both non-identity here, so the arp's fan count and its built orbit
-    // radius are both off their defaults.
+    // band deliberately leaves out. extraProjectiles (2, clamped) and
+    // orbitDistanceMul are both non-identity here, so the arp's fan count and
+    // its built orbit radius are both off their defaults — and so are the fan
+    // counts of the eight unmigrated weapons firing alongside it.
     items: [
       ['highTops', 5], ['fastForward', 5], ['mirrorball', 5], ['heavyAmp', 5],
       ['wideLens', 5], ['needleTips', 5], ['paddedJacket', 5],
@@ -720,9 +762,9 @@ function sortedTally(t: Partial<Record<Role, number>>): string[] {
  *
  *  Broad on purpose. A narrow digest — "the target's hp" — only catches the
  *  bug you already thought of. This walks the entity arrays, the per-role
- *  tallies, the ordered fx stream and the rng draw count, so a change anywhere
+ *  tallies, the ordered fx stream and both rng draw counts, so a change anywhere
  *  in the frame lands in the diff. */
-function digest(world: RunWorld, rngDraws: number): string[] {
+function digest(world: RunWorld, draws: { main: number; magnet: number }): string[] {
   const lines: string[] = [];
 
   lines.push('enemies:');
@@ -781,12 +823,18 @@ function digest(world: RunWorld, rngDraws: number): string[] {
   lines.push('fx (ordered):');
   for (const e of world.fx ?? []) lines.push(`  ${fxLine(e)}`);
 
-  // The rng draw COUNT. Roll-order drift is the failure mode most likely to
+  // The rng draw COUNTS. Roll-order drift is the failure mode most likely to
   // pass everything else: a module that draws once more or once less than the
   // world code it replaced still produces the right damage on the frame under
   // test, then desynchronizes every drop, every amped roll and every splitter
   // for the rest of the run. Nothing above catches that on its own.
-  lines.push(`rngDraws: ${rngDraws}`);
+  //
+  // BOTH STREAMS, because a RunWorld has two. Only the main one used to be
+  // counted, so a discarded stageMagnetRng() draw — which shifts every rare
+  // drop for the rest of a real run — left all 35 scenarios matching. They are
+  // separate lines rather than a sum so a diff says WHICH stream moved.
+  lines.push(`rngDraws: ${draws.main}`);
+  lines.push(`magnetRngDraws: ${draws.magnet}`);
 
   return lines;
 }
@@ -801,11 +849,15 @@ const SILENT_EVENTS: RunEvents = {
 };
 
 function runScenario(s: ParityScenario): string[] {
-  // Wrap the seeded stream so the harness can count draws without the world
-  // knowing it is being watched.
+  // Wrap BOTH seeded streams so the harness can count draws without the world
+  // knowing it is being watched. A world draws from the main stream and, for
+  // rare drops, from its own stageMagnetRng; counting only the first leaves
+  // half the roll order unpinned.
   const base = mulberry32(s.seed);
-  let draws = 0;
-  const rng = () => { draws += 1; return base(); };
+  const magnetBase = mulberry32(s.seed ^ 0x51a6e);
+  const draws = { main: 0, magnet: 0 };
+  const rng = () => { draws.main += 1; return base(); };
+  const magnetRng = () => { draws.magnet += 1; return magnetBase(); };
 
   const world = new RunWorld(VIEW, SILENT_EVENTS, {
     // No stage director: waves would spawn on their own schedule and the
@@ -817,7 +869,7 @@ function runScenario(s: ParityScenario): string[] {
     // The rare-drop stream is seeded off the main rng by default, which is
     // deterministic here, but pinning it explicitly keeps a change to that
     // derivation from silently rewriting every baseline.
-    stageMagnetRng: mulberry32(s.seed ^ 0x51a6e),
+    stageMagnetRng: magnetRng,
   });
   world.invincible = true;
 

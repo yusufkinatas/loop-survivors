@@ -55,9 +55,6 @@ export const KICK_STATS: KickStats = {
     'harder, wider double strike',
     'maximum damage and reach',
   ],
-  // The kick is deliberately NOT in the world's projectile set, so Needle Tips'
-  // projectileDamageMul does not apply.
-  buildsAsProjectile: false,
 
   stripBaseWidth: 85 * WORLD_SCALE,
   stripBaseHeight: 22 * WORLD_SCALE,
