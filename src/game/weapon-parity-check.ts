@@ -520,6 +520,259 @@ const LEAD_UNAIMED_RING: readonly (readonly [EnemyKind, number, number])[] = rin
   12,
 );
 
+/** One body at `radius` from the player on the bearing `deg`. The clap is the
+ *  first weapon whose footprint is ANGULAR AROUND THE PLAYER — a cone with a
+ *  half-angle, not a circle, a strip or a travelling shot — so its fields are
+ *  naturally written in polar coordinates and every other helper in this file
+ *  reads awkwardly for it. */
+function polar(
+  kind: EnemyKind,
+  radius: number,
+  deg: number,
+): readonly [EnemyKind, number, number] {
+  return orbitOf(kind, 0, 0, radius, deg);
+}
+
+/** The same, around a point offset from the player. arcAt does this for a whole
+ *  list of bearings; the clap's satellites are one body per bearing per
+ *  distance, so a single-body form reads straight. */
+function orbitOf(
+  kind: EnemyKind,
+  cx: number,
+  cy: number,
+  radius: number,
+  deg: number,
+): readonly [EnemyKind, number, number] {
+  const a = (deg * Math.PI) / 180;
+  return [kind, cx + radius * Math.cos(a), cy + radius * Math.sin(a)];
+}
+
+/** THE CONE, read as two independent ladders — one angular, one radial.
+ *
+ *  The base clap is `damageCone`: a half-angle `arc` and a reach `radius`, both
+ *  climbing per tier (0.65/0.72/0.80/0.90 rad = 37.24/41.25/45.84/51.57
+ *  degrees; 80/88/98/108 units). Those are TWO SEPARATE NUMBERS and a field
+ *  that only varied distance would read the reach ladder four times and the arc
+ *  ladder never — halve every `arc` in the table and a purely radial field
+ *  would not move a single line of the digest.
+ *
+ *  SWARMERS, radius 9, for the chord's reason sharpened. The angular rungs here
+ *  are FOUR TO FIVE DEGREES apart, because that is how tightly the arc ladder
+ *  itself is cut, and separation inside world.update(0) pushes any two bodies
+ *  apart to the sum of their radii. A swarmer needs 18 between centres; a
+ *  zombie needs 42.1 and a flower 35.1, and neither could hold two adjacent
+ *  rungs apart at all.
+ *
+ *  THE ANCHOR at (46, 0) is load-bearing twice over. It is THE NEAREST BODY IN
+ *  THE FIELD, so `aimDir` locks the cone's axis to exactly +x and every bearing
+ *  below is a bearing off the axis rather than off a seed — the first cut of
+ *  this field had a rung at radius 44 and the axis silently swung 48.7 degrees
+ *  onto it, which collapsed the whole angular ladder into "one side hit, the
+ *  other did not". NOTHING ELSE IN THIS FIELD MAY SIT INSIDE 46. And it sits
+ *  OUTSIDE the 34-unit point-blank exemption, so it is an arc hit like
+ *  everything else; the exemption gets its own field rather than contaminating
+ *  this one.
+ *
+ *  THE ANGULAR LADDER, one rung per tier boundary. Rungs ALTERNATE SIDES of the
+ *  axis and alternate radius, and both alternations are forced: at these radii
+ *  a four-degree gap is under six units of arc, so two rungs on the same side at
+ *  the same radius would be shoved into each other before anything fired.
+ *  Every rung is well inside tier 1's reach, so distance is never the
+ *  discriminator and the ONLY thing separating them is `arc`:
+ *    +30   @ 85    every tier
+ *    -39.2 @ 85    tiers 2, 3, 4     (t1's half-angle stops at 37.24)
+ *    +43.5 @ 85    tiers 3, 4        (t2's stops at 41.25)
+ *    -48.7 @ 60    tier 4 only       (t3's stops at 45.84)
+ *    +58   @ 85    no tier reaches it
+ *  The extra body at -30 @ 60 is the SYMMETRY WITNESS: it mirrors the +30 rung
+ *  across the axis at a different distance, so "the cone is centred on the aim
+ *  line" and "the cone is a half-plane" are told apart. The other rungs cannot
+ *  be mirrored — a mirror of -48.7 would land 9.5 degrees from the +43.5 rung —
+ *  and CLAP_POINT_BLANK_FIELD carries both sides at every bearing instead.
+ *
+ *  THE RADIAL LADDER, held at a constant +-12 degrees — well inside every
+ *  tier's half-angle, so here the ANGLE is never the discriminator and only
+ *  `radius` is. Cut against contact distances of 89/97/107/117 (reach + a
+ *  swarmer's 9), the sign alternating so two consecutive rungs are 20 units
+ *  apart rather than 10:
+ *    85    every tier
+ *    94    tiers 2, 3, 4
+ *    105   tiers 3, 4
+ *    114   tier 4 only
+ *    124   no tier — the "the cone stopped here" marker
+ *    145   no BASE tier, but inside a Wide-Lensed tier 4 (108 * 1.3 + 9 = 149.4)
+ *    165   outside even that; the marker for the Wide Lens scenario
+ *  applyBuild multiplies `radius` by areaMul and leaves `arc` alone, so those
+ *  last two rungs are the only place in this file where that asymmetry is
+ *  visible: with Wide Lens the reach ladder moves out and the angular ladder
+ *  above does not move at all. */
+const CLAP_CONE_FIELD: readonly (readonly [EnemyKind, number, number])[] = [
+  polar('swarmer', 46, 0),
+  polar('swarmer', 85, 30), polar('swarmer', 60, -30),
+  polar('swarmer', 85, -39.2),
+  polar('swarmer', 85, 43.5),
+  polar('swarmer', 60, -48.7),
+  polar('swarmer', 85, 58),
+  polar('swarmer', 85, 12), polar('swarmer', 94, -12), polar('swarmer', 105, 12),
+  polar('swarmer', 114, -12), polar('swarmer', 124, 12),
+  polar('swarmer', 145, -12), polar('swarmer', 165, 12),
+];
+
+/** THE 34-UNIT POINT-BLANK EXEMPTION, from both sides.
+ *
+ *  `damageCone` has a branch no other weapon has: a body closer than 34 units
+ *  is damaged REGARDLESS OF BEARING, so a clap swung at something in front also
+ *  connects with whatever is hanging off the player's back. It is a bare
+ *  literal in run.ts today and the extraction has to carry it out as a named
+ *  stat; until then this field is the only thing that would notice it moving.
+ *
+ *  The cut is at 33.5 against 34.5, on bearings 115 to 175 degrees off the axis
+ *  where NO tier's arc reaches:
+ *    33.5 @ 175, 33.5 @ -85    hit, and only the exemption can explain it
+ *    34.5 @ 115, 34.5 @ -120   one unit further out and not hit at all
+ *  ONE UNIT APART, and it can be that tight because the cone resolves
+ *  SYNCHRONOUSLY at fire time: these scenarios fire on the frame after the
+ *  world is built, so no body has moved a millimetre from where this list puts
+ *  it and there is no drift to leave margin for. A first cut at 33/36 left the
+ *  whole interval [33, 36] free to move without moving the digest. Now anything
+ *  outside (33.5, 34.5] shows up: 33.4 puts the first pair out of the
+ *  exemption, 34.7 pulls the second pair into it.
+ *
+ *  The witness at (37, 0) is inside the arc AND outside the exemption, so it
+ *  keeps recording a hit whichever way the 34 moves — the line that says the
+ *  cone itself still works while the exemption is being probed. The anchor at
+ *  17 is nearest, so the axis is +x as everywhere else; it is also inside the
+ *  exemption, which is the ordinary case. The pair at 60 are out of reach on
+ *  every count. */
+const CLAP_POINT_BLANK_FIELD: readonly (readonly [EnemyKind, number, number])[] = [
+  polar('swarmer', 17, 0),
+  polar('swarmer', 33.5, 175), polar('swarmer', 33.5, -85),
+  polar('swarmer', 37, 0),
+  polar('swarmer', 34.5, 115), polar('swarmer', 34.5, -120),
+  polar('swarmer', 60, 155), polar('swarmer', 60, -160),
+];
+
+/** TWO HANDS: the three-target cap, and the crush/tug ladder around one of the
+ *  three.
+ *
+ *  The evolution picks `TWO_HANDS.targets` (3) nearest bodies and snaps a slab
+ *  pair shut on each. Two constants decide what a closed pair does — a
+ *  `pinchRadius` of 42 that damages, and a `tugRadius` of 96 that only drags —
+ *  and they are read at DIFFERENT geometric gates: the crush is
+ *  `circlesOverlap`, so it resolves at 42 + a body's radius, while the tug is a
+ *  bare centre-distance compare against 96. A field that only measured one of
+ *  them would leave the other free to move.
+ *
+ *  FLOWERS. The crush lands 0.12s (eight frames) after the trigger, at the
+ *  position the target held WHEN IT FIRED, so every boundary in this field has
+ *  to survive eight frames of the horde walking. A flower covers 1.19 units in
+ *  that time; a zombie covers 5.94 and a swarmer 12.67, which is more than the
+ *  margin some of these cuts have.
+ *
+ *  THE CAP: A at 100, B at 105, C at 110, on three bearings 120 degrees apart
+ *  so no pinch's 96-unit tug can reach another's cluster (the closest pair is
+ *  177 apart). Decoys sit at 280 and 340. Raise the 3 and a decoy grows a
+ *  pincer; lower it and C loses one.
+ *
+ *  THE LADDER hangs off A only, at bearings inside [-90, 90] of +x from A so
+ *  that every satellite is FARTHER FROM THE PLAYER than C is (120 to 201
+ *  against C's 110) and none of them can steal a slot in the top three. Cut
+ *  against contact at 42 + 17.544 = 59.54 and the tug's 96:
+ *    52    crushed AND tugged
+ *    70    outside the crush, still tugged  — the pin on 42
+ *    96    tugged                           — the pin on 96 from inside
+ *    99    neither                          — the pin on 96 from outside
+ *
+ *  THE LAST TWO ARE THREE UNITS APART and cannot honestly be closer. Unlike the
+ *  cone, a pincer resolves EIGHT FRAMES after the trigger, and in those frames
+ *  a flower creeps about 1.2 units toward the player — so a body placed at 96
+ *  is at roughly 94.8 from the (fixed) pinch centre when the tug is measured,
+ *  and one placed at 99 is at roughly 97.8. That leaves 96 pinned to the open
+ *  interval (95, 97): tugRadius 94 or 98 moves the digest, 95 or 97 does not.
+ *  Tighter cuts than that would be pinning the drift estimate, not the
+ *  constant. `pinchRadius` needs no such care because it is echoed verbatim in
+ *  the `slam` fx event and in the slab beam geometry; `tugRadius` reaches world
+ *  state ONLY through which bodies were dragged, which is why it is the one
+ *  Two Hands constant whose cuts had to be cut twice.
+ *  A, B and C sit AT their own pinch centres when the trigger fires, and eight
+ *  frames later they have crept 1.19 units off it. So each takes the crush and
+ *  then a tug of `Math.min(TWO_HANDS.tug, d)` — 1.19, not 30. That clamp is
+ *  only observable on a body this close to a pinch centre, and it is the reason
+ *  the Heavy Amp row leaves those three knock vectors untouched while it grows
+ *  every satellite's by a fifth: a clamped tug is not scaled by anything.
+ *
+ *  The same field reads a second time under Wide Lens, where areaMul 1.3 puts
+ *  the crush at 54.6 (contact 72.1, so 52 AND 70 are crushed) and the tug at
+ *  124.8 (so 88 AND 108 are dragged). Every rung changes category at once,
+ *  which is what says both constants are scaled and neither is a literal. */
+const CLAP_PINCH_FIELD: readonly (readonly [EnemyKind, number, number])[] = [
+  ['flower', 100, 0],
+  polar('flower', 105, 120), polar('flower', 110, -120),
+  orbitOf('flower', 100, 0, 52, 80),
+  orbitOf('flower', 100, 0, 70, -80),
+  orbitOf('flower', 100, 0, 96, 30),
+  orbitOf('flower', 100, 0, 99, -30),
+  polar('flower', 280, -60), polar('flower', 340, 45),
+];
+
+/** Three targets close enough that their crushes OVERLAP, at natural hp.
+ *
+ *  `updateClapPinches` walks `clapPinches` BACKWARDS, so three pincers spawned
+ *  by one trigger and closing on the same frame resolve LAST-SPAWNED FIRST —
+ *  the reverse of the nearest-first order `nearestEnemies` handed out. While
+ *  nothing dies that order is invisible; the moment a body sits inside two
+ *  crushes and has 5 hp, it decides WHICH pinch is credited with the kill,
+ *  which killsByRole entry moves first, and where in the ordered fx stream the
+ *  drop lands. Reversing the loop would rewrite this scenario and nothing else
+ *  in the file.
+ *
+ *  SWARMERS at their natural 5 hp against a tier-4 crush of 6 * 1.52 = 9.12, so
+ *  every body the crush reaches dies on the frame it is reached. The three
+ *  targets are 46 to 100 apart — inside each other's 59.54 crush contact, so
+ *  each of them is in two or three crushes at once — and the pair hanging off
+ *  the first at 45 and 68 straddle the swarmer crush contact of 51. */
+const CLAP_CLUSTER_FIELD: readonly (readonly [EnemyKind, number, number])[] = [
+  ['swarmer', 100, 0],
+  ['swarmer', 104, 46], ['swarmer', 96, -50],
+  orbitOf('swarmer', 100, 0, 45, 20),
+  orbitOf('swarmer', 100, 0, 68, -15),
+  ['swarmer', 260, 0],
+];
+
+/** Every body outside AIM_RANGE (750), which is the only way to reach the
+ *  clap's SECOND rng shape — and, on the evolution, its only empty-field
+ *  branch.
+ *
+ *  `aimDir` draws once with a target and TWICE without, so a module that drew
+ *  unconditionally would move nothing anywhere else in this block; `rngDraws`
+ *  is the only channel that catches it. The base cone then swings at a random
+ *  heading and connects with nothing.
+ *
+ *  On Two Hands the same field reaches a branch with no other cover at all:
+ *  `nearestEnemies` comes back empty and the weapon claps AHEAD OF THE PLAYER
+ *  at `TWO_HANDS.openGap` (74) along the aim line instead of eating the
+ *  trigger. Nothing is damaged, so the pin is entirely in the fx stream — the
+ *  slab beams are drawn at `pinch.gap` off the centre, so the 74 appears twice
+ *  in the recorded coordinates and moving it moves both. */
+const CLAP_FAR_RING: readonly (readonly [EnemyKind, number, number])[] = ring(
+  'flower',
+  820,
+  4,
+);
+
+/** Bodies that take the OTHER branches through damageEnemy and shove: a ghost
+ *  has knockbackMul 0 and cannot be shoved at all, a shielded body spends its
+ *  shield pool before its hp. Hand-placed rather than remapped from
+ *  CLAP_CONE_FIELD because both are far wider than a swarmer and separation
+ *  would collapse that field's degree-scale rungs. The ghost at 45 is nearest,
+ *  so the axis is +x; the shielded body at 200 is the out-of-reach witness. */
+const CLAP_TOUGH_FIELD: readonly (readonly [EnemyKind, number, number])[] = [
+  ['ghost', 45, 0],
+  ['shielded', 95, 25],
+  ['ghost', 62, -58],
+  ['shielded', 200, 0],
+];
+
 export const SCENARIOS: readonly ParityScenario[] = [
   // ---- the kick, solo, across the whole tier ladder -----------------------
   // One block per tier because the ladder is not one shape scaled four ways:
@@ -3927,6 +4180,405 @@ export const SCENARIOS: readonly ParityScenario[] = [
       { fire: 'lead' }, { frames: 6 },
       { fire: 'lead' },
       { frames: 150 },
+    ],
+  },
+
+  // ---- the cone, solo, across the whole tier ladder ------------------------
+  // Both of the base clap's ladders at once: CLAP_CONE_FIELD's angular rungs
+  // are separated only by `arc` and its radial rungs only by `radius`, so a
+  // tier row that edits either one has to move exactly one of these four.
+  ...([1, 2, 3, 4] as const).map((tier): ParityScenario => ({
+    name: `clap base tier ${tier}, solo, damage meter`,
+    seed: 0xc1a900 + tier,
+    weapons: [['clap', tier]],
+    enemies: CLAP_CONE_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'clap' }, { frames: 30 }],
+  })),
+
+  // Natural hp, so kills, killsByRole, gem/note drops and both rng streams
+  // behind them are in the digest. A swarmer has 5 hp: tier 4's 6 kills on one
+  // trigger, tier 1's 2 needs three, and BOTH are worth recording — the tier-1
+  // run is the only place a body survives a clap and is shoved a second and a
+  // third time from a knock channel that is still hot.
+  {
+    name: 'clap base tier 4, solo, lethal',
+    seed: 0xc1a9e1,
+    weapons: [['clap', 4]],
+    enemies: CLAP_CONE_FIELD,
+    steps: [{ fire: 'clap' }, { frames: 30 }],
+  },
+  {
+    name: 'clap base tier 1, solo, lethal, three triggers',
+    seed: 0xc1a9e2,
+    weapons: [['clap', 1]],
+    enemies: CLAP_CONE_FIELD,
+    steps: [
+      { fire: 'clap' }, { frames: 5 },
+      { fire: 'clap' }, { frames: 5 },
+      { fire: 'clap' }, { frames: 30 },
+    ],
+  },
+
+  // ---- the 34-unit point-blank exemption ----------------------------------
+  // A clap swung forward also connects with whatever is on the player's back,
+  // and that rule is a bare literal in run.ts. CLAP_POINT_BLANK_FIELD cuts it
+  // at 33 against 36 on bearings no tier's arc reaches, so the number is
+  // falsifiable in both directions.
+  {
+    name: 'clap base tier 4, the point-blank exemption from both sides',
+    seed: 0xc1a9bb,
+    weapons: [['clap', 4]],
+    enemies: CLAP_POINT_BLANK_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'clap' }, { frames: 30 }],
+  },
+  // The same field on the NARROWEST arc. Tier 1's cone is 14 degrees tighter,
+  // so if the exemption were ever folded into the arc test the two rows would
+  // stop agreeing about the bodies at 33.
+  {
+    name: 'clap base tier 1, the point-blank exemption on the narrowest arc',
+    seed: 0xc1a9bc,
+    weapons: [['clap', 1]],
+    enemies: CLAP_POINT_BLANK_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'clap' }, { frames: 30 }],
+  },
+
+  // ---- Wide Lens moves the reach and NOT the arc ---------------------------
+  // applyBuild scales conf.radius by areaMul and leaves conf.arc alone. The
+  // radial rungs at 145 and 165 exist only for this row: 145 comes inside a
+  // Wide-Lensed tier 4 (108 * 1.3 + 9 = 149.4) and 165 stays out, while every
+  // angular rung above records exactly what it records without the item.
+  {
+    name: 'clap base tier 4, Wide Lens stretches the reach and not the arc',
+    seed: 0xc1a9a2,
+    weapons: [['clap', 4]],
+    items: [['wideLens', 5]],
+    enemies: CLAP_CONE_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'clap' }, { frames: 30 }],
+  },
+
+  // ---- the 12-unit shove, and the fact that it is RAW ----------------------
+  // WEAPON_SHOVE.clap reaches damageCone UNMULTIPLIED — run.ts:760 passes the
+  // 12 straight through, while the shared projectile loop's copy of the same
+  // lookup scales by buildMods.knockbackMul. That asymmetry is invisible in
+  // every other scenario here and it is exactly the kind of thing an extraction
+  // "tidies up" while carrying the number across.
+  //
+  // These two rows are the pin, and they are only a pin AS A PAIR: one frame
+  // after the trigger the knock channel is still hot, so the digest carries the
+  // raw knock vector, and Heavy Amp at max (knockbackMul 1.20, damageMul 1.25)
+  // must move the hp lines and NOT the knock lines. Scale the shove and the
+  // second row's knock grows by a fifth.
+  {
+    name: 'clap base tier 4, the 12-unit shove, knock channel hot',
+    seed: 0xc1a951,
+    weapons: [['clap', 4]],
+    enemies: CLAP_CONE_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'clap' }, { frames: 1 }],
+  },
+  {
+    name: 'clap base tier 4 with Heavy Amp, the shove is NOT scaled',
+    seed: 0xc1a952,
+    weapons: [['clap', 4]],
+    items: [['heavyAmp', 5]],
+    enemies: CLAP_CONE_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'clap' }, { frames: 1 }],
+  },
+
+  // ---- bodies that take the other branches --------------------------------
+  // A ghost has knockbackMul 0 and shove() returns before writing anything; a
+  // shielded body spends a shield pool before its hp. Both run through the
+  // cone's per-hit path.
+  {
+    name: 'clap base tier 4 against shielded and knock-immune bodies',
+    seed: 0xc1a9d0,
+    weapons: [['clap', 4]],
+    enemies: CLAP_TOUGH_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'clap' }, { frames: 30 }],
+  },
+
+  // ---- the untargeted aim draw --------------------------------------------
+  // aimDir draws ONCE with a target and TWICE without. Every scenario above has
+  // a target, so without this row the two-draw branch is never taken and a
+  // module that drew the heading unconditionally would move nothing at all.
+  // rngDraws is the only channel that catches it.
+  {
+    name: 'clap base tier 4, no target in range, the two-draw aim',
+    seed: 0xc1a9f0,
+    weapons: [['clap', 4]],
+    enemies: CLAP_FAR_RING,
+    hp: 1e6,
+    steps: [{ fire: 'clap' }, { frames: 30 }],
+  },
+
+  // ---- four triggers on a beat grid ---------------------------------------
+  // The cone has no per-strike dedup and nothing to expire: each trigger is a
+  // fresh, immediate pass, and the shoves stack into a knock channel that has
+  // not finished decaying (SHOVE_S is 0.12, the grid here is 0.117).
+  {
+    name: 'clap base tier 4, four triggers on a beat grid',
+    seed: 0xc1a9b4,
+    weapons: [['clap', 4]],
+    enemies: CLAP_CONE_FIELD,
+    hp: 1e6,
+    steps: [
+      { fire: 'clap' }, { frames: 7 },
+      { fire: 'clap' }, { frames: 7 },
+      { fire: 'clap' }, { frames: 7 },
+      { fire: 'clap' }, { frames: 30 },
+    ],
+  },
+
+  // ---- Two Hands: the cap, the crush and the tug ---------------------------
+  // One trigger, three pincers, and the whole crush/tug ladder off the first of
+  // them. Twenty frames is well past the 0.12 close, so the digest carries the
+  // finished state: who was crushed, who was only dragged, who was untouched.
+  {
+    name: 'clap evolved (Two Hands), the three-target cap and the crush/tug ladder',
+    seed: 0xc1a9e0,
+    weapons: [['clap', 4]],
+    items: [['paddedJacket', 5]],
+    evolved: ['clap'],
+    enemies: CLAP_PINCH_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'clap' }, { frames: 20 }],
+  },
+
+  // ---- the 0.12-second close, frame by frame -------------------------------
+  // The pincer is the only weapon entity in the game whose whole life is a
+  // TIMER with two scheduled moments, and neither of them is visible in world
+  // state — the slabs are fx and nothing else, until the frame they land. So
+  // these four rows read the timer off the ordered fx stream:
+  //   frame 3   six beams (a spawn pair per pincer) and nothing more
+  //   frame 4   the halfway pairs appear; closesAt - timeS has just crossed
+  //             closeS * 0.5, i.e. timeS >= 0.06
+  //   frame 7   still nothing landed; timeS 0.11667 is under closesAt 0.12
+  //   frame 8   the crush, the tug, the slam and the spark, in that order
+  // Frame 4 against frame 3 is the 0.5; frame 8 against frame 7 is the 0.12.
+  // Frames 5, 6 and 7 also satisfy the halfway test, so the fact that the
+  // halfway pair appears ONCE is the `midShown` latch under test as well —
+  // without it frame 7 would carry twelve extra beams.
+  //
+  // A TIMER READ OFF A 60 Hz GRID IS PINNED TO 1/60, AND NO FINER. Both
+  // moments are scheduled on the absolute clock and observed only on the frame
+  // that crosses them, so closeS 0.12 and closeS 0.13 both land on frame 8 and
+  // are indistinguishable here — 0.11 and 0.14 are caught, 0.125 is not. That
+  // is a property of the world, not a gap in the field: a `pinches:` section in
+  // the digest would fix it and would also rewrite every one of the 173 other
+  // baseline entries, so the sub-frame residue belongs in a LITERAL PIN in
+  // systems-check.ts (assert TWO_HANDS.closeS === 0.12) when the module lands,
+  // and these four rows carry the observable half.
+  ...([3, 4, 7, 8] as const).map((frames): ParityScenario => ({
+    name: `clap evolved (Two Hands), stopped at frame ${frames} of the close`,
+    seed: 0xc1a9c0 + frames,
+    weapons: [['clap', 4]],
+    items: [['paddedJacket', 5]],
+    evolved: ['clap'],
+    enemies: CLAP_PINCH_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'clap' }, { frames }],
+  })),
+
+  // ---- Wide Lens scales the gap, the crush AND the tug ---------------------
+  // spawnPinch multiplies openGap and pinchRadius by areaMul, and the crush
+  // multiplies tugRadius by it too — three separate reads of one item. At 1.30
+  // every rung of CLAP_PINCH_FIELD changes category at once: 52 and 70 are both
+  // crushed (contact 72.1), 88 and 108 are both dragged (124.8), and the slab
+  // beams stand off 96.2 instead of 74.
+  {
+    name: 'clap evolved (Two Hands), Wide Lens on the gap, the crush and the tug',
+    seed: 0xc1a9a3,
+    weapons: [['clap', 4]],
+    items: [['paddedJacket', 5], ['wideLens', 5]],
+    evolved: ['clap'],
+    enemies: CLAP_PINCH_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'clap' }, { frames: 20 }],
+  },
+
+  // ---- Heavy Amp DOES scale the tug ---------------------------------------
+  // The mirror of the base cone's pair above, and the reason both are here: the
+  // clap reads knockbackMul in exactly one of its two modes. The crush's own
+  // damageArea passes shove 0 — the whole move pulls inward — and then
+  // dragInward applies TWO_HANDS.tug * knockbackMul. Stopping on the close
+  // frame keeps the knock vectors in the digest, so this row against
+  // "stopped at frame 8" is the 30 and the 1.20 together.
+  {
+    name: 'clap evolved (Two Hands) with Heavy Amp, the tug IS scaled',
+    seed: 0xc1a953,
+    weapons: [['clap', 4]],
+    items: [['paddedJacket', 5], ['heavyAmp', 5]],
+    evolved: ['clap'],
+    enemies: CLAP_PINCH_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'clap' }, { frames: 8 }],
+  },
+
+  // ---- the pincer array resolves BACKWARDS ---------------------------------
+  // Three overlapping crushes, all closing on the same frame, against 5-hp
+  // bodies. updateClapPinches walks the array from the end, so the pincer
+  // spawned on the FARTHEST of the three targets resolves first, and with every
+  // body inside two or three crushes that order decides which pinch is credited
+  // with each kill and where each drop lands in the fx stream.
+  {
+    name: 'clap evolved (Two Hands), overlapping crushes, lethal',
+    seed: 0xc1a9e3,
+    weapons: [['clap', 4]],
+    items: [['paddedJacket', 5]],
+    evolved: ['clap'],
+    enemies: CLAP_CLUSTER_FIELD,
+    steps: [{ fire: 'clap' }, { frames: 30 }],
+  },
+
+  // ---- the empty-field branch ---------------------------------------------
+  // nearestEnemies comes back empty and Two Hands claps openGap (74) ahead of
+  // the player instead of eating the trigger, on the untargeted two-draw aim.
+  // Nothing is damaged: the whole pin is the fx beam coordinates and rngDraws.
+  {
+    name: 'clap evolved (Two Hands), no target in range, claps ahead',
+    seed: 0xc1a9f1,
+    weapons: [['clap', 4]],
+    items: [['paddedJacket', 5]],
+    evolved: ['clap'],
+    enemies: CLAP_FAR_RING,
+    hp: 1e6,
+    steps: [{ fire: 'clap' }, { frames: 20 }],
+  },
+
+  // ---- the crush does not follow the player --------------------------------
+  // A pincer is pinned to the target's position AT FIRE TIME and to nothing
+  // else. Walking the player hard for the eight frames of the close is the only
+  // way to say so: if the crush tracked the player — or re-read the target — it
+  // would land somewhere other than where the slabs were drawn.
+  {
+    name: 'clap evolved (Two Hands), the crush does not follow the player',
+    seed: 0xc1a9a1,
+    weapons: [['clap', 4]],
+    items: [['paddedJacket', 5]],
+    evolved: ['clap'],
+    enemies: CLAP_PINCH_FIELD,
+    hp: 1e6,
+    steps: [
+      { fire: 'clap' },
+      { walk: [-1, 1] },
+      { frames: 20 },
+    ],
+  },
+
+  // ---- two triggers, pincers at different phases ---------------------------
+  // The second trigger lands on the frame the first trigger's slabs show their
+  // halfway pair, so six pincers are live at once at two different points in
+  // their timers, and the second three are spawned onto a field the first three
+  // are about to crush. The array order the reverse loop walks is now
+  // interleaved across triggers.
+  {
+    name: 'clap evolved (Two Hands), two triggers, pincers at different phases',
+    seed: 0xc1a9b2,
+    weapons: [['clap', 4]],
+    items: [['paddedJacket', 5]],
+    evolved: ['clap'],
+    enemies: CLAP_PINCH_FIELD,
+    hp: 1e6,
+    steps: [
+      { fire: 'clap' }, { frames: 4 },
+      { fire: 'clap' }, { frames: 30 },
+    ],
+  },
+
+  // ---- mid-evolve ----------------------------------------------------------
+  // The clap's seam is not a live entity — the cone resolves synchronously and
+  // leaves nothing behind — it is the DECAYING SHOVE. Three frames after a base
+  // trigger the knock channel is still riding (SHOVE_S is 0.12), so the world
+  // evolves and the first pincers spawn while bodies are still being carried by
+  // the cone's outward 12, and the crush's inward tug then lands on top of it.
+  // Outward-then-inward on the same knock channel has no other cover.
+  {
+    name: 'clap mid-evolve with a cone shove still riding',
+    seed: 0xc1a9d3,
+    weapons: [['clap', 4]],
+    items: [['paddedJacket', 5]],
+    enemies: CLAP_PINCH_FIELD,
+    hp: 1e6,
+    steps: [
+      { fire: 'clap' },
+      { frames: 3 },
+      { evolve: 'clap' },
+      { frames: 3 },
+      { fire: 'clap' },
+      { frames: 30 },
+    ],
+  },
+
+  // ---- the clap in a band --------------------------------------------------
+  // The migration's real risk is the module sharing a frame with the weapons
+  // around it. For the clap the sharpest edge is the SHARED KNOCK CHANNEL:
+  // shove() overwrites knockX/knockY outright rather than accumulating, so
+  // whichever weapon shoved a body LAST in the frame owns its motion. The clap
+  // fires last in the base rows and first in the evolved one, so both sides of
+  // that race are recorded.
+  {
+    name: 'clap in a full band, base, damage meter',
+    seed: 0xc1a9b91,
+    weapons: [
+      ['kick', 4], ['snare', 4], ['hat', 4], ['bass', 4], ['chord', 4],
+      ['lead', 4], ['clap', 4], ['bell', 4], ['arp', 4],
+    ],
+    enemies: CLAP_CONE_FIELD,
+    hp: 1e6,
+    steps: [
+      { fire: 'kick' }, { fire: 'snare' }, { fire: 'hat' }, { fire: 'bass' },
+      { fire: 'chord' }, { fire: 'lead' }, { fire: 'bell' }, { fire: 'arp' },
+      { fire: 'clap' },
+      { frames: 60 },
+    ],
+  },
+  {
+    name: 'clap in a full band, base, lethal',
+    seed: 0xc1a9b92,
+    weapons: [
+      ['kick', 4], ['snare', 4], ['hat', 4], ['bass', 4], ['chord', 4],
+      ['lead', 4], ['clap', 4], ['bell', 4], ['arp', 4],
+    ],
+    // FLOWERS at their natural 30 hp, for the reason the chord's and the lead's
+    // lethal bands spell out: five-hp swarmers are gone before the clap's turn
+    // comes round and the row would pin nothing about the clap at all.
+    enemies: CLAP_PINCH_FIELD,
+    steps: [
+      { fire: 'kick' }, { fire: 'snare' }, { fire: 'hat' }, { fire: 'bass' },
+      { fire: 'chord' }, { fire: 'lead' }, { fire: 'bell' }, { fire: 'arp' },
+      { fire: 'clap' },
+      { frames: 60 },
+    ],
+  },
+  {
+    name: 'clap in a full evolved band, loaded build',
+    seed: 0xc1a9b93,
+    weapons: [
+      ['kick', 4], ['snare', 4], ['hat', 4], ['bass', 4], ['chord', 4],
+      ['lead', 4], ['clap', 4], ['bell', 4], ['arp', 4],
+    ],
+    items: [
+      ['highTops', 5], ['fastForward', 5], ['mirrorball', 5], ['heavyAmp', 5],
+      ['wideLens', 5], ['needleTips', 5], ['paddedJacket', 5],
+      ['extensionCable', 5], ['magnetLanyard', 5],
+    ],
+    evolved: ['kick', 'snare', 'hat', 'bass', 'chord', 'lead', 'clap', 'bell', 'arp'],
+    enemies: CLAP_PINCH_FIELD,
+    hp: 1e6,
+    // The clap FIRST here, so its three pincers are pinned to positions the
+    // other eight weapons then spend eight frames shoving bodies out of, and
+    // the crush lands into a field that has moved under it.
+    steps: [
+      { fire: 'clap' }, { fire: 'kick' }, { fire: 'snare' }, { fire: 'hat' },
+      { fire: 'bass' }, { fire: 'chord' }, { fire: 'lead' }, { fire: 'bell' },
+      { fire: 'arp' },
+      { frames: 60 },
     ],
   },
 ];
