@@ -17,6 +17,7 @@ import {
   DARTER,
   ENEMIES,
   HAT_LANE,
+  LEAD_SERPENT,
   MAD_FOREST_FRAMES,
   MAX_ALIVE_HARD,
   RUN,
@@ -782,14 +783,21 @@ export class RunWorld {
       speed: conf.speed === undefined ? undefined : conf.speed * mods.projectileSpeedMul,
       radius: conf.radius === undefined ? undefined : conf.radius * mods.areaMul,
       lifetimeS: conf.lifetimeS === undefined ? undefined : conf.lifetimeS * mods.durationMul,
-      pierce: conf.pierce === undefined || !Number.isFinite(conf.pierce)
-        ? conf.pierce
-        : conf.pierce + mods.extraPierce,
+      pierce: conf.pierce === undefined ? undefined : this.withExtraPierce(conf.pierce),
       area: conf.area === undefined ? undefined : conf.area * mods.areaMul,
       orbitRadius: conf.orbitRadius === undefined
         ? undefined
         : conf.orbitRadius * mods.orbitDistanceMul,
     };
+  }
+
+  /** The +pierce rule (Needle Tips), in one place. A finite pierce always
+   *  carries the build's bonus; an infinite one is already unbounded and stays
+   *  untouched. Evolutions that replace a weapon's base pierce outright call
+   *  this too, so stating a signature number never means opting out of the item
+   *  that granted the evolution (#146). */
+  private withExtraPierce(basePierce: number): number {
+    return Number.isFinite(basePierce) ? basePierce + this.buildMods.extraPierce : basePierce;
   }
 
   private markMilestone(id: 'first5m' | 'fullBand' | 'firstEvolution'): void {
@@ -1975,8 +1983,11 @@ export class RunWorld {
     }
     if (role === 'lead' && pr.evolved) {
       pr.damage *= 1.40;
-      pr.maxPierce = 6;
-      pr.pierce = 6;
+      // The serpent threads a line of bodies: its own base pierce replaces
+      // lead's tier value, and the build's +pierce stacks on top of that floor
+      // exactly as it would for any other finite pierce.
+      pr.maxPierce = this.withExtraPierce(LEAD_SERPENT.basePierce);
+      pr.pierce = pr.maxPierce;
       pr.turnRate = 14;
       // The evolved seeker snaps to what is close instead of crossing the
       // screen. Was a `pr.role !== 'lead'` test inside the shared loop.

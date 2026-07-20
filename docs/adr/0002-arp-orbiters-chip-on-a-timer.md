@@ -27,3 +27,23 @@ the arena.
   half-dead item interaction is a real player-facing gap tracked separately
   (see #145) — it is a consequence of this decision, not a reason to revisit
   it.
+
+### Update 2026-07-20 (#145, #146)
+
+The two issues named above have landed, and they change the facts in that last
+bullet without changing this decision.
+
+- #145 made Needle Tips **pierce-only**: the `+shot damage` half is gone. So
+  the item is no longer half-dead on arp — it is now a **100% no-op** there.
+  Arp still carries no `pierce` key, and per the decision above that is
+  correct; an orbiter gates re-hits on a timer, so there is no pierce budget
+  for the item to add to. The gap is therefore wider than this ADR originally
+  recorded, and it is a pure item-coverage question, not an arp question.
+- #146 found the same shape of bug one weapon over, and fixed it: evolved lead
+  (Neon Serpent) was overwriting its pierce with a hardcoded `6` *after* the
+  build pipeline had run, so Needle Tips did nothing on the evolution it
+  unlocks. That 6 is now a base the pipeline builds on
+  (`LEAD_SERPENT.basePierce`), so the item applies. Unlike arp, lead has a
+  real pierce budget, so routing it was the whole fix. The lesson generalises:
+  an evolution stating a signature stat must state it as an **input** to the
+  build pipeline, never as a write over the pipeline's output.

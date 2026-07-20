@@ -896,6 +896,17 @@ export const HAT_LANE = {
   stagger: [0, 26, 52, 78],
 };
 
+/** Evolved lead (Neon Serpent): a seeker that threads a line of bodies instead
+ *  of stopping at the first. `basePierce` replaces lead's tier pierce outright —
+ *  6 is the evolution's signature number, the one its description quotes — but
+ *  it is a FLOOR, not a ceiling: it goes through the build pipeline like every
+ *  other finite pierce, so Needle Tips stacks on top of it (#146). It used to
+ *  be written straight onto the projectile after the pipeline had run, which
+ *  made Needle Tips a no-op on the very evolution it unlocks. */
+export const LEAD_SERPENT = {
+  basePierce: 6,
+};
+
 export const BELL = {
   shards: [4, 5, 6, 8],
   shardSpeed: 320,
