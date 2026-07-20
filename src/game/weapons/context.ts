@@ -13,7 +13,7 @@
 import type { Role } from '../../audio/kits';
 import type { WeaponConf } from '../config';
 import type { BuildMods } from '../items';
-import type { FxEvent, Projectile, Shockwave } from '../run';
+import type { FxEvent, Projectile, Shockwave, Zone } from '../run';
 
 /** Everything a weapon module may READ off an enemy — eight fields, all
  *  readonly. `Enemy` satisfies this structurally, so the world hands its REAL
@@ -146,6 +146,20 @@ export interface WeaponContext {
    *  first result still live still corrupts itself. */
   near(x: number, y: number, radius: number): readonly WeaponTarget[];
 
+  /** The single closest LIVE enemy inside `range` of the player, or null when
+   *  the screen is empty inside that radius. Compares SQUARED distances against
+   *  `range * range` with a STRICT `<`, so a body sitting exactly on the
+   *  boundary is out of range, not in it.
+   *
+   *  DRAWS NO RNG. This is the half of aimDir() that does the looking, without
+   *  the jitter that costs a draw — which is the whole reason the chord can
+   *  throw its zone at a pack for zero draws per trigger. `aimDir(0)` is NOT a
+   *  tidier spelling of it: aimDir draws once with a target and twice without.
+   *
+   *  Reads the world's enemy array in ARRAY order and keeps the FIRST strictly
+   *  closest body, so an exact tie goes to whichever spawned earlier. */
+  nearestEnemy(range: number): WeaponTarget | null;
+
   /** The world's LIVE enemy array, in array order, by reference — not a copy,
    *  not a snapshot. Includes practice dummies and enemies spawned this frame
    *  that are not yet in the hash, both of which Redline Stomp hits today.
@@ -180,6 +194,22 @@ export interface WeaponContext {
    *  where every other weapon applies it. Two named primitives is how that
    *  asymmetry stays visible instead of being unified away. */
   setKnock(target: WeaponTarget, vx: number, vy: number, durationS: number): void;
+
+  /** Write the shared SLOW channel on a body: `mul` is FOLDED IN WITH min()
+   *  against whatever is already there, `durationS` is ASSIGNED outright.
+   *
+   *  The asymmetry is the point and it is not tidy-able. Two chord zones
+   *  overlapping one enemy must leave it moving at the HARSHER of the two
+   *  multipliers, which is what min() gives; the timer is a plain refresh, so
+   *  the last zone to tick decides how long the slow outlasts it. A weapon
+   *  cannot read the channel back — only fold into it — so there is no route by
+   *  which a module could observe, and then undo, another weapon's slow.
+   *
+   *  The channel is consumed in moveEnemies (`speed *= e.zoneSlowMul` while
+   *  `slowT > 0`, and zoneSlowMul resets to 1 the frame the timer runs out), so
+   *  a zone that stops renewing releases the body one frame later, not
+   *  instantly. Chord is the only weapon that writes here today. */
+  slow(target: WeaponTarget, mul: number, durationS: number): void;
 
   /** Queue a visual. A no-op when the world was built with fx:false, so a
    *  module never branches on whether effects are enabled. */
@@ -252,6 +282,72 @@ export interface WeaponContext {
   /** Remove one shockwave from the world immediately, by identity. This is how
    *  a ring that has run out of life leaves; there is no world-side sweep. */
   retireShockwave(wave: Shockwave): void;
+
+  // ---------------- zones (#141) --------------------------------------------
+  //
+  // The chord is the weapon the note at the bottom of this file reserved these
+  // for, and it is the third time the same three-member shape has been the
+  // right answer: world-side STORAGE (view.ts draws world.zones and
+  // clearSandboxEntities empties it), a spawn effect, and a query over the
+  // module's OWN zones.
+  //
+  // As with shockwaves, the world has no update loop for these any more.
+  // RunWorld.updateZones is gone — ticks, the Afterhours drift, the merge pass
+  // and retirement all live in weapons/chord.ts, which is the array's SOLE
+  // MUTATOR. That matters more here than it did for the bass: updateZones was
+  // inside the shared-physics guard's protected set, so the alternative to
+  // moving the whole loop was leaving a per-weapon branch in shared physics.
+
+  /** Spawn one zone attributed to this weapon, and return the LIVE object
+   *  already in the world so the module's tick() can grow, drift and merge it.
+   *
+   *  The module supplies the geometry, the payload and the zone's whole
+   *  character; the world supplies the identity (`source`, `color`) and the one
+   *  piece of bookkeeping every zone starts with — `tickT` at ZERO, which is
+   *  why a zone always lands one tick on the first frame it exists rather than
+   *  waiting out an interval first. */
+  spawnZone(spec: ZoneSpec): Zone;
+
+  /** This weapon's live zones, in world-array order — oldest spawned first. A
+   *  fresh array per call, so it is safe to retire from while walking it. Does
+   *  NOT include another weapon's zones. */
+  zones(): readonly Zone[];
+
+  /** Remove one zone from the world immediately, by identity. Both a zone that
+   *  ran out of life and a zone absorbed by a merge leave this way; there is no
+   *  world-side sweep. */
+  retireZone(zone: Zone): void;
+}
+
+/** Everything a module chooses about a new zone. Deliberately NOT the whole
+ *  Zone: `source`, `color` and `tickT` are the world's to fill in, so they
+ *  cannot be got wrong from a module. */
+export interface ZoneSpec {
+  /** Zone centre, in world coordinates. A POINT, not a body — an Afterhours
+   *  zone moves under its own drift and a base zone never moves at all, so
+   *  neither one tracks anything it was spawned on. */
+  readonly x: number;
+  readonly y: number;
+  readonly radius: number;
+  /** Damage dealt to everything inside, ONCE PER TICK, for the zone's whole
+   *  life — not once per zone. */
+  readonly damage: number;
+  readonly lifeS: number;
+  /** Whether a tick also slows what it covers. */
+  readonly slow: boolean;
+  /** Frozen at spawn, and NOT a live read of ctx.evolved: a zone thrown before
+   *  the weapon evolved keeps base behavior — no drift, the base slow, and
+   *  immunity from the merge pass — for the rest of its life, while Afterhours
+   *  zones spawned after it drift straight over the top of it. */
+  readonly evolved: boolean;
+  /** Units per second the zone crawls toward the densest pack. 0 pins it. */
+  readonly driftSpeed: number;
+  /** Ceiling on what merging can raise `damage` to. Frozen at spawn from the
+   *  zone's own damage, so a merged supercell's ceiling is the ceiling of
+   *  whichever zone SURVIVED the merge. */
+  readonly damageCap: number;
+  /** Speed multiplier written onto everything a tick covers. */
+  readonly slowMul: number;
 }
 
 /** Everything a module chooses about a new shockwave. Deliberately NOT the
@@ -278,19 +374,20 @@ export interface ShockwaveSpec {
 
 // ---- deliberately ABSENT ----
 //
-// No spawnZone/spawnGravityWell: #140 needed projectiles and added exactly
-// projectiles; the bass (#141) needed shockwaves and added exactly shockwaves,
-// on the shape spawnProjectile/projectiles/retireProjectile set — world-side
-// STORAGE, a spawn effect, a query over the module's own records. The two
-// remaining entity kinds keep waiting for the first weapon that needs them:
-// chord for zones, bell for gravity wells. Neither is speculatively added here.
+// No spawnGravityWell: #140 needed projectiles and added exactly projectiles;
+// the bass (#141) needed shockwaves and added exactly shockwaves, and the chord
+// (#141) needed zones and added exactly zones — all three on the shape
+// spawnProjectile/projectiles/retireProjectile set, world-side STORAGE plus a
+// spawn effect plus a query over the module's own records. ONE entity kind is
+// left waiting for the first weapon that needs it: bell, for gravity wells. It
+// is not speculatively added here.
 //
-// No nearestEnemy / nearestEnemies: the four weapons migrated so far need
-// neither, and every member here is a tax on every fake context.
+// No nearestEnemies: every member here is a tax on every fake context.
 // aimDir/aimFan/triggerCount left this list with the snare (#141), which needed
 // all three; fanAround and moveDir left with the hat (#141), which aims off its
-// walk heading instead of ever consulting a target. nearestEnemy belongs to
-// chord (which throws its zone at one) and nearestEnemies to the clap.
+// walk heading instead of ever consulting a target; nearestEnemy and slow left
+// with the chord (#141), which throws its zone at one body and slows everything
+// under it. nearestEnemies still belongs to the clap.
 //
 // No `world`, no mutable arrays, no `tiers`, no `level`, no `powerMul`, no
 // `applyBuild` — `conf` arrives already built.

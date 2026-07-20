@@ -27,9 +27,6 @@ import {
   TWO_HANDS,
   WEAPON_SHOVE,
   WORLD_SCALE,
-  ZONE_SLOW_MUL,
-  ZONE_THROW_RANGE,
-  ZONE_TICK_S,
   madForestEnemyStats,
   xpPickupMultiplier,
   xpForNextLevel,
@@ -130,7 +127,12 @@ export interface Enemy {
   dashX: number;
   dashY: number;
   dashing: boolean;
-  /** Time left under a chord zone's slow. */
+  /** The shared SLOW channel: time left slowed, and the speed multiplier while
+   *  it lasts. Written only through WeaponContext.slow — which folds the
+   *  multiplier in with min() and assigns the timer — and consumed in
+   *  moveEnemies, which resets the multiplier to 1 the frame the timer runs
+   *  out. Chord zones are the only writer today; the channel itself is shared
+   *  physics and is not any one weapon's. */
   slowT: number;
   zoneSlowMul: number;
   /** Weapon knockback: velocity (px/s) and time left being pushed. While
@@ -500,7 +502,7 @@ export class RunWorld {
 
   /** The narrow surface the world hands a weapon module: queries about the
    *  world in, effects out. This is the ONLY place a WeaponTarget is cast back
-   *  to a mutable Enemy — three casts, one file, all inside effects the world
+   *  to a mutable Enemy — four casts, one file, all inside effects the world
    *  implements. */
   private makeWeaponContext(role: Role): WeaponContext {
     const world = this;
@@ -525,6 +527,7 @@ export class RunWorld {
       moveDir: () => world.moveDir(),
       fanAround: (base) => world.fanAround(base),
       near: (x, y, r) => world.hash.query(x, y, r, buf),
+      nearestEnemy: (range) => world.nearestEnemy(range),
       all: () => world.enemies,
       damage: (t, amount) => world.damageEnemy(t as Enemy, amount, role),
       shove: (t, fx, fy, d) => world.shove(t as Enemy, fx, fy, d),
@@ -533,6 +536,11 @@ export class RunWorld {
         e.knockX = vx;
         e.knockY = vy;
         e.knockT = s;
+      },
+      slow: (t, mul, durationS) => {
+        const e = t as Enemy;
+        e.slowT = durationS;
+        e.zoneSlowMul = Math.min(e.zoneSlowMul, mul);
       },
       fx: (event) => { world.fx?.push(event); },
       // Storage stays world-side: view.ts iterates world.projectiles and
@@ -573,6 +581,36 @@ export class RunWorld {
       retireShockwave: (wave) => {
         const index = world.shockwaves.indexOf(wave);
         if (index >= 0) world.shockwaves.splice(index, 1);
+      },
+      // Zone storage stays world-side for the third time and the same reason:
+      // view.ts draws world.zones and clearSandboxEntities empties it. The
+      // world owns the ARRAY; weapons/chord.ts owns everything that happens to
+      // what is in it. There is no world-side zone loop.
+      spawnZone: (spec) => {
+        const zone: Zone = {
+          x: spec.x,
+          y: spec.y,
+          radius: spec.radius,
+          damage: spec.damage,
+          lifeS: spec.lifeS,
+          // The world's own bookkeeping, and behavior: a zone starts its timer
+          // at zero, so it lands one tick on the first frame it exists.
+          tickT: 0,
+          color,
+          source: role,
+          slow: spec.slow,
+          evolved: spec.evolved,
+          driftSpeed: spec.driftSpeed,
+          damageCap: spec.damageCap,
+          slowMul: spec.slowMul,
+        };
+        world.zones.push(zone);
+        return zone;
+      },
+      zones: () => world.zones.filter((zone) => zone.source === role),
+      retireZone: (zone) => {
+        const index = world.zones.indexOf(zone);
+        if (index >= 0) world.zones.splice(index, 1);
       },
     };
   }
@@ -717,13 +755,6 @@ export class RunWorld {
     }
 
     switch (t.role) {
-      case 'chord': {
-        // Thrown at the nearest enemy, not dropped underfoot: the zone has
-        // to land where the horde actually is to be worth a pick.
-        const target = this.nearestEnemy(ZONE_THROW_RANGE);
-        this.spawnZone(target?.x ?? p.x, target?.y ?? p.y, conf, color, 'chord', evolved);
-        break;
-      }
       case 'clap': {
         if (evolved) {
           this.fireTwoHands(conf, color);
@@ -902,7 +933,7 @@ export class RunWorld {
     this.tickWeapons('strikes', dt);
     this.updateClapPinches();
     this.updateProjectiles(dt);
-    this.updateZones(dt);
+    this.tickWeapons('zones', dt);
     this.tickWeapons('shockwaves', dt);
     this.updateGravityWells(dt);
     this.updateStageMagnets(dt);
@@ -2190,104 +2221,13 @@ export class RunWorld {
     projectile.damage *= projectile.bounceRetention;
   }
 
-  private spawnZone(
-    x: number,
-    y: number,
-    conf: { damage: number; radius?: number; lifetimeS?: number },
-    color: number,
-    source: Role,
-    evolved = false,
-  ): void {
-    const radius = conf.radius! * (evolved ? 1.55 : 1);
-    const life = conf.lifetimeS! * (evolved ? 1.35 : 1);
-    const damage = conf.damage * (evolved ? 1.25 : 1);
-    this.zones.push({
-      x,
-      y,
-      radius,
-      damage,
-      lifeS: life,
-      tickT: 0,
-      color,
-      source,
-      slow: true,
-      evolved,
-      driftSpeed: evolved ? 65 : 0,
-      damageCap: damage * 3,
-      slowMul: evolved ? 0.42 : ZONE_SLOW_MUL,
-    });
-  }
-
-  private updateZones(dt: number): void {
-    for (let i = this.zones.length - 1; i >= 0; i--) {
-      const z = this.zones[i];
-      z.lifeS -= dt;
-
-      if (z.evolved) {
-        let target: Enemy | null = null;
-        let bestNeighbors = -1;
-        for (let sample = 0; sample < this.enemies.length; sample += Math.max(1, Math.floor(this.enemies.length / 30))) {
-          const enemy = this.enemies[sample];
-          if (enemy.dead) continue;
-          let neighbors = 0;
-          for (const other of this.enemies) {
-            if (!other.dead && Math.hypot(other.x - enemy.x, other.y - enemy.y) < 120) neighbors += 1;
-          }
-          if (neighbors > bestNeighbors) {
-            bestNeighbors = neighbors;
-            target = enemy;
-          }
-        }
-        if (target) {
-          const dx = target.x - z.x;
-          const dy = target.y - z.y;
-          const distance = Math.hypot(dx, dy) || 1;
-          const travel = Math.min(distance, z.driftSpeed * dt);
-          z.x += (dx / distance) * travel;
-          z.y += (dy / distance) * travel;
-        }
-      }
-
-      z.tickT -= dt;
-      if (z.tickT <= 0) {
-        z.tickT = ZONE_TICK_S;
-        this.damageArea(z.x, z.y, z.radius, z.damage, z.source);
-        // The zone's other half: everything inside wades, it doesn't walk.
-        if (z.slow) {
-          const inside = this.hash.query(z.x, z.y, z.radius + 24, this.queryBuf);
-          for (const e of inside) {
-            if (!e.dead && circlesOverlap(z, e)) {
-              e.slowT = ZONE_TICK_S + 0.15;
-              e.zoneSlowMul = Math.min(e.zoneSlowMul, z.slowMul);
-            }
-          }
-        }
-      }
-      if (z.lifeS <= 0) {
-        this.zones.splice(i, 1);
-      }
-    }
-    // Afterhours zones merge pairwise with strict caps; this runs after ticks
-    // so each original zone can land its current scheduled tick at most once.
-    for (let i = this.zones.length - 1; i >= 0; i--) {
-      const a = this.zones[i];
-      if (!a.evolved) continue;
-      for (let j = i - 1; j >= 0; j--) {
-        const b = this.zones[j];
-        if (!b.evolved || !circlesOverlap(a, b)) continue;
-        const totalArea = a.radius * a.radius + b.radius * b.radius;
-        const weight = Math.max(1, totalArea);
-        a.x = (a.x * a.radius * a.radius + b.x * b.radius * b.radius) / weight;
-        a.y = (a.y * a.radius * a.radius + b.y * b.radius * b.radius) / weight;
-        a.radius = Math.min(180, Math.sqrt(totalArea));
-        a.lifeS = Math.min(4.5, Math.max(a.lifeS, b.lifeS) + Math.min(a.lifeS, b.lifeS) * 0.25);
-        a.damage = Math.min(a.damageCap, a.damage + b.damage * 0.5);
-        this.zones.splice(j, 1);
-        i -= 1;
-        break;
-      }
-    }
-  }
+  // Zones left this file with the chord module (#141). The world still STORES
+  // them — view.ts draws world.zones and clearSandboxEntities empties it — but
+  // it no longer spawns, ticks, drifts, merges or retires one: weapons/chord.ts
+  // owns all of it through ctx.spawnZone / ctx.zones / ctx.retireZone, and its
+  // tick() runs in the 'zones' phase where updateZones used to stand. That
+  // method was inside the shared-physics guard's protected set, so this is the
+  // first extraction that shrank the guard rather than working around it.
 
   private damageArea(
     x: number,

@@ -24,10 +24,11 @@ import {
 import { AIM_RANGE, ALL_ENEMY_KINDS, ENEMY_LABELS, MULTISHOT_FAN_RAD, RUN, SHOVE_S, STAGE_MAGNET, TIER_LINES, WEAPON_SHOVE, WEAPONS, type EnemyKind } from './config';
 import { rollOffers } from './picks';
 import { mulberry32 } from './rng';
-import { KIT_COLORS, RunWorld, type FxEvent, type Projectile, type RunEvents, type Shockwave } from './run';
+import { KIT_COLORS, RunWorld, type FxEvent, type Projectile, type RunEvents, type Shockwave, type Zone } from './run';
 import {
   ARP,
   BASS,
+  CHORD,
   HAT,
   KICK,
   SNARE,
@@ -37,6 +38,7 @@ import {
   type WeaponContext,
   type WeaponInstance,
   type WeaponTarget,
+  type ZoneSpec,
 } from './weapons';
 import type { WeaponConf } from './config';
 import { TIER_COUNT } from '../audio/charts';
@@ -663,12 +665,19 @@ interface FakeTarget extends WeaponTarget {
   lastMoveY: number;
   /** Fake-side bookkeeping; the real world sink owns hp. */
   hp: number;
+  /** Fake-side mirror of the world's shared SLOW channel. The real fields live
+   *  on Enemy and are consumed by moveEnemies; they are reproduced here so the
+   *  chord's `min()` fold and its plain timer refresh are both observable —
+   *  ctx.slow() is write-only across the seam, so a log alone could not show
+   *  that two overlapping zones leave the HARSHER multiplier in place. */
+  slowT: number;
+  zoneSlowMul: number;
 }
 
 function fakeTarget(x: number, y: number, over: Partial<FakeTarget> = {}): FakeTarget {
   return {
     x, y, radius: 12, dead: false, speed: 60, knockbackMul: 1,
-    lastMoveX: 0, lastMoveY: 0, hp: 1e6, ...over,
+    lastMoveX: 0, lastMoveY: 0, hp: 1e6, slowT: 0, zoneSlowMul: 1, ...over,
   };
 }
 
@@ -749,6 +758,20 @@ class FakeCtx implements WeaponContext {
   near(x: number, y: number, r: number): readonly WeaponTarget[] {
     return this.targets.filter((t) => Math.hypot(t.x - x, t.y - y) <= r + t.radius);
   }
+  /** RunWorld.nearestEnemy, reproduced side by side with it: ARRAY order,
+   *  SQUARED distances, a STRICT `<` against `range * range`, and NO RNG DRAW.
+   *  The draw count is the point — the chord's whole zero-draw contract is that
+   *  this is not aimDir(0). */
+  nearestEnemy(range: number): WeaponTarget | null {
+    let best: FakeTarget | null = null;
+    let bestD = range * range;
+    for (const t of this.targets) {
+      if (t.dead) continue;
+      const d = (t.x - this.player.x) ** 2 + (t.y - this.player.y) ** 2;
+      if (d < bestD) { bestD = d; best = t; }
+    }
+    return best;
+  }
   all(): readonly WeaponTarget[] { return this.targets; }
   damage(t: WeaponTarget, amount: number): void {
     const f = t as FakeTarget;
@@ -768,6 +791,17 @@ class FakeCtx implements WeaponContext {
   }
   setKnock(_t: WeaponTarget, vx: number, vy: number, s: number): void {
     this.knocks.push(`knock:${vx},${vy},${s}`);
+  }
+  /** Every slow, with its target. The write itself is reproduced from
+   *  RunWorld.makeWeaponContext exactly: the multiplier folds in with min(),
+   *  the timer is ASSIGNED. Getting that asymmetry backwards here would hide
+   *  the mid-evolve check's whole point. */
+  readonly slowLog: Array<{ t: FakeTarget; mul: number; durationS: number }> = [];
+  slow(t: WeaponTarget, mul: number, durationS: number): void {
+    const f = t as FakeTarget;
+    this.slowLog.push({ t: f, mul, durationS });
+    f.slowT = durationS;
+    f.zoneSlowMul = Math.min(f.zoneSlowMul, mul);
   }
   fx(e: FxEvent): void { this.fxLog.push(e); this.seq.push(e.type); }
   /** Projectiles this fake world is holding. Mirrors RunWorld.projectiles
@@ -820,6 +854,32 @@ class FakeCtx implements WeaponContext {
   retireShockwave(wave: Shockwave): void {
     const index = this.rings.indexOf(wave);
     if (index >= 0) this.rings.splice(index, 1);
+  }
+  /** Zones this fake world is holding. Mirrors RunWorld's array for the chord:
+   *  append on spawn, splice by identity on retire, array order is spawn order
+   *  — and, exactly like the real one, NOTHING here ticks, drifts, merges or
+   *  expires a zone. That is entirely the module's tick(). */
+  readonly fields: Zone[] = [];
+  spawnZone(spec: ZoneSpec): Zone {
+    // The defaulting RunWorld.makeWeaponContext does, kept side by side with
+    // it: the module supplies geometry, payload and character, the world
+    // supplies identity and the one piece of bookkeeping — tickT at ZERO.
+    const zone: Zone = {
+      x: spec.x, y: spec.y, radius: spec.radius, damage: spec.damage,
+      lifeS: spec.lifeS, tickT: 0, color: this.color, source: this.role,
+      slow: spec.slow, evolved: spec.evolved, driftSpeed: spec.driftSpeed,
+      damageCap: spec.damageCap, slowMul: spec.slowMul,
+    };
+    this.fields.push(zone);
+    this.seq.push('zone');
+    return zone;
+  }
+  zones(): readonly Zone[] {
+    return this.fields.filter((zone) => zone.source === this.role);
+  }
+  retireZone(zone: Zone): void {
+    const index = this.fields.indexOf(zone);
+    if (index >= 0) this.fields.splice(index, 1);
   }
   /** Advance every live orbiter one frame through the module's own steer hook,
    *  the way RunWorld.updateProjectiles does. */
@@ -2281,6 +2341,468 @@ function bassCtx(evolved = false, rngValues: number[] | null = null): FakeCtx {
   assert.equal(ctx.rngDraws, 0, 'and never drew anything to begin with');
 }
 
+
+const chordTiers = CHORD.stats.tiers;
+
+// ---------------------------------------------------------------------------
+// The chord's tuning, pinned to LITERALS. Same rule as the kick, arp, snare,
+// hat and bass blocks above: the right-hand sides are numbers a human typed
+// after reading the pre-#141 config.ts and run.ts, never an expression that
+// reads the value it is checking.
+//
+// ONE OF THESE IS UNREACHABLE IN A SHIPPED RUN, and that is exactly why it is
+// here. `mergeMaxRadius` (180) can never decide anything: Afterhours needs tier
+// 4 and Wide Lens at max, so every Afterhours zone is 76 x 1.30 x 1.55 = 153.14
+// units and the first merge already asks for sqrt(2) x 153.14 = 216.57. The
+// baseline agent replaced the whole `Math.min(180, Math.sqrt(...))` with
+// `a.radius + b.radius` and moved ZERO of the 140 parity scenarios. The literal
+// below and check C11 (which reaches the cap through a fake context, where
+// areaMul is 1) are its only cover.
+// ---------------------------------------------------------------------------
+{
+  // The per-tier ladder, verbatim from config.WEAPONS.chord. `damage` is PER
+  // TICK, not per trigger, which is why the ladder looks so flat next to every
+  // other kit: real output is damage x (1 + floor(lifetimeS / tickS)).
+  assert.deepEqual(
+    chordTiers.map((t) => [t.damage, t.radius, t.lifetimeS]),
+    [
+      [1, 48, 2.0],
+      [1, 56, 2.2],
+      [1, 64, 2.5],
+      [2, 76, 2.8],
+    ],
+    'the chord damage/size/lifetime ladder moved',
+  );
+  assert.equal(chordTiers.length, TIER_COUNT, 'the chord ladder must have exactly TIER_COUNT rungs');
+  // A zone is not a projectile: no speed, no pierce, nothing for the shared
+  // projectile loop to read. Pinned so a later edit cannot quietly give one.
+  assert.deepEqual(
+    chordTiers.flatMap((t) => [t.speed, t.pierce, t.arc]).filter((v) => v !== undefined),
+    [],
+    'a chord zone has no speed, no pierce and no arc — it is not a shot',
+  );
+  assert.deepEqual(CHORD.stats.tierLines, [
+    'zone on the nearest pack: damage + slow',
+    'zones twice as often',
+    'bigger, longer zones',
+    'the biggest, longest, hardest zones',
+  ], 'the chord pedestal copy moved');
+
+  // The three config.ts constants that came with this weapon.
+  assert.equal(CHORD.stats.throwRange, 420, 'the zone throw range moved (was ZONE_THROW_RANGE)');
+  assert.equal(CHORD.stats.tickS, 0.9, 'the zone tick interval moved (was ZONE_TICK_S)');
+  assert.equal(CHORD.stats.slowMul, 0.55, 'the base zone slow moved (was ZONE_SLOW_MUL)');
+  // Bare literals in run.ts's spawnZone / updateZones.
+  assert.equal(CHORD.stats.slowGraceS, 0.15, 'the slow grace moved (was the + 0.15 on slowT)');
+  assert.equal(CHORD.stats.damageCapMul, 3, 'the zone damage cap multiplier moved');
+
+  // THE RENEWAL RELATIONSHIP, stated as a check rather than a comment. A tick
+  // renews every `tickS` and the slow it applies lasts `tickS + slowGraceS`, so
+  // the slow is CONTINUOUS. The moment that stops being true a standing zone
+  // starts strobing enemies back to full speed between ticks, and nothing else
+  // in this file or the parity baseline would say why.
+  assert(CHORD.stats.tickS + CHORD.stats.slowGraceS > CHORD.stats.tickS,
+    'the slow must outlive the gap to the next tick, or a zone becomes a strobe');
+
+  // Afterhours.
+  assert.equal(CHORD.stats.afterhoursRadiusMul, 1.55, 'the Afterhours radius multiplier moved');
+  assert.equal(CHORD.stats.afterhoursLifetimeMul, 1.35, 'the Afterhours lifetime multiplier moved');
+  assert.equal(CHORD.stats.afterhoursDamageMul, 1.25, 'the Afterhours damage multiplier moved');
+  assert.equal(CHORD.stats.afterhoursSlowMul, 0.42, 'the Afterhours slow moved');
+  assert.equal(CHORD.stats.driftSpeed, 65, 'the Afterhours drift speed moved');
+  assert.equal(CHORD.stats.driftSamples, 30, 'the Afterhours drift sample count moved');
+  assert.equal(CHORD.stats.driftNeighborRadius, 120, 'the Afterhours neighbour radius moved');
+  assert.equal(CHORD.stats.mergeMaxRadius, 180, 'the merge radius cap moved');
+  assert.equal(CHORD.stats.mergeMaxLifeS, 4.5, 'the merge lifetime cap moved');
+  assert.equal(CHORD.stats.mergeLifeMul, 0.25, 'the merge lifetime coefficient moved');
+  assert.equal(CHORD.stats.mergeDamageMul, 0.5, 'the merge damage coefficient moved');
+
+  assert.equal(WEAPONS.chord, undefined, 'the chord module is the only copy of the chord ladder');
+  assert.equal(TIER_LINES.chord, undefined, 'the chord module is the only copy of the chord pedestal copy');
+
+  // THE TWO ROLE-KEYED TABLES, AND THE CHORD IS IN NEITHER. It took nothing
+  // when it left — a zone tick lands damage and a slow and nothing else, no
+  // knock and no spark — so both absences are pinned the way the hat's block
+  // pins its own. WEAPON_SHOVE is exported; SPARK_HIT_ROLES is a private const
+  // in run.ts, so its membership is read out of the source rather than by
+  // exporting a table purely to assert something is missing from it.
+  assert(!('chord' in WEAPON_SHOVE), 'a chord tick has never had a knock, and must not gain one');
+  {
+    const runSource = readFileSync(new URL('./run.ts', import.meta.url), 'utf8');
+    const sparkRoles = /SPARK_HIT_ROLES = new Set<Role>\(\[([^\]]*)\]\)/.exec(runSource)?.[1];
+    assert(sparkRoles !== undefined,
+      'this check cannot find SPARK_HIT_ROLES in run.ts, so it is asserting nothing. Update the ' +
+      'pattern rather than deleting the check');
+    assert(sparkRoles.includes("'lead'"),
+      'guard integrity: lead is the last member of SPARK_HIT_ROLES and the set goes with it');
+    assert(!sparkRoles.includes("'chord'"),
+      'a chord tick pushes no spark and never has — its whole appearance is the view reading ' +
+      'world.zones');
+  }
+
+  const chordModule = WEAPON_MODULES.find((m) => m.role === 'chord')!;
+  assert.equal(chordModule.tickAt, 'zones',
+    'the chord owns the zone pass, in the phase RunWorld.updateZones used to stand in — after ' +
+    'the shared projectile loop and before the shockwaves');
+  assert.equal(chordModule.create().projectile, undefined,
+    'the chord spawns no projectile at all, so it has nothing to lend the shared projectile loop');
+  assert.equal(CHORD.role, 'chord');
+}
+
+/** A fake context set up for the chord. Its rng() THROWS by default, which is
+ *  what turns "the chord draws nothing from the run stream" into an executable
+ *  assertion: this weapon throws at ctx.nearestEnemy, and `aimDir(0)` — the
+ *  one-line-tidier spelling — would draw once with a target on screen and twice
+ *  without. Nothing but a draw counter ever notices that. */
+function chordCtx(evolved = false): FakeCtx {
+  const ctx = new FakeCtx();
+  ctx.role = 'chord';
+  ctx.color = KIT_COLORS.chord;
+  ctx.evolved = evolved;
+  return ctx;
+}
+
+// C1. ONE TRIGGER, ONE ZONE, ZERO DRAWS, and the tier-4 spawn row as LITERALS.
+// The zone is THROWN: it lands on the body, not on the player.
+{
+  const ctx = chordCtx();
+  const inst = CHORD.create();
+  ctx.targets.push(fakeTarget(300, 0));
+  inst.fire(ctx, chordTiers[3]);
+  assert.equal(ctx.rngDraws, 0, 'a chord trigger draws NOTHING — it looks, it does not jitter');
+  assert.equal(ctx.fields.length, 1, 'one trigger, one zone');
+  assert.equal(ctx.spawned.length, 0, 'the chord spawns no projectile');
+  assert.equal(ctx.hits.length, 0, 'a zone deals its damage in tick(), never at fire time');
+  assert.equal(ctx.slowLog.length, 0, 'and slows nothing at fire time either');
+  assert.equal(ctx.fxLog.length, 0, 'the chord pushes NO fx: its whole appearance is the view');
+  const z = ctx.fields[0];
+  assert.equal(z.x, 300, 'the zone is thrown ONTO the nearest body, not dropped underfoot');
+  assert.equal(z.y, 0);
+  assert.equal(z.radius, 76, 'the tier-4 pedestal footprint');
+  assert.equal(z.damage, 2, 'the tier-4 pedestal damage, PER TICK');
+  assert.equal(z.lifeS, 2.8);
+  assert.equal(z.tickT, 0,
+    'a zone starts its timer at ZERO, which is why it lands one tick immediately instead of ' +
+    'waiting out an interval first');
+  assert.equal(z.slow, true);
+  assert.equal(z.evolved, false);
+  assert.equal(z.driftSpeed, 0, 'a base zone never moves');
+  assert.equal(z.damageCap, 6, 'the cap is 3x the damage the zone spawned with');
+  assert.equal(z.slowMul, 0.55);
+  assert.equal(z.source, 'chord', 'attribution is the world\'s to fill in, not the module\'s');
+  assert.equal(z.color, KIT_COLORS.chord);
+}
+
+// C2. THE THROW RANGE IS A STRICT BOUNDARY at 420, on SQUARED distances. A body
+// one unit inside takes the zone; a body exactly on the line does not, and the
+// zone falls back underfoot. Both sides, because a `<=` here would move only
+// the exact-boundary case and nothing in the parity baseline sits on it.
+{
+  const inside = chordCtx();
+  inside.targets.push(fakeTarget(419, 0));
+  CHORD.create().fire(inside, chordTiers[3]);
+  assert.equal(inside.fields[0].x, 419, 'a body inside 420 catches the throw');
+
+  const outside = chordCtx();
+  outside.targets.push(fakeTarget(420, 0));
+  CHORD.create().fire(outside, chordTiers[3]);
+  assert.equal(outside.fields[0].x, 0, 'a body exactly ON 420 is out of range — the test is `<`');
+}
+
+// C3. AN EMPTY SCREEN DROPS THE ZONE UNDERFOOT, at the fire-time player
+// position, and still costs nothing from the run stream. This is the branch
+// where `aimDir(0)` would have drawn TWICE.
+{
+  const ctx = chordCtx();
+  ctx.player = { x: 90, y: -40, facingX: 1 };
+  CHORD.create().fire(ctx, chordTiers[3]);
+  assert.equal(ctx.rngDraws, 0, 'no target on screen still means no draw');
+  assert.deepEqual([ctx.fields[0].x, ctx.fields[0].y], [90, -40], 'the zone lands on the player');
+}
+
+// C4. THE TICK GRID: one tick immediately, then one every 0.9s for the zone's
+// whole life. `1 + floor(2.8 / 0.9)` is FOUR, and the zone is gone by the end
+// of the run of frames. A zone whose timer started at tickS instead of zero
+// would land three.
+{
+  const ctx = chordCtx();
+  const inst = CHORD.create();
+  const target = fakeTarget(0, 0);
+  ctx.targets.push(target);
+  inst.fire(ctx, chordTiers[3]);
+  ctx.step(inst, 1);
+  assert.equal(round6(ctx.fields[0].tickT), 0.9,
+    'the timer is RESET to tickS, not topped up by it. `tickT += tickS` looks equivalent and is ' +
+    'not: the timer is already slightly negative when it fires, so accumulating carries that ' +
+    'remainder forward and every later tick in the run drifts');
+  ctx.step(inst, 199);
+  assert.equal(ctx.hits.length, 4, 'a tier-4 base zone lands 1 + floor(2.8 / 0.9) = 4 ticks');
+  assert.deepEqual(ctx.hits.map((h) => h.amount), [2, 2, 2, 2], 'every tick is the same chip');
+  assert.equal(ctx.fields.length, 0, 'and the zone retires at the end of its life');
+  assert.equal(ctx.rngDraws, 0, 'ticking a zone draws nothing');
+  assert.equal(ctx.fxLog.length, 0, 'and pushes nothing');
+  assert.deepEqual(ctx.knocks, [], 'a zone tick lands damage and a slow and NO knock');
+}
+
+// C5. REACH IS `zone.radius + body.radius`, STRICTLY. The zone is dropped
+// underfoot and the bodies arrive afterwards, so this measures the footprint
+// and not the throw: 76 + 12 = 88, and 88 exactly is a miss.
+{
+  const ctx = chordCtx();
+  const inst = CHORD.create();
+  inst.fire(ctx, chordTiers[3]);
+  const grazing = fakeTarget(87, 0);
+  const clear = fakeTarget(88, 0);
+  ctx.targets.push(grazing, clear);
+  ctx.step(inst, 1);
+  assert.deepEqual(ctx.hits.map((h) => h.t), [grazing],
+    'reach is the zone radius PLUS the body radius, and the boundary itself is out');
+}
+
+// C5b. A DEAD BODY IS BILLED BY NEITHER PASS. ctx.near() is a SUPERSET that
+// includes the dead — the caller runs the shape test AND the liveness test —
+// and both of the chord's two loops over it need their own `!e.dead`. Dropping
+// either one is invisible until an earlier zone's tick kills something that a
+// later zone then hits again in the same frame.
+{
+  const ctx = chordCtx();
+  const inst = CHORD.create();
+  inst.fire(ctx, chordTiers[3]);
+  ctx.targets.push(fakeTarget(20, 0, { dead: true }));
+  ctx.step(inst, 1);
+  assert.equal(ctx.hits.length, 0, 'a dead body under the zone takes no damage');
+  assert.equal(ctx.slowLog.length, 0, 'and is not slowed either — both loops test liveness');
+}
+
+// C6. THE SLOW: 0.55 for 1.05 seconds, written on everything the tick covers,
+// and it is a min() FOLD rather than an assignment. The body arrives already
+// carrying a harsher multiplier, which the chord must not lift.
+{
+  const ctx = chordCtx();
+  const inst = CHORD.create();
+  const fresh = fakeTarget(0, 0);
+  const alreadySlower = fakeTarget(20, 0, { zoneSlowMul: 0.3 });
+  ctx.targets.push(fresh, alreadySlower);
+  inst.fire(ctx, chordTiers[3]);
+  ctx.step(inst, 1);
+  assert.deepEqual(ctx.slowLog.map((s) => [s.mul, round6(s.durationS)]), [[0.55, 1.05], [0.55, 1.05]],
+    'every body under the zone takes 0.55 for tickS + slowGraceS = 1.05s');
+  assert.equal(fresh.zoneSlowMul, 0.55);
+  assert.equal(alreadySlower.zoneSlowMul, 0.3,
+    'the fold is a min(): a chord tick can only ever make a body slower, never faster');
+  assert.equal(round6(alreadySlower.slowT), 1.05, 'but the TIMER is assigned outright, not max()\'d');
+}
+
+// C7. AFTERHOURS, AS LITERALS. Every multiplier is applied to the tier-4 rung,
+// and the cap is 3x the EVOLVED damage — a merge can take an Afterhours zone to
+// 7.5 per tick, not 6.
+{
+  const ctx = chordCtx(true);
+  const inst = CHORD.create();
+  inst.fire(ctx, chordTiers[3]);
+  const z = ctx.fields[0];
+  assert.equal(round6(z.radius), 117.8, 'tier-4 76 x 1.55');
+  assert.equal(round6(z.lifeS), 3.78, 'tier-4 2.8 x 1.35');
+  assert.equal(z.damage, 2.5, 'tier-4 2 x 1.25');
+  assert.equal(z.damageCap, 7.5, 'and the cap is 3x THAT');
+  assert.equal(z.slowMul, 0.42, 'Afterhours wades harder than the base 0.55');
+  assert.equal(z.driftSpeed, 65);
+  assert.equal(z.evolved, true);
+  assert.equal(ctx.rngDraws, 0, 'Afterhours does not aim either');
+  assert.equal(ctx.fxLog.length, 0, 'and pushes no fx');
+}
+
+// C8. THE EVOLVED MULTIPLIERS STACK ON TOP OF THE BUILD PIPELINE. `conf`
+// arrives already carrying areaMul in `radius`, so Wide Lens at max and
+// Afterhours together are 76 x 1.30 x 1.55 = 153.14 — the number every real
+// Afterhours zone in a shipped run is, and the reason the merge radius cap can
+// never bind out there.
+{
+  const ctx = chordCtx(true);
+  CHORD.create().fire(ctx, { ...chordTiers[3], radius: 76 * 1.3 });
+  assert.equal(round6(ctx.fields[0].radius), 153.14, 'areaMul first, then the Afterhours 1.55');
+}
+
+// C9. THE DRIFT: 65 units a second toward the densest pack, and a BASE zone
+// does not move at all. The zone is dropped underfoot on an empty screen and
+// the crowd arrives afterwards, so the throw cannot be what moved it.
+{
+  for (const evolved of [false, true]) {
+    const ctx = chordCtx(evolved);
+    const inst = CHORD.create();
+    inst.fire(ctx, chordTiers[3]);
+    // Far outside the zone's own footprint, so nothing here is about damage.
+    for (let i = 0; i < 5; i++) ctx.targets.push(fakeTarget(300 + i * 10, 0));
+    ctx.step(inst, 1);
+    assert.equal(round6(ctx.fields[0].x), evolved ? round6(65 / 60) : 0,
+      evolved ? 'an Afterhours zone crawls 65 units a second toward the crowd'
+              : 'a BASE zone never moves, whatever is on screen');
+  }
+}
+
+// C10. THE SAMPLING STRIDE IS BEHAVIOR. With 61 bodies the stride is
+// `max(1, floor(61 / 30))` = 2, so the drift only ever LOOKS at even indices.
+// The even bodies are a loose ring out at +x (about four neighbours each); the
+// odd bodies are thirty coincident points at -x (thirty neighbours each). A
+// full scan would find the packed clump and drive the zone to -x. The stride
+// cannot see it, and the zone goes the other way.
+{
+  const ctx = chordCtx(true);
+  const inst = CHORD.create();
+  inst.fire(ctx, chordTiers[3]);
+  for (let i = 0; i < 61; i++) {
+    if (i % 2 === 0) {
+      const angle = (Math.PI * 2 * i) / 61;
+      ctx.targets.push(fakeTarget(400 + Math.cos(angle) * 300, Math.sin(angle) * 300));
+    } else {
+      ctx.targets.push(fakeTarget(-400, 0));
+    }
+  }
+  ctx.step(inst, 1);
+  assert(ctx.fields[0].x > 0,
+    'the drift stepped past every packed body because they all sat on odd indices — "tidying" ' +
+    'the stride into a full scan sends every Afterhours zone somewhere else');
+  assert.equal(round6(Math.hypot(ctx.fields[0].x, ctx.fields[0].y)), round6(65 / 60),
+    'and it still travelled exactly one frame of drift');
+}
+
+// C11. THE MERGE, AND `a` IS THE NEWER ZONE. Two Afterhours zones overlap; the
+// one thrown SECOND survives, absorbs the first and keeps its OWN damage cap.
+// The two are given different damage so the survivor is identifiable: newer
+// wins gives 5 + 2.5 x 0.5 = 6.25, older wins would give 2.5 + 5 x 0.5 = 5.
+{
+  const ctx = chordCtx(true);
+  const inst = CHORD.create();
+  ctx.targets.push(fakeTarget(0, 0));
+  inst.fire(ctx, chordTiers[3]);                       // damage 2.5 at (0, 0)
+  ctx.targets.length = 0;
+  ctx.targets.push(fakeTarget(10, 0));
+  inst.fire(ctx, { ...chordTiers[3], damage: 4 });      // damage 5 at (10, 0)
+  ctx.targets.length = 0;
+  const older = ctx.fields[0];
+  const newer = ctx.fields[1];
+  ctx.step(inst, 1);
+  assert.deepEqual(ctx.fields, [newer], 'the SURVIVOR is the zone thrown second');
+  assert.equal(round6(newer.damage), 6.25, 'the survivor takes half the absorbed zone\'s damage');
+  assert.equal(newer.damageCap, 15, 'and keeps its own cap, not the absorbed zone\'s');
+  assert.equal(round6(newer.x), 5, 'the centre is the area-weighted centroid of the two');
+  assert.equal(round6(newer.y), 0);
+  // sqrt(117.8^2 + 117.8^2) = 166.594... — under the 180 cap ONLY because a
+  // fake context has areaMul 1. In a shipped run the first merge already asks
+  // for 216.57 and the cap decides, which is why the cap has a literal pin.
+  assert.equal(round6(newer.radius), round6(Math.sqrt(2 * 117.8 * 117.8)),
+    'the merged radius is sqrt(r_a^2 + r_b^2) under the cap');
+  assert(newer.radius < CHORD.stats.mergeMaxRadius);
+  assert.equal(older.evolved, true, 'the absorbed zone object itself is untouched, just dropped');
+}
+
+// C11b. THE PARTNER IS THE NEAREST LOWER INDEX, not the oldest overlapping
+// zone. With three zones on one line the inner scan walks DOWN from `a`, so the
+// newest zone absorbs the MIDDLE one and the oldest is left alone; scanning up
+// from zero instead would absorb the oldest and leave the middle. Both spellings
+// keep `i -= 1` correct and both halve a uniform field identically, so a
+// cascade of identical zones cannot tell them apart — only distinct damage can.
+{
+  const ctx = chordCtx(true);
+  const inst = CHORD.create();
+  for (const [damage, x] of [[2, 0], [4, 10], [8, 20]] as const) {
+    ctx.targets.length = 0;
+    ctx.targets.push(fakeTarget(x, 0));
+    inst.fire(ctx, { ...chordTiers[3], damage });
+  }
+  ctx.targets.length = 0;
+  ctx.step(inst, 1);
+  assert.deepEqual(ctx.fields.map((z) => round6(z.damage)), [2.5, 12.5],
+    'the newest zone (10 per tick) absorbed the MIDDLE one (5), not the oldest (2.5) — ' +
+    'absorbing the oldest would leave [5, 11.25]');
+  assert.equal(round6(ctx.fields[1].x), 15, 'and the centroid is of those two, not of the ends');
+}
+
+// C12. A BASE ZONE IS IMMUNE TO THE MERGE PASS, from both sides, and the flag
+// is frozen at SPAWN rather than read live. The weapon evolves between the two
+// triggers, so one base and one Afterhours zone sit on the same spot.
+//
+// THIS IS ALSO THE ONLY PLACE THE min() SLOW COMBINATION IS VISIBLE, and the
+// tick order it pins is NEWEST FIRST: the Afterhours zone bills its 2.5 before
+// the base zone bills its 2.
+{
+  const ctx = chordCtx();
+  const inst = CHORD.create();
+  const body = fakeTarget(0, 0);
+  ctx.targets.push(body);
+  inst.fire(ctx, chordTiers[3]);
+  ctx.evolved = true;
+  inst.fire(ctx, chordTiers[3]);
+  ctx.step(inst, 1);
+  assert.equal(ctx.fields.length, 2, 'a base zone cannot be absorbed, and cannot absorb');
+  assert.deepEqual(ctx.fields.map((z) => z.evolved), [false, true],
+    'the base zone kept base behavior across the evolution — evolved is frozen at spawn');
+  assert.equal(ctx.fields[0].driftSpeed, 0, 'and it still does not drift');
+  assert.deepEqual(ctx.hits.map((h) => h.amount), [2.5, 2],
+    'zones tick NEWEST FIRST: the Afterhours zone billed before the base zone');
+  assert.deepEqual(ctx.slowLog.map((s) => s.mul), [0.42, 0.55],
+    'and both zones wrote their own slow');
+  assert.equal(body.zoneSlowMul, 0.42,
+    'the body keeps the HARSHER of the two — a plain assignment would have left it at 0.55');
+}
+
+// C13. THE SAME-FRAME CASCADE. `i -= 1; break;` halves the population in one
+// pass, which is the only route to the damage cap and the lifetime cap at all:
+// zones arriving one trigger at a time converge on 5 per tick and never bind
+// either. Ten zones on one spot, then three frames.
+{
+  const ctx = chordCtx(true);
+  const inst = CHORD.create();
+  for (let i = 0; i < 10; i++) inst.fire(ctx, chordTiers[3]);
+  assert.equal(ctx.fields.length, 10);
+  ctx.step(inst, 1);
+  assert.equal(ctx.fields.length, 5, 'one pass halves the field — that is what `i -= 1` buys');
+  ctx.step(inst, 1);
+  assert.equal(ctx.fields.length, 3);
+  ctx.step(inst, 1);
+  assert.equal(ctx.fields.length, 2);
+  const supercell = ctx.fields[ctx.fields.length - 1];
+  assert.equal(round6(supercell.damage), 7.5, 'the cascade is the only thing that reaches the cap');
+  assert.equal(supercell.damage, supercell.damageCap);
+  assert.equal(round6(supercell.lifeS), 4.5, 'and the lifetime cap binds too');
+  assert.equal(round6(supercell.radius), 180, 'and so does the radius cap');
+  assert.equal(ctx.rngDraws, 0, 'merging draws nothing');
+  assert.equal(ctx.fxLog.length, 0, 'and pushes nothing');
+}
+
+// C14. TICKS RUN BEFORE MERGES. Two overlapping Afterhours zones on one body
+// both land their scheduled tick in the frame they merge in — the merge pass
+// runs after the tick loop, so absorbing a zone can never swallow a tick that
+// was already due. Merge first and the field quietly loses damage every time
+// two zones meet.
+{
+  const ctx = chordCtx(true);
+  const inst = CHORD.create();
+  ctx.targets.push(fakeTarget(0, 0));
+  inst.fire(ctx, chordTiers[3]);
+  inst.fire(ctx, chordTiers[3]);
+  ctx.step(inst, 1);
+  assert.deepEqual(ctx.hits.map((h) => h.amount), [2.5, 2.5],
+    'both zones billed their due tick in the frame they merged');
+  assert.equal(ctx.fields.length, 1, 'and then became one');
+}
+
+// C15. reset() has nothing to drop. Every zone lives in the world's zone array,
+// which clearSandboxEntities empties itself — the module holds no schedule of
+// its own. Pinned so that stays true, and so a reset never draws or pushes
+// anything.
+{
+  const ctx = chordCtx(true);
+  const inst = CHORD.create();
+  ctx.targets.push(fakeTarget(60, 0));
+  inst.fire(ctx, chordTiers[3]);
+  inst.reset();
+  assert.equal(ctx.hits.length, 0, 'a reset chord lands no delayed damage');
+  assert.equal(ctx.slowLog.length, 0, 'and no delayed slow');
+  assert.equal(ctx.fxLog.length, 0, 'and pushes no fx');
+  assert.equal(ctx.rngDraws, 0, 'and never drew anything to begin with');
+}
+
 // ---------------------------------------------------------------------------
 // 11. THE WORLD SIDE OF THE SEAM: the tick call site.
 //
@@ -2617,12 +3139,19 @@ function worldStrike(opts: {
    *  push toward, not a hole in it — a method removed from here because the
    *  code left run.ts is the good ending, a method removed because it was
    *  RENAMED is the bad one, and the `methodBody` assert below is what tells
-   *  the two apart for everything still listed. When zones and wells follow,
-   *  this list shrinks to the two genuinely shared projectile loops. */
+   *  the two apart for everything still listed.
+   *
+   *  `updateZones` has now gone the same way with the CHORD (#141), and it is
+   *  the first one that mattered while it was still here: the chord's whole
+   *  pass lived inside a protected method, so "leave the loop and branch on
+   *  z.source" was never an option and the loop had to move. Zone storage stays
+   *  on the world; ticks, the Afterhours drift, the merge pass and retirement
+   *  are weapons/chord.ts, the array's sole mutator. When the wells follow with
+   *  the bell, this list shrinks to the two genuinely shared projectile
+   *  loops. */
   const PROTECTED_METHODS = [
     'updateProjectiles',
     'reflectProjectileFromArena',
-    'updateZones',
     'updateGravityWells',
   ] as const;
 
@@ -2653,14 +3182,12 @@ function worldStrike(opts: {
       snippet: 'this.damageEnemy(e, pr.damage, pr.role)',
       why: 'damage ATTRIBUTION — which weapon gets the credit, not which weapon acts',
     },
-    {
-      snippet: 'this.damageArea(z.x, z.y, z.radius, z.damage, z.source)',
-      why: 'damage attribution for a zone tick',
-    },
-    // `this.damageEnemy(enemy, wave.damage, wave.source)` was here, approved as
-    // damage attribution for a shockwave hit. It went with the whole shockwave
-    // loop when the bass extracted (#141); the module bills its ring through
-    // ctx.damage, whose role is bound at construction and cannot be forged.
+    // `this.damageArea(z.x, z.y, z.radius, z.damage, z.source)` was here,
+    // approved as damage attribution for a zone tick, and
+    // `this.damageEnemy(enemy, wave.damage, wave.source)` before it for a
+    // shockwave hit. Each went with its whole loop — the chord's and the bass's
+    // (#141) — and each module now bills through ctx.damage, whose role is
+    // bound at construction and cannot be forged.
   ];
 
   interface InterimException extends RoleUse {

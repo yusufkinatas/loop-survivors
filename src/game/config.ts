@@ -695,26 +695,6 @@ export interface WeaponConf {
 // per-TICK number that floors at 1, so their listed damage can't drop a full
 // third — their real output is damage x ticks x rate; they lean on coverage.
 export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
-  // Zone thrown onto the nearest pack: ticks damage and slows enemies
-  // inside. Chip damage + control; the slow is the identity. NOTE: zone
-  // `damage` is PER TICK (every ZONE_TICK_S) for the zone's whole life, so
-  // effective DPS = trigger rate x damage x (1 + floor(lifetimeS /
-  // ZONE_TICK_S)) — a zone spawns with tickT 0, so it always lands one tick
-  // immediately. Keep per-tick numbers tiny; chart density and lifetime
-  // multiply them.
-  // Lifetimes were once trimmed alongside the ~1/3 damage pass (per-tick is
-  // floored at 1, so it can't drop a full third). That trim made every zone
-  // die before the next trigger fired, so Chord read as ONE area teleporting
-  // around instead of a carpet building up. Lifetimes now outlive at least
-  // two trigger intervals, and ZONE_TICK_S was doubled to match: ticks per
-  // zone are unchanged at every tier, so total damage output is identical —
-  // only the visual and slow footprint grows.
-  chord: [
-    { damage: 1, radius: 48, lifetimeS: 2.0 },
-    { damage: 1, radius: 56, lifetimeS: 2.2 },
-    { damage: 1, radius: 64, lifetimeS: 2.5 },
-    { damage: 2, radius: 76, lifetimeS: 2.8 },
-  ],
   // Homing seeker per melody note: mid damage, never misses.
   lead: [
     { damage: 2, speed: 340, radius: 6, lifetimeS: 2.2, pierce: 1 },
@@ -745,12 +725,6 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
  *  change is discovered by ear. Lines state what the chart + stat change
  *  actually does. */
 export const TIER_LINES: Partial<Record<Role, string[]>> = {
-  chord: [
-    'zone on the nearest pack: damage + slow',
-    'zones twice as often',
-    'bigger, longer zones',
-    'the biggest, longest, hardest zones',
-  ],
   lead: [
     'a few homing seekers',
     'more seekers',
@@ -777,20 +751,6 @@ export const AIM_RANGE = 750;
 /** Angular offset between Double Take's extra shots and the aim line. Wide
  *  enough to read as a spread, tight enough that aimed weapons stay aimed. */
 export const MULTISHOT_FAN_RAD = 7 * Math.PI / 180;
-
-/** Zone damage tick interval (chord). Slower than M1's 0.3: the zone now
- *  lands on the pack, so its per-tick reach is the whole horde — the slow
- *  is the identity, the damage is chip. Doubled from 0.45 when chord
- *  lifetimes were raised so zones overlap: ticks per zone (1 + floor(lifeS /
- *  ZONE_TICK_S)) come out identical at every tier, so the longer zones cost
- *  no extra damage. Chord is the only weapon that spawns zones, so this
- *  cannot spill onto another kit. */
-export const ZONE_TICK_S = 0.9;
-
-/** Chord zones: enemy speed multiplier while inside, and how far a zone
- *  can be thrown toward the nearest pack. */
-export const ZONE_SLOW_MUL = 0.55;
-export const ZONE_THROW_RANGE = 420;
 
 // ---- weapon feel constants (Feature 3) ----
 
