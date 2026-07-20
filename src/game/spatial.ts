@@ -59,6 +59,23 @@ export class SpatialHash<T extends Circle> {
   }
 }
 
+/** Circle versus axis-aligned rectangle, exported for parity regression tests. */
+export function circleIntersectsRect(
+  cx: number,
+  cy: number,
+  radius: number,
+  rx: number,
+  ry: number,
+  halfW: number,
+  halfH: number,
+): boolean {
+  const qx = Math.max(rx - halfW, Math.min(cx, rx + halfW));
+  const qy = Math.max(ry - halfH, Math.min(cy, ry + halfH));
+  const dx = cx - qx;
+  const dy = cy - qy;
+  return dx * dx + dy * dy <= radius * radius;
+}
+
 export function circlesOverlap(a: Circle, b: Circle): boolean {
   const dx = a.x - b.x;
   const dy = a.y - b.y;

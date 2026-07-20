@@ -694,14 +694,6 @@ export interface WeaponConf {
 // per-TICK number that floors at 1, so their listed damage can't drop a full
 // third — their real output is damage x ticks x rate; they lean on coverage.
 export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
-  // The starting Kick uses Whip's horizontal pass-through strip instead of a
-  // radial aura. Damage/area/amount map to Whip levels 1, 3, 5 and 8.
-  kick: [
-    { damage: 3, area: 1, amount: 1 },
-    { damage: 5, area: 1, amount: 2 },
-    { damage: 9, area: 1.1, amount: 2 },
-    { damage: 15, area: 1.2, amount: 2 },
-  ],
   // Backbeat sniper: few, fast, hard-hitting, drills a line. The premium
   // single-target trigger — sparse chart, so each hit is a statement.
   snare: [
@@ -789,12 +781,6 @@ export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
  *  change is discovered by ear. Lines state what the chart + stat change
  *  actually does. */
 export const TIER_LINES: Partial<Record<Role, string[]>> = {
-  kick: [
-    'a facing-side strip, on the beat',
-    'adds an opposite-side follow-up',
-    'harder, wider double strike',
-    'maximum damage and reach',
-  ],
   snare: [
     'piercing shot on the backbeat',
     'fires twice as often, pierces 1 more',
@@ -872,6 +858,13 @@ export const ARP_OMEGA = 3.4;
 export const ORBIT_REHIT_S = 0.35;
 
 // ---- weapon feel constants (Feature 3) ----
+
+/** Height-normalized parity scale: the visible world is always 800 units tall,
+ *  so movement, colliders, strip geometry, and spawn/event ellipses keep the
+ *  researched proportions at every resolution. Shared world geometry — the
+ *  player foot offset and enemy collider sizing derive from it too, so it is
+ *  not owned by any one weapon module. */
+export const WORLD_SCALE = 800 / 456;
 
 /** How long an enemy rides a weapon shove before resuming its chase. */
 export const SHOVE_S = 0.12;

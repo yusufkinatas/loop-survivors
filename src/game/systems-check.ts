@@ -20,9 +20,19 @@ import {
   MetaStore,
   SHOP_OFFERS,
 } from './meta';
-import { ALL_ENEMY_KINDS, ENEMY_LABELS, RUN, STAGE_MAGNET, WEAPONS, type EnemyKind } from './config';
+import { ALL_ENEMY_KINDS, ENEMY_LABELS, RUN, SHOVE_S, STAGE_MAGNET, TIER_LINES, WEAPONS, type EnemyKind } from './config';
 import { rollOffers } from './picks';
-import { RunWorld, type RunEvents } from './run';
+import { KIT_COLORS, RunWorld, type FxEvent, type RunEvents } from './run';
+import {
+  KICK,
+  WEAPON_MODULES,
+  buildsAsProjectile,
+  weaponTiers,
+  type WeaponContext,
+  type WeaponInstance,
+  type WeaponTarget,
+} from './weapons';
+import { TIER_COUNT } from '../audio/charts';
 import {
   SANDBOX_ENEMY_CATALOG,
   SANDBOX_EVOLUTION_CATALOG,
@@ -105,7 +115,7 @@ assert.equal(canDispatchPhraseBoundary(10, 10.5, 9, true), true,
   'phrase-end cleanup must accept its intended elapsed boundary after a stall');
 assert((VOICE_MIX_GAIN.chord ?? 0) > 1 && (VOICE_MIX_GAIN.arp ?? 0) > 1,
   'chord and arp voices need calibrated lifts at the shared voice bus');
-const hatDamageLadder = WEAPONS.hat!.map(({ damage }) => damage);
+const hatDamageLadder = weaponTiers('hat')!.map(({ damage }) => damage);
 assert.deepEqual(hatDamageLadder, [2, 2, 2, 3]);
 assert(hatDamageLadder.every((damage, index) => index === 0 || damage >= hatDamageLadder[index - 1]),
   'raising base hi-hat damage must never make a later tier a downgrade');
@@ -595,4 +605,240 @@ assert(bystander.hp === bystanderHpBefore,
   'Two Hands must stay local: nothing at 300 units should be damaged');
 assert(cornerEnemy.hp === cornerHpBefore, 'Two Hands must not reach the arena corners');
 
-console.log('systems-check: items, note shop, Stage Magnet, enemies, endless director, and evolutions passed');
+// ---- weapon modules (#139) ----
+//
+// Roster invariants: cheap, and they catch a re-added shadow copy of a ladder
+// that the module is supposed to be the only owner of.
+for (const m of WEAPON_MODULES) {
+  assert.equal(m.stats.tiers.length, TIER_COUNT, `${m.role} needs one stat block per tier`);
+  assert.equal(m.stats.tierLines.length, TIER_COUNT, `${m.role} needs one pedestal line per tier`);
+}
+assert.equal(WEAPONS.kick, undefined, 'the kick module is the only copy of the kick ladder');
+assert.equal(TIER_LINES.kick, undefined, 'the kick module is the only copy of the kick pedestal copy');
+assert.equal(buildsAsProjectile('kick'), false,
+  'the kick must stay outside projectileDamageMul, as applyBuild had it');
+assert.equal(new Set(WEAPON_MODULES.map((m) => m.role)).size, WEAPON_MODULES.length,
+  'one module per weapon');
+
+// A weapon context small enough to hand-build. This is the falsifier for the
+// whole seam: if the fake cannot be written this small, the context leaked the
+// world. Its rng() THROWS, which turns "the kick draws nothing from the run
+// stream" into an executable assertion rather than a comment.
+interface FakeTarget extends WeaponTarget {
+  x: number;
+  y: number;
+  radius: number;
+  dead: boolean;
+  speed: number;
+  knockbackMul: number;
+  lastMoveX: number;
+  lastMoveY: number;
+  /** Fake-side bookkeeping; the real world sink owns hp. */
+  hp: number;
+}
+
+function fakeTarget(x: number, y: number, over: Partial<FakeTarget> = {}): FakeTarget {
+  return {
+    x, y, radius: 12, dead: false, speed: 60, knockbackMul: 1,
+    lastMoveX: 0, lastMoveY: 0, hp: 1e6, ...over,
+  };
+}
+
+class FakeCtx implements WeaponContext {
+  role: Role = 'kick';
+  color = KIT_COLORS.kick;
+  evolved = false;
+  timeS = 0;
+  player = { x: 0, y: 0, facingX: 1 as 1 | -1 };
+  worldW = 1422;
+  worldH = 800;
+  buildMods = deriveBuildMods(new Map());
+  readonly targets: FakeTarget[] = [];
+  readonly fxLog: FxEvent[] = [];
+  readonly hits: Array<{ t: FakeTarget; amount: number }> = [];
+  readonly knocks: string[] = [];
+  /** Interleaved effect order: the base strip pushes its whip BEFORE damage,
+   *  Redline Stomp pushes its beams AFTER. Both orderings are pinned. */
+  readonly seq: string[] = [];
+
+  rng(): number { throw new Error('the kick must draw nothing from the run stream'); }
+  near(x: number, y: number, r: number): readonly WeaponTarget[] {
+    return this.targets.filter((t) => Math.hypot(t.x - x, t.y - y) <= r + t.radius);
+  }
+  all(): readonly WeaponTarget[] { return this.targets; }
+  damage(t: WeaponTarget, amount: number): void {
+    const f = t as FakeTarget;
+    this.hits.push({ t: f, amount });
+    this.seq.push('damage');
+    f.hp -= amount;
+    if (f.hp <= 0) f.dead = true;
+  }
+  shove(_t: WeaponTarget, _x: number, _y: number, d: number): void { this.knocks.push(`shove:${d}`); }
+  setKnock(_t: WeaponTarget, vx: number, vy: number, s: number): void {
+    this.knocks.push(`knock:${vx},${vy},${s}`);
+  }
+  fx(e: FxEvent): void { this.fxLog.push(e); this.seq.push(e.type); }
+  step(inst: WeaponInstance, n: number): void {
+    for (let i = 0; i < n; i++) { this.timeS += 1 / 60; inst.tick!(this, 1 / 60); }
+  }
+  whips(): Array<Extract<FxEvent, { type: 'whip' }>> {
+    return this.fxLog.filter((e): e is Extract<FxEvent, { type: 'whip' }> => e.type === 'whip');
+  }
+}
+
+const kickTiers = KICK.stats.tiers;
+
+// 1. The base strip defers ENTIRELY: no damage and no fx at fire time.
+{
+  const ctx = new FakeCtx();
+  const inst = KICK.create();
+  ctx.targets.push(fakeTarget(120, 0));
+  inst.fire(ctx, kickTiers[0]);
+  assert.equal(ctx.hits.length, 0, 'the base kick deals no damage at fire time');
+  assert.equal(ctx.fxLog.length, 0, 'the base kick pushes no fx at fire time');
+}
+
+// 2. The whip fx precedes the strip's damage, and 3. a target ON the player is
+// hit on the very first tick, when the strip has grown to zero reach and the
+// rect has degenerated to the anchor point.
+{
+  const ctx = new FakeCtx();
+  const inst = KICK.create();
+  const pointBlank = fakeTarget(0, 0);
+  ctx.targets.push(pointBlank);
+  inst.fire(ctx, kickTiers[0]);
+  ctx.step(inst, 1);
+  assert.deepEqual(ctx.seq, ['whip', 'damage'],
+    'the base strip pushes its whip before it deals damage');
+  const whip = ctx.whips()[0];
+  assert.equal(whip.side, 1);
+  assert.equal(whip.area, 1);
+  assert.equal(whip.color, KIT_COLORS.kick);
+  assert.equal(ctx.hits.length, 1,
+    'a zero-size strip on its start frame still lands a point-blank hit');
+}
+
+// 4. One hit per strike across exactly twelve damage passes, and no damage on
+// the expiry frame.
+{
+  const ctx = new FakeCtx();
+  const inst = KICK.create();
+  ctx.targets.push(fakeTarget(60, 0));
+  inst.fire(ctx, kickTiers[0]);
+  ctx.step(inst, 12);
+  assert.equal(ctx.hits.length, 1, 'a strike hits each target once, not once per frame');
+  ctx.step(inst, 1);
+  assert.equal(ctx.hits.length, 1, 'the expiry frame runs no damage pass');
+  assert.equal(KICK.stats.liveS / (1 / 60), 12, 'a strike lives for exactly twelve damage passes');
+}
+
+// 5. The follow-up resamples LIVE player state at start: its side is the
+// inverse of the facing AT THAT MOMENT, not the inverse of its parent, so
+// turning around inside the gap puts both strips on the same side. It still
+// inherits the parent's frozen damage and area.
+{
+  const ctx = new FakeCtx();
+  const inst = KICK.create();
+  inst.fire(ctx, kickTiers[1]);
+  ctx.step(inst, 1);
+  ctx.player = { x: 300, y: 50, facingX: -1 };
+  ctx.step(inst, 6);
+  const whips = ctx.whips();
+  assert.equal(whips.length, 2, 'tier 2 schedules exactly one follow-up strip');
+  assert.equal(whips[1].x, 300, 'the follow-up samples the CURRENT player position');
+  assert.equal(whips[1].y, 50);
+  assert.equal(whips[0].side, 1);
+  assert.equal(whips[1].side, 1,
+    'turning around inside the gap puts the follow-up on the same side as its parent');
+  assert.equal(whips[1].area, whips[0].area, 'the follow-up inherits its parent frozen area');
+}
+
+// 6. spawnFollowUp is a BOOLEAN, not a count: amount 3 still yields one follow-up.
+{
+  const ctx = new FakeCtx();
+  const inst = KICK.create();
+  inst.fire(ctx, { damage: 5, area: 1, amount: 3 });
+  ctx.step(inst, 30);
+  assert.equal(ctx.whips().length, 2, 'amount above 2 must not grow a loop of follow-ups');
+}
+
+// 7. The two knock branches are deliberately asymmetric and must not be unified.
+{
+  const moving = new FakeCtx();
+  const movingInst = KICK.create();
+  moving.targets.push(fakeTarget(60, 0, { lastMoveX: 5, lastMoveY: 3 }));
+  movingInst.fire(moving, kickTiers[0]);
+  // Six ticks: the strip grows from zero reach, so a target at 60 units is
+  // only inside it once bodyScale has ramped. Per-strike dedup keeps this to
+  // exactly one knock however long it runs.
+  moving.step(movingInst, 6);
+  assert.deepEqual(moving.knocks, [`knock:-5,-3,${SHOVE_S}`],
+    'a moving target has its pursuit reversed, with the duration ASSIGNED');
+
+  const still = new FakeCtx();
+  const stillInst = KICK.create();
+  still.targets.push(fakeTarget(60, 0));
+  stillInst.fire(still, kickTiers[0]);
+  still.step(stillInst, 6);
+  assert.deepEqual(still.knocks, [`shove:${60 * SHOVE_S}`],
+    'a target that did not move last frame — every practice dummy — takes the shove fallback');
+
+  const immune = new FakeCtx();
+  const immuneInst = KICK.create();
+  immune.targets.push(fakeTarget(60, 0, { knockbackMul: 0, lastMoveX: 5 }));
+  immuneInst.fire(immune, kickTiers[0]);
+  immune.step(immuneInst, 6);
+  assert.deepEqual(immune.knocks, [], 'a knockback-immune target takes neither branch');
+}
+
+// 8. Redline Stomp resolves SYNCHRONOUSLY at fire time, and pushes its four
+// beams AFTER its damage — the opposite ordering from the base strip.
+{
+  const ctx = new FakeCtx();
+  const inst = KICK.create();
+  ctx.evolved = true;
+  const onArm = fakeTarget(700, 0);
+  const corner = fakeTarget(ctx.worldW * 0.45, ctx.worldH * 0.45);
+  ctx.targets.push(onArm, corner);
+  inst.fire(ctx, kickTiers[3]);
+  assert.equal(ctx.hits.length, 1, 'Redline Stomp damages on the trigger, with no tick');
+  assert.equal(ctx.hits[0].t, onArm);
+  assert.equal(ctx.hits[0].amount, kickTiers[3].damage * KICK.stats.evolvedDamageMul);
+  assert.deepEqual(ctx.seq, ['damage', 'beam', 'beam', 'beam', 'beam'],
+    'Redline Stomp pushes every beam after its damage');
+  const beams = ctx.fxLog.filter((e): e is Extract<FxEvent, { type: 'beam' }> => e.type === 'beam');
+  const reachX = ctx.worldW * KICK.stats.evolvedReachFrac;
+  const reachY = ctx.worldH * KICK.stats.evolvedReachFrac;
+  assert.deepEqual(beams.map((b) => [b.x2, b.y2]),
+    [[reachX, 0], [-reachX, 0], [0, reachY], [0, -reachY]],
+    'the four arms are emitted +X, -X, +Y, -Y');
+  // A still target — the shape every practice dummy has — is NOT skipped.
+  assert.equal(onArm.lastMoveX, 0);
+}
+
+// 9. The evolved shove reads the build; the base strip's deliberately does not.
+{
+  const ctx = new FakeCtx();
+  const inst = KICK.create();
+  ctx.evolved = true;
+  ctx.buildMods = { ...deriveBuildMods(new Map()), knockbackMul: 2 };
+  ctx.targets.push(fakeTarget(700, 0));
+  inst.fire(ctx, kickTiers[3]);
+  assert.deepEqual(ctx.knocks, [`shove:${KICK.stats.evolvedShove * 2}`],
+    'Redline Stomp scales its push by buildMods.knockbackMul');
+}
+
+// 10. reset() drops every scheduled strip, so clearSandboxEntities keeps its
+// promise that no delayed strike pointer survives.
+{
+  const ctx = new FakeCtx();
+  const inst = KICK.create();
+  ctx.targets.push(fakeTarget(60, 0));
+  inst.fire(ctx, kickTiers[1]);
+  inst.reset();
+  ctx.step(inst, 20);
+  assert.equal(ctx.hits.length, 0, 'a reset weapon lands no delayed damage');
+  assert.equal(ctx.fxLog.length, 0, 'a reset weapon pushes no delayed fx');
+}
+
+console.log('systems-check: items, note shop, Stage Magnet, enemies, endless director, evolutions, and weapon modules passed');

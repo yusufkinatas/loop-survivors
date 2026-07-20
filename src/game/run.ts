@@ -28,7 +28,7 @@ import {
   SPLITTER,
   TWO_HANDS,
   WEAPON_SHOVE,
-  WEAPONS,
+  WORLD_SCALE,
   ZONE_SLOW_MUL,
   ZONE_THROW_RANGE,
   ZONE_TICK_S,
@@ -60,56 +60,25 @@ import {
   endlessScale,
   waveRecipe,
 } from './tour';
+import {
+  WEAPON_MODULES,
+  buildsAsProjectile,
+  weaponTiers,
+  type TickPhase,
+  type WeaponContext,
+  type WeaponInstance,
+} from './weapons';
 
 /** Roles that emit a per-hit spark on impact. Bounded to low-count roles so
  *  a 500-enemy event frame never floods the fx queue. */
 const SPARK_HIT_ROLES = new Set<Role>(['snare', 'lead']);
 
-/** Circle versus axis-aligned rectangle, exported for parity regression tests. */
-export function circleIntersectsRect(
-  cx: number,
-  cy: number,
-  radius: number,
-  rx: number,
-  ry: number,
-  halfW: number,
-  halfH: number,
-): boolean {
-  const qx = Math.max(rx - halfW, Math.min(cx, rx + halfW));
-  const qy = Math.max(ry - halfH, Math.min(cy, ry + halfH));
-  const dx = cx - qx;
-  const dy = cy - qy;
-  return dx * dx + dy * dy <= radius * radius;
-}
-
-/** Whip-style facing strip geometry. baseWidth is the reach (kept short so it
- * stays a close-range crowd tool, not a screen-wide beam). */
-export const KICK_GEOMETRY = {
-  scale: 800 / 456,
-  baseWidth: 85 * (800 / 456),
-  baseHeight: 22 * (800 / 456),
-} as const;
-
 /** Source player sprite uses a feet anchor; the stored player position is its
  * circle center. This is the source feet offset normalized to H800. */
 export const PLAYER_FOOT_OFFSET = {
-  x: 1 * KICK_GEOMETRY.scale,
-  y: 7 * KICK_GEOMETRY.scale,
+  x: 1 * WORLD_SCALE,
+  y: 7 * WORLD_SCALE,
 } as const;
-
-export function kickStripCenter(
-  playerX: number,
-  playerY: number,
-  side: 1 | -1,
-  halfWidth: number,
-): { x: number; y: number } {
-  // Vertically centered on the player, inner edge at the player's center,
-  // reaching out to the facing side.
-  return {
-    x: playerX + side * halfWidth,
-    y: playerY,
-  };
-}
 
 interface Point { x: number; y: number }
 
@@ -487,22 +456,12 @@ export class RunWorld {
   private encoreDamageBonus = 0;
   private encoreMoveBonus = 0;
   private encoreAreaBonus = 0;
-  private pendingKick: Array<{
-    atS: number;
-    x: number;
-    y: number;
-    side: 1 | -1;
-    damage: number;
-    area: number;
-    started: boolean;
-    startedAt: number;
-    expiresAt: number;
-    samplePlayer: boolean;
-    spawnFollowUp: boolean;
-    /** Enemies already damaged by THIS strike, so its 200 ms hitbox lands one
-     *  hit per enemy across its frames while every new trigger hits fresh. */
-    hit: Set<Enemy>;
-  }> = [];
+  /** Per-run weapon-module state, one instance per migrated role. */
+  private readonly weapons = new Map<Role, WeaponInstance>();
+  /** The weapon context handed to each module: built once per role per world,
+   *  never per frame. Every query is a getter or a thunk, so nothing is
+   *  snapshotted. */
+  private readonly weaponCtx = new Map<Role, WeaponContext>();
   private scripted: boolean;
 
   constructor(
@@ -520,6 +479,55 @@ export class RunWorld {
     this.fx = (opts.fx ?? true) ? [] : null;
     if (opts.startingItem) this.items.set(opts.startingItem, 1);
     this.secondWindReady = opts.secondWind ?? false;
+    // Built after the stageMagnetRng seed draw above: the context factory draws
+    // no rng, so no draw moves.
+    for (const m of WEAPON_MODULES) {
+      this.weapons.set(m.role, m.create());
+      this.weaponCtx.set(m.role, this.makeWeaponContext(m.role));
+    }
+  }
+
+  /** The narrow surface the world hands a weapon module: queries about the
+   *  world in, effects out. This is the ONLY place a WeaponTarget is cast back
+   *  to a mutable Enemy — three casts, one file, all inside effects the world
+   *  implements. */
+  private makeWeaponContext(role: Role): WeaponContext {
+    const world = this;
+    // This context's private scratch buffer, so one weapon can never corrupt
+    // another's iteration. SpatialHash.query truncates on entry, so contents
+    // and order are unchanged from the shared queryBuf.
+    const buf: Enemy[] = [];
+    return {
+      role,
+      color: KIT_COLORS[role],
+      get evolved() { return world.evolved.has(role); },
+      get timeS() { return world.timeS; },
+      get player() { return world.player; },
+      get worldW() { return world.worldW; },
+      get worldH() { return world.worldH; },
+      get buildMods() { return world.buildMods; },
+      rng: () => world.rng(),
+      near: (x, y, r) => world.hash.query(x, y, r, buf),
+      all: () => world.enemies,
+      damage: (t, amount) => world.damageEnemy(t as Enemy, amount, role),
+      shove: (t, fx, fy, d) => world.shove(t as Enemy, fx, fy, d),
+      setKnock: (t, vx, vy, s) => {
+        const e = t as Enemy;
+        e.knockX = vx;
+        e.knockY = vy;
+        e.knockT = s;
+      },
+      fx: (event) => { world.fx?.push(event); },
+    };
+  }
+
+  /** Tick every migrated weapon pinned to this damage phase. Phase order is
+   *  the world's; array order decides only within a phase. */
+  private tickWeapons(phase: TickPhase, dt: number): void {
+    for (const m of WEAPON_MODULES) {
+      if (m.tickAt !== phase) continue;
+      this.weapons.get(m.role)!.tick?.(this.weaponCtx.get(m.role)!, dt);
+    }
   }
 
   get enemyCount(): number {
@@ -625,9 +633,9 @@ export class RunWorld {
   fireTrigger(t: ScheduledTrigger): void {
     const tier = this.tiers.get(t.role);
     if (!tier) return;
-    // WEAPONS is keyed on the supported catalog; a trigger only ever fires for
-    // an owned (hence supported) role, so the entry is always present.
-    let conf: WeaponConf = WEAPONS[t.role]![tier - 1];
+    // The roster is keyed on the supported catalog; a trigger only ever fires
+    // for an owned (hence supported) role, so the entry is always present.
+    let conf: WeaponConf = weaponTiers(t.role)![tier - 1];
     const color = KIT_COLORS[t.role];
     const p = this.player;
 
@@ -637,32 +645,15 @@ export class RunWorld {
     this.triggerCounts[t.role] = (this.triggerCounts[t.role] ?? 0) + 1;
     const evolved = this.evolved.has(t.role);
 
+    // A migrated weapon owns its whole identity behind the weapon context; the
+    // switch below is the shrinking remainder.
+    const weapon = this.weapons.get(t.role);
+    if (weapon) {
+      weapon.fire(this.weaponCtx.get(t.role)!, conf);
+      return;
+    }
+
     switch (t.role) {
-      case 'kick': {
-        if (evolved) {
-          this.fireRedlineStomp(conf, color);
-          break;
-        }
-        // Whip geometry and damage, while retaining Model A's audible Kick on
-        // every gameplay trigger. A per-enemy 1.35 s lock below preserves the
-        // reference weapon's target cadence despite the 122 BPM beat grid.
-        const side = p.facingX;
-        this.pendingKick.push({
-          atS: this.timeS,
-          x: p.x,
-          y: p.y,
-          side,
-          damage: conf.damage,
-          area: conf.area ?? 1,
-          started: false,
-          startedAt: 0,
-          expiresAt: 0,
-          samplePlayer: false,
-          spawnFollowUp: (conf.amount ?? 1) > 1,
-          hit: new Set(),
-        });
-        break;
-      }
       case 'chord': {
         // Thrown at the nearest enemy, not dropped underfoot: the zone has
         // to land where the horde actually is to be worth a pick.
@@ -766,8 +757,7 @@ export class RunWorld {
     // Antonio's passive adds 10% Might every ten levels, capped at +50%.
     const antonioMight = 1 + Math.min(5, Math.floor(this.level / 10)) * 0.1;
     const mods = this.buildMods;
-    const projectile = role === 'snare' || role === 'hat' || role === 'bass' ||
-      role === 'lead' || role === 'bell' || role === 'arp';
+    const projectile = buildsAsProjectile(role);
     return {
       ...conf,
       damage: conf.damage * this.powerMul * antonioMight * mods.damageMul *
@@ -870,7 +860,7 @@ export class RunWorld {
     this.resolveEnemyCollisions();
     this.hash.clear();
     for (const e of this.enemies) if (!e.dead) this.hash.insert(e);
-    this.updateKickStrikes();
+    this.tickWeapons('strikes', dt);
     this.updateClapPinches();
     this.updateProjectiles(dt);
     this.updateZones(dt);
@@ -1287,7 +1277,7 @@ export class RunWorld {
     const frame = frames[counter % frames.length];
     const requestedRadius = frame.width * 0.4;
     const effectiveRadius = Math.floor(requestedRadius);
-    const scale = KICK_GEOMETRY.scale;
+    const scale = WORLD_SCALE;
     // Phaser Body.setCircle(r, r/2, r/2), sprite origin (0.5, 1). Circle
     // intersection uses floor(r) as halfWidth; reconstruct feet from center.
     return {
@@ -1325,7 +1315,7 @@ export class RunWorld {
     this.shockwaves.length = 0;
     this.gravityWells.length = 0;
     if (this.fx) this.fx.length = 0;
-    this.pendingKick.length = 0;
+    for (const inst of this.weapons.values()) inst.reset();
     this.clapPinches.length = 0;
     this.overflowGem = null;
     this.overflowMusicNote = null;
@@ -1642,30 +1632,6 @@ export class RunWorld {
   }
 
   // ---- weapons ----
-
-  private fireRedlineStomp(conf: WeaponConf, color: number): void {
-    const reachX = this.worldW * 0.58;
-    const reachY = this.worldH * 0.58;
-    const half = KICK_GEOMETRY.baseHeight * (conf.area ?? 1) * 0.75;
-    const damage = conf.damage * 1.35;
-    const shove = 18 * this.buildMods.knockbackMul;
-    for (const enemy of this.enemies) {
-      if (enemy.dead) continue;
-      const dx = Math.abs(enemy.x - this.player.x);
-      const dy = Math.abs(enemy.y - this.player.y);
-      if ((dx <= reachX + enemy.radius && dy <= half + enemy.radius) ||
-          (dy <= reachY + enemy.radius && dx <= half + enemy.radius)) {
-        this.damageEnemy(enemy, damage, 'kick');
-        this.shove(enemy, this.player.x, this.player.y, shove);
-      }
-    }
-    for (const [x2, y2] of [
-      [this.player.x + reachX, this.player.y], [this.player.x - reachX, this.player.y],
-      [this.player.x, this.player.y + reachY], [this.player.x, this.player.y - reachY],
-    ] as const) {
-      this.fx?.push({ type: 'beam', x: this.player.x, y: this.player.y, x2, y2, width: half * 2, color });
-    }
-  }
 
   private damageLine(
     x: number,
@@ -2158,90 +2124,6 @@ export class RunWorld {
       }
       if (well.lifeS <= 0) this.gravityWells.splice(i, 1);
     }
-  }
-
-  private updateKickStrikes(): void {
-    for (let i = this.pendingKick.length - 1; i >= 0; i--) {
-      const strike = this.pendingKick[i];
-      if (!strike.started) {
-        if (strike.atS > this.timeS + 1e-9) continue;
-        strike.started = true;
-        strike.startedAt = this.timeS;
-        strike.expiresAt = this.timeS + 0.2;
-        if (strike.samplePlayer) {
-          strike.x = this.player.x;
-          strike.y = this.player.y;
-          strike.side = this.player.facingX === 1 ? -1 : 1;
-        }
-        if (strike.spawnFollowUp) {
-          // Schedule from the main strip's actual simulation start so fixed
-          // 60 Hz stepping preserves the full 100 ms interval.
-          this.pendingKick.push({
-            atS: this.timeS + 0.1,
-            x: 0,
-            y: 0,
-            side: 1,
-            damage: strike.damage,
-            area: strike.area,
-            started: false,
-            startedAt: 0,
-            expiresAt: 0,
-            samplePlayer: true,
-            spawnFollowUp: false,
-            hit: new Set(),
-          });
-        }
-        // Anchor at the player; the view bursts the pulse outward from here.
-        this.fx?.push({
-          type: 'whip',
-          x: strike.x,
-          y: strike.y,
-          side: strike.side,
-          area: strike.area,
-          color: KIT_COLORS.kick,
-        });
-      } else if (this.timeS + 1e-9 >= strike.expiresAt) {
-        this.pendingKick.splice(i, 1);
-        continue;
-      }
-
-      // Grow linearly from zero to full Area over 100 ms, then hold 100 ms;
-      // the inner edge stays pinned to the player as the reach extends.
-      const age = Math.max(0, this.timeS - strike.startedAt);
-      const bodyScale = Math.min(1, age / 0.1);
-      const halfW = (KICK_GEOMETRY.baseWidth * strike.area * bodyScale) / 2;
-      const halfH = (KICK_GEOMETRY.baseHeight * strike.area * bodyScale) / 2;
-      const center = kickStripCenter(strike.x, strike.y, strike.side, halfW);
-      const centerX = center.x;
-      const centerY = center.y;
-      const reach = Math.hypot(halfW, halfH) + 48;
-      const near = this.hash.query(centerX, centerY, reach, this.queryBuf);
-      for (const e of near) {
-        if (
-          e.dead ||
-          strike.hit.has(e) ||
-          !circleIntersectsRect(e.x, e.y, e.radius, centerX, centerY, halfW, halfH)
-        ) {
-          continue;
-        }
-        this.damageEnemy(e, strike.damage, 'kick');
-        strike.hit.add(e);
-        // Enemy hit response reverses pursuit for the same 120 ms flash,
-        // scaled by the source bestiary's knockback multiplier.
-        this.reverseForKick(e, strike.x, strike.y);
-      }
-    }
-  }
-
-  private reverseForKick(e: Enemy, fromX: number, fromY: number): void {
-    if (e.knockbackMul <= 0) return;
-    if (e.lastMoveX !== 0 || e.lastMoveY !== 0) {
-      e.knockX = -e.lastMoveX * e.knockbackMul;
-      e.knockY = -e.lastMoveY * e.knockbackMul;
-      e.knockT = SHOVE_S;
-      return;
-    }
-    this.shove(e, fromX, fromY, e.speed * SHOVE_S);
   }
 
   /** Clap: damage every enemy inside a forward cone (also point-blank). */

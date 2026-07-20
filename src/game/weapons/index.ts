@@ -1,0 +1,54 @@
+// The roster: one import site for weapon identity. A migrated weapon and a
+// not-yet-migrated one look identical to every consumer.
+
+import type { Role } from '../../audio/kits';
+import { TIER_LINES, WEAPONS, type WeaponConf } from '../config';
+import { KICK } from './kick';
+import type { WeaponModule } from './module';
+
+export type { WeaponContext, WeaponPlayer, WeaponTarget } from './context';
+export {
+  TICK_PHASES,
+  type TickPhase,
+  type ProjectileBehavior,
+  type WeaponInstance,
+  type WeaponModule,
+  type WeaponStats,
+} from './module';
+export { KICK, type KickStats } from './kick';
+
+/** Weapons that own their behavior behind the weapon context. A role absent
+ *  here still branches inside run.ts; this array emptying run.ts's switch is
+ *  the end state of the migration.
+ *
+ *  ORDERED. Array order is the tick order WITHIN a phase and is behavioral —
+ *  reordering it reorders damage and therefore the rng stream. Across phases,
+ *  TickPhase decides; array order never overrides it. */
+export const WEAPON_MODULES: readonly WeaponModule[] = [KICK];
+
+const BY_ROLE = new Map<Role, WeaponModule>(WEAPON_MODULES.map((m) => [m.role, m]));
+
+export function weaponModule(role: Role): WeaponModule | undefined {
+  return BY_ROLE.get(role);
+}
+
+/** Per-tier stats for any role, migrated or not. Modules win; config.WEAPONS is
+ *  the shrinking remainder that deletes itself when weapon nine lands. */
+export function weaponTiers(role: Role): readonly WeaponConf[] | undefined {
+  return BY_ROLE.get(role)?.stats.tiers ?? WEAPONS[role];
+}
+
+/** Per-tier pedestal copy, same merge rule. Zero readers today — this is the
+ *  door left open for when the pedestal wants copy, not a change. */
+export function weaponTierLines(role: Role): readonly string[] | undefined {
+  return BY_ROLE.get(role)?.stats.tierLines ?? TIER_LINES[role];
+}
+
+/** The world's former hardcoded projectile-role set, verbatim. Deletes itself
+ *  as weapons migrate. */
+const LEGACY_PROJECTILE_ROLES = new Set<Role>(['snare', 'hat', 'bass', 'lead', 'bell', 'arp']);
+
+export function buildsAsProjectile(role: Role): boolean {
+  const m = BY_ROLE.get(role);
+  return m ? m.stats.buildsAsProjectile : LEGACY_PROJECTILE_ROLES.has(role);
+}
