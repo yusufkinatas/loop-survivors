@@ -62,7 +62,6 @@ import {
 } from './tour';
 import {
   WEAPON_MODULES,
-  buildsAsProjectile,
   weaponTiers,
   type TickPhase,
   type WeaponContext,
@@ -641,7 +640,7 @@ export class RunWorld {
 
     // Single build-transform pipeline (D1): tempo compensation, folded in one
     // place — balance code multiplies here.
-    conf = this.applyBuild(t.role, conf);
+    conf = this.applyBuild(conf);
     this.triggerCounts[t.role] = (this.triggerCounts[t.role] ?? 0) + 1;
     const evolved = this.evolved.has(t.role);
 
@@ -752,16 +751,15 @@ export class RunWorld {
   }
 
   /** The single build-transform pipeline: soundset multiplier plus Antonio's
-   * documented level-based Might. */
-  private applyBuild(role: Role, conf: WeaponConf): WeaponConf {
+   * documented level-based Might. Role-independent since Needle Tips went
+   * pierce-only (#145) and took the projectile-damage gate with it. */
+  private applyBuild(conf: WeaponConf): WeaponConf {
     // Antonio's passive adds 10% Might every ten levels, capped at +50%.
     const antonioMight = 1 + Math.min(5, Math.floor(this.level / 10)) * 0.1;
     const mods = this.buildMods;
-    const projectile = buildsAsProjectile(role);
     return {
       ...conf,
-      damage: conf.damage * this.powerMul * antonioMight * mods.damageMul *
-        (projectile ? mods.projectileDamageMul : 1),
+      damage: conf.damage * this.powerMul * antonioMight * mods.damageMul,
       speed: conf.speed === undefined ? undefined : conf.speed * mods.projectileSpeedMul,
       radius: conf.radius === undefined ? undefined : conf.radius * mods.areaMul,
       lifetimeS: conf.lifetimeS === undefined ? undefined : conf.lifetimeS * mods.durationMul,

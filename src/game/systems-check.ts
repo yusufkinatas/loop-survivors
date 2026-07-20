@@ -56,7 +56,7 @@ const allItems = new Map<ItemId, number>(ITEM_IDS.map((id) => [id, 5]));
 const mods = deriveBuildMods(allItems);
 assert.equal(mods.moveMul, 1.2);
 assert.equal(mods.projectileSpeedMul, 2.0);
-assert.equal(mods.extraPierce, 3);
+assert.equal(mods.extraPierce, 5);
 assert.equal(mods.bounceCount, 3);
 assert.equal(mods.damageMul, 1.25);
 assert.equal(mods.maxHpBonus, 40);
@@ -64,6 +64,15 @@ assert.equal(mods.armorBonus, 2);
 assert.equal(mods.hpRegenPerSecond, 0.5);
 // Double Take stops at two levels, so the all-items-at-5 sweep clamps to 2.
 assert.equal(mods.extraProjectiles, 2);
+
+// Needle Tips is pierce-only (#145), so every one of its levels has to move
+// pierce — there is no damage rider left for a flat level to pay for. The old
+// [0,1,1,2,2,3] ladder would leave levels 2 and 4 doing literally nothing.
+for (let level = 1; level <= itemMaxLevel('needleTips'); level++) {
+  const at = (n: number) => deriveBuildMods(new Map<ItemId, number>([['needleTips', n]])).extraPierce;
+  assert.equal(at(level) - at(level - 1), 1,
+    `Needle Tips level ${level} must grant +1 pierce; a pierce-only item cannot have a no-op level`);
+}
 
 for (const id of ITEM_IDS) {
   assert.equal(ITEMS[id].levelLines.length, itemMaxLevel(id),

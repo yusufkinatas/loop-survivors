@@ -108,7 +108,7 @@ an evolution ingredient.
 | --- | --- | --- |
 | High-Tops | +20% movement speed | Kick |
 | Fast Forward | +100% speed for moving projectiles | Snare |
-| Needle Tips | +3 pierce and +12% moving-projectile damage | Lead |
+| Needle Tips | +5 pierce for moving projectiles | Lead |
 | Mirrorball | 3 wall bounces, retaining 85% power after each bounce | Hi-hat |
 | Wide Lens | +30% attack area and +15% orbit distance | Chord |
 | Heavy Amp | +25% damage and +20% enemy shove | Bass |

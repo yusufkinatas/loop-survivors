@@ -56,8 +56,8 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
   },
   needleTips: {
     id: 'needleTips', name: 'Needle Tips', shortName: 'Pierce', glyph: '◆',
-    description: 'Shots pass through more enemies and hit harder.', evolutionPartner: 'lead',
-    levelLines: ['+1 pierce', '+1 pierce, +6% shot damage', '+2 pierce, +6% shot damage', '+2 pierce, +12% shot damage', '+3 pierce, +12% shot damage'],
+    description: 'Shots pass through more enemies.', evolutionPartner: 'lead',
+    levelLines: ['+1 pierce', '+2 total pierce', '+3 total pierce', '+4 total pierce', '+5 total pierce'],
   },
   mirrorball: {
     id: 'mirrorball', name: 'Mirrorball', shortName: 'Bounce', glyph: '◇',
@@ -111,7 +111,6 @@ export function itemMaxLevel(id: ItemId): number {
 export interface BuildMods {
   moveMul: number;
   projectileSpeedMul: number;
-  projectileDamageMul: number;
   extraPierce: number;
   bounceCount: number;
   bounceRetention: number;
@@ -132,7 +131,6 @@ export interface BuildMods {
 export const BASE_BUILD_MODS: Readonly<BuildMods> = {
   moveMul: 1,
   projectileSpeedMul: 1,
-  projectileDamageMul: 1,
   extraPierce: 0,
   bounceCount: 0,
   bounceRetention: 0.65,
@@ -165,14 +163,16 @@ export function deriveBuildMods(items: ReadonlyMap<ItemId, number>): BuildMods {
   const jacket = itemLevel(items, 'paddedJacket');
   const recovery = itemLevel(items, 'recoveryTape');
   const duplicate = itemLevel(items, 'doubleTake');
-  const needlePierce = [0, 1, 1, 2, 2, 3][needle];
-  const needleDamage = [1, 1, 1.06, 1.06, 1.12, 1.12][needle];
+  // One item, one job: every level grants +1 pierce. The older [0,1,1,2,2,3]
+  // ladder only stepped on levels 1/3/5 because a damage rider paid for 2 and
+  // 4; with the rider gone (#145) an unchanged ladder would make those levels
+  // literal no-ops for every weapon.
+  const needlePierce = [0, 1, 2, 3, 4, 5][needle];
   const bounceCount = [0, 1, 1, 2, 2, 3][bounce];
   const bounceRetention = [0.65, 0.65, 0.75, 0.75, 0.85, 0.85][bounce];
   return {
     moveMul: 1 + move * 0.04,
     projectileSpeedMul: 1 + fast * 0.20,
-    projectileDamageMul: needleDamage,
     extraPierce: needlePierce,
     bounceCount,
     bounceRetention,
