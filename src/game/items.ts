@@ -22,7 +22,7 @@ export type ItemId = (typeof ITEM_IDS)[number];
 export const ITEM_MAX_LEVEL = 5;
 export const ITEM_SLOT_CAP = 6;
 
-/** Hue is the weapon language: every role owns one (`KIT_COLORS`). Passives
+/** Hue is the weapon language: every role owns one (`ROLE_COLORS`). Passives
  * deliberately share a single cool off-white so a glance separates "weapon"
  * from "passive", and the glyph alone identifies which passive it is. Keep the
  * `.item-socket` / `.pause-item` CSS fallbacks in `src/style.css` in sync. */

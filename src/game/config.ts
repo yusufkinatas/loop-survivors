@@ -682,6 +682,12 @@ export interface WeaponConf {
   area?: number;
   /** kick: slashes per trigger; the second lands on the opposite side. */
   amount?: number;
+  /** bell: how many shards this tier's note throws on its first hit. WAS
+   *  config.BELL.shards, a second per-tier table sitting beside the ladder and
+   *  indexed by the same tier; it is a rung's worth of tuning, so it rides the
+   *  rung (#141). The build transform does not touch it — `...conf` carries it
+   *  through applyBuild unchanged, exactly like `arc` and `amount`. */
+  shards?: number;
 }
 
 /** Per-trigger gameplay effect of each kit, one block per tier ([tier-1]).
@@ -694,29 +700,23 @@ export interface WeaponConf {
 // preserved (bass climbs hard, hat barely moves). Zone/DoT weapons carry a
 // per-TICK number that floors at 1, so their listed damage can't drop a full
 // third — their real output is damage x ticks x rate; they lean on coverage.
-export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
-  // Bell (band, Melody): a note lobbed straight that shatters into shards on
-  // its first hit (shard count per tier in BELL). radius = the shot's own size.
-  bell: [
-    { damage: 2, speed: 360, radius: 6, lifetimeS: 1.8, pierce: 1 },
-    { damage: 3, speed: 370, radius: 6, lifetimeS: 1.9, pierce: 1 },
-    { damage: 4, speed: 380, radius: 7, lifetimeS: 2.0, pierce: 1 },
-    { damage: 5, speed: 400, radius: 7, lifetimeS: 2.1, pierce: 2 },
-  ],
-};
+//
+// EMPTY, AND THAT IS #141'S FINISH LINE FOR THIS TABLE. Every ladder that used
+// to live here now lives in its own weapon module's uniform stats block, the
+// bell's being the last one out. `weaponTiers()` in weapons/index.ts still falls
+// back to this table for a role no module owns, and every role has a module, so
+// the fallback never fires today; the empty object is what systems-check's
+// per-role `WEAPONS.<role> === undefined` ratchet asserts against, one line per
+// weapon, which is why it is still exported rather than deleted outright.
+export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {};
 
 /** The one honest gameplay-effect line on each pick card ([tier-1]). Terse
  *  VS-style, zero music description: the sound
  *  change is discovered by ear. Lines state what the chart + stat change
  *  actually does. */
-export const TIER_LINES: Partial<Record<Role, string[]>> = {
-  bell: [
-    'a note that shatters into shards',
-    'more shards on the shatter',
-    'sharper shards, further',
-    'a burst of shards, pierces',
-  ],
-};
+// Empty for the same reason WEAPONS is: pedestal copy is part of a weapon's
+// identity and moved into the modules with the ladders (#141).
+export const TIER_LINES: Partial<Record<Role, string[]>> = {};
 
 /** How far weapons look for a target. */
 export const AIM_RANGE = 750;
@@ -748,16 +748,8 @@ export const SHOVE_S = 0.12;
 // belong to one weapon module, so the evolution's tuning cannot live in a
 // separate table in config.
 
-// ---- the shatter weapon ----
-
-/** Bell shatter: per-tier shard count, and the shard projectiles' stats. Shards
- *  fly out radially from the first hit; each is a small, short-lived bell shot
- *  that does not itself re-shatter. */
-export const BELL = {
-  shards: [4, 5, 6, 8],
-  shardSpeed: 320,
-  shardDamageMul: 0.5,
-  shardLifeS: 0.45,
-  shardRadius: 4,
-  shardPierce: 1,
-};
+// BELL IS GONE (#141), and it was the LAST weapon-specific block in this file.
+// The per-tier shard count became the `shards` rung field on WEAPONS.bell's
+// ladder — now BELL_STATS.tiers — and the five shard constants became named
+// stats in weapons/bell.ts. What is left in config.ts is global knobs only:
+// enemies, XP, damage feedback and run shape.

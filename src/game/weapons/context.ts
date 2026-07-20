@@ -4,8 +4,9 @@
 //
 // EVERY import here is type-only, so src/game/weapons/* has no runtime edge back
 // to run.ts and the graph stays acyclic (run.ts imports weapons/index.ts as a
-// value). That is why `color` is a context field instead of a module importing
-// KIT_COLORS, which is a value export of run.ts.
+// value). `color` stays a context field for the same reason every other query
+// is one — the world answers, the module asks — even though the hue itself now
+// comes from ROLE_META in audio/kits (#141) rather than a table in run.ts.
 //
 // Adding a member to this interface taxes every fake context in systems-check.
 // Add one when a weapon actually needs it, never speculatively.
@@ -13,9 +14,9 @@
 import type { Role } from '../../audio/kits';
 import type { WeaponConf } from '../config';
 import type { BuildMods } from '../items';
-import type { FxEvent, Projectile, Shockwave, Zone } from '../run';
+import type { FxEvent, GravityWell, Projectile, Shockwave, Zone } from '../run';
 
-/** Everything a weapon module may READ off an enemy — eight fields, all
+/** Everything a weapon module may READ off an enemy — nine fields, all
  *  readonly. `Enemy` satisfies this structurally, so the world hands its REAL
  *  objects across the seam and object identity survives: the kick's per-strike
  *  `Set<WeaponTarget>` dedup, and the strong references it holds for 200 ms to
@@ -38,6 +39,13 @@ export interface WeaponTarget {
   readonly speed: number;
   /** Per-bestiary knockback resistance; 0 means immune. */
   readonly knockbackMul: number;
+  /** Sandbox practice target: undying, immobile, harmless. Read by exactly one
+   *  weapon — a Gravity Bell's well SKIPS dummies rather than dragging them —
+   *  and that skip is observable precisely because a dummy is never reaped, so
+   *  a dragged one would still be sitting somewhere else at the end of the
+   *  frame. Do not confuse it with the `dead` guard beside it in the same loop,
+   *  whose effect reapEnemies discards the same frame. */
+  readonly dummy: boolean;
   /** Velocity the target actually moved by on the last movement step. Zeroed at
    *  the top of every frame and never set for practice dummies, which is why
    *  the kick's two knock branches are not interchangeable and a dummy always
@@ -59,7 +67,7 @@ export interface WeaponContext {
   /** The role every damage/kill is attributed to. Bound at construction, NOT a
    *  parameter, so a module physically cannot bill another weapon. */
   readonly role: Role;
-  /** KIT_COLORS[role]. One value for base and evolved alike. */
+  /** ROLE_COLORS[role]. One value for base and evolved alike. */
   readonly color: number;
   /** THE mode flip. A LIVE getter over RunWorld.evolved — not stored state — so
    *  there is no second source of truth and no sync hook at evolve() or
@@ -179,6 +187,23 @@ export interface WeaponContext {
    *  body and has no notion of a second place. */
   nearestEnemies(range: number, count: number): readonly WeaponTarget[];
 
+  /** The +pierce rule (Needle Tips), applied to a pierce budget the build
+   *  pipeline never saw. A finite budget gains buildMods.extraPierce; an
+   *  infinite one is already unbounded and comes back untouched.
+   *
+   *  `conf.pierce` ALREADY CARRIES THIS — applyBuild runs the same helper — so
+   *  this is not for a weapon's own ladder. It is for a pierce a module MINTS:
+   *  a bell shard is not a tier rung, its budget is a module stat, and nothing
+   *  in the build pipeline ever gets a chance to add the item's bonus to it.
+   *
+   *  IT EXISTS SO THE RULE STAYS IN ONE PLACE, and until #141 it was not: run.ts
+   *  computed the shard budget as `BELL.shardPierce + mods.extraPierce`, a bare
+   *  addition beside a helper whose doc comment claimed to be the only copy. The
+   *  two agreed only because the bell's 1 is finite. Routing the site here was
+   *  verified behaviour-identical against the parity baseline before the
+   *  extraction, not after. */
+  withExtraPierce(basePierce: number): number;
+
   /** The world's LIVE enemy array, in array order, by reference — not a copy,
    *  not a snapshot. Includes practice dummies and enemies spawned this frame
    *  that are not yet in the hash, both of which Redline Stomp hits today.
@@ -213,6 +238,25 @@ export interface WeaponContext {
    *  where every other weapon applies it. Two named primitives is how that
    *  asymmetry stays visible instead of being unified away. */
   setKnock(target: WeaponTarget, vx: number, vy: number, durationS: number): void;
+
+  /** Move a body DIRECTLY, by adding a world-space delta to its position. No
+   *  knock channel, no knockbackMul, no duration, no suppression of pursuit —
+   *  the body is simply somewhere else, and it chases again on the very next
+   *  movement step.
+   *
+   *  DELIBERATELY NOT A THIRD SPELLING OF shove(). shove() and setKnock() both
+   *  write a VELOCITY the world then rides for a while, which is why they
+   *  interact with each other and with Heavy Amp. A Gravity Bell's well does
+   *  not push, it DRAGS: it writes `enemy.x/y` every frame for its whole life,
+   *  capped at `min(distance, pullSpeed * dt)` so it can never overshoot its own
+   *  centre, and it neither reads nor disturbs a knock in flight. Expressing
+   *  that as a knock would change what happens when a body is shoved and pulled
+   *  in the same frame — today the pull wins, because the wells run last of all
+   *  the damage phases and write position after everything else wrote velocity.
+   *
+   *  The bell is the only caller. If a second weapon ever wants it, that is the
+   *  moment to ask whether it wants a drag or a knock. */
+  displace(target: WeaponTarget, dx: number, dy: number): void;
 
   /** Write the shared SLOW channel on a body: `mul` is FOLDED IN WITH min()
    *  against whatever is already there, `durationS` is ASSIGNED outright.
@@ -336,6 +380,59 @@ export interface WeaponContext {
    *  ran out of life and a zone absorbed by a merge leave this way; there is no
    *  world-side sweep. */
   retireZone(zone: Zone): void;
+
+  // ---------------- gravity wells (#141) ------------------------------------
+  //
+  // The FOURTH and LAST entity kind, and the one the note at the bottom of this
+  // file reserved by name. The bell is the weapon that needed it, and the shape
+  // is the same one projectiles, shockwaves and zones settled into: world-side
+  // STORAGE (view.ts draws world.gravityWells and clearSandboxEntities empties
+  // it), a spawn effect, and a query over this module's OWN wells.
+  //
+  // Like the shockwave and zone trios, and unlike the projectile one, the world
+  // has no update loop for these any more. RunWorld.updateGravityWells is gone
+  // and weapons/bell.ts is the array's SOLE MUTATOR. That was the last method in
+  // the shared-physics guard's protected set that belonged to one weapon, so the
+  // guard now watches only the two genuinely shared projectile loops.
+
+  /** Spawn one gravity well attributed to this weapon, and return the LIVE
+   *  object already in the world so the module's tick() can age it.
+   *
+   *  The module supplies the geometry and the burst payload; the world supplies
+   *  the identity (`source`, `color`) and the bookkeeping every well starts with
+   *  — `burst` false, i.e. its one burst is still owed. */
+  spawnGravityWell(spec: GravityWellSpec): GravityWell;
+
+  /** This weapon's live wells, in world-array order — oldest spawned first. A
+   *  fresh array per call, so it is safe to retire from while walking it. */
+  gravityWells(): readonly GravityWell[];
+
+  /** Remove one well from the world immediately, by identity. A well that ran
+   *  out of life leaves this way; there is no world-side sweep. */
+  retireGravityWell(well: GravityWell): void;
+}
+
+/** Everything a module chooses about a new gravity well. Deliberately NOT the
+ *  whole GravityWell: `source`, `color` and `burst` are the world's to fill in,
+ *  so they cannot be got wrong from a module. */
+export interface GravityWellSpec {
+  /** Well centre, in world coordinates. A POINT, not a body, and it never
+   *  moves: a well is anchored where the note that opened it made contact, and
+   *  the player walking away does not drag it. */
+  readonly x: number;
+  readonly y: number;
+  /** How far the pull reaches. Bodies outside are untouched. */
+  readonly radius: number;
+  /** Seconds the well lives. */
+  readonly lifeS: number;
+  /** Units per second a body is dragged toward the centre, capped per frame at
+   *  the remaining distance so the pull never overshoots. */
+  readonly pullSpeed: number;
+  /** Seconds until the well throws its single shard burst. Counts down from
+   *  spawn and is allowed to go negative; `burst` is what makes it once-only. */
+  readonly burstT: number;
+  /** Damage each shard of that burst carries. */
+  readonly burstDamage: number;
 }
 
 /** Everything a module chooses about a new zone. Deliberately NOT the whole
@@ -393,13 +490,13 @@ export interface ShockwaveSpec {
 
 // ---- deliberately ABSENT ----
 //
-// No spawnGravityWell: #140 needed projectiles and added exactly projectiles;
-// the bass (#141) needed shockwaves and added exactly shockwaves, and the chord
-// (#141) needed zones and added exactly zones — all three on the shape
-// spawnProjectile/projectiles/retireProjectile set, world-side STORAGE plus a
-// spawn effect plus a query over the module's own records. ONE entity kind is
-// left waiting for the first weapon that needs it: bell, for gravity wells. It
-// is not speculatively added here.
+// NOTHING IS WAITING ANY MORE. #140 needed projectiles and added exactly
+// projectiles; the bass (#141) needed shockwaves and added exactly shockwaves,
+// the chord (#141) needed zones and added exactly zones, and the bell (#141)
+// needed gravity wells and added exactly gravity wells — four entity kinds, all
+// four on the shape spawnProjectile/projectiles/retireProjectile set, world-side
+// STORAGE plus a spawn effect plus a query over the module's own records. The
+// world has no entity kind left that a module cannot own.
 //
 // Every member here is a tax on every fake context, so each one arrived with
 // the weapon that needed it. aimDir/aimFan/triggerCount left this list with the
@@ -407,7 +504,10 @@ export interface ShockwaveSpec {
 // (#141), which aims off its walk heading instead of ever consulting a target;
 // nearestEnemy and slow left with the chord (#141), which throws its zone at one
 // body and slows everything under it; nearestEnemies left with the clap (#141),
-// whose Two Hands is the only weapon that picks SEVERAL targets at once.
+// whose Two Hands is the only weapon that picks SEVERAL targets at once; and
+// displace, withExtraPierce and the gravity-well trio left with the BELL (#141),
+// the last weapon out, which drags bodies instead of knocking them and mints a
+// pierce budget the build pipeline never sees.
 //
 // No `world`, no mutable arrays, no `tiers`, no `level`, no `powerMul`, no
 // `applyBuild` — `conf` arrives already built.

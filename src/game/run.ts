@@ -6,12 +6,11 @@
 // This file is pure simulation: no rendering, input devices, or real-time
 // clock. Rendering lives in view.ts, which reads the world each frame.
 
-import type { Role } from '../audio/kits';
+import { ROLE_COLORS, type Role } from '../audio/kits';
 import type { ScheduledTrigger } from '../audio/engine';
 import {
   AIM_RANGE,
   MULTISHOT_FAN_RAD,
-  BELL,
   CIRCLER,
   DAMAGE_FEEDBACK,
   DARTER,
@@ -246,7 +245,14 @@ export interface GravityWell {
   color: number;
   burstT: number;
   burstDamage: number;
+  /** Whether the one shard burst this well owes has been thrown. The timer
+   *  above keeps counting past zero for the rest of the well's life, so this
+   *  flag — not the timer — is what makes the burst once-only. */
   burst: boolean;
+  /** Weapon that opened this well: its damage is attributed here, and the
+   *  owning weapon module (#141) is the only code that reads or writes anything
+   *  above. The world just carries it. */
+  source: Role;
 }
 
 /** A treasure chest dropped by a defeated elite/boss enemy. Walk into it to
@@ -321,24 +327,11 @@ export interface RunEvents {
   onMilestone?(id: 'first5m' | 'fullBand' | 'firstEvolution'): void;
 }
 
-export const KIT_COLORS: Record<Role, number> = {
-  kick: 0xff5a3c,
-  snare: 0xffc93c,
-  hat: 0x3ce0ff,
-  bass: 0xa06bff,
-  chord: 0x4dff88,
-  lead: 0xff6bd6,
-  clap: 0xff4f7d,
-  tom: 0xd08a4a,
-  arp: 0x33e6c2,
-  crash: 0xb9c2dd,
-  shaker: 0x7be0d0,
-  acid: 0xb6ff5a,
-  pluck: 0x8f7bff,
-  rhodes: 0x5ad1ff,
-  riser: 0xcbb4ff,
-  bell: 0xffd76b,
-};
+// KIT_COLORS IS GONE (#141). It was a sixteen-entry table of weapon hues living
+// here, character for character the same values as ROLE_META in audio/kits.ts —
+// two sources of truth for "the weapon's colour" that nothing checked against
+// each other. ROLE_META is the single one now, and ROLE_COLORS is its packed
+// 0xRRGGBB view, DERIVED from it rather than typed out again.
 
 export interface RunWorldOpts {
   /** False in the sandbox: no stage script, no waves, no victory timer. */
@@ -473,11 +466,11 @@ export class RunWorld {
 
   /** The narrow surface the world hands a weapon module: queries about the
    *  world in, effects out. This is the ONLY place a WeaponTarget is cast back
-   *  to a mutable Enemy — four casts, one file, all inside effects the world
+   *  to a mutable Enemy — five casts, one file, all inside effects the world
    *  implements. */
   private makeWeaponContext(role: Role): WeaponContext {
     const world = this;
-    const color = KIT_COLORS[role];
+    const color = ROLE_COLORS[role];
     // This context's private scratch buffer, so one weapon can never corrupt
     // another's iteration. SpatialHash.query truncates on entry, so contents
     // and order are unchanged from the shared queryBuf.
@@ -509,6 +502,15 @@ export class RunWorld {
         e.knockY = vy;
         e.knockT = s;
       },
+      /** A DIRECT position write, deliberately not the knock channel: a Gravity
+       *  Bell's well drags rather than pushes. The fifth and last cast back to
+       *  a mutable Enemy in this file. */
+      displace: (t, dx, dy) => {
+        const e = t as Enemy;
+        e.x += dx;
+        e.y += dy;
+      },
+      withExtraPierce: (basePierce) => world.withExtraPierce(basePierce),
       slow: (t, mul, durationS) => {
         const e = t as Enemy;
         e.slowT = durationS;
@@ -583,6 +585,33 @@ export class RunWorld {
       retireZone: (zone) => {
         const index = world.zones.indexOf(zone);
         if (index >= 0) world.zones.splice(index, 1);
+      },
+      // Gravity-well storage stays world-side for the fourth and last time and
+      // the same reason: view.ts draws world.gravityWells and
+      // clearSandboxEntities empties it. The world owns the ARRAY;
+      // weapons/bell.ts owns everything that happens to what is in it. There is
+      // no world-side gravity-well loop.
+      spawnGravityWell: (spec) => {
+        const well: GravityWell = {
+          x: spec.x,
+          y: spec.y,
+          radius: spec.radius,
+          lifeS: spec.lifeS,
+          pullSpeed: spec.pullSpeed,
+          burstT: spec.burstT,
+          burstDamage: spec.burstDamage,
+          // The world's own bookkeeping: a new well still owes its one burst.
+          burst: false,
+          color,
+          source: role,
+        };
+        world.gravityWells.push(well);
+        return well;
+      },
+      gravityWells: () => world.gravityWells.filter((well) => well.source === role),
+      retireGravityWell: (well) => {
+        const index = world.gravityWells.indexOf(well);
+        if (index >= 0) world.gravityWells.splice(index, 1);
       },
     };
   }
@@ -709,35 +738,25 @@ export class RunWorld {
     // The roster is keyed on the supported catalog; a trigger only ever fires
     // for an owned (hence supported) role, so the entry is always present.
     let conf: WeaponConf = weaponTiers(t.role)![tier - 1];
-    const color = KIT_COLORS[t.role];
 
     // Single build-transform pipeline (D1): tempo compensation, folded in one
     // place — balance code multiplies here.
     conf = this.applyBuild(conf);
     this.triggerCounts[t.role] = (this.triggerCounts[t.role] ?? 0) + 1;
 
-    // A migrated weapon owns its whole identity behind the weapon context; the
-    // switch below is the shrinking remainder.
-    const weapon = this.weapons.get(t.role);
-    if (weapon) {
-      weapon.fire(this.weaponCtx.get(t.role)!, conf);
-      return;
-    }
-
-    switch (t.role) {
-      case 'bell': {
-        // A note lobbed straight that shatters into shards on its first hit.
-        for (const dir of this.aimFan(0.1)) this.spawnBell(dir, conf, color);
-        break;
-      }
-    }
+    // A weapon owns its whole identity behind the weapon context. THE SWITCH
+    // THAT USED TO STAND HERE IS GONE (#141): the bell was its last case, and
+    // with it the last weapon-specific line in this file. A role with no module
+    // simply does nothing, which is the honest answer — there is no half-owned
+    // weapon left for the world to finish off.
+    this.weapons.get(t.role)?.fire(this.weaponCtx.get(t.role)!, conf);
   }
 
   /** Add a weapon or raise its tier. The pulse fires when the change lands
    *  (next-bar entry), so eye and ear agree on the moment. */
   addWeapon(role: Role, tier = 1): void {
     this.tiers.set(role, tier);
-    this.spawnRing(this.player.x, this.player.y, 220, KIT_COLORS[role], 0.6);
+    this.spawnRing(this.player.x, this.player.y, 220, ROLE_COLORS[role], 0.6);
     if (this.tiers.size >= 7) this.markMilestone('fullBand');
   }
 
@@ -888,7 +907,7 @@ export class RunWorld {
     this.updateProjectiles(dt);
     this.tickWeapons('zones', dt);
     this.tickWeapons('shockwaves', dt);
-    this.updateGravityWells(dt);
+    this.tickWeapons('wells', dt);
     this.updateStageMagnets(dt);
     this.updateGems(dt);
     this.updateMusicNotes(dt);
@@ -1495,7 +1514,7 @@ export class RunWorld {
           x: e.x,
           y: e.y - e.radius,
           amount: shown,
-          color: source ? KIT_COLORS[source] : 0xcfd2e0,
+          color: source ? ROLE_COLORS[source] : 0xcfd2e0,
         });
     }
     // Shielded: a shield pool absorbs damage before hp. Attribution stays
@@ -1808,101 +1827,17 @@ export class RunWorld {
     this.projectiles.push(projectile);
   }
 
-  /** Bell: a note lobbed straight that shatters into shards on its first hit.
-   *  The shatter count (per tier) rides on the shot; the shard spawn happens in
-   *  updateProjectiles when it lands its first hit. */
-  private spawnBell(
-    dir: { x: number; y: number },
-    conf: WeaponConf,
-    color: number,
-  ): void {
-    const tier = this.tiers.get('bell') ?? 1;
-    const pr = this.baseProjectile('bell', conf, color, conf.damage);
-    pr.vx = dir.x * conf.speed!;
-    pr.vy = dir.y * conf.speed!;
-    pr.shatter = BELL.shards[tier - 1] ?? BELL.shards[0];
-    if (pr.evolved) {
-      pr.damage *= 1.35;
-      pr.gravity = true;
-      pr.shatter = 10;
-    }
-    this.pushProjectile(pr);
-  }
-
-
-  /** Bell's shatter: fling a radial burst of small shard shots from (x,y). Each
-   *  shard is a bell projectile flagged so it can never itself re-shatter. */
-  private spawnShards(
-    x: number,
-    y: number,
-    count: number,
-    damage: number,
-    color: number,
-    gravity = false,
-  ): void {
-    const base = this.rng() * Math.PI * 2;
-    const mods = this.buildMods;
-    const shardRadius = BELL.shardRadius * mods.areaMul;
-    const shardLifeS = BELL.shardLifeS * mods.durationMul;
-    const shardPierce = BELL.shardPierce + mods.extraPierce;
-    const shardSpeed = BELL.shardSpeed * mods.projectileSpeedMul;
-    for (let i = 0; i < count; i++) {
-      const activeShards = this.projectiles.filter((projectile) => projectile.role === 'bell' && projectile.shard);
-      if (activeShards.length >= 36) {
-        const oldest = activeShards[0];
-        oldest.damage = Math.min(oldest.damage * 1.08, damage * 3);
-        oldest.lifeS = Math.max(oldest.lifeS, shardLifeS);
-        continue;
-      }
-      const a = base + (i / count) * Math.PI * 2;
-      const pr = this.baseProjectile(
-        'bell',
-        { damage, radius: shardRadius, lifetimeS: shardLifeS, pierce: shardPierce },
-        color,
-        damage,
-      );
-      pr.damage = damage;
-      pr.x = x;
-      pr.y = y;
-      pr.speed = shardSpeed;
-      pr.vx = Math.cos(a) * shardSpeed;
-      pr.vy = Math.sin(a) * shardSpeed;
-      pr.shard = true;
-      if (gravity) {
-        pr.homing = true;
-        pr.turnRate = 4;
-        pr.bounces = Math.max(1, pr.bounces);
-        pr.shatter = 0;
-      }
-      this.pushProjectile(pr);
-    }
-  }
-
-  private updateGravityWells(dt: number): void {
-    for (let i = this.gravityWells.length - 1; i >= 0; i--) {
-      const well = this.gravityWells[i];
-      well.lifeS -= dt;
-      well.burstT -= dt;
-      for (const enemy of this.enemies) {
-        if (enemy.dead) continue;
-        if (enemy.dummy) continue;
-        const dx = well.x - enemy.x;
-        const dy = well.y - enemy.y;
-        const distance = Math.hypot(dx, dy);
-        if (distance <= well.radius && distance > 1) {
-          const pull = Math.min(distance, well.pullSpeed * dt);
-          enemy.x += (dx / distance) * pull;
-          enemy.y += (dy / distance) * pull;
-        }
-      }
-      if (!well.burst && well.burstT <= 0) {
-        well.burst = true;
-        this.spawnShards(well.x, well.y, 10, well.burstDamage, well.color, true);
-        this.fx?.push({ type: 'spark', x: well.x, y: well.y, color: well.color, n: 10, spread: 24 });
-      }
-      if (well.lifeS <= 0) this.gravityWells.splice(i, 1);
-    }
-  }
+  // The bell left this file with its module (#141), and it took three methods
+  // with it: spawnBell, spawnShards and updateGravityWells. The world still
+  // STORES gravity wells — view.ts draws world.gravityWells and
+  // clearSandboxEntities empties it — but it no longer opens, ages, pulls,
+  // bursts or retires one: weapons/bell.ts owns all of it through
+  // ctx.spawnGravityWell / ctx.gravityWells / ctx.retireGravityWell, and its
+  // tick() runs in the 'wells' phase where updateGravityWells used to stand.
+  //
+  // updateGravityWells was the LAST entry in the shared-physics guard's
+  // protected set that belonged to a single weapon. With it gone the guard
+  // watches only the two loops that are genuinely shared by every weapon.
 
   /** The SHARED projectile loop. It owns travel, arena rails, the hit pass and
    *  the pierce rule for EVERY weapon, and — since #140 — it contains no
@@ -1967,21 +1902,14 @@ export class RunWorld {
         // the table with it. A weapon that knocks on a projectile hit does it from its own
         // ProjectileBehavior.onHit now — see SNARE_STATS.shove and
         // BASS_STATS.shove, both applied that way.
-        // The note shatters into a radial burst of shards on its first hit.
-        // shatter is 0 on every shot but a bell note, and 0 on a shard, so
-        // shards never re-shatter and no role compare is needed to say so.
-        if (pr.shatter > 0) {
-          if (pr.gravity) {
-            this.gravityWells.push({
-              x: pr.x, y: pr.y, radius: 130 * this.buildMods.areaMul, lifeS: 1.1, pullSpeed: 140,
-              color: pr.color, burstT: 0.35, burstDamage: pr.damage * 0.65, burst: false,
-            });
-          } else {
-            this.spawnShards(pr.x, pr.y, pr.shatter, pr.damage * BELL.shardDamageMul, pr.color);
-          }
-          this.fx?.push({ type: 'spark', x: e.x, y: e.y, color: pr.color, n: 6, spread: 14 });
-          pr.shatter = 0;
-        }
+        // The shatter branch that stood here is GONE (#141). It was already
+        // generic — it keyed on `pr.shatter > 0`, a field the bell's own spawner
+        // set, and named no role — but generic is not the same as SHARED: it
+        // called spawnShards and pushed a gravity well, which is one weapon's
+        // behavior sitting in everyone's loop. It moved into the bell module's
+        // ProjectileBehavior.onHit, which is the slot directly below and the one
+        // reserved for exactly this: after the loop deals pr.damage, before the
+        // shared pierce rule. The sequence is unchanged; only the owner is.
         // The shared pierce rule, and the one hook that can decline it. A
         // module returning false chips on a timer instead (ADR-0002); no hook
         // means spend, which is what every unmigrated role does today.
