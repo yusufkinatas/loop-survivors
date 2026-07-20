@@ -223,6 +223,59 @@ const SNARE_FILE: readonly (readonly [EnemyKind, number, number])[] = file(
   [70, 140, 210, 280, 350, 420, 490, 560],
 );
 
+/** FLOWERS, and the whole bass block rests on why. The bass is the widest and
+ *  slowest thing in the game — a tier-4 wave is radius 42 travelling 150 for
+ *  2.6s, and Subquake is a ring that grows from 40 to 288 over 1.2s — so both
+ *  halves of the weapon are pinned by WHERE THEIR EDGE IS at a given moment.
+ *  Every other body in the bestiary charges the player fast enough to cross
+ *  that edge on its own: a zombie closes 44.6 units per second, so over a
+ *  2.6-second wave it walks 116 units into a boundary the scenario is trying
+ *  to hold still. The flower moves at 8.9 — under 11 units across a whole
+ *  Subquake life — so a flower placed at radius R is still, to within a body's
+ *  width, at radius R when the edge arrives. It is the only body in the
+ *  bestiary that can hold a geometry pin for the seconds this weapon takes.
+ *
+ *  Flower radius is 17.544, so the swept band around a tier-N wave is
+ *  39.54 / 45.54 / 51.54 / 59.54 — four boundaries six units apart, which is
+ *  what makes the ladder's `radius` readable as hit-or-miss and not only as a
+ *  total. Rings, not files, for the same reason the arp uses them: a ring
+ *  samples every perpendicular distance from 0 to R at once, so one ring is a
+ *  fine comb across the wave's whole width instead of a single sample on the
+ *  axis. Ring counts are set so the arc spacing clears a flower's 35.1-unit
+ *  diameter and the separation pass inside world.update(0) leaves every body
+ *  exactly where this list puts it; phases are stepped so no two rings share
+ *  an angle and a pass through one is not also a pass through the next. */
+const BASS_SWEPT_FIELD: readonly (readonly [EnemyKind, number, number])[] = [
+  ...ring('flower', 60, 8, 0),
+  ...ring('flower', 140, 12, 0.13),
+  ...ring('flower', 220, 12, 0.26),
+  ...ring('flower', 300, 12, 0.39),
+  ...ring('flower', 380, 12, 0.52),
+  ...ring('flower', 460, 12, 0.65),
+];
+
+/** The same comb, spaced for SUBQUAKE'S ring rather than for a travelling
+ *  wave. The ring is player-centred and grows
+ *  `40 + (288 * areaMul - 40) * min(1, age / 1.2)`, so with no Wide Lens its
+ *  reach against a flower runs 57.5 at spawn to 305.5 at full extent. Rings
+ *  every 50 units out to 360 bracket that whole sweep, and — because the ring
+ *  passes each of them at a DIFFERENT MOMENT — a scenario that stops
+ *  mid-expansion reads the growth curve directly off which rings were reached.
+ *  Three stop times against these radii pin the start radius, the max radius
+ *  and the 1.2-second growth duration as three separately falsifiable numbers,
+ *  which matters because the digest's shockwave line carries only pos, damage
+ *  and life: `radius` and `maxRadius` are NOT digested and have no other
+ *  cover. */
+const BASS_QUAKE_FIELD: readonly (readonly [EnemyKind, number, number])[] = [
+  ...ring('flower', 60, 8, 0),
+  ...ring('flower', 110, 10, 0.21),
+  ...ring('flower', 160, 12, 0.42),
+  ...ring('flower', 210, 12, 0.63),
+  ...ring('flower', 260, 12, 0.84),
+  ...ring('flower', 310, 12, 1.05),
+  ...ring('flower', 360, 12, 1.26),
+];
+
 export const SCENARIOS: readonly ParityScenario[] = [
   // ---- the kick, solo, across the whole tier ladder -----------------------
   // One block per tier because the ladder is not one shape scaled four ways:
@@ -1852,6 +1905,648 @@ export const SCENARIOS: readonly ParityScenario[] = [
       { fire: 'hat' }, { fire: 'bell' }, { fire: 'arp' },
       { fire: 'hat' },
       { frames: 120 },
+    ],
+  },
+
+  // ==========================================================================
+  // THE BASS (#141)
+  // ==========================================================================
+  // Recorded BEFORE the extraction, on the unchanged run.ts, per the order at
+  // the top of this file.
+  //
+  // The bass is the fifth shape the migration has met, and the first whose two
+  // halves live in DIFFERENT WORLD ARRAYS, updated in different phases of the
+  // frame. The base weapon is a projectile — plain shared physics, no
+  // ProjectileBehavior at all — and the evolution is a SHOCKWAVE, which is a
+  // world entity with its own update loop that no weapon has ever owned.
+  //
+  //   base:    aimFan(0.08) -> one plain shot per direction, radius 22..42,
+  //            INFINITE PIERCE, riding shared travel and the arena rails, with
+  //            WEAPON_SHOVE.bass = 6 applied inside the shared projectile loop
+  //            and NO spark (bass is not in SPARK_HIT_ROLES).
+  //   evolved: spawnSubquake pushes ONE Shockwave onto world.shockwaves at the
+  //            player's position, and updateShockwaves — which runs in the
+  //            'shockwaves' phase, AFTER updateProjectiles and updateZones and
+  //            BEFORE updateGravityWells — grows and resolves it.
+  //
+  // WHAT MAKES THIS THE HARDEST ONE SO FAR: THE SHOCKWAVE IS VIEW-READ. view.ts
+  // iterates world.shockwaves, so storage STAYS world-side and only the update
+  // LOGIC moves into the module, which then becomes the array's sole mutator —
+  // the same split the arp made for projectiles. That is a seam with no
+  // precedent in this file, and the digest only helps so far: a shockwave's
+  // digest line is `pos / dmg / life` and NOTHING ELSE. radius, maxRadius, age,
+  // shove and the per-wave `hit` set are all invisible to it. Every one of
+  // those five is therefore pinned BEHAVIOURALLY below, or it is not pinned at
+  // all.
+  //
+  // NO FX, ANYWHERE. spawnSubquake pushes nothing and updateShockwaves pushes
+  // nothing; a Subquake's entire visual is view.ts reading the array. So in
+  // every evolved scenario here the ordered fx stream contains only the world's
+  // own 'dmg' events, and an extraction that "tidies up" by giving Subquake a
+  // ring or a slam it never had fails on the fx stream. The base wave is the
+  // same story for a different reason: bass is absent from SPARK_HIT_ROLES, so
+  // a bass hit lands damage and a shove and pushes no spark.
+  //
+  // ROLE-KEYED TABLES: WEAPON_SHOVE still reads { clap: 12, bass: 6 }. The
+  // bass's 6 leaves with this module; clap's 12 keeps the table (and the
+  // INTERIM_EXCEPTIONS entry) alive until the clap follows. Every base scenario
+  // below that lands a hit is pinning that 6 through the knock channel, which
+  // is its only observable — and the band scenarios are where a change to the
+  // shared table shows up as CLAP'S knock moving instead of the bass's.
+
+  // ---- the base ladder, as literals ---------------------------------------
+  // One live wave, nothing within reach, stopped in the air. The digested
+  // projectile line carries radius, damage, pierce/maxPierce, remaining life
+  // and velocity, so all five numbers of a tier's stats block are recorded as
+  // VALUES rather than only as consequences — and `pierce=Infinity/Infinity` is
+  // recorded as the literal string it prints as, which is the cheapest possible
+  // guard against an extraction that restates the infinity as a big finite
+  // number.
+  //
+  // The ring sits at 900, outside AIM_RANGE (750), so nothing is targetable:
+  // aimDir takes its EMPTY-SCREEN branch and draws TWICE (a random heading,
+  // then the jitter) instead of once. That is deliberate here — it means the
+  // stat row and the two-draw branch are pinned by the same four scenarios —
+  // and the heading it rolls is recorded as `v=` on the live wave.
+  ...([1, 2, 3, 4] as const).map((tier): ParityScenario => ({
+    name: `bass base tier ${tier}, solo, one live wave pins the stat row`,
+    seed: 0xba55000 + tier,
+    weapons: [['bass', tier]],
+    enemies: ring('flower', 900, 10),
+    hp: 1e6,
+    steps: [{ fire: 'bass' }, { frames: 20 }],
+  })),
+
+  // ---- the base ladder, as consequences -----------------------------------
+  // The behavioural half. The bass ladder moves FOUR numbers at once — damage
+  // 3/5/8/13, radius 22/28/34/42, speed 135/140/145/150, lifetime
+  // 2.3/2.4/2.5/2.6 — and the last three all show up as the same thing: which
+  // bodies the wave's edge reached, and how far out it got before it died.
+  // Against the concentric comb, radius decides how many bodies of each ring
+  // fall inside the swept band and speed x lifetime decides which rings are
+  // reached at all (310.5 / 336 / 362.5 / 390 units of raw travel, against
+  // rings out at 460).
+  //
+  // 160 frames is 2.67s, past even tier 4's 2.6s life, so every wave is GONE at
+  // the end and the digest is purely the field's record of what happened to it:
+  // hp for the damage, knock for the 6-unit shove, position for both.
+  ...([1, 2, 3, 4] as const).map((tier): ParityScenario => ({
+    name: `bass base tier ${tier}, solo, the wave's width and reach`,
+    seed: 0xba55100 + tier,
+    weapons: [['bass', tier]],
+    enemies: BASS_SWEPT_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'bass' }, { frames: 160 }],
+  })),
+
+  // The same ladder with natural hp, so kills, killsByRole, gem/note drops and
+  // every rng draw behind them are in the digest. BATS at 1hp: the bass is a
+  // wide slow sweep rather than a burst, so what its lethal half records is
+  // WHICH bodies the band reached and IN WHAT ORDER — and hash order is the
+  // order, because the base wave resolves inside the shared projectile loop
+  // against `this.hash.query(...)`. (Subquake's lethal coverage is separate and
+  // below, because it walks `this.enemies` in ARRAY order instead. The two
+  // orders are different and the extraction has to keep them different.)
+  ...([1, 4] as const).map((tier): ParityScenario => ({
+    name: `bass base tier ${tier}, solo, lethal bat field`,
+    seed: 0xba55200 + tier,
+    // Bat radius 12.28, so ring counts here are set against a 24.6 diameter
+    // rather than a flower's 35.1.
+    enemies: [
+      ...ring('bat', 70, 10),
+      ...ring('bat', 150, 14, 0.11),
+      ...ring('bat', 230, 14, 0.22),
+      ...ring('bat', 310, 14, 0.33),
+    ],
+    weapons: [['bass', tier]],
+    steps: [{ fire: 'bass' }, { frames: 160 }],
+  })),
+
+  // ---- infinite pierce is INFINITE ----------------------------------------
+  // The bass ladder carries `pierce: Infinity` at every tier, and the shared
+  // rule is `pr.pierce -= 1; if (pr.pierce <= 0)`. Infinity minus one is
+  // Infinity, so the subtraction runs on every hit and never bites: a bass wave
+  // is stopped by its LIFETIME and by nothing else. That is the identity of the
+  // weapon — "slow wide low wave that rolls through everything" — and it is
+  // exactly the property an extraction erases by restating the infinity as a
+  // number.
+  //
+  // Sixteen flowers in single file, spaced 40 (past a flower's 35.1 diameter,
+  // so the separation pass leaves them alone) and reaching x 655. Fast Forward
+  // and Extension Cable are in the build to buy the reach that gets a wave all
+  // the way down it: speed 150 x 1.20 = 180 and life 2.6 x 1.40 = 3.64, so raw
+  // travel is 655 rather than 390.
+  //
+  // NEEDLE TIPS AT MAX, for the same reason ADR-0002's arp scenario and
+  // Railshot's fifteen-deep file both carry it. withExtraPierce leaves an
+  // infinite pierce untouched, so +5 must be a total no-op here — and +5 is
+  // also precisely what would MASK a regression, by letting a wrongly-finite
+  // wave reach six bodies instead of one and still look roughly alive. Sixteen
+  // is well past anything +5 can cover.
+  {
+    name: 'bass base tier 4, infinite pierce down a sixteen-deep file',
+    seed: 0xba55917,
+    weapons: [['bass', 4]],
+    items: [['fastForward', 5], ['extensionCable', 5], ['needleTips', 5]],
+    enemies: file('flower', [
+      55, 95, 135, 175, 215, 255, 295, 335, 375, 415, 455, 495, 535, 575, 615, 655,
+    ]),
+    hp: 1e6,
+    steps: [{ fire: 'bass' }, { frames: 240 }],
+  },
+
+  // ---- the 6-unit shove ---------------------------------------------------
+  // WEAPON_SHOVE.bass = 6, scaled by buildMods.knockbackMul and then again by
+  // each body's own knockbackMul inside shove(). Heavy Amp at 5 makes the
+  // build's multiplier 1.20 so the constant is not sitting at identity, and the
+  // file below has FOUR different body-side multipliers on it — flower 1,
+  // skeleton 1, zombie 0.8, ghost 0 (immune) — so the whole chain from the
+  // constant to the knock channel is readable off one digest, including the
+  // early return that leaves an immune body's knock at exactly 0,0,0.
+  //
+  // This scenario is also where the ABSENCE of a spark is pinned. bass is not
+  // in SPARK_HIT_ROLES, so each of these hits pushes a 'dmg' event and nothing
+  // else; the ordered fx stream here contains no 'spark' line at all, and an
+  // extraction that gives the bass one fails on the fx stream before it fails
+  // anywhere else.
+  {
+    name: 'bass base tier 4 with Heavy Amp, the wave shoves 6 and sparks nothing',
+    seed: 0xba55510,
+    weapons: [['bass', 4]],
+    items: [['heavyAmp', 5]],
+    enemies: [
+      ['flower', 60, 0],
+      ['ghost', 130, 0],
+      ['zombie', 200, 0],
+      ['skeleton', 270, 0],
+      ['flower', 340, 0],
+      ['zombie', 150, 44],
+      ['ghost', 150, -44],
+    ],
+    hp: 1e6,
+    steps: [{ fire: 'bass' }, { frames: 90 }],
+  },
+
+  // ---- shared physics the base wave rides unchanged -----------------------
+  // The bass implements NO ProjectileBehavior: no steer, no onHit. That is a
+  // real claim about the extraction, not an absence of one — a module that
+  // gives the bass a steer() returning true silently exempts it from
+  // reflectProjectileFromArena exactly the way the arp is exempted, and nothing
+  // but a bouncing wave notices.
+  //
+  // Mirrorball at 5 is 3 bounces at 85% retention, and a bounce multiplies the
+  // shot's damage by that retention, so a bounced wave's `dmg=` is a literal
+  // record of how many rails it has met. Fast Forward and Extension Cable buy
+  // the reach to get to one: the rails sit at +-739 x and +-416 y for this
+  // canvas, the aim anchor out on the diagonal sends the wave into the y rail
+  // first, and 655 units of travel is enough to reach it and come back.
+  {
+    name: 'bass base tier 4 with Mirrorball, the wave rides the arena rails',
+    seed: 0xba5580c,
+    weapons: [['bass', 4]],
+    items: [['mirrorball', 5], ['fastForward', 5], ['extensionCable', 5]],
+    enemies: [
+      ['flower', 300, 300],
+      ...ring('flower', 540, 14, 0.09),
+      ...ring('flower', 700, 14, 0.31),
+    ],
+    hp: 1e6,
+    steps: [{ fire: 'bass' }, { frames: 220 }],
+  },
+
+  // ---- the fan ------------------------------------------------------------
+  // aimFan(0.08) aims ONCE and fans around that heading, so the whole trigger
+  // costs the same rng draws as a single wave — the "move the draw inside the
+  // loop" mistake the arp block calls out, in a weapon that goes through
+  // aimFan. Double Take clamps at level 2, so a trigger is 3 waves at the aim
+  // line and +-7 degrees off it. Two triggers, so the second trigger's
+  // independent draw is recorded too, and the second volley is still in the air
+  // at the end so all three headings are in the digest as velocities as well as
+  // as hits.
+  //
+  // The concentric comb is the field for the same reason it is elsewhere: three
+  // waves leaving on headings 7 degrees apart diverge to 49 units of separation
+  // by x 400, which is more than a tier-4 wave's own 42, so past that range the
+  // three lanes genuinely stop overlapping and the fan is doing something a
+  // single wide wave could not.
+  {
+    name: 'bass base tier 4 with Double Take, one aim draw fans three waves',
+    seed: 0xba552fa,
+    weapons: [['bass', 4]],
+    items: [['doubleTake', 2]],
+    enemies: BASS_SWEPT_FIELD,
+    hp: 1e6,
+    steps: [
+      { fire: 'bass' }, { frames: 30 },
+      { fire: 'bass' }, { frames: 100 },
+    ],
+  },
+
+  // ---- several waves at once ----------------------------------------------
+  // Four triggers on a beat grid. Each wave carries its OWN `hit` set, and
+  // because pierce is infinite NONE of them ever retires early, so all four are
+  // in the air together over the same field for most of the scenario — four
+  // independent hit sets sweeping one comb. A refactor that hoists the hit set
+  // onto the weapon instead of the shot collapses them into one and this
+  // scenario moves; so does one that gives the waves a shared pierce budget,
+  // because with four waves alive a budget that is being spent runs out.
+  {
+    name: 'bass base tier 4, four triggers on a beat grid',
+    seed: 0xba55b17,
+    weapons: [['bass', 4]],
+    enemies: BASS_SWEPT_FIELD,
+    hp: 1e6,
+    steps: [
+      { fire: 'bass' }, { frames: 9 },
+      { fire: 'bass' }, { frames: 9 },
+      { fire: 'bass' }, { frames: 9 },
+      { fire: 'bass' }, { frames: 160 },
+    ],
+  },
+
+  // ==========================================================================
+  // SUBQUAKE
+  // ==========================================================================
+  // The directional wave becomes an expanding, INFINITE-PIERCE SEISMIC RING:
+  // one Shockwave pushed at the player's position, growing
+  // `40 + (288 * areaMul - 40) * min(1, age / 1.2)` over a 1.2s life, dealing
+  // `conf.damage * 1.55` and shoving `14 * knockbackMul` to every body its edge
+  // crosses, once each.
+  //
+  // "Infinite pierce" here is a fact about the CODE, not a stat: updateShockwaves
+  // has no budget, no count and no cap anywhere in it. The only thing that stops
+  // a body being hit twice is the per-wave `hit` Set, and the only thing that
+  // stops the ring is its lifetime. As with Railshot, infinite means infinite —
+  // an extraction that names a finite number for it fails below.
+  //
+  // ONE NUMBER HERE IS GENUINELY UNOBSERVABLE, and it was found by trying to
+  // break these scenarios rather than by reading the code. spawnSubquake writes
+  // `radius: 40` onto the new Shockwave, and updateShockwaves OVERWRITES it —
+  // `wave.radius = 40 + (wave.maxRadius - 40) * min(1, wave.age / 1.2)` — on the
+  // very first tick, before any damage test reads it. The spawn-time write is
+  // therefore dead: changing that 40 to 44 leaves every scenario in this file
+  // green, and it is the only mutation tried against this block that did.
+  // (Changing the 40 inside updateShockwaves, which IS live, is caught.) The
+  // extraction must not read a passing check as evidence that the spawn-time
+  // value is preserved; if the module states a start radius as a named stat,
+  // that stat needs a LITERAL PIN in systems-check's fake-context checks,
+  // because world state cannot see it.
+  //
+  // Subquake's evolution item is Heavy Amp, so EVERY evolved scenario here
+  // necessarily carries knockbackMul 1.20 and damageMul 1.25. Neither the 14
+  // nor the 1.55 is ever sitting at identity, which is the opposite of a
+  // problem: it means a mutation to either one cannot hide behind a x1.
+
+  // ---- the growth curve ---------------------------------------------------
+  // FIVE STOP TIMES against one comb, and this is the only cover the ring's
+  // geometry has. `radius` and `maxRadius` are not digested; the ring passes
+  // each ring of flowers at a different moment; so stopping the scenario
+  // part-way through the expansion converts the growth curve into a hit set.
+  //
+  // THE STOP TIMES ARE CUT AGAINST THE CROSSINGS, not spaced evenly. With no
+  // Wide Lens the ring's reach against a flower (radius 17.544) is
+  // `40 + 248 * min(1, age / 1.2) + 17.544`, and a flower drifts inward 8.916
+  // per second while it waits, so ring R is crossed at
+  // `t = (R - 57.544) / 215.583`: frames 14.6, 28.5, 42.4, 56.3 and 70.3 for
+  // the 110, 160, 210, 260 and 310 rings. Each stop below sits a couple of
+  // frames PAST one of those, which puts that ring 6 to 10 units inside the
+  // edge and the next ring 40-odd units outside it — the same order of margin
+  // the Railshot range pins use, and close enough that a small change to any
+  // of the three constants moves a body across a boundary rather than merely
+  // nudging the arithmetic:
+  //   17 frames  reach 116.1  the 110 ring, by 8.6
+  //   31 frames  reach 164.3  the 160 ring, by 8.9
+  //   45 frames  reach 212.5  the 210 ring, by 9.2
+  //   59 frames  reach 260.8  the 260 ring, by 9.6
+  //   72 frames  reach 305.5  the 310 ring, by 6.2 — full extent
+  //
+  // Five readings of three separately falsifiable numbers. The early stops are
+  // dominated by the START radius of 40, the last by the MAX radius of 288, and
+  // the spacing BETWEEN them by the 1.2-second growth duration that maps one to
+  // the other: a duration change leaves the endpoints alone and slides every
+  // crossing in between, which is why one stop time could never have caught it.
+  //
+  // The first four leave the ring LIVE, so its `pos / dmg / life` row is
+  // recorded alongside the field it has just swept. The fifth does not: at 72
+  // frames the accumulated age passes 1.2, lifeS reaches 0 and the ring is
+  // spliced out in the same pass it deals its last damage in — which is itself
+  // the pin on the ring living exactly as long as it takes to finish growing.
+  ...([17, 31, 45, 59, 72] as const).map((frames): ParityScenario => ({
+    name: `bass evolved (Subquake), the ring ${frames} frames into its expansion`,
+    seed: 0xba55d00 + frames,
+    weapons: [['bass', 4]],
+    items: [['heavyAmp', 5]],
+    evolved: ['bass'],
+    enemies: BASS_QUAKE_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'bass' }, { frames }],
+  })),
+
+  // ---- the ring does not follow the player --------------------------------
+  // spawnSubquake reads `this.player.x/y` ONCE, at fire time, and writes them
+  // onto the Shockwave. updateShockwaves then never looks at the player again:
+  // it grows a ring around a point in the world. An extraction that reads
+  // ctx.player from inside tick() — the obvious shape, since ctx.player is
+  // documented as a LIVE getter and the kick depends on it being one — turns
+  // Subquake into a ring that drags along behind the player, and every scenario
+  // above still passes because in all of them the player never moves.
+  //
+  // Two independent records of the same fact. The digest's shockwave line
+  // carries `pos=`, so a ring that moved is a literal diff; and the field is
+  // split so it is a behavioural diff too. The inner ring of flowers is placed
+  // around the player's ORIGINAL position and is swept normally; the file out
+  // at +x is placed past the ring's 305-unit reach from there, but the player
+  // walks +x for the whole 1.2 seconds and ends up ~230 units along, which puts
+  // those bodies well inside a ring that had followed him.
+  {
+    name: 'bass evolved (Subquake), the ring stays where it was fired',
+    seed: 0xba55f13,
+    weapons: [['bass', 4]],
+    items: [['heavyAmp', 5], ['highTops', 5]],
+    evolved: ['bass'],
+    enemies: [
+      ...ring('flower', 110, 10),
+      ...ring('flower', 210, 12, 0.21),
+      ...file('flower', [400, 450, 500, 550, 600]),
+    ],
+    hp: 1e6,
+    steps: [
+      { walk: [1, 0] },
+      { frames: 10 },
+      { fire: 'bass' },
+      { frames: 60 },
+    ],
+  },
+
+  // ---- the ring reads areaMul, not conf.radius ----------------------------
+  // spawnSubquake computes its max radius as `288 * this.buildMods.areaMul` and
+  // NEVER READS conf.radius at all — the built 42 * areaMul that the base wave
+  // uses for its body is simply unused by the evolution. Those two are easy to
+  // confuse in an extraction that puts both modes behind one stats block, and
+  // they are numerically miles apart, so getting it wrong is loud.
+  //
+  // Wide Lens at 5 is areaMul 1.30, which moves the max radius from 288 to
+  // 374.4 and the reach against a flower from 305.5 to 391.9 — past the 360
+  // ring, which every scenario above leaves untouched. Run to 72 frames so the
+  // comparison against the 72-frame scenario above is a like-for-like: same
+  // field, same stop time, one item different, and the two hit sets must differ
+  // by exactly the 360 ring.
+  {
+    name: 'bass evolved (Subquake) with Wide Lens, the ring grows with areaMul',
+    seed: 0xba55a2e,
+    weapons: [['bass', 4]],
+    items: [['heavyAmp', 5], ['wideLens', 5]],
+    evolved: ['bass'],
+    enemies: BASS_QUAKE_FIELD,
+    hp: 1e6,
+    steps: [{ fire: 'bass' }, { frames: 72 }],
+  },
+
+  // ---- once per body, and no cap on how many bodies -----------------------
+  // TWO properties in one scenario, because one field proves both.
+  //
+  // ONCE PER BODY. The `hit` Set is the only thing standing between "the edge
+  // crossed you" and "you are inside the ring", and every body here is inside
+  // the ring for most of its life: the innermost flowers are swept at frame ~4
+  // and the ring keeps growing around them for another sixty. So the correct
+  // recorded damage is exactly 1x per body, and a lost hit set is not a subtle
+  // regression — it is roughly sixty times the damage. hp 1e6 keeps every body
+  // alive to record it rather than dying on the second tick and hiding it.
+  //
+  // NO CAP. Fifty-eight bodies are inside the ring at full extent, all of them
+  // damaged by one trigger. updateShockwaves has no budget of any kind, so an
+  // extraction that invents a `targets` or `maxHits` stat to describe "infinite
+  // pierce" fails here at whatever number it picked.
+  //
+  // 120 frames is well past the ring's 1.2s life, so the ring is gone and what
+  // is recorded is purely the field's account of it.
+  {
+    name: 'bass evolved (Subquake), one hit per body and no cap on bodies',
+    seed: 0xba55ca9,
+    weapons: [['bass', 4]],
+    items: [['heavyAmp', 5]],
+    evolved: ['bass'],
+    enemies: [
+      ...ring('flower', 60, 8),
+      ...ring('flower', 110, 10, 0.21),
+      ...ring('flower', 160, 12, 0.42),
+      ...ring('flower', 210, 12, 0.63),
+      ...ring('flower', 260, 12, 0.84),
+    ],
+    hp: 1e6,
+    steps: [{ fire: 'bass' }, { frames: 120 }],
+  },
+
+  // ---- the 14-unit shove --------------------------------------------------
+  // Subquake shoves 14 * buildMods.knockbackMul away from the RING'S CENTRE,
+  // which is the fire-time player position and not the ring's edge — a
+  // distinction with no other cover, since a body's knock vector points away
+  // from whichever origin shove() was handed. Heavy Amp is mandatory for the
+  // evolution so the build multiplier is 1.20; the four bodies below carry four
+  // different body-side multipliers (flower 1, skeleton 1, zombie 0.8, ghost 0)
+  // and sit at four different angles, so the direction and the magnitude of the
+  // chain are both readable off one digest.
+  //
+  // The damage multiplier is pinned in the same breath: 1.55 on top of a built
+  // 13 * 1.25, so each body records 25.1875 exactly.
+  {
+    name: 'bass evolved (Subquake), 1.55x damage and a 14-unit shove from the centre',
+    seed: 0xba55e14,
+    weapons: [['bass', 4]],
+    items: [['heavyAmp', 5]],
+    evolved: ['bass'],
+    enemies: [
+      ['flower', 90, 0],
+      ['zombie', 0, 120],
+      ['ghost', -150, 0],
+      ['skeleton', 0, -180],
+      ['flower', 160, 160],
+      ['zombie', -170, 170],
+    ],
+    hp: 1e6,
+    steps: [{ fire: 'bass' }, { frames: 100 }],
+  },
+
+  // ---- array order, and a field that grows under the loop -----------------
+  // updateShockwaves walks `for (const enemy of this.enemies)` — the LIVE enemy
+  // array, in ARRAY ORDER. Not hash order, which is what the base wave uses
+  // inside the shared projectile loop, and not distance order, which is what
+  // the expanding ring makes it LOOK like. So the order of a Subquake's damage
+  // is the SPAWN ORDER of the field, and every rng draw a kill triggers lands in
+  // that order.
+  //
+  // Splitters are how that becomes visible. A splitter bursting pushes four
+  // swarmers onto the end of the live array, and a JS array iterator re-reads
+  // length, so children pushed by a kill this ring made are visited BY THE SAME
+  // RING IN THE SAME PASS — and, spawning at their parent's position, they are
+  // already inside the ring's radius, so they are hit immediately rather than
+  // waiting for the edge to reach them. The collection grows under the loop
+  // that is walking it, exactly as it does for Redline Stomp, and a defensive
+  // copy of the array in the extraction deletes those hits and every draw
+  // behind them.
+  //
+  // THREE TRIGGERS, because one ring cannot kill a splitter. Evolved tier-4
+  // damage is 25.1875 against a splitter's 40hp, and the `hit` set caps a ring
+  // at one hit per body, so the kill can only come from a SECOND ring — which
+  // is also what puts two rings of different ages over the same field at once.
+  {
+    name: 'bass evolved (Subquake), lethal, splitters burst into the ring\'s own pass',
+    seed: 0xba55a44,
+    weapons: [['bass', 4]],
+    items: [['heavyAmp', 5]],
+    evolved: ['bass'],
+    enemies: [
+      ...ring('splitter', 70, 8),
+      ...ring('splitter', 140, 10, 0.31),
+      ...ring('splitter', 210, 10, 0.62),
+      ...ring('bat', 270, 12, 0.13),
+    ],
+    steps: [
+      { fire: 'bass' }, { frames: 20 },
+      { fire: 'bass' }, { frames: 20 },
+      { fire: 'bass' }, { frames: 140 },
+    ],
+  },
+
+  // ---- mid-evolve ---------------------------------------------------------
+  // A base wave still rolling when the bass evolves. This is the sharpest
+  // mid-evolve in the file so far, because the two modes do not merely coexist
+  // on one role — they coexist in DIFFERENT WORLD ARRAYS updated in DIFFERENT
+  // PHASES. The in-flight wave keeps being resolved by updateProjectiles with
+  // its infinite pierce and its 6-unit shove, while the next trigger pushes a
+  // Shockwave that updateShockwaves resolves two phases later in the same
+  // frame, over the same bodies, from the same role, with a different damage
+  // number and a different shove.
+  //
+  // The extraction has to keep those on separate paths AND in that order: the
+  // bass's tickAt is the 'shockwaves' phase, which runs after the shared
+  // projectile loop, so on any frame where both land the wave's damage is
+  // attributed first. Swap them and damageByRole is unchanged, every hp is
+  // unchanged, and only the ORDERED FX STREAM and the rng draw order say so.
+  //
+  // BUT NOT BY THIS SCENARIO, and the difference is worth stating rather than
+  // assuming. Hoisting updateShockwaves above updateProjectiles IS caught, and
+  // the scenario that catches it is the loaded evolved band at the bottom of
+  // this block — not this one. Here the ring and the wave end up acting on
+  // different bodies (the ring sweeps the near rings, the wave overtakes them
+  // and reaches the far file), so there is no frame on which both resolve
+  // against the same body and nothing for the order to change. What THIS
+  // scenario pins is that the two modes coexist at all: two arrays, two phases,
+  // one role, one frame. Phase ORDER is the band's job.
+  //
+  // The field is split for the same reason the hat's mid-evolve file is: the
+  // near cluster is what the ring reaches, the far file is what only the
+  // travelling wave reaches, so both modes have bodies of their own to act on
+  // and neither one's record is swallowed by the other's.
+  {
+    name: 'bass mid-evolve with a base wave still rolling',
+    seed: 0xba552ed,
+    weapons: [['bass', 4]],
+    items: [['heavyAmp', 5]],
+    enemies: [
+      ...ring('flower', 110, 10),
+      ...ring('flower', 210, 12, 0.21),
+      ...file('flower', [420, 460, 500, 540, 580]),
+    ],
+    hp: 1e6,
+    steps: [
+      { fire: 'bass' },
+      { frames: 6 },
+      { evolve: 'bass' },
+      { frames: 6 },
+      { fire: 'bass' },
+      { frames: 150 },
+    ],
+  },
+
+  // ---- the bass in a band -------------------------------------------------
+  // Ordering. The base wave shares the projectile array, the spatial hash, the
+  // rng stream and the WEAPON_SHOVE table with weapons that have not moved yet
+  // — CLAP is the other entry in that table, so a band scenario is the only
+  // place a change to it shows up as somebody else's knock moving. And because
+  // a bass wave is the longest-lived shot in the game outside an arp orbiter
+  // (2.6s, and it never spends pierce), it is still sweeping the field long
+  // after every other weapon's trigger has resolved, which is what makes it
+  // worth eight other weapons' worth of noise to record.
+  //
+  // The bass fires FIRST in each, so its wave is in the shared array before the
+  // other eight weapons' entities are — the ordering the extraction has to
+  // reproduce.
+  {
+    name: 'bass in a full band, base, damage meter',
+    seed: 0xba55ba1,
+    weapons: [
+      ['kick', 4], ['snare', 4], ['hat', 4], ['bass', 4], ['chord', 4],
+      ['lead', 4], ['clap', 4], ['bell', 4], ['arp', 4],
+    ],
+    enemies: BASS_SWEPT_FIELD,
+    hp: 1e6,
+    steps: [
+      { fire: 'bass' }, { fire: 'kick' }, { fire: 'snare' }, { fire: 'hat' },
+      { fire: 'chord' }, { fire: 'lead' }, { fire: 'clap' }, { fire: 'bell' },
+      { fire: 'arp' },
+      { frames: 160 },
+    ],
+  },
+  {
+    name: 'bass in a full band, base, lethal',
+    seed: 0xba55ba2,
+    weapons: [
+      ['kick', 4], ['snare', 4], ['hat', 4], ['bass', 4], ['chord', 4],
+      ['lead', 4], ['clap', 4], ['bell', 4], ['arp', 4],
+    ],
+    // SPLITTERS AT 40HP, for the reason the hat's lethal band scenario spells
+    // out: against a file of 10hp zombies the other eight weapons clear the
+    // field before the slow wave has crossed half of it, and the scenario
+    // records a band in which the bass did nothing. A 40hp body survives the
+    // opening volley, so the wave arrives to a field still standing — and the
+    // bursts grow the enemy array under every loop walking it.
+    enemies: [
+      ...ring('splitter', 90, 8),
+      ...ring('splitter', 180, 12, 0.21),
+      ...ring('splitter', 270, 12, 0.42),
+      ...ring('splitter', 360, 12, 0.63),
+    ],
+    steps: [
+      { fire: 'bass' }, { fire: 'kick' }, { fire: 'snare' }, { fire: 'hat' },
+      { fire: 'chord' }, { fire: 'lead' }, { fire: 'clap' }, { fire: 'bell' },
+      { fire: 'arp' },
+      { frames: 160 },
+    ],
+  },
+  {
+    name: 'bass in a full evolved band, loaded build, walking',
+    seed: 0xba55ba3,
+    weapons: [
+      ['kick', 4], ['snare', 4], ['hat', 4], ['bass', 4], ['chord', 4],
+      ['lead', 4], ['clap', 4], ['bell', 4], ['arp', 4],
+    ],
+    items: [
+      ['highTops', 5], ['fastForward', 5], ['mirrorball', 5], ['heavyAmp', 5],
+      ['wideLens', 5], ['needleTips', 5], ['paddedJacket', 5],
+      ['extensionCable', 5], ['magnetLanyard', 5], ['doubleTake', 2],
+    ],
+    evolved: ['kick', 'snare', 'hat', 'bass', 'chord', 'lead', 'clap', 'bell', 'arp'],
+    enemies: BASS_QUAKE_FIELD,
+    hp: 1e6,
+    // THE PLAYER WALKS, and for Subquake specifically that is not decoration:
+    // it is the only band scenario in which the ring's fire-time anchor and the
+    // player's position are ever different, so a ring that had learned to
+    // follow the player is caught here as well as in its own scenario — this
+    // time with eight other weapons' output on the same bodies to hide behind.
+    // Wide Lens is in the build, so the max radius is 374.4 rather than 288 and
+    // the areaMul read is under test inside a loaded band too.
+    //
+    // FOUR bass triggers, so four rings of four different ages overlap the same
+    // field while the anchor of each sits at a different point along the walk.
+    steps: [
+      { walk: [2, -1] },
+      { frames: 10 },
+      { fire: 'bass' }, { fire: 'kick' }, { fire: 'snare' }, { fire: 'hat' },
+      { fire: 'bass' }, { fire: 'chord' }, { fire: 'lead' }, { fire: 'clap' },
+      { fire: 'bass' }, { fire: 'bell' }, { fire: 'arp' },
+      { fire: 'bass' },
+      { frames: 160 },
     ],
   },
 ];
