@@ -1045,6 +1045,115 @@ button.big {
   margin-top: 6px;
 }
 
+/* A tuned roster is live outside the sandbox too, so the banner that says so
+   has to read as a state, not as another line of help text. */
+.sb-hint.sb-warn {
+  color: #ffcf5a;
+}
+
+/* ---- enemy lab ---- */
+
+/* Twenty kinds have to be pickable without scrolling the panel to its floor,
+   so the target picker is a dense grid rather than one button per row. */
+.sb-kind-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3px;
+}
+
+.sb-kind-grid .small {
+  padding-inline: 4px;
+  font-size: 9px;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-tune {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 4px 0 5px;
+  border-bottom: 1px solid #1c2a25;
+}
+
+.sb-tune-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.sb-tune-label {
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* The slider is for feel, the number box is for committing an exact value —
+   both write the same override, so they are styled as one control. */
+.sb-tune-num {
+  width: 82px;
+  padding: 3px 5px;
+  background: #060a10;
+  border: 1px solid #315a45;
+  border-radius: 2px;
+  color: #eafff8;
+  font: inherit;
+  font-size: 10px;
+  text-align: right;
+}
+
+.sb-tune-num.tuned,
+.sb-tune-slider.tuned {
+  border-color: var(--signal);
+  color: var(--signal);
+}
+
+/* Slider and its own revert button share a row, so the control and the thing
+   that undoes it read as one unit. */
+.sb-tune-track {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sb-tune-slider {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--signal);
+  height: 14px;
+  margin: 0;
+}
+
+.sb-btns .small.sb-tune-reset,
+.sb-tune-reset {
+  flex: none;
+  padding: 2px 6px;
+  min-width: 22px;
+  line-height: 1.1;
+}
+
+/* Untouched field: the button stays in place so rows do not reflow as values
+   are edited, but reads as unavailable rather than as a live control. */
+.sb-tune-reset:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.sb-tune-slider.tuned {
+  accent-color: #ffcf5a;
+}
+
+@media (max-width: 640px) {
+  /* Touch targets: a 14px-tall slider is not draggable with a thumb. */
+  .sb-tune-slider { height: 26px; }
+  .sb-tune-num { padding: 6px 5px; }
+}
+
 /* The minimal track overlay (hotkey C): a compact "now playing" readout,
    bottom-left — one slim row per active voice with a single-bar mini grid.
    Fixed narrow width, no scrolling; the arena stays visible. */

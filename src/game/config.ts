@@ -278,12 +278,19 @@ export interface EnemyConf {
   fixedDirection?: boolean;
   /** Source knockback multiplier: 0 ignores pushes, 1 receives them fully. */
   knockback?: number;
+  /** Uniform body scale, default 1. The one size lever that works for every
+   *  kind: frame-backed kinds derive their radius per-spawn from
+   *  MAD_FOREST_FRAMES and ignore `radius` entirely, so a single absolute
+   *  number cannot express their size. RunWorld multiplies the resolved body
+   *  radius and its foot offsets by this. */
+  sizeMul?: number;
 }
 
 /** Official-demo coordinate conversion, normalized from a 456-high legacy
  * world to the 800-high reference view, with current normal Mad Forest's
- * enemy MoveSpeed x1.1 modifier (official wiki revision 89346). */
-const ENEMY_SPEED_UNIT = 0.231 * (800 / 456) * 1.1;
+ * enemy MoveSpeed x1.1 modifier (official wiki revision 89346). Exported so
+ * the enemy lab can print tuned speeds back in this file's own idiom. */
+export const ENEMY_SPEED_UNIT = 0.231 * (800 / 456) * 1.1;
 
 /** Phaser 3.55 floors the half-width used by circle intersection after the
  * source requests a radius of 40% of the active atlas-frame width. */
@@ -508,9 +515,12 @@ export const ENEMY_LABELS: Record<EnemyKind, string> = {
 
 /** Base spawn-time stats before endless-minute scaling. Contact `damage` is
  * deliberately raw Power: RunWorld subtracts the player's current armor at
- * collision time so Padded Jacket also protects against enemies already alive. */
-export function madForestEnemyStats(kind: EnemyKind, playerLevel: number) {
-  const conf = ENEMIES[kind];
+ * collision time so Padded Jacket also protects against enemies already alive.
+ *
+ * Takes a conf rather than a kind so the enemy lab can push the SAME derivation
+ * through its edited values — see enemyStats in enemy-tuning.ts. Pass
+ * ENEMIES[kind] for the shipped baseline. */
+export function madForestEnemyStats(conf: EnemyConf, playerLevel: number) {
   return {
     radius: conf.radius,
     hp: conf.hp * (conf.hpPerLevel ? Math.max(1, playerLevel) : 1),

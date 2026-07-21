@@ -9,9 +9,24 @@ import { supportedRoles } from '../audio/soundset';
 import {
   ALL_ENEMY_KINDS,
   ENEMY_LABELS,
-  madForestEnemyStats,
   type EnemyKind,
 } from './config';
+import {
+  TUNABLE_FIELDS,
+  enemyStats,
+  exportTuning,
+  fieldRange,
+  isFieldTuned,
+  isTuned,
+  resetTuning,
+  resetTuningField,
+  setTuning,
+  shippedValue,
+  tunedKindCount,
+  tunedValue,
+  type TunableField,
+  type TunableKey,
+} from './enemy-tuning';
 import { TIER_NUMERALS } from './hud';
 import {
   EVOLUTION_BY_ROLE,
@@ -37,7 +52,7 @@ const SANDBOX_ITEM_CATALOG: readonly ItemId[] = ITEM_IDS;
  *  nothing outside this panel should treat it as one. */
 const EVOLVED_RUNG = 5;
 
-type TabId = 'combat' | 'build' | 'career';
+type TabId = 'combat' | 'enemies' | 'build' | 'career';
 
 export interface SandboxPanel {
   /** Refresh readouts after the world has taken its fixed steps for this frame. */
@@ -73,6 +88,8 @@ export function mountSandboxPanel(
   let activeTab: TabId = 'combat';
   let collapsed = false;
   let lastStatsKey = '';
+  /** Bumped on every lab edit so the cached catalog readout re-derives. */
+  let tuningRevision = 0;
 
   const panel = document.createElement('div');
   panel.className = 'sandbox-panel';
@@ -127,11 +144,12 @@ export function mountSandboxPanel(
   const tabBar = el('div', 'sb-btns sb-controls', panel);
   tabBar.style.marginLeft = '0';
   tabBar.style.display = 'grid';
-  tabBar.style.gridTemplateColumns = 'repeat(3, minmax(0, 1fr))';
+  tabBar.style.gridTemplateColumns = 'repeat(4, minmax(0, 1fr))';
   const tabButtons = new Map<TabId, HTMLButtonElement>();
   const pages = new Map<TabId, HTMLElement>();
   const tabLabels: Array<[TabId, string]> = [
     ['combat', 'Combat'],
+    ['enemies', 'Lab'],
     ['build', 'Build'],
     ['career', 'Career'],
   ];
@@ -146,6 +164,7 @@ export function mountSandboxPanel(
   }
 
   const combat = pages.get('combat')!;
+  const lab = pages.get('enemies')!;
   const build = pages.get('build')!;
   const careerPage = pages.get('career')!;
 
@@ -200,13 +219,13 @@ export function mountSandboxPanel(
   });
 
   section(combat, 'complete enemy catalog');
-  const enemyStats = new Map<EnemyKind, HTMLElement>();
+  const enemyStatNodes = new Map<EnemyKind, HTMLElement>();
   for (const kind of SANDBOX_ENEMY_CATALOG) {
     const row = el('div', 'sb-enemy', combat);
     const info = el('div', 'sb-enemy-info', row);
     const name = el('span', 'sb-enemy-name', info, ENEMY_LABELS[kind]);
     name.title = kind;
-    enemyStats.set(kind, el('span', 'sb-enemy-stats', info));
+    enemyStatNodes.set(kind, el('span', 'sb-enemy-stats', info));
     const controls = el('div', 'sb-btns', row);
     button(controls, 'near', () => {
       world.spawnEnemyAt(kind, world.player.x + 190, world.player.y);
@@ -223,6 +242,117 @@ export function mountSandboxPanel(
     });
     button(controls, 'ring', () => world.spawnRingOf(kind, 24));
   }
+
+  // -----------------------------------------------------------------------
+  // Enemy lab: edit one kind's base numbers with its horde on the screen.
+  //
+  // One kind at a time, not a wall of every kind's every stat: the roster is
+  // twenty deep and six fields wide, and a 420px panel that shows all 120 at
+  // once shows none of them usefully. Picking a target first also gives the
+  // spawn buttons an obvious subject.
+
+  section(lab, 'tuning target');
+  const labBanner = el('div', 'sb-hint', lab);
+  labBanner.style.marginTop = '0';
+  const kindGrid = el('div', 'sb-kind-grid', lab);
+  const kindButtons = new Map<EnemyKind, HTMLButtonElement>();
+  // The stage's opening enemy: the one whose feel is judged most often.
+  let labKind: EnemyKind = 'redBat2';
+  for (const kind of SANDBOX_ENEMY_CATALOG) {
+    const pick = button(kindGrid, ENEMY_LABELS[kind], () => {
+      labKind = kind;
+    });
+    pick.title = kind;
+    kindButtons.set(kind, pick);
+  }
+
+  const labSpawn = el('div', 'sb-btns sb-controls', lab);
+  labSpawn.style.marginLeft = '0';
+  button(labSpawn, 'NEAR', () => {
+    world.spawnEnemyAt(labKind, world.player.x + 190, world.player.y);
+  });
+  button(labSpawn, '×8', () => {
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2;
+      world.spawnEnemyAt(
+        labKind,
+        world.player.x + Math.cos(angle) * 245,
+        world.player.y + Math.sin(angle) * 185,
+      );
+    }
+  });
+  button(labSpawn, 'RING ×24', () => world.spawnRingOf(labKind, 24));
+  button(labSpawn, 'CLEAR FIELD', () => {
+    engine.clearBarQueue();
+    world.clearSandboxEntities();
+  });
+
+  section(lab, 'base stats');
+  // The endless-minute scale stated ONCE for the whole tab. Every row used to
+  // carry its own scaled number, which read as a second copy of the value in
+  // the box rather than as "and this is what actually spawns at minute 8".
+  const scaleNote = el('div', 'sb-hint', lab);
+  scaleNote.style.marginTop = '0';
+  interface TuneRow {
+    field: TunableField;
+    slider: HTMLInputElement;
+    number: HTMLInputElement;
+    reset: HTMLButtonElement;
+    readout: HTMLElement;
+  }
+  const tuneRows: TuneRow[] = [];
+  for (const field of TUNABLE_FIELDS) {
+    const row = el('div', 'sb-tune', lab);
+    const headRow = el('div', 'sb-tune-head', row);
+    const label = el('span', 'sb-tune-label', headRow, field.label);
+    label.title = field.hint;
+    const number = document.createElement('input');
+    number.type = 'number';
+    number.className = 'sb-tune-num';
+    headRow.appendChild(number);
+    const track = el('div', 'sb-tune-track', row);
+    const slider = document.createElement('input');
+    slider.type = 'range';
+    slider.className = 'sb-tune-slider';
+    track.appendChild(slider);
+    // Per-field revert. Sits at the end of its own slider so the thing it
+    // undoes is unambiguous; RESET KIND below still drops the whole set.
+    const reset = button(track, '↺', () => {
+      resetTuningField(labKind, field.key);
+      tuningRevision++;
+      world.retuneAliveEnemies();
+    });
+    reset.classList.add('sb-tune-reset');
+    const readout = el('span', 'sb-enemy-stats', row);
+    // 'input' not 'change': the horde must move while the slider is moving,
+    // which is the entire reason this is a slider and not a text box.
+    slider.oninput = () => applyTuning(field.key, Number(slider.value));
+    number.onchange = () => applyTuning(field.key, Number(number.value));
+    tuneRows.push({ field, slider, number, reset, readout });
+  }
+
+  const labActions = el('div', 'sb-btns sb-controls', lab);
+  labActions.style.marginLeft = '0';
+  const resetKindButton = button(labActions, 'RESET KIND', () => {
+    resetTuning(labKind);
+    tuningRevision++;
+    world.retuneAliveEnemies();
+  });
+  const resetAllButton = button(labActions, 'RESET ALL', () => {
+    resetTuning(null);
+    tuningRevision++;
+    world.retuneAliveEnemies();
+  });
+  const exportButton = button(labActions, 'COPY CONFIG', () => {
+    copyExport();
+  });
+  const labFooter = el('div', 'sb-hint', lab);
+  labFooter.textContent =
+    'Edits are live: the horde already on screen retunes as you drag, keeping the ' +
+    'damage it has taken. They also persist across reloads and apply to ordinary ' +
+    'runs — COPY CONFIG gives you pasteable config.ts, RESET ALL puts the shipped ' +
+    'numbers back.';
+  const exportStatus = el('div', 'sb-hint', lab);
 
   // -----------------------------------------------------------------------
   // Build: all supported weapons, all passives, every complete evolution.
@@ -410,6 +540,87 @@ export function mountSandboxPanel(
     shopButtons.set(offer.id, buy);
   }
 
+  /** One edit: store it, bring the live horde in line, redraw the readouts. */
+  function applyTuning(key: TunableKey, value: number): void {
+    if (!Number.isFinite(value)) return;
+    setTuning(labKind, key, value);
+    tuningRevision++;
+    world.retuneAliveEnemies();
+    refresh();
+  }
+
+  function copyExport(): void {
+    const text = exportTuning();
+    const kinds = tunedKindCount();
+    // Clipboard access needs a secure context, which a dev server reached over
+    // plain http (a phone on the LAN) does not have. The console fallback means
+    // a session's tuning is never trapped in the panel.
+    const logged = (): void => {
+      console.log(text);
+      exportStatus.textContent = 'Clipboard unavailable — the config block was logged to the console.';
+    };
+    const write = navigator.clipboard?.writeText(text);
+    if (!write) {
+      logged();
+      return;
+    }
+    void write.then(() => {
+      exportStatus.textContent = `Copied ${kinds} tuned kind(s) — paste into ENEMIES in src/game/config.ts.`;
+    }, logged);
+  }
+
+  function refreshLab(): void {
+    const tuned = tunedKindCount();
+    labBanner.textContent = tuned === 0
+      ? 'Every kind is at its shipped values.'
+      : `${tuned} kind(s) tuned — runs outside this sandbox use these numbers too.`;
+    labBanner.classList.toggle('sb-warn', tuned > 0);
+    for (const [kind, pick] of kindButtons) {
+      pick.classList.toggle('on', kind === labKind);
+      // A dot, not a colour: the picker is already a dense grid of toggles.
+      pick.textContent = isTuned(kind) ? `• ${ENEMY_LABELS[kind]}` : ENEMY_LABELS[kind];
+    }
+    const minute = Math.floor(world.timeS / 60);
+    const scale = endlessScale(minute);
+    const scaled: string[] = [];
+    if (scale.hpMul !== 1) scaled.push(`health ×${scale.hpMul.toFixed(2)}`);
+    if (scale.damageMul !== 1) scaled.push(`damage ×${scale.damageMul.toFixed(2)}`);
+    if (scale.speedMul !== 1) scaled.push(`speed ×${scale.speedMul.toFixed(2)}`);
+    if (scale.xpMul !== 1) scaled.push(`xp ×${scale.xpMul.toFixed(2)}`);
+    scaleNote.textContent = scaled.length === 0
+      ? 'Base values. At threat minute 0 an enemy spawns with exactly these numbers.'
+      : `Base values. At threat minute ${minute} a spawn takes ${scaled.join(', ')} on top.`;
+    for (const { field, slider, number, reset, readout } of tuneRows) {
+      const { min, max, step } = fieldRange(labKind, field);
+      const value = tunedValue(labKind, field.key);
+      const shipped = shippedValue(labKind, field.key);
+      slider.min = String(min);
+      slider.max = String(max);
+      slider.step = String(step);
+      number.min = String(min);
+      // Deliberately no max: the box is the way past the slider's comfortable
+      // range, and fieldRange grows the slider to meet whatever is typed.
+      number.step = String(step);
+      // Never fight the control the designer is currently holding: writing to a
+      // focused number input would move the caret mid-type.
+      if (document.activeElement !== slider) slider.value = String(value);
+      if (document.activeElement !== number) number.value = String(Number(value.toFixed(3)));
+      const changed = isFieldTuned(labKind, field.key);
+      slider.classList.toggle('tuned', changed);
+      number.classList.toggle('tuned', changed);
+      // Nothing to revert to on an untouched field, so the control says so
+      // rather than sitting there as a live-looking no-op.
+      reset.disabled = !changed;
+      reset.title = changed
+        ? `Back to the shipped ${field.label}: ${formatStat(shipped)}`
+        : `${field.label} is at its shipped value (${formatStat(shipped)})`;
+      readout.textContent = `shipped ${formatStat(shipped)} · ${field.hint}`;
+    }
+    resetKindButton.disabled = !isTuned(labKind);
+    resetAllButton.disabled = tuned === 0;
+    exportButton.disabled = tuned === 0;
+  }
+
   function setTab(id: TabId): void {
     activeTab = id;
     for (const [tabId, page] of pages) page.style.display = tabId === id ? 'flex' : 'none';
@@ -474,15 +685,18 @@ export function mountSandboxPanel(
 
   function refreshStats(): void {
     const minute = Math.floor(world.timeS / 60);
-    const key = `${minute}/${world.level}`;
+    const key = `${minute}/${world.level}/${tuningRevision}`;
     if (key === lastStatsKey) return;
     lastStatsKey = key;
     const scale = endlessScale(minute);
-    for (const [kind, node] of enemyStats) {
-      const base = madForestEnemyStats(kind, world.level);
+    for (const [kind, node] of enemyStatNodes) {
+      // Tuned, not shipped: this row must say what a NEAR press will actually
+      // put on the floor, or the catalog and the lab disagree.
+      const base = enemyStats(kind, world.level);
       node.textContent =
         `hp ${formatStat(base.hp * scale.hpMul)} · dmg ${formatStat(base.damage * scale.damageMul)}` +
-        ` · spd ${formatStat(base.speed * scale.speedMul)} · xp ${formatStat(base.xp * scale.xpMul)}`;
+        ` · spd ${formatStat(base.speed * scale.speedMul)} · xp ${formatStat(base.xp * scale.xpMul)}` +
+        (isTuned(kind) ? ' · TUNED' : '');
     }
   }
 
@@ -533,6 +747,7 @@ export function mountSandboxPanel(
       ` · bounce ${mods.bounceCount} · area ×${mods.areaMul.toFixed(2)}` +
       ` · regen ${mods.hpRegenPerSecond.toFixed(1)} HP/s`;
     refreshStats();
+    refreshLab();
     refreshCareer();
   }
 
