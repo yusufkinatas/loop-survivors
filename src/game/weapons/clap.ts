@@ -1,39 +1,3 @@
-// The Clap weapon module: a wide forward slash that hits everything in a close
-// cone, and its evolution, Two Hands, where each trigger picks the closest few
-// enemies and snaps a pair of slabs shut on each one. Base and evolved live in
-// the same module; evolving flips an internal mode (ctx.evolved).
-//
-// THE CLAP IS MELEE. It spawns no projectile of any kind — the base mode
-// resolves a cone synchronously inside fire(), and the evolution schedules
-// pincers that resolve in this module's own tick(). So there is NO
-// ProjectileBehavior here at all, deliberately: steer() and onHit() are hooks
-// the SHARED PROJECTILE LOOP calls, and nothing this weapon makes ever enters
-// that loop. Adding an empty one would advertise a relationship that does not
-// exist.
-//
-// THE PINCH STATE MACHINE IS PER-RUN STATE AND IT LIVES ON THE INSTANCE. A
-// pincer spawns open at fire time, shows a halfway visual once, and only lands
-// its damage when the hands meet `closeS` later — so between those two moments
-// the weapon is carrying live state. `ClapPinch[]` is a private field of
-// ClapInstance for the reason module.ts states: systems-check builds many
-// RunWorlds in one process, and a queue parked on the module singleton would
-// leak pincers from one world into the next, making order-dependent checks that
-// pass alone and fail in a suite.
-//
-// ROLE-KEYED TABLES: WEAPON_SHOVE IS GONE. The clap's 12 was its last entry, so
-// the table, its import, BOTH of its read sites in run.ts and its
-// INTERIM_EXCEPTIONS entry in systems-check all left with this module. The 12 is
-// CLAP_STATS.shove now, applied from this file.
-//
-// THE CONE'S SHOVE IS RAW, AND THE TUG IS NOT. `WEAPON_SHOVE.clap` reached
-// RunWorld.damageCone UNMULTIPLIED — the call site passed the table value
-// straight in — while the shared projectile loop's own copy of that lookup
-// scaled by buildMods.knockbackMul. Two weapons' worth of that lookup left
-// scaled (the snare's, the bass's); the clap's cone left raw, because that is
-// what it did. The evolved tug DOES scale. The parity baseline pins each side
-// with its own row, so "tidying" the two into agreement fails immediately. It is
-// ported verbatim and flagged as a latent oddity, not fixed here.
-
 import { AIM_RANGE, type WeaponConf } from '../config';
 import { circlesOverlap } from '../spatial';
 import type { WeaponContext, WeaponTarget } from './context';
@@ -56,14 +20,6 @@ const HASH_QUERY_PAD = 24;
 export interface ClapStats extends WeaponStats {
   // ---------------- the base cone ------------------------------------------
 
-  /** Knock distance on a cone hit, in units. WAS config.WEAPON_SHOVE.clap, the
-   *  last entry in that table.
-   *
-   *  APPLIED RAW. The cone's call site passed the table value straight through
-   *  without buildMods.knockbackMul, unlike the shared projectile loop's copy of
-   *  the same lookup and unlike this weapon's own evolved `tug` below. See the
-   *  file header: that asymmetry is behavior, it is pinned on both sides by the
-   *  parity baseline, and it is preserved rather than reconciled. */
   readonly shove: number;
   /** Radius inside which a body is hit REGARDLESS OF THE CONE'S ANGLE, in
    *  units. WAS the bare `d < 34` in RunWorld.damageCone.
@@ -85,14 +41,6 @@ export interface ClapStats extends WeaponStats {
   /** How many nearby enemies get their own pincer on a single trigger. WAS
    *  TWO_HANDS.targets. */
   readonly targets: number;
-  /** Seconds the two slabs take to travel from open to shut. WAS
-   *  TWO_HANDS.closeS.
-   *
-   *  PINNED AS A LITERAL IN systems-check, and it has to be. Every scheduled
-   *  moment this weapon has is observed only on the frame that crosses it, so
-   *  0.12 and 0.13 both land on frame 8 and the parity baseline cannot tell them
-   *  apart; 0.11 and 0.14 it can. The sub-frame residue is covered by the
-   *  literal pin and by nothing else. */
   readonly closeS: number;
   /** How far out along the pinch axis each slab starts, in world units. WAS
    *  TWO_HANDS.openGap. Also the distance AHEAD OF THE PLAYER an empty-field
@@ -212,13 +160,6 @@ class ClapInstance implements WeaponInstance {
       this.fireTwoHands(ctx, conf);
       return;
     }
-    // Whip: a wide forward slash in the aim direction, hitting a cone.
-    //
-    // `aimDir(0)` and NOT `nearestEnemy(...)`: the zero spread means the jitter
-    // adds nothing to the angle, but the DRAW still happens — once with a target
-    // on screen, twice with an empty one. That draw count is part of the run's
-    // identity and the parity harness counts it, so the tidier-looking spelling
-    // is a behavior change.
     const p = ctx.player;
     const aim = ctx.aimDir(0);
     const ang = Math.atan2(aim.y, aim.x);
@@ -278,17 +219,6 @@ class ClapInstance implements WeaponInstance {
     if (CLAP_STATS.shove) ctx.shove(e, x, y, CLAP_STATS.shove);
   }
 
-  /** Two Hands: each trigger picks the closest few enemies and snaps a slab pair
-   *  shut on each of them. Target-picked and tiny on purpose — the base weapon's
-   *  cone is short-ranged, and the roster already has three player-centred
-   *  blasts (Subquake, Redline Stomp, Afterhours). The inward tug on the crush is
-   *  the point: it bunches the horde for the rest of the band.
-   *
-   *  RNG: ZERO DRAWS with anything in range — `nearestEnemies` looks without
-   *  jittering — and TWO on an empty field, where the empty-field branch below
-   *  calls aimDir. The base cone always draws. So the evolution does not merely
-   *  change what a trigger does, it changes what a trigger COSTS the run stream,
-   *  and both shapes are pinned in the parity baseline. */
   private fireTwoHands(ctx: WeaponContext, conf: WeaponConf): void {
     const p = ctx.player;
     // `conf.damage` already carries powerMul, antonioMight and damageMul from
@@ -360,21 +290,6 @@ class ClapInstance implements WeaponInstance {
     }
   }
 
-  /** Advance every pincer in flight. This IS RunWorld.updateClapPinches, moved
-   *  verbatim; the world no longer has a pinch loop, a pinch array or a pinch
-   *  type.
-   *
-   *  IT IGNORES `dt` AND READS THE ABSOLUTE CLOCK. A pincer is scheduled against
-   *  ctx.timeS, like the kick's follow-up strip, so it lands on the first frame
-   *  that crosses `closesAt` however the step is sized.
-   *
-   *  IT WALKS THE ARRAY BACKWARDS, so pincers resolve LAST-SPAWNED-FIRST — the
-   *  reverse of the nearest-first order fireTwoHands handed out. The immediate
-   *  reason is the splice, but the order is behavior in its own right: three
-   *  pincers from one trigger close on the same frame, and where their crushes
-   *  overlap a body with little hp left, the walk direction decides which pinch
-   *  is credited with the kill, which drop is rolled first, and where in the fx
-   *  stream it lands. One parity scenario exists entirely for this. */
   tick(ctx: WeaponContext, _dt: number): void {
     for (let i = this.pinches.length - 1; i >= 0; i--) {
       const pinch = this.pinches[i];

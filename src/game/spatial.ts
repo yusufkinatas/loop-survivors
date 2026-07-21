@@ -59,7 +59,6 @@ export class SpatialHash<T extends Circle> {
   }
 }
 
-/** Circle versus axis-aligned rectangle, exported for parity regression tests. */
 export function circleIntersectsRect(
   cx: number,
   cy: number,

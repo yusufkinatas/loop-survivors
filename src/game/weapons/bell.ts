@@ -1,64 +1,3 @@
-// The Bell weapon module: a note lobbed straight that shatters into a radial
-// burst of shards on its first hit, and its evolution, Gravity Bell, where the
-// note opens a well instead — dragging bodies onto one point and then throwing
-// a burst of homing shards out of the middle of them. Base and evolved live in
-// the same module; evolving flips an internal mode (ctx.evolved).
-//
-// THE BELL IS THE LAST WEAPON OUT OF run.ts (#141), and it is the only one
-// whose ENTITIES SPAWN ENTITIES — twice over. A note spawns shards; an evolved
-// note spawns a well, and the well spawns shards of its own on a timer. So this
-// weapon's footprint is never one geometry, it is a CHAIN, and each link has its
-// own tuning, its own frame and its own rng draw:
-//
-//   base:     note -> (first hit) -> one burst of `conf.shards` shards
-//   evolved:  note -> (first hit) -> one well -> (0.35s later) -> 10 seekers
-//
-// WHERE EACH LINK IS RESOLVED, because they are not in the same place:
-//   - the note and every shard ride the world's SHARED projectile loop, with
-//     shared travel, shared homing, the arena rails and the shared pierce rule
-//     completely unchanged. This module lends that loop nothing but onHit.
-//   - the SHATTER — the whole `pr.shatter > 0` branch that used to sit inline in
-//     that loop — is now that onHit, which is the slot ProjectileBehavior
-//     reserved for it: after the loop deals pr.damage, before the shared pierce
-//     rule. That is the exact position the branch occupied, which is what keeps
-//     the shatter/spark/pierce sequence verbatim.
-//   - the WELL is aged, resolved and retired by this module's own tick(), in
-//     the 'wells' phase — last of all the damage phases, exactly where
-//     RunWorld.updateGravityWells stood.
-//
-// STORAGE STAYS WORLD-SIDE, LOGIC DOES NOT. view.ts draws world.gravityWells and
-// clearSandboxEntities empties it, so the world keeps holding the array; but
-// RunWorld.updateGravityWells is GONE and this module is the array's SOLE
-// MUTATOR, reaching it only through ctx.spawnGravityWell / ctx.gravityWells /
-// ctx.retireGravityWell. That is the same split the bass made for shockwaves and
-// the chord for zones — and it is the one that finally emptied the shared-
-// physics guard's protected set of everything but the two genuinely shared
-// projectile loops.
-//
-// THE WELL MOVES BODIES BY DIRECT POSITION WRITE (ctx.displace), not through the
-// knock channel, and the wells run LAST of all the damage phases. So on a frame
-// where something both shoves a body and pulls it, the pull is what the frame
-// ends with: every other weapon wrote a velocity earlier in the frame, and this
-// writes a position after them. Rewriting the drag as a knock would change that,
-// and would also hand it Heavy Amp, which it has never had.
-//
-// TWO GUARDS AT THE TOP OF THE PULL LOOP THAT LOOK LIKE ONE THING. `dead` and
-// `dummy` sit on adjacent lines and are not the same kind of code:
-//   - `dead` is DEFENSIVE AND ITS EFFECT IS DISCARDED. A body killed earlier in
-//     the same frame is still in the array when the wells run, but reapEnemies
-//     splices it out at the end of that same frame, so nothing ever observes a
-//     corpse that was or was not dragged. Mutating it moves no parity scenario.
-//   - `dummy` IS OBSERVABLE, because a practice dummy is never reaped. A well
-//     that dragged dummies would leave them somewhere else for good.
-// Both are ported verbatim; only one of them can be caught by a check, and
-// saying which is which is the point of this paragraph.
-//
-// ONE RNG DRAW PER BURST, NOT PER SHARD. spawnShards draws once, for the ring's
-// starting angle, and then spaces every shard evenly off it. A trigger under
-// Double Take is one aim draw plus one draw per burst that actually lands, and
-// moving the draw inside the shard loop would multiply the whole run's draw
-// count by the shard count.
-
 import type { WeaponConf } from '../config';
 import type { Projectile } from '../run';
 import type { WeaponContext, WeaponTarget } from './context';
@@ -119,11 +58,6 @@ export interface BellStats extends WeaponStats {
   readonly maxShards: number;
   /** What one amplification multiplies the oldest shard's damage by. */
   readonly crowdedDamageMul: number;
-  /** Ceiling on that amplification, as a multiple of the incoming burst's
-   *  per-shard damage. Against a dense enough field every amplified shard
-   *  saturates here and the rate above becomes invisible — which is a real
-   *  property of the cap and the reason its parity scenario is built to cross
-   *  the ceiling by only ten. */
   readonly crowdedDamageCapMul: number;
 
   /** The spark thrown at the BODY the note hit, on the frame it shatters. Once
@@ -137,18 +71,6 @@ export interface BellStats extends WeaponStats {
    *  the whole build pipeline. It reaches the well's burst too, because the
    *  burst damage is a fraction of the NOTE's damage. */
   readonly gravityDamageMul: number;
-  /** What `shatter` is set to on an evolved note.
-   *
-   *  ONLY `> 0` IS EVER READ ON THIS PATH, so the VALUE is unobservable: the
-   *  shatter branch consults the count only when there is no `gravity` flag, and
-   *  an evolved note always carries one. The baseline agent mutated it to 9 and
-   *  all 238 parity scenarios stayed identical.
-   *
-   *  IT IS STILL LOAD-BEARING AND MUST NOT BE DELETED — it is the GATE that
-   *  arms the well, and a 0 here means an evolved note hits and does nothing.
-   *  It must also NOT be folded into `wellBurstShards` below, which is a second,
-   *  genuinely live 10: that one is the shard count the burst actually spawns
-   *  and mutating IT is caught. Two tens, one live, deliberately two stats. */
   readonly gravityShatterGate: number;
 
   /** Well pull radius, before buildMods.areaMul. Bodies outside are untouched. */
@@ -270,8 +192,6 @@ class BellInstance implements WeaponInstance {
         } else {
           this.spawnShards(ctx, pr.x, pr.y, pr.shatter, pr.damage * BELL_STATS.shardDamageMul);
         }
-        // At the BODY, not at the shot: the two differ by up to a radius, and
-        // the parity fx stream records the position.
         ctx.fx({
           type: 'spark',
           x: target.x,
@@ -348,12 +268,6 @@ class BellInstance implements WeaponInstance {
     const mods = ctx.buildMods;
     const shardRadius = BELL_STATS.shardRadius * mods.areaMul;
     const shardLifeS = BELL_STATS.shardLifeS * mods.durationMul;
-    // THROUGH THE HELPER, not `+ mods.extraPierce`. run.ts spelled this as a
-    // bare addition, which was the one site that made withExtraPierce's "the
-    // +pierce rule in one place" untrue. The helper's Number.isFinite guard
-    // takes the same branch for a finite 1, so the routing is behaviour-
-    // identical — verified against the parity baseline as a mutation before
-    // this extraction, not asserted after it.
     const shardPierce = ctx.withExtraPierce(BELL_STATS.shardPierce);
     const shardSpeed = BELL_STATS.shardSpeed * mods.projectileSpeedMul;
     for (let i = 0; i < count; i++) {

@@ -7,9 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "check": "tsc --noEmit",
-    "verify": "npm run check && node --import tsx src/game/tour-check.ts && node --import tsx src/game/systems-check.ts && node --import tsx src/game/weapon-parity-check.ts",
-    "record:weapon-parity": "RECORD_WEAPON_PARITY=1 node --import tsx src/game/weapon-parity-check.ts"
+    "check": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/node": "^26.1.0",

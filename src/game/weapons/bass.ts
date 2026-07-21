@@ -1,47 +1,3 @@
-// The Bass weapon module: a slow wide low wave that rolls through everything,
-// and its evolution, Subquake, where the directional wave becomes an expanding
-// seismic ring around the spot it was fired from. Base and evolved live in the
-// same module; evolving flips an internal mode (ctx.evolved).
-//
-// THE BASS IS THE FIRST WEAPON WHOSE TWO HALVES LIVE IN DIFFERENT WORLD ARRAYS,
-// resolved in different phases of the frame:
-//
-//   base:    one plain projectile per aimed direction. It rides shared travel,
-//            the arena rails and the shared pierce rule completely unchanged,
-//            and is resolved by the world's shared projectile loop.
-//   Subquake: one SHOCKWAVE pushed onto world.shockwaves, grown and resolved by
-//            this module's own tick() in the 'shockwaves' phase — after the
-//            shared projectile loop and the zones, before the gravity wells.
-//
-// WHICH MEANS THE TWO HALVES ALSO ITERATE THE FIELD IN DIFFERENT ORDERS, and
-// both orders are load-bearing for the run's rng stream. The base wave is
-// resolved against the frame's spatial-hash snapshot, in HASH order, by the
-// shared loop. The ring walks ctx.all() — the live enemy array, in ARRAY order,
-// i.e. spawn order. They are not interchangeable and unifying them would
-// reorder every kill and every draw behind it.
-//
-// STORAGE STAYS WORLD-SIDE, LOGIC DOES NOT. The shockwave array is drawn by the
-// view and emptied by clearSandboxEntities, so the world keeps holding it; but
-// RunWorld.updateShockwaves is gone and this module is the array's SOLE
-// MUTATOR, reaching it only through ctx.spawnShockwave / ctx.shockwaves /
-// ctx.retireShockwave. That is the same split the arp made for projectiles.
-//
-// INFINITE PIERCE ON BOTH HALVES, and on both it is the ABSENCE of arithmetic
-// rather than a large number:
-//   - the base wave's `pierce: Infinity` comes off the tier ladder, so the
-//     shared rule's `pr.pierce -= 1` runs on every hit and never bites. A wave
-//     is stopped by its LIFETIME and by nothing else.
-//   - the ring has no pierce field, no budget, no cap and no target count
-//     anywhere in tick(). The only thing that stops a body being hit twice is
-//     the per-ring `hit` set, and the only thing that stops the ring is its
-//     life. As with Railshot, inventing a finite `maxHits` stat to "state" the
-//     infinity would be a regression dressed as documentation.
-//
-// NO FX, ANYWHERE. Neither half pushes a single visual: bass is absent from the
-// world's SPARK_HIT_ROLES, and a Subquake's entire appearance is the view
-// reading world.shockwaves. Giving either one a spark, a ring or a slam while
-// tidying up is a behavior change, and the parity fx stream says so.
-
 import type { WeaponConf } from '../config';
 import type { Projectile } from '../run';
 import type { WeaponContext, WeaponTarget } from './context';
@@ -73,26 +29,6 @@ export interface BassStats extends WeaponStats {
   // however many there are. There is no `quakePierce` or `quakeMaxHits` below
   // because there is no arithmetic to feed — see the file header.
 
-  /** Radius the ring starts at — the value written at spawn AND the base of the
-   *  growth curve below. ONE stat for both, and that is a real decision worth
-   *  reading:
-   *
-   *  In run.ts these were two independent literals, `radius: 40` in
-   *  spawnSubquake and the `40 +` in updateShockwaves. The spawn-time one was
-   *  DEAD: tick() overwrites wave.radius from the curve on the ring's very
-   *  first step, before any damage test reads it, so the parity harness could
-   *  mutate it to 44 and stay green — it is the one mutation the baseline agent
-   *  tried against this weapon that survived. They are not two numbers that
-   *  happen to agree, though; they are one number ("where a ring begins")
-   *  written twice, so folding them makes the dead copy incapable of drifting
-   *  from the live one, and that same mutation is now caught.
-   *
-   *  Contrast quakeLifeS / quakeGrowthS below, which ALSO share a value and are
-   *  deliberately NOT folded: those answer two different questions.
-   *
-   *  Because the spawn-time write is still invisible to world state, B5 in
-   *  systems-check pins it on a freshly spawned ring through the fake context,
-   *  and the literal-pin block pins the stat. */
   readonly quakeStartRadius: number;
   /** Radius the ring grows to, before buildMods.areaMul.
    *
@@ -194,15 +130,6 @@ class BassInstance implements WeaponInstance {
     }
   }
 
-  /** Subquake: one ring, anchored where the player stood when the trigger
-   *  fired.
-   *
-   *  ctx.player IS READ HERE AND NOWHERE ELSE. It is documented as a LIVE
-   *  getter and the kick depends on it being one, which makes reading it from
-   *  tick() the obvious shape — and it is wrong for this weapon. A ring that
-   *  re-read the player would drag along behind him instead of staying in the
-   *  world; every scenario in which the player stands still passes either way,
-   *  so this is a comment with a parity scenario behind it. */
   private spawnSubquake(ctx: WeaponContext, conf: WeaponConf): void {
     const area = ctx.buildMods.areaMul;
     ctx.spawnShockwave({

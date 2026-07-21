@@ -1972,23 +1972,6 @@ export class RunWorld {
       if (e.dead || pr.hit.has(e) || !circlesOverlap(pr, e)) continue;
       pr.hit.add(e);
       owner.damage(e, pr.damage);
-      // The per-weapon shove lookup that stood here is GONE (#141). It read
-      // the WEAPON_SHOVE table by pr.role — the last role-keyed table in this
-      // loop and the last entry in INTERIM_EXCEPTIONS; the clap module took
-      // the table with it. A weapon that knocks on a projectile hit does it from its own
-      // ProjectileBehavior.onHit now — see SNARE_STATS.shove and
-      // BASS_STATS.shove, both applied that way.
-      // The shatter branch that stood here is GONE (#141). It was already
-      // generic — it keyed on `pr.shatter > 0`, a field the bell's own spawner
-      // set, and named no role — but generic is not the same as SHARED: it
-      // called spawnShards and pushed a gravity well, which is one weapon's
-      // behavior sitting in everyone's loop. It moved into the bell module's
-      // ProjectileBehavior.onHit, which is the slot directly below and the one
-      // reserved for exactly this: after the loop deals pr.damage, before the
-      // shared pierce rule. The sequence is unchanged; only the owner is.
-      // The shared pierce rule, and the one hook that can decline it. A
-      // module returning false chips on a timer instead (ADR-0002); no hook
-      // means spend, which is what every unmigrated role does today.
       const spendsPierce = owner.onHit(pr, e);
       if (!spendsPierce) continue;
       pr.pierce -= 1;
