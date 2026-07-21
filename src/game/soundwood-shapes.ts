@@ -52,7 +52,6 @@ function makePixelGlow(radius: number, color: number, alpha = 0.25): Graphics {
 }
 
 export interface EnemyGfx extends Graphics {
-  __shield: boolean;
   __frame: number;
   /** The radius this silhouette was drawn at. Body size is fixed for a run's
    *  lifetime under normal play, but the enemy lab resizes live enemies, and a
@@ -299,14 +298,12 @@ function hushWolf(g: GraphicsContext, r: number, frame: number): void {
 /** The Hush: living interference assembled from abandoned stage hardware,
  * static, cables, wood rot, and broken light. Stable simulation IDs preserve
  * behavior; every live silhouette and player-facing name is project-native. */
-export function enemyContext(e: Enemy, shieldOn: boolean, frame: number): GraphicsContext {
+export function enemyContext(e: Enemy, frame: number): GraphicsContext {
   const r = Math.max(4, snap(e.radius));
-  const shieldKey = e.kind === 'shielded' ? (shieldOn ? ':shield' : ':bare') : '';
-  const spinKey = e.kind === 'circler' ? `:spin${e.spin}` : '';
   // Boss marking rides on the spawn, not the kind (mad-forest-spec 2a/2e), so
   // it has to be part of the shape key: the same kind draws with and without.
   const bossKey = e.spawnClass === 'boss' ? ':boss' : '';
-  return cachedPixelShape(`hush:${e.kind}:${e.band}:${r}:${frame}${shieldKey}${spinKey}${bossKey}`, (g) => {
+  return cachedPixelShape(`hush:${e.kind}:${r}:${frame}${bossKey}`, (g) => {
     box(g, -r, r * 0.66, r * 2, Math.max(2, r * 0.32), SOUNDWOOD.ink, 0.68);
     switch (e.kind) {
       case 'bat': hushMite(g, r, frame, 0); break;
@@ -367,91 +364,18 @@ export function enemyContext(e: Enemy, shieldOn: boolean, frame: number): Graphi
         for (const y of [-0.5, 0.1, 0.62]) box(g, -r * 1.9, r * y, r * 0.5, 2, 0xffffff, 0.5);
         break;
       }
-      case 'swarmer': {
-        pixelDiamond(g, 0, 0, r * 1.15, SOUNDWOOD.ink);
-        pixelDiamond(g, 0, 0, r * 0.82, 0xffffff);
-        g.poly([-r * 0.58, -r * 0.25, 0, r * 0.12, -r * 0.18, r * 0.7].map(snap))
-          .stroke({ width: Math.max(2, snap(r * 0.16)), color: SOUNDWOOD.ink });
-        hushFeet(g, r, frame, 0.64);
-        break;
-      }
-      case 'tank':
-        hushCabinet(g, r, false, frame);
-        box(g, -r * 1.08, -r * 1.08, r * 2.16, r * 0.24, SOUNDWOOD.ink);
-        box(g, r * 0.48, -r * 1.42, r * 0.16, r * 0.42, 0xffffff);
-        break;
-      case 'darter': {
-        // Audio plug / needle nose with a forked tail.
-        darkSilhouette(g, [r * 1.9, 0, r * 0.72, -r * 0.64, -r * 0.85, -r * 0.52, -r * 1.28, -r, -r * 1.05, 0, -r * 1.28, r, -r * 0.85, r * 0.52, r * 0.72, r * 0.64]);
-        g.poly([r * 1.48, 0, r * 0.56, -r * 0.38, -r * 0.7, -r * 0.34, -r * 0.92, -r * 0.64, -r * 0.78, 0, -r * 0.92, r * 0.64, -r * 0.7, r * 0.34, r * 0.56, r * 0.38].map(snap)).fill(0xffffff);
-        box(g, r * 1.35, -r * 0.16, r * 0.55, r * 0.32, SOUNDWOOD.ink);
-        break;
-      }
-      case 'splitter': {
-        g.poly(regularPixelPoly(8, r * 1.16, Math.PI / 8)).fill(SOUNDWOOD.ink);
-        g.poly(regularPixelPoly(8, r * 0.88, Math.PI / 8)).fill(0xffffff);
-        for (let i = 0; i < 4; i++) {
-          const a = i * Math.PI / 2;
-          g.poly([0, 0, Math.cos(a) * r * 0.82, Math.sin(a) * r * 0.82].map(snap))
-            .stroke({ width: Math.max(2, snap(r * 0.15)), color: SOUNDWOOD.ink });
-          pixelDiamond(g, Math.cos(a) * r * 0.45, Math.sin(a) * r * 0.45, r * 0.14, SOUNDWOOD.ink);
-        }
-        break;
-      }
-      case 'circler': {
-        g.poly(regularPixelPoly(12, r * 1.16, Math.PI / 12)).fill(SOUNDWOOD.ink);
-        g.poly([r * 0.96, -r * 0.72, r * 0.2, -r * 0.98, -r * 0.72, -r * 0.65, -r * 0.92, 0, -r * 0.72, r * 0.65, r * 0.2, r * 0.98, r * 0.96, r * 0.72, r * 0.52, r * 0.28, r * 0.52, -r * 0.28].map(snap)).fill(0xffffff);
-        pixelDiamond(g, -r * 0.1, 0, r * 0.34, SOUNDWOOD.ink);
-        pixelDiamond(g, -r * 0.1, 0, r * 0.13, 0xffffff);
-        box(g, r * 0.88, e.spin > 0 ? -r * 0.6 : r * 0.4, r * 0.62, r * 0.18, 0xffffff);
-        break;
-      }
-      case 'shielded': {
-        g.poly(regularPixelPoly(8, r * 1.05, Math.PI / 8)).fill(SOUNDWOOD.ink);
-        g.poly(regularPixelPoly(8, r * 0.76, Math.PI / 8)).fill(0xffffff);
-        pixelDiamond(g, 0, 0, r * 0.3, SOUNDWOOD.ink);
-        if (shieldOn) {
-          g.poly(regularPixelPoly(12, r * 1.5, Math.PI / 12)).stroke({ width: Math.max(3, snap(r * 0.15)), color: 0xffffff, alpha: 0.92 });
-          for (let i = 0; i < 4; i++) {
-            const a = i * Math.PI / 2;
-            const x = Math.cos(a) * r * 1.5;
-            const y = Math.sin(a) * r * 1.5;
-            box(g, x - r * 0.18, y - r * 0.28, r * 0.36, r * 0.56, SOUNDWOOD.ink);
-            box(g, x - r * 0.08, y - r * 0.18, r * 0.16, r * 0.36, 0xffffff);
-          }
-        } else {
-          g.poly([-r * 0.6, -r * 0.5, 0, -r * 0.08, r * 0.52, r * 0.62].map(snap))
-            .stroke({ width: Math.max(2, snap(r * 0.14)), color: SOUNDWOOD.ink });
-        }
-        break;
-      }
-      case 'elite': {
-        box(g, -r * 0.86, -r * 1.08, r * 1.72, r * 2.08, SOUNDWOOD.ink);
-        box(g, -r * 0.6, -r * 0.82, r * 1.2, r * 1.52, 0xffffff);
-        box(g, -r * 0.32, -r * 0.62, r * 0.64, r * 1.1, SOUNDWOOD.ink);
-        box(g, -r * 0.1, -r * 0.48, r * 0.2, r * 0.82, 0xffffff);
-        for (const x of [-0.62, 0, 0.62]) pixelDiamond(g, r * x, -r * 1.22, r * 0.22, 0xffffff);
-        g.poly(regularPixelPoly(12, r * 1.36, Math.PI / 12)).stroke({ width: Math.max(3, snap(r * 0.1)), color: 0xffffff, alpha: 0.72 });
-        break;
-      }
     }
-    // A boss wears the ring instead of the danger diamonds: one read per body.
+    // Boss-class spawns wear the ring; nothing else marks a body.
     if (e.spawnClass === 'boss') {
       g.poly(regularPixelPoly(12, r * BOSS_RING_SCALE, Math.PI / 12))
         .stroke({ width: Math.max(3, snap(r * 0.11)), color: 0xffffff, alpha: 0.78 });
-    } else if (e.band >= 2 && e.kind !== 'elite') {
-      const marker = Math.max(2, r * 0.15);
-      pixelDiamond(g, -r * 0.78, -r * 0.82, marker, 0xffffff);
-      if (e.band >= 3) pixelDiamond(g, r * 0.78, -r * 0.82, marker, 0xffffff);
     }
   });
 }
 
 export function makeEnemyGfx(e: Enemy, frame: number): EnemyGfx {
-  const shield = e.shieldHp > 0;
-  const gfx = pixelGraphics(enemyContext(e, shield, frame)) as EnemyGfx;
+  const gfx = pixelGraphics(enemyContext(e, frame)) as EnemyGfx;
   gfx.tint = e.color;
-  gfx.__shield = shield;
   gfx.__frame = frame;
   gfx.__radius = e.radius;
   if (e.kind === 'ghost' || e.kind === 'ghostSwarm') gfx.alpha = 0.82;

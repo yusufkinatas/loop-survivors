@@ -149,11 +149,10 @@ class BassInstance implements WeaponInstance {
    *  THREE THINGS HERE ARE BEHAVIOR, not implementation detail:
    *
    *  1. It walks `ctx.all()` — the world's LIVE enemy array, by reference, in
-   *     ARRAY order. Live is load-bearing: a splitter this ring kills pushes
-   *     four children onto the end of that array, and a JS array iterator
-   *     re-reads length, so the children are visited BY THIS SAME RING IN THIS
-   *     SAME PASS, already inside its radius. A defensive copy deletes those
-   *     hits and every rng draw behind them.
+   *     ARRAY order. Live is load-bearing: anything appended to that array
+   *     mid-pass — a spawn landing this frame — is visited BY THIS SAME RING
+   *     IN THIS SAME PASS, because a JS array iterator re-reads length. A
+   *     defensive copy deletes those hits and every rng draw behind them.
    *  2. Array order is NOT the hash order the base wave uses inside the shared
    *     projectile loop, and not the distance order an expanding ring looks
    *     like it should have. Kill order is spawn order.

@@ -162,9 +162,9 @@ export interface WeaponContext {
    *  that are not yet in the hash, both of which Redline Stomp hits today.
    *
    *  Live is load-bearing: pushEnemy appends, and a JS array iterator re-reads
-   *  length, so Redline Stomp's `for..of` visits splitter children that its own
-   *  kills push mid-pass. A defensive `[...this.enemies]` would delete those
-   *  hits and every rng draw behind them. */
+   *  length, so Redline Stomp's `for..of` visits anything appended mid-pass. A
+   *  defensive `[...this.enemies]` would delete those hits and every rng draw
+   *  behind them. */
   all(): readonly WeaponTarget[];
 
   // ---------------- effects out ----------------
@@ -173,10 +173,10 @@ export interface WeaponContext {
    *  amount, role) — one statement, no buffering, no deferral, no batching, no
    *  return value to branch on — so the kill consequences and their rng draws
    *  land at exactly the statement in the module where the old world code
-   *  stood. The world sink keeps owning the 'dmg' fx, shield absorption, dummy
-   *  absorb-and-refill, Math.min(hp, amount) effective-damage attribution,
-   *  damageByRole/killsByRole, the 'death' fx, gem/note/magnet/chest drops and
-   *  splitter children. None of that moves. */
+   *  stood. The world sink keeps owning the 'dmg' fx, dummy absorb-and-refill,
+   *  Math.min(hp, amount) effective-damage attribution,
+   *  damageByRole/killsByRole, the 'death' fx, and gem/note/magnet/chest
+   *  drops. None of that moves. */
   damage(target: WeaponTarget, amount: number): void;
 
   /** Radial push away from a point (RunWorld.shove). Scales `dist` by the

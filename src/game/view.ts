@@ -250,7 +250,6 @@ function enemyFrame(enemy: Enemy, timeS: number): number {
     case 'batSwarm':
     case 'flower':
     case 'mantis':
-    case 'darter':
     case 'giantBat':
     case 'silverBat':
     case 'ghostSwarm':
@@ -267,12 +266,6 @@ function enemyFrame(enemy: Enemy, timeS: number): number {
     case 'giantMummy':
     case 'greenMudman':
     case 'grayMudman':
-    case 'swarmer':
-    case 'tank':
-    case 'splitter':
-    case 'circler':
-    case 'shielded':
-    case 'elite':
       return Math.floor(timeS * 4 + enemy.id * 0.41) & 1;
     default:
       return 0;
@@ -1076,11 +1069,9 @@ export class RunView {
       gfx.renderable = visible;
       if (!visible) continue;
 
-      const shield = enemy.shieldHp > 0;
-      if (gfx.__frame !== frame || gfx.__shield !== shield || gfx.__radius !== enemy.radius) {
-        gfx.context = enemyContext(enemy, shield, frame);
+      if (gfx.__frame !== frame || gfx.__radius !== enemy.radius) {
+        gfx.context = enemyContext(enemy, frame);
         gfx.__frame = frame;
-        gfx.__shield = shield;
         gfx.__radius = enemy.radius;
       }
       gfx.position.set(snap(enemy.x), snap(enemy.y));
@@ -1096,8 +1087,6 @@ export class RunView {
 
       if ((enemy.kind === 'batSwarm' || enemy.kind === 'ghostSwarm') && (enemy.moveX !== 0 || enemy.moveY !== 0)) {
         gfx.rotation = Math.atan2(enemy.moveY, enemy.moveX) + tilt;
-      } else if (enemy.kind === 'darter' && (enemy.dashX !== 0 || enemy.dashY !== 0)) {
-        gfx.rotation = Math.atan2(enemy.dashY, enemy.dashX) + tilt;
       } else if (enemy.lastMoveX < -0.01) {
         // A mirrored sprite mirrors its lean too, so an enemy crossing the
         // player would visibly snap to the opposite tilt at the moment it

@@ -11,9 +11,7 @@ import type { ScheduledTrigger } from '../audio/engine';
 import {
   AIM_RANGE,
   MULTISHOT_FAN_RAD,
-  CIRCLER,
   DAMAGE_FEEDBACK,
-  DARTER,
   ENEMIES,
   BUILD,
   HEALTH_PICKUP,
@@ -22,10 +20,8 @@ import {
   PICKUP_PULL,
   RUN,
   STAGE_MAGNET,
-  SHIELDED,
   VICTORY,
   SHOVE_S,
-  SPLITTER,
   WORLD_SCALE,
   xpPickupMultiplier,
   xpForNextLevel,
@@ -191,16 +187,8 @@ export interface Enemy {
   damage: number;
   xp: number;
   color: number;
-  /** Toughness band 0-3 (visual danger read; the view draws it). */
-  band: number;
   flashT: number;
   dead: boolean;
-  /** Darter burst state: time left in the current dash/pause, and the
-   *  locked dash direction (darters do not steer mid-dash). */
-  dashT: number;
-  dashX: number;
-  dashY: number;
-  dashing: boolean;
   /** The shared SLOW channel: time left slowed, and the speed multiplier while
    *  it lasts. Written only through WeaponContext.slow — which folds the
    *  multiplier in with min() and assigns the timer — and consumed in
@@ -218,10 +206,6 @@ export interface Enemy {
    * hit response that reverses motion instead of pushing radially. */
   lastMoveX: number;
   lastMoveY: number;
-  /** shielded: absorbs damage before hp; 0 for others. */
-  shieldHp: number;
-  /** circler: +1/-1 orbit direction; 0 for others. */
-  spin: number;
   /** Spawn origin. All classes count toward the periodic 300 check; scripted
    * bosses/events may themselves spawn beyond it up to the 500 hard cap.
    * `'boss'` is the whole of boss-ness (mad-forest-spec 2a): it drives the
@@ -238,10 +222,6 @@ export interface Enemy {
   /** Scripted event expiry; 0 means normal lifetime/recycling. */
   despawnAt: number;
   knockbackMul: number;
-  /** The minute this body walked in on. Purely a record — no stat on this
-   *  enemy derives from it (mad-forest-spec §5: HP×Level is the only scaling,
-   *  and there is no time-based ramp). The view's danger band reads it. */
-  spawnMinute: number;
   /** The body scale this enemy was built at, so a size edit can rescale its
    *  radius and foot offsets by ratio rather than re-deriving a frame body it
    *  no longer remembers which frame it drew. */
@@ -496,7 +476,6 @@ export interface RunEvents {
   onDeath(): void;
   onVictory(): void;
   onHit(): void;
-  onMinute?(minute: number): void;
   onChest?(chest: Chest): void;
   onNoteCollected?(value: number, runTotal: number): void;
   /** One XP gem picked up. Fires per gem, including during a Stage Magnet
@@ -1020,7 +999,6 @@ export class RunWorld {
     const minute = Math.floor(this.timeS / 60);
     if (minute !== this.lastMinute) {
       this.lastMinute = minute;
-      this.events.onMinute?.(minute);
       if (minute >= 5) this.markMilestone('first5m');
     }
   }
@@ -1067,7 +1045,7 @@ export class RunWorld {
       if (d >= minRadius) continue;
       // A reward-moment clear, NOT a combat knock: push the full deficit
       // regardless of knockback resistance, so even knockback-immune kinds
-      // (ghost, some elites — knockbackMul 0) still vacate the ring. Writes the
+      // (ghost, the mudmen — knockbackMul 0 or low) still vacate the ring. Writes the
       // knock channel directly, deliberately bypassing shove()'s knockbackMul
       // scaling; moveEnemies rides this vector for SHOVE_S with pursuit fully
       // suppressed, so the displacement is ~= push (small overshoot for margin).
@@ -1452,7 +1430,7 @@ export class RunWorld {
    * Stats land here EXACTLY as `enemyStats` reports them. The only scaling in
    * the game is HP×Level (mad-forest-spec §5), which `enemyStats` already
    * applies for the kinds that carry it, once, at this spawn — there is no
-   * minute multiplier, no amped roll, and no elite promotion to layer on. */
+   * minute multiplier and no promotion of any sort to layer on. */
   private pushEnemy(
     kind: EnemyKind,
     x: number,
@@ -1467,7 +1445,6 @@ export class RunWorld {
     // every spawn (see enemy-tuning.ts).
     const stats = enemyStats(kind, this.level);
     const body = this.nextEnemyBody(kind, stats.radius, stats.sizeMul);
-    const minute = Math.floor(this.timeS / 60);
     const dummy = kind === 'dummy';
     const enemy: Enemy = {
       id: this.nextEnemyId++,
@@ -1483,13 +1460,8 @@ export class RunWorld {
       damage: stats.damage,
       xp: stats.xp,
       color: stats.color,
-      band: dummy ? 0 : spawnClass === 'boss' ? 3 : Math.min(3, Math.floor(minute / 5)),
       flashT: 0,
       dead: false,
-      dashT: 0,
-      dashX: 0,
-      dashY: 0,
-      dashing: false,
       slowT: 0,
       zoneSlowMul: 1,
       knockX: 0,
@@ -1497,15 +1469,12 @@ export class RunWorld {
       knockT: 0,
       lastMoveX: 0,
       lastMoveY: 0,
-      shieldHp: kind === 'shielded' ? stats.hp * SHIELDED.shieldMul : 0,
-      spin: kind === 'circler' ? (this.rng() < 0.5 ? 1 : -1) : 0,
       spawnClass,
       dropsChest: spawnClass === 'boss',
       moveX,
       moveY,
       despawnAt,
       knockbackMul: stats.knockback,
-      spawnMinute: minute,
       sizeMul: stats.sizeMul,
       prevX: x - body.footOffsetX,
       prevY: y - body.footOffsetY,
@@ -1553,16 +1522,6 @@ export class RunWorld {
     };
   }
 
-  /** Splitter death: burst into a knot of children around the corpse. */
-  private spawnChildren(e: Enemy): void {
-    const k = SPLITTER.childKind;
-    const cr = ENEMIES[k].radius;
-    for (let i = 0; i < SPLITTER.childCount; i++) {
-      const a = this.rng() * Math.PI * 2;
-      this.pushEnemy(k, e.x + Math.cos(a) * (e.radius + cr), e.y + Math.sin(a) * (e.radius + cr));
-    }
-  }
-
   /** Sandbox: remove every enemy without kills, gems, or pops. */
   clearEnemies(): void {
     this.enemies.length = 0;
@@ -1574,7 +1533,7 @@ export class RunWorld {
    *  Each enemy is rebuilt straight from its kind, because a kind's stats are
    *  now the whole story — there is no spawn-time scale to reapply. Health is
    *  moved by RATIO, so a nearly-dead enemy does not heal when you nudge its
-   *  max HP, and a shielded enemy keeps the dent already in its shield.
+   *  max HP.
    *
    *  One deliberate inexactness: hpPerLevel kinds re-derive against the
    *  CURRENT player level, not the level they spawned at. "What would this
@@ -1586,7 +1545,6 @@ export class RunWorld {
       const hpRatio = e.spawnHp > 0 ? stats.hp / e.spawnHp : 1;
       e.spawnHp = stats.hp;
       e.hp *= hpRatio;
-      e.shieldHp *= hpRatio;
       e.speed = stats.speed;
       e.damage = stats.damage;
       e.xp = stats.xp;
@@ -1662,51 +1620,6 @@ export class RunWorld {
         continue;
       }
 
-      if (e.kind === 'darter') {
-        // Straight bursts: lock onto the player's position, dash flat out,
-        // stop dead, re-aim, dash again. Threat is the dodge, not the chase.
-        e.dashT -= dt;
-        if (e.dashT <= 0) {
-          e.dashing = !e.dashing;
-          if (e.dashing) {
-            const dd = Math.hypot(p.x - e.x, p.y - e.y) || 1;
-            e.dashX = (p.x - e.x) / dd;
-            e.dashY = (p.y - e.y) / dd;
-            e.dashT = DARTER.dashS;
-          } else {
-            e.dashT = DARTER.pauseS;
-          }
-        }
-        if (e.dashing) {
-          e.lastMoveX = e.dashX * speed;
-          e.lastMoveY = e.dashY * speed;
-          e.x += e.dashX * speed * dt;
-          e.y += e.dashY * speed * dt;
-        }
-        continue;
-      }
-
-      if (e.kind === 'circler') {
-        // Orbit-and-harass: blend a radial pull toward the orbit radius with a
-        // tangent sweep (spin ±1). Contact damage is handled when it brushes.
-        const dx = p.x - e.x;
-        const dy = p.y - e.y;
-        const d = Math.hypot(dx, dy) || 1;
-        const ux = dx / d;
-        const uy = dy / d;
-        const radial = Math.max(-1, Math.min(1, (d - CIRCLER.orbitR) / CIRCLER.orbitR));
-        const tx = -uy * e.spin;
-        const ty = ux * e.spin;
-        const mx = ux * radial + tx * (1 - Math.abs(radial) * 0.5);
-        const my = uy * radial + ty * (1 - Math.abs(radial) * 0.5);
-        const m = Math.hypot(mx, my) || 1;
-        e.lastMoveX = (mx / m) * speed;
-        e.lastMoveY = (my / m) * speed;
-        e.x += (mx / m) * speed * dt;
-        e.y += (my / m) * speed * dt;
-        continue;
-      }
-
       let dx = p.x + PLAYER_FOOT_OFFSET.x - (e.x + e.footOffsetX);
       let dy = p.y + PLAYER_FOOT_OFFSET.y - (e.y + e.footOffsetY);
       const d = Math.hypot(dx, dy) || 1;
@@ -1778,17 +1691,6 @@ export class RunWorld {
           color: source ? ROLE_COLORS[source] : 0xcfd2e0,
         });
     }
-    // Shielded: a shield pool absorbs damage before hp. Attribution stays
-    // honest — absorbed damage is counted once here, hp damage once below.
-    if (e.shieldHp > 0) {
-      const before = e.shieldHp;
-      e.shieldHp = Math.max(0, before - amount);
-      const absorbed = before - e.shieldHp;
-      if (source) this.damageByRole[source] = (this.damageByRole[source] ?? 0) + absorbed;
-      e.flashT = 0.08;
-      amount -= absorbed;
-      if (amount <= 0) return; // shield held
-    }
     // The practice target absorbs everything, including killVisible's
     // Infinity: record the hit, refill, and leave before the death path so it
     // never drops a gem, a note, a magnet, an Encore Case, a death fx, an
@@ -1811,7 +1713,7 @@ export class RunWorld {
       e.flashT = 0.08;
       return;
     }
-    // Effective damage only: overkill on a 3hp swarmer must not count as a
+    // Effective damage only: overkill on a 1hp bat must not count as a
     // 34-damage contribution, or AoE sweeps inflate their share.
     const dealt = Math.min(e.hp, amount);
     e.hp -= amount;
@@ -1839,7 +1741,6 @@ export class RunWorld {
       if (e.dropsChest) {
         this.spawnChestAt(e.x, e.y);
       }
-      if (e.kind === 'splitter') this.spawnChildren(e);
     }
   }
 
@@ -1890,7 +1791,7 @@ export class RunWorld {
   /** Off-screen recycle (the VS model): silently kill any enemy that falls far
    *  behind the moving player, so the horde is always a wall ahead and CPU
    *  stays bounded. Setting e.dead directly (not via damageEnemy) means no gem,
-   *  no kill, no splitter burst — a true recycle. Boss-class spawns are the
+   *  no kill, no drop — a true recycle. Boss-class spawns are the
    *  exception (mad-forest-spec §6): they never despawn, they teleport back.
    *  Pure geometry, deterministic, fx-free. */
   private recycleEnemies(): void {

@@ -181,7 +181,7 @@ class ClapInstance implements WeaponInstance {
       const dy = e.y - y;
       const d = Math.hypot(dx, dy);
       // Reach is measured to the body's EDGE, so a big enemy is caught by its
-      // own radius while a swarmer at the same centre distance is not.
+      // own radius while a small enemy at the same centre distance is not.
       if (d > reach + e.radius) continue;
       if (d < CLAP_STATS.pointBlankRadius) {
         this.hitCone(ctx, e, x, y, damage);

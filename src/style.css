@@ -18,7 +18,7 @@
 
   /* ink */
   --ink: #e6e8f0;
-  --ink-dim: #9aa0b4; /* == swarmer band-0, deliberate */
+  --ink-dim: #9aa0b4;
   --ink-faint: #5c6274;
 
   /* signal + status (signal == existing xp cyan, promoted to brand) */

@@ -272,15 +272,7 @@ export function xpPickupMultiplier(level: number): number {
 }
 
 export type EnemyKind =
-  | 'swarmer'
-  | 'tank'
-  | 'darter'
-  | 'splitter'
-  | 'circler'
-  | 'shielded'
-  | 'elite'
-  // Mad Forest parity roster. The legacy kinds above remain for development
-  // fixtures.
+  // Mad Forest parity roster.
   | 'bat'
   | 'redBat'
   | 'redBat2'
@@ -315,7 +307,6 @@ export const ALL_ENEMY_KINDS: readonly EnemyKind[] = [
   'greenMudman', 'grayMudman', 'flower', 'glowingBat', 'mantis', 'batSwarm',
   'giantBat', 'silverBat', 'werewolf', 'bigMummy', 'venus', 'ghostSwarm',
   'giantMantis', 'giantWerewolf', 'giantMummy', 'giantBlueVenus',
-  'swarmer', 'tank', 'darter', 'splitter', 'circler', 'shielded', 'elite',
   'dummy',
 ] as const;
 
@@ -411,52 +402,14 @@ const BAT_SWARM_RADII = MAD_FOREST_FRAMES.batSwarm!.map(
   (frame) => legacyEnemyRadius(frame.width),
 ) as readonly number[];
 
-// The first eight entries and legacy scaling fields remain for sandbox and
-// regression fixtures. RunWorld's active parity path reads the Mad
-// Forest entries below and never applies those continuous scaling fields.
+// Every entry is a Mad Forest statline plus the sandbox dummy. Stats are final
+// at spawn: HP×Level is the only scaling in the game (mad-forest-spec §5), so
+// there are no continuous ramp factors here to apply.
 export const ENEMIES: Record<EnemyKind, EnemyConf> & {
   spawnMargin: number;
   maxAlive: number;
-  hpScaleEnd: number;
-  damageScaleEnd: number;
-  speedScaleEnd: number;
-  rampExp: number;
   recycleFactor: number;
 } = {
-  swarmer: {
-    radius: 9,
-    speed: 95,
-    hp: 5,
-    damage: 10,
-    xp: 1,
-    color: 0xf29caf,
-  },
-  /** The late-game wall: slow, fat, soaks a build for 5-10s. */
-  tank: {
-    radius: 22,
-    speed: 45,
-    hp: 110,
-    damage: 22,
-    xp: 10,
-    color: 0x98445f,
-  },
-  /** Fast, fragile, rushes the player in straight bursts. */
-  darter: {
-    radius: 8,
-    speed: 360, // dash speed; it pauses between bursts (see run.ts)
-    hp: 6,
-    damage: 10,
-    xp: 2,
-    color: 0xff845f,
-  },
-  /** Bursts into a knot of swarmers on death. The early-mid wall. */
-  splitter: { radius: 14, speed: 70, hp: 40, damage: 14, xp: 5, color: 0xd35f8d },
-  /** Fast, fragile, orbits the player at range and harasses. */
-  circler: { radius: 10, speed: 170, hp: 10, damage: 12, xp: 2, color: 0xb868db },
-  /** A shield pool absorbs damage before its hp; the mid-game wall. */
-  shielded: { radius: 16, speed: 55, hp: 40, damage: 16, xp: 7, color: 0xd474c8 },
-  /** Slow, huge, tanky objective; drops one large gem (xp=big drop). */
-  elite: { radius: 34, speed: 48, hp: 420, damage: 25, xp: 80, color: 0x8e3b68 },
   // Mad Forest normal-mode bestiary values. `damage` is what Antonio actually
   // loses after his +1 Armor; `power` retains the source number for audits/UI.
   bat: { radius: legacyEnemyRadius(19), speed: 140 * ENEMY_SPEED_UNIT, hp: 1, power: 5, damage: 4, xp: 1, color: 0xf07aa6, knockback: 1 },
@@ -657,23 +610,6 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
   /** Soft cap on the steady-state horde (VS-density target, see gate B
    *  round 2: the screen must crowd, not trickle). */
   maxAlive: 300,
-  /** Enemy HP multiplier reached at minute 8 (curved by rampExp). Gate B
-   *  round 2 calibration: any build's damage grows multiplicatively, so
-   *  enemies must eventually win the scaling race — the player's damage
-   *  carves a bubble in the horde, it never clears the screen, and an AFK
-   *  player gets overrun no matter the build. */
-  hpScaleEnd: 8,
-  /** Contact damage multiplier reached at minute 8, linear. Kept shallow:
-   *  danger scales via density + HP (time-to-kill), never burst damage —
-   *  a minute-8 swarmer still hits for ~13% of player HP, not 20%. */
-  damageScaleEnd: 1.3,
-  /** Speed multiplier reached at minute 8, linear, darters excluded (their
-   *  dash is tuned to stay dodgeable): open-field kiting stops being free
-   *  once the pack can close during any hesitation. */
-  speedScaleEnd: 1.3,
-  /** Exponent shaping the spawn-rate and HP ramps: >1 keeps the early game
-   *  close to M1 and piles the growth into the back half (the horde). */
-  rampExp: 1.8,
   /** Enemies farther than spawnDist*recycleFactor behind the moving player are
    *  silently recycled (no gem/kill). >1 so fresh spawns aren't culled. */
   recycleFactor: 1.45,
@@ -686,13 +622,6 @@ export const MAX_ALIVE_HARD = 500;
 /** Player-facing names for The Hush. Internal keys remain stable simulation
  * IDs so the proven movement/stat tables do not change with the new fiction. */
 export const ENEMY_LABELS: Record<EnemyKind, string> = {
-  swarmer: 'Shardling',
-  tank: 'Wallstack',
-  darter: 'Needlejack',
-  splitter: 'Crackbox',
-  circler: 'Orbit Leech',
-  shielded: 'Phase Guard',
-  elite: 'Blackout Idol',
   bat: 'Static Mite',
   redBat: 'Flare Mite',
   redBat2: 'Night Mite',
@@ -738,22 +667,6 @@ export function madForestEnemyStats(conf: EnemyConf, playerLevel: number) {
     knockback: conf.knockback ?? 1,
   };
 }
-
-/** Darter burst cycle: dash flat-out, stop, re-aim, dash again. */
-export const DARTER = {
-  dashS: 0.55,
-  pauseS: 0.7,
-};
-
-/** Splitter: bursts into this many children of childKind on death. Children
- *  are swarmers (never split → no recursion). */
-export const SPLITTER = { childKind: 'swarmer' as EnemyKind, childCount: 4 };
-
-/** Circler: orbits the player at this radius. */
-export const CIRCLER = { orbitR: 150 };
-
-/** Shielded: shield pool = hp*shieldMul, scaled by hpMul. */
-export const SHIELDED = { shieldMul: 1.0 };
 
 export interface WeaponConf {
   damage: number;

@@ -59,7 +59,6 @@ export async function bootGame(
   let view: RunView | null = null;
   let muted = false;
   let paused = false;
-  let lastWarningMinute = -1;
 
   // Global time scale (issue #21): one knob scaling the sim, audio tempo, and
   // world juice together, live mid-run, in run + sandbox only. Continuous
@@ -729,11 +728,6 @@ export async function bootGame(
     });
   }
 
-  const updateArenaMinute = (minute: number): void => {
-    engine.clock.bpm = SOUNDSET.bpm * (1 + Math.min(0.08, minute * 0.002));
-    if (minute > 0) hud.showToast(`PRESSURE ${minute} · enemies scale up`);
-  };
-
   const events = {
     onLevelUp(level: number): void {
       enqueueUpgrade(level);
@@ -746,9 +740,6 @@ export async function bootGame(
     },
     onHit(): void {
       pushDamageFeedback(hud.flashEl, view, engine);
-    },
-    onMinute(minute: number): void {
-      updateArenaMinute(minute);
     },
     onChest(chest: Chest): void {
       if (!world || state !== 'run') return;
@@ -788,9 +779,6 @@ export async function bootGame(
     onVictory(): void {},
     onHit(): void {
       pushDamageFeedback(hud.flashEl, view, engine);
-    },
-    onMinute(minute: number): void {
-      updateArenaMinute(minute);
     },
     onChest(chest: Chest): void {
       if (!world || state !== 'sandbox') return;
@@ -835,7 +823,6 @@ export async function bootGame(
 
   function resetWorld(): void {
     paused = false;
-    lastWarningMinute = -1;
     resetUpgradeQueue();
     liveAcc = 0;
     victoryScreenAtAudioT = null;
@@ -1225,12 +1212,6 @@ export async function bootGame(
         w.notesCollected,
       );
       sandboxPanel?.update();
-      const minute = Math.floor(w.timeS / 60);
-      const second = w.timeS - minute * 60;
-      if (state === 'run' && second >= 57 && lastWarningMinute !== minute) {
-        lastWarningMinute = minute;
-        hud.showToast('PRESSURE RISES IN 3');
-      }
     }
     if (trackOverlayEl.style.display !== 'none') trackOverlay.tick();
     if (overlay.style.display !== 'none' && world) {
