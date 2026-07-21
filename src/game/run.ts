@@ -18,6 +18,7 @@ import {
   HEALTH_PICKUP,
   MAD_FOREST_FRAMES,
   MAX_ALIVE_HARD,
+  PICKUP_PULL,
   RUN,
   STAGE_MAGNET,
   SHIELDED,
@@ -332,6 +333,9 @@ export interface Gem {
   tier: 'blue' | 'green' | 'red';
   /** Set only by a collected Stage Magnet; later drops remain unaffected. */
   vacuumed?: boolean;
+  /** Seconds since this gem committed to flying at the player; undefined until
+   * then. Drives the wind-back curve (`advancePickupPull`). */
+  pullT?: number;
 }
 
 export interface MusicNotePickup {
@@ -341,6 +345,9 @@ export interface MusicNotePickup {
   tier: 'note' | 'phrase' | 'anthem';
   /** Set only by a collected Stage Magnet; later drops remain unaffected. */
   vacuumed?: boolean;
+  /** Seconds since this note committed to flying at the player; undefined
+   * until then. Drives the wind-back curve (`advancePickupPull`). */
+  pullT?: number;
 }
 
 export interface StageMagnetPickup {
@@ -360,6 +367,46 @@ export interface HealthPickup {
 export interface VacuumResult {
   gems: number;
   notes: number;
+}
+
+/** Anything that flies at the player once pulled: gems and music notes. */
+interface PulledPickup {
+  x: number;
+  y: number;
+  pullT?: number;
+}
+
+/** Moves one pickup along the wind-back curve (`PICKUP_PULL`) and returns the
+ * distance still separating it from the player, which is what the caller's
+ * collection test reads.
+ *
+ * The whole curve is a single SIGNED speed along the direction to the player,
+ * recomputed from live positions every frame: negative while winding back,
+ * then ramping positive for the rush. Because the direction is re-derived
+ * rather than stored, the pickup keeps homing on a moving player and can never
+ * orbit or drift past them, and the step is clamped so it never overshoots. */
+function advancePickupPull(
+  pickup: PulledPickup,
+  px: number,
+  py: number,
+  topSpeed: number,
+  dt: number,
+): number {
+  const dx = px - pickup.x;
+  const dy = py - pickup.y;
+  const d = Math.hypot(dx, dy) || 1e-6;
+  const t = (pickup.pullT ?? 0) + dt;
+  pickup.pullT = t;
+  const { windbackTime, windbackSpeed, rushRampTime } = PICKUP_PULL;
+  // Both phases ease through zero at the turnaround, so there is no visible
+  // corner where the pickup stops going out and starts coming in.
+  const speed = t < windbackTime
+    ? -windbackSpeed * (1 - t / windbackTime)
+    : Math.min(topSpeed, (topSpeed / rushRampTime) * (t - windbackTime));
+  const step = Math.min(speed * dt, d);
+  pickup.x += (dx / d) * step;
+  pickup.y += (dy / d) * step;
+  return d - step;
 }
 
 /** Fire-and-forget visuals the world requests and the view renders. */
@@ -2339,16 +2386,12 @@ export class RunWorld {
     const p = this.player;
     for (let i = this.gems.length - 1; i >= 0; i--) {
       const g = this.gems[i];
-      const dx = p.x - g.x;
-      const dy = p.y - g.y;
-      const d = Math.hypot(dx, dy);
-      if (g.vacuumed || d < RUN.magnetRadius * this.buildMods.magnetMul) {
-        const speed = g.vacuumed ? STAGE_MAGNET.vacuumSpeed : RUN.gemPullSpeed * this.buildMods.pullMul;
-        const pull = Math.min(d, speed * dt);
-        g.x += (dx / (d || 1)) * pull;
-        g.y += (dy / (d || 1)) * pull;
-      }
-      const remaining = g.vacuumed ? Math.max(0, d - STAGE_MAGNET.vacuumSpeed * dt) : d;
+      const d = Math.hypot(p.x - g.x, p.y - g.y);
+      const inRange = g.vacuumed
+        || g.pullT !== undefined
+        || d < RUN.magnetRadius * this.buildMods.magnetMul;
+      const speed = g.vacuumed ? STAGE_MAGNET.vacuumSpeed : RUN.gemPullSpeed * this.buildMods.pullMul;
+      const remaining = inRange ? advancePickupPull(g, p.x, p.y, speed, dt) : d;
       if (remaining < RUN.pickupRadius) {
         this.xp += g.xp * xpPickupMultiplier(this.level);
         this.gems.splice(i, 1);
@@ -2362,18 +2405,14 @@ export class RunWorld {
     const p = this.player;
     for (let i = this.musicNotes.length - 1; i >= 0; i--) {
       const note = this.musicNotes[i];
-      const dx = p.x - note.x;
-      const dy = p.y - note.y;
-      const d = Math.hypot(dx, dy);
-      if (note.vacuumed || d < RUN.magnetRadius * this.buildMods.magnetMul * 1.15) {
-        const speed = note.vacuumed
-          ? STAGE_MAGNET.vacuumSpeed
-          : RUN.gemPullSpeed * this.buildMods.pullMul * 1.15;
-        const pull = Math.min(d, speed * dt);
-        note.x += (dx / (d || 1)) * pull;
-        note.y += (dy / (d || 1)) * pull;
-      }
-      const remaining = note.vacuumed ? Math.max(0, d - STAGE_MAGNET.vacuumSpeed * dt) : d;
+      const d = Math.hypot(p.x - note.x, p.y - note.y);
+      const inRange = note.vacuumed
+        || note.pullT !== undefined
+        || d < RUN.magnetRadius * this.buildMods.magnetMul * 1.15;
+      const speed = note.vacuumed
+        ? STAGE_MAGNET.vacuumSpeed
+        : RUN.gemPullSpeed * this.buildMods.pullMul * 1.15;
+      const remaining = inRange ? advancePickupPull(note, p.x, p.y, speed, dt) : d;
       if (remaining < RUN.pickupRadius + 4) {
         this.notesCollected += note.value;
         this.events.onNoteCollected?.(note.value, this.notesCollected);
