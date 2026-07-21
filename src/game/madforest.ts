@@ -9,8 +9,8 @@
 // the spec is the thing to argue with.
 //
 // The wave table IS the whole stage script. There is no procedural director
-// after it and no endless era: past the last row the 29:00 wave simply keeps
-// running until the demo-end ticket lands.
+// after it and no endless era: the 29:00 row plays out the last minute and the
+// run is won at 30:00 (VICTORY.atS in config.ts, mad-forest-spec §8).
 
 import type { EnemyKind } from './config';
 

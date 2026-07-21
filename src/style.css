@@ -2369,6 +2369,42 @@ button.big {
   text-shadow: 3px 3px #391420;
 }
 
+/* The demo end (#190): the same screen, won instead of lost. Gold where the
+   death screen is red — the palette already reads as "reward" everywhere else
+   in the game (chests, notes, milestones). */
+.win-screen h1 {
+  color: #ffe9a8;
+  text-shadow: 3px 3px #4a3410;
+}
+
+.demo-end {
+  width: min(760px, 94vw);
+  padding: 14px;
+  text-align: left;
+  background: rgba(28, 22, 10, 0.96);
+  border: 2px solid #6b5420;
+  box-shadow: 5px 5px 0 #020305;
+}
+
+.demo-end-copy {
+  margin: 6px 0 0;
+  color: #e3d6b2;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.demo-end-link {
+  color: var(--warn);
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.demo-end-link:hover,
+.demo-end-link:focus-visible {
+  color: #fff3c4;
+}
+
 .rep-earned {
   display: flex;
   align-items: end;

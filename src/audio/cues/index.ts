@@ -18,5 +18,6 @@ export { playChestSpinCue, playChestLandCue, playChestDropCue } from './chest';
 export { playPickupCue } from './reward';
 export { playHealthPickupCue } from './health';
 export { playGameOverCue } from './gameover';
+export { playWinCue } from './win';
 export { GemCue, type GemCueOptions } from './gem';
 export { NoteCue, type NoteCueOptions } from './note';

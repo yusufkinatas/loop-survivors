@@ -536,7 +536,7 @@ export class Hud {
   /** End screen. Weapon chips lead with damage share, kills in parentheses:
    *  kill counts flatter AoE last hits and hide single-target work on tanks. */
   showEnd(
-    _victory: boolean,
+    victory: boolean,
     stats: {
       timeS: number;
       kills: number;
@@ -550,10 +550,26 @@ export class Hud {
   ): void {
     const s = this.newScreen();
     s.classList.add('end-screen');
-    el('span', 'eyebrow', s, 'THE CROWD FINALLY WON');
-    el('h1', '', s, 'SET ENDED');
+    // One screen, two endings. Only the headline and the demo-end block differ;
+    // stats, settlement and ONE MORE SET are the same run report either way.
+    if (victory) s.classList.add('win-screen');
+    el('span', 'eyebrow', s, victory ? "THE HUSH COULDN'T STOP YOU" : 'THE CROWD FINALLY WON');
+    el('h1', '', s, victory ? 'SET COMPLETE' : 'SET ENDED');
     el('p', 'sub run-summary', s,
       `${formatTime(stats.timeS)} · ${stats.kills} kills · level ${stats.level} · ♫ ${stats.notesCollected}`);
+
+    if (victory) {
+      // The demo has no minute 31: say so here, and give the player somewhere
+      // to send what they thought of it.
+      const demo = el('section', 'demo-end', s);
+      el('span', 'eyebrow', demo, "THAT'S THE DEMO");
+      const copy = el('p', 'demo-end-copy', demo,
+        'Congratulations, you played the whole set. Thanks for playing, I appreciate any feedback! Reach the developer at ');
+      const link = el('a', 'demo-end-link', copy, 'yusufkinatas.com') as HTMLAnchorElement;
+      link.href = 'https://yusufkinatas.com';
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+    }
 
     if (settlement) {
       const rep = el('section', 'settlement-panel', s);

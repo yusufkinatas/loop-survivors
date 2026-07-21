@@ -811,3 +811,24 @@ export const SHOVE_S = 0.12;
 // NO WEAPON-SPECIFIC BLOCK REMAINS IN THIS FILE (#141). Every weapon's tuning
 // lives as named stats in its own module under weapons/. What is left in
 // config.ts is global knobs only: enemies, XP, damage feedback and run shape.
+
+/** The demo end (mad-forest-spec §8). Surviving to `atS` wins the run: the
+ *  stage script stops spawning, the player becomes untouchable, and a single
+ *  wave sweeps outward from the player killing every live enemy — no XP, no
+ *  kill credit, no chest, a boss included. Then the stage is quiet for
+ *  `quietBeatS` while the win flourish rings out, and the win screen opens.
+ *
+ *  `sweepSpeed` is deliberately fast — about a screen width every third of a
+ *  second, the whole arena inside a second. The clear is punctuation, not a
+ *  fight: it should read as one gesture, and it has to be finished well
+ *  before the empty-stage beat it is clearing the stage for. */
+export const VICTORY = {
+  atS: 30 * 60,
+  /** Kill-wave radius growth, world px per second. */
+  sweepSpeed: 2600,
+  /** How far the wave travels before it retires; well past any spawn ring. */
+  sweepReach: 2600,
+  sweepColor: 0xffe9a8,
+  /** Empty-stage beat between the track's last bar and the win screen. */
+  quietBeatS: 2.6,
+};

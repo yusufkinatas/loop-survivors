@@ -23,6 +23,7 @@ import {
   RUN,
   STAGE_MAGNET,
   SHIELDED,
+  VICTORY,
   SHOVE_S,
   SPLITTER,
   WORLD_SCALE,
@@ -621,6 +622,11 @@ export class RunWorld {
    *  snapshotted. */
   private readonly weaponCtx = new Map<Role, WeaponContext>();
   private scripted: boolean;
+  /** The run has been won (mad-forest-spec §8). Set once, never cleared: a
+   *  world that reached 30:00 only ever plays out its clear wave. */
+  won = false;
+  /** Radius of the victory clear wave, growing from the player. */
+  private sweepR = 0;
 
   constructor(
     view: { width: number; height: number },
@@ -1073,13 +1079,21 @@ export class RunWorld {
   }
 
   update(dt: number): void {
-    this.timeS += dt;
-    this.updateMinuteSystems(dt);
+    // The won world keeps running — the band plays its last bar out, shots
+    // stay in flight, the player still walks — but its clock is frozen at the
+    // winning time (so the end screen reads exactly 30:00), the stage script
+    // stops, and the clear wave takes over as the only thing that kills.
+    if (!this.won) {
+      this.timeS += dt;
+      if (this.scripted && this.timeS >= VICTORY.atS) this.beginVictory();
+    }
+    if (!this.won) this.updateMinuteSystems(dt);
     this.updatePassiveRecovery(dt);
     this.movePlayer(dt);
-    if (this.scripted) {
+    if (this.scripted && !this.won) {
       this.runDirector(dt);
     }
+    if (this.won) this.advanceVictorySweep(dt);
 
     this.moveEnemies(dt);
     this.updateDummies(dt);
@@ -1171,8 +1185,9 @@ export class RunWorld {
    *
    * The authored table is the WHOLE script (mad-forest-spec §1): every minute
    * from 0:00 to 29:00 is a row here, nothing procedural takes over, and past
-   * the last row the 29:00 wave simply keeps running. No victory branch exists
-   * yet — the demo end at 30:00 lands with its own ticket. */
+   * the last row the 29:00 wave keeps running for its final minute — until
+   * 30:00, where update() takes the victory branch and this stops being
+   * called at all. */
   private runDirector(_dt: number): void {
     if (!this.stageStarted) {
       this.stageStarted = true;
@@ -1215,6 +1230,52 @@ export class RunWorld {
     while (this.timeS + 1e-9 >= this.nextSpawnT) {
       this.spawnWaveAttempt(wave);
       this.nextSpawnT += wave.intervalS;
+    }
+  }
+
+  /** 30:00: the set is played (mad-forest-spec §8). Freeze the clock on the
+   *  winning time, make the player untouchable, and arm the clear wave. The
+   *  shell takes it from here — it stops the track on the next bar line, rings
+   *  the win flourish, and opens the win screen after the quiet beat. */
+  private beginVictory(): void {
+    this.won = true;
+    this.timeS = VICTORY.atS;
+    this.invincible = true;
+    this.player.iframesT = 0;
+    this.sweepR = 0;
+    this.spawnRing(
+      this.player.x,
+      this.player.y,
+      VICTORY.sweepReach,
+      VICTORY.sweepColor,
+      VICTORY.sweepReach / VICTORY.sweepSpeed,
+    );
+    this.events.onVictory();
+  }
+
+  /** The clear wave: everything the expanding ring has passed dies where it
+   *  stands. Kills here are NOT kills — `dead` is set directly rather than
+   *  through damageEnemy, exactly like the off-screen recycle, so nothing
+   *  drops a gem or a note, nothing scores, no splitter bursts, and a boss
+   *  caught at 30:00 is swept chestless with everything else. */
+  private advanceVictorySweep(dt: number): void {
+    if (this.sweepR >= VICTORY.sweepReach) return;
+    this.sweepR = Math.min(VICTORY.sweepReach, this.sweepR + VICTORY.sweepSpeed * dt);
+    const r2 = this.sweepR * this.sweepR;
+    for (const e of this.enemies) {
+      if (e.dead || e.dummy) continue;
+      const dx = e.x - this.player.x;
+      const dy = e.y - this.player.y;
+      if (dx * dx + dy * dy > r2) continue;
+      e.dead = true;
+      this.fx?.push({
+        type: 'death',
+        x: e.x,
+        y: e.y,
+        radius: e.radius,
+        color: VICTORY.sweepColor,
+        elite: false,
+      });
     }
   }
 
@@ -1699,6 +1760,11 @@ export class RunWorld {
 
   private damageEnemy(e: Enemy, amount: number, source?: Role): void {
     if (e.dead) return;
+    // Past 30:00 the clear wave is the only thing that kills. The band is
+    // still playing its final bar and its shots are still in the air, but they
+    // score nothing: the run's kill count, XP and drops are settled at the
+    // moment of the win, so what the sweep passes through cannot pad them.
+    if (this.won) return;
     // Floating damage number (view-only). Weapon-colored,
     // rounded; sub-1 ticks and instakills (Infinity) don't get a number.
     if (this.fx && Number.isFinite(amount)) {

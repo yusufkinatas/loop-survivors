@@ -26,6 +26,7 @@ import {
   playLevelCue,
   playPickupCue,
   playStageMagnetCue,
+  playWinCue,
   type GemCueOptions,
   type NoteCueOptions,
 } from './cues/index';
@@ -187,6 +188,8 @@ export class MusicEngine {
   private activeSources = new Set<AudioBufferSourceNode>();
   private listeners: TriggerListener[] = [];
   private barQueue: ((audioTime: number) => void)[] = [];
+  /** Armed by stopAtBarEnd(): the track stops on the next bar line. */
+  private barEndStop: ((audioTime: number) => void) | null = null;
   private phraseQueue: Array<{
     fn: (audioTime: number) => void;
     afterAudioTime: number;
@@ -421,6 +424,13 @@ export class MusicEngine {
     playGameOverCue(this.ctx, this.master);
   }
 
+  /** The demo-end flourish. `startAt` is the bar line the track stopped on, so
+   *  the win lands on the beat the music left off. */
+  playWinCue(startAt?: number): void {
+    if (this.masterTarget <= 0) return; // muted
+    playWinCue(this.ctx, this.master, startAt);
+  }
+
   /** Freeze already-scheduled lookahead audio at an intentional game pause.
    * Suspending the AudioContext also freezes currentTime, so pending gameplay
    * triggers remain paired with their sounds instead of leaking through a
@@ -559,6 +569,24 @@ export class MusicEngine {
     this.barQueue.push(fn);
   }
 
+  /** End the track ON the bar line rather than wherever the run happened to
+   *  stop it: play out the bar in progress (a bar is the few-second musical
+   *  measure the arrangement is currently inside), then stop the transport at
+   *  its last step and hand the boundary's audio time to `fn`.
+   *
+   *  Nothing of the next bar is scheduled — the stop happens in the step
+   *  callback that would have queued the new bar's downbeat, before any voice
+   *  sees it — so the music finishes a phrase instead of being cut mid-word.
+   *  If the transport is already stopped there is no bar to finish and `fn`
+   *  runs immediately, at the current time. */
+  stopAtBarEnd(fn: (audioTime: number) => void): void {
+    if (!this.clock.running) {
+      fn(this.ctx.currentTime);
+      return;
+    }
+    this.barEndStop = fn;
+  }
+
   /** Run fn while scheduling the next unheard four-bar phrase downbeat.
    * Unlike the ordinary bar API, this can claim a phrase-zero step already in
    * the 120 ms lookahead window, so filling Pressure just before the heard
@@ -594,6 +622,7 @@ export class MusicEngine {
    * lookahead audio leaks to the next screen. */
   clearBarQueue(): void {
     this.barQueue = [];
+    this.barEndStop = null;
     this.phraseQueue = [];
     this.timedActions = [];
   }
@@ -615,6 +644,7 @@ export class MusicEngine {
     this.activeSources.clear();
     this.pending = [];
     this.barQueue = [];
+    this.barEndStop = null;
     this.phraseQueue = [];
     this.timedActions = [];
     this.stepMarkers = [];
@@ -632,6 +662,7 @@ export class MusicEngine {
       this.activeSources.size === 0 &&
       this.pending.length === 0 &&
       this.barQueue.length === 0 &&
+      this.barEndStop === null &&
       this.phraseQueue.length === 0 &&
       this.timedActions.length === 0 &&
       this.stepMarkers.length === 0
@@ -706,6 +737,18 @@ export class MusicEngine {
     // phrase, so a 4-bar chart's bar 4 is always the phrase's bar 4 and
     // once-per-phrase material lands where it was written.
     const phraseStep = step % STEPS_PER_PHRASE;
+    // The armed bar-line stop wins the boundary outright: this step belongs to
+    // the bar that must never be heard, so the transport goes down before any
+    // voice or queued change gets to look at it.
+    if (this.barEndStop && phraseStep % STEPS_PER_BAR === 0) {
+      const stop = this.barEndStop;
+      this.barEndStop = null;
+      this.clock.stop();
+      this.barQueue = [];
+      this.phraseQueue = [];
+      stop(time);
+      return;
+    }
     if (phraseStep % STEPS_PER_BAR === 0 && this.barQueue.length > 0) {
       const queue = this.barQueue;
       this.barQueue = [];
