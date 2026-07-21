@@ -25,9 +25,6 @@ import {
 import { MetaStore, SHOP_OFFERS, type ShopOfferId } from './meta';
 import type { RunWorld } from './run';
 import { endlessScale } from './tour';
-import { DEFAULT_TILT_SPEED, tiltTuning } from './view';
-
-const TAU = Math.PI * 2;
 
 /** Exported coverage catalogs keep the no-test-framework verification script
  * able to prove that future content cannot silently disappear from the panel. */
@@ -185,34 +182,6 @@ export function mountSandboxPanel(
       }),
     })),
   };
-
-  // A live knob rather than preset rungs: the useful range is continuous and
-  // the only way to judge it is to watch a crowd while dragging.
-  const tiltRow = el('div', 'sb-enemy sb-tilt-row', combat);
-  const tiltInfo = el('div', 'sb-enemy-info', tiltRow);
-  el('span', 'sb-enemy-name', tiltInfo, 'enemy tilt');
-  const tiltStatus = el('span', 'sb-enemy-stats', tiltInfo);
-  const tiltSlider = el('input', 'sb-slider', tiltRow) as HTMLInputElement;
-  tiltSlider.type = 'range';
-  tiltSlider.min = '0';
-  tiltSlider.max = '14';
-  tiltSlider.step = '0.1';
-  tiltSlider.value = String(tiltTuning.speed);
-  tiltSlider.oninput = () => {
-    tiltTuning.speed = Number(tiltSlider.value);
-    syncTiltStatus();
-  };
-  tiltSlider.onchange = () => tiltSlider.blur(); // hand WASD back to the game
-  function syncTiltStatus(): void {
-    const speed = tiltTuning.speed;
-    // Period is what the eye actually judges, so lead with it; 0 is a valid
-    // setting (sway off) and has no period to report.
-    const loop = speed > 0 ? `${(TAU / speed).toFixed(2)}s loop` : 'no sway';
-    tiltStatus.textContent =
-      `${loop} · ${speed.toFixed(1)} rad/s` +
-      (speed === DEFAULT_TILT_SPEED ? ' · default' : ` · def ${DEFAULT_TILT_SPEED}`);
-  }
-  syncTiltStatus();
 
   const fixtureControls = el('div', 'sb-btns sb-controls', combat);
   fixtureControls.style.marginLeft = '0';

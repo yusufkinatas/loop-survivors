@@ -204,11 +204,10 @@ function formatDummyNumber(value: number): string {
  *  alive, not enough to register as its own animation. */
 const TILT_RADIANS = 0.065;
 
-/** Mutable so the sandbox can dial the sway in while watching a live crowd —
- *  feel is easier to find by ear than by arithmetic. Once a value settles, fold
- *  it back into `DEFAULT_TILT_SPEED` and the slider becomes redundant. */
-export const DEFAULT_TILT_SPEED = 3.4;
-export const tiltTuning = { speed: DEFAULT_TILT_SPEED };
+/** Radians per second, tuned by eye against a live crowd. Exactly τ, i.e. one
+ *  full lean-and-return per second — roughly two footsteps of the walk cycle
+ *  per sway, which reads as deliberate walking rather than idle drifting. */
+const TILT_SPEED = Math.PI * 2;
 
 function enemyTilt(enemy: Enemy, phase: number): number {
   return Math.sin(phase + enemy.id * 1.7) * TILT_RADIANS;
@@ -387,12 +386,6 @@ export class RunView {
   private flashes: { start: number; dur: number; color: number; alpha: number }[] = [];
   private trails = new Map<Projectile, number[]>();
   private chapter = -1;
-  /** The enemy sway is accumulated rather than derived from `timeS * speed`, so
-   *  that retuning the speed mid-run bends the sway from wherever it currently
-   *  is instead of teleporting every enemy to a new phase. Advanced off the
-   *  world clock, so a paused sim holds its lean like it holds its walk frame. */
-  private tiltPhase = 0;
-  private tiltClock = 0;
   private readonly reducedMotion: boolean;
 
   constructor(world: RunWorld, view: { width: number; height: number }) {
@@ -517,9 +510,6 @@ export class RunView {
   update(dt: number): void {
     for (const fx of this.world.fx ?? []) this.spawnFx(fx);
     if (this.world.fx) this.world.fx.length = 0;
-
-    this.tiltPhase += Math.max(0, this.world.timeS - this.tiltClock) * tiltTuning.speed;
-    this.tiltClock = this.world.timeS;
 
     const player = this.world.player;
     const cameraX = player.x + PLAYER_FOOT_OFFSET.x;
@@ -955,7 +945,7 @@ export class RunView {
       }
       gfx.position.set(snap(enemy.x), snap(enemy.y));
       gfx.tint = enemy.flashT > 0 ? 0xffffff : enemy.color;
-      const tilt = enemyTilt(enemy, this.tiltPhase);
+      const tilt = enemyTilt(enemy, this.world.timeS * TILT_SPEED);
       gfx.rotation = tilt;
       gfx.scale.set(1);
       if (enemy.kind === 'ghost') gfx.alpha = 0.78 + Math.sin(this.world.timeS * 3 + enemy.id) * 0.08;

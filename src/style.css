@@ -914,16 +914,6 @@ button.big {
   flex: 1 1 auto;
 }
 
-/* Continuous tuning knob in a panel otherwise built from discrete rungs. It
-   sits where a .sb-btns group would, and must not be squeezed by the label
-   column beside it. */
-.sb-slider {
-  flex: 0 0 auto;
-  width: 108px;
-  margin-left: auto;
-  accent-color: var(--signal);
-}
-
 .sb-enemy-name {
   color: var(--ink);
 }
