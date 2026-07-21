@@ -37,6 +37,7 @@ import {
   STAGE_STARTING_KIND,
   STAGE_STARTING_SPAWNS,
   STAGE_WAVES,
+  type StageEvent,
   type StageWave,
 } from './madforest';
 import { mulberry32, type Rng } from './rng';
@@ -122,6 +123,61 @@ function defaultSpawnClass(kind: EnemyKind): SpawnClass {
   return ENEMIES[kind].fixedDirection || kind === 'flower' ? 'event' : 'regular';
 }
 
+/** One firing of an authored event row. The data file stays at one row per
+ *  wiki table cell (mad-forest-spec §4); the director is what unrolls an
+ *  occurrence group into the individual firings below. Everything shared by a
+ *  group is copied onto each occurrence, so the fire path never has to look
+ *  back at the row it came from — and `chance` is therefore rolled per
+ *  occurrence, which is the whole point of the split. */
+type StageOccurrence =
+  | { atS: number; type: 'boss'; kind: EnemyKind; chest: boolean }
+  | { atS: number; type: 'sweep'; kind: EnemyKind; countPer: number; chance: number }
+  | {
+      atS: number;
+      type: 'flowerWall';
+      kind: 'flower';
+      ringCount: number;
+      durationS: number;
+      chance: number;
+    };
+
+/** Occurrence i (0-based) of a repeatable row fires at `atS + i * spacingS`;
+ *  the row's own `atS` is already the first occurrence. Boss rows are single,
+ *  unconditional firings. The result is sorted by time, stably, so rows that
+ *  share a timestamp keep their authored order (5:00's boss lands before its
+ *  flower wall). */
+function unrollStageEvents(rows: readonly StageEvent[]): readonly StageOccurrence[] {
+  const out: { at: number; seq: number; occ: StageOccurrence }[] = [];
+  for (const row of rows) {
+    if (row.type === 'boss') {
+      out.push({ at: row.atS, seq: out.length, occ: row });
+      continue;
+    }
+    for (let i = 0; i < row.occurrences; i++) {
+      const atS = row.atS + i * row.spacingS;
+      out.push({
+        at: atS,
+        seq: out.length,
+        occ:
+          row.type === 'sweep'
+            ? { atS, type: 'sweep', kind: row.kind, countPer: row.countPer, chance: row.chance }
+            : {
+                atS,
+                type: 'flowerWall',
+                kind: row.kind,
+                ringCount: row.ringCount,
+                durationS: row.durationS,
+                chance: row.chance,
+              },
+      });
+    }
+  }
+  out.sort((a, b) => a.at - b.at || a.seq - b.seq);
+  return out.map((entry) => entry.occ);
+}
+
+const STAGE_OCCURRENCES = unrollStageEvents(STAGE_EVENTS);
+
 export interface Enemy {
   id: number;
   kind: EnemyKind;
@@ -177,6 +233,10 @@ export interface Enemy {
    * chest drop, the teleport-back instead of a despawn, and the ring + glow.
    * The same kind is a crowd enemy or a boss depending only on this. */
   spawnClass: SpawnClass;
+  /** Whether this body leaves a chest behind. Boss spawns carry one by
+   *  default; an authored boss row with `chest: false` clears it, and that boss
+   *  dies empty while staying a boss in every other respect. */
+  dropsChest: boolean;
   /** Scripted sweep motion. Zeroes mean normal direct homing. */
   moveX: number;
   moveY: number;
@@ -1135,17 +1195,26 @@ export class RunWorld {
       this.nextSpawnT = this.currentWave.atS + this.currentWave.intervalS;
     }
 
-    while (this.eventIdx < STAGE_EVENTS.length && this.timeS >= STAGE_EVENTS[this.eventIdx].atS) {
-      const event = STAGE_EVENTS[this.eventIdx++];
-      if (event.type === 'boss') {
+    while (
+      this.eventIdx < STAGE_OCCURRENCES.length &&
+      this.timeS >= STAGE_OCCURRENCES[this.eventIdx].atS
+    ) {
+      const occ = STAGE_OCCURRENCES[this.eventIdx++];
+      if (occ.type === 'boss') {
         const before = this.enemies.length;
-        this.spawnEnemy(event.kind, undefined, 1, true, 'boss');
+        this.spawnEnemy(occ.kind, undefined, 1, true, 'boss');
         const spawned = this.enemies.length > before ? this.enemies[this.enemies.length - 1] : null;
-        if (spawned && event.atS > 0 && event.atS % 300 === 0) this.scaleEliteBoss(spawned);
-      } else if (event.type === 'batSweep') {
-        if (this.rng() < event.chance) this.spawnBatSweep(event.kind, event.count);
-      } else {
-        this.spawnFlowerWall(event.kind, event.count, event.durationS);
+        if (spawned) {
+          // A chest-less boss row is still a boss in every other way: it keeps
+          // the ring, the glow, and the teleport-back. It just dies empty.
+          spawned.dropsChest = occ.chest;
+          if (occ.atS > 0 && occ.atS % 300 === 0) this.scaleEliteBoss(spawned);
+        }
+      } else if (occ.type === 'sweep') {
+        // The roll is this occurrence's own, never the group's.
+        if (this.rng() < occ.chance) this.spawnSweep(occ.kind, occ.countPer);
+      } else if (this.rng() < occ.chance) {
+        this.spawnFlowerWall(occ.kind, occ.ringCount, occ.durationS);
       }
     }
 
@@ -1227,8 +1296,10 @@ export class RunWorld {
     } while (alive < wave.minimum);
   }
 
-  /** A 50-enemy event fan crosses the screen without homing. */
-  private spawnBatSweep(kind: EnemyKind, count: number): void {
+  /** A kind-generic event fan crosses the screen without homing. Bat Swarm and
+   *  Ghost Swarm share this code path verbatim (mad-forest-spec §4); only the
+   *  kind and the per-occurrence count differ. */
+  private spawnSweep(kind: EnemyKind, count: number): void {
     // Official-demo geometry: start on an elliptical 0.72W/0.72H arc, advance
     // π/500 radians per bat (~18 degrees across 50), and lock each bat toward
     // the player's position at event time. The result is a converging fan.
@@ -1424,6 +1495,7 @@ export class RunWorld {
       shieldHp: kind === 'shielded' ? scaledHp * SHIELDED.shieldMul : 0,
       spin: kind === 'circler' ? (this.rng() < 0.5 ? 1 : -1) : 0,
       spawnClass,
+      dropsChest: spawnClass === 'boss',
       moveX,
       moveY,
       despawnAt,
@@ -1762,7 +1834,7 @@ export class RunWorld {
       this.spawnHealthPickupForEnemy(e);
       // Boss spawns (Vampire-Survivors style) drop a chest on the ground.
       // Walk into it to open it: a ready weapon evolution, or health.
-      if (boss) {
+      if (e.dropsChest) {
         this.spawnChestAt(e.x, e.y);
       }
       if (e.kind === 'splitter') this.spawnChildren(e);
