@@ -1612,14 +1612,6 @@ button.big {
   font: 700 10px/1.25 var(--font-mono);
 }
 
-/* Recipe reminder: which weapon this passive can evolve. Gold like the band
-   rack's evolved tag, so the two read as one language. */
-.pause-item-copy .pause-item-evo {
-  color: var(--gold);
-  font: 900 9px/1 var(--font-mono);
-  letter-spacing: 0.08em;
-}
-
 .sb-enemy-stats.passive-copy {
   white-space: normal;
   overflow: visible;

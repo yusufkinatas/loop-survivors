@@ -132,13 +132,13 @@ export class Hud {
       const copy = el('div', 'pause-item-copy', row);
       el('strong', '', copy, `${item.name} · LV ${level}`);
       el('span', '', copy, item.levelLines[level - 1]);
-      // The recipe reminder the in-world pedestal showed once, kept reachable
-      // for the rest of the run. Names the weapon only — not what it becomes.
-      const partner = item.evolutionPartner;
-      const partnerName = partner ? this.kits.get(partner)?.name ?? partner : '';
-      if (partner) el('span', 'pause-item-evo', copy, `EVO ${partnerName.toUpperCase()}`);
-      row.setAttribute('aria-label', `${item.name}, level ${level}: ${item.levelLines[level - 1]}`
-        + (partner ? `. Evolves ${partnerName} at level 5.` : ''));
+      // NO EVOLUTION HINT HERE, deliberately. The pause menu is a build
+      // inspector — what you have and what it is doing — not a cookbook. The
+      // recipe is taught once, on the ground pick, and only when it is
+      // actionable; see teachesEvolution in game.ts. That includes the
+      // aria-label: a screen reader must inspect the same build, not a
+      // permanent recipe list the sighted player cannot see.
+      row.setAttribute('aria-label', `${item.name}, level ${level}: ${item.levelLines[level - 1]}`);
     }
   }
 
