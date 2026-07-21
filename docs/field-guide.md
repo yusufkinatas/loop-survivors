@@ -19,8 +19,9 @@ automatically in time with the track: one heard hit creates one gameplay
 attack. Blue gems give experience. A level-up drops three physical reward
 pedestals around the player; item pedestals print the exact next-tier effect in
 one line, and the pause screen lists every current passive total. Walk into one
-pedestal to take it. A build can hold one weapon in each of seven band
-positions and up to six passive items.
+pedestal to take it. A build can hold up to five weapons and up to five passive
+items, in any combination — no weapon locks another out. Once both caps are
+full, level-ups deepen what is already there.
 
 A run opens silent and unarmed: three weapon pedestals drop around the player,
 and walking into one arms that weapon at tier I on the next bar. The choice

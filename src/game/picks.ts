@@ -1,7 +1,12 @@
 // The level-up economy's one source of truth. A configured roll mixes weapon
-// hires/upgrades with passive items, while preserving the band's permanent
-// slot choices. Once that finite build is complete, the same API rolls a small
-// capped set of run-only Encore bonuses so an endless run keeps paying out.
+// hires/upgrades with passive items until the build fills its two flat caps
+// (BUILD.weaponCap / BUILD.itemCap). Once that finite build is complete, the
+// same API rolls a small capped set of run-only Encore bonuses so an endless
+// run keeps paying out.
+//
+// There are no weapon categories: any weapon may be offered alongside any
+// other, and hiring one never retires another from the pool. The only thing
+// that closes the hire pool is the cap.
 //
 // Everything here is pure in the supplied state and RNG. Pools use fixed
 // catalog order and weighted draws use a stable index tie-break, so a seeded
@@ -10,17 +15,10 @@
 import { TIER_COUNT } from '../audio/charts';
 import { soundsetSupports } from '../audio/soundset';
 import { ROLES, type Role } from '../audio/kits';
-import {
-  EARLY_NUDGE_FACTOR,
-  earlyNudgeApplies,
-  slotFilled,
-  slotOf,
-  type Slot,
-} from './band';
+import { BUILD } from './config';
 import {
   ITEM_IDS,
   itemMaxLevel,
-  ITEM_SLOT_CAP,
   itemLevel,
   type ItemId,
 } from './items';
@@ -120,16 +118,41 @@ function ownedItemCount(items: ReadonlyMap<ItemId, number>): number {
   return count;
 }
 
+function ownedWeaponCount(tiers: ReadonlyMap<Role, number>): number {
+  let count = 0;
+  for (const tier of tiers.values()) {
+    if (tier > 0) count += 1;
+  }
+  return count;
+}
+
+/**
+ * The gentle early drum nudge: for roughly the first two minutes, the beat
+ * weapons draw heavier so most runs open with a beat to build on. A thumb on
+ * the scale, not a guarantee — an all-melody build stays possible and stays
+ * the player's own fault.
+ *
+ * This is an offer-weight knob, not a grouping: the roles listed here have no
+ * relationship to each other beyond drawing heavier early, and owning one does
+ * nothing to the others' odds.
+ */
+const EARLY_NUDGE_UNTIL_S = 120;
+const EARLY_NUDGE_FACTOR = 1.7;
+const EARLY_NUDGE_ROLES: ReadonlySet<Role> = new Set<Role>(['kick', 'snare', 'clap']);
+
 /** A weapon's weight, including the existing gentle early drum nudge. */
 function weaponWeight(role: Role, timeS: number): number {
   let weight = WEAPON_WEIGHT;
-  if (earlyNudgeApplies(slotOf(role), timeS)) weight *= EARLY_NUDGE_FACTOR;
+  if (timeS < EARLY_NUDGE_UNTIL_S && EARLY_NUDGE_ROLES.has(role)) weight *= EARLY_NUDGE_FACTOR;
   return weight;
 }
 
 function buildFinitePool(input: RollOffersInput): WeightedOption<BuildPickOption>[] {
   const pool: WeightedOption<BuildPickOption>[] = [];
 
+  // The cap closes the hire pool, not the upgrade pool: a capped build keeps
+  // being offered tier-ups of the weapons it already owns.
+  const weaponSlotsFull = ownedWeaponCount(input.tiers) >= BUILD.weaponCap;
   for (const role of ROLES) {
     // A previously owned role remains upgradeable if a repaired/migrated save
     // no longer lists it as unlocked. New hires require both meta unlock and
@@ -137,7 +160,7 @@ function buildFinitePool(input: RollOffersInput): WeightedOption<BuildPickOption
     if (!soundsetSupports(role)) continue;
     const tier = Math.max(0, Math.min(TIER_COUNT, Math.floor(input.tiers.get(role) ?? 0)));
     if (tier === 0) {
-      if (!input.unlockedRoles.has(role) || slotFilled(slotOf(role), input.tiers)) continue;
+      if (weaponSlotsFull || !input.unlockedRoles.has(role)) continue;
       pool.push({ option: { kind: 'weapon', role, tier: 1 }, weight: weaponWeight(role, input.timeS) });
     } else if (tier < TIER_COUNT) {
       pool.push({
@@ -147,7 +170,7 @@ function buildFinitePool(input: RollOffersInput): WeightedOption<BuildPickOption
     }
   }
 
-  const itemSlotsFull = ownedItemCount(input.items) >= ITEM_SLOT_CAP;
+  const itemSlotsFull = ownedItemCount(input.items) >= BUILD.itemCap;
   for (const item of ITEM_IDS) {
     const tier = itemLevel(input.items, item);
     if (tier === 0) {
@@ -193,37 +216,18 @@ function selectFiniteOffers(
     ? ranked.find((candidate) => candidate.option.kind === 'item')
     : undefined;
   const selected: RankedOption<BuildPickOption>[] = [];
-  const usedSlots = new Set<Slot>();
 
   // Reserve the best-ranked item before filling the remaining cards. Sorting
   // selected cards back by rank below means a forced item has no fixed screen
   // position.
   if (requiredItem) selected.push(requiredItem);
 
+  // No cross-card exclusion rule survives: each role appears in the pool at
+  // most once, so taking the ranked order in order cannot repeat a weapon.
   for (const candidate of ranked) {
     if (selected.length >= OFFER_COUNT) break;
     if (candidate === requiredItem) continue;
-    if (candidate.option.kind === 'weapon') {
-      const slot = slotOf(candidate.option.role);
-      if (usedSlots.has(slot)) continue;
-      usedSlots.add(slot);
-    }
     selected.push(candidate);
-  }
-
-  // A reserved option never uses a weapon slot, but keeping this repair makes
-  // the constraint self-contained if another required category is added.
-  for (let i = 0; i < selected.length; i++) {
-    const option = selected[i].option;
-    if (option.kind !== 'weapon') continue;
-    const slot = slotOf(option.role);
-    for (let j = i + 1; j < selected.length; j++) {
-      const other = selected[j].option;
-      if (other.kind === 'weapon' && slotOf(other.role) === slot) {
-        selected.splice(j, 1);
-        j -= 1;
-      }
-    }
   }
 
   selected.sort((a, b) => b.key - a.key || a.index - b.index);
@@ -312,10 +316,10 @@ export interface RollStartingWeaponsInput {
  * The opening hire: the three weapons a run starts by choosing between. This
  * is not a level-up offer, so the pool holds only tier-0 hires — never an
  * item, never an Encore, never an upgrade of something already owned. The
- * usual gates still apply (soundset support, meta unlock, one weapon per band
- * slot) and the draw goes through the same weighted rank, so a seeded run
- * opens identically everywhere. Returns fewer than OFFER_COUNT only if fewer
- * distinct slots are available.
+ * usual gates still apply (soundset support, meta unlock) and the draw goes
+ * through the same weighted rank, so a seeded run opens identically
+ * everywhere. Returns fewer than OFFER_COUNT only if fewer weapons are
+ * available to hire at all.
  */
 export function rollStartingWeapons(input: RollStartingWeaponsInput): WeaponPickOption[] {
   const pool: WeightedOption<WeaponPickOption>[] = [];
@@ -323,23 +327,16 @@ export function rollStartingWeapons(input: RollStartingWeaponsInput): WeaponPick
     if (!soundsetSupports(role)) continue;
     if (!input.unlockedRoles.has(role)) continue;
     const tier = Math.max(0, Math.min(TIER_COUNT, Math.floor(input.tiers.get(role) ?? 0)));
-    if (tier !== 0 || slotFilled(slotOf(role), input.tiers)) continue;
+    if (tier !== 0) continue;
     pool.push({
       option: { kind: 'weapon', role, tier: 1 },
       weight: weaponWeight(role, input.timeS),
     });
   }
 
-  const selected: WeaponPickOption[] = [];
-  const usedSlots = new Set<Slot>();
   // rankOptions returns the pool already ordered best-first, so taking in
   // order keeps the weighted ordering the cards are drawn in.
-  for (const { option } of rankOptions(pool, input.rng)) {
-    if (selected.length >= OFFER_COUNT) break;
-    const slot = slotOf(option.role);
-    if (usedSlots.has(slot)) continue;
-    usedSlots.add(slot);
-    selected.push(option);
-  }
-  return selected;
+  return rankOptions(pool, input.rng)
+    .slice(0, OFFER_COUNT)
+    .map(({ option }) => option);
 }
