@@ -79,7 +79,7 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     levelLines: ['+8% attack duration', '+16% total attack duration', '+24% total attack duration', '+32% total attack duration', '+40% total attack duration'],
   },
   magnetLanyard: {
-    id: 'magnetLanyard', name: 'Magnet Lanyard', shortName: 'Pickup', glyph: '✦',
+    id: 'magnetLanyard', name: 'Magnet', shortName: 'Pickup', glyph: '✦',
     description: 'Experience gems find you from farther away and fly faster.',
     levelLines: ['+20% gem range, +8% pull', '+40% range, +16% pull', '+60% range, +24% pull', '+80% range, +32% pull', '+100% range, +40% pull'],
   },

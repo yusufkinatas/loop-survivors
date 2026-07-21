@@ -74,7 +74,7 @@ four passives (High-Tops, Fast Forward, Mirrorball, and Wide Lens).
 | 0 owned | Heavy Amp (90), Recovery Tape (100), Clap (110) |
 | 2 owned | Arp (180), Needle Tips (130) |
 | 5 owned | Lead (260), Extension Cable (150), Padded Jacket (170), Double Take (280) |
-| 8 owned | Magnet Lanyard (220), Second Wind (320), Opening Loadout (300) |
+| 8 owned | Magnet (220), Second Wind (320), Opening Loadout (300) |
 
 Second Wind revives the player once per run at 30% health. Opening Loadout lets
 the player choose one unlocked passive to start at tier I. There are no
@@ -131,7 +131,7 @@ an evolution ingredient.
 | Wide Lens | +30% attack area and +15% orbit distance | Chord |
 | Heavy Amp | +25% damage and +20% enemy shove | Bass |
 | Extension Cable | +40% projectile, zone, and orbiter duration | Arp |
-| Magnet Lanyard | +100% pickup range and +40% pull speed | None — standalone |
+| Magnet | +100% pickup range and +40% pull speed | None — standalone |
 | Padded Jacket | +40 maximum health, immediate healing as it levels, and +2 armor | Clap |
 | Recovery Tape | Restores 0.5 HP per second while below maximum health | None — standalone |
 | Double Take | +2 emissions from every weapon that emits a countable thing | None — standalone |

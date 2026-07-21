@@ -78,7 +78,7 @@ export const SHOP_OFFERS: readonly ShopOffer[] = [
   { id: 'doubleTake', kind: 'item', contentId: 'doubleTake', name: 'Double Take', cost: 280, minOwned: 5,
     description: 'Two levels only: every projectile weapon fires one, then two extra shots.' },
 
-  { id: 'magnetLanyard', kind: 'item', contentId: 'magnetLanyard', name: 'Magnet Lanyard', cost: 220, minOwned: 8,
+  { id: 'magnetLanyard', kind: 'item', contentId: 'magnetLanyard', name: 'Magnet', cost: 220, minOwned: 8,
     description: 'Long-range pickup pull: gems reach farther and fly faster.' },
   { id: 'secondWind', kind: 'perk', contentId: 'secondWind', name: 'Second Wind', cost: 320, minOwned: 8,
     description: 'Revive once per run at 30% health.' },
