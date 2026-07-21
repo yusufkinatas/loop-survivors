@@ -70,23 +70,25 @@ interface ChordStats extends WeaponStats {
   readonly slowGraceS: number;
   /** Enemy speed multiplier under a BASE zone. WAS config.ZONE_SLOW_MUL. */
   readonly slowMul: number;
-  /** A zone's damage ceiling, as a multiple of the damage it spawned with.
-   *  Frozen at spawn, and only the merge pass can ever approach it — an
-   *  unmerged zone deals its spawn damage forever. WAS the bare `damage * 3`
-   *  in spawnZone. */
-  readonly damageCapMul: number;
 
   // ---------------- Afterhours ---------------------------------------------
   //
-  // Huge slow zones that each hunt the body nearest them and merge into
-  // supercells where they happen to meet. Every zone is bigger, longer, harder
-  // and slower-making, and then two of them become one.
+  // Big slow zones of ONE FIXED SIZE that each hunt the nearest body they do
+  // not already cover. They never merge and never change size once thrown, so
+  // what you see is exactly what damages. The evolution reads as two things at
+  // once: they got bigger, and they started moving.
 
-  /** Radius, lifetime and per-tick damage relative to the built tier block.
-   *  These are applied ON TOP of the build pipeline's areaMul — a tier-4
-   *  Afterhours zone with Wide Lens maxed is 76 x 1.30 x 1.55 across — so
-   *  reading them as the whole story of an evolved zone's size is wrong. */
-  readonly afterhoursRadiusMul: number;
+  /** An evolved zone's radius in units, FLAT — not a multiplier on the tier
+   *  block. Every Afterhours zone is this size whatever tier the chord reached,
+   *  which is the point: the evolution is a step to one big fixed footprint,
+   *  not a continuation of the tier ladder. Tier still drives damage and
+   *  lifetime; it just no longer drives size.
+   *
+   *  STILL SCALED BY buildMods.areaMul, and deliberately. Wide Lens is the item
+   *  that GATES this evolution, so a flat radius that ignored it would make the
+   *  thing you spent to get here stop paying the moment you got here. Maxed,
+   *  that is 120 x 1.30 = 156. */
+  readonly afterhoursRadius: number;
   readonly afterhoursLifetimeMul: number;
   readonly afterhoursDamageMul: number;
   /** Enemy speed multiplier under an Afterhours zone: harsher than the base
@@ -94,28 +96,14 @@ interface ChordStats extends WeaponStats {
    *  two modes' zones coexist across an evolution. */
   readonly afterhoursSlowMul: number;
 
-  /** Units per second an Afterhours zone crawls toward the nearest body to
-   *  ITSELF. A base zone's drift speed is ZERO — a base zone never moves at all
-   *  — and that is a spawn-time fact frozen onto the zone, not a live read of
-   *  the evolution flag.
+  /** Units per second an Afterhours zone crawls toward the nearest body it does
+   *  not already cover. A base zone's drift speed is ZERO — a base zone never
+   *  moves at all — and that is a spawn-time fact frozen onto the zone, not a
+   *  live read of the evolution flag.
    *
-   *  This is the only tuning the hunt has left. It used to need two more stats
-   *  (a sampling stride and a neighbour radius) to score the densest crowd;
-   *  chasing the nearest body instead needs neither. */
+   *  This is the only tuning the hunt has. Turn it up and zones sweep the field
+   *  harder; turn it to 0 and the evolution is just "bigger". */
   readonly driftSpeed: number;
-
-  /** Ceiling on a merged zone's radius, in units. See the note in the merge
-   *  code: this is not reachable in a shipped run, and it is ported verbatim
-   *  anyway. */
-  readonly mergeMaxRadius: number;
-  /** Ceiling on a merged zone's remaining life, in seconds. */
-  readonly mergeMaxLifeS: number;
-  /** How much of the SHORTER-lived partner's life a merge adds on top of the
-   *  longer one's. */
-  readonly mergeLifeMul: number;
-  /** How much of the absorbed zone's per-tick damage a merge adds, before
-   *  `damageCap` clamps the result. */
-  readonly mergeDamageMul: number;
 }
 
 const CHORD_STATS: ChordStats = {
@@ -145,19 +133,13 @@ const CHORD_STATS: ChordStats = {
   tickS: 0.9,
   slowGraceS: 0.15,
   slowMul: 0.55,
-  damageCapMul: 3,
 
-  afterhoursRadiusMul: 1.55,
+  afterhoursRadius: 120,
   afterhoursLifetimeMul: 1.35,
   afterhoursDamageMul: 1.25,
   afterhoursSlowMul: 0.42,
 
   driftSpeed: 65,
-
-  mergeMaxRadius: 180,
-  mergeMaxLifeS: 4.5,
-  mergeLifeMul: 0.25,
-  mergeDamageMul: 0.5,
 };
 
 class ChordInstance implements WeaponInstance {
@@ -177,25 +159,31 @@ class ChordInstance implements WeaponInstance {
   fire(ctx: WeaponContext, conf: WeaponConf): void {
     const evolved = ctx.evolved;
     const target = this.pickTarget(ctx);
-    // The evolved multipliers stack ON TOP of the build pipeline: `conf` already
-    // carries areaMul in `radius`, powerMul/damageMul in `damage`, and Encore's
-    // lifetime bonus in `lifetimeS`. A module must not re-apply any of that.
+    // Damage and lifetime stack ON TOP of the build pipeline: `conf` already
+    // carries powerMul/damageMul in `damage` and Encore's lifetime bonus in
+    // `lifetimeS`. A module must not re-apply any of that.
     const damage = conf.damage * (evolved ? CHORD_STATS.afterhoursDamageMul : 1);
+    // RADIUS IS THE ONE EXCEPTION, and the only place a module ignores what the
+    // pipeline built. `conf.radius` is the tier block already scaled by areaMul;
+    // an evolved zone throws that away for a FLAT size and re-applies areaMul by
+    // hand, so tier stops driving size while Wide Lens keeps driving it. Reading
+    // areaMul off buildMods costs an object allocation, so it is read once here
+    // rather than inside the spec.
+    const radius = evolved
+      ? CHORD_STATS.afterhoursRadius * ctx.buildMods.areaMul
+      : conf.radius!;
     ctx.spawnZone({
       x: target?.x ?? ctx.player.x,
       y: target?.y ?? ctx.player.y,
-      radius: conf.radius! * (evolved ? CHORD_STATS.afterhoursRadiusMul : 1),
+      radius,
       damage,
       lifeS: conf.lifetimeS! * (evolved ? CHORD_STATS.afterhoursLifetimeMul : 1),
       slow: true,
       // FROZEN AT SPAWN, not re-read in tick(). A base zone thrown just before
-      // the evolution lands keeps zero drift, the base slow and immunity from
-      // the merge pass until it expires, while Afterhours zones drift over it.
+      // the evolution lands keeps zero drift and the base slow until it
+      // expires, while Afterhours zones drift over the top of it.
       evolved,
       driftSpeed: evolved ? CHORD_STATS.driftSpeed : 0,
-      // The cap is a multiple of THIS zone's damage, frozen now. A merge raises
-      // `damage`; it never raises the cap.
-      damageCap: damage * CHORD_STATS.damageCapMul,
       slowMul: evolved ? CHORD_STATS.afterhoursSlowMul : CHORD_STATS.slowMul,
     });
   }
@@ -247,30 +235,34 @@ class ChordInstance implements WeaponInstance {
     return candidates[candidates.length - 1];
   }
 
-  /** Age, drift, tick and merge every live zone. This IS RunWorld.updateZones,
-   *  moved verbatim; the world no longer has a zone loop at all.
+  /** Age, drift and tick every live zone.
    *
-   *  FOUR THINGS HERE ARE BEHAVIOR, not implementation detail:
+   *  ZONES ARE FULLY INDEPENDENT. There is no cross-zone pass any more — the
+   *  merge that used to fuse overlapping Afterhours zones into supercells is
+   *  gone, and with it every rule about which zone survived, what a merged
+   *  radius/life/damage came to, and the damage ceiling that capped it. Two
+   *  evolved zones sitting on the same body now simply both tick it, which is a
+   *  straight damage increase over the merged behaviour that replaced it.
    *
-   *  1. THE PASS ORDER. Every zone ages and ticks FIRST, and only then does the
-   *     merge pass run. That ordering is what lets each original zone land its
-   *     currently scheduled tick at most once before being absorbed; merging
-   *     first would silently delete a tick's worth of damage from the field
-   *     every time two zones met.
-   *  2. `zones` IS A SNAPSHOT ARRAY, walked by index and spliced from, exactly
-   *     as the world's live array was. The index arithmetic in the merge pass
-   *     below depends on removals shifting the entries under the cursor, so it
-   *     cannot be rewritten over the read-only view ctx.zones() hands back.
-   *  3. BOTH LOOPS WALK NEWEST FIRST (downward index). For the tick loop that
-   *     is the order two overlapping zones' damage lands in; for the merge loop
-   *     it decides WHICH zone survives, which is a real gameplay difference —
-   *     see the note there.
-   *  4. THE DAMAGE PASS WALKS THE FRAME'S SPATIAL-HASH SNAPSHOT, in hash bucket
+   *  Removing it also fixed a rendering mismatch, and that is worth knowing
+   *  before anything reintroduces a radius change: view.ts bakes a zone's
+   *  radius into a cached sprite the first frame it appears and never rebuilds
+   *  it for a size change. Merging grew `radius` after that point, so a
+   *  supercell damaged and slowed over more than twice the area it drew.
+   *  NOTHING MUTATES A ZONE'S RADIUS NOW, which is the only reason what you see
+   *  is what hits.
+   *
+   *  TWO THINGS HERE ARE STILL BEHAVIOR, not implementation detail:
+   *
+   *  1. THE LOOP WALKS NEWEST FIRST (downward index). That is the order two
+   *     overlapping zones' damage lands in, and therefore the order their kills
+   *     and the rng draws behind them happen in.
+   *  2. THE DAMAGE PASS WALKS THE FRAME'S SPATIAL-HASH SNAPSHOT, in hash bucket
    *     order, not the enemy array. That is the visit order every kill and every
    *     rng draw behind it happens in. The DRIFT scan below walks ctx.all()
    *     instead — array order — and the two are not interchangeable. */
   tick(ctx: WeaponContext, dt: number): void {
-    const zones = [...ctx.zones()];
+    const zones = ctx.zones();
     for (let i = zones.length - 1; i >= 0; i--) {
       const z = zones[i];
       z.lifeS -= dt;
@@ -306,42 +298,42 @@ class ChordInstance implements WeaponInstance {
           }
         }
       }
-      if (z.lifeS <= 0) {
-        zones.splice(i, 1);
-        ctx.retireZone(z);
-      }
+      if (z.lifeS <= 0) ctx.retireZone(z);
     }
-    this.merge(ctx, zones);
   }
 
-  /** Afterhours' hunt: crawl toward the nearest body TO THIS ZONE.
+  /** Afterhours' hunt: crawl toward the nearest body THIS ZONE DOES NOT ALREADY
+   *  COVER.
    *
-   *  MEASURED FROM THE ZONE, NOT THE PLAYER. That is the entire reason zones
-   *  spread out instead of piling up. This used to score the densest CROWD on
-   *  screen, which every live zone computed identically and independently — so
-   *  they all walked into the same pack and merged, and the random throw was
-   *  undone a second later. A per-zone nearest target is local by construction:
-   *  two zones thrown to opposite sides of the player chase whatever is beside
-   *  each of them and stay apart. They can still meet and merge, but they are
-   *  no longer guaranteed to.
+   *  MEASURED FROM THE ZONE, NOT THE PLAYER — that is why zones spread out
+   *  instead of piling up. Every live zone used to score the densest CROWD on
+   *  screen, a calculation they all performed identically, so they all walked
+   *  into the same pack and the random throw was undone a second later. A
+   *  per-zone target is local by construction: two zones thrown to opposite
+   *  sides of the player chase what is beside each of them and stay apart.
    *
-   *  A FULL SCAN, deliberately. The crowd-scoring version sampled with a stride
-   *  because it was O(samples x enemies); nearest-to-a-point is a single pass,
-   *  so it is both exact and cheaper than what it replaced. No stride means no
-   *  pack can hide from it on the wrong array indices.
+   *  THE `> z.radius` TEST IS WHAT MAKES IT MOVE AT ALL, and it is not an
+   *  optimisation. Plain nearest-body picks something the zone is already
+   *  sitting on — it is 120 units across and thrown into a crowd — so the zone
+   *  re-centres a few pixels onto a body it is already damaging and then rides
+   *  it. That looks like clinging, not hunting. Skipping what is already inside
+   *  points it at the closest body it is NOT yet hitting, so it always advances
+   *  into fresh crowd and the "they move now" read of the evolution survives.
    *
-   *  NO SEARCH CEILING. A zone with nothing beside it walks toward whatever is
-   *  closest however far that is, rather than parking — the zone hunts for its
-   *  whole life. Ties go to the EARLIEST enemy in array order, because the
-   *  comparison is a strict `<`. Practice dummies are valid targets, exactly as
-   *  they were before. */
+   *  The fallback matters just as much: with EVERYTHING inside the zone there
+   *  is no uncovered body to walk to, and the zone holds still rather than
+   *  jittering. That is the correct answer — it is already on everything.
+   *
+   *  A FULL SCAN, deliberately. Nearest-to-a-point is a single pass, so no pack
+   *  can hide from it. Ties go to the EARLIEST enemy in array order, because
+   *  the comparison is a strict `<`. Practice dummies are valid targets. */
   private drift(ctx: WeaponContext, z: Zone, dt: number): void {
     let target: WeaponTarget | null = null;
     let bestDistance = Infinity;
     for (const enemy of ctx.all()) {
       if (enemy.dead) continue;
       const distance = Math.hypot(enemy.x - z.x, enemy.y - z.y);
-      if (distance < bestDistance) {
+      if (distance > z.radius && distance < bestDistance) {
         bestDistance = distance;
         target = enemy;
       }
@@ -355,50 +347,6 @@ class ChordInstance implements WeaponInstance {
       const travel = Math.min(distance, z.driftSpeed * dt);
       z.x += (dx / distance) * travel;
       z.y += (dy / distance) * travel;
-    }
-  }
-
-  /** Afterhours zones merge pairwise into supercells, with strict caps.
-   *
-   *  `a` IS THE NEWER ZONE AND `a` IS THE SURVIVOR. The loop walks top-down and
-   *  the inner scan looks DOWNWARD for a partner, so the higher index — the
-   *  more recently thrown zone — absorbs the older one and keeps its own
-   *  `damageCap`. That is not interchangeable with the other choice: damage
-   *  climbs 3.75 -> 4.375 -> 4.6875 as a carpet converges, and which zone's cap
-   *  is in force decides where it stops.
-   *
-   *  `i -= 1; break;` IS LOAD-BEARING. After splicing the absorbed zone out,
-   *  `a` has shifted down one slot, so `i -= 1` re-points the cursor at `a`
-   *  before the outer `i--` steps past it — one merge per zone per pass, and
-   *  the scan continues from the entry directly below `a` rather than re-
-   *  examining it. Ten zones landing on one spot in one frame collapse to five
-   *  in a single pass because of it, and that cascade is the only thing that
-   *  ever reaches `damageCap`; zones arriving one trigger at a time converge on
-   *  a value below it and never bind. */
-  private merge(ctx: WeaponContext, zones: Zone[]): void {
-    for (let i = zones.length - 1; i >= 0; i--) {
-      const a = zones[i];
-      if (!a.evolved) continue;
-      for (let j = i - 1; j >= 0; j--) {
-        const b = zones[j];
-        if (!b.evolved || !circlesOverlap(a, b)) continue;
-        const totalArea = a.radius * a.radius + b.radius * b.radius;
-        const weight = Math.max(1, totalArea);
-        // Area-weighted centroid, computed from the OLD radii — `a.radius` is
-        // not overwritten until both coordinates are done.
-        a.x = (a.x * a.radius * a.radius + b.x * b.radius * b.radius) / weight;
-        a.y = (a.y * a.radius * a.radius + b.y * b.radius * b.radius) / weight;
-        a.radius = Math.min(CHORD_STATS.mergeMaxRadius, Math.sqrt(totalArea));
-        a.lifeS = Math.min(
-          CHORD_STATS.mergeMaxLifeS,
-          Math.max(a.lifeS, b.lifeS) + Math.min(a.lifeS, b.lifeS) * CHORD_STATS.mergeLifeMul,
-        );
-        a.damage = Math.min(a.damageCap, a.damage + b.damage * CHORD_STATS.mergeDamageMul);
-        zones.splice(j, 1);
-        ctx.retireZone(b);
-        i -= 1;
-        break;
-      }
     }
   }
 

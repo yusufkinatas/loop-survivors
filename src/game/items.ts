@@ -224,7 +224,7 @@ const EVOLUTIONS: Record<EvolutionId, EvolutionDefinition> = {
   },
   afterhours: {
     id: 'afterhours', role: 'chord', item: 'wideLens', name: 'Afterhours', color: 0x76ff92, gainDb: 0,
-    description: 'Huge slow zones each hunt the nearest body and merge into supercells where they meet.', signature: 'hunting supercell',
+    description: 'Big slow zones of one fixed size that prowl the field, each hunting the nearest body it does not already cover.', signature: 'prowling zone',
   },
   neonSerpent: {
     id: 'neonSerpent', role: 'lead', item: 'needleTips', name: 'Neon Serpent', color: 0xff70d4, gainDb: -1.5,

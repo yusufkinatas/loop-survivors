@@ -293,7 +293,6 @@ export interface Zone {
   slow: boolean;
   evolved: boolean;
   driftSpeed: number;
-  damageCap: number;
   slowMul: number;
 }
 
@@ -715,7 +714,6 @@ export class RunWorld {
           slow: spec.slow,
           evolved: spec.evolved,
           driftSpeed: spec.driftSpeed,
-          damageCap: spec.damageCap,
           slowMul: spec.slowMul,
         };
         world.zones.push(zone);
