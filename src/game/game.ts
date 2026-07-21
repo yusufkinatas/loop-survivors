@@ -194,7 +194,6 @@ export async function bootGame(
   const pendingEvolutionChoices: EvolutionDefinition[][] = [];
   let pickAwaitingBar = false;
   let presentQueuedPickAtAudioT: number | null = null;
-  let rerollsLeft = 0;
   // The level-up offers currently dropped on the ground as physical items, in
   // a triangle around the player. Shell-owned (never entities in the
   // simulation), so it stays independent from world entities. Empty = none.
@@ -206,13 +205,9 @@ export async function bootGame(
     option: ShellPick;
   }
   let groundPicks: GroundItem[] = [];
-  // True while the run's opening weapon choice is the triangle on the ground.
-  // That pick is committed: it must never spend a purchased reroll.
-  let openingPickOut = false;
 
   function clearGroundPicks(): void {
     if (groundPicks.length > 0) groundPicks = [];
-    openingPickOut = false;
     view?.setGroundPicks([]);
   }
 
@@ -403,35 +398,6 @@ export async function bootGame(
     });
   }
 
-  function rerollGroundOffers(): void {
-    const w = world;
-    if (!w || state !== 'run' || rerollsLeft <= 0 || groundPicks.length === 0) return;
-    if (openingPickOut) {
-      // Rerolls are a purchased meta resource for in-run level-ups. The run's
-      // opening instrument is a committed choice and never spends one.
-      hud.showToast('The opening hire cannot be rerolled');
-      return;
-    }
-    if (groundPicks.some((pick) => pick.option.kind === 'evolution')) {
-      hud.showToast('Chest picks cannot be rerolled');
-      return;
-    }
-    rerollsLeft -= 1;
-    clearGroundPicks();
-    const options = rollOffers({
-      tiers: w.tiers,
-      items: w.items,
-      unlockedRoles: meta.unlockedRoles(),
-      unlockedItems: meta.unlockedItemIds(),
-      rng: Math.random,
-      timeS: w.timeS,
-      level: w.level,
-      encore: w.encoreProgress,
-    });
-    dropGroundPicks(w, options);
-    hud.showToast(`REROLL · ${rerollsLeft} left`);
-  }
-  hud.setRerollAction(rerollGroundOffers);
 
   const updateArenaMinute = (minute: number): void => {
     engine.clock.bpm = SOUNDSET.bpm * (1 + Math.min(0.08, minute * 0.002));
@@ -561,7 +527,6 @@ export async function bootGame(
     });
     world = w;
     w.player.hp = w.playerMaxHp;
-    rerollsLeft = meta.state.rerolls;
     w.powerMul = SOUNDSET.powerMul;
     view = new RunView(w, app.screen);
     app.stage.addChild(view.stage);
@@ -587,7 +552,6 @@ export async function bootGame(
       }),
       'none',
     );
-    openingPickOut = true;
   }
 
   function startSandbox(): void {
@@ -835,7 +799,6 @@ export async function bootGame(
       hud.setRunInfo(
         w.items,
         w.evolved,
-        rerollsLeft,
         w.notesCollected,
       );
       sandboxPanel?.update();
@@ -903,11 +866,6 @@ export async function bootGame(
       onClick: () => {
         if (world && state === 'run') world.levelUp();
       },
-    },
-    reroll: {
-      label: 'reroll offer',
-      hotkey: 'R',
-      onClick: rerollGroundOffers,
     },
     kill: {
       label: 'kill screen',
@@ -985,7 +943,6 @@ export async function bootGame(
       KeyI: debugActions.invincible,
       KeyB: debugActions.autokite,
       KeyX: debugActions.xp,
-      KeyR: debugActions.reroll,
       KeyK: debugActions.kill,
       KeyO: debugActions.overlay,
       KeyC: debugActions.charts,

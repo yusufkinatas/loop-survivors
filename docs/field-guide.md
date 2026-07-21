@@ -24,7 +24,7 @@ positions and up to six passive items.
 
 A run opens silent and unarmed: three weapon pedestals drop around the player,
 and walking into one arms that weapon at tier I on the next bar. The choice
-costs no level and no reroll.
+costs no level.
 
 There is no victory timer. The first eight minutes are an authored opening
 act; from minute eight onward, the endless director combines enemy families
@@ -70,11 +70,10 @@ four passives (High-Tops, Fast Forward, Mirrorball, and Wide Lens).
 
 | Shelf opens after | Purchases available |
 | --- | --- |
-| 0 owned | First Reroll (70), Heavy Amp (90), Recovery Tape (100), Clap (110) |
+| 0 owned | Heavy Amp (90), Recovery Tape (100), Clap (110) |
 | 2 owned | Arp (180), Needle Tips (130) |
 | 5 owned | Lead (260), Extension Cable (150), Padded Jacket (170), Double Take (280) |
 | 8 owned | Bell (360), Magnet Lanyard (220), Second Wind (320), Opening Loadout (300) |
-| 11 owned | Second Reroll (400) |
 
 Second Wind revives the player once per run at 30% health. Opening Loadout lets
 the player choose one unlocked passive to start at tier I. There are no

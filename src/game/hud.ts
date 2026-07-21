@@ -36,7 +36,6 @@ export class Hud {
   private toastStack: HTMLElement;
   private rack: HTMLElement;
   private itemRack: HTMLElement;
-  private rerollButton: HTMLButtonElement;
   private runInfoKey = '';
   private screen: HTMLElement | null = null;
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
@@ -70,36 +69,26 @@ export class Hud {
     this.rack.style.display = 'none';
     this.itemRack = el('div', 'item-rack', root);
     this.itemRack.style.display = 'none';
-    this.rerollButton = el('button', 'reroll-live', root, 'REROLL') as HTMLButtonElement;
-    this.rerollButton.style.display = 'none';
   }
 
   showHud(show: boolean, sandbox = false): void {
     this.bar.style.display = show ? '' : 'none';
     this.rack.style.display = show ? '' : 'none';
     // The sandbox owns a complete Build/Career inspector. Hiding the live-run
-    // item rack and reroll button prevents two overlapping control surfaces.
+    // item rack prevents two overlapping control surfaces.
     this.itemRack.style.display = show && !sandbox ? '' : 'none';
-    this.rerollButton.style.display = show && !sandbox ? '' : 'none';
-  }
-
-  setRerollAction(action: () => void): void {
-    this.rerollButton.onclick = action;
   }
 
   setRunInfo(
     items: ReadonlyMap<ItemId, number>,
     evolved: ReadonlySet<Role>,
-    rerolls: number,
     notesCollected: number,
   ): void {
     const itemPart = [...items].map(([id, level]) => `${id}:${level}`).join('|');
     const evolvedPart = [...evolved].join('|');
-    const key = `${itemPart}/${evolvedPart}/${rerolls}/${notesCollected}`;
+    const key = `${itemPart}/${evolvedPart}/${notesCollected}`;
     if (key === this.runInfoKey) return;
     this.runInfoKey = key;
-    this.rerollButton.textContent = `REROLL ×${rerolls}`;
-    this.rerollButton.disabled = rerolls <= 0;
     this.noteEl.textContent = `♫ ${notesCollected}`;
     this.itemRack.replaceChildren();
     for (let slot = 0; slot < 6; slot++) {
@@ -311,7 +300,6 @@ export class Hud {
       const collection = el('div', 'collection-strip', profile);
       el('span', '', collection, `${meta.state.unlockedWeapons.length}/9 WEAPONS`);
       el('span', '', collection, `${meta.state.unlockedItems.length}/${ITEM_IDS.length} PASSIVES`);
-      el('span', '', collection, `${meta.state.rerolls} REROLLS`);
 
       if (meta.hasPurchase('startItem')) {
         const loadout = el('div', 'start-loadout', profile);
@@ -412,7 +400,7 @@ export class Hud {
       onStart();
     };
     el('p', 'start-hint', s,
-      'WASD / arrow keys / touch to move · collect blue XP and gold music notes · rare Stage Magnets vacuum the visible floor · walk onto reward pedestals · R rerolls');
+      'WASD / arrow keys / touch to move · collect blue XP and gold music notes · rare Stage Magnets vacuum the visible floor · walk onto reward pedestals');
     // Below the primary CTA, two menu buttons: sandbox launches directly,
     // experiments is a disclosure for the standalone playtest surfaces (boss
     // fights, full tracks, rehearsal room — mirrors src/experiments/).
