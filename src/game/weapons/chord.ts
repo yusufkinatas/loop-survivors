@@ -25,6 +25,34 @@ interface ChordStats extends WeaponStats {
    *  dropped underfoot — that is what makes it worth a pick — and with nothing
    *  inside this radius it lands on the player instead. */
   readonly throwRange: number;
+  /** HOW MANY BODIES THE THROW EVEN CONSIDERS: the `count` handed to
+   *  nearestEnemies, which comes back NEAREST FIRST. Past this many enemies
+   *  inside `throwRange`, the ones cut are always the FARTHEST — the exact
+   *  candidates the weighting below already makes least likely — so the cap
+   *  costs almost no probability mass while bounding the per-trigger work.
+   *  It is still a truncation, and a real one: with 40 bodies in range the
+   *  outermost 8 cannot be picked AT ALL, not merely rarely. */
+  readonly pickCandidates: number;
+  /** Softening distance, in units, added to a candidate's distance before the
+   *  weight is taken. WITHOUT IT the weight diverges as distance goes to zero
+   *  and a body standing inside the player would swallow the entire roll; with
+   *  it, everything closer than this reads as roughly equally likely, which is
+   *  what stops the throw from re-picking whichever enemy happens to be
+   *  touching you. Also sets where the pick is most likely to land: candidate
+   *  COUNT grows with distance (more ring at bigger radius) while weight falls,
+   *  and the product peaks right around this value. */
+  readonly pickFalloffUnits: number;
+  /** The power the softened distance is raised to. THIS IS THE WHOLE FEEL OF
+   *  THE RANDOMNESS and it is not a free parameter.
+   *
+   *  Enemies are spread over a disc, so the number of candidates at distance r
+   *  grows roughly WITH r. At power 1 the weight falls as 1/r, the two cancel,
+   *  and the throw comes out near-uniform over distance — which reads as
+   *  "lands anywhere", not "lands nearby". Power 2 makes the mass fall off past
+   *  `pickFalloffUnits`, so the throw is usually close and occasionally long.
+   *  Dropping this to 1 does not make the weapon slightly less biased; it
+   *  removes the bias altogether. */
+  readonly pickFalloffPower: number;
   /** Seconds between damage ticks. WAS config.ZONE_TICK_S.
    *
    *  READ BEFORE SPLITTING THIS. It is used TWICE — as the interval a tick
@@ -102,7 +130,8 @@ interface ChordStats extends WeaponStats {
 }
 
 const CHORD_STATS: ChordStats = {
-  // Zone thrown onto the nearest pack: ticks damage and slows enemies inside.
+  // Zone thrown onto a random nearby enemy: ticks damage and slows enemies
+  // inside.
   // Chip damage plus control; the slow is the identity. `damage` here is PER
   // TICK, so the ladder is deceptively flat — real output is damage x ticks,
   // and lifetimes are set so zones overlap into a carpet rather than reading as
@@ -114,13 +143,16 @@ const CHORD_STATS: ChordStats = {
     { damage: 2, radius: 76, lifetimeS: 2.8 },
   ],
   tierLines: [
-    'zone on the nearest pack: damage + slow',
+    'zone on a random nearby enemy: damage + slow',
     'zones twice as often',
     'bigger, longer zones',
     'the biggest, longest, hardest zones',
   ],
 
   throwRange: 420,
+  pickCandidates: 32,
+  pickFalloffUnits: 60,
+  pickFalloffPower: 2,
   tickS: 0.9,
   slowGraceS: 0.15,
   slowMul: 0.55,
@@ -142,20 +174,22 @@ const CHORD_STATS: ChordStats = {
 };
 
 class ChordInstance implements WeaponInstance {
-  /** One zone per trigger, thrown at the nearest body inside `throwRange` and
-   *  dropped underfoot when there is nothing there.
+  /** One zone per trigger, thrown at a RANDOM body inside `throwRange` —
+   *  weighted so nearby ones are far likelier — and dropped underfoot when
+   *  there is nothing there.
    *
-   *  ZERO RNG DRAWS, at every tier and every Double Take count — the chord does
-   *  not fan, so extra projectiles do nothing to it either. See the file
-   *  header: nearestEnemy looks without jittering, and it is checked as an
-   *  executable assertion rather than a comment.
+   *  ONE RNG DRAW PER TRIGGER WITH A TARGET, ZERO WITHOUT. That asymmetry is
+   *  the same one aimDir has and it is deliberate: the draw belongs to the
+   *  PICK, and an empty screen has nothing to pick between. It is per TRIGGER,
+   *  not per shot — the chord does not fan, so Double Take changes neither the
+   *  draw count nor anything else about it.
    *
    *  NO DAMAGE AND NO FX AT FIRE TIME. Everything this weapon does to the world
    *  happens in tick(), starting on the very next frame — the first tick lands
    *  because the world spawns every zone with `tickT` at zero. */
   fire(ctx: WeaponContext, conf: WeaponConf): void {
     const evolved = ctx.evolved;
-    const target = ctx.nearestEnemy(CHORD_STATS.throwRange);
+    const target = this.pickTarget(ctx);
     // The evolved multipliers stack ON TOP of the build pipeline: `conf` already
     // carries areaMul in `radius`, powerMul/damageMul in `damage`, and Encore's
     // lifetime bonus in `lifetimeS`. A module must not re-apply any of that.
@@ -177,6 +211,53 @@ class ChordInstance implements WeaponInstance {
       damageCap: damage * CHORD_STATS.damageCapMul,
       slowMul: evolved ? CHORD_STATS.afterhoursSlowMul : CHORD_STATS.slowMul,
     });
+  }
+
+  /** Which body this trigger's zone lands on: a distance-weighted random pick
+   *  over everything inside `throwRange`, or null when that is empty.
+   *
+   *  WHY NOT THE NEAREST ENEMY (which is what this was). With a strict nearest
+   *  pick, a player walking into a pack gets zone after zone stacked on the
+   *  same body — correct targeting that READS as a bug, because the one thing
+   *  a survivors-like player watches is where the areas land. Randomising it
+   *  spreads the carpet across the crowd, which is both what the weapon is for
+   *  and what makes it look alive.
+   *
+   *  WHY NOT A UNIFORM PICK. Uniform over everything in range throws to the
+   *  edge of `throwRange` most of the time, because that is where most of the
+   *  bodies are — the zone spends the fight out at arm's length instead of on
+   *  the pack that is actually on you. The weight is what keeps it close; see
+   *  `pickFalloffPower` for why it has to fall off faster than 1/distance to
+   *  keep it close at all.
+   *
+   *  NO ANTI-REPEAT. Back-to-back throws onto the same enemy are allowed and
+   *  will happen — that is what an honest roll looks like, and this weapon
+   *  holds no memory of its last target by design.
+   *
+   *  EXACTLY ONE ctx.rng() CALL, and only on the path that has something to
+   *  pick. The early return above it is the zero-draw case fire() documents. */
+  private pickTarget(ctx: WeaponContext): WeaponTarget | null {
+    const candidates = ctx.nearestEnemies(CHORD_STATS.throwRange, CHORD_STATS.pickCandidates);
+    if (candidates.length === 0) return null;
+
+    const weights: number[] = [];
+    let total = 0;
+    for (const enemy of candidates) {
+      const distance = Math.hypot(enemy.x - ctx.player.x, enemy.y - ctx.player.y);
+      const weight =
+        1 / (distance + CHORD_STATS.pickFalloffUnits) ** CHORD_STATS.pickFalloffPower;
+      weights.push(weight);
+      total += weight;
+    }
+
+    let roll = ctx.rng() * total;
+    for (let i = 0; i < candidates.length; i++) {
+      roll -= weights[i];
+      if (roll < 0) return candidates[i];
+    }
+    // Float rounding only: the subtractions can leave `roll` a hair above zero
+    // after the last weight. The final candidate is the one that slice owns.
+    return candidates[candidates.length - 1];
   }
 
   /** Age, drift, tick and merge every live zone. This IS RunWorld.updateZones,
