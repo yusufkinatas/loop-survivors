@@ -28,6 +28,7 @@ import {
 } from './soundwood-art';
 import {
   animateSceneryCell,
+  BOSS_RING_SCALE,
   enemyContext,
   makeEnemyGfx,
   makeGemGfx,
@@ -225,6 +226,17 @@ const TILT_RADIANS = 0.065;
  *  per sway, which reads as deliberate walking rather than idle drifting. */
 const TILT_SPEED = Math.PI * 2;
 
+/** The boss glow: three stacked discs in the boss's own colour, widest and
+ *  faintest first, so the edge falls off instead of ending on a hard rim. All
+ *  three are sized against the white ring, so the glow always sits just inside
+ *  and under it whatever the body's radius. */
+const BOSS_GLOW_LAYERS = [[1, 0.05], [0.78, 0.06], [0.5, 0.08]] as const;
+
+/** Radians per second of the breath, and how far it swings. Slow and shallow:
+ *  a boss should look like it is idling, not pulsing an alarm. */
+const BOSS_GLOW_SPEED = 1.6;
+const BOSS_GLOW_DEPTH = 0.07;
+
 function enemyTilt(enemy: Enemy, phase: number): number {
   return Math.sin(phase + enemy.id * 1.7) * TILT_RADIANS;
 }
@@ -370,6 +382,7 @@ export class RunView {
   private floorRows = 0;
 
   private telegraphGfx = new Graphics({ roundPixels: true });
+  private bossGlowGfx = new Graphics({ roundPixels: true });
   private trailGfx = new Graphics({ roundPixels: true });
   private projectileLayer = new Container();
   private systemAttackGfx = new Graphics({ roundPixels: true });
@@ -434,7 +447,10 @@ export class RunView {
 
     this.tiledGroundLayer.addChild(this.floorFallback, this.floorTileLayer, this.floorShade);
     this.environmentLayer.addChild(this.environmentFloorGfx);
-    this.zoneLayer.addChild(this.telegraphGfx);
+    // Additive, and below the enemy layer: the glow reads as light thrown on
+    // the floor under the boss rather than a disc painted over it.
+    this.bossGlowGfx.blendMode = 'add';
+    this.zoneLayer.addChild(this.bossGlowGfx, this.telegraphGfx);
     this.attackLayer.addChild(
       this.trailGfx,
       this.projectileLayer,
@@ -880,15 +896,25 @@ export class RunView {
 
   private drawEnemyTelegraphs(cameraX: number, cameraY: number): void {
     const gfx = this.telegraphGfx;
+    const glow = this.bossGlowGfx;
     gfx.clear();
+    glow.clear();
     const halfW = this.world.worldW / 2 + 80;
     const halfH = this.world.worldH / 2 + 80;
     for (const enemy of this.world.enemies) {
       if (Math.abs(enemy.x - cameraX) > halfW || Math.abs(enemy.y - cameraY) > halfH) continue;
-      if ((enemy.kind === 'mantis' || enemy.kind === 'glowingBat' || enemy.kind === 'elite') && enemy.spawnClass !== 'regular') {
-        gfx.poly(regularPixelPoly(12, enemy.radius * 1.7, Math.PI / 12)
+      // Boss marking (mad-forest-spec 2e), keyed off the spawn and nothing
+      // else: the silhouette carries the white ring, this pass carries the
+      // breathing glow under it.
+      if (enemy.spawnClass !== 'boss') continue;
+      gfx.poly(regularPixelPoly(12, enemy.radius * 1.7, Math.PI / 12)
+        .map((value, i) => snap(value + (i % 2 === 0 ? enemy.x : enemy.y))))
+        .stroke({ width: 2, color: SOUNDWOOD.amber, alpha: 0.26 });
+      const breath = 1 + Math.sin(this.world.timeS * BOSS_GLOW_SPEED + enemy.id) * BOSS_GLOW_DEPTH;
+      for (const [scale, alpha] of BOSS_GLOW_LAYERS) {
+        glow.poly(regularPixelPoly(12, enemy.radius * BOSS_RING_SCALE * scale * breath, Math.PI / 12)
           .map((value, i) => snap(value + (i % 2 === 0 ? enemy.x : enemy.y))))
-          .stroke({ width: 2, color: SOUNDWOOD.amber, alpha: 0.26 });
+          .fill({ color: enemy.color, alpha });
       }
     }
   }

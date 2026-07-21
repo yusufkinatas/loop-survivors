@@ -151,6 +151,11 @@ function hushWalker(g: GraphicsContext, r: number, frame: number, jack: boolean)
   box(g, r * 0.25 - step, r * 0.42, r * 0.12, r * 0.54, 0xffffff);
 }
 
+/** Body radii at which the white boss ring sits. Lifted verbatim from the ring
+ *  that used to be baked into Shearjaw's silhouette, so the 5:00 boss is
+ *  unchanged and every other boss spawn now reads the same way. */
+export const BOSS_RING_SCALE = 1.72;
+
 /** The Hush: living interference assembled from abandoned stage hardware,
  * static, cables, wood rot, and broken light. Stable simulation IDs preserve
  * behavior; every live silhouette and player-facing name is project-native. */
@@ -158,7 +163,10 @@ export function enemyContext(e: Enemy, shieldOn: boolean, frame: number): Graphi
   const r = Math.max(4, snap(e.radius));
   const shieldKey = e.kind === 'shielded' ? (shieldOn ? ':shield' : ':bare') : '';
   const spinKey = e.kind === 'circler' ? `:spin${e.spin}` : '';
-  return cachedPixelShape(`hush:${e.kind}:${e.band}:${r}:${frame}${shieldKey}${spinKey}`, (g) => {
+  // Boss marking rides on the spawn, not the kind (mad-forest-spec 2a/2e), so
+  // it has to be part of the shape key: the same kind draws with and without.
+  const bossKey = e.spawnClass === 'boss' ? ':boss' : '';
+  return cachedPixelShape(`hush:${e.kind}:${e.band}:${r}:${frame}${shieldKey}${spinKey}${bossKey}`, (g) => {
     box(g, -r, r * 0.66, r * 2, Math.max(2, r * 0.32), SOUNDWOOD.ink, 0.68);
     switch (e.kind) {
       case 'bat': hushMite(g, r, frame, 0); break;
@@ -216,7 +224,6 @@ export function enemyContext(e: Enemy, shieldOn: boolean, frame: number): Graphi
         box(g, -r * 0.5, -r * 0.65, r, r * 1.3, SOUNDWOOD.ink);
         box(g, -r * 0.32, -r * 0.45, r * 0.64, r * 0.9, 0xffffff);
         box(g, -r * 0.12, -r * 0.34, r * 0.24, r * 0.68, SOUNDWOOD.ink);
-        g.poly(regularPixelPoly(12, r * 1.72, Math.PI / 12)).stroke({ width: Math.max(3, snap(r * 0.11)), color: 0xffffff, alpha: 0.78 });
         break;
       }
       case 'batSwarm': {
@@ -294,7 +301,11 @@ export function enemyContext(e: Enemy, shieldOn: boolean, frame: number): Graphi
         break;
       }
     }
-    if (e.band >= 2 && e.kind !== 'elite' && e.kind !== 'glowingBat' && e.kind !== 'mantis') {
+    // A boss wears the ring instead of the danger diamonds: one read per body.
+    if (e.spawnClass === 'boss') {
+      g.poly(regularPixelPoly(12, r * BOSS_RING_SCALE, Math.PI / 12))
+        .stroke({ width: Math.max(3, snap(r * 0.11)), color: 0xffffff, alpha: 0.78 });
+    } else if (e.band >= 2 && e.kind !== 'elite') {
       const marker = Math.max(2, r * 0.15);
       pixelDiamond(g, -r * 0.78, -r * 0.82, marker, 0xffffff);
       if (e.band >= 3) pixelDiamond(g, r * 0.78, -r * 0.82, marker, 0xffffff);

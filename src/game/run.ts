@@ -110,6 +110,18 @@ interface DummyReadout {
   dps: number;
 }
 
+/** What a spawn is, as opposed to what kind it is. Boss-ness is authored on
+ *  the spawn row, never on the kind (mad-forest-spec 2a), so the same kind can
+ *  walk in with the crowd at one minute and arrive as a boss at another. */
+type SpawnClass = 'regular' | 'boss' | 'event';
+
+/** The class a kind takes when the caller does not ask for one. Only the two
+ *  scripted body shapes are implied by the kind itself: fixed-direction sweeps
+ *  and the flower wall. Everything else is crowd until a spawn row says boss. */
+function defaultSpawnClass(kind: EnemyKind): SpawnClass {
+  return ENEMIES[kind].fixedDirection || kind === 'flower' ? 'event' : 'regular';
+}
+
 export interface Enemy {
   id: number;
   kind: EnemyKind;
@@ -160,8 +172,11 @@ export interface Enemy {
   /** circler: +1/-1 orbit direction; 0 for others. */
   spin: number;
   /** Spawn origin. All classes count toward the periodic 300 check; scripted
-   * bosses/events may themselves spawn beyond it up to the 500 hard cap. */
-  spawnClass: 'regular' | 'boss' | 'event';
+   * bosses/events may themselves spawn beyond it up to the 500 hard cap.
+   * `'boss'` is the whole of boss-ness (mad-forest-spec 2a): it drives the
+   * chest drop, the teleport-back instead of a despawn, and the ring + glow.
+   * The same kind is a crowd enemy or a boss depending only on this. */
+  spawnClass: SpawnClass;
   /** Scripted sweep motion. Zeroes mean normal direct homing. */
   moveX: number;
   moveY: number;
@@ -1124,7 +1139,7 @@ export class RunWorld {
       const event = STAGE_EVENTS[this.eventIdx++];
       if (event.type === 'boss') {
         const before = this.enemies.length;
-        this.spawnEnemy(event.kind, undefined, 1, true);
+        this.spawnEnemy(event.kind, undefined, 1, true, 'boss');
         const spawned = this.enemies.length > before ? this.enemies[this.enemies.length - 1] : null;
         if (spawned && event.atS > 0 && event.atS % 300 === 0) this.scaleEliteBoss(spawned);
       } else if (event.type === 'batSweep') {
@@ -1157,7 +1172,7 @@ export class RunWorld {
       if (recipe.bossCount > 0) {
         for (let i = 0; i < recipe.bossCount; i++) {
           const before = this.enemies.length;
-          this.spawnEnemy(i % 2 === 0 ? 'mantis' : 'glowingBat', undefined, 1, true);
+          this.spawnEnemy(i % 2 === 0 ? 'mantis' : 'glowingBat', undefined, 1, true, 'boss');
           const boss = this.enemies.length > before ? this.enemies[this.enemies.length - 1] : null;
           if (boss) this.scaleEliteBoss(boss);
         }
@@ -1280,7 +1295,13 @@ export class RunWorld {
     }
   }
 
-  spawnEnemy(kind: EnemyKind, angle?: number, distMul = 1, wave = false): void {
+  spawnEnemy(
+    kind: EnemyKind,
+    angle?: number,
+    distMul = 1,
+    wave = false,
+    spawnClass: SpawnClass = defaultSpawnClass(kind),
+  ): void {
     if (this.enemies.length >= (wave ? MAX_ALIVE_HARD : ENEMIES.maxAlive)) return;
     const playerFootX = this.player.x + PLAYER_FOOT_OFFSET.x;
     const playerFootY = this.player.y + PLAYER_FOOT_OFFSET.y;
@@ -1303,7 +1324,6 @@ export class RunWorld {
         y = playerFootY + (edge === 2 ? -1 : 1) * (this.worldH / 2 + margin);
       }
     }
-    const spawnClass = ENEMIES[kind].boss ? 'boss' : ENEMIES[kind].fixedDirection || kind === 'flower' ? 'event' : 'regular';
     let moveX = 0;
     let moveY = 0;
     let despawnAt = 0;
@@ -1320,12 +1340,12 @@ export class RunWorld {
 
   /** Sandbox/lab helper: construct a real enemy at an explicit world-space
    *  source-feet position, using the same stats/body path as stage spawns. */
-  spawnEnemyAt(kind: EnemyKind, x: number, y: number): Enemy | null {
-    const spawnClass = ENEMIES[kind].boss
-      ? 'boss'
-      : ENEMIES[kind].fixedDirection || kind === 'flower'
-        ? 'event'
-        : 'regular';
+  spawnEnemyAt(
+    kind: EnemyKind,
+    x: number,
+    y: number,
+    spawnClass: SpawnClass = defaultSpawnClass(kind),
+  ): Enemy | null {
     let moveX = 0;
     let moveY = 0;
     let despawnAt = 0;
@@ -1342,7 +1362,7 @@ export class RunWorld {
 
   /** Sandbox helper: spawn a real scaled elite boss (it drops a chest on death). */
   spawnSandboxBoss(kind: EnemyKind = 'mantis'): Enemy | null {
-    const enemy = this.spawnEnemyAt(kind, this.player.x + 320, this.player.y);
+    const enemy = this.spawnEnemyAt(kind, this.player.x + 320, this.player.y, 'boss');
     if (enemy) this.scaleEliteBoss(enemy);
     return enemy;
   }
@@ -1355,13 +1375,12 @@ export class RunWorld {
     kind: EnemyKind,
     x: number,
     y: number,
-    spawnClass: 'regular' | 'boss' | 'event' = 'regular',
+    spawnClass: SpawnClass = 'regular',
     moveX = 0,
     moveY = 0,
     despawnAt = 0,
   ): Enemy | null {
     if (this.enemies.length >= MAX_ALIVE_HARD) return null;
-    const conf = ENEMIES[kind];
     // Tuned, not shipped: the enemy lab's overrides are the live truth for
     // every spawn (see enemy-tuning.ts).
     const stats = enemyStats(kind, this.level);
@@ -1388,7 +1407,7 @@ export class RunWorld {
       damage: stats.damage * scale.damageMul * (amped ? AMPED.damageMul : 1),
       xp: stats.xp * scale.xpMul * (amped ? AMPED.xpMul : 1),
       color: stats.color,
-      band: dummy ? 0 : conf.boss ? 3 : Math.min(3, Math.floor(minute / 5)),
+      band: dummy ? 0 : spawnClass === 'boss' ? 3 : Math.min(3, Math.floor(minute / 5)),
       flashT: 0,
       dead: false,
       dashT: 0,
@@ -1728,22 +1747,22 @@ export class RunWorld {
       e.dead = true;
       this.kills++;
       if (source) this.killsByRole[source] = (this.killsByRole[source] ?? 0) + 1;
-      const elite = ENEMIES[e.kind].boss === true || e.kind === 'elite';
+      const boss = e.spawnClass === 'boss';
       this.fx?.push({
         type: 'death',
         x: e.x,
         y: e.y,
         radius: e.radius,
         color: e.color,
-        elite,
+        elite: boss,
       });
       this.spawnGemAt(e.x, e.y, e.xp);
       this.spawnMusicNoteForEnemy(e);
       this.spawnStageMagnetForEnemy(e);
       this.spawnHealthPickupForEnemy(e);
-      // Elite and boss enemies (Vampire-Survivors style) drop a chest on the
-      // ground. Walk into it to open it: a ready weapon evolution, or health.
-      if (elite) {
+      // Boss spawns (Vampire-Survivors style) drop a chest on the ground.
+      // Walk into it to open it: a ready weapon evolution, or health.
+      if (boss) {
         this.spawnChestAt(e.x, e.y);
       }
       if (e.kind === 'splitter') this.spawnChildren(e);
@@ -2276,7 +2295,7 @@ export class RunWorld {
 
   private spawnMusicNoteForEnemy(enemy: Enemy): void {
     this.noteDropPity += 1;
-    const boss = ENEMIES[enemy.kind].boss === true || enemy.spawnClass === 'boss';
+    const boss = enemy.spawnClass === 'boss';
     const chance = Math.min(0.3, 0.08 + Math.sqrt(Math.max(1, enemy.xp)) * 0.035);
     const guaranteed = boss || enemy.amped || this.noteDropPity >= 7;
     if (!guaranteed && this.rng() >= chance) return;

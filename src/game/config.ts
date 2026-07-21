@@ -315,7 +315,6 @@ export interface EnemyConf {
   power?: number;
   /** HP is multiplied by the player's level when the enemy spawns. */
   hpPerLevel?: boolean;
-  boss?: boolean;
   fixedDirection?: boolean;
   /** Source knockback multiplier: 0 ignores pushes, 1 receives them fully. */
   knockback?: number;
@@ -459,7 +458,6 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
     xp: 30,
     color: 0xffd45c,
     hpPerLevel: true,
-    boss: true,
     knockback: 1,
   },
   mantis: {
@@ -470,7 +468,6 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
     damage: 19,
     xp: 3,
     color: 0xbf64ff,
-    boss: true,
     knockback: 0,
   },
   batSwarm: {
