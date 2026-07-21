@@ -25,6 +25,20 @@ export const RUN = {
   maxProjectiles: 600,
 };
 
+/** How large a build may grow. Two flat counts and nothing else: no typed
+ * positions, no rosters, no rule that owning one weapon retires another. Every
+ * weapon in the catalog stays offerable until the cap is reached, at which
+ * point offers become tier-ups of what is already owned.
+ *
+ * Weapon slots are numbered by ACQUISITION ORDER — the first weapon hired is
+ * slot 1 — which is why RunWorld.tiers is a Map and is only ever appended to.
+ * Reordering it would renumber the rack and the number-key toggles underneath
+ * the player mid-run. */
+export const BUILD = {
+  weaponCap: 5,
+  itemCap: 5,
+} as const;
+
 /** Rare one-use arena pickup. This is deliberately separate from Magnet
  * Lanyard, the passive item that increases ordinary pickup reach. */
 export const STAGE_MAGNET = {

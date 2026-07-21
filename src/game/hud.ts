@@ -4,7 +4,7 @@
 // view.ts), not a DOM screen.
 
 import { type Kit, type Role } from '../audio/kits';
-import { SLOTS, SLOT_LABEL, ownerOfSlot, supportedRoster } from './band';
+import { BUILD } from './config';
 import { EVOLUTION_BY_ROLE, ITEM_IDS, ITEMS, ITEM_NEUTRAL_CSS, type ItemId } from './items';
 import type { MetaStore, RunSettlement } from './meta';
 
@@ -64,7 +64,7 @@ export class Hud {
     this.flash = el('div', 'hit-flash', root);
     this.pulse = el('div', 'level-pulse', root);
     this.toastStack = el('div', 'toast-stack', root);
-    // The band rack: seven sockets, one per band position, empty until hired.
+    // The band rack: one numbered socket per weapon slot, empty until hired.
     this.rack = el('div', 'band-rack', root);
     this.rack.style.display = 'none';
     this.itemRack = el('div', 'item-rack', root);
@@ -91,7 +91,7 @@ export class Hud {
     this.runInfoKey = key;
     this.noteEl.textContent = `♫ ${notesCollected}`;
     this.itemRack.replaceChildren();
-    for (let slot = 0; slot < 6; slot++) {
+    for (let slot = 0; slot < BUILD.itemCap; slot++) {
       const entry = [...items][slot];
       const socket = el('div', `item-socket ${entry ? 'filled' : 'empty'}`, this.itemRack);
       if (!entry) {
@@ -142,14 +142,16 @@ export class Hud {
     }
   }
 
-  /** The band rack: seven typed sockets in rack
-   *  order, empty ones asking to be filled, filled ones showing the hired
-   *  instrument (its color + name) and its tier as pips. Rebuilt on every pick
-   *  (cheap: 7 sockets). Renders into the HUD rack by default, or any supplied
-   *  container so the pause menu can show the same band. The dev number-key
-   *  toggles mark a deactivated owner's socket dimmed, and a socket with a
-   *  change scheduled for the next bar pulses (up from dim toward on, or down
-   *  from full toward off). */
+  /** The band rack: BUILD.weaponCap numbered sockets, empty ones asking to be
+   *  filled, filled ones showing the hired instrument (its color + name) and
+   *  its tier as pips. Sockets are numbered by acquisition order — the number
+   *  a socket carries is the number key that toggles it — so the rack reads in
+   *  the order the player built it, and an already-placed weapon never
+   *  renumbers. Rebuilt on every pick (cheap: 5 sockets). Renders into the HUD
+   *  rack by default, or any supplied container so the pause menu can show the
+   *  same band. The dev number-key toggles mark a deactivated owner's socket
+   *  dimmed, and a socket with a change scheduled for the next bar pulses (up
+   *  from dim toward on, or down from full toward off). */
   renderBand(
     tiers: ReadonlyMap<Role, number>,
     into: HTMLElement = this.rack,
@@ -158,13 +160,16 @@ export class Hud {
     evolved?: ReadonlySet<Role>,
   ): void {
     into.replaceChildren();
-    for (const slot of SLOTS) {
-      const owner = ownerOfSlot(slot, tiers);
-      // A slot the soundset supports no instrument for is dropped: shown dimmed
-      // and unavailable, never asking to be filled.
-      const dropped = supportedRoster(slot).length === 0;
-      let cls = dropped ? 'unavailable' : owner ? 'filled' : 'empty';
-      if (owner && !dropped) {
+    const owned = [...tiers.keys()];
+    // A run can never exceed the cap, so this is always exactly weaponCap
+    // sockets there. The sandbox bypasses the cap on purpose (FULL BAND IV
+    // loads the whole catalog); growing rather than truncating keeps the rack
+    // from hiding weapons that are audibly playing.
+    const socketCount = Math.max(BUILD.weaponCap, owned.length);
+    for (let slot = 0; slot < socketCount; slot++) {
+      const owner = owned[slot];
+      let cls = owner ? 'filled' : 'empty';
+      if (owner) {
         const off = deactivated?.has(owner) ?? false;
         const pend = pending?.has(owner) ?? false;
         // Pending pulses from the CURRENT settled state toward its opposite;
@@ -174,8 +179,8 @@ export class Hud {
         if (evolved?.has(owner)) cls += ' evolved';
       }
       const socket = el('div', `band-socket ${cls}`, into);
-      el('span', 'socket-slot', socket, SLOT_LABEL[slot]);
-      if (owner && !dropped) {
+      el('span', 'socket-slot', socket, String(slot + 1));
+      if (owner) {
         const kit = this.kits.get(owner)!;
         socket.style.setProperty('--voice-color', kit.color);
         el('span', 'socket-name', socket, kit.name);
