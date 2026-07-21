@@ -123,9 +123,28 @@ function hushCabinet(g: GraphicsContext, r: number, cracked: boolean, frame: num
   hushFeet(g, r, frame, 0.72);
 }
 
-function hushWalker(g: GraphicsContext, r: number, frame: number, jack: boolean): void {
+/** The walker family: spool (Cable Husk), jack (Jackwalker), taped (Gaffer
+ *  Husk — the same standing frame wrapped in gaffer-tape bands). */
+type WalkerBuild = 'spool' | 'jack' | 'taped';
+
+function hushWalker(g: GraphicsContext, r: number, frame: number, build: WalkerBuild): void {
   const step = frame ? r * 0.17 : -r * 0.17;
-  if (jack) {
+  if (build === 'taped') {
+    // A tall taped-over cabinet husk: one blank body, bandaged in wide bands
+    // with peeling tape ends, and a slot where a face would be.
+    box(g, -r * 0.62, -r * 1.3, r * 1.24, r * 1.78, SOUNDWOOD.ink);
+    box(g, -r * 0.44, -r * 1.1, r * 0.88, r * 1.4, 0xffffff);
+    for (const y of [-1.02, -0.66, -0.28, 0.1, 0.46]) {
+      box(g, -r * 0.62, r * y, r * 1.24, r * 0.14, SOUNDWOOD.ink);
+    }
+    // Peeling ends: one band lifts off each shoulder.
+    g.poly([-r * 0.62, -r * 1.02, -r * 1.02, -r * 0.86, -r * 0.96, -r * 0.68, -r * 0.62, -r * 0.88].map(snap))
+      .fill(SOUNDWOOD.ink);
+    g.poly([r * 0.62, -r * 0.66, r * 1.06, -r * 0.5, r * 0.98, -r * 0.32, r * 0.62, -r * 0.52].map(snap))
+      .fill(SOUNDWOOD.ink);
+    box(g, -r * 0.3, -r * 0.94, r * 0.6, r * 0.16, SOUNDWOOD.ink);
+    box(g, -r * 0.24, -r * 0.9, r * 0.48, r * 0.08, 0xffffff);
+  } else if (build === 'jack') {
     // Tall connector on rigid stilts with cable bands, no bones.
     box(g, -r * 0.52, -r * 1.12, r * 1.04, r * 1.55, SOUNDWOOD.ink);
     box(g, -r * 0.34, -r * 0.92, r * 0.68, r * 1.12, 0xffffff);
@@ -156,6 +175,127 @@ function hushWalker(g: GraphicsContext, r: number, frame: number, jack: boolean)
  *  unchanged and every other boss spawn now reads the same way. */
 export const BOSS_RING_SCALE = 1.72;
 
+/** Three displaced glass panes sell phasing without a face or sheet tail.
+ *  Shared by Echo Shard and the Echo Rush sweep. */
+function hushGhost(g: GraphicsContext, r: number, frame: number): void {
+  const offset = frame ? r * 0.18 : -r * 0.18;
+  for (const [x, y, alpha] of [[-0.48, 0.2, 0.32], [0.42, -0.18, 0.5], [0, 0, 1]] as const) {
+    g.poly([0, -r, r * 0.72, -r * 0.25, r * 0.42, r, -r * 0.42, r, -r * 0.72, -r * 0.25]
+      .map((value, i) => snap(value + (i % 2 === 0 ? r * x + offset : r * y))))
+      .stroke({ width: Math.max(2, snap(r * 0.14)), color: 0xffffff, alpha });
+  }
+  pixelDiamond(g, offset, 0, r * 0.23, 0xffffff);
+}
+
+/** Eight rectangular speaker petals around a core. Mute Bloom crosses its core
+ *  out; Snare Bloom replaces the mute mark with a set of jaws. */
+function hushBloom(g: GraphicsContext, r: number, frame: number, jaws: boolean): void {
+  const open = frame ? 0.8 : 0.64;
+  for (let i = 0; i < 8; i++) {
+    const a = i * Math.PI / 4;
+    const x = Math.cos(a) * r * open;
+    const y = Math.sin(a) * r * open;
+    pixelDiamond(g, x, y, r * 0.38, SOUNDWOOD.ink);
+    pixelDiamond(g, x, y, r * 0.25, 0xffffff);
+  }
+  g.poly(regularPixelPoly(8, r * 0.55, Math.PI / 8)).fill(SOUNDWOOD.ink);
+  if (jaws) {
+    // A bite that opens on the same two frames as the petals: two toothed
+    // wedges meeting across the core.
+    const gap = frame ? r * 0.3 : r * 0.12;
+    for (const dir of [-1, 1]) {
+      g.poly([-r * 0.5, dir * gap, r * 0.5, dir * gap, r * 0.42, dir * (gap + r * 0.42), -r * 0.42, dir * (gap + r * 0.42)].map(snap))
+        .fill(0xffffff);
+      for (const x of [-0.32, -0.08, 0.16]) {
+        g.poly([r * x, dir * gap, r * (x + 0.16), dir * gap, r * (x + 0.08), dir * (gap - r * 0.2)].map(snap))
+          .fill(0xffffff);
+      }
+    }
+  } else {
+    box(g, -r * 0.34, -r * 0.08, r * 0.68, r * 0.16, 0xffffff);
+    box(g, -r * 0.08, -r * 0.34, r * 0.16, r * 0.68, 0xffffff);
+  }
+}
+
+/** Floating antenna tower with scanning crown bars. Signal Crown and Silver
+ *  Crown share it — the source's silver bat is a recolor, and so is ours. */
+function hushCrown(g: GraphicsContext, r: number, frame: number): void {
+  darkSilhouette(g, [0, -r * 1.3, r * 0.86, r * 0.45, r * 0.44, r, -r * 0.44, r, -r * 0.86, r * 0.45]);
+  g.poly([0, -r, r * 0.6, r * 0.38, r * 0.3, r * 0.72, -r * 0.3, r * 0.72, -r * 0.6, r * 0.38].map(snap)).fill(0xffffff);
+  for (let i = 0; i < 3; i++) box(g, -r * (0.72 + i * 0.12), -r * (1.05 + i * 0.25) + (frame ? 2 : 0), r * (1.44 + i * 0.24), r * 0.1, 0xffffff, 0.9 - i * 0.2);
+  pixelDiamond(g, 0, -r * 1.55, r * 0.2, 0xffffff);
+}
+
+/** Woofer: a driver torn out of a rig and flying. A wide speaker cone —
+ *  surround ring, cone, dust cap — carried by two folded paper-cone wings that
+ *  beat with the frame. Deliberately unrelated to the mite family. */
+function hushWoofer(g: GraphicsContext, r: number, frame: number): void {
+  const beat = frame ? 1 : 0.72;
+  // Wings: folded paper cones, swept back, one fold line each.
+  for (const dir of [-1, 1]) {
+    darkSilhouette(g, [
+      dir * r * 0.6, -r * 0.22,
+      dir * r * 1.72, -r * 0.86 * beat,
+      dir * r * 1.5, -r * 0.05 * beat,
+      dir * r * 1.66, r * 0.5 * beat,
+      dir * r * 0.72, r * 0.34,
+    ]);
+    g.poly([
+      dir * r * 0.78, -r * 0.18,
+      dir * r * 1.42, -r * 0.6 * beat,
+      dir * r * 1.26, -r * 0.06 * beat,
+      dir * r * 0.84, r * 0.16,
+    ].map(snap)).fill(0xffffff);
+  }
+  // Driver: basket, surround, cone, dust cap.
+  g.poly(regularPixelPoly(12, r * 0.92, Math.PI / 12)).fill(SOUNDWOOD.ink);
+  g.poly(regularPixelPoly(12, r * 0.74, Math.PI / 12)).fill(0xffffff);
+  g.poly(regularPixelPoly(12, r * 0.56, Math.PI / 12)).fill(SOUNDWOOD.ink);
+  g.poly(regularPixelPoly(10, r * 0.34 * (frame ? 1.08 : 0.92), Math.PI / 10)).fill(0xffffff);
+  // Mounting lugs read as a torn-out driver rather than a face.
+  for (const a of [0.25, 0.75, 1.25, 1.75]) {
+    const x = Math.cos(a * Math.PI) * r * 0.94;
+    const y = Math.sin(a * Math.PI) * r * 0.94;
+    pixelDiamond(g, x, y, r * 0.16, SOUNDWOOD.ink);
+  }
+}
+
+/** Howlback: a lunging wolf built from stage hardware — long low body thrown
+ *  forward, wedge muzzle with a bared jaw, swept ears, cable tail, and a stride
+ *  that reaches on one frame and gathers on the other. */
+function hushWolf(g: GraphicsContext, r: number, frame: number): void {
+  const reach = frame ? r * 0.22 : -r * 0.16;
+  // Tail: a stiff cable whipping behind the lunge.
+  g.poly([-r * 0.86, r * 0.02, -r * 1.42, -r * 0.32 - reach, -r * 1.62, r * 0.2].map(snap))
+    .stroke({ width: Math.max(2, snap(r * 0.16)), color: SOUNDWOOD.ink });
+  // Legs: front pair thrown forward, rear pair driving back.
+  box(g, r * 0.34 + reach, r * 0.28, r * 0.24, r * 0.72, SOUNDWOOD.ink);
+  box(g, r * 0.02 + reach * 0.6, r * 0.32, r * 0.22, r * 0.66, SOUNDWOOD.ink);
+  box(g, -r * 0.52 - reach, r * 0.3, r * 0.24, r * 0.7, SOUNDWOOD.ink);
+  box(g, -r * 0.86 - reach * 0.6, r * 0.34, r * 0.22, r * 0.64, SOUNDWOOD.ink);
+  // Body: long, low, nose-down, rising to hunched shoulders at the back.
+  darkSilhouette(g, [
+    r * 1.5, -r * 0.32, r * 1.62, r * 0.06, r * 0.96, r * 0.42,
+    -r * 0.6, r * 0.5, -r * 1.06, r * 0.06, -r * 0.92, -r * 0.66,
+    -r * 0.34, -r * 0.5, r * 0.62, -r * 0.72,
+  ]);
+  g.poly([
+    r * 1.18, -r * 0.22, r * 0.86, r * 0.2, -r * 0.5, r * 0.26,
+    -r * 0.76, r * 0.02, -r * 0.62, -r * 0.42, r * 0.52, -r * 0.5,
+  ].map(snap)).fill(0xffffff);
+  // Ears: two swept blades off the shoulders.
+  darkSilhouette(g, [r * 0.5, -r * 0.66, r * 0.34, -r * 1.24, r * 0.86, -r * 0.72]);
+  darkSilhouette(g, [r * 0.02, -r * 0.6, -r * 0.24, -r * 1.14, r * 0.36, -r * 0.68]);
+  // Muzzle and bared jaw.
+  box(g, r * 0.98, -r * 0.42, r * 0.66, r * 0.2, SOUNDWOOD.ink);
+  g.poly([r * 0.9, r * 0.04, r * 1.62, r * 0.06, r * 1.5, r * 0.34, r * 0.94, r * 0.3].map(snap))
+    .fill(SOUNDWOOD.ink);
+  for (const x of [0.98, 1.2, 1.42]) {
+    g.poly([r * x, r * 0.06, r * (x + 0.14), r * 0.06, r * (x + 0.07), r * 0.26].map(snap)).fill(0xffffff);
+  }
+  pixelDiamond(g, r * 0.72, -r * 0.26, r * 0.15, 0xffffff);
+}
+
 /** The Hush: living interference assembled from abandoned stage hardware,
  * static, cables, wood rot, and broken light. Stable simulation IDs preserve
  * behavior; every live silhouette and player-facing name is project-native. */
@@ -172,46 +312,19 @@ export function enemyContext(e: Enemy, shieldOn: boolean, frame: number): Graphi
       case 'bat': hushMite(g, r, frame, 0); break;
       case 'redBat': hushMite(g, r, frame, 1); break;
       case 'redBat2': hushMite(g, r, frame, 2); break;
-      case 'zombie': hushWalker(g, r, frame, false); break;
-      case 'skeleton': hushWalker(g, r, frame, true); break;
+      case 'zombie': hushWalker(g, r, frame, 'spool'); break;
+      case 'skeleton': hushWalker(g, r, frame, 'jack'); break;
+      case 'bigMummy': hushWalker(g, r, frame, 'taped'); break;
       case 'greenMudman': hushCabinet(g, r, false, frame); break;
       case 'grayMudman': hushCabinet(g, r, true, frame); break;
       // The practice target is a cabinet with its step pinned: it never walks.
       case 'dummy': hushCabinet(g, r, false, 0); break;
-      case 'ghost': {
-        // Three displaced glass panes sell phasing without a face or sheet tail.
-        const offset = frame ? r * 0.18 : -r * 0.18;
-        for (const [x, y, alpha] of [[-0.48, 0.2, 0.32], [0.42, -0.18, 0.5], [0, 0, 1]] as const) {
-          g.poly([0, -r, r * 0.72, -r * 0.25, r * 0.42, r, -r * 0.42, r, -r * 0.72, -r * 0.25]
-            .map((value, i) => snap(value + (i % 2 === 0 ? r * x + offset : r * y))))
-            .stroke({ width: Math.max(2, snap(r * 0.14)), color: i32White(), alpha });
-        }
-        pixelDiamond(g, offset, 0, r * 0.23, 0xffffff);
-        break;
-      }
-      case 'flower': {
-        // Eight rectangular speaker petals around a crossed-out mute core.
-        const open = frame ? 0.8 : 0.64;
-        for (let i = 0; i < 8; i++) {
-          const a = i * Math.PI / 4;
-          const x = Math.cos(a) * r * open;
-          const y = Math.sin(a) * r * open;
-          pixelDiamond(g, x, y, r * 0.38, SOUNDWOOD.ink);
-          pixelDiamond(g, x, y, r * 0.25, 0xffffff);
-        }
-        g.poly(regularPixelPoly(8, r * 0.55, Math.PI / 8)).fill(SOUNDWOOD.ink);
-        box(g, -r * 0.34, -r * 0.08, r * 0.68, r * 0.16, 0xffffff);
-        box(g, -r * 0.08, -r * 0.34, r * 0.16, r * 0.68, 0xffffff);
-        break;
-      }
-      case 'glowingBat': {
-        // Floating antenna tower with scanning crown bars.
-        darkSilhouette(g, [0, -r * 1.3, r * 0.86, r * 0.45, r * 0.44, r, -r * 0.44, r, -r * 0.86, r * 0.45]);
-        g.poly([0, -r, r * 0.6, r * 0.38, r * 0.3, r * 0.72, -r * 0.3, r * 0.72, -r * 0.6, r * 0.38].map(snap)).fill(0xffffff);
-        for (let i = 0; i < 3; i++) box(g, -r * (0.72 + i * 0.12), -r * (1.05 + i * 0.25) + (frame ? 2 : 0), r * (1.44 + i * 0.24), r * 0.1, 0xffffff, 0.9 - i * 0.2);
-        pixelDiamond(g, 0, -r * 1.55, r * 0.2, 0xffffff);
-        break;
-      }
+      case 'ghost': hushGhost(g, r, frame); break;
+      case 'flower': hushBloom(g, r, frame, false); break;
+      case 'venus': hushBloom(g, r, frame, true); break;
+      // Silver Crown is Signal Crown's silhouette; only the tint separates them.
+      case 'glowingBat':
+      case 'silverBat': hushCrown(g, r, frame); break;
       case 'mantis': {
         // Huge broken truss shears around a hard rectangular signal core.
         const flex = frame ? r * 0.08 : 0;
@@ -231,6 +344,21 @@ export function enemyContext(e: Enemy, shieldOn: boolean, frame: number): Graphi
         darkSilhouette(g, [r * 1.8, 0, r * 0.42, -r * 0.9 + jag, r * 0.1, -r * 0.32, -r * 1.2, -r * 0.72, -r * 0.55, 0, -r * 1.2, r * 0.72, r * 0.1, r * 0.32, r * 0.42, r * 0.9 - jag]);
         g.poly([r * 1.42, 0, r * 0.34, -r * 0.58 + jag, r * 0.05, -r * 0.18, -r * 0.78, -r * 0.44, -r * 0.38, 0, -r * 0.78, r * 0.44, r * 0.05, r * 0.18, r * 0.34, r * 0.58 - jag].map(snap)).fill(0xffffff);
         for (const y of [-0.58, 0, 0.58]) box(g, -r * 1.7, r * y, r * 0.58, 2, 0xffffff, 0.58);
+        break;
+      }
+      case 'giantBat': hushWoofer(g, r, frame); break;
+      case 'werewolf': hushWolf(g, r, frame); break;
+      case 'ghostSwarm': {
+        // The sweep drawn with ghost bodies: one lead pane cluster plus the
+        // two it is dragging behind it. makeEnemyGfx holds the whole thing at
+        // 0.82 alpha, and view.ts turns it to face the sweep direction.
+        for (const [x, y] of [[-1.15, 0.34], [-0.6, -0.28]] as const) {
+          g.poly([0, -r, r * 0.72, -r * 0.25, r * 0.42, r, -r * 0.42, r, -r * 0.72, -r * 0.25]
+            .map((value, i) => snap(value * 0.7 + (i % 2 === 0 ? r * x : r * y))))
+            .stroke({ width: Math.max(2, snap(r * 0.12)), color: 0xffffff, alpha: 0.4 });
+        }
+        hushGhost(g, r, frame);
+        for (const y of [-0.5, 0.1, 0.62]) box(g, -r * 1.9, r * y, r * 0.5, 2, 0xffffff, 0.5);
         break;
       }
       case 'swarmer': {
@@ -313,10 +441,6 @@ export function enemyContext(e: Enemy, shieldOn: boolean, frame: number): Graphi
   });
 }
 
-function i32White(): number {
-  return 0xffffff;
-}
-
 export function makeEnemyGfx(e: Enemy, frame: number): EnemyGfx {
   const shield = e.shieldHp > 0;
   const gfx = pixelGraphics(enemyContext(e, shield, frame)) as EnemyGfx;
@@ -324,7 +448,7 @@ export function makeEnemyGfx(e: Enemy, frame: number): EnemyGfx {
   gfx.__shield = shield;
   gfx.__frame = frame;
   gfx.__radius = e.radius;
-  if (e.kind === 'ghost') gfx.alpha = 0.82;
+  if (e.kind === 'ghost' || e.kind === 'ghostSwarm') gfx.alpha = 0.82;
   return gfx;
 }
 

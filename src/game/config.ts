@@ -292,6 +292,12 @@ export type EnemyKind =
   | 'glowingBat'
   | 'mantis'
   | 'batSwarm'
+  | 'giantBat'
+  | 'silverBat'
+  | 'werewolf'
+  | 'bigMummy'
+  | 'venus'
+  | 'ghostSwarm'
   // Sandbox-only measurement prop. Never appears in a stage or endless row.
   | 'dummy';
 
@@ -300,6 +306,7 @@ export type EnemyKind =
 export const ALL_ENEMY_KINDS: readonly EnemyKind[] = [
   'bat', 'redBat', 'redBat2', 'zombie', 'skeleton', 'ghost',
   'greenMudman', 'grayMudman', 'flower', 'glowingBat', 'mantis', 'batSwarm',
+  'giantBat', 'silverBat', 'werewolf', 'bigMummy', 'venus', 'ghostSwarm',
   'swarmer', 'tank', 'darter', 'splitter', 'circler', 'shielded', 'elite',
   'dummy',
 ] as const;
@@ -376,6 +383,13 @@ export const MAD_FOREST_FRAMES: Partial<Record<EnemyKind, readonly LegacyEnemyFr
     { width: 25, height: 24 },
     { width: 30, height: 27 },
   ],
+  giantBat: [{ width: 50, height: 39 }],
+  silverBat: [{ width: 27, height: 25 }],
+  werewolf: [{ width: 32, height: 34 }],
+  bigMummy: [{ width: 37, height: 50 }],
+  venus: [{ width: 51, height: 50 }],
+  // The sweep wears the Ghost frame; the source lists no swarm-specific size.
+  ghostSwarm: [{ width: 29, height: 32 }],
 };
 
 const BAT_SWARM_RADII = MAD_FOREST_FRAMES.batSwarm!.map(
@@ -482,6 +496,76 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
     fixedDirection: true,
     knockback: 1,
   },
+  /** Woofer: the heavy bat. Barely shoves (knockback 0.1) — it wades through
+   *  a build instead of being pushed by it. */
+  giantBat: {
+    radius: legacyEnemyRadius(50),
+    speed: 140 * ENEMY_SPEED_UNIT,
+    hp: 270,
+    power: 10,
+    damage: 9,
+    xp: 2.5,
+    color: 0xa32f4d,
+    knockback: 0.1,
+  },
+  /** Silver Crown: a deliberate stat-copy of Signal Crown (the source's own
+   *  design — the silver bat is a recolor), so it carries HP×Level too. */
+  silverBat: {
+    radius: legacyEnemyRadius(27),
+    speed: 140 * ENEMY_SPEED_UNIT,
+    hp: 50,
+    power: 10,
+    damage: 9,
+    xp: 30,
+    color: 0xc9d6e4,
+    hpPerLevel: true,
+    knockback: 1,
+  },
+  werewolf: {
+    radius: legacyEnemyRadius(32),
+    speed: 130 * ENEMY_SPEED_UNIT,
+    hp: 180,
+    power: 14,
+    damage: 13,
+    xp: 2,
+    color: 0xff8c2b,
+    knockback: 0.8,
+  },
+  /** Gaffer Husk and Snare Bloom share Shearjaw's 500/20/80/3 statline — the
+   *  source authors all three from the same block. */
+  bigMummy: {
+    radius: legacyEnemyRadius(37),
+    speed: 80 * ENEMY_SPEED_UNIT,
+    hp: 500,
+    power: 20,
+    damage: 19,
+    xp: 3,
+    color: 0x77808a,
+    knockback: 0,
+  },
+  venus: {
+    radius: legacyEnemyRadius(51),
+    speed: 80 * ENEMY_SPEED_UNIT,
+    hp: 500,
+    power: 20,
+    damage: 19,
+    xp: 3,
+    color: 0x62c452,
+    knockback: 0,
+  },
+  /** Echo Rush: the Static Rush sweep with ghost bodies. Same fixed-direction
+   *  event movement; stats mirror batSwarm (the source lists none of its own). */
+  ghostSwarm: {
+    radius: legacyEnemyRadius(29),
+    speed: 700 * ENEMY_SPEED_UNIT,
+    hp: 1,
+    power: 1,
+    damage: 1,
+    xp: 1,
+    color: 0x9b7bf0,
+    fixedDirection: true,
+    knockback: 1,
+  },
   /** Sandbox measurement prop: undying, immobile, harmless. RunWorld special-
    *  cases it in every mover and in damageEnemy; the values here only need to
    *  give it a Moss Cabinet body and a colour that reads as scenery. */
@@ -548,6 +632,12 @@ export const ENEMY_LABELS: Record<EnemyKind, string> = {
   glowingBat: 'Signal Crown',
   mantis: 'The Shear',
   batSwarm: 'Static Rush',
+  giantBat: 'Woofer',
+  silverBat: 'Silver Crown',
+  werewolf: 'Howlback',
+  bigMummy: 'Gaffer Husk',
+  venus: 'Snare Bloom',
+  ghostSwarm: 'Echo Rush',
   dummy: 'Practice Cabinet',
 };
 

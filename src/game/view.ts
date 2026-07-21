@@ -251,9 +251,16 @@ function enemyFrame(enemy: Enemy, timeS: number): number {
     case 'flower':
     case 'mantis':
     case 'darter':
+    case 'giantBat':
+    case 'silverBat':
+    case 'ghostSwarm':
+    case 'venus':
+    // The lunge reads as a run, not a walk: it keeps the faster cycle.
+    case 'werewolf':
       return Math.floor(timeS * 8 + enemy.id * 0.73) & 1;
     case 'zombie':
     case 'skeleton':
+    case 'bigMummy':
     case 'greenMudman':
     case 'grayMudman':
     case 'swarmer':
@@ -1078,9 +1085,12 @@ export class RunView {
       gfx.rotation = tilt;
       gfx.scale.set(1);
       if (enemy.kind === 'ghost') gfx.alpha = 0.78 + Math.sin(this.world.timeS * 3 + enemy.id) * 0.08;
+      // The sweep is a wall of bodies passing through: it holds the locked
+      // 0.82 rather than breathing, so the whole rush reads as one pass.
+      else if (enemy.kind === 'ghostSwarm') gfx.alpha = 0.82;
       else gfx.alpha = 1;
 
-      if (enemy.kind === 'batSwarm' && (enemy.moveX !== 0 || enemy.moveY !== 0)) {
+      if ((enemy.kind === 'batSwarm' || enemy.kind === 'ghostSwarm') && (enemy.moveX !== 0 || enemy.moveY !== 0)) {
         gfx.rotation = Math.atan2(enemy.moveY, enemy.moveX) + tilt;
       } else if (enemy.kind === 'darter' && (enemy.dashX !== 0 || enemy.dashY !== 0)) {
         gfx.rotation = Math.atan2(enemy.dashY, enemy.dashX) + tilt;

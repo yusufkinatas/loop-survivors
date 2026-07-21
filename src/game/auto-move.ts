@@ -9,12 +9,17 @@ const HEAVY_THREATS = new Set<Enemy['kind']>([
   'grayMudman',
   'glowingBat',
   'mantis',
+  'giantBat',
+  'silverBat',
+  'werewolf',
+  'bigMummy',
+  'venus',
 ]);
 
 function weightedThreat(enemy: Enemy, base: number): number {
   let weight = base;
   if (HEAVY_THREATS.has(enemy.kind)) weight *= 1.5;
-  if (enemy.kind === 'batSwarm') weight *= 2.5;
+  if (enemy.kind === 'batSwarm' || enemy.kind === 'ghostSwarm') weight *= 2.5;
   if (enemy.kind === 'darter' && enemy.dashing) weight *= 2;
   return weight;
 }
