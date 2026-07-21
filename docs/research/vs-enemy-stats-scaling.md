@@ -284,7 +284,77 @@ stat-identical to Glowing Bat); the four Giant bosses all need it too.
 **One soft mismatch:** the repo gives batSwarm `knockback: 1`, but the wiki
 does not list a knockback value for Bat Swarm at all (ambiguity 2 below).
 
-## 5. Ambiguities the wiki leaves open
+## 5. Spawn handling
+
+Addendum from the prose sections of https://vampire.survivors.wiki/w/Enemies
+(Spawning / Waves / Bosses / Map events), plus the Mad Forest infobox and the
+Curse page where noted. Quoted sentences are verbatim from the wiki.
+
+### 5a. Initial spawn on stage entry
+
+"Upon entering a stage, an initial amount of enemies depending on the stage
+modifiers spawns." The controlling modifier is the per-stage **starting
+spawns** number in the stage infobox — for Mad Forest: **10** in normal mode,
+15 in Hyper. The Enemies page does not say which wave's enemies fill this
+initial batch (presumably minute 0's pool) or where exactly they are placed
+— see ambiguity 9.
+
+### 5b. Periodic spawn attempts
+
+"Thereafter the game periodically attempts to spawn enemies." Waves arrive
+one per minute; each wave carries a **minimum amount** and a **spawn
+interval** (the Mad Forest values are the Min/Int columns in section 2d).
+Attempt semantics, both quoted:
+
+- Below minimum: "If the minimum amount is not met when the game attempts to
+  spawn enemies, enemies will be spawned until the quota is filled."
+- At/above minimum: "If more enemies than the minimum amount is present, one
+  of each type of enemies in the wave will be spawned."
+
+So the minimum is a refill quota, and the interval is the tick rate of a
+drip that adds one enemy per pool entry per tick once the quota is met.
+Curse divides the interval (`effective interval = interval / totalCurse`)
+and multiplies the minimum.
+
+### 5c. Population caps
+
+- **300-alive soft cap on periodic spawning:** "When 300 or more enemies are
+  alive the game will not spawn more enemies periodically, and only bosses
+  and enemies from map events can spawn." So bosses and event enemies (Bat
+  Swarm, Ghost Swarm, Flower Wall rings) bypass the cap; quota refills and
+  interval drips do not.
+- **500 absolute cap:** "Total enemy quantity allowed on screen is capped at
+  500, regardless of Curse and Charm value." This sentence lives on the
+  Curse page (https://vampire.survivors.wiki/w/Curse), not the Enemies page.
+  Whether bosses/events can exceed 500 is not stated — see ambiguity 10.
+- Note the wave table itself pushes past the soft cap: late Mad Forest
+  minutes set minimums of 300, exactly at the periodic-spawn cutoff.
+
+### 5d. Despawning
+
+- Regulars: "Enemies generally spawn just outside the screen and can despawn
+  if the player moves far enough from them." The distance is never
+  quantified (ambiguity 6). The page does not explicitly say despawned
+  enemies are replaced; replacement follows implicitly from the quota rule
+  in 5b (alive count drops below minimum, next attempt refills), and the
+  wiki attaches no stat consequence to the cycle — refills are ordinary new
+  spawns.
+- Bosses: "Bosses do not despawn when the player moves away from them, but
+  get teleported back to the screen." This applies to boss-type spawns
+  generally — including the normal-statline boss spawns of section 2c
+  (5:00 Mantichana, 8:00 Giant Bat, 21:00/24:00 Venus).
+
+### 5e. Spawn positions / geometry
+
+The Enemies page gives only "just outside the screen"; it documents no
+distances, arcs, or direction weighting. The per-stage **spawn type** in the
+stage infobox is the only geometry lever the wiki records: Mad Forest is
+"Standard — enemies appear from all four directions of the player" (other
+stages have directional spawn types, e.g. side-only corridors). Swarm-event
+enemies are the exception to player-relative spawning: they enter from one
+edge and sweep across in a fixed direction, pushing other enemies.
+
+## 6. Ambiguities the wiki leaves open
 
 1. **Enemy names are wiki inventions.** The stage page warns that most names
    are made up from internal IDs and may change. IDs (BAT1, XLMANTIS,
@@ -312,3 +382,11 @@ does not list a knockback value for Bat Swarm at all (ambiguity 2 below).
 8. **Knockback "(max)" numbers** are defined on the Knockback page as the
    debuff-raised cap, but per-enemy pages never restate this — normal
    enemies cap at 3, bosses at 1.
+9. **Initial-spawn details:** the Enemies page says only that "an initial
+   amount of enemies depending on the stage modifiers spawns" — it does not
+   state which wave's pool fills the batch or where those enemies are
+   placed relative to the player.
+10. **The 500 absolute cap** is stated only on the Curse page, framed as a
+    limit Curse/Charm cannot exceed; whether bosses and map-event spawns
+    can push past 500 is not stated. Despawn replacement is likewise never
+    stated explicitly — it only follows from the quota-refill rule.
