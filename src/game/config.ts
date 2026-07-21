@@ -77,7 +77,7 @@ export const LEVELUP = {
   itemRadius: 150,
   /** Enemies inside this ring at drop time are shoved out to it (> itemRadius,
    *  so the triangle spawns into cleared space). */
-  enemyPushRadius: 300,
+  enemyPushRadius: 375,
   /** Fixed proximity to collect a dropped item (independent of pickup buffs). */
   itemPickupRadius: 40,
   /** Triangle points, in degrees (placed with Math.cos/sin in the shell — a
