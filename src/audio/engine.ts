@@ -140,35 +140,24 @@ function voiceMixGain(role: Role): number {
   return VOICE_MIX_GAIN[role] ?? 1;
 }
 
-/** XP-gem pickup cue (prototype), split into two independent axes so they can
- *  be compared separately: WHAT it sounds like, and HOW its pitch moves.
- *  See MusicEngine.playGemCue. */
-export type GemCueTimbre = 'blip' | 'pluck' | 'bell' | 'tick' | 'ding';
-export type GemCueMotion = 'static' | 'ladder' | 'xp-bar' | 'wander';
-
-export const GEM_CUE_TIMBRES: readonly GemCueTimbre[] = ['blip', 'pluck', 'bell', 'tick', 'ding'];
-export const GEM_CUE_MOTIONS: readonly GemCueMotion[] = ['static', 'ladder', 'xp-bar', 'wander'];
-
-/** How far the cue may climb. TWO octaves, and the ceiling is the constraint
- *  that set it: 'xp-bar' maps a full bar to the top degree, so the top degree
- *  is a note the player actually hears on every level-up. At three octaves
- *  the tuned timbres ran past 6 kHz — and `blip`, which sits an octave up and
- *  stacks a fifth on top, reached the edge of hearing. Widen this only after
- *  checking the top of `blip` AND of `ding`, whose inharmonic partials climb
- *  fastest of anything here (they have their own ceiling below). */
+/** How far the gem cue may climb: two octaves of the run's scale. The ceiling
+ *  is the constraint that set it — a full XP bar maps to the top degree, so
+ *  the top degree is a note the player hears on every single level-up. At
+ *  three octaves the cue ran past 6 kHz, and since `blip` stacks a fifth on
+ *  top of its root it reached the edge of hearing. Widen this only after
+ *  checking where the fifth lands. */
 const GEM_OCTAVES = 2;
 
 /** Pitches the gem cue is allowed to use: the run's own scale (SKELETON's
  *  note set, A minor pentatonic) stacked over GEM_OCTAVES, as semitone
  *  offsets from the cue root.
  *
- *  This is the whole reason the cue varies by SCALE STEP and not by a random
- *  percentage. The usual game-audio fix for a sound you hear thousands of
- *  times is to detune it a few percent per play so it never repeats exactly.
- *  That advice assumes the effects and the music are separate layers. Here
- *  they are the same layer — a gem cue sitting a fraction of a semitone off
- *  would be the one element in the game permanently out of key. Snapping to
- *  the skeleton buys the same variety and stays in the track. */
+ *  This is why the cue moves by SCALE STEP and not by the few percent of
+ *  random detune that is the usual fix for a sound heard thousands of times.
+ *  That advice assumes effects and music are separate layers. Here they are
+ *  the same layer — a gem cue sitting a fraction of a semitone off would be
+ *  the one element in the game permanently out of key. Snapping to the
+ *  skeleton buys the same variety and stays in the track. */
 const GEM_DEGREES: readonly number[] = (() => {
   const degrees: number[] = [];
   for (let octave = 0; octave < GEM_OCTAVES; octave++) {
@@ -178,33 +167,23 @@ const GEM_DEGREES: readonly number[] = (() => {
 })();
 
 /** The cue's root, two octaves above the skeleton's (A5). High enough to read
- *  over a full band, low enough that the top of the ladder is still a note
+ *  over a full band, low enough that the top of the climb is still a note
  *  rather than a whistle, and in key by construction rather than by ear. */
 const GEM_ROOT_HZ = SKELETON.rootHz * 4;
 
-/** Upper bound for `ding`'s inharmonic partials. Above roughly this, a partial
- *  stops adding metallic colour and starts adding fatigue. */
-const GEM_PARTIAL_CEILING_HZ = 9000;
-
-/** A pickup gap longer than this restarts the 'ladder' climb, so a lone gem
- *  always plays the root and only a genuine cluster climbs. */
-const GEM_LADDER_RESET_S = 0.55;
-
-/** Below this gap between pickups, the stereo spread is at full width; by
- *  GEM_FLURRY_MAX_S it has closed back to centre. The point is that a lone
- *  gem should NOT jump to one ear — that reads as a bug, not an effect. Width
- *  is something a flurry earns. */
+/** Below this gap between pickups the stereo spread is at full width; by
+ *  GEM_FLURRY_MAX_S it has closed back to centre. A lone gem should NOT jump
+ *  to one ear — that reads as a bug, not an effect. Width is something a
+ *  flurry earns. */
 const GEM_FLURRY_MIN_S = 0.15;
 const GEM_FLURRY_MAX_S = 0.6;
 
 export interface GemCueOptions {
-  timbre: GemCueTimbre;
-  motion: GemCueMotion;
   /** Scales the cue's envelope peaks; 0 silences it. */
   gain: number;
   /** Minimum seconds between cues; extras are dropped, not queued. */
   minGapS: number;
-  /** 0..1 toward the next level. Only the 'xp-bar' motion reads it. */
+  /** 0..1 toward the next level. Drives the cue's pitch. */
   levelProgress: number;
   /** 0..1 stereo width. Consecutive cues alternate sides, so a fast run of
    *  pickups sweeps left/right instead of piling up in the middle. Scaled
@@ -254,7 +233,6 @@ export class MusicEngine {
   /** Gem cue state (prototype): the throttle's clock, and how far the 'ladder'
    *  variant has climbed. Audio-clock time, so a paused context freezes both. */
   private lastGemCueTime = -Infinity;
-  private gemLadderStep = 0;
   /** Which side the next cue pans to. Strictly alternating rather than random:
    *  true randomness clumps, and two or three cues landing on the same ear is
    *  exactly the machine-gun texture the spread exists to break up. */
@@ -591,49 +569,26 @@ export class MusicEngine {
     }
   }
 
-  /** XP gem pickup, PROTOTYPE (see GEM_CUE in config.ts). Two independent
-   *  axes, both switchable live from the debug row, so the feel can be chosen
-   *  by ear in a real run rather than argued about on paper.
+  /** XP gem pickup: a short two-note blip whose pitch tracks how full the XP
+   *  bar is, panned to alternating sides during a flurry.
    *
-   *  Every combination obeys the same three rules the other cues do: silent
-   *  when muted, wired to master so no duck can swallow it, and short — a gem
-   *  lands dozens of times a minute, so anything with a tail becomes mud.
+   *  It obeys the same three rules the other cues do: silent when muted, wired
+   *  to master so no duck can swallow it, and short — a gem lands dozens of
+   *  times a minute, so anything with a tail becomes mud.
    *
-   *  TIMBRE is what it sounds like:
-   *   - `blip`   two quick square-wave notes a fifth apart (the interval in a
-   *              power chord), rising. Arcade coin. Reads as "got it" loudest.
-   *   - `pluck`  one sawtooth note through a filter that snaps shut, which is
-   *              roughly how a plucked string behaves. Musical; sits IN the
-   *              track instead of on top of it.
-   *   - `bell`   two sine tones at a non-whole-number ratio (2.76x, the ratio
-   *              real bells ring at), so it shimmers rather than sings.
-   *              Prettiest, and the longest — watch it pile up.
-   *   - `tick`   a filtered noise burst plus a hint of pitch. Nearly a
-   *              percussion hit. The one that never competes with the music.
-   *              Being noise, its "pitch" is a filter sweep, so motion is
-   *              subtler here than on the three tuned timbres.
-   *   - `ding`   the survivors-genre convention: short, bright, faintly
-   *              metallic, with a tiny upward inflection on the attack.
-   *              Written from scratch after that idiom — no other game's
-   *              recording is used or reproduced anywhere in this repo.
+   *  PITCH carries information rather than decoration. The note is chosen from
+   *  GEM_DEGREES by `levelProgress`, so the cue climbs as the bar fills and
+   *  drops back to the root the moment it levels: you hear how close you are
+   *  without looking at the bar. Every degree is in the run's key, so a busy
+   *  pickup streak harmonises with the track instead of fighting it.
    *
-   *  MOTION is how its pitch moves, always snapped to GEM_DEGREES so every
-   *  note lands in the run's key:
-   *   - `static` the same note every time. The baseline to judge the rest
-   *              against, and the one that risks listener fatigue: this is
-   *              the most frequent sound in the game.
-   *   - `ladder` climbs one scale step per gem, resetting after a pause, so
-   *              grabbing a cluster plays a rising run and a bulk vacuum
-   *              sounds like a fill rather than a machine gun.
-   *   - `xp-bar` pitch tracks progress toward the next level and resets when
-   *              it fires. The genre convention, and the only motion that
-   *              carries information: you hear how close you are without
-   *              looking at the bar.
-   *   - `wander` a random scale step within the first octave each time. Pure
-   *              anti-fatigue — no meaning, just never the same twice.
+   *  STEREO breaks up repetition. Sides strictly alternate — true randomness
+   *  clumps, and two or three cues on the same ear is exactly the machine-gun
+   *  texture this exists to avoid — while the amount stays random, so the
+   *  sweep is irregular without stacking.
    *
-   *  `gain`, `minGapS` and `levelProgress` are all caller tuning, like
-   *  playHitCue's duck — the engine holds no game numbers of its own. */
+   *  `gain`, `minGapS`, `levelProgress` and `spread` are all caller tuning,
+   *  like playHitCue's duck: the engine holds no game numbers of its own. */
   playGemCue(opts: GemCueOptions): void {
     if (this.masterTarget <= 0) return; // muted
     if (opts.gain <= 0) return;
@@ -644,19 +599,18 @@ export class MusicEngine {
     const sinceLast = now - this.lastGemCueTime;
     this.lastGemCueTime = now;
 
-    const degreeIndex = this.gemDegreeIndex(opts.motion, opts.levelProgress, sinceLast);
+    const progress = Math.max(0, Math.min(1, opts.levelProgress));
+    const degreeIndex = Math.round(progress * (GEM_DEGREES.length - 1));
     const ratio = semitonesToRate(GEM_DEGREES[degreeIndex]);
     // Higher notes read as louder at equal amplitude, so trim as the pitch
-    // climbs. Keeps a long ladder building instead of pinning the limiter.
+    // climbs. Keeps a filling bar building instead of pinning the limiter.
     const trim = Math.max(0.65, 1 - degreeIndex * 0.03);
 
     const out = this.ctx.createGain();
     out.gain.value = opts.gain * trim;
 
-    // Stereo placement. Sides alternate strictly; only the AMOUNT is random,
-    // so a vacuum sweeps across the field instead of chattering in the centre,
-    // and never lands twice on the same ear. Width fades out for isolated
-    // pickups so a single gem stays where the player is looking.
+    // Stereo placement. Width fades out for isolated pickups so a single gem
+    // stays where the player is looking; a vacuum earns the full sweep.
     const spread = Math.max(0, Math.min(1, opts.spread));
     if (spread > 0) {
       const flurry =
@@ -678,161 +632,25 @@ export class MusicEngine {
       out.connect(this.master);
     }
 
-    if (opts.timbre === 'blip') {
-      const root = GEM_ROOT_HZ * ratio;
-      const notes = [root, root * semitonesToRate(7)]; // root, then a fifth up
-      for (let i = 0; i < notes.length; i++) {
-        const t0 = now + i * 0.055;
-        const osc = this.ctx.createOscillator();
-        osc.type = 'square';
-        osc.frequency.value = notes[i];
-        const env = this.ctx.createGain();
-        env.gain.setValueAtTime(0.0001, t0);
-        env.gain.exponentialRampToValueAtTime(0.05, t0 + 0.005);
-        env.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.09);
-        osc.connect(env).connect(out);
-        osc.start(t0);
-        osc.stop(t0 + 0.1);
-      }
-      return;
-    }
-
-    if (opts.timbre === 'pluck') {
+    // Two square-wave notes a fifth apart (the interval in a power chord),
+    // rising. Square because it cuts through a dense band; a fifth because it
+    // is the one interval that stays consonant against every chord the
+    // skeleton can throw under it.
+    const root = GEM_ROOT_HZ * ratio;
+    const notes = [root, root * semitonesToRate(7)];
+    for (let i = 0; i < notes.length; i++) {
+      const t0 = now + i * 0.055;
       const osc = this.ctx.createOscillator();
-      osc.type = 'sawtooth';
-      osc.frequency.value = GEM_ROOT_HZ * 0.5 * ratio; // an octave down: warmer
-      const lp = this.ctx.createBiquadFilter();
-      lp.type = 'lowpass';
-      lp.Q.value = 4;
-      // The filter tracks the note, so a high step stays as bright as a low one.
-      lp.frequency.setValueAtTime(6000 * ratio, now);
-      lp.frequency.exponentialRampToValueAtTime(900 * ratio, now + 0.12);
+      osc.type = 'square';
+      osc.frequency.value = notes[i];
       const env = this.ctx.createGain();
-      env.gain.setValueAtTime(0.0001, now);
-      env.gain.exponentialRampToValueAtTime(0.13, now + 0.004);
-      env.gain.exponentialRampToValueAtTime(0.0001, now + 0.16);
-      osc.connect(lp).connect(env).connect(out);
-      osc.start(now);
-      osc.stop(now + 0.18);
-      return;
+      env.gain.setValueAtTime(0.0001, t0);
+      env.gain.exponentialRampToValueAtTime(0.05, t0 + 0.005);
+      env.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.09);
+      osc.connect(env).connect(out);
+      osc.start(t0);
+      osc.stop(t0 + 0.1);
     }
-
-    if (opts.timbre === 'bell') {
-      const base = GEM_ROOT_HZ * 0.5 * ratio;
-      const partials = [
-        { ratio: 1, peak: 0.09, decay: 0.34 },
-        { ratio: 2.76, peak: 0.035, decay: 0.2 },
-      ];
-      for (const p of partials) {
-        const osc = this.ctx.createOscillator();
-        osc.type = 'sine';
-        osc.frequency.value = base * p.ratio;
-        const env = this.ctx.createGain();
-        env.gain.setValueAtTime(0.0001, now);
-        env.gain.exponentialRampToValueAtTime(p.peak, now + 0.005);
-        env.gain.exponentialRampToValueAtTime(0.0001, now + p.decay);
-        osc.connect(env).connect(out);
-        osc.start(now);
-        osc.stop(now + p.decay + 0.02);
-      }
-      return;
-    }
-
-    if (opts.timbre === 'ding') {
-      // The survivors-genre convention: a short, bright, faintly metallic
-      // "ding!". Written from scratch — the genre's SHAPE (fast attack, tiny
-      // upward inflection, quick metallic decay) is a common idiom, not
-      // anyone's property, and no other game's recording is used here.
-      //
-      // Metallic comes from inharmonic partials: ratios that are not whole
-      // numbers, so the overtones never line up into a single sung note the
-      // way they do on `pluck`. The upward inflection at the onset is the
-      // "!" — pitch rising into the note is what makes it read as a reward.
-      const base = GEM_ROOT_HZ * ratio;
-      const partials = [
-        { ratio: 1, peak: 0.11, decay: 0.16 },
-        { ratio: 2.4, peak: 0.05, decay: 0.11 },
-        { ratio: 4.1, peak: 0.02, decay: 0.07 },
-      ];
-      for (const p of partials) {
-        // Inharmonic partials multiply the pitch, so at the top of a climb the
-        // highest one ran past 12 kHz — audible only as a thin shriek, and the
-        // first thing that would make this cue tiring. Drop partials that
-        // leave the musically useful range instead of letting them ring: the
-        // cue simply gets purer as it climbs, which is the right trade.
-        if (base * p.ratio > GEM_PARTIAL_CEILING_HZ) continue;
-        const osc = this.ctx.createOscillator();
-        osc.type = 'sine';
-        // Start a touch flat and snap up into pitch: a 12ms rise, fast enough
-        // to hear as attack rather than as a slide.
-        osc.frequency.setValueAtTime(base * p.ratio * 0.94, now);
-        osc.frequency.exponentialRampToValueAtTime(base * p.ratio, now + 0.012);
-        const env = this.ctx.createGain();
-        env.gain.setValueAtTime(0.0001, now);
-        env.gain.exponentialRampToValueAtTime(p.peak, now + 0.003);
-        env.gain.exponentialRampToValueAtTime(0.0001, now + p.decay);
-        osc.connect(env).connect(out);
-        osc.start(now);
-        osc.stop(now + p.decay + 0.02);
-      }
-      return;
-    }
-
-    // 'tick'. Noise, so there is no note to tune — the motion moves the
-    // bandpass centre instead, which reads as brighter/darker rather than
-    // higher/lower. Deliberately the least pitched option.
-    const burstS = 0.05;
-    const buffer = this.ctx.createBuffer(
-      1,
-      Math.ceil(this.ctx.sampleRate * burstS),
-      this.ctx.sampleRate,
-    );
-    const samples = buffer.getChannelData(0);
-    for (let i = 0; i < samples.length; i++) {
-      const fade = 1 - i / samples.length;
-      samples[i] = (Math.random() * 2 - 1) * fade * fade;
-    }
-    const noise = this.ctx.createBufferSource();
-    noise.buffer = buffer;
-    const bp = this.ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.Q.value = 1.6;
-    // Square root, not the raw ratio: a bandpass on noise has no octave to
-    // land on, so following the full two octaves would just thin it out into
-    // hiss at the top of a ladder. Half the movement reads as the same shape.
-    bp.frequency.value = 3200 * Math.sqrt(ratio);
-    const env = this.ctx.createGain();
-    env.gain.setValueAtTime(0.12, now);
-    env.gain.exponentialRampToValueAtTime(0.0001, now + burstS);
-    noise.connect(bp).connect(env).connect(out);
-    noise.start(now);
-    noise.stop(now + burstS);
-  }
-
-  /** Which step of GEM_DEGREES this cue lands on. The only stateful part of
-   *  the gem cue, kept separate so the timbres stay pure renderers. */
-  private gemDegreeIndex(
-    motion: GemCueMotion,
-    levelProgress: number,
-    sinceLast: number,
-  ): number {
-    const last = GEM_DEGREES.length - 1;
-    if (motion === 'static') return 0;
-    if (motion === 'xp-bar') {
-      const progress = Math.max(0, Math.min(1, levelProgress));
-      return Math.round(progress * last);
-    }
-    if (motion === 'wander') {
-      // Within the first octave only: a full-range jump every pickup reads as
-      // noise, not variety.
-      const span = SKELETON.noteSet.length;
-      return Math.floor(Math.random() * span);
-    }
-    // 'ladder': climb while pickups keep coming, back to the root once they stop.
-    if (sinceLast > GEM_LADDER_RESET_S) this.gemLadderStep = 0;
-    const step = this.gemLadderStep;
-    this.gemLadderStep = Math.min(last, step + 1);
-    return step;
   }
 
   /** Freeze already-scheduled lookahead audio at an intentional game pause.

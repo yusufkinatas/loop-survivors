@@ -3,13 +3,7 @@
 // the game only listens to its triggers and toggles voices on picks.
 
 import { Application } from 'pixi.js';
-import {
-  GEM_CUE_MOTIONS,
-  GEM_CUE_TIMBRES,
-  type GemCueMotion,
-  type GemCueTimbre,
-  type MusicEngine,
-} from '../audio/engine';
+import type { MusicEngine } from '../audio/engine';
 import { SOUNDSET } from '../audio/soundset';
 import { ROLE_COLORS, ROLES, type Kit, type Role } from '../audio/kits';
 import { GEM_CUE, LEVELUP } from './config';
@@ -955,112 +949,6 @@ export async function bootGame(
   tsSlider.addEventListener('change', () => tsSlider.blur()); // keys back to game
   setTimeScale(1); // paint the initial readout ("speed 1.00x")
   syncTimeScaleControl(); // start disabled until a run or sandbox begins
-
-  // Gem cue prototype controls: a variant picker and a volume slider, both
-  // writing straight into GEM_CUE so the next pickup uses them. Choices
-  // persist across reloads — comparing two candidates means playing a real
-  // run with each, and losing the setting on every refresh makes that
-  // miserable. Both controls audition the cue on change so the difference is
-  // audible without waiting to walk over a gem. All of this leaves with the
-  // prototype (see GEM_CUE in config.ts).
-  const GEM_TIMBRE_KEY = 'loop.gemcue.timbre';
-  const GEM_MOTION_KEY = 'loop.gemcue.motion';
-  const GEM_GAIN_KEY = 'loop.gemcue.gain';
-  const GEM_SPREAD_KEY = 'loop.gemcue.spread';
-  const storedTimbre = localStorage.getItem(GEM_TIMBRE_KEY) as GemCueTimbre | null;
-  if (storedTimbre && GEM_CUE_TIMBRES.includes(storedTimbre)) GEM_CUE.timbre = storedTimbre;
-  const storedMotion = localStorage.getItem(GEM_MOTION_KEY) as GemCueMotion | null;
-  if (storedMotion && GEM_CUE_MOTIONS.includes(storedMotion)) GEM_CUE.motion = storedMotion;
-  // Read the raw string first: Number(null) is 0, so parsing unconditionally
-  // would start every fresh browser silent instead of at the config default.
-  const storedNumber = (key: string): number | null => {
-    const raw = localStorage.getItem(key);
-    if (raw === null) return null;
-    const value = Number(raw);
-    return Number.isFinite(value) && value >= 0 ? value : null;
-  };
-  GEM_CUE.gain = storedNumber(GEM_GAIN_KEY) ?? GEM_CUE.gain;
-  GEM_CUE.spread = storedNumber(GEM_SPREAD_KEY) ?? GEM_CUE.spread;
-
-  /** Audition the current settings. A random bar position so the 'xp-bar'
-   *  motion demonstrates its range; the other motions ignore it. */
-  const auditionGemCue = (): void => {
-    engine.playGemCue({ ...GEM_CUE, minGapS: 0, levelProgress: Math.random() });
-  };
-
-  const gemPicker = <T extends string>(
-    labelText: string,
-    values: readonly T[],
-    current: T,
-    apply: (value: T) => void,
-  ): void => {
-    const control = document.createElement('label');
-    control.className = 'ts-control';
-    const label = document.createElement('span');
-    label.className = 'ts-label';
-    label.textContent = labelText;
-    const select = document.createElement('select');
-    for (const value of values) {
-      const option = document.createElement('option');
-      option.value = value;
-      option.textContent = value;
-      select.appendChild(option);
-    }
-    select.value = current;
-    control.append(label, select);
-    hud.appendDebug(control);
-    select.addEventListener('change', () => {
-      apply(select.value as T);
-      auditionGemCue();
-      select.blur(); // keys back to the game
-    });
-  };
-
-  gemPicker('gem', GEM_CUE_TIMBRES, GEM_CUE.timbre, (value) => {
-    GEM_CUE.timbre = value;
-    localStorage.setItem(GEM_TIMBRE_KEY, value);
-  });
-  gemPicker('motion', GEM_CUE_MOTIONS, GEM_CUE.motion, (value) => {
-    GEM_CUE.motion = value;
-    localStorage.setItem(GEM_MOTION_KEY, value);
-  });
-
-  const gemSlider = (
-    labelText: string,
-    max: number,
-    key: string,
-    read: () => number,
-    write: (value: number) => void,
-  ): void => {
-    const control = document.createElement('label');
-    control.className = 'ts-control';
-    const label = document.createElement('span');
-    label.className = 'ts-label';
-    const slider = document.createElement('input');
-    slider.type = 'range';
-    slider.min = '0';
-    slider.max = String(max);
-    slider.step = '0.05';
-    slider.value = String(read());
-    control.append(label, slider);
-    hud.appendDebug(control);
-    const paint = (): void => {
-      label.textContent = `${labelText} ${read().toFixed(2)}`;
-    };
-    slider.addEventListener('input', () => {
-      write(Number(slider.value));
-      localStorage.setItem(key, String(read()));
-      paint();
-      // Dragging fires these fast enough to count as a flurry, which is what
-      // opens the stereo width up — so the spread slider auditions itself.
-      auditionGemCue();
-    });
-    slider.addEventListener('change', () => slider.blur());
-    paint();
-  };
-
-  gemSlider('gem vol', 1.5, GEM_GAIN_KEY, () => GEM_CUE.gain, (v) => (GEM_CUE.gain = v));
-  gemSlider('spread', 1, GEM_SPREAD_KEY, () => GEM_CUE.spread, (v) => (GEM_CUE.spread = v));
 
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Escape') {

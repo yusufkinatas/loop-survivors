@@ -4,7 +4,6 @@
 // One stat block per tier, indexed [tier - 1].
 
 import type { Role } from '../audio/kits';
-import type { GemCueMotion, GemCueTimbre } from '../audio/engine';
 
 export const RUN = {
   /** Antonio baseline: 100 base HP +20 character bonus, +1 Armor. */
@@ -26,10 +25,9 @@ export const RUN = {
   maxProjectiles: 5000,
 };
 
-/** XP gem pickup sound — PROTOTYPE, not a shipped decision. Five candidate
- *  sounds live in engine.playGemCue; these are the starting values, and the
- *  debug row (⚙) has a picker and a volume slider so both can be moved live
- *  while playing. Whatever wins gets pinned here and the picker comes out.
+/** XP gem pickup sound. Chosen by ear against four other candidates and three
+ *  other pitch behaviours; engine.playGemCue holds the synthesis and explains
+ *  the pitch and stereo reasoning.
  *
  *  `minGapS` is the reason this is a config block at all: gems arrive in
  *  bursts, and a Stage Magnet delivers the entire map at once. At 60 ms the
@@ -37,14 +35,10 @@ export const RUN = {
  *  enough that the limiter is not the thing shaping it. Same reasoning as
  *  DAMAGE_FEEDBACK.iframesS bounding the hit cue. */
 export const GEM_CUE = {
-  /** What it sounds like. */
-  timbre: 'pluck' as GemCueTimbre,
-  /** How its pitch moves. Snapped to the run's scale, so every option stays
-   *  in key — see GEM_DEGREES in engine.ts for why this is scale steps and
-   *  not the usual random detune. */
-  motion: 'ladder' as GemCueMotion,
-  /** Scales the cue's envelope peaks. 0 silences it. */
-  gain: 0.7,
+  /** Scales the cue's envelope peaks. 0 silences it. Runs hot on purpose: the
+   *  cue is two short square-wave notes with no sustain, so it needs the level
+   *  to read over a full band without lengthening and turning into mud. */
+  gain: 1.5,
   /** Stereo width. Consecutive pickups alternate ears, so vacuuming a big
    *  floor sweeps across the field rather than chattering in the centre.
    *  Fades toward mono for isolated pickups — a lone gem jumping to one ear
@@ -52,9 +46,7 @@ export const GEM_CUE = {
   spread: 0.7,
   /** Minimum seconds between cues; extras are dropped, not queued. */
   minGapS: 0.06,
-};
-// Note: no `as const` on GEM_CUE, unlike its neighbours — the debug controls
-// write to it while the game runs. That mutability disappears with the picker.
+} as const;
 
 /** Rare one-use arena pickup. This is deliberately separate from Magnet
  * Lanyard, the passive item that increases ordinary pickup reach. */
