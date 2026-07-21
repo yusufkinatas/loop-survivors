@@ -824,6 +824,17 @@ button.big {
   opacity: 0.4;
 }
 
+/* The gem-cue variant picker rides the same .ts-control shell as the sliders
+   (prototype; leaves with GEM_CUE). */
+.ts-control select {
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--ink);
+  font: inherit;
+  padding: 1px 4px;
+}
+
 .debug-btn.on {
   border-color: var(--signal);
   color: var(--signal);

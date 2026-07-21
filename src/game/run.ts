@@ -392,6 +392,9 @@ export interface RunEvents {
   onMinute?(minute: number): void;
   onChest?(chest: Chest): void;
   onNoteCollected?(value: number, runTotal: number): void;
+  /** One XP gem picked up. Fires per gem, including during a Stage Magnet
+   *  vacuum — the audio cue does its own throttling (GEM_CUE.minGapS). */
+  onGemCollected?(xp: number): void;
   onStageMagnet?(result: VacuumResult): void;
   onHealthPickup?(healed: number): void;
   onMilestone?(id: 'first5m' | 'fullBand' | 'firstEvolution'): void;
@@ -2353,6 +2356,9 @@ export class RunWorld {
         this.xp += g.xp * xpPickupMultiplier(this.level);
         this.gems.splice(i, 1);
         if (g === this.overflowGem) this.overflowGem = null;
+        // Before checkLevel, so the pickup is heard under the level-up chime
+        // rather than after it.
+        this.events.onGemCollected?.(g.xp);
         this.checkLevel();
       }
     }

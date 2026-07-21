@@ -3,10 +3,10 @@
 // the game only listens to its triggers and toggles voices on picks.
 
 import { Application } from 'pixi.js';
-import type { MusicEngine } from '../audio/engine';
+import { GEM_CUE_VARIANTS, type GemCueVariant, type MusicEngine } from '../audio/engine';
 import { SOUNDSET } from '../audio/soundset';
 import { ROLE_COLORS, ROLES, type Kit, type Role } from '../audio/kits';
-import { LEVELUP } from './config';
+import { GEM_CUE, LEVELUP } from './config';
 import { SLOTS, ownerOfSlot } from './band';
 import { mountTrackOverlay } from './trackoverlay';
 import { Hud } from './hud';
@@ -456,6 +456,9 @@ export async function bootGame(
       pendingEvolutionChoices.push(choices);
       presentNextUpgrade();
     },
+    onGemCollected(): void {
+      engine.playGemCue(GEM_CUE.variant, GEM_CUE.gain, GEM_CUE.minGapS);
+    },
     onStageMagnet(result: VacuumResult): void {
       engine.playStageMagnetCue();
       const total = result.gems + result.notes;
@@ -499,6 +502,9 @@ export async function bootGame(
       engine.setEvolutionGain(evolution.role, evolution.gainDb);
       hud.renderBand(w.tiers, undefined, undefined, undefined, w.evolved);
       hud.showToast(`EVOLVED · ${evolution.name}`);
+    },
+    onGemCollected(): void {
+      engine.playGemCue(GEM_CUE.variant, GEM_CUE.gain, GEM_CUE.minGapS);
     },
     onStageMagnet(result: VacuumResult): void {
       engine.playStageMagnetCue();
@@ -943,6 +949,71 @@ export async function bootGame(
   tsSlider.addEventListener('change', () => tsSlider.blur()); // keys back to game
   setTimeScale(1); // paint the initial readout ("speed 1.00x")
   syncTimeScaleControl(); // start disabled until a run or sandbox begins
+
+  // Gem cue prototype controls: a variant picker and a volume slider, both
+  // writing straight into GEM_CUE so the next pickup uses them. Choices
+  // persist across reloads — comparing two candidates means playing a real
+  // run with each, and losing the setting on every refresh makes that
+  // miserable. Both controls audition the cue on change so the difference is
+  // audible without waiting to walk over a gem. All of this leaves with the
+  // prototype (see GEM_CUE in config.ts).
+  const GEM_VARIANT_KEY = 'loop.gemcue.variant';
+  const GEM_GAIN_KEY = 'loop.gemcue.gain';
+  const storedVariant = localStorage.getItem(GEM_VARIANT_KEY) as GemCueVariant | null;
+  if (storedVariant && GEM_CUE_VARIANTS.includes(storedVariant)) GEM_CUE.variant = storedVariant;
+  // Read the raw string first: Number(null) is 0, so parsing unconditionally
+  // would start every fresh browser silent instead of at the config default.
+  const storedGainRaw = localStorage.getItem(GEM_GAIN_KEY);
+  if (storedGainRaw !== null) {
+    const storedGain = Number(storedGainRaw);
+    if (Number.isFinite(storedGain) && storedGain >= 0) GEM_CUE.gain = storedGain;
+  }
+
+  const gemVariantControl = document.createElement('label');
+  gemVariantControl.className = 'ts-control';
+  const gemVariantLabel = document.createElement('span');
+  gemVariantLabel.className = 'ts-label';
+  gemVariantLabel.textContent = 'gem';
+  const gemVariantSelect = document.createElement('select');
+  for (const variant of GEM_CUE_VARIANTS) {
+    const option = document.createElement('option');
+    option.value = variant;
+    option.textContent = variant;
+    gemVariantSelect.appendChild(option);
+  }
+  gemVariantSelect.value = GEM_CUE.variant;
+  gemVariantControl.append(gemVariantLabel, gemVariantSelect);
+  hud.appendDebug(gemVariantControl);
+  gemVariantSelect.addEventListener('change', () => {
+    GEM_CUE.variant = gemVariantSelect.value as GemCueVariant;
+    localStorage.setItem(GEM_VARIANT_KEY, GEM_CUE.variant);
+    engine.playGemCue(GEM_CUE.variant, GEM_CUE.gain, 0); // audition, no throttle
+    gemVariantSelect.blur(); // keys back to the game
+  });
+
+  const gemGainControl = document.createElement('label');
+  gemGainControl.className = 'ts-control';
+  const gemGainLabel = document.createElement('span');
+  gemGainLabel.className = 'ts-label';
+  const gemGainSlider = document.createElement('input');
+  gemGainSlider.type = 'range';
+  gemGainSlider.min = '0';
+  gemGainSlider.max = '1.5';
+  gemGainSlider.step = '0.05';
+  gemGainSlider.value = String(GEM_CUE.gain);
+  gemGainControl.append(gemGainLabel, gemGainSlider);
+  hud.appendDebug(gemGainControl);
+  const paintGemGain = (): void => {
+    gemGainLabel.textContent = `gem vol ${GEM_CUE.gain.toFixed(2)}`;
+  };
+  gemGainSlider.addEventListener('input', () => {
+    GEM_CUE.gain = Number(gemGainSlider.value);
+    localStorage.setItem(GEM_GAIN_KEY, String(GEM_CUE.gain));
+    paintGemGain();
+    engine.playGemCue(GEM_CUE.variant, GEM_CUE.gain, GEM_CUE.minGapS); // audition
+  });
+  gemGainSlider.addEventListener('change', () => gemGainSlider.blur());
+  paintGemGain();
 
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Escape') {

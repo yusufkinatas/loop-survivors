@@ -140,6 +140,18 @@ function voiceMixGain(role: Role): number {
   return VOICE_MIX_GAIN[role] ?? 1;
 }
 
+/** Candidate XP-gem pickup sounds (prototype). See MusicEngine.playGemCue for
+ *  what each one is; GEM_CUE_VARIANTS below drives the debug-row picker. */
+export type GemCueVariant = 'blip' | 'pluck' | 'bell' | 'tick' | 'ladder';
+
+export const GEM_CUE_VARIANTS: readonly GemCueVariant[] = [
+  'blip',
+  'pluck',
+  'bell',
+  'tick',
+  'ladder',
+];
+
 export class MusicEngine {
   readonly ctx: AudioContext;
   readonly clock: Clock;
@@ -179,6 +191,10 @@ export class MusicEngine {
   private nextTimedActionSeq = 0;
   private stepMarkers: { step: number; time: number }[] = [];
   private lastDueStep = 0;
+  /** Gem cue state (prototype): the throttle's clock, and how far the 'ladder'
+   *  variant has climbed. Audio-clock time, so a paused context freezes both. */
+  private lastGemCueTime = -Infinity;
+  private gemLadderStep = 0;
 
   constructor(
     ctx: AudioContext,
@@ -509,6 +525,156 @@ export class MusicEngine {
       click.start(t0);
       click.stop(t0 + 0.06);
     }
+  }
+
+  /** XP gem pickup, PROTOTYPE (see GEM_CUE in config.ts). Five candidate
+   *  sounds, switchable live from the debug row, so the feel can be chosen by
+   *  ear in a real run rather than argued about on paper.
+   *
+   *  All five obey the same three rules the other cues do: silent when muted,
+   *  wired to master so no duck can swallow them, and short — a gem lands
+   *  dozens of times a minute, so anything with a tail becomes mud.
+   *
+   *  `gain` scales every envelope peak (the debug slider drives it) and
+   *  `minGapS` is the throttle: a Stage Magnet vacuums the whole map at once
+   *  and would otherwise fire hundreds of cues in one frame. Both are caller
+   *  tuning, like playHitCue's duck — the engine holds no game numbers.
+   *
+   *  The variants, in plain terms:
+   *   - `blip`   two quick square-wave notes a fifth apart (the interval in a
+   *              power chord), rising. Arcade coin. Reads as "got it" loudest.
+   *   - `pluck`  one sawtooth note through a filter that snaps shut, which is
+   *              roughly how a plucked string behaves. Musical; sits IN the
+   *              track instead of on top of it.
+   *   - `bell`   two sine tones at a non-whole-number ratio (2.76x, the ratio
+   *              real bells ring at), so it shimmers rather than sings.
+   *              Prettiest, and the longest — watch it pile up.
+   *   - `tick`   a filtered noise burst plus a hint of pitch. Nearly a
+   *              percussion hit. The one that never competes with the music.
+   *   - `ladder` a pentatonic scale (the five-note scale where nothing can
+   *              clash) climbing one step per gem, resetting after a pause.
+   *              Grabbing a cluster plays a rising run, which makes a big
+   *              pickup streak feel like a fill. The most expressive; also the
+   *              only one with memory, so bulk vacuums sound like an event. */
+  playGemCue(variant: GemCueVariant, gain: number, minGapS: number): void {
+    if (this.masterTarget <= 0) return; // muted
+    if (gain <= 0) return;
+    const now = this.ctx.currentTime;
+    // Throttle. Cheap and deliberate: drop the cue rather than queue it, so a
+    // vacuum sounds like a handful of pickups, not a machine gun.
+    if (now - this.lastGemCueTime < minGapS) return;
+    const sinceLast = now - this.lastGemCueTime;
+    this.lastGemCueTime = now;
+
+    const out = this.ctx.createGain();
+    out.gain.value = gain;
+    out.connect(this.master);
+
+    if (variant === 'blip') {
+      const notes = [1568.0, 2349.3]; // G6 -> D7, a fifth up
+      for (let i = 0; i < notes.length; i++) {
+        const t0 = now + i * 0.055;
+        const osc = this.ctx.createOscillator();
+        osc.type = 'square';
+        osc.frequency.value = notes[i];
+        const env = this.ctx.createGain();
+        env.gain.setValueAtTime(0.0001, t0);
+        env.gain.exponentialRampToValueAtTime(0.05, t0 + 0.005);
+        env.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.09);
+        osc.connect(env).connect(out);
+        osc.start(t0);
+        osc.stop(t0 + 0.1);
+      }
+      return;
+    }
+
+    if (variant === 'pluck') {
+      const osc = this.ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.value = 1046.5; // C6
+      const lp = this.ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.Q.value = 4;
+      lp.frequency.setValueAtTime(6000, now);
+      lp.frequency.exponentialRampToValueAtTime(900, now + 0.12);
+      const env = this.ctx.createGain();
+      env.gain.setValueAtTime(0.0001, now);
+      env.gain.exponentialRampToValueAtTime(0.13, now + 0.004);
+      env.gain.exponentialRampToValueAtTime(0.0001, now + 0.16);
+      osc.connect(lp).connect(env).connect(out);
+      osc.start(now);
+      osc.stop(now + 0.18);
+      return;
+    }
+
+    if (variant === 'bell') {
+      const base = 1318.5; // E6
+      const partials = [
+        { ratio: 1, peak: 0.09, decay: 0.34 },
+        { ratio: 2.76, peak: 0.035, decay: 0.2 },
+      ];
+      for (const p of partials) {
+        const osc = this.ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = base * p.ratio;
+        const env = this.ctx.createGain();
+        env.gain.setValueAtTime(0.0001, now);
+        env.gain.exponentialRampToValueAtTime(p.peak, now + 0.005);
+        env.gain.exponentialRampToValueAtTime(0.0001, now + p.decay);
+        osc.connect(env).connect(out);
+        osc.start(now);
+        osc.stop(now + p.decay + 0.02);
+      }
+      return;
+    }
+
+    if (variant === 'tick') {
+      const burstS = 0.05;
+      const buffer = this.ctx.createBuffer(
+        1,
+        Math.ceil(this.ctx.sampleRate * burstS),
+        this.ctx.sampleRate,
+      );
+      const samples = buffer.getChannelData(0);
+      for (let i = 0; i < samples.length; i++) {
+        const fade = 1 - i / samples.length;
+        samples[i] = (Math.random() * 2 - 1) * fade * fade;
+      }
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = buffer;
+      const bp = this.ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.Q.value = 1.6;
+      bp.frequency.value = 3200;
+      const env = this.ctx.createGain();
+      env.gain.setValueAtTime(0.12, now);
+      env.gain.exponentialRampToValueAtTime(0.0001, now + burstS);
+      noise.connect(bp).connect(env).connect(out);
+      noise.start(now);
+      noise.stop(now + burstS);
+      return;
+    }
+
+    // 'ladder'. C major pentatonic across two octaves; one step per gem while
+    // pickups keep coming, back to the bottom once they stop. The reset window
+    // is the throttle's own scale (a few gaps' worth), so a cluster climbs and
+    // a lone gem always plays the root.
+    const PENTATONIC = [1046.5, 1174.7, 1318.5, 1568.0, 1760.0, 2093.0, 2349.3, 2637.0];
+    if (sinceLast > 0.55) this.gemLadderStep = 0;
+    const step = this.gemLadderStep;
+    this.gemLadderStep = Math.min(PENTATONIC.length - 1, step + 1);
+    const osc = this.ctx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.value = PENTATONIC[step];
+    const env = this.ctx.createGain();
+    // Quieter as it climbs: a long run should build, not pin the limiter.
+    const peak = 0.14 * (1 - step * 0.055);
+    env.gain.setValueAtTime(0.0001, now);
+    env.gain.exponentialRampToValueAtTime(peak, now + 0.005);
+    env.gain.exponentialRampToValueAtTime(0.0001, now + 0.15);
+    osc.connect(env).connect(out);
+    osc.start(now);
+    osc.stop(now + 0.17);
   }
 
   /** Freeze already-scheduled lookahead audio at an intentional game pause.

@@ -4,6 +4,7 @@
 // One stat block per tier, indexed [tier - 1].
 
 import type { Role } from '../audio/kits';
+import type { GemCueVariant } from '../audio/engine';
 
 export const RUN = {
   /** Antonio baseline: 100 base HP +20 character bonus, +1 Armor. */
@@ -24,6 +25,26 @@ export const RUN = {
    * multiplies six weapons' spawn rate at once, so this guards the late tour. */
   maxProjectiles: 600,
 };
+
+/** XP gem pickup sound — PROTOTYPE, not a shipped decision. Five candidate
+ *  sounds live in engine.playGemCue; these are the starting values, and the
+ *  debug row (⚙) has a picker and a volume slider so both can be moved live
+ *  while playing. Whatever wins gets pinned here and the picker comes out.
+ *
+ *  `minGapS` is the reason this is a config block at all: gems arrive in
+ *  bursts, and a Stage Magnet delivers the entire map at once. At 60 ms the
+ *  cue tops out around 16 a second — dense enough to feel continuous, sparse
+ *  enough that the limiter is not the thing shaping it. Same reasoning as
+ *  DAMAGE_FEEDBACK.iframesS bounding the hit cue. */
+export const GEM_CUE = {
+  variant: 'pluck' as GemCueVariant,
+  /** Scales the cue's envelope peaks. 0 silences it. */
+  gain: 0.7,
+  /** Minimum seconds between cues; extras are dropped, not queued. */
+  minGapS: 0.06,
+};
+// Note: no `as const` on GEM_CUE, unlike its neighbours — the debug controls
+// write to it while the game runs. That mutability disappears with the picker.
 
 /** Rare one-use arena pickup. This is deliberately separate from Magnet
  * Lanyard, the passive item that increases ordinary pickup reach. */
