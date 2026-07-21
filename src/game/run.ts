@@ -15,6 +15,7 @@ import {
   DAMAGE_FEEDBACK,
   DARTER,
   ENEMIES,
+  HEALTH_PICKUP,
   MAD_FOREST_FRAMES,
   MAX_ALIVE_HARD,
   RUN,
@@ -200,6 +201,15 @@ export interface Projectile {
    *  screen". A FIELD, not a role test: the shared loop asks the shot, never
    *  which weapon fired it. */
   homingRange: number;
+  /** A body this homing shot has been locked onto, or null to chase whatever
+   *  is nearest each frame (the default). A volley of seekers spawned within a
+   *  few degrees of each other would otherwise all compute the SAME nearest
+   *  enemy and converge into one overlapping blob, which is what made Double
+   *  Take invisible on the lead (#131). Locking is per shot, so the loop still
+   *  asks the shot rather than the weapon. Cleared automatically once the
+   *  target dies or this shot has already hit it, so a seeker never strands
+   *  itself on a body it can no longer damage. */
+  homingTarget: Enemy | null;
   /** bell: shards to spawn on this shot's first hit (0 for a shard itself, so
    *  shards never re-shatter). */
   shatter: number;
@@ -336,8 +346,15 @@ export interface MusicNotePickup {
 export interface StageMagnetPickup {
   x: number;
   y: number;
-  /** Seconds remaining before a missed pickup fades away. */
-  lifeS: number;
+}
+
+/** Rare floor heal. Deliberately NOT vacuumed by a Stage Magnet: crossing a
+ * dangerous arena to reach it is the decision this pickup exists to create,
+ * the same reason chests are left alone. It carries no lifetime — a heal the
+ * player has not needed yet stays on the floor until they want it. */
+export interface HealthPickup {
+  x: number;
+  y: number;
 }
 
 export interface VacuumResult {
@@ -376,6 +393,7 @@ export interface RunEvents {
   onChest?(chest: Chest): void;
   onNoteCollected?(value: number, runTotal: number): void;
   onStageMagnet?(result: VacuumResult): void;
+  onHealthPickup?(healed: number): void;
   onMilestone?(id: 'first5m' | 'fullBand' | 'firstEvolution'): void;
 }
 
@@ -392,6 +410,7 @@ export interface RunWorldOpts {
   rng?: Rng;
   /** Independent rare-drop stream; injectable only for deterministic checks. */
   stageMagnetRng?: Rng;
+  healthPickupRng?: Rng;
   /** Movement axis provider (magnitude 0..1). */
   control?: () => { x: number; y: number };
   /** False for non-visual fixtures that do not consume effects. */
@@ -447,6 +466,7 @@ export class RunWorld {
   readonly gems: Gem[] = [];
   readonly musicNotes: MusicNotePickup[] = [];
   readonly stageMagnets: StageMagnetPickup[] = [];
+  readonly healthPickups: HealthPickup[] = [];
   readonly shockwaves: Shockwave[] = [];
   readonly gravityWells: GravityWell[] = [];
   readonly chests: Chest[] = [];
@@ -479,7 +499,8 @@ export class RunWorld {
   private noteDropPity = 0;
   private readonly stageMagnetRng: Rng;
   private stageMagnetDropPity = 0;
-  private nextStageMagnetDropAt = 0;
+  /** Its own stream, so this pickup cannot shift Stage Magnet luck. */
+  private readonly healthPickupRng: Rng;
   private lastMinute = -1;
   private triggerCounts: Partial<Record<Role, number>> = {};
   private encoreDamageBonus = 0;
@@ -504,6 +525,7 @@ export class RunWorld {
     this.rng = opts.rng ?? Math.random;
     const magnetSeed = Math.floor(this.rng() * 0x7fffffff);
     this.stageMagnetRng = opts.stageMagnetRng ?? mulberry32(magnetSeed ^ 0x4d41474e);
+    this.healthPickupRng = opts.healthPickupRng ?? mulberry32(magnetSeed ^ 0x48454154);
     this.control = opts.control ?? (() => ({ x: 0, y: 0 }));
     this.fx = (opts.fx ?? true) ? [] : null;
     if (opts.startingItem) this.items.set(opts.startingItem, 1);
@@ -562,6 +584,7 @@ export class RunWorld {
         e.x += dx;
         e.y += dy;
       },
+      lockSeeker: (pr, target) => { pr.homingTarget = (target as Enemy | null) ?? null; },
       withExtraPierce: (basePierce) => world.withExtraPierce(basePierce),
       slow: (t, mul, durationS) => {
         const e = t as Enemy;
@@ -723,7 +746,7 @@ export class RunWorld {
     const next = Math.max(previous, Math.min(itemMaxLevel(id), level));
     this.items.set(id, next);
     if (id === 'paddedJacket') {
-      this.player.hp = Math.min(this.playerMaxHp, this.player.hp + paddedJacketHeal(previous, next));
+      this.healPlayer(paddedJacketHeal(previous, next));
     }
     this.spawnRing(this.player.x, this.player.y, 190, 0xffd875, 0.5, true);
   }
@@ -741,8 +764,17 @@ export class RunWorld {
     }
   }
 
+  /** The one place player health goes up. Callers pass how much they want to
+   *  restore and get back how much actually landed; overheal is this method's
+   *  problem, never the caller's. */
+  healPlayer(amount: number): number {
+    const before = this.player.hp;
+    this.player.hp = Math.min(this.playerMaxHp, this.player.hp + Math.max(0, amount));
+    return this.player.hp - before;
+  }
+
   applyEncoreChoice(kind: 'heal' | 'damage' | 'move' | 'area'): void {
-    if (kind === 'heal') this.player.hp = Math.min(this.playerMaxHp, this.player.hp + 15);
+    if (kind === 'heal') this.healPlayer(15);
     if (kind === 'damage') this.encoreDamageBonus = Math.min(0.20, this.encoreDamageBonus + 0.02);
     if (kind === 'move') this.encoreMoveBonus = Math.min(0.10, this.encoreMoveBonus + 0.02);
     if (kind === 'area') this.encoreAreaBonus = Math.min(0.15, this.encoreAreaBonus + 0.03);
@@ -984,7 +1016,8 @@ export class RunWorld {
     this.tickWeapons('zones', dt);
     this.tickWeapons('shockwaves', dt);
     this.tickWeapons('wells', dt);
-    this.updateStageMagnets(dt);
+    this.updateStageMagnets();
+    this.updateHealthPickups();
     this.updateGems(dt);
     this.updateMusicNotes(dt);
     this.updateChests();
@@ -998,7 +1031,7 @@ export class RunWorld {
   private updatePassiveRecovery(dt: number): void {
     const rate = this.buildMods.hpRegenPerSecond;
     if (rate <= 0 || this.player.hp <= 0 || this.player.hp >= this.playerMaxHp) return;
-    this.player.hp = Math.min(this.playerMaxHp, this.player.hp + rate * dt);
+    this.healPlayer(rate * dt);
   }
 
   private movePlayer(dt: number): void {
@@ -1430,6 +1463,7 @@ export class RunWorld {
     this.gems.length = 0;
     this.musicNotes.length = 0;
     this.stageMagnets.length = 0;
+    this.healthPickups.length = 0;
     this.chests.length = 0;
     this.shockwaves.length = 0;
     this.gravityWells.length = 0;
@@ -1439,7 +1473,6 @@ export class RunWorld {
     this.overflowMusicNote = null;
     this.noteDropPity = 0;
     this.stageMagnetDropPity = 0;
-    this.nextStageMagnetDropAt = 0;
     this.hash.clear();
     this.queryBuf.length = 0;
   }
@@ -1649,6 +1682,7 @@ export class RunWorld {
       this.spawnGem(e.x, e.y, e.xp);
       this.spawnMusicNoteForEnemy(e);
       this.spawnStageMagnetForEnemy(e);
+      this.spawnHealthPickupForEnemy(e);
       // Elite and boss enemies (Vampire-Survivors style) drop a chest on the
       // ground. Walk into it to open it: a ready weapon evolution, or health.
       if (elite) {
@@ -1878,6 +1912,7 @@ export class RunWorld {
       maxPierce: conf.pierce ?? 1,
       lifeS: conf.lifetimeS!,
       homing: false,
+      homingTarget: null,
       speed: conf.speed ?? 0,
       color,
       hit: new Set(),
@@ -1990,15 +2025,24 @@ export class RunWorld {
     if (!steered) {
       if (pr.homing) {
         let best: Enemy | null = null;
-        let bestD = Infinity;
-        for (const e of this.enemies) {
-          if (e.dead || pr.hit.has(e)) continue;
-          const dx = e.x - pr.x;
-          const dy = e.y - pr.y;
-          const d = dx * dx + dy * dy;
-          if (d < bestD && d <= pr.homingRange * pr.homingRange) {
-            bestD = d;
-            best = e;
+        // A locked target outranks the nearest-body search until it dies or
+        // this shot has already hit it, at which point the lock clears and the
+        // seeker resumes chasing whatever is closest.
+        const locked = pr.homingTarget;
+        if (locked && !locked.dead && !pr.hit.has(locked)) {
+          best = locked;
+        } else {
+          pr.homingTarget = null;
+          let bestD = Infinity;
+          for (const e of this.enemies) {
+            if (e.dead || pr.hit.has(e)) continue;
+            const dx = e.x - pr.x;
+            const dy = e.y - pr.y;
+            const d = dx * dx + dy * dy;
+            if (d < bestD && d <= pr.homingRange * pr.homingRange) {
+              bestD = d;
+              best = e;
+            }
           }
         }
         if (best) {
@@ -2090,40 +2134,48 @@ export class RunWorld {
       return;
     }
     if (!this.overflowGem || !this.gems.includes(this.overflowGem) || this.overflowGem.vacuumed) {
+      // Prefer the farthest gem the player has not been given yet: a Stage
+      // Magnet is a point-in-time snapshot, and merging into an object already
+      // travelling in that snapshot hands the reward over almost immediately.
       let farthest: Gem | null = null;
       let farthestD = -1;
+      // A map-wide vacuum flags every gem at once, so "all inbound" is the
+      // normal case during a magnet, not an edge case. Fall back to the
+      // nearest inbound gem rather than growing the array past maxGems.
+      let nearestInbound: Gem | null = null;
+      let nearestInboundD = Infinity;
       for (const gem of this.gems) {
-        // A Stage Magnet is a point-in-time snapshot. Never merge a later
-        // reward into an object already travelling in that snapshot.
-        if (gem.vacuumed) continue;
         const dx = gem.x - this.player.x;
         const dy = gem.y - this.player.y;
         const d2 = dx * dx + dy * dy;
+        if (gem.vacuumed) {
+          if (d2 < nearestInboundD) {
+            nearestInboundD = d2;
+            nearestInbound = gem;
+          }
+          continue;
+        }
         if (d2 > farthestD) {
           farthestD = d2;
           farthest = gem;
         }
       }
-      if (!farthest) {
-        // All capped gems are already inbound. One temporary overflow object
-        // keeps later rewards independent; subsequent drops merge into it.
-        farthest = { x, y, xp: 0, tier: 'red' };
-        this.gems.push(farthest);
-      }
-      this.overflowGem = farthest;
-      farthest.tier = 'red';
+      const target = farthest ?? nearestInbound;
+      // gems.length === maxGems here, and maxGems is >= 1, so one of the two
+      // always exists. Bail rather than exceed the cap if that ever changes.
+      if (!target) return;
+      this.overflowGem = target;
+      target.tier = 'red';
     }
     this.overflowGem.xp += dropped;
     this.overflowGem.tier = 'red';
   }
 
   private spawnStageMagnetForEnemy(enemy: Enemy): void {
-    if (this.stageMagnets.length > 0 || this.timeS < this.nextStageMagnetDropAt) return;
     this.stageMagnetDropPity += 1;
     const guaranteed = this.stageMagnetDropPity >= STAGE_MAGNET.pityKills;
     if (!guaranteed && this.stageMagnetRng() >= STAGE_MAGNET.dropChance) return;
     this.stageMagnetDropPity = 0;
-    this.nextStageMagnetDropAt = this.timeS + STAGE_MAGNET.dropCooldownS;
     this.spawnStageMagnetAt(
       enemy.x - enemy.radius * 0.24,
       enemy.y - enemy.radius * 0.32,
@@ -2131,14 +2183,47 @@ export class RunWorld {
   }
 
   /** Public Sandbox fixture; normal runs receive Stage Magnets only from
-   * enemy deaths. Only one may wait on the floor at a time. */
+   * enemy deaths. Any number may wait on the floor, for as long as the player
+   * leaves them there. */
   spawnStageMagnetAt(x: number, y: number): StageMagnetPickup {
-    const existing = this.stageMagnets[0];
-    if (existing) return existing;
-    const magnet = { x, y, lifeS: STAGE_MAGNET.lifetimeS };
+    const magnet = { x, y };
     this.stageMagnets.push(magnet);
     this.fx?.push({ type: 'spark', x, y, color: 0xa06bff, n: 8, spread: 22 });
     return magnet;
+  }
+
+  /** One flat probability per eligible kill. No cooldown, no floor cap, no
+   *  full-health suppression: a lucky streak may drop three in a row, and a
+   *  heal that lands while the player is healthy is theirs to leave and come
+   *  back for. */
+  private spawnHealthPickupForEnemy(enemy: Enemy): void {
+    if (this.healthPickupRng() >= HEALTH_PICKUP.dropChance) return;
+    this.spawnHealthPickupAt(
+      enemy.x + enemy.radius * 0.22,
+      enemy.y - enemy.radius * 0.3,
+    );
+  }
+
+  /** Public Sandbox fixture; normal runs receive these only from enemy deaths. */
+  spawnHealthPickupAt(x: number, y: number): HealthPickup {
+    const pickup: HealthPickup = { x, y };
+    this.healthPickups.push(pickup);
+    this.fx?.push({ type: 'spark', x, y, color: 0xff665a, n: 8, spread: 22 });
+    return pickup;
+  }
+
+  /** Walk-onto collection only, and no ageing: these sit until collected. */
+  private updateHealthPickups(): void {
+    for (let i = this.healthPickups.length - 1; i >= 0; i--) {
+      const pickup = this.healthPickups[i];
+      const dx = this.player.x - pickup.x;
+      const dy = this.player.y - pickup.y;
+      if (dx * dx + dy * dy > HEALTH_PICKUP.pickupRadius * HEALTH_PICKUP.pickupRadius) continue;
+      this.healthPickups.splice(i, 1);
+      const healed = this.healPlayer(this.playerMaxHp * HEALTH_PICKUP.healFraction);
+      this.fx?.push({ type: 'pressure', x: this.player.x, y: this.player.y, color: 0xff665a, label: `+${Math.round(healed)} HP` });
+      this.events.onHealthPickup?.(healed);
+    }
   }
 
   /** The single construction site for a chest: elite and boss deaths route
@@ -2177,53 +2262,61 @@ export class RunWorld {
       return;
     }
     if (!this.overflowMusicNote || !this.musicNotes.includes(this.overflowMusicNote) || this.overflowMusicNote.vacuumed) {
+      // Same shape as spawnGemAt: prefer the farthest note not already
+      // travelling, fall back to the nearest inbound one so a map-wide vacuum
+      // cannot push the array past maxMusicNotes.
       let farthest: MusicNotePickup | null = null;
       let farthestD = -1;
+      let nearestInbound: MusicNotePickup | null = null;
+      let nearestInboundD = Infinity;
       for (const note of this.musicNotes) {
-        if (note.vacuumed) continue;
         const dx = note.x - this.player.x;
         const dy = note.y - this.player.y;
         const d2 = dx * dx + dy * dy;
+        if (note.vacuumed) {
+          if (d2 < nearestInboundD) {
+            nearestInboundD = d2;
+            nearestInbound = note;
+          }
+          continue;
+        }
         if (d2 > farthestD) {
           farthestD = d2;
           farthest = note;
         }
       }
-      if (!farthest) {
-        farthest = { x, y, value: 0, tier: 'anthem' };
-        this.musicNotes.push(farthest);
-      }
-      this.overflowMusicNote = farthest;
+      const target = farthest ?? nearestInbound;
+      if (!target) return;
+      this.overflowMusicNote = target;
     }
     this.overflowMusicNote.value += amount;
     this.overflowMusicNote.tier = 'anthem';
   }
 
-  /** Snapshot the current camera rectangle and attract every freely
-   * collectable drop inside it. Decision-bearing rewards intentionally stay
-   * walk-to-choose: level-up pedestals and chests. */
-  vacuumVisiblePickups(): VacuumResult {
+  /** Attract every freely collectable drop on the map, however far off-screen
+   * it was left. Decision-bearing rewards intentionally stay walk-to-choose:
+   * level-up pedestals and chests. */
+  vacuumAllPickups(): VacuumResult {
     const cameraX = this.player.x + PLAYER_FOOT_OFFSET.x;
     const cameraY = this.player.y + PLAYER_FOOT_OFFSET.y;
-    const halfW = this.worldW / 2;
-    const halfH = this.worldH / 2;
-    const visible = (x: number, y: number): boolean =>
-      Math.abs(x - cameraX) <= halfW && Math.abs(y - cameraY) <= halfH;
     let gems = 0;
     let notes = 0;
     for (const gem of this.gems) {
-      if (!gem.vacuumed && visible(gem.x, gem.y)) {
+      if (!gem.vacuumed) {
         gem.vacuumed = true;
         gems += 1;
       }
     }
     for (const note of this.musicNotes) {
-      if (!note.vacuumed && visible(note.x, note.y)) {
+      if (!note.vacuumed) {
         note.vacuumed = true;
         notes += 1;
       }
     }
     const result = { gems, notes };
+    // Sized to the viewport only as a starting scale — the pulse expands past
+    // the screen edge, so it suggests reach beyond the view instead of drawing
+    // a boundary the map-wide pull ignores.
     const radius = Math.hypot(this.worldW, this.worldH) * 0.55;
     this.fx?.push({ type: 'vacuum', x: cameraX, y: cameraY, radius });
     this.fx?.push({ type: 'pressure', x: this.player.x, y: this.player.y, color: 0xa06bff, label: 'STAGE MAGNET' });
@@ -2231,20 +2324,14 @@ export class RunWorld {
     return result;
   }
 
-  private updateStageMagnets(dt: number): void {
+  private updateStageMagnets(): void {
     for (let i = this.stageMagnets.length - 1; i >= 0; i--) {
       const magnet = this.stageMagnets[i];
-      magnet.lifeS -= dt;
-      if (magnet.lifeS <= 0) {
-        this.stageMagnets.splice(i, 1);
-        this.fx?.push({ type: 'spark', x: magnet.x, y: magnet.y, color: 0xa06bff, n: 4, spread: 14 });
-        continue;
-      }
       const dx = this.player.x - magnet.x;
       const dy = this.player.y - magnet.y;
       if (dx * dx + dy * dy > STAGE_MAGNET.pickupRadius * STAGE_MAGNET.pickupRadius) continue;
       this.stageMagnets.splice(i, 1);
-      this.vacuumVisiblePickups();
+      this.vacuumAllPickups();
     }
   }
 

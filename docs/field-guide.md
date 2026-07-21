@@ -83,17 +83,35 @@ repeatable permanent damage, health, or speed purchases.
 
 Every eligible enemy kill has a 0.12% chance to drop a **Stage Magnet**. Bad
 luck cannot last forever: the 700th eligible kill without one guarantees the
-drop. Only one can wait on the floor, another cannot drop for 90 seconds, and
-a missed magnet fades after 45 seconds.
+drop. That is the whole rule — a lucky streak may drop several in a row, any
+number can wait on the floor at once, and one left behind stays there for the
+rest of the run.
 
 Walk onto it to snapshot every blue/green/red experience gem and gold music
-note currently visible on the screen. They surge into the player at high speed
+note left anywhere on the map, including everything dropped screens away
+earlier in the run. They surge into the player at high speed
 through their normal collection rules, so experience multipliers, queued
 level-ups, note values, and pickup bonuses remain correct. New drops created
 after the activation are not pulled. The Stage Magnet deliberately leaves
 level-up reward pedestals and chests alone because those are player choices
 rather than loose resources. It is also separate from the permanent **Magnet
 Lanyard** passive.
+
+## Rare floor pickup: First Aid
+
+Every eligible enemy kill has a 0.12% chance to drop a **First Aid** cross on
+the floor where the enemy died. That is the whole rule: a flat probability, on
+its own random stream so it cannot make Stage Magnets rarer. A lucky streak may
+drop several in a row, any number can wait on the floor, and one you walk past
+stays there for the rest of the run.
+
+Walking onto it restores **20% of maximum health**, so the heal keeps pace with
+Padded Jacket rather than shrinking against a raised ceiling. Collecting it at
+high health is allowed and simply tops the player up — overheal is clamped, not
+refused. Leaving it on the floor until it is needed is a legitimate play.
+
+A Stage Magnet does **not** vacuum it. Like a chest, it must be walked onto, so
+deciding whether to cross the arena for it stays a real decision.
 
 ## The eleven passive items
 
@@ -115,7 +133,7 @@ an evolution ingredient.
 | Magnet Lanyard | +100% pickup range and +40% pull speed | Bell |
 | Padded Jacket | +40 maximum health, immediate healing as it levels, and +2 armor | Clap |
 | Recovery Tape | Restores 0.5 HP per second while below maximum health | None — standalone |
-| Double Take | +2 projectiles from every weapon that throws one | None — standalone |
+| Double Take | +2 emissions from every weapon that emits a countable thing | None — standalone |
 
 ## The nine weapon evolutions
 
@@ -218,6 +236,6 @@ altering the player's career.
   or clear a full loadout; toggle each of the nine complete evolution recipes;
   inspect the live combined modifiers.
 - **Career:** use a disposable in-memory note wallet; create physical notes,
-  XP pickup fields, Stage Magnets, and chests; trigger the full-screen vacuum;
+  XP pickup fields, Stage Magnets, and chests; trigger the map-wide vacuum;
   grant testing currency; exercise the real gated Afterhours Shop. Nothing in
   this tab touches the player save.

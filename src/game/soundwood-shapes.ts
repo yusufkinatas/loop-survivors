@@ -3,7 +3,7 @@
 
 import { Container, Graphics, GraphicsContext, Text, TextStyle } from 'pixi.js';
 import { ROLE_COLORS, type Role } from '../audio/kits';
-import type { Enemy, Gem, MusicNotePickup, Projectile, StageMagnetPickup, Zone } from './run';
+import type { Enemy, Gem, HealthPickup, MusicNotePickup, Projectile, StageMagnetPickup, Zone } from './run';
 import { SOUNDWOOD, hash2, regularPixelPoly, snap } from './soundwood-art';
 import { drawWeaponIcon } from './weaponicons';
 
@@ -561,6 +561,45 @@ export function makeStageMagnetGfx(pickup: StageMagnetPickup): StageMagnetGfx {
   root.__leftPole = leftPole;
   root.__rightPole = rightPole;
   root.addChild(glow, beam, body, leftPole, rightPole, field);
+  root.position.set(snap(pickup.x), snap(pickup.y));
+  return root;
+}
+
+export interface HealthPickupGfx extends Container {
+  __cross: Graphics;
+  __pulse: Graphics;
+}
+
+/** Rare floor heal. A coral upright cross on a solid ink slab: the only cross
+ * in the game and the only warm red among the floor pickups, so it separates
+ * at a glance from the blue/green/red XP diamonds, gold career notes, the
+ * violet Stage Magnet, and the amber chest. */
+export function makeHealthPickupGfx(pickup: HealthPickup): HealthPickupGfx {
+  const root = new Container() as HealthPickupGfx;
+  const glow = makePixelGlow(26, SOUNDWOOD.coral, 0.42);
+
+  const pulse = pixelGraphics(cachedPixelShape('health-pickup:pulse', (g) => {
+    g.poly(regularPixelPoly(8, 26, Math.PI / 8))
+      .stroke({ width: 2, color: 0xffffff, alpha: 0.42 });
+    for (let i = 0; i < 4; i++) {
+      const angle = i * Math.PI / 2 + Math.PI / 4;
+      pixelDiamond(g, Math.cos(angle) * 25, Math.sin(angle) * 25, 2, 0xffffff);
+    }
+  }));
+  pulse.tint = SOUNDWOOD.coral;
+  pulse.blendMode = 'add';
+
+  const cross = pixelGraphics(cachedPixelShape('health-pickup:cross', (g) => {
+    // Ink slab first so the cross stays legible over bright floor and corpses.
+    box(g, -14, -14, 28, 28, SOUNDWOOD.ink);
+    box(g, -11, -11, 22, 22, SOUNDWOOD.coral);
+    box(g, -3, -9, 6, 18, 0xffffff);
+    box(g, -9, -3, 18, 6, 0xffffff);
+  }));
+
+  root.__cross = cross;
+  root.__pulse = pulse;
+  root.addChild(glow, pulse, cross);
   root.position.set(snap(pickup.x), snap(pickup.y));
   return root;
 }

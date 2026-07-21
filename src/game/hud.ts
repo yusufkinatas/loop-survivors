@@ -452,7 +452,7 @@ export class Hud {
       onStart();
     };
     el('p', 'start-hint', s,
-      'WASD / arrow keys / touch to move · collect blue XP and gold music notes · rare Stage Magnets vacuum the visible floor · walk onto reward pedestals');
+      'WASD / arrow keys / touch to move · collect blue XP and gold music notes · walk onto coral crosses to heal · rare Stage Magnets vacuum the whole map · walk onto reward pedestals');
     // Below the primary CTA, two menu buttons: sandbox launches directly,
     // experiments is a disclosure for the standalone playtest surfaces (boss
     // fights, full tracks, rehearsal room — mirrors src/experiments/).

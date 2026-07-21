@@ -241,18 +241,27 @@ async function renderLead(rootHz: number): Promise<AudioBuffer> {
 async function renderArp(rootHz: number): Promise<AudioBuffer> {
   const root = rootOrDefault(rootHz) * 2;
   const ctx = offline(0.43);
+  // Lowpass, not bandpass. A bandpass centred at 4.8k->1.5k sat entirely above
+  // this voice's own 440 Hz fundamental (the note itself, where most of its
+  // energy is) and threw it away, leaving only faint harmonics: the rendered
+  // buffer measured ~19 dB below the lead, far past what mix gain could rescue.
+  // A downward lowpass sweep keeps the note and shaves the top, which is what
+  // every other melodic voice here does, and is what makes a pluck read.
   const filter = ctx.createBiquadFilter();
-  filter.type = 'bandpass';
-  filter.frequency.setValueAtTime(4_800, 0);
-  filter.frequency.exponentialRampToValueAtTime(1_500, 0.28);
-  // A wide band, not a sliver: at Q 1.25 the note was a thin slice sitting in
-  // the hi-hats' own range, so it masked instead of reading as a line.
-  filter.Q.value = 0.9;
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(6_200, 0);
+  filter.frequency.exponentialRampToValueAtTime(1_400, 0.26);
+  filter.Q.value = 2.1;
+  // Keeps the arp clear of the kick and bass fundamentals without touching its
+  // own note, so the extra level lands as presence rather than mud.
+  const high = ctx.createBiquadFilter();
+  high.type = 'highpass';
+  high.frequency.value = 260;
   const envelope = ctx.createGain();
   envelope.gain.setValueAtTime(0.001, 0);
   envelope.gain.exponentialRampToValueAtTime(0.34, 0.004);
   envelope.gain.exponentialRampToValueAtTime(0.001, 0.31);
-  filter.connect(envelope).connect(ctx.destination);
+  filter.connect(high).connect(envelope).connect(ctx.destination);
   for (const [type, detune, gain] of [
     ['square', -5, 0.24], ['triangle', 6, 0.34],
   ] as const) {

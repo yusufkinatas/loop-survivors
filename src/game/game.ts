@@ -463,6 +463,9 @@ export async function bootGame(
         ? `STAGE MAGNET · ${total} PICKUPS INBOUND`
         : 'STAGE MAGNET · FLOOR CLEAR');
     },
+    onHealthPickup(healed: number): void {
+      hud.showToast(`FIRST AID · +${Math.round(healed)} HP`);
+    },
     onMilestone(id: string): void {
       hud.showToast(`MILESTONE · ${id.replace(/([A-Z])/g, ' $1').toUpperCase()}`);
     },
@@ -503,6 +506,9 @@ export async function bootGame(
       hud.showToast(total > 0
         ? `STAGE MAGNET · ${total} PICKUPS INBOUND`
         : 'STAGE MAGNET · FLOOR CLEAR');
+    },
+    onHealthPickup(healed: number): void {
+      hud.showToast(`FIRST AID · +${Math.round(healed)} HP`);
     },
     onMilestone(id: string): void {
       hud.showToast(`MILESTONE · ${id.replace(/([A-Z])/g, ' $1').toUpperCase()}`);

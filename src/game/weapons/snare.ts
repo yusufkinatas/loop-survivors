@@ -217,15 +217,29 @@ class SnareInstance implements WeaponInstance {
   /** Railshot: an instant rail that drills the whole corridor, and every fourth
    *  trigger a pair of twins either side of it.
    *
+   *  Double Take adds whole rails, fanned around the aim line by fanAround —
+   *  the same spread every other weapon uses, so the extra lasers are visibly
+   *  separate corridors rather than one brighter beam. Aim is still drawn ONCE
+   *  via a single aimDir, and fanAround makes no rng draw of its own, so the
+   *  number of draws per trigger is identical at every Double Take level. That
+   *  invariant is load-bearing: the run shares one rng stream, so an extra draw
+   *  here would desynchronise every later roll in the run.
+   *
    *  ORDER IS LOAD-BEARING and easy to lose. `ctx.shove` ASSIGNS the knock
    *  vector rather than max()ing it, so on a twin trigger the LAST rail to
    *  touch a body wins: a body sitting on the main axis ends up carrying the
    *  twin's smaller knock, not the main rail's. The firing order — main, then
    *  twin(-1), then twin(+1), each resolving fully before the next starts — is
    *  what produces that, and batching the damage or reordering the rails would
-   *  change it. */
+   *  change it. Each fanned rail resolves fully, twins included, before the
+   *  next begins, so a single-rail build fires in exactly the old order. */
   private fireRailshot(ctx: WeaponContext, conf: WeaponConf): void {
-    const dir = ctx.aimDir(SNARE_STATS.railAimSpread);
+    for (const dir of ctx.fanAround(ctx.aimDir(SNARE_STATS.railAimSpread))) {
+      this.fireRail(ctx, conf, dir);
+    }
+  }
+
+  private fireRail(ctx: WeaponContext, conf: WeaponConf, dir: { x: number; y: number }): void {
     const player = ctx.player;
     const damage = conf.damage * SNARE_STATS.railDamageMul;
     const width = Math.max(

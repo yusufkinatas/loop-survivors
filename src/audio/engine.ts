@@ -118,16 +118,22 @@ const EVOLUTION_SATURATION = softClipCurve(2.4);
  * while the chord and arpeggio (the fast sequence of separate notes) were
  * masked by the drums. Keeping this at the final voice bus makes the drum
  * palette obey the same musical balance. */
-/** These are ABSOLUTE voice levels, not offsets from a previous value: arp at
- *  1.778 is +5 dB total, up from +3 dB, so the change was a +2 dB lift. Worth
+/** These are ABSOLUTE voice levels, not offsets from a previous value. Worth
  *  stating because it is easy to misread a raise here as additive and invent a
- *  limiter-headroom problem that is not there. Arp still has room to 2.0 (+6 dB)
- *  before the master limiter (threshold -10, ratio 8) is the binding constraint.
+ *  limiter-headroom problem that is not there.
+ *
+ *  This table is for musical balance only — a trim of a few dB either way. It
+ *  is NOT the place to rescue a quiet voice: arp sat at +5 dB here for exactly
+ *  that reason, and it was masking a bandpass in renderArp that discarded the
+ *  note's own fundamental, leaving the rendered buffer ~19 dB under the lead.
+ *  No mix gain could reach that far. If a voice needs more than a few dB here,
+ *  measure the rendered buffer and fix the render (kits/afterhours.ts) instead.
  *  Every number here wants a listening pass; none of them is derivable on paper. */
 const VOICE_MIX_GAIN: Readonly<Partial<Record<Role, number>>> = {
   hat: 0.708, // -3 dB
-  chord: 1.334, // +2.5 dB
-  arp: 1.778, // +5 dB
+  chord: 3.981, // +12 dB
+  arp: 2.818, // +9 dB, chosen by ear once renderArp stopped discarding the note
+  lead: 3.162, // +10 dB
 };
 
 function voiceMixGain(role: Role): number {

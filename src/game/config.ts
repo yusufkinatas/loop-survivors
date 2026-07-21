@@ -28,17 +28,35 @@ export const RUN = {
 /** Rare one-use arena pickup. This is deliberately separate from Magnet
  * Lanyard, the passive item that increases ordinary pickup reach. */
 export const STAGE_MAGNET = {
-  /** Per eligible enemy kill: rare in a horde, but visible in a healthy run. */
+  /** Per eligible enemy kill: rare in a horde, but visible in a healthy run.
+   * A flat probability and nothing else — no cooldown, no cap on how many may
+   * wait on the floor, no expiry. A lucky streak is allowed to be lucky. */
   dropChance: 0.0012,
   /** Bad-luck protection. The next eligible kill drops one at this count. */
   pityKills: 700,
-  /** Prevent lucky streaks from filling the floor with vacuum pickups. */
-  dropCooldownS: 90,
-  /** A missed magnet eventually clears so another can drop later. */
-  lifetimeS: 45,
   pickupRadius: 28,
   /** Marked gems and notes cross a full viewport in well under a second. */
   vacuumSpeed: 1800,
+} as const;
+
+/** Rare floor heal. Every other heal in the game is attached to a decision
+ * moment (the level-up pick, the chest fallback, Padded Jacket's on-acquire
+ * top-up); this one rewards clearing the arena instead, and costs the player
+ * no upgrade.
+ *
+ * A flat probability per eligible kill and nothing else: no cooldown, no cap
+ * on how many may sit on the floor, no expiry, and no suppression when the
+ * player is already healthy. Getting three in a row is allowed — that is what
+ * a fixed drop rate means. The player decides whether a heal is worth walking
+ * to, including deciding to leave it for later. */
+export const HEALTH_PICKUP = {
+  /** Per eligible enemy kill. Matches STAGE_MAGNET's rate. */
+  dropChance: 0.0012,
+  /** Fraction of the player's MAXIMUM health restored, so the heal keeps pace
+   * with Padded Jacket instead of shrinking against a raised ceiling.
+   * Overheal is not the caller's problem — RunWorld.healPlayer clamps. */
+  healFraction: 0.2,
+  pickupRadius: 28,
 } as const;
 
 /** Player take-damage feedback, shared by every arena (normal run, sandbox,
@@ -77,7 +95,7 @@ export const LEVELUP = {
   itemRadius: 150,
   /** Enemies inside this ring at drop time are shoved out to it (> itemRadius,
    *  so the triangle spawns into cleared space). */
-  enemyPushRadius: 300,
+  enemyPushRadius: 375,
   /** Fixed proximity to collect a dropped item (independent of pickup buffs). */
   itemPickupRadius: 40,
   /** Triangle points, in degrees (placed with Math.cos/sin in the shell — a
