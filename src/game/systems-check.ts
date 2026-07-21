@@ -1773,6 +1773,52 @@ const beams = (ctx: FakeCtx): Array<Extract<FxEvent, { type: 'beam' }>> =>
   assert.equal(ctx.hits.length, before, 'a reset snare lands no delayed damage');
 }
 
+// S13. THE CORRIDOR'S THREE BOUNDARIES ARE INCLUSIVE, landed on EXACTLY. The
+// corridor rejects with `along < -radius`, `along > length + radius` and
+// `across > halfWidth + radius` — three strict comparisons, so a body sitting
+// precisely on a face is CAUGHT. Flipping any of them to `<=` / `>=` drops that
+// body and survives S7, which brackets each face with a 1-3 unit gap either
+// side and so never lands on one.
+{
+  const ctx = snareCtx([0.5], true);
+  const inst = SNARE.create();
+  const anchor = fakeTarget(5, 0);              // the aim anchor, as in S7
+  const onReach = fakeTarget(912, 0);           // along === 900 + 12 exactly
+  const onBack = fakeTarget(-12, 0);            // along === -12 exactly
+  const onBand = fakeTarget(400, 22);           // across === 10 + 12 exactly
+  ctx.targets.push(anchor, onReach, onBack, onBand);
+  snareFire(ctx, inst, snareTiers[3]);
+  assert.deepEqual(ctx.hits.map((h) => h.t), [anchor, onReach, onBack, onBand],
+    'a body exactly on the far face, the back face or the side band is INSIDE the corridor');
+}
+
+// S14. THE `enemy.dead` GUARD IN damageLine IS REAL COVER, not a restatement of
+// something the world already does. The world does re-check `dead`, which is
+// why deleting this line keeps every scenario green — but the world checks
+// BETWEEN passes, and the twin rails are three damageLine calls inside ONE
+// trigger. A body killed by the main rail is still in ctx.all() when twin(-1)
+// and twin(+1) sweep it a few microseconds later.
+//
+// The body has to sit in the OVERLAP of the main corridor and a twin's, which
+// is not the main axis: at tier 4 the main corridor reaches 22 off-axis and a
+// twin, offset 24 with half-width 7, reaches from 5 to 43. y = -12 is inside
+// both; y = 0 is inside the main rail only, which is why the obvious placement
+// proves nothing here.
+{
+  const ctx = snareCtx([0.5], true);
+  const inst = SNARE.create();
+  const anchor = fakeTarget(5, 0);                       // holds the aim on +x
+  const inTheOverlap = fakeTarget(400, -12, { hp: 1 });  // main AND twin(-1)
+  ctx.targets.push(anchor, inTheOverlap);
+  ctx.triggerCount = 3;                          // the next trigger is the 4th
+  snareFire(ctx, inst, snareTiers[3]);
+  assert.equal(ctx.triggerCount % SNARE.stats.twinCadence, 0, 'this trigger fires the twins');
+  assert.equal(inTheOverlap.dead, true, 'the main rail killed it');
+  assert.equal(ctx.hits.filter((h) => h.t === inTheOverlap).length, 1,
+    'and twin(-1) does NOT sweep the corpse a few microseconds later. Without the dead guard ' +
+    'this is 2 — the world\'s own dead check runs between passes, not inside one trigger');
+}
+
 const hatTiers = HAT.stats.tiers;
 
 // ---------------------------------------------------------------------------
@@ -1986,9 +2032,29 @@ function hatFire(ctx: FakeCtx, inst: WeaponInstance, conf: WeaponConf): void {
 // a bigger number it should have reached; there is no number above Infinity for
 // the item to reach here. Pinned in both directions so a future "fix" that
 // routes lane pierce through the pipeline has to argue with this check.
+//
+// THE `+ 5` USED TO BE WRITTEN HERE BY HAND, which pinned the module's
+// overwrite and nothing else: had applyBuild stopped applying extraPierce
+// entirely, this check would have stayed green while Needle Tips did nothing in
+// a real run. The built conf now comes out of a REAL RunWorld — the item is
+// added through addItem and the pierce is whatever the shipped pipeline says —
+// so the 9 below is an observation, not a restatement.
 {
-  const built: WeaponConf = { ...hatTiers[3], pierce: hatTiers[3].pierce! + 5 };
-  assert.equal(built.pierce, 9, 'Needle Tips at level 5 takes a tier-4 chip to 9 bodies');
+  const pierceWorld = new RunWorld({ width: 1280, height: 720 }, events, {
+    scripted: false,
+    fx: false,
+    rng: () => 0.5,
+  });
+  pierceWorld.addWeapon('hat', 4);
+  pierceWorld.addItem('needleTips', itemMaxLevel('needleTips'));
+  pierceWorld.fireTrigger({ role: 'hat', time: 0, velocity: 1, step: 0, variant: 'closed' });
+  const shipped = pierceWorld.projectiles[0];
+  assert.ok(shipped, 'the tier-4 hat fired');
+  assert.equal(shipped.maxPierce, 9,
+    'the REAL build pipeline takes a tier-4 chip from 4 to 9 bodies. If Needle Tips ever stops ' +
+    'reaching applyBuild, this is the line that falls over');
+
+  const built: WeaponConf = { ...hatTiers[3], pierce: shipped.maxPierce };
 
   const base = hatCtx();
   hatFire(base, HAT.create(), built);
@@ -2403,6 +2469,104 @@ function bassCtx(evolved = false, rngValues: number[] | null = null): FakeCtx {
   assert.equal(ctx.rngDraws, 0, 'and never drew anything to begin with');
 }
 
+// B15. WHICH STAT EACH SITE READS. quakeLifeS and quakeGrowthS both hold 1.2,
+// so SWAPPING THE TWO USES is invisible to every behavioural check in this file
+// and to all 238 parity scenarios — the spawn would write the growth duration
+// as a lifetime and the curve would divide by the lifetime, and today those are
+// the same number. The literal pins above (1.2 and 1.2) do not catch it either:
+// both stats still hold their value after a swap.
+//
+// The stats are frozen module constants, so no fake world can drive them apart.
+// A SOURCE PIN is the only cover, and it is the honest one: the decision here is
+// "this site names that stat", which is a fact about the text.
+{
+  const bassSrc = readFileSync(new URL('./weapons/bass.ts', import.meta.url), 'utf8');
+  assert.match(bassSrc, /lifeS: BASS_STATS\.quakeLifeS,/,
+    'spawnSubquake must write the ring\'s lifetime from quakeLifeS — if this line ever reads ' +
+    'quakeGrowthS the two stats have silently become one');
+  assert.match(bassSrc, /wave\.age \/ BASS_STATS\.quakeGrowthS/,
+    'and the growth curve must divide by quakeGrowthS, not by the lifetime');
+}
+
+// B16. THE GROWTH CLAMP IS LOAD-BEARING, shown by outliving the coincidence
+// that hides it. `Math.min(1, age / growthS)` never returns 1 in normal play
+// because lifeS === growthS retires the ring on the very frame it tops out — so
+// DELETING THE CLAMP keeps B8 and every parity scenario green.
+//
+// Hold the ring open past its growth duration and the clamp becomes the only
+// thing between "tops out at 288" and "expands forever".
+{
+  const ctx = bassCtx(true);
+  const inst = BASS.create();
+  inst.fire(ctx, bassTiers[3]);
+  const wave = ctx.rings[0];
+  wave.lifeS = 10;                       // outlive growth; nothing else touched
+  ctx.step(inst, 120);                   // age 2.0 — well past the 1.2 duration
+  assert.equal(round6(wave.radius), 288,
+    'the ring is CLAMPED at its max radius, not still growing. Without min(1, ...) it would be ' +
+    'at 40 + 248 * (2.0 / 1.2) = 453.3');
+  assert.equal(ctx.rings.length, 1, 'and the ring is still live, so this read is real');
+}
+
+// B17. DAMAGE LANDS BEFORE THE SHOVE. The ring damages a body and then pushes
+// it, and the two orders are indistinguishable from any log this fake keeps —
+// `shove` writes to knocks and shoveLog, `damage` writes to hits and seq, and
+// nothing interleaves them. Wrapping both on this one context is what makes the
+// ordering observable at all.
+//
+// It matters because damage can KILL: a shove that ran first would be pushing a
+// live body, and one that runs second is pushing a corpse. The world tolerates
+// both today, which is exactly why the choice needs a pin rather than a comment.
+{
+  const ctx = bassCtx(true);
+  const inst = BASS.create();
+  ctx.targets.push(fakeTarget(30, 0, { hp: 1 }));
+  inst.fire(ctx, bassTiers[3]);
+  const order: string[] = [];
+  const realDamage = ctx.damage.bind(ctx);
+  const realShove = ctx.shove.bind(ctx);
+  ctx.damage = (t, amount) => { order.push('damage'); realDamage(t, amount); };
+  ctx.shove = (t, x, y, d) => { order.push('shove'); realShove(t, x, y, d); };
+  ctx.step(inst, 1);
+  assert.deepEqual(order, ['damage', 'shove'],
+    'the ring damages first and shoves second — a body the ring kills is already dead when it ' +
+    'is pushed');
+}
+
+// B18. THE FRAME A RING RETIRES ON, and it is the frame it tops out. A body
+// that only comes into reach at FULL radius is swept, and the ring is gone in
+// the same pass — one frame later and it sweeps bodies a topped-out ring should
+// no longer reach, one frame earlier and it loses its last sweep. Both
+// directions were confirmed to fail this check.
+//
+// WHAT THIS DELIBERATELY DOES NOT PIN is the `<= 0` in `if (wave.lifeS <= 0)`.
+// #149 listed that operator as a gap; it is not pinnable, and not merely
+// "uniform today". lifeS is decremented by dt each frame, so after 72 steps it
+// holds -7.28e-16, not 0 — the exact landing the operator distinguishes never
+// occurs, and `< 0` is behaviourally identical for any reachable state. A pin
+// asserting the spelling would be a pin on the text, not on a decision.
+//
+// Note also that moving the retirement test above the hit loop is NOT a
+// mutation this or any check can catch, for a reason worth knowing: retirement
+// splices the WORLD array, while the loop iterates the filtered copy taken by
+// ctx.shockwaves(). A retired ring finishes its pass either way.
+{
+  const ctx = bassCtx(true);
+  const inst = BASS.create();
+  // 298 out: inside the reach only at FULL radius (288 + a body's 12 = 300),
+  // and outside it on every earlier frame — the last frame before the ring tops
+  // out reaches 284.56 + 12 = 296.56, so 298 is a gap only the final frame closes.
+  const atTheEdge = fakeTarget(298, 0);
+  ctx.targets.push(atTheEdge);
+  inst.fire(ctx, bassTiers[3]);
+  ctx.step(inst, 71);
+  assert.equal(ctx.hits.length, 0, 'not yet reached with one frame of life left');
+  ctx.step(inst, 1);
+  assert.deepEqual(ctx.hits.map((h) => h.t), [atTheEdge],
+    'the body is swept on the ring\'s final frame: damage runs, THEN the ring retires');
+  assert.equal(ctx.rings.length, 0, 'and it did retire on that same frame');
+}
+
 
 const chordTiers = CHORD.stats.tiers;
 
@@ -2757,6 +2921,35 @@ function chordCtx(evolved = false): FakeCtx {
     'the merged radius is sqrt(r_a^2 + r_b^2) under the cap');
   assert(newer.radius < CHORD.stats.mergeMaxRadius);
   assert.equal(older.evolved, true, 'the absorbed zone object itself is untouched, just dropped');
+}
+
+// C11a. WHOSE CAP IS IN FORCE, shown by a merge where the cap actually BINDS.
+// C11 above asserts the survivor keeps its own `damageCap`, and that assertion
+// cannot fail: there, min(15, 6.25) and min(7.5, 6.25) are both 6.25, so
+// `Math.min(a.damageCap, ...)` and `Math.min(b.damageCap, ...)` agree. The cap
+// is only load-bearing when the sum would overshoot it.
+//
+// A SMALL zone absorbing a BIG one is that case, and it is not exotic — it is
+// what a carpet looks like mid-build, when a fresh low-tier throw lands on an
+// old merged supercell. Newer damage 2 (cap 6) absorbs older damage 20: the
+// survivor's cap holds it to 6, the absorbed zone's cap would let it reach 12.
+{
+  const ctx = chordCtx(true);
+  const inst = CHORD.create();
+  ctx.targets.push(fakeTarget(0, 0));
+  inst.fire(ctx, { ...chordTiers[3], damage: 16 });     // damage 20, cap 60
+  ctx.targets.length = 0;
+  ctx.targets.push(fakeTarget(10, 0));
+  inst.fire(ctx, { ...chordTiers[3], damage: 1.6 });    // damage 2,  cap 6
+  ctx.targets.length = 0;
+  const newer = ctx.fields[1];
+  assert.equal(round6(newer.damageCap), 6, 'the survivor is the SMALL-capped zone');
+  assert.equal(round6(ctx.fields[0].damageCap), 60, 'and the absorbed one is the big-capped one');
+  ctx.step(inst, 1);
+  assert.deepEqual(ctx.fields, [newer], 'the newer zone still survives regardless of size');
+  assert.equal(round6(newer.damage), 6,
+    'the SURVIVOR\'s cap binds: 2 + 20 x 0.5 = 12 is held down to 6. Reading the absorbed ' +
+    'zone\'s cap instead would let it through at 12 — this is the operand C11 cannot see');
 }
 
 // C11b. THE PARTNER IS THE NEAREST LOWER INDEX, not the oldest overlapping
@@ -3989,6 +4182,44 @@ function bellNote(ctx: FakeCtx, inst: WeaponInstance, conf = bellTiers[3]): Proj
     'and its life is raised to at least the incoming burst\'s, never lowered');
 }
 
+// BE6b. THE OTHER HALF OF "RAISED, NEVER LOWERED". BE6's closing assertion
+// claims both directions and tests one: its parked shards hold 0.1, strictly
+// below the incoming 0.45, so `Math.max(oldest.lifeS, shardLifeS)` and a bare
+// `oldest.lifeS = shardLifeS` return the same number. The `max` can be deleted
+// and BE6, BE7 and every parity scenario stay green.
+//
+// A LONG-LIVED shard is the case that separates them, and it is the ordinary
+// one: Encore Tape raises durationMul, so a shard parked by an earlier
+// long-duration burst outlives what a later burst would assign it. Amplifying
+// must not cut its life short.
+{
+  const ctx = bellCtx(false, null);
+  const inst = BELL.create();
+  const target = fakeTarget(300, 0);
+  ctx.targets.push(target);
+
+  ctx.rngValues = [0.5, 0];
+  const note = bellNote(ctx, inst);
+  inst.projectile!.onHit!(ctx, note, target);
+  ctx.spawned.length = 1;
+  // Parked at 0.6 — ABOVE the 0.45 an incoming burst would assign.
+  for (let i = 0; i < 36; i++) {
+    const parked = ctx.spawnProjectile({ damage: 1, radius: 4, lifetimeS: 0.6, pierce: 1 }, 1);
+    parked.shard = true;
+  }
+  const oldest = ctx.spawned[1];
+  assert.equal(round6(oldest.lifeS), 0.6, 'the oldest shard starts ABOVE the incoming life');
+
+  ctx.rngValues = [0];
+  const second = bellNote(ctx, inst, bellTiers[3]);
+  ctx.rngValues = [0];
+  inst.projectile!.onHit!(ctx, second, target);
+  assert.equal(round6(oldest.lifeS), 0.6,
+    'amplifying LEAVES the longer life alone. A bare assignment would cut it to 0.45 — this is ' +
+    'the direction BE6\'s message claims and cannot test');
+  assert(oldest.damage > 1, 'and it really was amplified, so this read is not vacuous');
+}
+
 // BE7. THE CEILING BINDS. Same shape as BE6 with an oldest shard that starts
 // near the cap, so `Math.min` is the operator under test rather than the rate.
 {
@@ -4634,6 +4865,80 @@ function worldStrike(opts: {
 // spawnProjectile still branch on role for the four unmigrated projectile
 // weapons, and each of those branches leaves with its own weapon's module.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// FakeCtx.spawnProjectile IS A HAND-MAINTAINED COPY of RunWorld.baseProjectile,
+// and until now nothing checked it. Every weapon-module check in this file
+// spawns through the fake; if the two defaulting bodies drift, those checks go
+// on passing against a world that no longer exists, and the parity harness
+// cannot see it either — it drives the REAL world, so a wrong fake is invisible
+// to it by construction. That is the worst shape a check can have: green on
+// both sides of a seam that no longer lines up.
+//
+// The comment above the fake says "kept side by side with it". This is that
+// sentence made executable.
+// ---------------------------------------------------------------------------
+{
+  const runSource = readFileSync(new URL('./run.ts', import.meta.url), 'utf8');
+  const selfSource = readFileSync(new URL('./systems-check.ts', import.meta.url), 'utf8');
+
+  /** The object literal between a known opening and the first `};` after it. */
+  const literalAfter = (source: string, opening: string): string => {
+    const start = source.indexOf(opening);
+    assert(start >= 0, `could not find the object literal opening: ${opening}`);
+    const end = source.indexOf('};', start);
+    assert(end > start, 'unterminated object literal');
+    return source.slice(start + opening.length, end);
+  };
+
+  /** Split a flat literal into [key, value-expression] pairs. Both bodies are
+   *  flat — the only call in either is `new Set()` — so a comma split is exact.
+   *  Shorthand (`role,`) reads as key and value alike, which is what makes the
+   *  `role` / `color` rows below compare as identity rather than as text. */
+  const fieldsOf = (body: string): Array<[string, string]> =>
+    body
+      .split(',')
+      .map((entry) => entry.replace(/\/\/.*$/gm, '').trim())
+      .filter(Boolean)
+      .map((entry) => {
+        const colon = entry.indexOf(':');
+        return colon < 0
+          ? ([entry, entry] as [string, string])
+          : ([entry.slice(0, colon).trim(), entry.slice(colon + 1).trim()] as [string, string]);
+      });
+
+  const real = fieldsOf(literalAfter(
+    runSource,
+    'private baseProjectile(role: Role, conf: WeaponConf, color: number, damage: number)'
+      + ': Projectile {\n    return {',
+  ));
+  const fake = fieldsOf(literalAfter(selfSource, 'const pr: Projectile = {'));
+
+  assert.deepEqual(
+    real.map(([key]) => key).sort(),
+    fake.map(([key]) => key).sort(),
+    'FakeCtx.spawnProjectile and RunWorld.baseProjectile must default the SAME field set. A ' +
+    'field added to Projectile and defaulted in only one of them is drift the module checks ' +
+    'would never notice',
+  );
+
+  // The three rows that legitimately differ, and ONLY these three: the fake
+  // world has one role and one color, so it reads them off itself where the
+  // real world is handed them per spawn. Every other field must be the same
+  // expression, character for character.
+  const identityFields = new Set(['role', 'color', 'evolved']);
+  const realValues = new Map(real);
+  for (const [key, value] of fake) {
+    if (identityFields.has(key)) continue;
+    assert.equal(value, realValues.get(key),
+      `FakeCtx defaults \`${key}\` differently from RunWorld.baseProjectile — the fake world ` +
+      'has drifted from the real one');
+  }
+  for (const key of identityFields) {
+    assert(realValues.has(key), `${key} must still be a field both bodies default`);
+  }
+}
+
 {
   const source = readFileSync(new URL('./run.ts', import.meta.url), 'utf8');
 
