@@ -54,6 +54,10 @@ function makePixelGlow(radius: number, color: number, alpha = 0.25): Graphics {
 export interface EnemyGfx extends Graphics {
   __shield: boolean;
   __frame: number;
+  /** The radius this silhouette was drawn at. Body size is fixed for a run's
+   *  lifetime under normal play, but the enemy lab resizes live enemies, and a
+   *  cached context keyed on the old radius would keep the old silhouette. */
+  __radius: number;
 }
 
 function darkSilhouette(g: GraphicsContext, points: number[]): void {
@@ -308,6 +312,7 @@ export function makeEnemyGfx(e: Enemy, frame: number): EnemyGfx {
   gfx.tint = e.color;
   gfx.__shield = shield;
   gfx.__frame = frame;
+  gfx.__radius = e.radius;
   if (e.kind === 'ghost') gfx.alpha = 0.82;
   return gfx;
 }

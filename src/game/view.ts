@@ -938,10 +938,11 @@ export class RunView {
       if (!visible) continue;
 
       const shield = enemy.shieldHp > 0;
-      if (gfx.__frame !== frame || gfx.__shield !== shield) {
+      if (gfx.__frame !== frame || gfx.__shield !== shield || gfx.__radius !== enemy.radius) {
         gfx.context = enemyContext(enemy, shield, frame);
         gfx.__frame = frame;
         gfx.__shield = shield;
+        gfx.__radius = enemy.radius;
       }
       gfx.position.set(snap(enemy.x), snap(enemy.y));
       gfx.tint = enemy.flashT > 0 ? 0xffffff : enemy.color;
