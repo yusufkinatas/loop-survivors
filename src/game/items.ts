@@ -124,7 +124,12 @@ export interface BuildMods {
   maxHpBonus: number;
   armorBonus: number;
   hpRegenPerSecond: number;
-  /** Extra shots per trigger on every projectile weapon (Double Take). */
+  /** Extra emissions per trigger on every weapon that emits a countable thing
+   * (Double Take). Read by RunWorld.fanAround for the fanned weapons, and
+   * directly by the two modules that emit something other than a world
+   * projectile: Railshot's rails and Two Hands' pincers. Weapons that emit one
+   * continuous shape — the Kick's strike, the Chord's zone, the Clap's base
+   * cone, Subquake's ring — deliberately ignore it. */
   extraProjectiles: number;
 }
 

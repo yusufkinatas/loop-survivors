@@ -200,6 +200,15 @@ export interface Projectile {
    *  screen". A FIELD, not a role test: the shared loop asks the shot, never
    *  which weapon fired it. */
   homingRange: number;
+  /** A body this homing shot has been locked onto, or null to chase whatever
+   *  is nearest each frame (the default). A volley of seekers spawned within a
+   *  few degrees of each other would otherwise all compute the SAME nearest
+   *  enemy and converge into one overlapping blob, which is what made Double
+   *  Take invisible on the lead (#131). Locking is per shot, so the loop still
+   *  asks the shot rather than the weapon. Cleared automatically once the
+   *  target dies or this shot has already hit it, so a seeker never strands
+   *  itself on a body it can no longer damage. */
+  homingTarget: Enemy | null;
   /** bell: shards to spawn on this shot's first hit (0 for a shard itself, so
    *  shards never re-shatter). */
   shatter: number;
@@ -562,6 +571,7 @@ export class RunWorld {
         e.x += dx;
         e.y += dy;
       },
+      lockSeeker: (pr, target) => { pr.homingTarget = (target as Enemy | null) ?? null; },
       withExtraPierce: (basePierce) => world.withExtraPierce(basePierce),
       slow: (t, mul, durationS) => {
         const e = t as Enemy;
@@ -1878,6 +1888,7 @@ export class RunWorld {
       maxPierce: conf.pierce ?? 1,
       lifeS: conf.lifetimeS!,
       homing: false,
+      homingTarget: null,
       speed: conf.speed ?? 0,
       color,
       hit: new Set(),
@@ -1990,15 +2001,24 @@ export class RunWorld {
     if (!steered) {
       if (pr.homing) {
         let best: Enemy | null = null;
-        let bestD = Infinity;
-        for (const e of this.enemies) {
-          if (e.dead || pr.hit.has(e)) continue;
-          const dx = e.x - pr.x;
-          const dy = e.y - pr.y;
-          const d = dx * dx + dy * dy;
-          if (d < bestD && d <= pr.homingRange * pr.homingRange) {
-            bestD = d;
-            best = e;
+        // A locked target outranks the nearest-body search until it dies or
+        // this shot has already hit it, at which point the lock clears and the
+        // seeker resumes chasing whatever is closest.
+        const locked = pr.homingTarget;
+        if (locked && !locked.dead && !pr.hit.has(locked)) {
+          best = locked;
+        } else {
+          pr.homingTarget = null;
+          let bestD = Infinity;
+          for (const e of this.enemies) {
+            if (e.dead || pr.hit.has(e)) continue;
+            const dx = e.x - pr.x;
+            const dy = e.y - pr.y;
+            const d = dx * dx + dy * dy;
+            if (d < bestD && d <= pr.homingRange * pr.homingRange) {
+              bestD = d;
+              best = e;
+            }
           }
         }
         if (best) {

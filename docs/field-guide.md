@@ -116,7 +116,7 @@ an evolution ingredient.
 | Magnet Lanyard | +100% pickup range and +40% pull speed | Bell |
 | Padded Jacket | +40 maximum health, immediate healing as it levels, and +2 armor | Clap |
 | Recovery Tape | Restores 0.5 HP per second while below maximum health | None — standalone |
-| Double Take | +2 projectiles from every weapon that throws one | None — standalone |
+| Double Take | +2 emissions from every weapon that emits a countable thing | None — standalone |
 
 ## The nine weapon evolutions
 

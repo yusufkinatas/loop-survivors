@@ -160,6 +160,12 @@ export interface WeaponContext {
    *  body and has no notion of a second place. */
   nearestEnemies(range: number, count: number): readonly WeaponTarget[];
 
+  /** Lock a homing shot onto one specific body, or null to leave it chasing
+   *  whatever is nearest each frame. Draws no rng. Used to spread a multi-shot
+   *  seeker volley across separate enemies instead of letting every seeker
+   *  converge on the same nearest one. */
+  lockSeeker(pr: Projectile, target: WeaponTarget | null): void;
+
   withExtraPierce(basePierce: number): number;
 
   /** The world's LIVE enemy array, in array order, by reference — not a copy,

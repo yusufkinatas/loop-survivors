@@ -1,4 +1,4 @@
-import type { WeaponConf } from '../config';
+import { AIM_RANGE, type WeaponConf } from '../config';
 import type { Projectile } from '../run';
 import type { WeaponContext, WeaponTarget } from './context';
 import type {
@@ -184,9 +184,24 @@ class LeadInstance implements WeaponInstance {
     // shots come out of it.
     const supercharged =
       ctx.evolved && ctx.triggerCount % LEAD_STATS.superchargeCadence === 0;
-    for (const dir of ctx.aimFan(LEAD_STATS.aimSpread)) {
+    const dirs = ctx.aimFan(LEAD_STATS.aimSpread);
+    // A fanned volley spawns from one point a few degrees apart, so every
+    // seeker would otherwise pick the same nearest body and converge into one
+    // overlapping blob — Double Take became damage you could not see or aim
+    // (#131). Give each seeker its own body instead, so extra shots spread
+    // across the crowd. nearestEnemies draws no rng, so the per-trigger draw
+    // count is still exactly the one aimFan spends.
+    //
+    // A one-seeker volley is deliberately left unlocked: with nothing to
+    // spread it keeps the original chase-the-closest behaviour exactly.
+    const locks: readonly (WeaponTarget | undefined)[] =
+      dirs.length > 1 ? ctx.nearestEnemies(AIM_RANGE, dirs.length) : [];
+    for (let i = 0; i < dirs.length; i++) {
+      const dir = dirs[i];
       const pr = ctx.spawnProjectile(conf, conf.damage);
       armSeeker(pr);
+      // Fewer bodies than seekers: the surplus falls back to nearest-chasing.
+      ctx.lockSeeker(pr, locks[i] ?? null);
       if (ctx.evolved) {
         pr.damage *= LEAD_STATS.serpentDamageMul;
         // The serpent threads a line of bodies: its own base pierce replaces

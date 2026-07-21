@@ -225,7 +225,13 @@ class ClapInstance implements WeaponInstance {
     // the world's build transform. This multiplier stacks ON TOP; it is not a
     // re-application of any of that.
     const damage = conf.damage * CLAP_STATS.damageMul;
-    const targets = ctx.nearestEnemies(AIM_RANGE, CLAP_STATS.targets);
+    // Two Hands emits a countable thing, so Double Take adds pincers: one more
+    // hand per level, each on its own target. nearestEnemies makes no rng draw,
+    // so the per-trigger draw count is unchanged at every Double Take level.
+    const targets = ctx.nearestEnemies(
+      AIM_RANGE,
+      CLAP_STATS.targets + ctx.buildMods.extraProjectiles,
+    );
     if (targets.length === 0) {
       // Nothing in reach: still clap, just ahead of the player, so the beat
       // reads on screen and an empty field does not eat the trigger.
