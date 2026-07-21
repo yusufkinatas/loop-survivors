@@ -30,18 +30,6 @@ export interface WeaponStats {
   readonly tierLines: readonly [string, string, string, string];
 }
 
-/** Behavior the SHARED projectile loop delegates.
- *
- *  DECLARED BY #139, WIRED BY #140, and it needed no change to fit: the arp's
- *  three `pr.role === 'arp'` branches mapped one-to-one onto these two hooks,
- *  orbit motion and the arena-rail exemption collapsing into steer()'s single
- *  return value exactly as the shape predicted.
- *
- *  These two hooks are now the ONLY route by which a weapon may affect the
- *  shared projectile loop. Since #140 that loop contains no per-weapon branch
- *  at all, and systems-check reads its source to keep it that way. A weapon
- *  whose motion does not fit here belongs in a field on the projectile, set by
- *  its own spawner — not in a branch. */
 export interface ProjectileBehavior {
   /** Replaces shared motion. Return true = "I positioned it myself", which
    *  skips shared travel AND reflectProjectileFromArena — both ADR-0002
@@ -64,10 +52,6 @@ export interface WeaponModule {
   /** Which world damage phase this weapon's own pass runs in. Omit for weapons
    *  with no pass of their own. */
   readonly tickAt?: TickPhase;
-  /** Mint per-run state. Called once per RunWorld per module. NO weapon state
-   *  may live on the module object: systems-check builds six-plus RunWorlds in
-   *  one process (soundOnlyOutput alone builds four), and a leaked strike queue
-   *  would make those checks order-dependent. */
   create(): WeaponInstance;
 }
 

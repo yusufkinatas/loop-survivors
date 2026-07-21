@@ -694,20 +694,6 @@ export interface WeaponConf {
  *  Charts carry most of the growth (density = rate); stats bump where the
  *  ladder's character says so — bass per-trigger damage climbs hard (weight),
  *  hat barely moves (density is its whole story). */
-// Balance scale: per-trigger damage sits at ~1/3 of the earlier VS-derived
-// anchor so early enemies take a couple of hits instead of vanishing (a
-// tier-1 5-HP bat = 2 kick hits at 3 dmg). Relative weapon character is
-// preserved (bass climbs hard, hat barely moves). Zone/DoT weapons carry a
-// per-TICK number that floors at 1, so their listed damage can't drop a full
-// third — their real output is damage x ticks x rate; they lean on coverage.
-//
-// EMPTY, AND THAT IS #141'S FINISH LINE FOR THIS TABLE. Every ladder that used
-// to live here now lives in its own weapon module's uniform stats block, the
-// bell's being the last one out. `weaponTiers()` in weapons/index.ts still falls
-// back to this table for a role no module owns, and every role has a module, so
-// the fallback never fires today; the empty object is what systems-check's
-// per-role `WEAPONS.<role> === undefined` ratchet asserts against, one line per
-// weapon, which is why it is still exported rather than deleted outright.
 export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {};
 
 /** The one honest gameplay-effect line on each pick card ([tier-1]). Terse

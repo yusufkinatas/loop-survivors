@@ -1,29 +1,3 @@
-// The Lead weapon module: homing seekers, one per melody note, and its
-// evolution, Neon Serpent, a harder-turning seeker that threads a line of
-// bodies and supercharges every fifth trigger. Base and evolved live in the
-// same module; evolving flips an internal mode (ctx.evolved).
-//
-// THE LEAD IS THE WEAPON WHOSE BEHAVIOR WAS MOST SPREAD OUT. Nothing about it
-// lived in one function:
-//
-//   - `homing: role === 'lead'` was a role test inside baseProjectile, the
-//     world's shared defaulting for EVERY weapon's shot;
-//   - `turnRate` and `homingRange` came off that same defaulting as 10 and
-//     Infinity, unnamed, and the evolution overwrote them at the spawn site;
-//   - the per-hit spark came from `SPARK_HIT_ROLES.has(pr.role)` inside the
-//     shared projectile loop, a role-keyed Set this weapon was the last member
-//     of. It is GONE — the Set, its lookup, and its INTERIM_EXCEPTIONS entry
-//     left with this commit, exactly as the snare's share left before it.
-//
-// WHAT THIS MODULE DOES NOT IMPLEMENT IS THE POINT. There is no steer(). The
-// homing search, the turn clamp and the travel that follows it are SHARED
-// physics, driven entirely by three FIELDS this module sets at spawn — `homing`,
-// `turnRate`, `homingRange`. That is route 2 of the #140 rule ("anything else a
-// shot needs is a field on the shot, set by its own spawner"), and implementing
-// steer() here would silently take a seeker off shared travel AND off
-// reflectProjectileFromArena together, deleting Mirrorball's bounces for this
-// weapon alone.
-
 import type { WeaponConf } from '../config';
 import type { Projectile } from '../run';
 import type { WeaponContext, WeaponTarget } from './context';

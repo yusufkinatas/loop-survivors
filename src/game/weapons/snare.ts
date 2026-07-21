@@ -1,36 +1,3 @@
-// The Snare weapon module: a fast piercing shot on the backbeat, and its
-// evolution, Railshot, an instant beam with infinite pierce that fires twin
-// rails every fourth trigger. Base and evolved live in the same module;
-// evolving flips an internal mode (ctx.evolved).
-//
-// THE SNARE IS THE THIRD SHAPE THIS MIGRATION HAS MET, and the first whose
-// identity was SPLIT ACROSS TWO ROLE-KEYED TABLES instead of living in one
-// function:
-//
-//   - the base shot rides shared physics completely unchanged — no steer, no
-//     custom travel — so the only thing the module lends the shared projectile
-//     loop is a hit rule (ProjectileBehavior.onHit);
-//   - inside that loop, `WEAPON_SHOVE[pr.role]` (config.ts) and
-//     `SPARK_HIT_ROLES.has(pr.role)` (run.ts) each looked the snare up by name.
-//     Both were allowlisted in systems-check's INTERIM_EXCEPTIONS, and both
-//     said the same thing: "this weapon does one extra thing on a hit". That is
-//     exactly what onHit is, so the snare's share of both is now `shove` and
-//     `spark*` below, applied by this module's own onHit.
-//
-// Neither table was deleted here: at the time WEAPON_SHOVE still carried clap
-// and bass, and SPARK_HIT_ROLES still carried lead. Each remaining entry leaves
-// with its own weapon, and the last one out takes the table — which is exactly
-// what happened to SPARK_HIT_ROLES when the LEAD landed (#141). WEAPON_SHOVE is
-// down to the clap.
-//
-// Railshot spawns NOTHING. It is an instant damageLine — the same line sweep
-// the world used to own, which had no other caller — and its infinite pierce is
-// the ABSENCE of pierce arithmetic, not a large number. There is no pierce
-// budget anywhere below, and that is the whole implementation of "infinite".
-// A stat that stated the infinity and then fed it through a finite path would
-// be a regression dressed as documentation; systems-check enforces it the only
-// honest way instead, by firing a rail through a fifteen-deep file.
-
 import type { WeaponConf } from '../config';
 import type { Projectile } from '../run';
 import type { WeaponContext, WeaponTarget } from './context';

@@ -1,47 +1,3 @@
-// The Chord weapon module: a slow field thrown onto the nearest pack that
-// chips damage and makes everything inside wade instead of walk, and its
-// evolution, Afterhours, where those fields go hunting — drifting toward the
-// densest crowd and merging into supercells. Base and evolved live in the same
-// module; evolving flips an internal mode (ctx.evolved).
-//
-// THE CHORD IS THE FIRST WEAPON WHOSE PASS WAS INSIDE THE SHARED-PHYSICS GUARD.
-// RunWorld.updateZones was one of the four methods systems-check protects from
-// per-weapon branches, which made "leave the loop in run.ts and branch on
-// z.source" not an option at all: the whole tick/drift/merge/retire loop had to
-// come here. It follows the split the bass made for shockwaves — STORAGE STAYS
-// WORLD-SIDE (view.ts draws world.zones, clearSandboxEntities empties it) and
-// this module is the array's SOLE MUTATOR, reaching it only through
-// ctx.spawnZone / ctx.zones / ctx.retireZone.
-//
-// THE CHORD DRAWS NO RNG AT FIRE TIME, at any tier and any trigger count. It
-// throws at `ctx.nearestEnemy(throwRange)`, which looks without jittering.
-// `aimDir(0)` would be the one-line-tidier spelling and it DRAWS — once with a
-// target on screen, twice with an empty one — so writing the throw that way
-// desynchronises every later draw in the run. Nothing but the parity harness's
-// draw counter would notice.
-//
-// DAMAGE IS PER TICK, NOT PER TRIGGER. A zone spawns with tickT at zero, so it
-// lands one tick immediately and then one every `tickS` for its whole life:
-// `1 + floor(lifeS / tickS)` ticks in total. The per-tier `damage` numbers look
-// tiny next to every other weapon because they are multiplied by that count.
-//
-// THE SLOW IS THE IDENTITY, and it reaches the world through ctx.slow rather
-// than through damage: each tick folds `slowMul` into the body's shared slow
-// channel with min() and refreshes the timer to `tickS + slowGraceS`. That sum
-// is why the slow is CONTINUOUS rather than strobing — 0.9 + 0.15 = 1.05 is
-// longer than the 0.9 until the next tick renews it, and the 0.15 is the whole
-// margin. Both halves of it must stay the SAME `tickS` stat: split them and the
-// renewal-before-expiry relationship changes silently.
-//
-// THE ROLE-KEYED TABLES, NONE OF WHICH THE CHORD IS IN. It was absent from
-// config.WEAPON_SHOVE and from run.ts's SPARK_HIT_ROLES alike, so nothing
-// shrank when this weapon left and a zone tick lands damage and a slow and
-// NOTHING else — no knock, no spark, no fx of any kind. Granting one while
-// tidying up is a behavior change; systems-check pins the absence the way the
-// hat's block does. SPARK_HIT_ROLES is gone entirely now — the lead was its
-// last member and took it (#141) — so what is pinned there is the Set's
-// absence from run.ts; WEAPON_SHOVE is down to the clap.
-
 import type { WeaponConf } from '../config';
 import { circlesOverlap } from '../spatial';
 import type { Zone } from '../run';
@@ -364,26 +320,11 @@ class ChordInstance implements WeaponInstance {
         const b = zones[j];
         if (!b.evolved || !circlesOverlap(a, b)) continue;
         const totalArea = a.radius * a.radius + b.radius * b.radius;
-        // A DIVIDE-BY-ZERO GUARD ON A DIVISOR THAT CANNOT BE SMALL. The
-        // smallest rung of the ladder is radius 48, so `totalArea` is never
-        // below 4608 and `Math.max(1, ...)` has never chosen the 1 — dropping
-        // it moves nothing in the parity baseline and nothing in this file.
-        // Ported verbatim regardless: it is free, and "unreachable today" is
-        // not "unreachable after the next balance pass".
         const weight = Math.max(1, totalArea);
         // Area-weighted centroid, computed from the OLD radii — `a.radius` is
         // not overwritten until both coordinates are done.
         a.x = (a.x * a.radius * a.radius + b.x * b.radius * b.radius) / weight;
         a.y = (a.y * a.radius * a.radius + b.y * b.radius * b.radius) / weight;
-        // UNREACHABLE IN A SHIPPED RUN, PORTED VERBATIM ANYWAY. Afterhours
-        // requires Wide Lens at max and tier 4, so every Afterhours zone is
-        // exactly 76 x 1.30 x 1.55 = 153.14 units and the very first merge asks
-        // for sqrt(2) x 153.14 = 216.57 — already past the 180 cap. The sqrt
-        // has never decided a merged radius; the baseline agent replaced it
-        // with `a.radius + b.radius` and moved ZERO parity scenarios. It stays
-        // exactly as written because this extraction is behavior-preserving and
-        // "dead today" is not "dead after the next balance pass"; systems-check
-        // pins the cap as a LITERAL, since no behavioral check can.
         a.radius = Math.min(CHORD_STATS.mergeMaxRadius, Math.sqrt(totalArea));
         a.lifeS = Math.min(
           CHORD_STATS.mergeMaxLifeS,

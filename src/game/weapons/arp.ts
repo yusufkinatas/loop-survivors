@@ -47,17 +47,6 @@ export interface ArpStats extends WeaponStats {
   /** Seconds between re-hits on the same enemy for Event Horizon. Slower than
    *  base: the evolved crown is denser, so each orbiter chips less often. */
   readonly evolvedRehitS: number;
-  /** FALSE, and deliberately so: an orbiter never spends pierce on a hit
-   *  (ADR-0002). Changing it means re-litigating that ADR.
-   *
-   *  This ONE stat drives BOTH halves of the exemption, so they cannot drift
-   *  apart:
-   *    - ProjectileBehavior.onHit returns it, and that return value is what the
-   *      shared loop actually obeys — it is the MECHANISM.
-   *    - armOrbiterPierce() derives the pierce budget an orbiter is armed with
-   *      at spawn from it — belt to onHit's braces.
-   *  Neither is a bare literal at a spawn site any more; see armOrbiterPierce
-   *  for why both exist and which one systems-check measures. */
   readonly spendsPierce: boolean;
 
   // ---------------- the orbit ----------------------------------------------
@@ -122,22 +111,6 @@ export const ARP_STATS: ArpStats = {
   evolvedOrbiterCap: 24,
 };
 
-/** Arm one freshly spawned orbiter's pierce budget FROM `spendsPierce`, so the
- *  stat and the field can never disagree. Both spawners below call this instead
- *  of writing a bare `pr.pierce = Infinity`, which is what #144 asks for: the
- *  stat is the mechanism a reader learns, not inert copy next to the real one.
- *
- *  WHY A BUDGET AT ALL, when onHit already declines the shared pierce rule: the
- *  two answer different questions. onHit is the MECHANISM — it is what the
- *  shared loop reads, and systems-check measures it by arming a live orbiter
- *  with a FINITE budget and asserting the loop never touches it. Infinity here
- *  is the CONSEQUENCE stated on the shot: an orbiter carries no pierce budget
- *  because it is never supposed to spend one, so not even a mis-wired loop can
- *  kill it mid-sweep — the outcome ADR-0002 rejected.
- *
- *  If `spendsPierce` ever became true, an orbiter would keep the tier's own
- *  budget from baseProjectile and would die mid-sweep like any other shot: the
- *  exemption would be gone in both places at once, from one edit. */
 function armOrbiterPierce(pr: Projectile): void {
   if (!ARP_STATS.spendsPierce) pr.pierce = Infinity;
 }
@@ -169,15 +142,6 @@ const ORBIT_BEHAVIOR: ProjectileBehavior = {
     return true;
   },
 
-  /** THE MECHANISM of the pierce exemption. Returns ARP_STATS.spendsPierce —
-   *  false — so the shared loop's `pr.pierce -= 1` is skipped entirely and the
-   *  orbiter survives its own sweep. The re-hit gate is steer()'s timer above,
-   *  not the hit set emptying.
-   *
-   *  Flipping this to a hardcoded `true` is a real deletion of ADR-0002, and
-   *  systems-check measures it through the real loop rather than by reading
-   *  this line: it arms one live orbiter with a finite pierce budget and
-   *  asserts the budget comes back untouched after a twelve-enemy sweep. */
   onHit(_ctx: WeaponContext, _pr: Projectile, _target: WeaponTarget): boolean {
     return ARP_STATS.spendsPierce;
   },

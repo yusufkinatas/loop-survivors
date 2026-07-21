@@ -1,35 +1,8 @@
-// The weapon context: the narrow surface the world hands a weapon module.
-// Queries about the world in, effects (damage, spawns, fx) out. A weapon module
-// never touches the world's entity arrays.
-//
-// EVERY import here is type-only, so src/game/weapons/* has no runtime edge back
-// to run.ts and the graph stays acyclic (run.ts imports weapons/index.ts as a
-// value). `color` stays a context field for the same reason every other query
-// is one — the world answers, the module asks — even though the hue itself now
-// comes from ROLE_META in audio/kits (#141) rather than a table in run.ts.
-//
-// Adding a member to this interface taxes every fake context in systems-check.
-// Add one when a weapon actually needs it, never speculatively.
-
 import type { Role } from '../../audio/kits';
 import type { WeaponConf } from '../config';
 import type { BuildMods } from '../items';
 import type { FxEvent, GravityWell, Projectile, Shockwave, Zone } from '../run';
 
-/** Everything a weapon module may READ off an enemy — nine fields, all
- *  readonly. `Enemy` satisfies this structurally, so the world hands its REAL
- *  objects across the seam and object identity survives: the kick's per-strike
- *  `Set<WeaponTarget>` dedup, and the strong references it holds for 200 ms to
- *  enemies already spliced out by reapEnemies, both work exactly as today.
- *  Handing ids or copied DTOs would silently turn one hit per strike into
- *  twelve.
- *
- *  `readonly` is the enforcement: `t.dead = true` inside a module is a compile
- *  error, so the only route to an enemy is the three named effects below, and
- *  damage attribution cannot be bypassed by accident. It is shallow and
- *  castable — a guardrail, not a sandbox.
- *
- *  This is also the entire cost of a fake target in systems-check. */
 export interface WeaponTarget {
   readonly x: number;
   readonly y: number;
@@ -187,21 +160,6 @@ export interface WeaponContext {
    *  body and has no notion of a second place. */
   nearestEnemies(range: number, count: number): readonly WeaponTarget[];
 
-  /** The +pierce rule (Needle Tips), applied to a pierce budget the build
-   *  pipeline never saw. A finite budget gains buildMods.extraPierce; an
-   *  infinite one is already unbounded and comes back untouched.
-   *
-   *  `conf.pierce` ALREADY CARRIES THIS — applyBuild runs the same helper — so
-   *  this is not for a weapon's own ladder. It is for a pierce a module MINTS:
-   *  a bell shard is not a tier rung, its budget is a module stat, and nothing
-   *  in the build pipeline ever gets a chance to add the item's bonus to it.
-   *
-   *  IT EXISTS SO THE RULE STAYS IN ONE PLACE, and until #141 it was not: run.ts
-   *  computed the shard budget as `BELL.shardPierce + mods.extraPierce`, a bare
-   *  addition beside a helper whose doc comment claimed to be the only copy. The
-   *  two agreed only because the bell's 1 is finite. Routing the site here was
-   *  verified behaviour-identical against the parity baseline before the
-   *  extraction, not after. */
   withExtraPierce(basePierce: number): number;
 
   /** The world's LIVE enemy array, in array order, by reference — not a copy,
@@ -488,26 +446,3 @@ export interface ShockwaveSpec {
   readonly shove: number;
 }
 
-// ---- deliberately ABSENT ----
-//
-// NOTHING IS WAITING ANY MORE. #140 needed projectiles and added exactly
-// projectiles; the bass (#141) needed shockwaves and added exactly shockwaves,
-// the chord (#141) needed zones and added exactly zones, and the bell (#141)
-// needed gravity wells and added exactly gravity wells — four entity kinds, all
-// four on the shape spawnProjectile/projectiles/retireProjectile set, world-side
-// STORAGE plus a spawn effect plus a query over the module's own records. The
-// world has no entity kind left that a module cannot own.
-//
-// Every member here is a tax on every fake context, so each one arrived with
-// the weapon that needed it. aimDir/aimFan/triggerCount left this list with the
-// snare (#141), which needed all three; fanAround and moveDir left with the hat
-// (#141), which aims off its walk heading instead of ever consulting a target;
-// nearestEnemy and slow left with the chord (#141), which throws its zone at one
-// body and slows everything under it; nearestEnemies left with the clap (#141),
-// whose Two Hands is the only weapon that picks SEVERAL targets at once; and
-// displace, withExtraPierce and the gravity-well trio left with the BELL (#141),
-// the last weapon out, which drags bodies instead of knocking them and mints a
-// pierce budget the build pipeline never sees.
-//
-// No `world`, no mutable arrays, no `tiers`, no `level`, no `powerMul`, no
-// `applyBuild` — `conf` arrives already built.
