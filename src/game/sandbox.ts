@@ -394,6 +394,16 @@ export function mountSandboxPanel(
       world.spawnGemAt(world.player.x + 70 + i * 46, world.player.y, 1);
     }
   });
+  // The same walk, for notes: the way to hear the note cue's ladder climb one
+  // scale step per pickup, and reset to the root once you stop. Spaced wider
+  // than the gem trail on purpose — the ladder resets after a pause, so the
+  // walk has to be brisk enough to keep the climb alive, and that gap is
+  // exactly the thing worth feeling out.
+  button(noteControls, 'NOTE TRAIL', () => {
+    for (let i = 0; i < 24; i++) {
+      world.spawnMusicNoteAt(world.player.x + 70 + i * 58, world.player.y, 1);
+    }
+  });
   const pickupReadout = el('div', 'sb-hint', careerPage);
 
   section(careerPage, 'afterhours shop');

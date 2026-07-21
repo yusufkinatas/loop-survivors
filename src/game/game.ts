@@ -3,10 +3,10 @@
 // the game only listens to its triggers and toggles voices on picks.
 
 import { Application } from 'pixi.js';
-import type { MusicEngine } from '../audio/engine';
+import { PICKUP_TIMBRES, type MusicEngine, type PickupTimbre } from '../audio/engine';
 import { SOUNDSET } from '../audio/soundset';
 import { ROLE_COLORS, ROLES, type Kit, type Role } from '../audio/kits';
-import { GEM_CUE, LEVELUP } from './config';
+import { GEM_CUE, LEVELUP, NOTE_CUE } from './config';
 import { mountTrackOverlay } from './trackoverlay';
 import { Hud } from './hud';
 import { pushDamageFeedback } from './damage-feedback';
@@ -469,6 +469,9 @@ export async function bootGame(
     onGemCollected(_xp: number, levelProgress: number): void {
       engine.playGemCue({ ...GEM_CUE, levelProgress });
     },
+    onNoteCollected(): void {
+      engine.playNoteCue({ ...NOTE_CUE });
+    },
     onStageMagnet(result: VacuumResult): void {
       engine.playStageMagnetCue();
       const total = result.gems + result.notes;
@@ -516,6 +519,9 @@ export async function bootGame(
     },
     onGemCollected(_xp: number, levelProgress: number): void {
       engine.playGemCue({ ...GEM_CUE, levelProgress });
+    },
+    onNoteCollected(): void {
+      engine.playNoteCue({ ...NOTE_CUE });
     },
     onStageMagnet(result: VacuumResult): void {
       engine.playStageMagnetCue();
@@ -961,6 +967,80 @@ export async function bootGame(
   tsSlider.addEventListener('change', () => tsSlider.blur()); // keys back to game
   setTimeScale(1); // paint the initial readout ("speed 1.00x")
   syncTimeScaleControl(); // start disabled until a run or sandbox begins
+
+  // Note-cue prototype controls: a timbre dropdown and a volume slider, both
+  // writing straight into NOTE_CUE so the next pickup uses them. Choices
+  // persist across reloads — comparing two candidates means playing a real run
+  // with each, and losing the setting on every refresh makes that miserable.
+  // Both audition the cue on change so the difference is audible without
+  // walking over a note. All of this leaves when the timbre is decided (see
+  // NOTE_CUE in config.ts); the ladder motion is already decided and is
+  // deliberately NOT a knob.
+  const NOTE_TIMBRE_KEY = 'loop.notecue.timbre';
+  const NOTE_GAIN_KEY = 'loop.notecue.gain';
+  const storedTimbre = localStorage.getItem(NOTE_TIMBRE_KEY) as PickupTimbre | null;
+  if (storedTimbre && PICKUP_TIMBRES.includes(storedTimbre)) NOTE_CUE.timbre = storedTimbre;
+  // Read the raw string first: Number(null) is 0, so parsing unconditionally
+  // would start every fresh browser silent instead of at the config default.
+  const storedGain = localStorage.getItem(NOTE_GAIN_KEY);
+  if (storedGain !== null) {
+    const value = Number(storedGain);
+    if (Number.isFinite(value) && value >= 0) NOTE_CUE.gain = value;
+  }
+
+  /** Audition the current settings. minGapS 0 so a fast drag is not throttled
+   *  into silence; the ladder still climbs, which is the point of hearing it. */
+  const auditionNoteCue = (): void => {
+    engine.playNoteCue({ ...NOTE_CUE, minGapS: 0 });
+  };
+
+  const noteTimbre = document.createElement('label');
+  noteTimbre.className = 'ts-control';
+  const noteTimbreLabel = document.createElement('span');
+  noteTimbreLabel.className = 'ts-label';
+  noteTimbreLabel.textContent = 'note';
+  const noteSelect = document.createElement('select');
+  for (const value of PICKUP_TIMBRES) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = value;
+    noteSelect.appendChild(option);
+  }
+  noteSelect.value = NOTE_CUE.timbre;
+  noteTimbre.append(noteTimbreLabel, noteSelect);
+  hud.appendDebug(noteTimbre);
+  noteSelect.addEventListener('change', () => {
+    NOTE_CUE.timbre = noteSelect.value as PickupTimbre;
+    localStorage.setItem(NOTE_TIMBRE_KEY, NOTE_CUE.timbre);
+    auditionNoteCue();
+    noteSelect.blur(); // keys back to the game
+  });
+
+  const noteVol = document.createElement('label');
+  noteVol.className = 'ts-control';
+  const noteVolLabel = document.createElement('span');
+  noteVolLabel.className = 'ts-label';
+  const noteVolSlider = document.createElement('input');
+  noteVolSlider.type = 'range';
+  noteVolSlider.min = '0';
+  noteVolSlider.max = '1.5';
+  noteVolSlider.step = '0.05';
+  noteVolSlider.value = String(NOTE_CUE.gain);
+  noteVol.append(noteVolLabel, noteVolSlider);
+  hud.appendDebug(noteVol);
+  const paintNoteVol = (): void => {
+    noteVolLabel.textContent = `note vol ${NOTE_CUE.gain.toFixed(2)}`;
+  };
+  noteVolSlider.addEventListener('input', () => {
+    NOTE_CUE.gain = Number(noteVolSlider.value);
+    localStorage.setItem(NOTE_GAIN_KEY, String(NOTE_CUE.gain));
+    paintNoteVol();
+    // Dragging fires these fast enough to count as a flurry, which is what
+    // opens the stereo width up — so the slider auditions the panning too.
+    auditionNoteCue();
+  });
+  noteVolSlider.addEventListener('change', () => noteVolSlider.blur());
+  paintNoteVol();
 
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Escape') {

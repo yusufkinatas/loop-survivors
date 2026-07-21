@@ -16,15 +16,18 @@ import {
 } from './audio-sets';
 import {
   GemCue,
+  NoteCue,
   playGameOverCue,
   playHealthPickupCue,
   playHitCue,
   playLevelCue,
   playStageMagnetCue,
   type GemCueOptions,
+  type NoteCueOptions,
 } from './cues/index';
 
-export type { GemCueOptions };
+export type { GemCueOptions, NoteCueOptions };
+export { PICKUP_TIMBRES, type PickupTimbre } from './cues/index';
 
 interface VoiceHit {
   src: AudioBufferSourceNode;
@@ -191,6 +194,7 @@ export class MusicEngine {
   private stepMarkers: { step: number; time: number }[] = [];
   private lastDueStep = 0;
   private readonly gemCue = new GemCue();
+  private readonly noteCue = new NoteCue();
 
   constructor(
     ctx: AudioContext,
@@ -377,6 +381,11 @@ export class MusicEngine {
   playGemCue(opts: GemCueOptions): void {
     if (this.masterTarget <= 0) return; // muted
     this.gemCue.play(this.ctx, this.master, opts);
+  }
+
+  playNoteCue(opts: NoteCueOptions): void {
+    if (this.masterTarget <= 0) return; // muted
+    this.noteCue.play(this.ctx, this.master, opts);
   }
 
   playHealthPickupCue(): void {
