@@ -17,13 +17,54 @@ export const RUN = {
   magnetRadius: 53,
   pickupRadius: 16,
   gemPullSpeed: 420,
-  maxGems: 400,
+  maxGems: 10000,
   /** Currency pickups merge into an overflow note above this visual cap. */
-  maxMusicNotes: 180,
+  maxMusicNotes: 10000,
   /** Live projectile ceiling; the oldest shot is evicted past it. Double Take
    * multiplies six weapons' spawn rate at once, so this guards the late tour. */
-  maxProjectiles: 600,
+  maxProjectiles: 5000,
 };
+
+/** XP gem pickup sound. Chosen by ear against four other candidates and three
+ *  other pitch behaviours; audio/cues/gem.ts holds the synthesis and
+ *  explains the pitch and stereo reasoning.
+ *
+ *  `minGapS` is the reason this is a config block at all: gems arrive in
+ *  bursts, and a Stage Magnet delivers the entire map at once. At 60 ms the
+ *  cue tops out around 16 a second — dense enough to feel continuous, sparse
+ *  enough that the limiter is not the thing shaping it. Same reasoning as
+ *  DAMAGE_FEEDBACK.iframesS bounding the hit cue. */
+export const GEM_CUE = {
+  /** Scales the cue's envelope peaks. 0 silences it. Runs hot on purpose: the
+   *  cue is two short square-wave notes with no sustain, so it needs the level
+   *  to read over a full band without lengthening and turning into mud. */
+  gain: 1.5,
+  /** Stereo width. Consecutive pickups alternate ears, so vacuuming a big
+   *  floor sweeps across the field rather than chattering in the centre.
+   *  Fades toward mono for isolated pickups — a lone gem jumping to one ear
+   *  reads as a bug. 0 is mono. */
+  spread: 0.7,
+  /** Minimum seconds between cues; extras are dropped, not queued. */
+  minGapS: 0.06,
+} as const;
+
+/** Music-note pickup sound: a bell whose pitch climbs one scale step per note
+ *  and falls back to the root once you stop collecting. Chosen by ear against
+ *  four other candidates; audio/cues/note.ts holds the synthesis and explains
+ *  why the ladder differs from the gem cue's XP-bar climb.
+ *
+ *  Same `minGapS` reasoning as GEM_CUE: notes arrive in bursts and a Stage
+ *  Magnet delivers the whole map at once. */
+export const NOTE_CUE = {
+  /** Deliberately well under GEM_CUE.gain. A note is rarer than a gem and
+   *  worth less noise; this sits under the track, not on top of it. */
+  gain: 0.7,
+  /** Stereo width, matching the gem cue so a mixed vacuum sweeps as one
+   *  effect rather than two competing ones. 0 is mono. */
+  spread: 0.7,
+  /** Minimum seconds between cues; extras are dropped, not queued. */
+  minGapS: 0.06,
+} as const;
 
 /** How large a build may grow. Two flat counts and nothing else: no typed
  * positions, no rosters, no rule that owning one weapon retires another. Every

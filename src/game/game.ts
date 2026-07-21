@@ -6,7 +6,7 @@ import { Application } from 'pixi.js';
 import type { MusicEngine } from '../audio/engine';
 import { SOUNDSET } from '../audio/soundset';
 import { ROLE_COLORS, ROLES, type Kit, type Role } from '../audio/kits';
-import { CHEST, chestTickTimes, LEVELUP } from './config';
+import { CHEST, chestTickTimes, GEM_CUE, LEVELUP, NOTE_CUE } from './config';
 import { mountTrackOverlay } from './trackoverlay';
 import { Hud } from './hud';
 import { pushDamageFeedback } from './damage-feedback';
@@ -754,6 +754,12 @@ export async function bootGame(
       pendingChests.push({ x: chest.x, y: chest.y, index: meta.state.lifetimeChests + world.chestsOpened - 1 });
       tryStartChestCeremony();
     },
+    onGemCollected(_xp: number, levelProgress: number): void {
+      engine.playGemCue({ ...GEM_CUE, levelProgress });
+    },
+    onNoteCollected(): void {
+      engine.playNoteCue({ ...NOTE_CUE });
+    },
     onStageMagnet(result: VacuumResult): void {
       engine.playStageMagnetCue();
       const total = result.gems + result.notes;
@@ -792,6 +798,12 @@ export async function bootGame(
       // the chest carries a pinned size from a ×1/×3/×5 button.
       pendingChests.push({ x: chest.x, y: chest.y, index: CHEST.openingSequence.length + world.chestsOpened, forceSize: chest.forceSize });
       tryStartChestCeremony();
+    },
+    onGemCollected(_xp: number, levelProgress: number): void {
+      engine.playGemCue({ ...GEM_CUE, levelProgress });
+    },
+    onNoteCollected(): void {
+      engine.playNoteCue({ ...NOTE_CUE });
     },
     onStageMagnet(result: VacuumResult): void {
       engine.playStageMagnetCue();
@@ -1281,6 +1293,7 @@ export async function bootGame(
   tsSlider.addEventListener('change', () => tsSlider.blur()); // keys back to game
   setTimeScale(1); // paint the initial readout ("speed 1.00x")
   syncTimeScaleControl(); // start disabled until a run or sandbox begins
+
 
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Escape') {

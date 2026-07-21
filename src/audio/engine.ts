@@ -14,6 +14,23 @@ import {
   DEFAULT_AUDIO_SET_ID,
   type AudioSetId,
 } from './audio-sets';
+import {
+  GemCue,
+  NoteCue,
+  playChestDropCue,
+  playChestLandCue,
+  playChestSpinCue,
+  playGameOverCue,
+  playHealthPickupCue,
+  playHitCue,
+  playLevelCue,
+  playPickupCue,
+  playStageMagnetCue,
+  type GemCueOptions,
+  type NoteCueOptions,
+} from './cues/index';
+
+export type { GemCueOptions, NoteCueOptions };
 
 interface VoiceHit {
   src: AudioBufferSourceNode;
@@ -179,6 +196,8 @@ export class MusicEngine {
   private nextTimedActionSeq = 0;
   private stepMarkers: { step: number; time: number }[] = [];
   private lastDueStep = 0;
+  private readonly gemCue = new GemCue();
+  private readonly noteCue = new NoteCue();
 
   constructor(
     ctx: AudioContext,
@@ -342,583 +361,64 @@ export class MusicEngine {
     g.linearRampToValueAtTime(1, now + Math.max(0.02, rampS));
   }
 
-  /** A short, bright "level up" chime — a quick ascending major sparkle.
-   *  Rides master (respects mute) on its own gain, bypassing the weapons bus
-   *  so the level-up dip never swallows it. Purely cosmetic. */
+  /** One-shot cues. Each is synthesised in `cues/`; what stays here is the
+   *  policy every cue shares — respect mute, and land on master rather than
+   *  the weapons bus so no duck can swallow the feedback. Game tuning arrives
+   *  as arguments; the engine holds none of its own. */
+
   playLevelCue(): void {
     if (this.masterTarget <= 0) return; // muted
-    const now = this.ctx.currentTime;
-    const out = this.ctx.createGain();
-    out.gain.value = 1;
-    const lp = this.ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.value = 5200;
-    out.connect(lp).connect(this.master);
-    // C6 major triad up to C7: a classic pickup sparkle, arpeggiated fast.
-    const notes = [1046.5, 1318.5, 1568.0, 2093.0];
-    for (let i = 0; i < notes.length; i++) {
-      const t0 = now + i * 0.045;
-      const osc = this.ctx.createOscillator();
-      osc.type = 'triangle';
-      osc.frequency.value = notes[i];
-      const env = this.ctx.createGain();
-      const peak = 0.16 * (1 - i * 0.12);
-      env.gain.setValueAtTime(0.0001, t0);
-      env.gain.exponentialRampToValueAtTime(peak, t0 + 0.008);
-      env.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.38);
-      osc.connect(env).connect(out);
-      osc.start(t0);
-      osc.stop(t0 + 0.42);
-    }
+    playLevelCue(this.ctx, this.master);
   }
 
-  /** Player took damage: one short, dark impact, and a dip of the whole
-   *  weapons bus underneath it so the thud lands in a hole it made itself.
-   *
-   *  Two layers, both deliberately un-musical — this is the one moment the game
-   *  is NOT making a track, and it should not sound like a voice joining the
-   *  build. A noise crack (the contact) over a body tone that falls off a
-   *  cliff, roughly 180 Hz down to 50 Hz in a tenth of a second. The fall is
-   *  what reads as "bad": pitch dropping fast is the shape of something going
-   *  wrong. It rides master like the other cues, so mute is respected and
-   *  neither its own duck nor a level-up duck can swallow it.
-   *
-   *  `duckDepth`/`duckHoldS` come from DAMAGE_FEEDBACK — the engine holds no
-   *  game tuning of its own. The two envelope peaks below (body, then noise)
-   *  are the loudness knobs, and they are deliberately hot: the body sits near
-   *  unity, well into the master limiter. That is the ceiling — pushing them
-   *  much further buys compression, not volume, and the limiter's 0.12s release
-   *  means an over-hot cue pumps the whole track down after every hit. If it
-   *  still needs to feel bigger, lower `hitDuckDepth` in config.ts so there is
-   *  more room underneath, or lengthen the body's fall; do not just raise these. */
   playHitCue(duckDepth: number, duckHoldS: number): void {
     if (this.masterTarget <= 0) return; // muted
-    const now = this.ctx.currentTime;
-    const out = this.ctx.createGain();
-    out.gain.value = 1;
-    out.connect(this.master);
-
-    // The dip. Fast in (the flinch), slower out (the recovery), and always
-    // ramping back to unity so repeated hits cannot stack the bus toward
-    // silence.
-    const g = this.hitDuck.gain;
-    const depth = Math.max(0, Math.min(1, duckDepth));
-    const hold = Math.max(0.05, duckHoldS);
-    g.cancelScheduledValues(now);
-    g.setValueAtTime(g.value, now);
-    g.linearRampToValueAtTime(depth, now + 0.02);
-    g.linearRampToValueAtTime(1, now + hold);
-
-    // Layer 1: the contact crack — a very short lowpassed noise burst.
-    const burstS = 0.09;
-    const noiseBuffer = this.ctx.createBuffer(
-      1,
-      Math.ceil(this.ctx.sampleRate * burstS),
-      this.ctx.sampleRate,
-    );
-    const samples = noiseBuffer.getChannelData(0);
-    for (let i = 0; i < samples.length; i++) {
-      const fade = 1 - i / samples.length;
-      samples[i] = (Math.random() * 2 - 1) * fade * fade;
-    }
-    const noise = this.ctx.createBufferSource();
-    noise.buffer = noiseBuffer;
-    const lp = this.ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.setValueAtTime(1800, now);
-    lp.frequency.exponentialRampToValueAtTime(320, now + burstS);
-    const noiseEnv = this.ctx.createGain();
-    noiseEnv.gain.setValueAtTime(0.45, now);
-    noiseEnv.gain.exponentialRampToValueAtTime(0.0001, now + burstS);
-    noise.connect(lp).connect(noiseEnv).connect(out);
-    noise.start(now);
-    noise.stop(now + burstS);
-
-    // Layer 2: the body — a falling low tone, the part you feel.
-    const body = this.ctx.createOscillator();
-    body.type = 'triangle';
-    body.frequency.setValueAtTime(180, now);
-    body.frequency.exponentialRampToValueAtTime(50, now + 0.1);
-    const bodyEnv = this.ctx.createGain();
-    bodyEnv.gain.setValueAtTime(0.0001, now);
-    bodyEnv.gain.exponentialRampToValueAtTime(0.85, now + 0.006);
-    bodyEnv.gain.exponentialRampToValueAtTime(0.0001, now + 0.24);
-    body.connect(bodyEnv).connect(out);
-    body.start(now);
-    body.stop(now + 0.26);
+    playHitCue(this.ctx, this.master, this.hitDuck.gain, duckDepth, duckHoldS);
   }
 
-  /** Stage Magnet pickup: one short suction sweep and two confirmation clicks.
-   * It rides the master like the level cue, so mute is respected and a
-   * level-up weapons duck cannot swallow the feedback. */
   playStageMagnetCue(): void {
-    if (this.masterTarget <= 0) return;
-    const now = this.ctx.currentTime;
-    const out = this.ctx.createGain();
-    out.gain.value = 1;
-    out.connect(this.master);
-
-    const duration = 0.46;
-    const noiseBuffer = this.ctx.createBuffer(
-      1,
-      Math.ceil(this.ctx.sampleRate * duration),
-      this.ctx.sampleRate,
-    );
-    const samples = noiseBuffer.getChannelData(0);
-    for (let i = 0; i < samples.length; i++) {
-      const fade = 1 - i / samples.length;
-      samples[i] = (Math.random() * 2 - 1) * fade;
-    }
-    const noise = this.ctx.createBufferSource();
-    noise.buffer = noiseBuffer;
-    const sweep = this.ctx.createBiquadFilter();
-    sweep.type = 'bandpass';
-    sweep.Q.value = 0.8;
-    sweep.frequency.setValueAtTime(420, now);
-    sweep.frequency.exponentialRampToValueAtTime(3600, now + duration);
-    const noiseEnv = this.ctx.createGain();
-    noiseEnv.gain.setValueAtTime(0.0001, now);
-    noiseEnv.gain.exponentialRampToValueAtTime(0.13, now + 0.035);
-    noiseEnv.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-    noise.connect(sweep).connect(noiseEnv).connect(out);
-    noise.start(now);
-    noise.stop(now + duration);
-
-    const lift = this.ctx.createOscillator();
-    lift.type = 'triangle';
-    lift.frequency.setValueAtTime(150, now);
-    lift.frequency.exponentialRampToValueAtTime(760, now + 0.38);
-    const liftEnv = this.ctx.createGain();
-    liftEnv.gain.setValueAtTime(0.0001, now);
-    liftEnv.gain.exponentialRampToValueAtTime(0.08, now + 0.025);
-    liftEnv.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
-    lift.connect(liftEnv).connect(out);
-    lift.start(now);
-    lift.stop(now + 0.44);
-
-    for (let i = 0; i < 2; i++) {
-      const t0 = now + 0.33 + i * 0.065;
-      const click = this.ctx.createOscillator();
-      click.type = 'square';
-      click.frequency.value = i === 0 ? 1568 : 2093;
-      const clickEnv = this.ctx.createGain();
-      clickEnv.gain.setValueAtTime(0.0001, t0);
-      clickEnv.gain.exponentialRampToValueAtTime(0.045, t0 + 0.004);
-      clickEnv.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.055);
-      click.connect(clickEnv).connect(out);
-      click.start(t0);
-      click.stop(t0 + 0.06);
-    }
+    if (this.masterTarget <= 0) return; // muted
+    playStageMagnetCue(this.ctx, this.master);
   }
 
-  /** Chest reel spin: the slot-machine anticipation ramp. One short blip per
-   *  reel tick, climbing the run's own A minor pentatonic — each tick a step
-   *  higher while the ticks themselves slow down (the wheel decelerating), so
-   *  pitch rises as time stretches: the classic "what will it be" shape. A
-   *  fixed-pitch clack under every blip keeps it mechanical, and a quiet
-   *  bandpass noise riser holds tension under the whole spin.
-   *
-   *  `tickTimes` comes from chestTickTimes() in game config — the SAME schedule
-   *  the visual reel consumes, so every audible click has a visible frame pop.
-   *  Rides master like the other cues: mute respected, ducks can't swallow it. */
+  playGemCue(opts: GemCueOptions): void {
+    if (this.masterTarget <= 0) return; // muted
+    this.gemCue.play(this.ctx, this.master, opts);
+  }
+
+  playNoteCue(opts: NoteCueOptions): void {
+    if (this.masterTarget <= 0) return; // muted
+    this.noteCue.play(this.ctx, this.master, opts);
+  }
+
   playChestSpinCue(tickTimes: number[]): void {
     if (this.masterTarget <= 0) return; // muted
-    if (tickTimes.length === 0) return;
-    const now = this.ctx.currentTime;
-    const out = this.ctx.createGain();
-    out.gain.value = 1;
-    const lp = this.ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.value = 6200;
-    out.connect(lp).connect(this.master);
-
-    // Tension bed: a soft noise swell rising with the spin, cut at the stop.
-    const spinS = tickTimes[tickTimes.length - 1];
-    const noiseBuffer = this.ctx.createBuffer(
-      1,
-      Math.ceil(this.ctx.sampleRate * spinS),
-      this.ctx.sampleRate,
-    );
-    const samples = noiseBuffer.getChannelData(0);
-    for (let i = 0; i < samples.length; i++) samples[i] = Math.random() * 2 - 1;
-    const noise = this.ctx.createBufferSource();
-    noise.buffer = noiseBuffer;
-    const sweep = this.ctx.createBiquadFilter();
-    sweep.type = 'bandpass';
-    sweep.Q.value = 1.1;
-    sweep.frequency.setValueAtTime(340, now);
-    sweep.frequency.exponentialRampToValueAtTime(2600, now + spinS);
-    const noiseEnv = this.ctx.createGain();
-    noiseEnv.gain.setValueAtTime(0.0001, now);
-    noiseEnv.gain.exponentialRampToValueAtTime(0.05, now + spinS * 0.85);
-    noiseEnv.gain.exponentialRampToValueAtTime(0.0001, now + spinS);
-    noise.connect(sweep).connect(noiseEnv).connect(out);
-    noise.start(now);
-    noise.stop(now + spinS);
-
-    // The ticks: A minor pentatonic from A4 upward, one degree per tick.
-    const pentatonic = [0, 3, 5, 7, 10];
-    for (let i = 0; i < tickTimes.length; i++) {
-      const t0 = now + tickTimes[i];
-      const semis = pentatonic[i % 5] + 12 * Math.floor(i / 5);
-      const blip = this.ctx.createOscillator();
-      blip.type = 'triangle';
-      blip.frequency.value = 440 * Math.pow(2, semis / 12);
-      const blipEnv = this.ctx.createGain();
-      const peak = 0.05 + i * 0.005; // each tick slightly hotter: the ramp
-      blipEnv.gain.setValueAtTime(0.0001, t0);
-      blipEnv.gain.exponentialRampToValueAtTime(peak, t0 + 0.006);
-      blipEnv.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.1);
-      blip.connect(blipEnv).connect(out);
-      blip.start(t0);
-      blip.stop(t0 + 0.12);
-
-      const clack = this.ctx.createOscillator();
-      clack.type = 'square';
-      clack.frequency.value = 1397;
-      const clackEnv = this.ctx.createGain();
-      clackEnv.gain.setValueAtTime(0.0001, t0);
-      clackEnv.gain.exponentialRampToValueAtTime(0.02, t0 + 0.003);
-      clackEnv.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.03);
-      clack.connect(clackEnv).connect(out);
-      clack.start(t0);
-      clack.stop(t0 + 0.04);
-    }
+    playChestSpinCue(this.ctx, this.master, tickTimes);
   }
 
-  /** Chest reel stop: the payout stab, sized to the prize. A chord stab —
-   *  several notes hit together as one punchy block — built from the track's
-   *  home chord (A minor, like the game-over cue: this is an event inside the
-   *  track and should sound like the track winning).
-   *
-   *  size 1: a tidy three-note stab. A weapon leveled — nice.
-   *  size 2: the stab plus an octave and a quick ascending sparkle.
-   *  size 3: the jackpot — a five-note wall with a sub thump, a longer sparkle
-   *          run, and a bright noise shimmer tail. The release after the ramp. */
   playChestLandCue(size: 1 | 2 | 3): void {
     if (this.masterTarget <= 0) return; // muted
-    const now = this.ctx.currentTime;
-    const out = this.ctx.createGain();
-    out.gain.value = 1;
-    const lp = this.ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.value = 6800;
-    out.connect(lp).connect(this.master);
-
-    // A minor block chord, growing downward and upward with the prize.
-    const chord =
-      size === 1 ? [440, 523.25, 659.25]
-      : size === 2 ? [440, 523.25, 659.25, 880]
-      : [220, 440, 523.25, 659.25, 880];
-    const decayS = size === 1 ? 0.5 : size === 2 ? 0.75 : 1.15;
-    for (const freq of chord) {
-      const osc = this.ctx.createOscillator();
-      osc.type = 'triangle';
-      osc.frequency.value = freq;
-      const env = this.ctx.createGain();
-      env.gain.setValueAtTime(0.0001, now);
-      env.gain.exponentialRampToValueAtTime(0.14, now + 0.008);
-      env.gain.exponentialRampToValueAtTime(0.0001, now + decayS);
-      osc.connect(env).connect(out);
-      osc.start(now);
-      osc.stop(now + decayS + 0.05);
-    }
-
-    if (size >= 2) {
-      // Ascending pentatonic sparkle riding over the stab.
-      const run = size === 2 ? [1046.5, 1318.5, 1760] : [880, 1046.5, 1318.5, 1760, 2093, 2637];
-      for (let i = 0; i < run.length; i++) {
-        const t0 = now + 0.05 + i * 0.055;
-        const osc = this.ctx.createOscillator();
-        osc.type = 'triangle';
-        osc.frequency.value = run[i];
-        const env = this.ctx.createGain();
-        env.gain.setValueAtTime(0.0001, t0);
-        env.gain.exponentialRampToValueAtTime(0.08, t0 + 0.006);
-        env.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.32);
-        osc.connect(env).connect(out);
-        osc.start(t0);
-        osc.stop(t0 + 0.36);
-      }
-    }
-
-    if (size === 3) {
-      // The jackpot floor: a sub thump you feel more than hear...
-      const sub = this.ctx.createOscillator();
-      sub.type = 'sine';
-      sub.frequency.setValueAtTime(110, now);
-      sub.frequency.exponentialRampToValueAtTime(55, now + 0.16);
-      const subEnv = this.ctx.createGain();
-      subEnv.gain.setValueAtTime(0.0001, now);
-      subEnv.gain.exponentialRampToValueAtTime(0.5, now + 0.01);
-      subEnv.gain.exponentialRampToValueAtTime(0.0001, now + 0.4);
-      sub.connect(subEnv).connect(out);
-      sub.start(now);
-      sub.stop(now + 0.42);
-      // ...and a bright shimmer tail over the top.
-      const shimmerS = 0.8;
-      const shimmerBuffer = this.ctx.createBuffer(
-        1,
-        Math.ceil(this.ctx.sampleRate * shimmerS),
-        this.ctx.sampleRate,
-      );
-      const shimmerSamples = shimmerBuffer.getChannelData(0);
-      for (let i = 0; i < shimmerSamples.length; i++) {
-        const fade = 1 - i / shimmerSamples.length;
-        shimmerSamples[i] = (Math.random() * 2 - 1) * fade * fade;
-      }
-      const shimmer = this.ctx.createBufferSource();
-      shimmer.buffer = shimmerBuffer;
-      const hp = this.ctx.createBiquadFilter();
-      hp.type = 'highpass';
-      hp.frequency.value = 5200;
-      const shimmerEnv = this.ctx.createGain();
-      shimmerEnv.gain.setValueAtTime(0.06, now);
-      shimmerEnv.gain.exponentialRampToValueAtTime(0.0001, now + shimmerS);
-      shimmer.connect(hp).connect(shimmerEnv).connect(out);
-      shimmer.start(now);
-      shimmer.stop(now + shimmerS);
-    }
+    playChestLandCue(this.ctx, this.master, size);
   }
 
-  /** A chest reward thudding onto the boards: a kick-like punch under a short
-   *  knock. Pitched a pentatonic step higher per `index`, so a jackpot's five
-   *  drops land as a rising bam-bam-bam-bam-bam run instead of five copies of
-   *  the same thud. */
   playChestDropCue(index = 0): void {
     if (this.masterTarget <= 0) return; // muted
-    const now = this.ctx.currentTime;
-    const out = this.ctx.createGain();
-    out.gain.value = 1;
-    out.connect(this.master);
-
-    const pentatonic = [0, 3, 5, 7, 10];
-    const lift = Math.pow(2, pentatonic[index % 5] / 12);
-
-    // The punch: a falling sine body, the part you feel.
-    const body = this.ctx.createOscillator();
-    body.type = 'sine';
-    body.frequency.setValueAtTime(175 * lift, now);
-    body.frequency.exponentialRampToValueAtTime(58 * lift, now + 0.09);
-    const bodyEnv = this.ctx.createGain();
-    bodyEnv.gain.setValueAtTime(0.0001, now);
-    bodyEnv.gain.exponentialRampToValueAtTime(0.55, now + 0.005);
-    bodyEnv.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
-    body.connect(bodyEnv).connect(out);
-    body.start(now);
-    body.stop(now + 0.24);
-
-    // The knock: a very short lowpassed noise tap on top.
-    const knockS = 0.06;
-    const noiseBuffer = this.ctx.createBuffer(
-      1,
-      Math.ceil(this.ctx.sampleRate * knockS),
-      this.ctx.sampleRate,
-    );
-    const samples = noiseBuffer.getChannelData(0);
-    for (let i = 0; i < samples.length; i++) {
-      const fade = 1 - i / samples.length;
-      samples[i] = (Math.random() * 2 - 1) * fade * fade;
-    }
-    const noise = this.ctx.createBufferSource();
-    noise.buffer = noiseBuffer;
-    const lp = this.ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.value = 1100;
-    const noiseEnv = this.ctx.createGain();
-    noiseEnv.gain.setValueAtTime(0.16, now);
-    noiseEnv.gain.exponentialRampToValueAtTime(0.0001, now + knockS);
-    noise.connect(lp).connect(noiseEnv).connect(out);
-    noise.start(now);
-    noise.stop(now + knockS);
+    playChestDropCue(this.ctx, this.master, index);
   }
 
-  /** Walking onto a ground reward: a tiny two-note "got it" chirp. `step`
-   *  climbs it up the pentatonic while the player keeps scooping (a chest's
-   *  scattered payout reads as one rising run), resetting after a beat —
-   *  the shell owns that timer and passes the step in. */
   playPickupCue(step = 0): void {
     if (this.masterTarget <= 0) return; // muted
-    const now = this.ctx.currentTime;
-    const out = this.ctx.createGain();
-    out.gain.value = 1;
-    const lp = this.ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.value = 6400;
-    out.connect(lp).connect(this.master);
-
-    const pentatonic = [0, 3, 5, 7, 10];
-    const lift = Math.pow(2, (pentatonic[step % 5] + 12 * Math.floor(step / 5)) / 12);
-    // E6 up to A6 (then higher with the combo): quick, bright, out of the way.
-    const notes = [1318.5 * lift, 1760 * lift];
-    for (let i = 0; i < notes.length; i++) {
-      const t0 = now + i * 0.055;
-      const osc = this.ctx.createOscillator();
-      osc.type = 'triangle';
-      osc.frequency.value = notes[i];
-      const env = this.ctx.createGain();
-      env.gain.setValueAtTime(0.0001, t0);
-      env.gain.exponentialRampToValueAtTime(0.1 + i * 0.03, t0 + 0.006);
-      env.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.22);
-      osc.connect(env).connect(out);
-      osc.start(t0);
-      osc.stop(t0 + 0.25);
-    }
+    playPickupCue(this.ctx, this.master, step);
   }
 
-  /** Health pickup: a short warm rise that resolves home.
-   *
-   *  Deliberately built as the hit cue's mirror image. That one is un-musical
-   *  and *falls* — 180 Hz down to 50 in a tenth of a second — because pitch
-   *  dropping fast is the shape of something going wrong. So healing rises,
-   *  and it rises through the run's own material rather than against it:
-   *  A4 to E5 to A5, root up to the fifth and home again (the A minor
-   *  skeleton in scale.ts). A perfect fifth resolving back to the root is
-   *  about the most settled-sounding move there is — that "closed, nothing
-   *  left hanging" quality is the point, because the player just went from
-   *  hurt to safe.
-   *
-   *  Sine waves, and each note fades *in* over ~25ms instead of clicking on.
-   *  Every other cue here starts with a sharp attack because they are all
-   *  events that interrupt; this one is the one moment of relief, so it should
-   *  arrive rather than hit. Underneath, a soft A3 pad swells and decays for
-   *  the whole cue — the warmth, the part that says the floor is back.
-   *
-   *  Quiet on purpose (peaks well under the level cue's). A health drop is
-   *  common enough that a loud cue would nag, and this needs to sit inside the
-   *  track, not on top of it. Rides master like the other cues, so mute is
-   *  respected and a level-up or hit duck cannot swallow it. */
   playHealthPickupCue(): void {
     if (this.masterTarget <= 0) return; // muted
-    const now = this.ctx.currentTime;
-    const out = this.ctx.createGain();
-    out.gain.value = 1;
-    // Gentle top end: this is the warm cue, it should not sparkle.
-    const lp = this.ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.value = 3200;
-    out.connect(lp).connect(this.master);
-
-    // Layer 1: the rise. A4 -> E5 -> A5, root to fifth to root.
-    const notes = [440.0, 659.25, 880.0];
-    for (let i = 0; i < notes.length; i++) {
-      const t0 = now + i * 0.075;
-      const osc = this.ctx.createOscillator();
-      osc.type = 'sine';
-      osc.frequency.value = notes[i];
-      const env = this.ctx.createGain();
-      // Slow-ish attack: it arrives, it does not click on.
-      env.gain.setValueAtTime(0.0001, t0);
-      env.gain.exponentialRampToValueAtTime(0.11, t0 + 0.025);
-      env.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.34);
-      osc.connect(env).connect(out);
-      osc.start(t0);
-      osc.stop(t0 + 0.36);
-    }
-
-    // Layer 2: the warmth underneath — the root an octave down, swelling
-    // under the rise and outlasting it slightly so the cue exhales.
-    const pad = this.ctx.createOscillator();
-    pad.type = 'triangle';
-    pad.frequency.value = 220.0; // A3, the skeleton's root
-    const padEnv = this.ctx.createGain();
-    padEnv.gain.setValueAtTime(0.0001, now);
-    padEnv.gain.exponentialRampToValueAtTime(0.07, now + 0.09);
-    padEnv.gain.exponentialRampToValueAtTime(0.0001, now + 0.62);
-    pad.connect(padEnv).connect(out);
-    pad.start(now);
-    pad.stop(now + 0.64);
+    playHealthPickupCue(this.ctx, this.master);
   }
 
-  /** The run is over: the track sags and dies.
-   *
-   *  Every other cue in here is an event *inside* a track. This one is the
-   *  track itself failing, so it is built out of the track's own material
-   *  rather than against it: an A minor triad (A-C-E, the three notes of the
-   *  skeleton's home chord — see scale.ts, root A) played as one sustained
-   *  block, which is the last thing the build ever plays.
-   *
-   *  What makes it read as death is that the chord *sags*. All three notes
-   *  bend a semitone flat over their life while a lowpass filter closes from
-   *  bright to muffled — the sound producers call a tape stop: a machine
-   *  losing power, pitch and brightness draining out together. A build that
-   *  was in tune for the whole run goes out of tune exactly once, at the end.
-   *
-   *  Underneath it, a sub drop (110 Hz falling to near-inaudible) supplies the
-   *  weight of the floor going out, and a slow noise wash is the empty room
-   *  left behind. It starts 0.1s late on purpose: the killing blow's hit cue
-   *  fires first (run.ts calls onHit before onDeath), so the thud lands, and
-   *  then the collapse begins underneath it rather than on top of it.
-   *
-   *  Rides master like the other cues, so mute is respected and it survives
-   *  `clock.stop()` — the music cuts, this rings out over the silence. */
   playGameOverCue(): void {
     if (this.masterTarget <= 0) return; // muted
-    const start = this.ctx.currentTime + 0.1; // let the killing blow land first
-    const out = this.ctx.createGain();
-    out.gain.value = 1;
-    // The brightness draining away: bright at the moment of death, muffled by
-    // the time the chord has finished sagging.
-    const lp = this.ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.setValueAtTime(2400, start);
-    lp.frequency.exponentialRampToValueAtTime(360, start + 1.3);
-    out.connect(lp).connect(this.master);
-
-    // Layer 1: the home chord, sagging. A2-C3-E3, each bent a semitone flat.
-    const chordS = 1.7;
-    for (const hz of [110, 130.81, 164.81]) {
-      const osc = this.ctx.createOscillator();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(hz, start);
-      osc.frequency.exponentialRampToValueAtTime(hz * 0.944, start + 1.4);
-      const env = this.ctx.createGain();
-      env.gain.setValueAtTime(0.0001, start);
-      env.gain.exponentialRampToValueAtTime(0.11, start + 0.05);
-      env.gain.exponentialRampToValueAtTime(0.0001, start + chordS);
-      osc.connect(env).connect(out);
-      osc.start(start);
-      osc.stop(start + chordS + 0.02);
-    }
-
-    // Layer 2: the floor going out from under it.
-    const sub = this.ctx.createOscillator();
-    sub.type = 'sine';
-    sub.frequency.setValueAtTime(110, start);
-    sub.frequency.exponentialRampToValueAtTime(28, start + 0.9);
-    const subEnv = this.ctx.createGain();
-    subEnv.gain.setValueAtTime(0.0001, start);
-    subEnv.gain.exponentialRampToValueAtTime(0.5, start + 0.02);
-    subEnv.gain.exponentialRampToValueAtTime(0.0001, start + 1.1);
-    sub.connect(subEnv).connect(out);
-    sub.start(start);
-    sub.stop(start + 1.12);
-
-    // Layer 3: the empty room. Swells in behind the chord, outlasts it.
-    const washS = 1.9;
-    const noiseBuffer = this.ctx.createBuffer(
-      1,
-      Math.ceil(this.ctx.sampleRate * washS),
-      this.ctx.sampleRate,
-    );
-    const samples = noiseBuffer.getChannelData(0);
-    for (let i = 0; i < samples.length; i++) {
-      samples[i] = Math.random() * 2 - 1;
-    }
-    const noise = this.ctx.createBufferSource();
-    noise.buffer = noiseBuffer;
-    const band = this.ctx.createBiquadFilter();
-    band.type = 'bandpass';
-    band.Q.value = 0.7;
-    band.frequency.setValueAtTime(900, start);
-    band.frequency.exponentialRampToValueAtTime(180, start + washS);
-    const noiseEnv = this.ctx.createGain();
-    noiseEnv.gain.setValueAtTime(0.0001, start);
-    noiseEnv.gain.exponentialRampToValueAtTime(0.06, start + 0.3);
-    noiseEnv.gain.exponentialRampToValueAtTime(0.0001, start + washS);
-    noise.connect(band).connect(noiseEnv).connect(out);
-    noise.start(start);
-    noise.stop(start + washS);
+    playGameOverCue(this.ctx, this.master);
   }
 
   /** Freeze already-scheduled lookahead audio at an intentional game pause.
