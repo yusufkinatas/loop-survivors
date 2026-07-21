@@ -14,6 +14,10 @@ const HEAVY_THREATS = new Set<Enemy['kind']>([
   'werewolf',
   'bigMummy',
   'venus',
+  'giantMantis',
+  'giantWerewolf',
+  'giantMummy',
+  'giantBlueVenus',
 ]);
 
 function weightedThreat(enemy: Enemy, base: number): number {

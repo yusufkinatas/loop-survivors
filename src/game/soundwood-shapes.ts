@@ -314,18 +314,23 @@ export function enemyContext(e: Enemy, shieldOn: boolean, frame: number): Graphi
       case 'redBat2': hushMite(g, r, frame, 2); break;
       case 'zombie': hushWalker(g, r, frame, 'spool'); break;
       case 'skeleton': hushWalker(g, r, frame, 'jack'); break;
-      case 'bigMummy': hushWalker(g, r, frame, 'taped'); break;
+      // Giants share the base silhouette; sizeMul already grew `r`, and the
+      // blue Giant Snare Bloom separates itself by tint alone.
+      case 'bigMummy':
+      case 'giantMummy': hushWalker(g, r, frame, 'taped'); break;
       case 'greenMudman': hushCabinet(g, r, false, frame); break;
       case 'grayMudman': hushCabinet(g, r, true, frame); break;
       // The practice target is a cabinet with its step pinned: it never walks.
       case 'dummy': hushCabinet(g, r, false, 0); break;
       case 'ghost': hushGhost(g, r, frame); break;
       case 'flower': hushBloom(g, r, frame, false); break;
-      case 'venus': hushBloom(g, r, frame, true); break;
+      case 'venus':
+      case 'giantBlueVenus': hushBloom(g, r, frame, true); break;
       // Silver Crown is Signal Crown's silhouette; only the tint separates them.
       case 'glowingBat':
       case 'silverBat': hushCrown(g, r, frame); break;
-      case 'mantis': {
+      case 'mantis':
+      case 'giantMantis': {
         // Huge broken truss shears around a hard rectangular signal core.
         const flex = frame ? r * 0.08 : 0;
         const left = [-r * 1.5, -r * 1.05 - flex, -r * 0.3, -r * 0.28, -r * 1.42, r * 1.04 + flex, -r * 0.82, r * 1.26, 0, r * 0.32];
@@ -347,7 +352,8 @@ export function enemyContext(e: Enemy, shieldOn: boolean, frame: number): Graphi
         break;
       }
       case 'giantBat': hushWoofer(g, r, frame); break;
-      case 'werewolf': hushWolf(g, r, frame); break;
+      case 'werewolf':
+      case 'giantWerewolf': hushWolf(g, r, frame); break;
       case 'ghostSwarm': {
         // The sweep drawn with ghost bodies: one lead pane cluster plus the
         // two it is dragging behind it. makeEnemyGfx holds the whole thing at

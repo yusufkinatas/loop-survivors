@@ -298,6 +298,12 @@ export type EnemyKind =
   | 'bigMummy'
   | 'venus'
   | 'ghostSwarm'
+  // The four Giants: separate stat blocks, not promotions of the base kinds
+  // (mad-forest-spec 2d). They draw the base silhouette at 1.5x.
+  | 'giantMantis'
+  | 'giantWerewolf'
+  | 'giantMummy'
+  | 'giantBlueVenus'
   // Sandbox-only measurement prop. Never appears in a stage or endless row.
   | 'dummy';
 
@@ -307,6 +313,7 @@ export const ALL_ENEMY_KINDS: readonly EnemyKind[] = [
   'bat', 'redBat', 'redBat2', 'zombie', 'skeleton', 'ghost',
   'greenMudman', 'grayMudman', 'flower', 'glowingBat', 'mantis', 'batSwarm',
   'giantBat', 'silverBat', 'werewolf', 'bigMummy', 'venus', 'ghostSwarm',
+  'giantMantis', 'giantWerewolf', 'giantMummy', 'giantBlueVenus',
   'swarmer', 'tank', 'darter', 'splitter', 'circler', 'shielded', 'elite',
   'dummy',
 ] as const;
@@ -390,6 +397,13 @@ export const MAD_FOREST_FRAMES: Partial<Record<EnemyKind, readonly LegacyEnemyFr
   venus: [{ width: 51, height: 50 }],
   // The sweep wears the Ghost frame; the source lists no swarm-specific size.
   ghostSwarm: [{ width: 29, height: 32 }],
+  // Giants reuse their base kind's frames verbatim: the source has no separate
+  // Giant sprites, only an explicit 1.5x scale note. nextEnemyBody applies
+  // sizeMul after the source's floor(), so the radius parity holds.
+  giantMantis: [{ width: 48, height: 47 }],
+  giantWerewolf: [{ width: 32, height: 34 }],
+  giantMummy: [{ width: 37, height: 50 }],
+  giantBlueVenus: [{ width: 51, height: 50 }],
 };
 
 const BAT_SWARM_RADII = MAD_FOREST_FRAMES.batSwarm!.map(
@@ -566,6 +580,64 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
     fixedDirection: true,
     knockback: 1,
   },
+  /** The four Giants (mad-forest-spec 2d). Distinct stat blocks, not scaled
+   *  copies: their numbers do not derive from the base kind by any multiplier.
+   *  The low base HP is the point — HP×Level is what makes them durable, and
+   *  they are only ever authored as spawnClass 'boss' rows. Freeze resistance
+   *  is not mirrored (this game has no freeze). */
+  giantMantis: {
+    radius: legacyEnemyRadius(48),
+    speed: 160 * ENEMY_SPEED_UNIT,
+    hp: 150,
+    power: 20,
+    damage: 19,
+    xp: 50,
+    color: 0xbf64ff,
+    hpPerLevel: true,
+    knockback: 0,
+    sizeMul: 1.5,
+  },
+  /** XP 2 is a verbatim source oddity — the other three give 25-50. Giant
+   *  Howlback's reward moment is the boss chest, not the gem. */
+  giantWerewolf: {
+    radius: legacyEnemyRadius(32),
+    speed: 130 * ENEMY_SPEED_UNIT,
+    hp: 200,
+    power: 20,
+    damage: 19,
+    xp: 2,
+    color: 0xff8c2b,
+    hpPerLevel: true,
+    knockback: 0.1,
+    sizeMul: 1.5,
+  },
+  giantMummy: {
+    radius: legacyEnemyRadius(37),
+    speed: 80 * ENEMY_SPEED_UNIT,
+    hp: 250,
+    power: 20,
+    damage: 19,
+    xp: 25,
+    color: 0x77808a,
+    hpPerLevel: true,
+    knockback: 0,
+    sizeMul: 1.5,
+  },
+  /** The one Giant that does not inherit its base hue: blue instead of Snare
+   *  Bloom's plant green. makeEnemyGfx tints from this colour, so the shared
+   *  hushBloom geometry needs no variant. */
+  giantBlueVenus: {
+    radius: legacyEnemyRadius(51),
+    speed: 160 * ENEMY_SPEED_UNIT,
+    hp: 150,
+    power: 30,
+    damage: 29,
+    xp: 50,
+    color: 0x4f8cff,
+    hpPerLevel: true,
+    knockback: 0,
+    sizeMul: 1.5,
+  },
   /** Sandbox measurement prop: undying, immobile, harmless. RunWorld special-
    *  cases it in every mover and in damageEnemy; the values here only need to
    *  give it a Moss Cabinet body and a colour that reads as scenery. */
@@ -638,6 +710,10 @@ export const ENEMY_LABELS: Record<EnemyKind, string> = {
   bigMummy: 'Gaffer Husk',
   venus: 'Snare Bloom',
   ghostSwarm: 'Echo Rush',
+  giantMantis: 'Giant Shearjaw',
+  giantWerewolf: 'Giant Howlback',
+  giantMummy: 'Giant Gaffer Husk',
+  giantBlueVenus: 'Giant Snare Bloom',
   dummy: 'Practice Cabinet',
 };
 

@@ -255,12 +255,16 @@ function enemyFrame(enemy: Enemy, timeS: number): number {
     case 'silverBat':
     case 'ghostSwarm':
     case 'venus':
+    case 'giantMantis':
+    case 'giantBlueVenus':
     // The lunge reads as a run, not a walk: it keeps the faster cycle.
     case 'werewolf':
+    case 'giantWerewolf':
       return Math.floor(timeS * 8 + enemy.id * 0.73) & 1;
     case 'zombie':
     case 'skeleton':
     case 'bigMummy':
+    case 'giantMummy':
     case 'greenMudman':
     case 'grayMudman':
     case 'swarmer':
