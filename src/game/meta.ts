@@ -28,7 +28,6 @@ export const CORE_ITEMS: readonly ItemId[] = ['highTops', 'fastForward', 'mirror
 const META_WEAPONS: readonly Role[] = ['kick', 'snare', 'hat', 'bass', 'chord', 'clap', 'arp', 'lead', 'bell'];
 
 export const SHOP_OFFER_IDS = [
-  'reroll1',
   'heavyAmp',
   'clap',
   'arp',
@@ -42,7 +41,6 @@ export const SHOP_OFFER_IDS = [
   'magnetLanyard',
   'secondWind',
   'startItem',
-  'reroll2',
 ] as const;
 
 export type ShopOfferId = (typeof SHOP_OFFER_IDS)[number];
@@ -60,8 +58,6 @@ export interface ShopOffer {
 }
 
 export const SHOP_OFFERS: readonly ShopOffer[] = [
-  { id: 'reroll1', kind: 'perk', contentId: 'reroll1', name: 'First Reroll', cost: 70, minOwned: 0,
-    description: 'Refresh one ordinary level-up offer per run.' },
   { id: 'heavyAmp', kind: 'item', contentId: 'heavyAmp', name: 'Heavy Amp', cost: 90, minOwned: 0,
     description: 'More damage and shove; completes the Bass evolution recipe.' },
   { id: 'recoveryTape', kind: 'item', contentId: 'recoveryTape', name: 'Recovery Tape', cost: 100, minOwned: 0,
@@ -91,9 +87,6 @@ export const SHOP_OFFERS: readonly ShopOffer[] = [
     description: 'Revive once per run at 30% health.' },
   { id: 'startItem', kind: 'perk', contentId: 'startItem', name: 'Opening Loadout', cost: 300, minOwned: 8,
     description: 'Choose one unlocked passive to begin at tier I.' },
-
-  { id: 'reroll2', kind: 'perk', contentId: 'reroll2', name: 'Second Reroll', cost: 400, minOwned: 11,
-    description: 'Refresh a second ordinary level-up offer each run.' },
 ] as const;
 
 const SHOP_BY_ID = new Map<ShopOfferId, ShopOffer>(SHOP_OFFERS.map((offer) => [offer.id, offer]));
@@ -111,7 +104,6 @@ export interface MetaV2 {
   purchases: ShopOfferId[];
   unlockedWeapons: Role[];
   unlockedItems: ItemId[];
-  rerolls: number;
   secondWind: boolean;
   startItem?: ItemId;
   milestones: string[];
@@ -146,7 +138,6 @@ export function defaultMetaState(): MetaV2 {
     purchases: [],
     unlockedWeapons: [...CORE_WEAPONS],
     unlockedItems: [...CORE_ITEMS],
-    rerolls: 0,
     secondWind: false,
     milestones: [],
     mastery: {},
@@ -171,15 +162,12 @@ function addUnique<T>(array: T[], value: T): void {
 function rebuildUnlocks(state: MetaV2): void {
   state.unlockedWeapons = [...CORE_WEAPONS];
   state.unlockedItems = [...CORE_ITEMS];
-  state.rerolls = 0;
   state.secondWind = false;
   for (const id of state.purchases) {
     const offer = SHOP_BY_ID.get(id);
     if (!offer) continue;
     if (offer.kind === 'weapon') addUnique(state.unlockedWeapons, offer.contentId as Role);
     if (offer.kind === 'item') addUnique(state.unlockedItems, offer.contentId as ItemId);
-    if (id === 'reroll1') state.rerolls = Math.max(state.rerolls, 1);
-    if (id === 'reroll2') state.rerolls = Math.max(state.rerolls, 2);
     if (id === 'secondWind') state.secondWind = true;
   }
   if (!state.purchases.includes('startItem') ||
@@ -196,9 +184,6 @@ function inferLegacyPurchases(raw: Record<string, unknown>): ShopOfferId[] {
     if (offer.kind === 'weapon' && weapons.includes(offer.contentId as Role)) addUnique(purchases, offer.id);
     if (offer.kind === 'item' && items.includes(offer.contentId as ItemId)) addUnique(purchases, offer.id);
   }
-  const rerolls = Math.floor(safeNumber(raw.rerolls));
-  if (rerolls >= 1) addUnique(purchases, 'reroll1');
-  if (rerolls >= 2) addUnique(purchases, 'reroll2');
   if (raw.secondWind === true) addUnique(purchases, 'secondWind');
   // Preserve perks that an old automatic rank had earned even when no starting
   // passive was selected. This threshold is the old rank-12 lifetime

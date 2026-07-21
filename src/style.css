@@ -1808,22 +1808,6 @@ button.big {
   font-weight: 900;
 }
 
-.reroll-live {
-  position: absolute;
-  right: max(12px, env(safe-area-inset-right));
-  top: calc(max(12px, env(safe-area-inset-top)) + 96px);
-  z-index: 4;
-  min-width: 90px;
-  padding: 5px 9px;
-  color: var(--gold);
-  background: rgba(8, 10, 18, 0.9);
-  border: 1px solid rgba(255, 212, 92, 0.6);
-  border-radius: 2px;
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-}
-
 .screen.start-screen,
 .screen.end-screen {
   justify-content: flex-start;
@@ -2314,12 +2298,6 @@ button.big {
   .item-glyph { font-size: 14px; }
   .item-name { display: none; }
   .item-tier { align-self: center; }
-  .reroll-live {
-    top: calc(max(6px, env(safe-area-inset-top)) + 158px);
-    right: 7px;
-    min-width: 98px;
-    min-height: 44px;
-  }
   .toast-stack { top: calc(env(safe-area-inset-top) + 204px); }
   .pause-live { display: flex; align-items: center; justify-content: center; }
   .start-hero { min-height: 220px; }

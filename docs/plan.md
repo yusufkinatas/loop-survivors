@@ -80,7 +80,7 @@ dead rewards without displacing the authored weapon and item balance.
 
 Enemies shed collectible music notes during a run. Notes only enter the career
 wallet when the run ends, then the player spends them in the Afterhours Shop.
-Purchases unlock new choice-space: instruments, passive items, rerolls, an
+Purchases unlock new choice-space: instruments, passive items, an
 optional starting passive, and one 30%-health Second Wind. Later shelves open
 after enough earlier purchases, but no survival result, kill total, or hidden
 rank grants an unlock automatically.
