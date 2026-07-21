@@ -78,9 +78,9 @@ interface ChordStats extends WeaponStats {
 
   // ---------------- Afterhours ---------------------------------------------
   //
-  // Huge drifting slow zones that seek the densest crowd and merge into
-  // supercells. Every zone is bigger, longer, harder and slower-making, and
-  // then two of them become one.
+  // Huge slow zones that each hunt the body nearest them and merge into
+  // supercells where they happen to meet. Every zone is bigger, longer, harder
+  // and slower-making, and then two of them become one.
 
   /** Radius, lifetime and per-tick damage relative to the built tier block.
    *  These are applied ON TOP of the build pipeline's areaMul — a tier-4
@@ -94,26 +94,15 @@ interface ChordStats extends WeaponStats {
    *  two modes' zones coexist across an evolution. */
   readonly afterhoursSlowMul: number;
 
-  /** Units per second an Afterhours zone crawls toward the pack it picked. A
-   *  base zone's drift speed is ZERO — a base zone never moves at all — and
-   *  that is a spawn-time fact frozen onto the zone, not a live read of the
-   *  evolution flag. */
-  readonly driftSpeed: number;
-  /** HOW MANY BODIES THE DRIFT LOOKS AT, as a divisor of the enemy count: the
-   *  scan steps by `max(1, floor(count / driftSamples))`, so it reads about
-   *  this many enemies however big the field gets, and reads EVERY enemy while
-   *  the field is smaller than this.
+  /** Units per second an Afterhours zone crawls toward the nearest body to
+   *  ITSELF. A base zone's drift speed is ZERO — a base zone never moves at all
+   *  — and that is a spawn-time fact frozen onto the zone, not a live read of
+   *  the evolution flag.
    *
-   *  A SAMPLING STRIDE IS BEHAVIOR, NOT A PERFORMANCE DETAIL. With 61 bodies
-   *  the stride is 2, so the drift only ever considers the even-indexed half of
-   *  the array — a dense pack sitting entirely on odd indices is invisible to
-   *  it and the zone walks the other way. "Tidying" this into a full scan
-   *  changes where every Afterhours zone goes. */
-  readonly driftSamples: number;
-  /** How close another body has to be to count as a neighbour when scoring a
-   *  sampled enemy's crowd, in units. The zone drifts toward the highest score,
-   *  ties going to the EARLIEST sample examined. */
-  readonly driftNeighborRadius: number;
+   *  This is the only tuning the hunt has left. It used to need two more stats
+   *  (a sampling stride and a neighbour radius) to score the densest crowd;
+   *  chasing the nearest body instead needs neither. */
+  readonly driftSpeed: number;
 
   /** Ceiling on a merged zone's radius, in units. See the note in the merge
    *  code: this is not reachable in a shipped run, and it is ported verbatim
@@ -164,8 +153,6 @@ const CHORD_STATS: ChordStats = {
   afterhoursSlowMul: 0.42,
 
   driftSpeed: 65,
-  driftSamples: 30,
-  driftNeighborRadius: 120,
 
   mergeMaxRadius: 180,
   mergeMaxLifeS: 4.5,
@@ -327,40 +314,35 @@ class ChordInstance implements WeaponInstance {
     this.merge(ctx, zones);
   }
 
-  /** Afterhours' hunt: crawl toward the densest pack on screen.
+  /** Afterhours' hunt: crawl toward the nearest body TO THIS ZONE.
    *
-   *  THE SAMPLING STRIDE IS THE WHOLE CHARACTER OF THIS. It reads roughly
-   *  `driftSamples` enemies out of the array whatever its size, scores each one
-   *  by how many live bodies sit within `driftNeighborRadius` of it, and walks
-   *  toward the best. It is a coarse, cheap, deliberately imperfect crowd-
-   *  finder, and its imperfection is visible: past 60 bodies it only ever looks
-   *  at every other one, so it can miss a pack entirely. Replacing the stride
-   *  with a full scan sends every Afterhours zone somewhere else.
+   *  MEASURED FROM THE ZONE, NOT THE PLAYER. That is the entire reason zones
+   *  spread out instead of piling up. This used to score the densest CROWD on
+   *  screen, which every live zone computed identically and independently — so
+   *  they all walked into the same pack and merged, and the random throw was
+   *  undone a second later. A per-zone nearest target is local by construction:
+   *  two zones thrown to opposite sides of the player chase whatever is beside
+   *  each of them and stay apart. They can still meet and merge, but they are
+   *  no longer guaranteed to.
    *
-   *  `ctx.all()` is the LIVE enemy array and `enemies.length` is re-read on
-   *  every step of the outer loop, exactly as the world loop read
-   *  `this.enemies.length`. Ties on the neighbour count go to the EARLIEST
-   *  sample, because the comparison is a strict `>`. */
+   *  A FULL SCAN, deliberately. The crowd-scoring version sampled with a stride
+   *  because it was O(samples x enemies); nearest-to-a-point is a single pass,
+   *  so it is both exact and cheaper than what it replaced. No stride means no
+   *  pack can hide from it on the wrong array indices.
+   *
+   *  NO SEARCH CEILING. A zone with nothing beside it walks toward whatever is
+   *  closest however far that is, rather than parking — the zone hunts for its
+   *  whole life. Ties go to the EARLIEST enemy in array order, because the
+   *  comparison is a strict `<`. Practice dummies are valid targets, exactly as
+   *  they were before. */
   private drift(ctx: WeaponContext, z: Zone, dt: number): void {
-    const enemies = ctx.all();
     let target: WeaponTarget | null = null;
-    let bestNeighbors = -1;
-    for (
-      let sample = 0;
-      sample < enemies.length;
-      sample += Math.max(1, Math.floor(enemies.length / CHORD_STATS.driftSamples))
-    ) {
-      const enemy = enemies[sample];
+    let bestDistance = Infinity;
+    for (const enemy of ctx.all()) {
       if (enemy.dead) continue;
-      let neighbors = 0;
-      for (const other of enemies) {
-        if (!other.dead &&
-          Math.hypot(other.x - enemy.x, other.y - enemy.y) < CHORD_STATS.driftNeighborRadius) {
-          neighbors += 1;
-        }
-      }
-      if (neighbors > bestNeighbors) {
-        bestNeighbors = neighbors;
+      const distance = Math.hypot(enemy.x - z.x, enemy.y - z.y);
+      if (distance < bestDistance) {
+        bestDistance = distance;
         target = enemy;
       }
     }

@@ -411,7 +411,9 @@ interface ZoneSpec {
    *  immunity from the merge pass — for the rest of its life, while Afterhours
    *  zones spawned after it drift straight over the top of it. */
   readonly evolved: boolean;
-  /** Units per second the zone crawls toward the densest pack. 0 pins it. */
+  /** Units per second the zone crawls toward the nearest body to itself, which
+   *  each zone measures from its OWN centre — so zones hunt locally and stay
+   *  spread out rather than converging. 0 pins it. */
   readonly driftSpeed: number;
   /** Ceiling on what merging can raise `damage` to. Frozen at spawn from the
    *  zone's own damage, so a merged supercell's ceiling is the ceiling of
