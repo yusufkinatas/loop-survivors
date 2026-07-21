@@ -4,7 +4,6 @@
 // One stat block per tier, indexed [tier - 1].
 
 import type { Role } from '../audio/kits';
-import type { PickupTimbre } from '../audio/engine';
 
 export const RUN = {
   /** Antonio baseline: 100 base HP +20 character bonus, +1 Armor. */
@@ -49,25 +48,23 @@ export const GEM_CUE = {
   minGapS: 0.06,
 } as const;
 
-/** Music-note pickup sound. Still a prototype: `timbre` is switchable live
- *  from the debug row (the five candidates in audio/cues/timbres.ts), which is
- *  why this block is mutable where GEM_CUE is `as const`.
+/** Music-note pickup sound: a bell whose pitch climbs one scale step per note
+ *  and falls back to the root once you stop collecting. Chosen by ear against
+ *  four other candidates; audio/cues/note.ts holds the synthesis and explains
+ *  why the ladder differs from the gem cue's XP-bar climb.
  *
- *  The pitch behaviour is decided and NOT a knob — notes climb a scale ladder,
- *  one step per pickup, resetting after a pause. audio/cues/note.ts explains
- *  why that differs from the gem's XP-bar climb. */
+ *  Same `minGapS` reasoning as GEM_CUE: notes arrive in bursts and a Stage
+ *  Magnet delivers the whole map at once. */
 export const NOTE_CUE = {
-  /** Which candidate sound to render. Set by ear from the debug dropdown. */
-  timbre: 'pluck' as PickupTimbre,
   /** Deliberately well under GEM_CUE.gain. A note is rarer than a gem and
-   *  worth less noise; this should sit under the track, not on top of it. */
+   *  worth less noise; this sits under the track, not on top of it. */
   gain: 0.7,
   /** Stereo width, matching the gem cue so a mixed vacuum sweeps as one
    *  effect rather than two competing ones. 0 is mono. */
   spread: 0.7,
   /** Minimum seconds between cues; extras are dropped, not queued. */
   minGapS: 0.06,
-};
+} as const;
 
 /** How large a build may grow. Two flat counts and nothing else: no typed
  * positions, no rosters, no rule that owning one weapon retires another. Every

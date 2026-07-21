@@ -20,4 +20,3 @@ export { playHealthPickupCue } from './health';
 export { playGameOverCue } from './gameover';
 export { GemCue, type GemCueOptions } from './gem';
 export { NoteCue, type NoteCueOptions } from './note';
-export { PICKUP_TIMBRES, type PickupTimbre } from './timbres';

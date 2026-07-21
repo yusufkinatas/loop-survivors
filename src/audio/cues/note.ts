@@ -1,15 +1,11 @@
 import { PickupCue, PICKUP_DEGREES, type PickupCueOptions } from './pickup';
-import { playTimbre, type PickupTimbre } from './timbres';
+import { bell } from './timbres';
 
 /** A pickup gap longer than this restarts the climb, so a lone note always
  *  plays the root and only a genuine streak climbs. */
 const NOTE_LADDER_RESET_S = 0.55;
 
-export interface NoteCueOptions extends PickupCueOptions {
-  /** Which of the five candidate sounds to render. Still a prototype knob —
-   *  the debug row switches it live so it can be judged mid-run. */
-  timbre: PickupTimbre;
-}
+export type NoteCueOptions = PickupCueOptions;
 
 /** Music-note pickup: a subtle cue whose pitch climbs one scale step per note
  *  and falls back to the root once you stop collecting.
@@ -26,6 +22,12 @@ export interface NoteCueOptions extends PickupCueOptions {
  *  key and a stereo behaviour (see pickup.ts) but never the same shape: one
  *  climbs with your progress, the other with your greed.
  *
+ *  The sound is a bell — two sines at a 2.76x ratio — chosen by ear against
+ *  four other candidates. Its long tail is a liability on the gem cue, which
+ *  fires dozens of times a minute; on notes it is an asset, because notes are
+ *  rare enough that the tail has room to ring and the ladder's steps blur into
+ *  a run rather than a stutter.
+ *
  *  Deliberately quieter than the gem cue — a note is rarer and worth less
  *  noise, and this needs to sit under the track, not on top of it. */
 export class NoteCue extends PickupCue<NoteCueOptions> {
@@ -39,13 +41,7 @@ export class NoteCue extends PickupCue<NoteCueOptions> {
     return step;
   }
 
-  protected voice(
-    ctx: AudioContext,
-    out: GainNode,
-    now: number,
-    ratio: number,
-    opts: NoteCueOptions,
-  ): void {
-    playTimbre(opts.timbre, ctx, out, now, ratio);
+  protected voice(ctx: AudioContext, out: GainNode, now: number, ratio: number): void {
+    bell(ctx, out, now, ratio);
   }
 }

@@ -31,7 +31,6 @@ import {
 } from './cues/index';
 
 export type { GemCueOptions, NoteCueOptions };
-export { PICKUP_TIMBRES, type PickupTimbre } from './cues/index';
 
 interface VoiceHit {
   src: AudioBufferSourceNode;
