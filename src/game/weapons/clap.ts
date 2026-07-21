@@ -36,7 +36,7 @@ interface ClapStats extends WeaponStats {
   // and snaps a pair of slabs shut on each one. Deliberately tiny — the identity
   // is high single-target damage plus an inward tug that bunches the horde up
   // for the rest of the band, NOT another player-centred blast (that is what
-  // Subquake is for). Keep `pinchRadius` well under Subquake's 288-unit ring.
+  // Subquake is for). Keep `pinchRadius` well under Subquake's 144-unit ring.
 
   /** How many nearby enemies get their own pincer on a single trigger. WAS
    *  TWO_HANDS.targets. */

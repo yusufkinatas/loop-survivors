@@ -74,7 +74,7 @@ const BASS_STATS: BassStats = {
   shove: 6,
 
   quakeStartRadius: 40,
-  quakeMaxRadius: 288,
+  quakeMaxRadius: 144,
   quakeLifeS: 1.2,
   quakeGrowthS: 1.2,
   quakeDamageMul: 1.55,
