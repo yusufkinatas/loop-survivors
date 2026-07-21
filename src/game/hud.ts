@@ -379,6 +379,58 @@ export class Hud {
           this.showStart(onStart, onSandbox, meta, true, scrollTop);
         };
       }
+      // Dev affordances, at the bottom of the shop panel. They ride the panel's
+      // own display toggle, so they are visible exactly when the shop is open
+      // and need no visibility state of their own.
+      //
+      // Deliberately quiet: .start-dev-toggle is the same transparent, faint
+      // treatment the `sandbox` and `experiments` buttons use, so browsing the
+      // shop you do not notice them and looking for them you find them. No gold,
+      // no fill, and no danger red on the reset — red is eye-catching, which is
+      // the opposite of what these want to be.
+      //
+      // These ship. The project has no dev-gating mechanism at all — no
+      // import.meta.env, no NODE_ENV, no query-param or hostname check — and
+      // every existing dev affordance (the ⚙ row, the sandbox button, the
+      // hash-routed experiment rooms) already ships to production. Stripping
+      // them from a public build is one ticket covering all of them, not a
+      // bespoke gate invented here.
+      const shopDev = el('div', 'shop-dev', shop);
+      const rerenderShop = () => this.showStart(onStart, onSandbox, meta, true, s.scrollTop);
+      const grantBtn = el('button', 'small start-dev-toggle', shopDev, 'gain 1000');
+      grantBtn.onclick = () => {
+        // The REAL store, unlike the sandbox's +NOTES buttons, which run against
+        // a deliberately non-persistent MetaStore(null). Testing the shop means
+        // banking notes for real, so this one persists.
+        meta.grantNotes(1000);
+        rerenderShop();
+      };
+      const resetBtn = el('button', 'small start-dev-toggle', shopDev, 'reset progress');
+      resetBtn.onclick = () => {
+        // Two-step, because one stray click must not nuke a real save. The
+        // button becomes its own confirmation rather than opening a dialog: a
+        // window.confirm would be a modal in a screen that has none.
+        if (resetBtn.dataset.armed !== 'true') {
+          resetBtn.dataset.armed = 'true';
+          resetBtn.textContent = 'reset progress · click again';
+          resetBtn.classList.add('armed');
+          // Disarm on the next click anywhere else, so an armed button left
+          // alone cannot be triggered later by accident.
+          setTimeout(() => {
+            document.addEventListener('pointerdown', function disarm(ev: Event) {
+              if (ev.target === resetBtn) return;
+              document.removeEventListener('pointerdown', disarm);
+              delete resetBtn.dataset.armed;
+              resetBtn.textContent = 'reset progress';
+              resetBtn.classList.remove('armed');
+            });
+          }, 0);
+          return;
+        }
+        meta.resetProgress();
+        this.showToast('PROGRESS RESET');
+        rerenderShop();
+      };
       shopToggle.onclick = () => {
         const opening = shop.style.display === 'none';
         shop.style.display = opening ? '' : 'none';
