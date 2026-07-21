@@ -25,8 +25,22 @@ src/           Game code.
 
 ```
 npm run dev     Vite dev server; play the game in the browser
-npm run check   Typecheck (tsc --noEmit)
+npm run check   Typecheck (tsc --noEmit) + dead-code scan (knip)
 ```
+
+Run `npm run check` when you finish a piece of work. It fails on unused
+files, exports, and dependencies as well as on type errors, so code you
+orphaned along the way is caught before it lands.
+
+Two things knip cannot see, so don't "clean up" on its say-so alone:
+
+- **Console-only entry points.** `main.ts` does `import * as charts` and
+  hangs it on `window.loop`, so `chartstore` exports reachable only as
+  `loop.charts.*` have no static importer. Tag those `@public` with a note.
+- **A symbol used inside its own file.** Knip reports it as an unused
+  *export*, which means the `export` keyword is redundant — not that the
+  code is dead. Drop the keyword rather than the code; `noUnusedLocals`
+  will tell you if it really is unreferenced.
 
 ## Agent skills
 
