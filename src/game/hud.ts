@@ -352,31 +352,6 @@ export class Hud {
       el('span', '', collection, `${meta.state.unlockedWeapons.length}/${META_WEAPONS.length} WEAPONS`);
       el('span', '', collection, `${meta.state.unlockedItems.length}/${ITEM_IDS.length} PASSIVES`);
 
-      if (meta.hasPurchase('startItem')) {
-        const loadout = el('div', 'start-loadout', profile);
-        el('span', 'eyebrow', loadout, 'STARTING PASSIVE');
-        const choices = el('div', 'loadout-choices', loadout);
-        const noneButton = el(
-          'button',
-          `loadout-chip ${meta.state.startItem === undefined ? 'selected' : ''}`,
-          choices,
-          'NO PASSIVE',
-        ) as HTMLButtonElement;
-          noneButton.onclick = () => {
-            meta.selectStartItem(undefined);
-            this.showStart(onStart, onSandbox, meta, shopOpen, s.scrollTop);
-          };
-        for (const id of meta.state.unlockedItems) {
-          const item = ITEMS[id];
-          const button = el('button', `loadout-chip ${meta.state.startItem === id ? 'selected' : ''}`, choices,
-            `${item.glyph} ${item.name}`) as HTMLButtonElement;
-            button.onclick = () => {
-              meta.selectStartItem(id);
-              this.showStart(onStart, onSandbox, meta, shopOpen, s.scrollTop);
-            };
-        }
-      }
-
       const mastery = Object.entries(meta.state.mastery) as [Role, { damage: number; kills: number; evolutions: number }][];
       const revealed = mastery.filter(([, value]) => value.damage >= 100_000);
       if (revealed.length > 0) {

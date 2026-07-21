@@ -462,7 +462,6 @@ export interface RunWorldOpts {
   control?: () => { x: number; y: number };
   /** False for non-visual fixtures that do not consume effects. */
   fx?: boolean;
-  startingItem?: ItemId;
   secondWind?: boolean;
 }
 
@@ -574,7 +573,6 @@ export class RunWorld {
     this.healthPickupRng = opts.healthPickupRng ?? mulberry32(magnetSeed ^ 0x48454154);
     this.control = opts.control ?? (() => ({ x: 0, y: 0 }));
     this.fx = (opts.fx ?? true) ? [] : null;
-    if (opts.startingItem) this.items.set(opts.startingItem, 1);
     this.secondWindReady = opts.secondWind ?? false;
     // Built after the stageMagnetRng seed draw above: the context factory draws
     // no rng, so no draw moves.

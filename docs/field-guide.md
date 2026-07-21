@@ -74,10 +74,9 @@ four passives (High-Tops, Fast Forward, Mirrorball, and Wide Lens).
 | 0 owned | Heavy Amp (90), Recovery Tape (100), Clap (110) |
 | 2 owned | Arp (180), Needle Tips (130) |
 | 5 owned | Lead (260), Extension Cable (150), Padded Jacket (170), Double Take (280) |
-| 8 owned | Magnet (220), Second Wind (320), Opening Loadout (300) |
+| 8 owned | Magnet (220), Second Wind (320) |
 
-Second Wind revives the player once per run at 30% health. Opening Loadout lets
-the player choose one unlocked passive to start at tier I. There are no
+Second Wind revives the player once per run at 30% health. There are no
 repeatable permanent damage, health, or speed purchases.
 
 ## Rare floor pickup: Stage Magnet
