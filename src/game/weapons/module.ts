@@ -14,7 +14,7 @@ import type { WeaponContext, WeaponTarget } from './context';
  *  NOTE the shared, world-owned projectile loop sits BETWEEN 'pinches' and
  *  'zones'. It is not a phase name because no module owns it — weapons whose
  *  behavior lives inside it get ProjectileBehavior instead. */
-const TICK_PHASES = ['strikes', 'pinches', 'zones', 'shockwaves', 'wells'] as const;
+const TICK_PHASES = ['strikes', 'pinches', 'zones', 'shockwaves'] as const;
 export type TickPhase = (typeof TICK_PHASES)[number];
 
 /** The world-independent half of a weapon's identity: numbers only, no state. */
@@ -39,8 +39,8 @@ export interface ProjectileBehavior {
    *  unchanged shared motion (snare, hat, bass). Default: false. */
   steer?(ctx: WeaponContext, pr: Projectile, dt: number): boolean;
   /** Runs after the shared loop deals pr.damage and BEFORE the shared pierce
-   *  rule — that order is what keeps bell's shove/shatter/spark sequence
-   *  verbatim. Return false to skip spending pierce (arp chips on a timer).
+   *  rule — that order is what keeps each weapon's on-hit sequence verbatim.
+   *  Return false to skip spending pierce (arp chips on a timer).
    *  Omit = spend pierce, i.e. today's shared rule. Default: true. */
   onHit?(ctx: WeaponContext, pr: Projectile, target: WeaponTarget): boolean;
 }

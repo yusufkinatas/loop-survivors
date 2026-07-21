@@ -135,11 +135,5 @@ export function drawWeaponIcon(c: GraphicsContext, role: Role, s: number): void 
       c.poly([0, p(-8), p(6), p(-2), p(2), p(-2), p(2), p(3), p(-2), p(3), p(-2), p(-2), p(-6), p(-2)]).fill(W);
       rect(c, p(-6), p(5), p(12), p(2));
       break;
-    case 'bell':
-      // Blocky bell with a separate clapper.
-      c.poly([p(-2), p(-8), p(2), p(-8), p(3), p(-6), p(5), p(-4), p(5), p(3), p(8), p(5), p(-8), p(5), p(-5), p(3), p(-5), p(-4), p(-3), p(-6)]).fill(W);
-      dark(c, p(-3), p(-3), p(6), p(6));
-      rect(c, p(-2), p(6), p(4), p(2));
-      break;
   }
 }

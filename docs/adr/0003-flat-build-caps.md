@@ -4,7 +4,7 @@ A build used to be shaped by seven typed band-position slots — Beat, Snap,
 Tick, Groove, Low, Color, Hook — each holding at most one instrument drawn from
 that slot's roster. The slot did two jobs at once: it capped how many weapons a
 build could hold (seven), and it made instruments mutually exclusive within a
-position (hiring Snare permanently retired Clap; Lead retired Bell).
+position (hiring Snare permanently retired Clap).
 
 We decided (2026-07-21) to split those two jobs apart and keep only the first.
 A build now holds at most `BUILD.weaponCap` weapons and `BUILD.itemCap` passive
@@ -16,16 +16,16 @@ would renumber the rack and the number-key toggles underneath the player.
 
 The rejected alternative was to keep exclusivity and merely re-group the
 rosters into fewer, broader categories. It was rejected because with a
-five-weapon cap against a nine-weapon catalog, the cap already does the work
+five-weapon cap against an eight-weapon catalog, the cap already does the work
 the slots were doing — the build is small either way — while exclusivity keeps
 cutting reachable builds for a guarantee the player never asked for.
 
 ## Consequences
 
-- Two similar voices can now play together (Snare + Clap, Lead + Bell). The
-  slots existed partly to guarantee one voice per frequency lane, so this ADR
-  trades a structural guarantee of separation for build freedom. Cacophony is
-  now prevented by the cap alone — a five-voice build is small — and by the
+- Two similar voices can now play together (Snare + Clap). The slots existed
+  partly to guarantee one voice per frequency lane, so this ADR trades a
+  structural guarantee of separation for build freedom. Cacophony is now
+  prevented by the cap alone — a five-voice build is small — and by the
   player's own choices. If a specific pairing turns out to sound bad, fix it in
   the mix (kit gain, choke groups), not by reintroducing categories.
 - `src/game/band.ts` is deleted. The early drum nudge that lived there — Kick,

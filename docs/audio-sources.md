@@ -2,8 +2,8 @@
 
 Loop Survivors ships one compact house drum palette. It supplies the kick,
 snare, clap, closed and open hi-hats, and one percussion accent. A new
-Afterhours Web Audio engine renders all nine playable voices from scratch:
-kick, snare, hi-hat, bass, chords, lead, clap, arpeggio, and bell. The pitched
+Afterhours Web Audio engine renders all eight playable voices from scratch:
+kick, snare, hi-hat, bass, chords, lead, clap, and arpeggio. The pitched
 voices stay tuned to the run's allowed notes. The palette's percussion accent
 is layered quietly beneath its kick, so all 6 sourced files are heard without
 adding a disconnected tenth instrument to the arrangement.

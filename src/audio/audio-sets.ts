@@ -1,5 +1,5 @@
 // The single drum palette for the fixed house arrangement. These definitions
-// replace unpitched one-shots; bass, chords, lead, arp, and bell use the fresh
+// replace unpitched one-shots; bass, chords, lead, and arp use the fresh
 // procedural Afterhours voicing tuned to the allowed notes. The internal
 // `shaker` entry is a kick-layer texture, not a playable weapon.
 

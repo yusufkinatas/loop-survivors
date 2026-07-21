@@ -1,7 +1,7 @@
 // Sound kits: the atomic unit of a weapon is a kit plus a chart
 // (docs/plan.md, "Weapons as sound"). A kit is a small family of related
 // samples. This catalog builder preserves retired developer instruments and an
-// emergency procedural fallback; main.ts replaces all nine live roles with the
+// emergency procedural fallback; main.ts replaces all eight live roles with the
 // fresh Afterhours set before MusicEngine is created. Pitched kits hold one
 // root sample and receive chart notes by playback-rate shifting.
 
@@ -25,8 +25,7 @@ export type Role =
   | 'pluck'
   | 'rhodes'
   // The last hires + the auto-dash utility weapon (riser).
-  | 'riser'
-  | 'bell';
+  | 'riser';
 
 export const ROLES: readonly Role[] = [
   'kick',
@@ -44,7 +43,6 @@ export const ROLES: readonly Role[] = [
   'pluck',
   'rhodes',
   'riser',
-  'bell',
 ];
 
 export interface Kit {
@@ -370,46 +368,6 @@ async function renderRiser(): Promise<AudioBuffer> {
   g.gain.exponentialRampToValueAtTime(0.001, dur); // then cut on the hit
   n.connect(bp).connect(g).connect(ctx.destination);
   n.start(0);
-  return ctx.startRendering();
-}
-
-async function renderBell(rootHz: number): Promise<AudioBuffer> {
-  // Twinkly music-box ping: a sine fundamental plus bright inharmonic bell
-  // partials (1, 2.76, 5.4, 8.1) with a fast attack and a shimmering decay.
-  const ctx = offline(0.9);
-  // Inharmonic partials (music-box/tubular-bell ratios) with a strong, fast
-  // fundamental and progressively quieter, shorter overtones so it shimmers
-  // and clears quickly instead of ringing into mud in fast passages.
-  const partials: [number, number, number][] = [
-    [1, 0.55, 0.8],
-    [2.76, 0.26, 0.5],
-    [5.4, 0.13, 0.32],
-    [8.1, 0.07, 0.2],
-  ];
-  for (const [mult, level, dec] of partials) {
-    const o = ctx.createOscillator();
-    o.type = 'sine';
-    o.frequency.value = rootHz * 2 * mult; // an octave up: the sparkly top voice
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, 0);
-    g.gain.exponentialRampToValueAtTime(level, 0.004);
-    g.gain.exponentialRampToValueAtTime(0.001, dec);
-    o.connect(g).connect(ctx.destination);
-    o.start(0);
-    o.stop(dec + 0.02);
-  }
-  // Soft mallet strike: a tiny highpassed noise tick gives the "chime" its
-  // touch of physical contact so it reads as struck, not pure sine.
-  const strike = ctx.createBufferSource();
-  strike.buffer = noiseBuffer(ctx, 0.008);
-  const shp = ctx.createBiquadFilter();
-  shp.type = 'highpass';
-  shp.frequency.value = 5000;
-  const sg = ctx.createGain();
-  sg.gain.setValueAtTime(0.12, 0);
-  sg.gain.exponentialRampToValueAtTime(0.001, 0.008);
-  strike.connect(shp).connect(sg).connect(ctx.destination);
-  strike.start(0);
   return ctx.startRendering();
 }
 
@@ -754,7 +712,6 @@ export const ROLE_META: Record<Role, RoleMeta> = {
   pluck: { name: 'Pluck Bass', color: '#8f7bff', pitched: true, choke: true, variants: ['pluck'] },
   rhodes: { name: 'Rhodes', color: '#5ad1ff', pitched: true, choke: false, variants: ['rhodes'] },
   riser: { name: 'Riser', color: '#cbb4ff', pitched: false, choke: true, variants: ['riser'] },
-  bell: { name: 'Bell', color: '#ffd76b', pitched: true, choke: false, variants: ['bell'] },
 };
 
 /** Each role's hue as a packed 0xRRGGBB number, which is the form PixiJS and
@@ -820,7 +777,6 @@ export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
     pluck,
     rhodes,
     riser,
-    bell,
   ] = await Promise.all([
     renderKick(),
     renderSnare(),
@@ -840,7 +796,6 @@ export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
     renderPluck(rootHz),
     renderRhodes(rootHz),
     renderRiser(),
-    renderBell(rootHz),
   ]);
 
   const kits = new Map<Role, Kit>();
@@ -872,6 +827,5 @@ export async function buildKits(rootHz: number): Promise<Map<Role, Kit>> {
   add('pluck', [['pluck', pluck]]);
   add('rhodes', [['rhodes', rhodes]]);
   add('riser', [['riser', riser]]);
-  add('bell', [['bell', bell]]);
   return kits;
 }

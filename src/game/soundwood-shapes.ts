@@ -356,7 +356,6 @@ function projectileContext(pr: Projectile, evolved: boolean): GraphicsContext {
         g.poly(regularPixelPoly(10, r, Math.PI / 10)).fill(0xffffff);
         pixelDiamond(g, 0, 0, r * 0.45, SOUNDWOOD.ink);
         break;
-      case 'bell':
       case 'crash':
         pixelDiamond(g, 0, 0, r * 1.75, SOUNDWOOD.ink);
         pixelDiamond(g, 0, 0, r * 1.3, 0xffffff);

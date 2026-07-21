@@ -6,7 +6,7 @@
 import { makeKit, noiseBuffer, offline, softClipCurve, type Kit, type Role } from '../kits';
 
 const AFTERHOURS_ROLES = [
-  'kick', 'snare', 'hat', 'bass', 'chord', 'lead', 'clap', 'arp', 'bell',
+  'kick', 'snare', 'hat', 'bass', 'chord', 'lead', 'clap', 'arp',
 ] as const satisfies readonly Role[];
 
 const AFTERHOURS_VARIANTS: Readonly<Partial<Record<Role, readonly string[]>>> = {
@@ -18,7 +18,6 @@ const AFTERHOURS_VARIANTS: Readonly<Partial<Record<Role, readonly string[]>>> = 
   lead: ['lead'],
   clap: ['clap'],
   arp: ['arp'],
-  bell: ['bell'],
 };
 
 function rootOrDefault(rootHz: number): number {
@@ -278,41 +277,6 @@ async function renderArp(rootHz: number): Promise<AudioBuffer> {
   return ctx.startRendering();
 }
 
-async function renderBell(rootHz: number): Promise<AudioBuffer> {
-  const root = rootOrDefault(rootHz) * 2;
-  const ctx = offline(1.05);
-  const high = ctx.createBiquadFilter();
-  high.type = 'highpass';
-  high.frequency.value = 320;
-  high.connect(ctx.destination);
-  for (const [multiple, gain, decay] of [
-    [1, 0.31, 0.88], [2.01, 0.18, 0.7], [2.72, 0.13, 0.52],
-    [4.15, 0.075, 0.39], [5.43, 0.045, 0.28],
-  ] as const) {
-    const oscillator = ctx.createOscillator();
-    oscillator.type = 'sine';
-    oscillator.frequency.value = root * multiple;
-    const envelope = ctx.createGain();
-    envelope.gain.setValueAtTime(0.001, 0);
-    envelope.gain.exponentialRampToValueAtTime(gain, 0.003);
-    envelope.gain.exponentialRampToValueAtTime(0.001, decay);
-    oscillator.connect(envelope).connect(high);
-    oscillator.start(0);
-    oscillator.stop(decay + 0.03);
-  }
-  const strike = ctx.createBufferSource();
-  strike.buffer = noiseBuffer(ctx, 0.018);
-  const strikeHigh = ctx.createBiquadFilter();
-  strikeHigh.type = 'highpass';
-  strikeHigh.frequency.value = 5_400;
-  const strikeGain = ctx.createGain();
-  strikeGain.gain.setValueAtTime(0.1, 0);
-  strikeGain.gain.exponentialRampToValueAtTime(0.001, 0.018);
-  strike.connect(strikeHigh).connect(strikeGain).connect(ctx.destination);
-  strike.start(0);
-  return ctx.startRendering();
-}
-
 function validateCompleteKit(kits: ReadonlyMap<Role, Kit>): void {
   if (kits.size !== AFTERHOURS_ROLES.length) {
     throw new Error(`Afterhours kit has ${kits.size} roles, expected ${AFTERHOURS_ROLES.length}`);
@@ -327,7 +291,7 @@ function validateCompleteKit(kits: ReadonlyMap<Role, Kit>): void {
 }
 
 export async function buildAfterhoursKit(rootHz: number): Promise<Map<Role, Kit>> {
-  const [kick, snare, clap, closed, open, bass, fat, stab, pad, lead, arp, bell] = await Promise.all([
+  const [kick, snare, clap, closed, open, bass, fat, stab, pad, lead, arp] = await Promise.all([
     renderKick(),
     renderSnare(),
     renderClap(),
@@ -339,7 +303,6 @@ export async function buildAfterhoursKit(rootHz: number): Promise<Map<Role, Kit>
     renderChord(rootHz, true),
     renderLead(rootHz),
     renderArp(rootHz),
-    renderBell(rootHz),
   ]);
   const kits = new Map<Role, Kit>([
     ['kick', makeKit('kick', new Map([['hard', kick]]))],
@@ -350,7 +313,6 @@ export async function buildAfterhoursKit(rootHz: number): Promise<Map<Role, Kit>
     ['lead', makeKit('lead', new Map([['lead', lead]]))],
     ['clap', makeKit('clap', new Map([['clap', clap]]))],
     ['arp', makeKit('arp', new Map([['arp', arp]]))],
-    ['bell', makeKit('bell', new Map([['bell', bell]]))],
   ]);
   validateCompleteKit(kits);
   return kits;

@@ -136,19 +136,4 @@ export const SOUNDSET_LADDERS: Partial<Record<Role, Chart[]>> = {
       [B + 8, 0.55, 12], [B + 10, 0.5, 7], [B + 11, 0.4, 5], [B + 12, 0.55, 3], [B + 14, 0.5, 7], [B + 15, 0.4, 10],
     ]),
   ],
-  // Melody alternative: sparkly high bell arpeggio, off-beats plus 16th
-  // pickups at tier 4 (never on the downbeats), sparse by design so it
-  // glitters over the top instead of crowding the lead.
-  bell: [
-    m('bell', 1, [[2, 0.55, 12], [10, 0.5, 19]]),
-    m('bell', 1, [[2, 0.6, 12], [6, 0.5, 15], [10, 0.55, 19], [14, 0.5, 17]]),
-    m('bell', 2, [
-      [2, 0.6, 12], [6, 0.5, 15], [10, 0.55, 19], [14, 0.5, 17],
-      [B + 2, 0.6, 15], [B + 6, 0.5, 19], [B + 10, 0.55, 22], [B + 14, 0.5, 17],
-    ]),
-    m('bell', 2, [
-      [2, 0.6, 12], [3, 0.45, 15], [6, 0.5, 17], [10, 0.55, 19], [11, 0.45, 22], [14, 0.5, 17],
-      [B + 2, 0.6, 15], [B + 3, 0.45, 19], [B + 6, 0.5, 22], [B + 10, 0.55, 24], [B + 11, 0.45, 19], [B + 14, 0.5, 15],
-    ]),
-  ],
 };

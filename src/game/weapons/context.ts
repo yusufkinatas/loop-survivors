@@ -1,7 +1,7 @@
 import type { Role } from '../../audio/kits';
 import type { WeaponConf } from '../config';
 import type { BuildMods } from '../items';
-import type { FxEvent, GravityWell, Projectile, Shockwave, Zone } from '../run';
+import type { FxEvent, Projectile, Shockwave, Zone } from '../run';
 
 export interface WeaponTarget {
   readonly x: number;
@@ -12,12 +12,10 @@ export interface WeaponTarget {
   readonly speed: number;
   /** Per-bestiary knockback resistance; 0 means immune. */
   readonly knockbackMul: number;
-  /** Sandbox practice target: undying, immobile, harmless. Read by exactly one
-   *  weapon — a Gravity Bell's well SKIPS dummies rather than dragging them —
-   *  and that skip is observable precisely because a dummy is never reaped, so
-   *  a dragged one would still be sitting somewhere else at the end of the
-   *  frame. Do not confuse it with the `dead` guard beside it in the same loop,
-   *  whose effect reapEnemies discards the same frame. */
+  /** Sandbox practice target: undying, immobile, harmless. A weapon that moves
+   *  bodies around should skip these — a dummy is never reaped, so one left
+   *  somewhere else is observable for the rest of the run. Do not confuse it
+   *  with the `dead` guard, whose effect reapEnemies discards the same frame. */
   readonly dummy: boolean;
   /** Velocity the target actually moved by on the last movement step. Zeroed at
    *  the top of every frame and never set for practice dummies, which is why
@@ -203,25 +201,6 @@ export interface WeaponContext {
    *  asymmetry stays visible instead of being unified away. */
   setKnock(target: WeaponTarget, vx: number, vy: number, durationS: number): void;
 
-  /** Move a body DIRECTLY, by adding a world-space delta to its position. No
-   *  knock channel, no knockbackMul, no duration, no suppression of pursuit —
-   *  the body is simply somewhere else, and it chases again on the very next
-   *  movement step.
-   *
-   *  DELIBERATELY NOT A THIRD SPELLING OF shove(). shove() and setKnock() both
-   *  write a VELOCITY the world then rides for a while, which is why they
-   *  interact with each other and with Heavy Amp. A Gravity Bell's well does
-   *  not push, it DRAGS: it writes `enemy.x/y` every frame for its whole life,
-   *  capped at `min(distance, pullSpeed * dt)` so it can never overshoot its own
-   *  centre, and it neither reads nor disturbs a knock in flight. Expressing
-   *  that as a knock would change what happens when a body is shoved and pulled
-   *  in the same frame — today the pull wins, because the wells run last of all
-   *  the damage phases and write position after everything else wrote velocity.
-   *
-   *  The bell is the only caller. If a second weapon ever wants it, that is the
-   *  moment to ask whether it wants a drag or a knock. */
-  displace(target: WeaponTarget, dx: number, dy: number): void;
-
   /** Write the shared SLOW channel on a body: `mul` is FOLDED IN WITH min()
    *  against whatever is already there, `durationS` is ASSIGNED outright.
    *
@@ -344,59 +323,6 @@ export interface WeaponContext {
    *  ran out of life and a zone absorbed by a merge leave this way; there is no
    *  world-side sweep. */
   retireZone(zone: Zone): void;
-
-  // ---------------- gravity wells (#141) ------------------------------------
-  //
-  // The FOURTH and LAST entity kind, and the one the note at the bottom of this
-  // file reserved by name. The bell is the weapon that needed it, and the shape
-  // is the same one projectiles, shockwaves and zones settled into: world-side
-  // STORAGE (view.ts draws world.gravityWells and clearSandboxEntities empties
-  // it), a spawn effect, and a query over this module's OWN wells.
-  //
-  // Like the shockwave and zone trios, and unlike the projectile one, the world
-  // has no update loop for these any more. RunWorld.updateGravityWells is gone
-  // and weapons/bell.ts is the array's SOLE MUTATOR. That was the last method in
-  // the shared-physics guard's protected set that belonged to one weapon, so the
-  // guard now watches only the two genuinely shared projectile loops.
-
-  /** Spawn one gravity well attributed to this weapon, and return the LIVE
-   *  object already in the world so the module's tick() can age it.
-   *
-   *  The module supplies the geometry and the burst payload; the world supplies
-   *  the identity (`source`, `color`) and the bookkeeping every well starts with
-   *  — `burst` false, i.e. its one burst is still owed. */
-  spawnGravityWell(spec: GravityWellSpec): GravityWell;
-
-  /** This weapon's live wells, in world-array order — oldest spawned first. A
-   *  fresh array per call, so it is safe to retire from while walking it. */
-  gravityWells(): readonly GravityWell[];
-
-  /** Remove one well from the world immediately, by identity. A well that ran
-   *  out of life leaves this way; there is no world-side sweep. */
-  retireGravityWell(well: GravityWell): void;
-}
-
-/** Everything a module chooses about a new gravity well. Deliberately NOT the
- *  whole GravityWell: `source`, `color` and `burst` are the world's to fill in,
- *  so they cannot be got wrong from a module. */
-interface GravityWellSpec {
-  /** Well centre, in world coordinates. A POINT, not a body, and it never
-   *  moves: a well is anchored where the note that opened it made contact, and
-   *  the player walking away does not drag it. */
-  readonly x: number;
-  readonly y: number;
-  /** How far the pull reaches. Bodies outside are untouched. */
-  readonly radius: number;
-  /** Seconds the well lives. */
-  readonly lifeS: number;
-  /** Units per second a body is dragged toward the centre, capped per frame at
-   *  the remaining distance so the pull never overshoots. */
-  readonly pullSpeed: number;
-  /** Seconds until the well throws its single shard burst. Counts down from
-   *  spawn and is allowed to go negative; `burst` is what makes it once-only. */
-  readonly burstT: number;
-  /** Damage each shard of that burst carries. */
-  readonly burstDamage: number;
 }
 
 /** Everything a module chooses about a new zone. Deliberately NOT the whole

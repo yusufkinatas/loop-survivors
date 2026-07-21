@@ -5,7 +5,6 @@ import type { Role } from '../../audio/kits';
 import { WEAPONS, type WeaponConf } from '../config';
 import { ARP } from './arp';
 import { BASS } from './bass';
-import { BELL } from './bell';
 import { CHORD } from './chord';
 import { CLAP } from './clap';
 import { HAT } from './hat';
@@ -27,14 +26,14 @@ export { KICK } from './kick';
  *  reordering it reorders damage and therefore the rng stream. Across phases,
  *  TickPhase decides; array order never overrides it. */
 export const WEAPON_MODULES: readonly WeaponModule[] = [
-  KICK, ARP, SNARE, HAT, BASS, CHORD, LEAD, CLAP, BELL,
+  KICK, ARP, SNARE, HAT, BASS, CHORD, LEAD, CLAP,
 ];
 
 const BY_ROLE = new Map<Role, WeaponModule>(WEAPON_MODULES.map((m) => [m.role, m]));
 
-/** Per-tier stats for any role. Modules win. config.WEAPONS is now EMPTY — the
- *  bell's ladder was the last one in it — so the fallback never fires today; it
- *  stays as the honest answer for a role no module owns. */
+/** Per-tier stats for any role. Modules win. config.WEAPONS is EMPTY, so the
+ *  fallback never fires today; it stays as the honest answer for a role no
+ *  module owns. */
 export function weaponTiers(role: Role): readonly WeaponConf[] | undefined {
   return BY_ROLE.get(role)?.stats.tiers ?? WEAPONS[role];
 }
