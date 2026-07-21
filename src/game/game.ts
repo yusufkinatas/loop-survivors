@@ -5,7 +5,7 @@
 import { Application } from 'pixi.js';
 import type { MusicEngine } from '../audio/engine';
 import { SOUNDSET } from '../audio/soundset';
-import { ROLES, type Kit, type Role } from '../audio/kits';
+import { ROLE_COLORS, ROLES, type Kit, type Role } from '../audio/kits';
 import { LEVELUP } from './config';
 import { SLOTS, ownerOfSlot } from './band';
 import { mountTrackOverlay } from './trackoverlay';
@@ -15,7 +15,7 @@ import { createGreedyMover, createKiter, type AutoMover } from './auto-move';
 import { autoMove, Input, type AutoMoveMode } from './input';
 import { mountJoystick } from './joystick';
 import { rollOffers, rollStartingWeapons, type AnyPickOption } from './picks';
-import { RunWorld, KIT_COLORS, type VacuumResult } from './run';
+import { RunWorld, type VacuumResult } from './run';
 import { SIM_DT } from './timing';
 import { preloadRunArt, RunView, type GroundPickView } from './view';
 import { mountSandboxPanel, type SandboxPanel } from './sandbox';
@@ -297,7 +297,7 @@ export async function bootGame(
       items.push({ x, y, option });
       if (option.kind === 'weapon') {
         const prevTier = w.tiers.get(option.role) ?? 0;
-        payload.push({ x, y, role: option.role, color: KIT_COLORS[option.role],
+        payload.push({ x, y, role: option.role, color: ROLE_COLORS[option.role],
           name: kits.get(option.role)!.name, level: prevTier > 0 ? `${prevTier} → ${option.tier}` : '1' });
       } else if (option.kind === 'item') {
         const definition = ITEMS[option.item];
@@ -311,7 +311,7 @@ export async function bootGame(
       } else if (option.kind === 'encore') {
         const role: Role = option.encore === 'heal' ? 'clap' : option.encore === 'damage' ? 'bass' : option.encore === 'move' ? 'kick' : 'chord';
         const label = option.encore === 'heal' ? 'Emergency Water' : option.encore === 'damage' ? 'Hotter Signal' : option.encore === 'move' ? 'Quick Change' : 'Wider Stage';
-        payload.push({ x, y, role, color: KIT_COLORS[role], name: label,
+        payload.push({ x, y, role, color: ROLE_COLORS[role], name: label,
           level: option.encore === 'heal' ? '+15 HP' : `+${option.amount}%` });
       } else {
         payload.push({ x, y, role: option.evolution.role, color: option.evolution.color,

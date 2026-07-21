@@ -6,33 +6,23 @@
 // This file is pure simulation: no rendering, input devices, or real-time
 // clock. Rendering lives in view.ts, which reads the world each frame.
 
-import type { Role } from '../audio/kits';
+import { ROLE_COLORS, type Role } from '../audio/kits';
 import type { ScheduledTrigger } from '../audio/engine';
 import {
   AIM_RANGE,
   MULTISHOT_FAN_RAD,
-  ARP_OMEGA,
-  BELL,
   CIRCLER,
   DAMAGE_FEEDBACK,
   DARTER,
   ENEMIES,
-  HAT_LANE,
   MAD_FOREST_FRAMES,
   MAX_ALIVE_HARD,
-  ORBIT_REHIT_S,
   RUN,
   STAGE_MAGNET,
   SHIELDED,
   SHOVE_S,
   SPLITTER,
-  TWO_HANDS,
-  VARIANT_EFFECTS,
-  WEAPON_SHOVE,
-  WEAPONS,
-  ZONE_SLOW_MUL,
-  ZONE_THROW_RANGE,
-  ZONE_TICK_S,
+  WORLD_SCALE,
   madForestEnemyStats,
   xpPickupMultiplier,
   xpForNextLevel,
@@ -61,58 +51,22 @@ import {
   endlessScale,
   waveRecipe,
 } from './tour';
-
-/** Roles that emit a per-hit spark on impact. Bounded to low-count roles so
- *  a 500-enemy event frame never floods the fx queue. */
-const SPARK_HIT_ROLES = new Set<Role>(['snare', 'lead']);
-
-/** Circle versus axis-aligned rectangle, exported for parity regression tests. */
-export function circleIntersectsRect(
-  cx: number,
-  cy: number,
-  radius: number,
-  rx: number,
-  ry: number,
-  halfW: number,
-  halfH: number,
-): boolean {
-  const qx = Math.max(rx - halfW, Math.min(cx, rx + halfW));
-  const qy = Math.max(ry - halfH, Math.min(cy, ry + halfH));
-  const dx = cx - qx;
-  const dy = cy - qy;
-  return dx * dx + dy * dy <= radius * radius;
-}
-
-/** Whip-style facing strip geometry. baseWidth is the reach (kept short so it
- * stays a close-range crowd tool, not a screen-wide beam). */
-export const KICK_GEOMETRY = {
-  scale: 800 / 456,
-  baseWidth: 85 * (800 / 456),
-  baseHeight: 22 * (800 / 456),
-} as const;
+import {
+  WEAPON_MODULES,
+  weaponTiers,
+  type ProjectileBehavior,
+  type TickPhase,
+  type WeaponContext,
+  type WeaponInstance,
+  type WeaponTarget,
+} from './weapons';
 
 /** Source player sprite uses a feet anchor; the stored player position is its
  * circle center. This is the source feet offset normalized to H800. */
 export const PLAYER_FOOT_OFFSET = {
-  x: 1 * KICK_GEOMETRY.scale,
-  y: 7 * KICK_GEOMETRY.scale,
+  x: 1 * WORLD_SCALE,
+  y: 7 * WORLD_SCALE,
 } as const;
-
-export function kickStripCenter(
-  playerX: number,
-  playerY: number,
-  side: 1 | -1,
-  halfWidth: number,
-): { x: number; y: number } {
-  // Vertically centered on the player, inner edge at the player's center,
-  // reaching out to the facing side.
-  return {
-    x: playerX + side * halfWidth,
-    y: playerY,
-  };
-}
-
-interface Point { x: number; y: number }
 
 /** Rolling window for the sandbox dummy's live DPS. Weapons fire on the beat
  * grid, so a one-second average would jitter between "kick landed" and
@@ -159,7 +113,12 @@ export interface Enemy {
   dashX: number;
   dashY: number;
   dashing: boolean;
-  /** Time left under a chord zone's slow. */
+  /** The shared SLOW channel: time left slowed, and the speed multiplier while
+   *  it lasts. Written only through WeaponContext.slow — which folds the
+   *  multiplier in with min() and assigns the timer — and consumed in
+   *  moveEnemies, which resets the multiplier to 1 the frame the timer runs
+   *  out. Chord zones are the only writer today; the channel itself is shared
+   *  physics and is not any one weapon's. */
   slowT: number;
   zoneSlowMul: number;
   /** Weapon knockback: velocity (px/s) and time left being pushed. While
@@ -212,14 +171,20 @@ export interface Projectile {
   speed: number;
   color: number;
   hit: Set<Enemy>;
-  /** Total time alive. Behavior otherwise keys off role: lead homes, arp
-   *  orbits. */
+  /** Total time alive. Behavior otherwise keys off FIELDS, never off role: a
+   *  seeker homes because `homing` is true, an orbiter orbits because its
+   *  module steers it. */
   age: number;
-  /** arp: orbit geometry around the player, and the re-hit cooldown so a slow
-   *  sweep keeps chipping the same enemy. */
+  /** Orbit geometry around the player, and the re-hit cooldown so a slow sweep
+   *  keeps chipping the same enemy. Written only by the weapon module that
+   *  steers this shot (the arp); the shared loop never reads them. */
   orbitAngle: number;
   orbitRadius: number;
   rehitT: number;
+  /** How far a homing shot will look for a target. Infinity means "the whole
+   *  screen". A FIELD, not a role test: the shared loop asks the shot, never
+   *  which weapon fired it. */
+  homingRange: number;
   /** bell: shards to spawn on this shot's first hit (0 for a shard itself, so
    *  shards never re-shatter). */
   shatter: number;
@@ -228,6 +193,9 @@ export interface Projectile {
   bounces: number;
   bounceRetention: number;
   evolved: boolean;
+  /** How fast a homing shot may turn, radians per second. Meaningful only when
+   *  `homing` is set, so every value that reaches it comes from the spawner
+   *  that armed the shot (weapons/lead.ts, and bell's gravity shards). */
   turnRate: number;
   orbitDir: 1 | -1;
   gravity: boolean;
@@ -262,7 +230,10 @@ export interface Shockwave {
   shove: number;
   color: number;
   source: Role;
-  hit: Set<Enemy>;
+  /** Bodies this ring has already crossed, so each takes its damage once.
+   *  Typed as the weapon-facing view because the owning weapon module (#141)
+   *  is the only code that reads or writes it — the world just carries it. */
+  hit: Set<WeaponTarget>;
 }
 
 export interface GravityWell {
@@ -274,26 +245,14 @@ export interface GravityWell {
   color: number;
   burstT: number;
   burstDamage: number;
+  /** Whether the one shard burst this well owes has been thrown. The timer
+   *  above keeps counting past zero for the rest of the well's life, so this
+   *  flag — not the timer — is what makes the burst once-only. */
   burst: boolean;
-}
-
-/** One Two Hands pincer in flight: two slabs standing off along `angle` from
- *  (x, y), travelling inward to meet at `closesAt`. */
-interface ClapPinch {
-  x: number;
-  y: number;
-  /** Axis the two slabs travel along, in radians. */
-  angle: number;
-  /** Simulation time at which the hands meet and the damage lands. */
-  closesAt: number;
-  /** Total travel time, so the view can be fed a halfway frame. */
-  closeS: number;
-  gap: number;
-  radius: number;
-  damage: number;
-  color: number;
-  /** Set once the halfway visual has been emitted. */
-  midShown: boolean;
+  /** Weapon that opened this well: its damage is attributed here, and the
+   *  owning weapon module (#141) is the only code that reads or writes anything
+   *  above. The world just carries it. */
+  source: Role;
 }
 
 /** A treasure chest dropped by a defeated elite/boss enemy. Walk into it to
@@ -368,24 +327,11 @@ export interface RunEvents {
   onMilestone?(id: 'first5m' | 'fullBand' | 'firstEvolution'): void;
 }
 
-export const KIT_COLORS: Record<Role, number> = {
-  kick: 0xff5a3c,
-  snare: 0xffc93c,
-  hat: 0x3ce0ff,
-  bass: 0xa06bff,
-  chord: 0x4dff88,
-  lead: 0xff6bd6,
-  clap: 0xff4f7d,
-  tom: 0xd08a4a,
-  arp: 0x33e6c2,
-  crash: 0xb9c2dd,
-  shaker: 0x7be0d0,
-  acid: 0xb6ff5a,
-  pluck: 0x8f7bff,
-  rhodes: 0x5ad1ff,
-  riser: 0xcbb4ff,
-  bell: 0xffd76b,
-};
+// KIT_COLORS IS GONE (#141). It was a sixteen-entry table of weapon hues living
+// here, character for character the same values as ROLE_META in audio/kits.ts —
+// two sources of truth for "the weapon's colour" that nothing checked against
+// each other. ROLE_META is the single one now, and ROLE_COLORS is its packed
+// 0xRRGGBB view, DERIVED from it rather than typed out again.
 
 export interface RunWorldOpts {
   /** False in the sandbox: no stage script, no waves, no victory timer. */
@@ -452,7 +398,6 @@ export class RunWorld {
   readonly shockwaves: Shockwave[] = [];
   readonly gravityWells: GravityWell[] = [];
   readonly chests: Chest[] = [];
-  private readonly clapPinches: ClapPinch[] = [];
 
   secondWindReady = false;
 
@@ -488,22 +433,12 @@ export class RunWorld {
   private encoreDamageBonus = 0;
   private encoreMoveBonus = 0;
   private encoreAreaBonus = 0;
-  private pendingKick: Array<{
-    atS: number;
-    x: number;
-    y: number;
-    side: 1 | -1;
-    damage: number;
-    area: number;
-    started: boolean;
-    startedAt: number;
-    expiresAt: number;
-    samplePlayer: boolean;
-    spawnFollowUp: boolean;
-    /** Enemies already damaged by THIS strike, so its 200 ms hitbox lands one
-     *  hit per enemy across its frames while every new trigger hits fresh. */
-    hit: Set<Enemy>;
-  }> = [];
+  /** Per-run weapon-module state, one instance per migrated role. */
+  private readonly weapons = new Map<Role, WeaponInstance>();
+  /** The weapon context handed to each module: built once per role per world,
+   *  never per frame. Every query is a getter or a thunk, so nothing is
+   *  snapshotted. */
+  private readonly weaponCtx = new Map<Role, WeaponContext>();
   private scripted: boolean;
 
   constructor(
@@ -521,6 +456,180 @@ export class RunWorld {
     this.fx = (opts.fx ?? true) ? [] : null;
     if (opts.startingItem) this.items.set(opts.startingItem, 1);
     this.secondWindReady = opts.secondWind ?? false;
+    // Built after the stageMagnetRng seed draw above: the context factory draws
+    // no rng, so no draw moves.
+    for (const m of WEAPON_MODULES) {
+      this.weapons.set(m.role, m.create());
+      this.weaponCtx.set(m.role, this.makeWeaponContext(m.role));
+    }
+  }
+
+  /** The narrow surface the world hands a weapon module: queries about the
+   *  world in, effects out. This is the ONLY place a WeaponTarget is cast back
+   *  to a mutable Enemy — five casts, one file, all inside effects the world
+   *  implements. */
+  private makeWeaponContext(role: Role): WeaponContext {
+    const world = this;
+    const color = ROLE_COLORS[role];
+    // This context's private scratch buffer, so one weapon can never corrupt
+    // another's iteration. SpatialHash.query truncates on entry, so contents
+    // and order are unchanged from the shared queryBuf.
+    const buf: Enemy[] = [];
+    return {
+      role,
+      color,
+      get evolved() { return world.evolved.has(role); },
+      get timeS() { return world.timeS; },
+      get player() { return world.player; },
+      get worldW() { return world.worldW; },
+      get worldH() { return world.worldH; },
+      get buildMods() { return world.buildMods; },
+      rng: () => world.rng(),
+      get triggerCount() { return world.triggerCounts[role] ?? 0; },
+      aimDir: (spread) => world.aimDir(spread),
+      aimFan: (spread) => world.aimFan(spread),
+      moveDir: () => world.moveDir(),
+      fanAround: (base) => world.fanAround(base),
+      near: (x, y, r) => world.hash.query(x, y, r, buf),
+      nearestEnemy: (range) => world.nearestEnemy(range),
+      nearestEnemies: (range, count) => world.nearestEnemies(range, count),
+      all: () => world.enemies,
+      damage: (t, amount) => world.damageEnemy(t as Enemy, amount, role),
+      shove: (t, fx, fy, d) => world.shove(t as Enemy, fx, fy, d),
+      setKnock: (t, vx, vy, s) => {
+        const e = t as Enemy;
+        e.knockX = vx;
+        e.knockY = vy;
+        e.knockT = s;
+      },
+      /** A DIRECT position write, deliberately not the knock channel: a Gravity
+       *  Bell's well drags rather than pushes. The fifth and last cast back to
+       *  a mutable Enemy in this file. */
+      displace: (t, dx, dy) => {
+        const e = t as Enemy;
+        e.x += dx;
+        e.y += dy;
+      },
+      withExtraPierce: (basePierce) => world.withExtraPierce(basePierce),
+      slow: (t, mul, durationS) => {
+        const e = t as Enemy;
+        e.slowT = durationS;
+        e.zoneSlowMul = Math.min(e.zoneSlowMul, mul);
+      },
+      fx: (event) => { world.fx?.push(event); },
+      // Storage stays world-side: view.ts iterates world.projectiles and
+      // pushProjectile's live-shot ceiling has to hold across every weapon at
+      // once. The module gets a spawn effect and a query over its own shots.
+      spawnProjectile: (conf, damage) => {
+        const projectile = world.baseProjectile(role, conf, color, damage);
+        world.pushProjectile(projectile);
+        return projectile;
+      },
+      projectiles: () => world.projectiles.filter((projectile) => projectile.role === role),
+      retireProjectile: (projectile) => {
+        const index = world.projectiles.indexOf(projectile);
+        if (index >= 0) world.projectiles.splice(index, 1);
+      },
+      // Shockwave storage stays world-side for the same reason projectile
+      // storage does: view.ts draws world.shockwaves and clearSandboxEntities
+      // empties it. The world owns the ARRAY; the module owns everything that
+      // happens to what is in it. There is no world-side shockwave loop.
+      spawnShockwave: (spec) => {
+        const wave: Shockwave = {
+          x: spec.x,
+          y: spec.y,
+          radius: spec.radius,
+          maxRadius: spec.maxRadius,
+          age: 0,
+          lifeS: spec.lifeS,
+          damage: spec.damage,
+          shove: spec.shove,
+          color,
+          source: role,
+          hit: new Set(),
+        };
+        world.shockwaves.push(wave);
+        return wave;
+      },
+      shockwaves: () => world.shockwaves.filter((wave) => wave.source === role),
+      retireShockwave: (wave) => {
+        const index = world.shockwaves.indexOf(wave);
+        if (index >= 0) world.shockwaves.splice(index, 1);
+      },
+      // Zone storage stays world-side for the third time and the same reason:
+      // view.ts draws world.zones and clearSandboxEntities empties it. The
+      // world owns the ARRAY; weapons/chord.ts owns everything that happens to
+      // what is in it. There is no world-side zone loop.
+      spawnZone: (spec) => {
+        const zone: Zone = {
+          x: spec.x,
+          y: spec.y,
+          radius: spec.radius,
+          damage: spec.damage,
+          lifeS: spec.lifeS,
+          // The world's own bookkeeping, and behavior: a zone starts its timer
+          // at zero, so it lands one tick on the first frame it exists.
+          tickT: 0,
+          color,
+          source: role,
+          slow: spec.slow,
+          evolved: spec.evolved,
+          driftSpeed: spec.driftSpeed,
+          damageCap: spec.damageCap,
+          slowMul: spec.slowMul,
+        };
+        world.zones.push(zone);
+        return zone;
+      },
+      zones: () => world.zones.filter((zone) => zone.source === role),
+      retireZone: (zone) => {
+        const index = world.zones.indexOf(zone);
+        if (index >= 0) world.zones.splice(index, 1);
+      },
+      // Gravity-well storage stays world-side for the fourth and last time and
+      // the same reason: view.ts draws world.gravityWells and
+      // clearSandboxEntities empties it. The world owns the ARRAY;
+      // weapons/bell.ts owns everything that happens to what is in it. There is
+      // no world-side gravity-well loop.
+      spawnGravityWell: (spec) => {
+        const well: GravityWell = {
+          x: spec.x,
+          y: spec.y,
+          radius: spec.radius,
+          lifeS: spec.lifeS,
+          pullSpeed: spec.pullSpeed,
+          burstT: spec.burstT,
+          burstDamage: spec.burstDamage,
+          // The world's own bookkeeping: a new well still owes its one burst.
+          burst: false,
+          color,
+          source: role,
+        };
+        world.gravityWells.push(well);
+        return well;
+      },
+      gravityWells: () => world.gravityWells.filter((well) => well.source === role),
+      retireGravityWell: (well) => {
+        const index = world.gravityWells.indexOf(well);
+        if (index >= 0) world.gravityWells.splice(index, 1);
+      },
+    };
+  }
+
+  /** The motion and hit rules a migrated weapon lends the SHARED projectile
+   *  loop, or undefined when no module owns the role. This lookup is what
+   *  replaced `pr.role === 'arp'`: the loop asks the roster, never the role. */
+  private projectileBehavior(role: Role): ProjectileBehavior | undefined {
+    return this.weapons.get(role)?.projectile;
+  }
+
+  /** Tick every migrated weapon pinned to this damage phase. Phase order is
+   *  the world's; array order decides only within a phase. */
+  private tickWeapons(phase: TickPhase, dt: number): void {
+    for (const m of WEAPON_MODULES) {
+      if (m.tickAt !== phase) continue;
+      this.weapons.get(m.role)!.tick?.(this.weaponCtx.get(m.role)!, dt);
+    }
   }
 
   get enemyCount(): number {
@@ -620,127 +729,34 @@ export class RunWorld {
   }
 
   /** The coupling point: a scheduled trigger fires this kit's weapon at the
-   *  owned tier. Variant peaks (chord pad) scale the same weapon. */
+   *  owned tier. What the chart says about the sound — its variant and its
+   *  velocity — stays in the mix and never reaches the world: every trigger
+   *  of a weapon deals the same damage over the same footprint. */
   fireTrigger(t: ScheduledTrigger): void {
     const tier = this.tiers.get(t.role);
     if (!tier) return;
-    // WEAPONS is keyed on the supported catalog; a trigger only ever fires for
-    // an owned (hence supported) role, so the entry is always present.
-    let conf: WeaponConf = WEAPONS[t.role]![tier - 1];
-    const color = KIT_COLORS[t.role];
-    const v = t.velocity;
-    const p = this.player;
+    // The roster is keyed on the supported catalog; a trigger only ever fires
+    // for an owned (hence supported) role, so the entry is always present.
+    let conf: WeaponConf = weaponTiers(t.role)![tier - 1];
 
-    if (t.role === 'chord' && t.variant === 'pad') {
-      const fx = VARIANT_EFFECTS.chordPad;
-      conf = {
-        ...conf,
-        radius: conf.radius! * fx.radiusMul,
-        lifetimeS: conf.lifetimeS! * fx.lifetimeMul,
-        damage: conf.damage * fx.damageMul,
-      };
-    }
     // Single build-transform pipeline (D1): tempo compensation, folded in one
     // place — balance code multiplies here.
-    conf = this.applyBuild(t.role, conf);
+    conf = this.applyBuild(conf);
     this.triggerCounts[t.role] = (this.triggerCounts[t.role] ?? 0) + 1;
-    const evolved = this.evolved.has(t.role);
 
-    switch (t.role) {
-      case 'kick': {
-        if (evolved) {
-          this.fireRedlineStomp(conf, color);
-          break;
-        }
-        // Whip geometry and damage, while retaining Model A's audible Kick on
-        // every gameplay trigger. A per-enemy 1.35 s lock below preserves the
-        // reference weapon's target cadence despite the 122 BPM beat grid.
-        const side = p.facingX;
-        this.pendingKick.push({
-          atS: this.timeS,
-          x: p.x,
-          y: p.y,
-          side,
-          damage: conf.damage,
-          area: conf.area ?? 1,
-          started: false,
-          startedAt: 0,
-          expiresAt: 0,
-          samplePlayer: false,
-          spawnFollowUp: (conf.amount ?? 1) > 1,
-          hit: new Set(),
-        });
-        break;
-      }
-      case 'chord': {
-        // Thrown at the nearest enemy, not dropped underfoot: the zone has
-        // to land where the horde actually is to be worth a pick.
-        const target = this.nearestEnemy(ZONE_THROW_RANGE);
-        // Loud chords stamp a bigger zone (velocity → size).
-        const zc = { ...conf, radius: conf.radius! * (0.85 + 0.3 * v) };
-        this.spawnZone(target?.x ?? p.x, target?.y ?? p.y, zc, color, 'chord', evolved);
-        break;
-      }
-      case 'clap': {
-        if (evolved) {
-          this.fireTwoHands(conf, color, v);
-          break;
-        }
-        // Whip: a wide forward slash in the aim direction, hitting a cone.
-        const aim = this.aimDir(0);
-        const ang = Math.atan2(aim.y, aim.x);
-        const reach = conf.radius! * (0.9 + 0.2 * v);
-        this.damageCone(p.x, p.y, ang, conf.arc!, reach, conf.damage * (0.85 + 0.3 * v), 'clap', WEAPON_SHOVE.clap);
-        this.fx?.push({ type: 'arc', x: p.x, y: p.y, angle: ang, arc: conf.arc!, radius: reach, color });
-        break;
-      }
-      case 'bell': {
-        // A note lobbed straight that shatters into shards on its first hit.
-        for (const dir of this.aimFan(0.1)) this.spawnBell(dir, conf, color, v);
-        break;
-      }
-      case 'arp': {
-        // King Bible: an orbiter per note, circling the player.
-        if (evolved) this.spawnEventHorizon(conf, color, v);
-        else this.spawnOrbiter(conf, color, v);
-        break;
-      }
-      case 'bass': {
-        if (evolved) {
-          this.spawnSubquake(conf, color, v, t.variant === 'fat');
-          break;
-        }
-        // One wide rolling wave per trigger; Double Take fans extra waves.
-        for (const dir of this.aimFan(0.08)) this.spawnProjectile('bass', dir, conf, color, v);
-        break;
-      }
-      case 'snare':
-        if (evolved) {
-          this.fireRailshot(conf, color, v);
-          break;
-        }
-        for (const dir of this.aimFan(0.08)) this.spawnProjectile(t.role, dir, conf, color, v);
-        break;
-      case 'hat': {
-        // Knife: fires straight along the walk heading with zero scatter, so
-        // the player aims by steering. Never consults nearestEnemy — with an
-        // empty screen it still rails along the direction of travel.
-        // Double Take's extra shots fan around the heading, never off it.
-        for (const dir of this.fanAround(this.moveDir())) this.spawnProjectile('hat', dir, conf, color, v);
-        break;
-      }
-      case 'lead': {
-        for (const dir of this.aimFan(0.08)) this.spawnProjectile(t.role, dir, conf, color, v);
-        break;
-      }
-    }
+    // A weapon owns its whole identity behind the weapon context. THE SWITCH
+    // THAT USED TO STAND HERE IS GONE (#141): the bell was its last case, and
+    // with it the last weapon-specific line in this file. A role with no module
+    // simply does nothing, which is the honest answer — there is no half-owned
+    // weapon left for the world to finish off.
+    this.weapons.get(t.role)?.fire(this.weaponCtx.get(t.role)!, conf);
   }
 
   /** Add a weapon or raise its tier. The pulse fires when the change lands
    *  (next-bar entry), so eye and ear agree on the moment. */
   addWeapon(role: Role, tier = 1): void {
     this.tiers.set(role, tier);
-    this.spawnRing(this.player.x, this.player.y, 220, KIT_COLORS[role], 0.6);
+    this.spawnRing(this.player.x, this.player.y, 220, ROLE_COLORS[role], 0.6);
     if (this.tiers.size >= 7) this.markMilestone('fullBand');
   }
 
@@ -772,28 +788,33 @@ export class RunWorld {
   }
 
   /** The single build-transform pipeline: soundset multiplier plus Antonio's
-   * documented level-based Might. */
-  private applyBuild(role: Role, conf: WeaponConf): WeaponConf {
+   * documented level-based Might. Role-independent since Needle Tips went
+   * pierce-only (#145) and took the projectile-damage gate with it. */
+  private applyBuild(conf: WeaponConf): WeaponConf {
     // Antonio's passive adds 10% Might every ten levels, capped at +50%.
     const antonioMight = 1 + Math.min(5, Math.floor(this.level / 10)) * 0.1;
     const mods = this.buildMods;
-    const projectile = role === 'snare' || role === 'hat' || role === 'bass' ||
-      role === 'lead' || role === 'bell' || role === 'arp';
     return {
       ...conf,
-      damage: conf.damage * this.powerMul * antonioMight * mods.damageMul *
-        (projectile ? mods.projectileDamageMul : 1),
+      damage: conf.damage * this.powerMul * antonioMight * mods.damageMul,
       speed: conf.speed === undefined ? undefined : conf.speed * mods.projectileSpeedMul,
       radius: conf.radius === undefined ? undefined : conf.radius * mods.areaMul,
       lifetimeS: conf.lifetimeS === undefined ? undefined : conf.lifetimeS * mods.durationMul,
-      pierce: conf.pierce === undefined || !Number.isFinite(conf.pierce)
-        ? conf.pierce
-        : conf.pierce + mods.extraPierce,
+      pierce: conf.pierce === undefined ? undefined : this.withExtraPierce(conf.pierce),
       area: conf.area === undefined ? undefined : conf.area * mods.areaMul,
       orbitRadius: conf.orbitRadius === undefined
         ? undefined
         : conf.orbitRadius * mods.orbitDistanceMul,
     };
+  }
+
+  /** The +pierce rule (Needle Tips), in one place. A finite pierce always
+   *  carries the build's bonus; an infinite one is already unbounded and stays
+   *  untouched. Evolutions that replace a weapon's base pierce outright call
+   *  this too, so stating a signature number never means opting out of the item
+   *  that granted the evolution (#146). */
+  private withExtraPierce(basePierce: number): number {
+    return Number.isFinite(basePierce) ? basePierce + this.buildMods.extraPierce : basePierce;
   }
 
   private markMilestone(id: 'first5m' | 'fullBand' | 'firstEvolution'): void {
@@ -881,12 +902,12 @@ export class RunWorld {
     this.resolveEnemyCollisions();
     this.hash.clear();
     for (const e of this.enemies) if (!e.dead) this.hash.insert(e);
-    this.updateKickStrikes();
-    this.updateClapPinches();
+    this.tickWeapons('strikes', dt);
+    this.tickWeapons('pinches', dt);
     this.updateProjectiles(dt);
-    this.updateZones(dt);
-    this.updateShockwaves(dt);
-    this.updateGravityWells(dt);
+    this.tickWeapons('zones', dt);
+    this.tickWeapons('shockwaves', dt);
+    this.tickWeapons('wells', dt);
     this.updateStageMagnets(dt);
     this.updateGems(dt);
     this.updateMusicNotes(dt);
@@ -1298,7 +1319,7 @@ export class RunWorld {
     const frame = frames[counter % frames.length];
     const requestedRadius = frame.width * 0.4;
     const effectiveRadius = Math.floor(requestedRadius);
-    const scale = KICK_GEOMETRY.scale;
+    const scale = WORLD_SCALE;
     // Phaser Body.setCircle(r, r/2, r/2), sprite origin (0.5, 1). Circle
     // intersection uses floor(r) as halfWidth; reconstruct feet from center.
     return {
@@ -1336,8 +1357,7 @@ export class RunWorld {
     this.shockwaves.length = 0;
     this.gravityWells.length = 0;
     if (this.fx) this.fx.length = 0;
-    this.pendingKick.length = 0;
-    this.clapPinches.length = 0;
+    for (const inst of this.weapons.values()) inst.reset();
     this.overflowGem = null;
     this.overflowMusicNote = null;
     this.noteDropPity = 0;
@@ -1494,7 +1514,7 @@ export class RunWorld {
           x: e.x,
           y: e.y - e.radius,
           amount: shown,
-          color: source ? KIT_COLORS[source] : 0xcfd2e0,
+          color: source ? ROLE_COLORS[source] : 0xcfd2e0,
         });
     }
     // Shielded: a shield pool absorbs damage before hp. Attribution stays
@@ -1654,205 +1674,19 @@ export class RunWorld {
 
   // ---- weapons ----
 
-  private fireRedlineStomp(conf: WeaponConf, color: number): void {
-    const reachX = this.worldW * 0.58;
-    const reachY = this.worldH * 0.58;
-    const half = KICK_GEOMETRY.baseHeight * (conf.area ?? 1) * 0.75;
-    const damage = conf.damage * 1.35;
-    const shove = 18 * this.buildMods.knockbackMul;
-    for (const enemy of this.enemies) {
-      if (enemy.dead) continue;
-      const dx = Math.abs(enemy.x - this.player.x);
-      const dy = Math.abs(enemy.y - this.player.y);
-      if ((dx <= reachX + enemy.radius && dy <= half + enemy.radius) ||
-          (dy <= reachY + enemy.radius && dx <= half + enemy.radius)) {
-        this.damageEnemy(enemy, damage, 'kick');
-        this.shove(enemy, this.player.x, this.player.y, shove);
-      }
-    }
-    for (const [x2, y2] of [
-      [this.player.x + reachX, this.player.y], [this.player.x - reachX, this.player.y],
-      [this.player.x, this.player.y + reachY], [this.player.x, this.player.y - reachY],
-    ] as const) {
-      this.fx?.push({ type: 'beam', x: this.player.x, y: this.player.y, x2, y2, width: half * 2, color });
-    }
-  }
+  // The clap left this file with the clap module (#141), and it took more than
+  // its own tuning: the pincer type, the pincer array, the queue's reset, and
+  // the world's damageCone and damageArea helpers all went with it, since Two
+  // Hands and the base cone were their last callers. What remains is the
+  // GENERIC query nearestEnemies, below with the world's other aiming queries,
+  // which the module reaches through ctx.nearestEnemies.
 
-  private damageLine(
-    x: number,
-    y: number,
-    dir: Point,
-    length: number,
-    halfWidth: number,
-    damage: number,
-    source: Role,
-    shove: number,
-  ): number {
-    let hits = 0;
-    for (const enemy of this.enemies) {
-      if (enemy.dead) continue;
-      const px = enemy.x - x;
-      const py = enemy.y - y;
-      const along = px * dir.x + py * dir.y;
-      const across = Math.abs(px * -dir.y + py * dir.x);
-      if (along < -enemy.radius || along > length + enemy.radius || across > halfWidth + enemy.radius) continue;
-      this.damageEnemy(enemy, damage, source);
-      if (shove > 0) this.shove(enemy, x, y, shove);
-      hits += 1;
-    }
-    return hits;
-  }
-
-  private fireRailshot(conf: WeaponConf, color: number, velocity: number): void {
-    const dir = this.aimDir(0.02);
-    const damage = conf.damage * 1.50 * (0.8 + 0.4 * velocity);
-    const width = Math.max(7, (conf.radius ?? 7) * 1.25);
-    this.damageLine(this.player.x, this.player.y, dir, 900, width, damage, 'snare', 16 * this.buildMods.knockbackMul);
-    this.fx?.push({ type: 'beam', x: this.player.x, y: this.player.y, x2: this.player.x + dir.x * 900, y2: this.player.y + dir.y * 900, width: width * 2, color });
-    if ((this.triggerCounts.snare ?? 0) % 4 === 0) {
-      const nx = -dir.y * 24;
-      const ny = dir.x * 24;
-      for (const side of [-1, 1] as const) {
-        const x = this.player.x + nx * side;
-        const y = this.player.y + ny * side;
-        this.damageLine(x, y, dir, 900, width * 0.7, damage * 0.65, 'snare', 8 * this.buildMods.knockbackMul);
-        this.fx?.push({ type: 'beam', x, y, x2: x + dir.x * 900, y2: y + dir.y * 900, width, color });
-      }
-    }
-  }
-
-  /** Two Hands: a clap is two hands meeting, so each trigger picks the closest
-   *  few enemies and snaps a slab pair shut on each of them. Target-picked and
-   *  tiny on purpose — the base weapon's cone is short-ranged, and the roster
-   *  already has three player-centred blasts (Subquake, Redline Stomp,
-   *  Afterhours). The inward tug on the crush is the point: it bunches the
-   *  horde for the rest of the band. */
-  private fireTwoHands(conf: WeaponConf, color: number, velocity: number): void {
-    const p = this.player;
-    const damage = conf.damage * TWO_HANDS.damageMul * (0.85 + 0.3 * velocity);
-    const targets = this.nearestEnemies(AIM_RANGE, TWO_HANDS.targets);
-    if (targets.length === 0) {
-      // Nothing in reach: still clap, just ahead of the player, so the beat
-      // reads on screen and an empty field does not eat the trigger.
-      const aim = this.aimDir(0);
-      this.spawnPinch(p.x + aim.x * TWO_HANDS.openGap, p.y + aim.y * TWO_HANDS.openGap,
-        Math.atan2(aim.y, aim.x), damage, color);
-      return;
-    }
-    for (const target of targets) {
-      this.spawnPinch(target.x, target.y, Math.atan2(target.y - p.y, target.x - p.x), damage, color);
-    }
-  }
-
-  /** Queue one pincer centred on (x, y), its slabs standing off along `angle`. */
-  private spawnPinch(x: number, y: number, angle: number, damage: number, color: number): void {
-    const area = this.buildMods.areaMul;
-    const pinch: ClapPinch = {
-      x,
-      y,
-      angle,
-      closesAt: this.timeS + TWO_HANDS.closeS,
-      closeS: TWO_HANDS.closeS,
-      gap: TWO_HANDS.openGap * area,
-      radius: TWO_HANDS.pinchRadius * area,
-      damage,
-      color,
-      midShown: false,
-    };
-    this.clapPinches.push(pinch);
-    this.drawPinchHands(pinch, 1);
-  }
-
-  /** The two slabs, drawn as short bars broadside to the pinch axis at
-   *  `t` of their standoff (1 = fully open, 0 = met). */
-  private drawPinchHands(pinch: ClapPinch, t: number): void {
-    if (!this.fx) return;
-    const ax = Math.cos(pinch.angle);
-    const ay = Math.sin(pinch.angle);
-    const half = pinch.radius * 1.15;
-    for (const side of [-1, 1] as const) {
-      const cx = pinch.x + ax * pinch.gap * t * side;
-      const cy = pinch.y + ay * pinch.gap * t * side;
-      this.fx.push({
-        type: 'beam',
-        x: cx + ay * half,
-        y: cy - ax * half,
-        x2: cx - ay * half,
-        y2: cy + ax * half,
-        width: 5,
-        color: pinch.color,
-      });
-    }
-  }
-
-  private updateClapPinches(): void {
-    for (let i = this.clapPinches.length - 1; i >= 0; i--) {
-      const pinch = this.clapPinches[i];
-      if (pinch.closesAt > this.timeS) {
-        if (!pinch.midShown && pinch.closesAt - this.timeS <= pinch.closeS * 0.5) {
-          pinch.midShown = true;
-          this.drawPinchHands(pinch, 0.45);
-        }
-        continue;
-      }
-      // The crush itself: no shove, because the whole move pulls inward.
-      this.damageArea(pinch.x, pinch.y, pinch.radius, pinch.damage, 'clap', 0);
-      this.dragInward(pinch.x, pinch.y, TWO_HANDS.tugRadius * this.buildMods.areaMul,
-        TWO_HANDS.tug * this.buildMods.knockbackMul);
-      this.fx?.push({ type: 'slam', x: pinch.x, y: pinch.y, radius: pinch.radius, color: pinch.color });
-      this.fx?.push({ type: 'spark', x: pinch.x, y: pinch.y, color: pinch.color, n: 6, spread: pinch.radius * 0.7 });
-      this.clapPinches.splice(i, 1);
-    }
-  }
-
-  /** Drag every enemy within `radius` toward (x, y) by up to `dist`. Runs
-   *  through shove() with the origin mirrored through the enemy, so knockback
-   *  resistance and the Drop lift apply exactly as they do on a push. */
-  private dragInward(x: number, y: number, radius: number, dist: number): void {
-    if (dist <= 0) return;
-    const near = this.hash.query(x, y, radius + 24, this.queryBuf);
-    for (const e of near) {
-      if (e.dead) continue;
-      const d = Math.hypot(e.x - x, e.y - y);
-      if (d > radius || d < 1) continue;
-      this.shove(e, 2 * e.x - x, 2 * e.y - y, Math.min(dist, d));
-    }
-  }
-
-  private spawnSubquake(conf: WeaponConf, color: number, velocity: number, fat: boolean): void {
-    const area = this.buildMods.areaMul;
-    this.shockwaves.push({
-      x: this.player.x,
-      y: this.player.y,
-      radius: 40,
-      maxRadius: (fat ? 375 : 288) * area,
-      age: 0,
-      lifeS: 1.2,
-      damage: conf.damage * 1.55 * (fat ? 1.2 : 1) * (0.8 + 0.4 * velocity),
-      shove: 14 * this.buildMods.knockbackMul,
-      color,
-      source: 'bass',
-      hit: new Set(),
-    });
-  }
-
-  private updateShockwaves(dt: number): void {
-    for (let i = this.shockwaves.length - 1; i >= 0; i--) {
-      const wave = this.shockwaves[i];
-      wave.age += dt;
-      wave.lifeS -= dt;
-      wave.radius = 40 + (wave.maxRadius - 40) * Math.min(1, wave.age / 1.2);
-      for (const enemy of this.enemies) {
-        if (enemy.dead || wave.hit.has(enemy)) continue;
-        if (Math.hypot(enemy.x - wave.x, enemy.y - wave.y) <= wave.radius + enemy.radius) {
-          wave.hit.add(enemy);
-          this.damageEnemy(enemy, wave.damage, wave.source);
-          this.shove(enemy, wave.x, wave.y, wave.shove);
-        }
-      }
-      if (wave.lifeS <= 0) this.shockwaves.splice(i, 1);
-    }
-  }
+  // Shockwaves left this file with the bass module (#141). The world still
+  // STORES them — view.ts draws world.shockwaves and clearSandboxEntities
+  // empties it — but it no longer spawns, grows, resolves or retires one:
+  // weapons/bass.ts owns all four through ctx.spawnShockwave / ctx.shockwaves /
+  // ctx.retireShockwave, and its tick() runs in the 'shockwaves' phase where
+  // updateShockwaves used to stand.
 
   private nearestEnemy(range: number): Enemy | null {
     const p = this.player;
@@ -1910,7 +1744,8 @@ export class RunWorld {
 
   /** Spread this trigger's shots around an already-chosen direction. Split out
    *  of aimFan so the hat can fan around its walk heading without ever
-   *  consulting nearestEnemy. */
+   *  consulting nearestEnemy; reached from a module through
+   *  WeaponContext.fanAround. */
   private fanAround(base: { x: number; y: number }): Array<{ x: number; y: number }> {
     const count = 1 + this.buildMods.extraProjectiles;
     if (count <= 1) return [base];
@@ -1924,14 +1759,23 @@ export class RunWorld {
     return dirs;
   }
 
-  /** The player's walk heading as a unit vector. No targeting, no jitter: two
-   *  triggers while holding one direction produce the exact same angle. */
+  /** The player's walk heading as a unit vector. No targeting, no jitter, no
+   *  rng draw: two triggers while holding one direction produce the exact same
+   *  angle. The hat's whole aim, reached through WeaponContext.moveDir. */
   private moveDir(): { x: number; y: number } {
     return { x: this.player.moveDirX, y: this.player.moveDirY };
   }
 
   /** Base projectile with all fields defaulted; specialized spawners tweak
-   *  the few that matter to them. */
+   *  the few that matter to them.
+   *
+   *  THE HOMING TRIO BELOW IS INERT HERE. `homing` was `role === 'lead'` until
+   *  the lead module took it (#141); it is plain false now, and a shot that
+   *  homes says so itself. `turnRate` and `homingRange` are only ever read
+   *  while `homing` is set, and every spawner that sets it also sets them
+   *  (weapons/lead.ts sets all three; bell's gravity shards set turnRate and
+   *  keep Infinity). Do not read these two as any weapon's tuning — a weapon's
+   *  numbers live in its own stats block. */
   private baseProjectile(role: Role, conf: WeaponConf, color: number, damage: number): Projectile {
     return {
       role,
@@ -1944,7 +1788,7 @@ export class RunWorld {
       pierce: conf.pierce ?? 1,
       maxPierce: conf.pierce ?? 1,
       lifeS: conf.lifetimeS!,
-      homing: role === 'lead',
+      homing: false,
       speed: conf.speed ?? 0,
       color,
       hit: new Set(),
@@ -1960,6 +1804,7 @@ export class RunWorld {
       turnRate: 10,
       orbitDir: 1,
       gravity: false,
+      homingRange: Infinity,
     };
   }
 
@@ -1982,316 +1827,25 @@ export class RunWorld {
     this.projectiles.push(projectile);
   }
 
-  private spawnProjectile(
-    role: Role,
-    dir: { x: number; y: number },
-    conf: WeaponConf,
-    color: number,
-    velocity: number,
-  ): void {
-    const pr = this.baseProjectile(role, conf, color, conf.damage * (0.75 + 0.5 * velocity));
-    // Evolved hi-hat is a lane, not a ricochet: every chip rails straight
-    // through the whole line it is fired down. Infinite pierce plus double
-    // life is the reach; the stagger below makes the stream read continuous.
-    const laneHat = role === 'hat' && pr.evolved;
-    if (laneHat) {
-      pr.damage *= 1.30;
-      pr.speed *= HAT_LANE.speedMul;
-      pr.maxPierce = Infinity;
-      pr.pierce = Infinity;
-      pr.lifeS *= HAT_LANE.lifetimeMul;
-    }
-    if (role === 'lead' && pr.evolved) {
-      pr.damage *= 1.40;
-      pr.maxPierce = 6;
-      pr.pierce = 6;
-      pr.turnRate = 14;
-      if ((this.triggerCounts.lead ?? 0) % 5 === 0) {
-        pr.damage *= 2;
-        pr.radius = Math.max(12, pr.radius * 1.7);
-      }
-    }
-    // pr.speed above already carries the lane multiplier, so deriving the
-    // velocity from it keeps the `speed` field equal to |v| — the bounce path
-    // and the hi-hat lane stagger both read that field.
-    pr.vx = dir.x * pr.speed;
-    pr.vy = dir.y * pr.speed;
-    if (laneHat) {
-      // Stagger successive chips forward along the lane so a 16th-note wall
-      // draws as one continuous rail instead of a clump at the player.
-      const step = HAT_LANE.stagger[(this.triggerCounts.hat ?? 0) % HAT_LANE.stagger.length];
-      pr.x += dir.x * step;
-      pr.y += dir.y * step;
-    }
-    this.pushProjectile(pr);
-  }
+  // The bell left this file with its module (#141), and it took three methods
+  // with it: spawnBell, spawnShards and updateGravityWells. The world still
+  // STORES gravity wells — view.ts draws world.gravityWells and
+  // clearSandboxEntities empties it — but it no longer opens, ages, pulls,
+  // bursts or retires one: weapons/bell.ts owns all of it through
+  // ctx.spawnGravityWell / ctx.gravityWells / ctx.retireGravityWell, and its
+  // tick() runs in the 'wells' phase where updateGravityWells used to stand.
+  //
+  // updateGravityWells was the LAST entry in the shared-physics guard's
+  // protected set that belonged to a single weapon. With it gone the guard
+  // watches only the two loops that are genuinely shared by every weapon.
 
-  /** Arp: an orbiter that circles the player, chipping what it sweeps. */
-  private spawnOrbiter(conf: WeaponConf, color: number, velocity: number): void {
-    // One random base angle per trigger; Double Take's copies space themselves
-    // evenly around the ring from it, so a crown reads as a ring not a clump.
-    const baseAngle = this.rng() * Math.PI * 2;
-    const count = 1 + this.buildMods.extraProjectiles;
-    for (let i = 0; i < count; i++) {
-      const angle = baseAngle + (Math.PI * 2 * i) / count;
-      const pr = this.baseProjectile('arp', conf, color, conf.damage * (0.8 + 0.4 * velocity));
-      pr.pierce = Infinity;
-      pr.orbitAngle = angle;
-      pr.orbitRadius = conf.orbitRadius!;
-      pr.x = this.player.x + Math.cos(angle) * pr.orbitRadius;
-      pr.y = this.player.y + Math.sin(angle) * pr.orbitRadius;
-      this.pushProjectile(pr);
-    }
-  }
-
-  private spawnEventHorizon(conf: WeaponConf, color: number, velocity: number): void {
-    const baseAngle = this.rng() * Math.PI * 2;
-    // Double Take adds whole counter-rotating pairs, spaced around the orbit.
-    const pairs = 1 + this.buildMods.extraProjectiles;
-    for (let pair = 0; pair < pairs; pair++) {
-      for (const dir of [1, -1] as const) {
-        const angle = baseAngle + (Math.PI * pair) / pairs + (dir === 1 ? 0 : Math.PI);
-        const evolvedConf = {
-          ...conf,
-          radius: (conf.radius ?? 8) * 1.25,
-          lifetimeS: (conf.lifetimeS ?? 2) * 1.35,
-        };
-        const pr = this.baseProjectile('arp', evolvedConf, color, conf.damage * 0.8 * (0.8 + 0.4 * velocity));
-        pr.pierce = Infinity;
-        pr.orbitAngle = angle;
-        pr.orbitRadius = conf.orbitRadius!;
-        pr.orbitDir = dir;
-        pr.rehitT = 0.45;
-        pr.evolved = true;
-        pr.x = this.player.x + Math.cos(angle) * pr.orbitRadius;
-        pr.y = this.player.y + Math.sin(angle) * pr.orbitRadius;
-        this.pushProjectile(pr);
-      }
-    }
-    const evolvedOrbiters = this.projectiles.filter((projectile) => projectile.role === 'arp' && projectile.evolved);
-    while (evolvedOrbiters.length > 24) {
-      const oldest = evolvedOrbiters.shift()!;
-      const index = this.projectiles.indexOf(oldest);
-      if (index >= 0) this.projectiles.splice(index, 1);
-    }
-  }
-
-  /** Bell: a note lobbed straight that shatters into shards on its first hit.
-   *  The shatter count (per tier) rides on the shot; the shard spawn happens in
-   *  updateProjectiles when it lands its first hit. */
-  private spawnBell(
-    dir: { x: number; y: number },
-    conf: WeaponConf,
-    color: number,
-    velocity: number,
-  ): void {
-    const tier = this.tiers.get('bell') ?? 1;
-    const pr = this.baseProjectile('bell', conf, color, conf.damage * (0.8 + 0.4 * velocity));
-    pr.vx = dir.x * conf.speed!;
-    pr.vy = dir.y * conf.speed!;
-    pr.shatter = BELL.shards[tier - 1] ?? BELL.shards[0];
-    if (pr.evolved) {
-      pr.damage *= 1.35;
-      pr.gravity = true;
-      pr.shatter = 10;
-    }
-    this.pushProjectile(pr);
-  }
-
-
-  /** Bell's shatter: fling a radial burst of small shard shots from (x,y). Each
-   *  shard is a bell projectile flagged so it can never itself re-shatter. */
-  private spawnShards(
-    x: number,
-    y: number,
-    count: number,
-    damage: number,
-    color: number,
-    gravity = false,
-  ): void {
-    const base = this.rng() * Math.PI * 2;
-    const mods = this.buildMods;
-    const shardRadius = BELL.shardRadius * mods.areaMul;
-    const shardLifeS = BELL.shardLifeS * mods.durationMul;
-    const shardPierce = BELL.shardPierce + mods.extraPierce;
-    const shardSpeed = BELL.shardSpeed * mods.projectileSpeedMul;
-    for (let i = 0; i < count; i++) {
-      const activeShards = this.projectiles.filter((projectile) => projectile.role === 'bell' && projectile.shard);
-      if (activeShards.length >= 36) {
-        const oldest = activeShards[0];
-        oldest.damage = Math.min(oldest.damage * 1.08, damage * 3);
-        oldest.lifeS = Math.max(oldest.lifeS, shardLifeS);
-        continue;
-      }
-      const a = base + (i / count) * Math.PI * 2;
-      const pr = this.baseProjectile(
-        'bell',
-        { damage, radius: shardRadius, lifetimeS: shardLifeS, pierce: shardPierce },
-        color,
-        damage,
-      );
-      pr.damage = damage;
-      pr.x = x;
-      pr.y = y;
-      pr.speed = shardSpeed;
-      pr.vx = Math.cos(a) * shardSpeed;
-      pr.vy = Math.sin(a) * shardSpeed;
-      pr.shard = true;
-      if (gravity) {
-        pr.homing = true;
-        pr.turnRate = 4;
-        pr.bounces = Math.max(1, pr.bounces);
-        pr.shatter = 0;
-      }
-      this.pushProjectile(pr);
-    }
-  }
-
-  private updateGravityWells(dt: number): void {
-    for (let i = this.gravityWells.length - 1; i >= 0; i--) {
-      const well = this.gravityWells[i];
-      well.lifeS -= dt;
-      well.burstT -= dt;
-      for (const enemy of this.enemies) {
-        if (enemy.dead) continue;
-        if (enemy.dummy) continue;
-        const dx = well.x - enemy.x;
-        const dy = well.y - enemy.y;
-        const distance = Math.hypot(dx, dy);
-        if (distance <= well.radius && distance > 1) {
-          const pull = Math.min(distance, well.pullSpeed * dt);
-          enemy.x += (dx / distance) * pull;
-          enemy.y += (dy / distance) * pull;
-        }
-      }
-      if (!well.burst && well.burstT <= 0) {
-        well.burst = true;
-        this.spawnShards(well.x, well.y, 10, well.burstDamage, well.color, true);
-        this.fx?.push({ type: 'spark', x: well.x, y: well.y, color: well.color, n: 10, spread: 24 });
-      }
-      if (well.lifeS <= 0) this.gravityWells.splice(i, 1);
-    }
-  }
-
-  private updateKickStrikes(): void {
-    for (let i = this.pendingKick.length - 1; i >= 0; i--) {
-      const strike = this.pendingKick[i];
-      if (!strike.started) {
-        if (strike.atS > this.timeS + 1e-9) continue;
-        strike.started = true;
-        strike.startedAt = this.timeS;
-        strike.expiresAt = this.timeS + 0.2;
-        if (strike.samplePlayer) {
-          strike.x = this.player.x;
-          strike.y = this.player.y;
-          strike.side = this.player.facingX === 1 ? -1 : 1;
-        }
-        if (strike.spawnFollowUp) {
-          // Schedule from the main strip's actual simulation start so fixed
-          // 60 Hz stepping preserves the full 100 ms interval.
-          this.pendingKick.push({
-            atS: this.timeS + 0.1,
-            x: 0,
-            y: 0,
-            side: 1,
-            damage: strike.damage,
-            area: strike.area,
-            started: false,
-            startedAt: 0,
-            expiresAt: 0,
-            samplePlayer: true,
-            spawnFollowUp: false,
-            hit: new Set(),
-          });
-        }
-        // Anchor at the player; the view bursts the pulse outward from here.
-        this.fx?.push({
-          type: 'whip',
-          x: strike.x,
-          y: strike.y,
-          side: strike.side,
-          area: strike.area,
-          color: KIT_COLORS.kick,
-        });
-      } else if (this.timeS + 1e-9 >= strike.expiresAt) {
-        this.pendingKick.splice(i, 1);
-        continue;
-      }
-
-      // Grow linearly from zero to full Area over 100 ms, then hold 100 ms;
-      // the inner edge stays pinned to the player as the reach extends.
-      const age = Math.max(0, this.timeS - strike.startedAt);
-      const bodyScale = Math.min(1, age / 0.1);
-      const halfW = (KICK_GEOMETRY.baseWidth * strike.area * bodyScale) / 2;
-      const halfH = (KICK_GEOMETRY.baseHeight * strike.area * bodyScale) / 2;
-      const center = kickStripCenter(strike.x, strike.y, strike.side, halfW);
-      const centerX = center.x;
-      const centerY = center.y;
-      const reach = Math.hypot(halfW, halfH) + 48;
-      const near = this.hash.query(centerX, centerY, reach, this.queryBuf);
-      for (const e of near) {
-        if (
-          e.dead ||
-          strike.hit.has(e) ||
-          !circleIntersectsRect(e.x, e.y, e.radius, centerX, centerY, halfW, halfH)
-        ) {
-          continue;
-        }
-        this.damageEnemy(e, strike.damage, 'kick');
-        strike.hit.add(e);
-        // Enemy hit response reverses pursuit for the same 120 ms flash,
-        // scaled by the source bestiary's knockback multiplier.
-        this.reverseForKick(e, strike.x, strike.y);
-      }
-    }
-  }
-
-  private reverseForKick(e: Enemy, fromX: number, fromY: number): void {
-    if (e.knockbackMul <= 0) return;
-    if (e.lastMoveX !== 0 || e.lastMoveY !== 0) {
-      e.knockX = -e.lastMoveX * e.knockbackMul;
-      e.knockY = -e.lastMoveY * e.knockbackMul;
-      e.knockT = SHOVE_S;
-      return;
-    }
-    this.shove(e, fromX, fromY, e.speed * SHOVE_S);
-  }
-
-  /** Clap: damage every enemy inside a forward cone (also point-blank). */
-  private damageCone(
-    x: number,
-    y: number,
-    angle: number,
-    halfArc: number,
-    reach: number,
-    damage: number,
-    source: Role,
-    shove = 0,
-  ): void {
-    const near = this.hash.query(x, y, reach + 24, this.queryBuf);
-    for (const e of near) {
-      if (e.dead) continue;
-      const dx = e.x - x;
-      const dy = e.y - y;
-      const d = Math.hypot(dx, dy);
-      if (d > reach + e.radius) continue;
-      if (d < 34) {
-        this.damageEnemy(e, damage, source);
-        if (shove) this.shove(e, x, y, shove);
-        continue;
-      }
-      let diff = Math.atan2(dy, dx) - angle;
-      while (diff > Math.PI) diff -= Math.PI * 2;
-      while (diff < -Math.PI) diff += Math.PI * 2;
-      if (Math.abs(diff) <= halfArc) {
-        this.damageEnemy(e, damage, source);
-        if (shove) this.shove(e, x, y, shove);
-      }
-    }
-  }
-
+  /** The SHARED projectile loop. It owns travel, arena rails, the hit pass and
+   *  the pierce rule for EVERY weapon, and — since #140 — it contains no
+   *  per-weapon branch at all. Weapon-specific motion belongs to the owning
+   *  weapon module, which lends it back through ProjectileBehavior; anything
+   *  else a shot needs is a FIELD ON THE SHOT, set by whatever spawned it.
+   *  Adding a `pr.role === '...'` here is the thing this loop exists not to do. */
   private updateProjectiles(dt: number): void {
-    const p = this.player;
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const pr = this.projectiles[i];
       const step = dt;
@@ -2299,19 +1853,13 @@ export class RunWorld {
       pr.age += step;
       pr.lifeS -= step;
 
-      if (pr.role === 'arp') {
-        // Orbit the player; clear the hit set on a cooldown so a slow sweep
-        // keeps chipping the same enemy instead of touching it once.
-        pr.orbitAngle += ARP_OMEGA * pr.orbitDir * step;
-        const orbitRadius = pr.evolved ? 125 + Math.sin(pr.age * 3.2) * 25 : pr.orbitRadius;
-        pr.x = p.x + Math.cos(pr.orbitAngle) * orbitRadius;
-        pr.y = p.y + Math.sin(pr.orbitAngle) * orbitRadius;
-        pr.rehitT -= step;
-        if (pr.rehitT <= 0) {
-          pr.hit.clear();
-          pr.rehitT = pr.evolved ? 0.45 : ORBIT_REHIT_S;
-        }
-      } else {
+      // A module that steers its own shots positions them itself, which skips
+      // shared travel AND the arena rails together (the arp's two ADR-0002
+      // exemptions). No module, or a module that only nudged velocity: shared
+      // motion runs, exactly as it always has.
+      const behavior = this.projectileBehavior(pr.role);
+      const steered = behavior?.steer?.(this.weaponCtx.get(pr.role)!, pr, step) ?? false;
+      if (!steered) {
         if (pr.homing) {
           let best: Enemy | null = null;
           let bestD = Infinity;
@@ -2320,7 +1868,7 @@ export class RunWorld {
             const dx = e.x - pr.x;
             const dy = e.y - pr.y;
             const d = dx * dx + dy * dy;
-            if (d < bestD && (!pr.evolved || pr.role !== 'lead' || d <= 320 * 320)) {
+            if (d < bestD && d <= pr.homingRange * pr.homingRange) {
               bestD = d;
               best = e;
             }
@@ -2348,29 +1896,25 @@ export class RunWorld {
         if (e.dead || pr.hit.has(e) || !circlesOverlap(pr, e)) continue;
         pr.hit.add(e);
         this.damageEnemy(e, pr.damage, pr.role);
-        // Shove (sim, deterministic): snare 20 / bass 10. Writes only the
-        // shared knock channel.
-        const sh = (WEAPON_SHOVE[pr.role] ?? 0) * this.buildMods.knockbackMul;
-        if (sh) this.shove(e, pr.x, pr.y, sh);
-        // Bell: the note shatters into a radial burst of shards on its first
-        // hit. shatter is 0 on a shard, so shards never re-shatter.
-        if (pr.role === 'bell' && pr.shatter > 0) {
-          if (pr.gravity) {
-            this.gravityWells.push({
-              x: pr.x, y: pr.y, radius: 130 * this.buildMods.areaMul, lifeS: 1.1, pullSpeed: 140,
-              color: pr.color, burstT: 0.35, burstDamage: pr.damage * 0.65, burst: false,
-            });
-          } else {
-            this.spawnShards(pr.x, pr.y, pr.shatter, pr.damage * BELL.shardDamageMul, pr.color);
-          }
-          this.fx?.push({ type: 'spark', x: e.x, y: e.y, color: pr.color, n: 6, spread: 14 });
-          pr.shatter = 0;
-        }
-        // Per-hit spark (view-only, bounded to low-count roles).
-        if (SPARK_HIT_ROLES.has(pr.role) && !pr.shard)
-          this.fx?.push({ type: 'spark', x: e.x, y: e.y, color: pr.color, n: 4, spread: 12 });
-        // Orbiters gate re-hits by time, so they never spend pierce on a hit.
-        if (pr.role === 'arp') continue;
+        // The per-weapon shove lookup that stood here is GONE (#141). It read
+        // the WEAPON_SHOVE table by pr.role — the last role-keyed table in this
+        // loop and the last entry in INTERIM_EXCEPTIONS; the clap module took
+        // the table with it. A weapon that knocks on a projectile hit does it from its own
+        // ProjectileBehavior.onHit now — see SNARE_STATS.shove and
+        // BASS_STATS.shove, both applied that way.
+        // The shatter branch that stood here is GONE (#141). It was already
+        // generic — it keyed on `pr.shatter > 0`, a field the bell's own spawner
+        // set, and named no role — but generic is not the same as SHARED: it
+        // called spawnShards and pushed a gravity well, which is one weapon's
+        // behavior sitting in everyone's loop. It moved into the bell module's
+        // ProjectileBehavior.onHit, which is the slot directly below and the one
+        // reserved for exactly this: after the loop deals pr.damage, before the
+        // shared pierce rule. The sequence is unchanged; only the owner is.
+        // The shared pierce rule, and the one hook that can decline it. A
+        // module returning false chips on a timer instead (ADR-0002); no hook
+        // means spend, which is what every unmigrated role does today.
+        const spendsPierce = behavior?.onHit?.(this.weaponCtx.get(pr.role)!, pr, e) ?? true;
+        if (!spendsPierce) continue;
         pr.pierce -= 1;
         if (pr.pierce <= 0) {
           pr.lifeS = 0;
@@ -2384,8 +1928,11 @@ export class RunWorld {
     }
   }
 
+  /** Arena rails. Only ever reached from the shared-travel path, so a shot a
+   *  module steered itself never gets here — which is how the arp's rail
+   *  exemption survives without naming the arp. */
   private reflectProjectileFromArena(projectile: Projectile): void {
-    if (projectile.bounces <= 0 || projectile.role === 'arp') return;
+    if (projectile.bounces <= 0) return;
     const minX = this.player.x - this.worldW * 0.52;
     const maxX = this.player.x + this.worldW * 0.52;
     const minY = this.player.y - this.worldH * 0.52;
@@ -2406,125 +1953,13 @@ export class RunWorld {
     projectile.damage *= projectile.bounceRetention;
   }
 
-  private spawnZone(
-    x: number,
-    y: number,
-    conf: { damage: number; radius?: number; lifetimeS?: number },
-    color: number,
-    source: Role,
-    evolved = false,
-  ): void {
-    const radius = conf.radius! * (evolved ? 1.55 : 1);
-    const life = conf.lifetimeS! * (evolved ? 1.35 : 1);
-    const damage = conf.damage * (evolved ? 1.25 : 1);
-    this.zones.push({
-      x,
-      y,
-      radius,
-      damage,
-      lifeS: life,
-      tickT: 0,
-      color,
-      source,
-      slow: true,
-      evolved,
-      driftSpeed: evolved ? 65 : 0,
-      damageCap: damage * 3,
-      slowMul: evolved ? 0.42 : ZONE_SLOW_MUL,
-    });
-  }
-
-  private updateZones(dt: number): void {
-    for (let i = this.zones.length - 1; i >= 0; i--) {
-      const z = this.zones[i];
-      z.lifeS -= dt;
-
-      if (z.evolved) {
-        let target: Enemy | null = null;
-        let bestNeighbors = -1;
-        for (let sample = 0; sample < this.enemies.length; sample += Math.max(1, Math.floor(this.enemies.length / 30))) {
-          const enemy = this.enemies[sample];
-          if (enemy.dead) continue;
-          let neighbors = 0;
-          for (const other of this.enemies) {
-            if (!other.dead && Math.hypot(other.x - enemy.x, other.y - enemy.y) < 120) neighbors += 1;
-          }
-          if (neighbors > bestNeighbors) {
-            bestNeighbors = neighbors;
-            target = enemy;
-          }
-        }
-        if (target) {
-          const dx = target.x - z.x;
-          const dy = target.y - z.y;
-          const distance = Math.hypot(dx, dy) || 1;
-          const travel = Math.min(distance, z.driftSpeed * dt);
-          z.x += (dx / distance) * travel;
-          z.y += (dy / distance) * travel;
-        }
-      }
-
-      z.tickT -= dt;
-      if (z.tickT <= 0) {
-        z.tickT = ZONE_TICK_S;
-        this.damageArea(z.x, z.y, z.radius, z.damage, z.source);
-        // The zone's other half: everything inside wades, it doesn't walk.
-        if (z.slow) {
-          const inside = this.hash.query(z.x, z.y, z.radius + 24, this.queryBuf);
-          for (const e of inside) {
-            if (!e.dead && circlesOverlap(z, e)) {
-              e.slowT = ZONE_TICK_S + 0.15;
-              e.zoneSlowMul = Math.min(e.zoneSlowMul, z.slowMul);
-            }
-          }
-        }
-      }
-      if (z.lifeS <= 0) {
-        this.zones.splice(i, 1);
-      }
-    }
-    // Afterhours zones merge pairwise with strict caps; this runs after ticks
-    // so each original zone can land its current scheduled tick at most once.
-    for (let i = this.zones.length - 1; i >= 0; i--) {
-      const a = this.zones[i];
-      if (!a.evolved) continue;
-      for (let j = i - 1; j >= 0; j--) {
-        const b = this.zones[j];
-        if (!b.evolved || !circlesOverlap(a, b)) continue;
-        const totalArea = a.radius * a.radius + b.radius * b.radius;
-        const weight = Math.max(1, totalArea);
-        a.x = (a.x * a.radius * a.radius + b.x * b.radius * b.radius) / weight;
-        a.y = (a.y * a.radius * a.radius + b.y * b.radius * b.radius) / weight;
-        a.radius = Math.min(180, Math.sqrt(totalArea));
-        a.lifeS = Math.min(4.5, Math.max(a.lifeS, b.lifeS) + Math.min(a.lifeS, b.lifeS) * 0.25);
-        a.damage = Math.min(a.damageCap, a.damage + b.damage * 0.5);
-        this.zones.splice(j, 1);
-        i -= 1;
-        break;
-      }
-    }
-  }
-
-  private damageArea(
-    x: number,
-    y: number,
-    radius: number,
-    damage: number,
-    source?: Role,
-    shove = 0,
-  ): number {
-    const near = this.hash.query(x, y, radius + 24, this.queryBuf);
-    const area = { x, y, radius };
-    let hits = 0;
-    for (const e of near) {
-      if (!e.dead && circlesOverlap(area, e)) {
-        this.damageEnemy(e, damage, source);
-        if (shove) this.shove(e, x, y, shove);
-        hits += 1;
-      }
-    }
-    return hits;
-  }
+  // Zones left this file with the chord module (#141). The world still STORES
+  // them — view.ts draws world.zones and clearSandboxEntities empties it — but
+  // it no longer spawns, ticks, drifts, merges or retires one: weapons/chord.ts
+  // owns all of it through ctx.spawnZone / ctx.zones / ctx.retireZone, and its
+  // tick() runs in the 'zones' phase where updateZones used to stand. That
+  // method was inside the shared-physics guard's protected set, so this is the
+  // first extraction that shrank the guard rather than working around it.
 
   // ---- pickups and juice ----
 

@@ -2,8 +2,8 @@
 // High-count entities remain one Graphics each and share GraphicsContexts.
 
 import { Container, Graphics, GraphicsContext, Text, TextStyle } from 'pixi.js';
-import type { Role } from '../audio/kits';
-import { KIT_COLORS, type Enemy, type Gem, type MusicNotePickup, type Projectile, type StageMagnetPickup, type Zone } from './run';
+import { ROLE_COLORS, type Role } from '../audio/kits';
+import type { Enemy, Gem, MusicNotePickup, Projectile, StageMagnetPickup, Zone } from './run';
 import { SOUNDWOOD, hash2, regularPixelPoly, snap } from './soundwood-art';
 import { drawWeaponIcon } from './weaponicons';
 
@@ -729,7 +729,7 @@ export function makeRewardGfx(spec: RewardSpec): RewardGfx {
     evoTag = new Text({ text: 'EVO', style: REWARD_EVO, roundPixels: true });
     evoTag.anchor.set(1, 0.5);
     evoIcon = pixelGraphics(cachedPixelShape('reward-evo-icon:' + evoRole, (g) => drawWeaponIcon(g, evoRole, 9)));
-    evoIcon.tint = KIT_COLORS[evoRole];
+    evoIcon.tint = ROLE_COLORS[evoRole];
     const span = evoTag.width + 8 + 16;
     evoTag.position.set(snap(-span / 2 + evoTag.width), y);
     evoIcon.position.set(snap(span / 2 - 8), y);

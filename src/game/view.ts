@@ -4,8 +4,8 @@
 import { Container, Graphics, Sprite, Text, TextStyle, type Texture } from 'pixi.js';
 import type { Role } from '../audio/kits';
 import { RUN } from './config';
+import { KICK } from './weapons';
 import {
-  KICK_GEOMETRY,
   PLAYER_FOOT_OFFSET,
   type Enemy,
   type FxEvent,
@@ -274,8 +274,8 @@ function whipDimensions(area: unknown): { width: number; height: number } {
   if (typeof area === 'number' && Number.isFinite(area)) {
     const scale = Math.max(0.1, area);
     return {
-      width: KICK_GEOMETRY.baseWidth * scale,
-      height: KICK_GEOMETRY.baseHeight * scale,
+      width: KICK.stats.stripBaseWidth * scale,
+      height: KICK.stats.stripBaseHeight * scale,
     };
   }
   const data = area && typeof area === 'object' ? area as Record<string, unknown> : {};

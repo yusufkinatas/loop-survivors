@@ -2,9 +2,10 @@
 // `npm run verify`; failures throw and produce a non-zero exit.
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import type { Role } from '../audio/kits';
+import { ROLE_COLORS, ROLES, type Role } from '../audio/kits';
 import { AUDIO_SET_LIST } from '../audio/audio-sets';
 import { AFTERHOURS_ROLES, AFTERHOURS_VARIANTS } from '../audio/kits/afterhours';
 import {
@@ -20,9 +21,31 @@ import {
   MetaStore,
   SHOP_OFFERS,
 } from './meta';
-import { ALL_ENEMY_KINDS, ENEMY_LABELS, RUN, STAGE_MAGNET, WEAPONS, type EnemyKind } from './config';
+import { AIM_RANGE, ALL_ENEMY_KINDS, ENEMY_LABELS, MULTISHOT_FAN_RAD, RUN, SHOVE_S, STAGE_MAGNET, TIER_LINES, WEAPONS, type EnemyKind } from './config';
 import { rollOffers } from './picks';
-import { RunWorld, type RunEvents } from './run';
+import { mulberry32 } from './rng';
+import { RunWorld, type FxEvent, type GravityWell, type Projectile, type RunEvents, type Shockwave, type Zone } from './run';
+import {
+  ARP,
+  BASS,
+  BELL,
+  CHORD,
+  CLAP,
+  HAT,
+  KICK,
+  LEAD,
+  SNARE,
+  WEAPON_MODULES,
+  weaponTiers,
+  type GravityWellSpec,
+  type ShockwaveSpec,
+  type WeaponContext,
+  type WeaponInstance,
+  type WeaponTarget,
+  type ZoneSpec,
+} from './weapons';
+import type { WeaponConf } from './config';
+import { TIER_COUNT } from '../audio/charts';
 import {
   SANDBOX_ENEMY_CATALOG,
   SANDBOX_EVOLUTION_CATALOG,
@@ -45,7 +68,7 @@ const allItems = new Map<ItemId, number>(ITEM_IDS.map((id) => [id, 5]));
 const mods = deriveBuildMods(allItems);
 assert.equal(mods.moveMul, 1.2);
 assert.equal(mods.projectileSpeedMul, 2.0);
-assert.equal(mods.extraPierce, 3);
+assert.equal(mods.extraPierce, 5);
 assert.equal(mods.bounceCount, 3);
 assert.equal(mods.damageMul, 1.25);
 assert.equal(mods.maxHpBonus, 40);
@@ -53,6 +76,15 @@ assert.equal(mods.armorBonus, 2);
 assert.equal(mods.hpRegenPerSecond, 0.5);
 // Double Take stops at two levels, so the all-items-at-5 sweep clamps to 2.
 assert.equal(mods.extraProjectiles, 2);
+
+// Needle Tips is pierce-only (#145), so every one of its levels has to move
+// pierce — there is no damage rider left for a flat level to pay for. The old
+// [0,1,1,2,2,3] ladder would leave levels 2 and 4 doing literally nothing.
+for (let level = 1; level <= itemMaxLevel('needleTips'); level++) {
+  const at = (n: number) => deriveBuildMods(new Map<ItemId, number>([['needleTips', n]])).extraPierce;
+  assert.equal(at(level) - at(level - 1), 1,
+    `Needle Tips level ${level} must grant +1 pierce; a pierce-only item cannot have a no-op level`);
+}
 
 for (const id of ITEM_IDS) {
   assert.equal(ITEMS[id].levelLines.length, itemMaxLevel(id),
@@ -105,7 +137,7 @@ assert.equal(canDispatchPhraseBoundary(10, 10.5, 9, true), true,
   'phrase-end cleanup must accept its intended elapsed boundary after a stall');
 assert((VOICE_MIX_GAIN.chord ?? 0) > 1 && (VOICE_MIX_GAIN.arp ?? 0) > 1,
   'chord and arp voices need calibrated lifts at the shared voice bus');
-const hatDamageLadder = WEAPONS.hat!.map(({ damage }) => damage);
+const hatDamageLadder = weaponTiers('hat')!.map(({ damage }) => damage);
 assert.deepEqual(hatDamageLadder, [2, 2, 2, 3]);
 assert(hatDamageLadder.every((damage, index) => index === 0 || damage >= hatDamageLadder[index - 1]),
   'raising base hi-hat damage must never make a later tier a downgrade');
@@ -477,13 +509,79 @@ assert.equal(evolutionWorld.eligibleEvolutions().length, 0);
 
 evolutionWorld.spawnEnemyAt('tank', 100, 0);
 for (const role of evolutionRoles) {
-  evolutionWorld.fireTrigger({ role, time: 0, velocity: 1, step: 0, variant: role === 'bass' ? 'fat' : undefined });
+  evolutionWorld.fireTrigger({ role, time: 0, velocity: 1, step: 0 });
 }
 evolutionWorld.update(1 / 60);
 const evolvedOutputCount = evolutionWorld.projectiles.length + evolutionWorld.zones.length +
   evolutionWorld.shockwaves.length + evolutionWorld.gravityWells.length + (evolutionWorld.fx?.length ?? 0);
 assert(evolvedOutputCount > evolutionRoles.length,
   'evolved triggers should create their expanded gameplay and visual patterns');
+
+// Variants and velocity are sound-only (docs/adr/0001): what a chart event says
+// about the sound — which sample, how loud — must never cross into the world.
+// Two identically built worlds, one fed the quietest plain triggers and one fed
+// the loudest with a variant named on every trigger, have to produce the same
+// gameplay down to the number: same damage, same footprint, same enemies left
+// standing. ('pad' and 'fat' are the two variants that used to move the world;
+// naming one on every role is deliberately more than any real chart would do.)
+function soundOnlyOutput(expression: 'loud' | 'quiet', evolved: boolean): string {
+  const probe = new RunWorld({ width: 1280, height: 720 }, events, {
+    scripted: false,
+    fx: false,
+    rng: () => 0.5,
+  });
+  probe.invincible = true;
+  for (const role of evolutionRoles) probe.addWeapon(role, 4);
+  if (evolved) {
+    for (const [item] of allItems) probe.addItem(item, 5);
+    for (const role of evolutionRoles) assert(probe.evolve(role));
+  }
+  // Dead ahead of the player and inside the base clap's 108-unit tier-IV reach,
+  // so every weapon — including the short cone — has the same thing to hit in
+  // both worlds. spawnEnemyAt places a sprite-feet position and offsets the
+  // circle center off it, so pin the center afterwards the way the hi-hat check
+  // does. Absurd HP makes it a damage meter: a target that dies in both worlds
+  // hides exactly the difference this check exists to catch.
+  const target = probe.spawnEnemyAt('tank', probe.player.x + 90, probe.player.y)!;
+  target.x = probe.player.x + 90;
+  target.y = probe.player.y;
+  target.hp = 1e6;
+  // Populate the spatial hash at the pinned position: the cone and blast
+  // weapons query it, and an unbuilt hash makes them all silently miss.
+  probe.update(0);
+  for (const role of evolutionRoles) {
+    probe.fireTrigger(expression === 'loud'
+      ? { role, time: 0, velocity: 1, step: 0, variant: role === 'bass' ? 'fat' : 'pad' }
+      : { role, time: 0, velocity: 0.05, step: 0 });
+  }
+  // Spawn-time damage and footprint: what velocity and the variants used to bend.
+  const spawned = [
+    probe.projectiles.map((p) => [p.role, p.damage, p.radius, p.lifeS, p.x, p.y, p.vx, p.vy]),
+    probe.zones.map((z) => [z.damage, z.radius, z.lifeS]),
+    probe.shockwaves.map((s) => [s.damage, s.maxRadius, s.lifeS]),
+  ];
+  // Then let it play out, so the delayed hits (the clap cone, Two Hands' crush)
+  // land and show up as damage actually dealt.
+  for (let i = 0; i < 30; i++) probe.update(1 / 60);
+  return JSON.stringify([spawned, probe.enemies.map((e) => e.hp)]);
+}
+
+// NOTE ON WHAT THIS CAN AND CANNOT CATCH. Both operands are produced by the
+// same code at the same commit, so this is a SELF-COMPARISON: it proves the two
+// runs agree with each other, never that either agrees with yesterday. Any
+// drift that moves loud and quiet equally — a halved damage tier, a shrunken
+// footprint — cancels out and this stays green. It is also built with
+// rng: () => 0.5, so it cannot see rng draw-order change at all.
+//
+// That is not a flaw; it is the exact shape ADR-0001 needs, and it should stay
+// this way. It just is not a regression net. The regression net is the recorded
+// golden baseline in weapon-parity-check.ts, which compares against a digest
+// captured at a known-good commit and counts rng draws. The two are
+// complementary and neither substitutes for the other.
+for (const evolved of [false, true]) {
+  assert.equal(soundOnlyOutput('loud', evolved), soundOnlyOutput('quiet', evolved),
+    `velocity and variant must not change ${evolved ? 'evolved' : 'base'} damage or footprint`);
+}
 
 const healWorld = new RunWorld({ width: 1280, height: 720 }, events, { fx: false });
 healWorld.player.hp = 1;
@@ -521,7 +619,7 @@ pincerWorld.spawnEnemyAt('bat', -150, 0);
 // pinch point — more than three times the 42-unit crush radius and past the
 // 96-unit inward tug. That local reach is the property this evolution exists to
 // hold: the hands crush what they grab instead of becoming a second
-// player-centred blast the way Subquake (a 288-375 unit ring) is meant to be.
+// player-centred blast the way Subquake (a 288-unit ring) is meant to be.
 const bystander = pincerWorld.spawnEnemyAt('bat', 0, 300)!;
 const cornerEnemy = pincerWorld.spawnEnemyAt(
   'bat',
@@ -541,4 +639,4276 @@ assert(bystander.hp === bystanderHpBefore,
   'Two Hands must stay local: nothing at 300 units should be damaged');
 assert(cornerEnemy.hp === cornerHpBefore, 'Two Hands must not reach the arena corners');
 
-console.log('systems-check: items, note shop, Stage Magnet, enemies, endless director, and evolutions passed');
+// ---- weapon modules (#139) ----
+//
+// Roster invariants: cheap, and they catch a re-added shadow copy of a ladder
+// that the module is supposed to be the only owner of.
+for (const m of WEAPON_MODULES) {
+  assert.equal(m.stats.tiers.length, TIER_COUNT, `${m.role} needs one stat block per tier`);
+  assert.equal(m.stats.tierLines.length, TIER_COUNT, `${m.role} needs one pedestal line per tier`);
+}
+assert.equal(WEAPONS.kick, undefined, 'the kick module is the only copy of the kick ladder');
+assert.equal(TIER_LINES.kick, undefined, 'the kick module is the only copy of the kick pedestal copy');
+assert.equal(WEAPONS.arp, undefined, 'the arp module is the only copy of the arp ladder');
+assert.equal(TIER_LINES.arp, undefined, 'the arp module is the only copy of the arp pedestal copy');
+assert.equal(new Set(WEAPON_MODULES.map((m) => m.role)).size, WEAPON_MODULES.length,
+  'one module per weapon');
+
+// A weapon context small enough to hand-build. This is the falsifier for the
+// whole seam: if the fake cannot be written this small, the context leaked the
+// world. Its rng() THROWS, which turns "the kick draws nothing from the run
+// stream" into an executable assertion rather than a comment.
+interface FakeTarget extends WeaponTarget {
+  x: number;
+  y: number;
+  radius: number;
+  dead: boolean;
+  speed: number;
+  knockbackMul: number;
+  dummy: boolean;
+  lastMoveX: number;
+  lastMoveY: number;
+  /** Fake-side bookkeeping; the real world sink owns hp. */
+  hp: number;
+  /** Fake-side mirror of the world's shared SLOW channel. The real fields live
+   *  on Enemy and are consumed by moveEnemies; they are reproduced here so the
+   *  chord's `min()` fold and its plain timer refresh are both observable —
+   *  ctx.slow() is write-only across the seam, so a log alone could not show
+   *  that two overlapping zones leave the HARSHER multiplier in place. */
+  slowT: number;
+  zoneSlowMul: number;
+}
+
+function fakeTarget(x: number, y: number, over: Partial<FakeTarget> = {}): FakeTarget {
+  return {
+    x, y, radius: 12, dead: false, speed: 60, knockbackMul: 1, dummy: false,
+    lastMoveX: 0, lastMoveY: 0, hp: 1e6, slowT: 0, zoneSlowMul: 1, ...over,
+  };
+}
+
+class FakeCtx implements WeaponContext {
+  role: Role = 'kick';
+  color = ROLE_COLORS.kick;
+  evolved = false;
+  timeS = 0;
+  player = { x: 0, y: 0, facingX: 1 as 1 | -1 };
+  worldW = 1422;
+  worldH = 800;
+  buildMods = deriveBuildMods(new Map());
+  readonly targets: FakeTarget[] = [];
+  readonly fxLog: FxEvent[] = [];
+  readonly hits: Array<{ t: FakeTarget; amount: number }> = [];
+  readonly knocks: string[] = [];
+  /** Interleaved effect order: the base strip pushes its whip BEFORE damage,
+   *  Redline Stomp pushes its beams AFTER. Both orderings are pinned. */
+  readonly seq: string[] = [];
+
+  /** Values this weapon is allowed to draw, in order. NULL means "this weapon
+   *  must draw nothing", which is what makes the kick's zero-draw contract an
+   *  executable assertion rather than a comment. The arp draws exactly once per
+   *  trigger, so its checks hand it a script. */
+  rngValues: number[] | null = null;
+  rngDraws = 0;
+  rng(): number {
+    if (this.rngValues === null) throw new Error(`${this.role} must draw nothing from the run stream`);
+    const next = this.rngValues.shift();
+    assert(next !== undefined, `${this.role} drew more rng values than the check supplied`);
+    this.rngDraws += 1;
+    return next;
+  }
+  /** Triggers served so far. RunWorld increments its per-role counter BEFORE
+   *  calling fire(), so a check that wants "the fourth trigger" bumps this the
+   *  same way — see snareCtx.fire(). */
+  triggerCount = 0;
+  /** The world's auto-aim, reproduced from RunWorld.aimDir/aimFan side by side
+   *  with them. Faithful in the one respect that matters most: the DRAW COUNT.
+   *  One draw with a target in AIM_RANGE, TWO with an empty screen, exactly one
+   *  aimDir per aimFan however many directions come back. */
+  aimDir(spread: number): { x: number; y: number } {
+    let best: FakeTarget | null = null;
+    let bestD = AIM_RANGE * AIM_RANGE;
+    for (const t of this.targets) {
+      if (t.dead) continue;
+      const d = (t.x - this.player.x) ** 2 + (t.y - this.player.y) ** 2;
+      if (d < bestD) { bestD = d; best = t; }
+    }
+    let ang = best
+      ? Math.atan2(best.y - this.player.y, best.x - this.player.x)
+      : this.rng() * Math.PI * 2;
+    ang += (this.rng() * 2 - 1) * spread;
+    return { x: Math.cos(ang), y: Math.sin(ang) };
+  }
+  aimFan(spread: number): Array<{ x: number; y: number }> {
+    return this.fanAround(this.aimDir(spread));
+  }
+  /** The persisted walk heading. Initialised to (1, 0) the way RunWorld
+   *  initialises the player, and only ever overwritten by a check that means
+   *  to — which is exactly how standing still keeps the last heading. */
+  moveDirX = 1;
+  moveDirY = 0;
+  moveDir(): { x: number; y: number } {
+    return { x: this.moveDirX, y: this.moveDirY };
+  }
+  fanAround(base: { x: number; y: number }): Array<{ x: number; y: number }> {
+    const count = 1 + this.buildMods.extraProjectiles;
+    if (count <= 1) return [base];
+    const baseAngle = Math.atan2(base.y, base.x);
+    const dirs: Array<{ x: number; y: number }> = [];
+    for (let i = 0; i < count; i++) {
+      const ang = baseAngle + Math.ceil(i / 2) * (i % 2 === 1 ? 1 : -1) * MULTISHOT_FAN_RAD;
+      dirs.push({ x: Math.cos(ang), y: Math.sin(ang) });
+    }
+    return dirs;
+  }
+  near(x: number, y: number, r: number): readonly WeaponTarget[] {
+    return this.targets.filter((t) => Math.hypot(t.x - x, t.y - y) <= r + t.radius);
+  }
+  /** RunWorld.nearestEnemy, reproduced side by side with it: ARRAY order,
+   *  SQUARED distances, a STRICT `<` against `range * range`, and NO RNG DRAW.
+   *  The draw count is the point — the chord's whole zero-draw contract is that
+   *  this is not aimDir(0). */
+  nearestEnemy(range: number): WeaponTarget | null {
+    let best: FakeTarget | null = null;
+    let bestD = range * range;
+    for (const t of this.targets) {
+      if (t.dead) continue;
+      const d = (t.x - this.player.x) ** 2 + (t.y - this.player.y) ** 2;
+      if (d < bestD) { bestD = d; best = t; }
+    }
+    return best;
+  }
+  /** RunWorld.nearestEnemies, reproduced side by side with it: ARRAY order in,
+   *  SQUARED distances, a STRICT `<` against `range * range`, a sort by that
+   *  distance, and the first `count` out. NO RNG DRAW — Two Hands' whole
+   *  zero-draw contract with a target on screen is that this is not aimDir. */
+  nearestEnemies(range: number, count: number): readonly WeaponTarget[] {
+    const maxD = range * range;
+    const found: Array<{ t: FakeTarget; d: number }> = [];
+    for (const t of this.targets) {
+      if (t.dead) continue;
+      const d = (t.x - this.player.x) ** 2 + (t.y - this.player.y) ** 2;
+      if (d < maxD) found.push({ t, d });
+    }
+    found.sort((a, b) => a.d - b.d);
+    return found.slice(0, count).map((f) => f.t);
+  }
+  all(): readonly WeaponTarget[] { return this.targets; }
+  damage(t: WeaponTarget, amount: number): void {
+    const f = t as FakeTarget;
+    this.hits.push({ t: f, amount });
+    this.seq.push('damage');
+    f.hp -= amount;
+    if (f.hp <= 0) f.dead = true;
+  }
+  /** Every shove with its target and origin. `knocks` above records only the
+   *  distance and is asserted verbatim by the kick's checks, so the snare's
+   *  rails — which care WHICH body got pushed and from WHERE — get their own
+   *  log rather than widening that string. */
+  readonly shoveLog: Array<{ t: FakeTarget; x: number; y: number; d: number }> = [];
+  shove(t: WeaponTarget, x: number, y: number, d: number): void {
+    this.knocks.push(`shove:${d}`);
+    this.shoveLog.push({ t: t as FakeTarget, x, y, d });
+  }
+  setKnock(_t: WeaponTarget, vx: number, vy: number, s: number): void {
+    this.knocks.push(`knock:${vx},${vy},${s}`);
+  }
+  /** Every direct position write, with its target. Reproduced from
+   *  RunWorld.makeWeaponContext exactly: the delta is ADDED to x and y, and
+   *  NOTHING else on the body is touched — no knock vector, no timer, no
+   *  knockbackMul. The log is what lets a check see a drag that a knock log
+   *  could not distinguish it from. */
+  readonly displaceLog: Array<{ t: FakeTarget; dx: number; dy: number }> = [];
+  displace(t: WeaponTarget, dx: number, dy: number): void {
+    const f = t as FakeTarget;
+    this.displaceLog.push({ t: f, dx, dy });
+    f.x += dx;
+    f.y += dy;
+  }
+  /** RunWorld.withExtraPierce, reproduced side by side with it: a FINITE budget
+   *  gains buildMods.extraPierce, an infinite one comes back untouched. */
+  withExtraPierce(basePierce: number): number {
+    return Number.isFinite(basePierce) ? basePierce + this.buildMods.extraPierce : basePierce;
+  }
+  /** Every slow, with its target. The write itself is reproduced from
+   *  RunWorld.makeWeaponContext exactly: the multiplier folds in with min(),
+   *  the timer is ASSIGNED. Getting that asymmetry backwards here would hide
+   *  the mid-evolve check's whole point. */
+  readonly slowLog: Array<{ t: FakeTarget; mul: number; durationS: number }> = [];
+  slow(t: WeaponTarget, mul: number, durationS: number): void {
+    const f = t as FakeTarget;
+    this.slowLog.push({ t: f, mul, durationS });
+    f.slowT = durationS;
+    f.zoneSlowMul = Math.min(f.zoneSlowMul, mul);
+  }
+  fx(e: FxEvent): void { this.fxLog.push(e); this.seq.push(e.type); }
+  /** Projectiles this fake world is holding. Mirrors RunWorld.projectiles
+   *  closely enough for the arp: append on spawn, splice by identity on
+   *  retire, array order is spawn order. */
+  readonly spawned: Projectile[] = [];
+  spawnProjectile(conf: WeaponConf, damage: number): Projectile {
+    // The defaulting RunWorld.baseProjectile does, kept side by side with it.
+    const pr: Projectile = {
+      role: this.role, x: this.player.x, y: this.player.y, vx: 0, vy: 0,
+      radius: conf.radius!, damage, pierce: conf.pierce ?? 1, maxPierce: conf.pierce ?? 1,
+      lifeS: conf.lifetimeS!, homing: false, speed: conf.speed ?? 0, color: this.color,
+      hit: new Set(), age: 0, orbitAngle: 0, orbitRadius: 0, rehitT: 0, homingRange: Infinity,
+      shatter: 0, shard: false, bounces: this.buildMods.bounceCount,
+      bounceRetention: this.buildMods.bounceRetention, evolved: this.evolved,
+      turnRate: 10, orbitDir: 1, gravity: false,
+    };
+    this.spawned.push(pr);
+    this.seq.push('spawn');
+    return pr;
+  }
+  projectiles(): readonly Projectile[] {
+    return this.spawned.filter((pr) => pr.role === this.role);
+  }
+  retireProjectile(pr: Projectile): void {
+    const index = this.spawned.indexOf(pr);
+    if (index >= 0) this.spawned.splice(index, 1);
+  }
+  /** Shockwaves this fake world is holding. Mirrors RunWorld's array for the
+   *  bass: append on spawn, splice by identity on retire, array order is spawn
+   *  order — and, exactly like the real one, NOTHING here grows or resolves a
+   *  ring. That is entirely the module's tick(). */
+  readonly rings: Shockwave[] = [];
+  spawnShockwave(spec: ShockwaveSpec): Shockwave {
+    // The defaulting RunWorld.makeWeaponContext does, kept side by side with
+    // it: the module supplies geometry and payload, the world supplies identity
+    // and bookkeeping.
+    const wave: Shockwave = {
+      x: spec.x, y: spec.y, radius: spec.radius, maxRadius: spec.maxRadius,
+      age: 0, lifeS: spec.lifeS, damage: spec.damage, shove: spec.shove,
+      color: this.color, source: this.role, hit: new Set(),
+    };
+    this.rings.push(wave);
+    this.seq.push('shockwave');
+    return wave;
+  }
+  shockwaves(): readonly Shockwave[] {
+    return this.rings.filter((wave) => wave.source === this.role);
+  }
+  retireShockwave(wave: Shockwave): void {
+    const index = this.rings.indexOf(wave);
+    if (index >= 0) this.rings.splice(index, 1);
+  }
+  /** Zones this fake world is holding. Mirrors RunWorld's array for the chord:
+   *  append on spawn, splice by identity on retire, array order is spawn order
+   *  — and, exactly like the real one, NOTHING here ticks, drifts, merges or
+   *  expires a zone. That is entirely the module's tick(). */
+  readonly fields: Zone[] = [];
+  spawnZone(spec: ZoneSpec): Zone {
+    // The defaulting RunWorld.makeWeaponContext does, kept side by side with
+    // it: the module supplies geometry, payload and character, the world
+    // supplies identity and the one piece of bookkeeping — tickT at ZERO.
+    const zone: Zone = {
+      x: spec.x, y: spec.y, radius: spec.radius, damage: spec.damage,
+      lifeS: spec.lifeS, tickT: 0, color: this.color, source: this.role,
+      slow: spec.slow, evolved: spec.evolved, driftSpeed: spec.driftSpeed,
+      damageCap: spec.damageCap, slowMul: spec.slowMul,
+    };
+    this.fields.push(zone);
+    this.seq.push('zone');
+    return zone;
+  }
+  zones(): readonly Zone[] {
+    return this.fields.filter((zone) => zone.source === this.role);
+  }
+  retireZone(zone: Zone): void {
+    const index = this.fields.indexOf(zone);
+    if (index >= 0) this.fields.splice(index, 1);
+  }
+  /** Gravity wells this fake world is holding. Mirrors RunWorld's array for the
+   *  bell: append on spawn, splice by identity on retire, array order is spawn
+   *  order — and, exactly like the real one, NOTHING here ages, pulls, bursts or
+   *  expires a well. That is entirely the module's tick(). */
+  readonly wells: GravityWell[] = [];
+  spawnGravityWell(spec: GravityWellSpec): GravityWell {
+    // The defaulting RunWorld.makeWeaponContext does, kept side by side with
+    // it: the module supplies geometry and payload, the world supplies identity
+    // and the one piece of bookkeeping — `burst` false, the burst still owed.
+    const well: GravityWell = {
+      x: spec.x, y: spec.y, radius: spec.radius, lifeS: spec.lifeS,
+      pullSpeed: spec.pullSpeed, burstT: spec.burstT, burstDamage: spec.burstDamage,
+      burst: false, color: this.color, source: this.role,
+    };
+    this.wells.push(well);
+    this.seq.push('well');
+    return well;
+  }
+  gravityWells(): readonly GravityWell[] {
+    return this.wells.filter((well) => well.source === this.role);
+  }
+  retireGravityWell(well: GravityWell): void {
+    const index = this.wells.indexOf(well);
+    if (index >= 0) this.wells.splice(index, 1);
+  }
+  /** Advance every live orbiter one frame through the module's own steer hook,
+   *  the way RunWorld.updateProjectiles does. */
+  steer(inst: WeaponInstance, n: number): void {
+    for (let i = 0; i < n; i++) {
+      this.timeS += 1 / 60;
+      for (const pr of this.spawned) {
+        pr.age += 1 / 60;
+        pr.lifeS -= 1 / 60;
+        inst.projectile!.steer!(this, pr, 1 / 60);
+      }
+    }
+  }
+  step(inst: WeaponInstance, n: number): void {
+    for (let i = 0; i < n; i++) { this.timeS += 1 / 60; inst.tick!(this, 1 / 60); }
+  }
+  whips(): Array<Extract<FxEvent, { type: 'whip' }>> {
+    return this.fxLog.filter((e): e is Extract<FxEvent, { type: 'whip' }> => e.type === 'whip');
+  }
+}
+
+const kickTiers = KICK.stats.tiers;
+
+// ---------------------------------------------------------------------------
+// The kick's tuning, pinned to LITERALS.
+//
+// #139 moved these numbers out of run.ts and promised "values unchanged". A
+// promise is only worth something if something can catch it being broken, and
+// the checks below this block cannot: they assert module output AGAINST the
+// stats block (`kickTiers[3].damage * KICK.stats.evolvedDamageMul`), so both
+// sides of the assertion move together and any edit to a stat is self-
+// consistent. Halving the damage ladder used to leave every one of them green.
+//
+// So: literals. The right-hand side of each assertion below is a number a human
+// typed after reading the pre-#139 run.ts, not an expression that reads the
+// value it is checking. That is the entire point — a later refactor cannot
+// quietly move one of these and still pass.
+//
+// These are BALANCE numbers. If one legitimately changes, this block is
+// supposed to fail, and updating it is how the change gets reviewed.
+// ---------------------------------------------------------------------------
+{
+  // WORLD_SCALE (800 / 456) is irrational-looking enough that the products are
+  // pinned rounded, with the authored H800 figure shown in the comment.
+  const round6 = (n: number): number => Math.round(n * 1e6) / 1e6;
+
+  // The per-tier damage ladder. Mapped from Whip levels 1, 3, 5 and 8.
+  assert.deepEqual(
+    kickTiers.map((t) => [t.damage, t.area, t.amount]),
+    [
+      [3, 1, 1],
+      [5, 1, 2],
+      [9, 1.1, 2],
+      [15, 1.2, 2],
+    ],
+    'the kick damage/area/amount ladder moved',
+  );
+  assert.equal(kickTiers.length, TIER_COUNT, 'the kick ladder must have exactly TIER_COUNT rungs');
+
+  // Strip geometry, in H800 world units.
+  assert.equal(round6(KICK.stats.stripBaseWidth), 149.122807, 'stripBaseWidth moved (85 * WORLD_SCALE)');
+  assert.equal(round6(KICK.stats.stripBaseHeight), 38.596491, 'stripBaseHeight moved (22 * WORLD_SCALE)');
+  assert.equal(KICK.stats.growS, 0.1, 'the strip grow ramp moved');
+  assert.equal(KICK.stats.liveS, 0.2, 'the strip lifetime moved');
+  assert.equal(KICK.stats.followUpDelayS, 0.1, 'the follow-up gap moved');
+  assert.equal(KICK.stats.queryPad, 48, 'the hash query pad moved');
+
+  // Redline Stomp.
+  assert.equal(KICK.stats.evolvedDamageMul, 1.35, 'Redline Stomp damage multiplier moved');
+  assert.equal(KICK.stats.evolvedReachFrac, 0.58, 'Redline Stomp arm length moved');
+  assert.equal(KICK.stats.evolvedHalfFrac, 0.75, 'Redline Stomp arm thickness moved');
+  assert.equal(KICK.stats.evolvedShove, 18, 'Redline Stomp push distance moved');
+
+  // Identity, not tuning, but equally load-bearing: tickAt is the phase name
+  // the world's tick call site has to match.
+  assert.equal(KICK.tickAt, 'strikes', 'the kick ticks in the strikes phase');
+  assert.equal(KICK.role, 'kick');
+}
+
+// 1. The base strip defers ENTIRELY: no damage and no fx at fire time.
+{
+  const ctx = new FakeCtx();
+  const inst = KICK.create();
+  ctx.targets.push(fakeTarget(120, 0));
+  inst.fire(ctx, kickTiers[0]);
+  assert.equal(ctx.hits.length, 0, 'the base kick deals no damage at fire time');
+  assert.equal(ctx.fxLog.length, 0, 'the base kick pushes no fx at fire time');
+}
+
+// 2. The whip fx precedes the strip's damage, and 3. a target ON the player is
+// hit on the very first tick, when the strip has grown to zero reach and the
+// rect has degenerated to the anchor point.
+{
+  const ctx = new FakeCtx();
+  const inst = KICK.create();
+  const pointBlank = fakeTarget(0, 0);
+  ctx.targets.push(pointBlank);
+  inst.fire(ctx, kickTiers[0]);
+  ctx.step(inst, 1);
+  assert.deepEqual(ctx.seq, ['whip', 'damage'],
+    'the base strip pushes its whip before it deals damage');
+  const whip = ctx.whips()[0];
+  assert.equal(whip.side, 1);
+  assert.equal(whip.area, 1);
+  assert.equal(whip.color, ROLE_COLORS.kick);
+  assert.equal(ctx.hits.length, 1,
+    'a zero-size strip on its start frame still lands a point-blank hit');
+}
+
+// 4. One hit per strike across exactly twelve damage passes, and no damage on
+// the expiry frame.
+{
+  const ctx = new FakeCtx();
+  const inst = KICK.create();
+  ctx.targets.push(fakeTarget(60, 0));
+  inst.fire(ctx, kickTiers[0]);
+  ctx.step(inst, 12);
+  assert.equal(ctx.hits.length, 1, 'a strike hits each target once, not once per frame');
+  ctx.step(inst, 1);
+  assert.equal(ctx.hits.length, 1, 'the expiry frame runs no damage pass');
+  assert.equal(KICK.stats.liveS / (1 / 60), 12, 'a strike lives for exactly twelve damage passes');
+}
+
+// 5. The follow-up resamples LIVE player state at start: its side is the
+// inverse of the facing AT THAT MOMENT, not the inverse of its parent, so
+// turning around inside the gap puts both strips on the same side. It still
+// inherits the parent's frozen damage and area.
+{
+  const ctx = new FakeCtx();
+  const inst = KICK.create();
+  inst.fire(ctx, kickTiers[1]);
+  ctx.step(inst, 1);
+  ctx.player = { x: 300, y: 50, facingX: -1 };
+  ctx.step(inst, 6);
+  const whips = ctx.whips();
+  assert.equal(whips.length, 2, 'tier 2 schedules exactly one follow-up strip');
+  assert.equal(whips[1].x, 300, 'the follow-up samples the CURRENT player position');
+  assert.equal(whips[1].y, 50);
+  assert.equal(whips[0].side, 1);
+  assert.equal(whips[1].side, 1,
+    'turning around inside the gap puts the follow-up on the same side as its parent');
+  assert.equal(whips[1].area, whips[0].area, 'the follow-up inherits its parent frozen area');
+}
+
+// 6. spawnFollowUp is a BOOLEAN, not a count: amount 3 still yields one follow-up.
+{
+  const ctx = new FakeCtx();
+  const inst = KICK.create();
+  inst.fire(ctx, { damage: 5, area: 1, amount: 3 });
+  ctx.step(inst, 30);
+  assert.equal(ctx.whips().length, 2, 'amount above 2 must not grow a loop of follow-ups');
+}
+
+// 7. The two knock branches are deliberately asymmetric and must not be unified.
+{
+  const moving = new FakeCtx();
+  const movingInst = KICK.create();
+  moving.targets.push(fakeTarget(60, 0, { lastMoveX: 5, lastMoveY: 3 }));
+  movingInst.fire(moving, kickTiers[0]);
+  // Six ticks: the strip grows from zero reach, so a target at 60 units is
+  // only inside it once bodyScale has ramped. Per-strike dedup keeps this to
+  // exactly one knock however long it runs.
+  moving.step(movingInst, 6);
+  assert.deepEqual(moving.knocks, [`knock:-5,-3,${SHOVE_S}`],
+    'a moving target has its pursuit reversed, with the duration ASSIGNED');
+
+  const still = new FakeCtx();
+  const stillInst = KICK.create();
+  still.targets.push(fakeTarget(60, 0));
+  stillInst.fire(still, kickTiers[0]);
+  still.step(stillInst, 6);
+  assert.deepEqual(still.knocks, [`shove:${60 * SHOVE_S}`],
+    'a target that did not move last frame — every practice dummy — takes the shove fallback');
+
+  const immune = new FakeCtx();
+  const immuneInst = KICK.create();
+  immune.targets.push(fakeTarget(60, 0, { knockbackMul: 0, lastMoveX: 5 }));
+  immuneInst.fire(immune, kickTiers[0]);
+  immune.step(immuneInst, 6);
+  assert.deepEqual(immune.knocks, [], 'a knockback-immune target takes neither branch');
+}
+
+// 8. Redline Stomp resolves SYNCHRONOUSLY at fire time, and pushes its four
+// beams AFTER its damage — the opposite ordering from the base strip.
+{
+  const ctx = new FakeCtx();
+  const inst = KICK.create();
+  ctx.evolved = true;
+  const onArm = fakeTarget(700, 0);
+  const corner = fakeTarget(ctx.worldW * 0.45, ctx.worldH * 0.45);
+  ctx.targets.push(onArm, corner);
+  inst.fire(ctx, kickTiers[3]);
+  assert.equal(ctx.hits.length, 1, 'Redline Stomp damages on the trigger, with no tick');
+  assert.equal(ctx.hits[0].t, onArm);
+  // A LITERAL, deliberately: `kickTiers[3].damage * KICK.stats.evolvedDamageMul`
+  // would move with the very stats this is meant to hold still. 15 * 1.35.
+  assert.equal(ctx.hits[0].amount, 20.25);
+  assert.deepEqual(ctx.seq, ['damage', 'beam', 'beam', 'beam', 'beam'],
+    'Redline Stomp pushes every beam after its damage');
+  const beams = ctx.fxLog.filter((e): e is Extract<FxEvent, { type: 'beam' }> => e.type === 'beam');
+  const reachX = ctx.worldW * KICK.stats.evolvedReachFrac;
+  const reachY = ctx.worldH * KICK.stats.evolvedReachFrac;
+  assert.deepEqual(beams.map((b) => [b.x2, b.y2]),
+    [[reachX, 0], [-reachX, 0], [0, reachY], [0, -reachY]],
+    'the four arms are emitted +X, -X, +Y, -Y');
+  // A still target — the shape every practice dummy has — is NOT skipped.
+  assert.equal(onArm.lastMoveX, 0);
+}
+
+// 9. The evolved shove reads the build; the base strip's deliberately does not.
+{
+  const ctx = new FakeCtx();
+  const inst = KICK.create();
+  ctx.evolved = true;
+  ctx.buildMods = { ...deriveBuildMods(new Map()), knockbackMul: 2 };
+  ctx.targets.push(fakeTarget(700, 0));
+  inst.fire(ctx, kickTiers[3]);
+  assert.deepEqual(ctx.knocks, [`shove:${KICK.stats.evolvedShove * 2}`],
+    'Redline Stomp scales its push by buildMods.knockbackMul');
+}
+
+// 10. reset() drops every scheduled strip, so clearSandboxEntities keeps its
+// promise that no delayed strike pointer survives.
+{
+  const ctx = new FakeCtx();
+  const inst = KICK.create();
+  ctx.targets.push(fakeTarget(60, 0));
+  inst.fire(ctx, kickTiers[1]);
+  inst.reset();
+  ctx.step(inst, 20);
+  assert.equal(ctx.hits.length, 0, 'a reset weapon lands no delayed damage');
+  assert.equal(ctx.fxLog.length, 0, 'a reset weapon pushes no delayed fx');
+}
+
+// ---------------------------------------------------------------------------
+// THE ARP (#140, #144).
+//
+// The arp is the migration's stress test: its behavior did not live in its own
+// functions, it lived INSIDE RunWorld's shared projectile loop as three
+// `pr.role === 'arp'` branches. Those are now ProjectileBehavior.steer and
+// .onHit on the module, so the checks below drive them the way the shared loop
+// does — spawn through the context, then step steer() a frame at a time.
+// ---------------------------------------------------------------------------
+
+const arpTiers = ARP.stats.tiers;
+/** Same rounding the kick block uses, hoisted: several arp checks compare
+ *  products of the stats they are pinning. */
+const round6 = (n: number): number => Math.round(n * 1e6) / 1e6;
+
+// ---------------------------------------------------------------------------
+// The arp's tuning, pinned to LITERALS. Same rule as the kick block above: the
+// right-hand sides are numbers a human typed after reading the pre-#140 run.ts
+// and config.ts, never an expression that reads the value it is checking.
+// ---------------------------------------------------------------------------
+{
+  // The per-tier ladder, verbatim from config.WEAPONS.arp. A geometry ladder as
+  // much as a damage one: the orbit widens 80 -> 92 -> 106 -> 122.
+  assert.deepEqual(
+    arpTiers.map((t) => [t.damage, t.radius, t.lifetimeS, t.orbitRadius]),
+    [
+      [2, 8, 2.0, 80],
+      [2, 8, 2.4, 92],
+      [2, 9, 2.8, 106],
+      [3, 10, 3.2, 122],
+    ],
+    'the arp damage/size/lifetime/orbit ladder moved',
+  );
+  assert.equal(arpTiers.length, TIER_COUNT, 'the arp ladder must have exactly TIER_COUNT rungs');
+
+  // #144: the timer re-hit, as named stats. These two numbers were ORBIT_REHIT_S
+  // in config.ts and a bare 0.45 sitting in two places in run.ts. They are the
+  // arp's identity (ADR-0002) and they are BALANCE numbers: chipping every
+  // 0.35s instead of every 0.5s is a different weapon.
+  assert.equal(ARP.stats.rehitS, 0.35, 'the base orbiter re-hit interval moved (was ORBIT_REHIT_S)');
+  assert.equal(ARP.stats.evolvedRehitS, 0.45, 'the Event Horizon re-hit interval moved');
+  assert.equal(ARP.stats.spendsPierce, false,
+    'an orbiter must never spend pierce — it chips on a timer instead (ADR-0002)');
+
+  assert.equal(ARP.stats.omega, 3.4, 'the orbit sweep speed moved (was ARP_OMEGA)');
+
+  // Event Horizon.
+  assert.equal(ARP.stats.evolvedOrbitRadius, 125, 'the Event Horizon orbit radius moved');
+  assert.equal(ARP.stats.evolvedOrbitBreath, 25, 'the Event Horizon breath amplitude moved');
+  assert.equal(ARP.stats.evolvedBreathRate, 3.2, 'the Event Horizon breath rate moved');
+  assert.equal(ARP.stats.evolvedRadiusMul, 1.25, 'the Event Horizon orbiter size moved');
+  assert.equal(ARP.stats.evolvedLifetimeMul, 1.35, 'the Event Horizon orbiter lifetime moved');
+  assert.equal(ARP.stats.evolvedDamageMul, 0.8, 'the Event Horizon per-orbiter damage moved');
+  assert.equal(ARP.stats.evolvedRadiusFallback, 8, 'the Event Horizon radius fallback moved');
+  assert.equal(ARP.stats.evolvedLifetimeFallbackS, 2, 'the Event Horizon lifetime fallback moved');
+  // Was an inline `while (evolvedOrbiters.length > 24)` in run.ts.
+  assert.equal(ARP.stats.evolvedOrbiterCap, 24, 'the Event Horizon orbiter cap moved');
+
+  // Read through the roster, not off ARP: `satisfies WeaponModule` narrows the
+  // literal, so ARP.tickAt is not even a property to compare.
+  const arpModule = WEAPON_MODULES.find((m) => m.role === 'arp')!;
+  assert.equal(arpModule.tickAt, undefined,
+    'the arp owns no damage pass: its orbiters ride the shared projectile loop');
+  assert(arpModule.create().projectile,
+    'the arp lends the shared projectile loop its motion through ProjectileBehavior');
+  assert.equal(ARP.role, 'arp');
+  // The breath must never reach the player and never leave the swept band, or
+  // "orbits you" quietly becomes "a zone centered on you".
+  assert(ARP.stats.evolvedOrbitBreath < ARP.stats.evolvedOrbitRadius,
+    'the Event Horizon breath must never collapse the orbit onto the player');
+  assert.equal(round6(ARP.stats.evolvedOrbitRadius - ARP.stats.evolvedOrbitBreath), 100);
+  assert.equal(round6(ARP.stats.evolvedOrbitRadius + ARP.stats.evolvedOrbitBreath), 150);
+}
+
+/** A fake context set up for the arp, with a scripted rng. */
+function arpCtx(rngValues: number[], evolved = false): FakeCtx {
+  const ctx = new FakeCtx();
+  ctx.role = 'arp';
+  ctx.color = ROLE_COLORS.arp;
+  ctx.evolved = evolved;
+  ctx.rngValues = rngValues;
+  return ctx;
+}
+
+// A1. One trigger draws EXACTLY ONE rng value and puts one orbiter on the ring.
+// The draw count is the thing: the arp's single base-angle draw per trigger, no
+// matter how many orbiters that trigger makes, is the easiest thing in this
+// whole extraction to get wrong and the hardest to notice.
+{
+  const ctx = arpCtx([0.25]);
+  const inst = ARP.create();
+  inst.fire(ctx, arpTiers[3]);
+  assert.equal(ctx.rngDraws, 1, 'one arp trigger draws exactly one rng value');
+  assert.equal(ctx.spawned.length, 1, 'one trigger, one orbiter');
+  const pr = ctx.spawned[0];
+  // 0.25 * 2pi = pi/2, so the orbiter starts straight above the player at the
+  // tier-4 orbit radius of 122.
+  assert.equal(round6(pr.orbitAngle), round6(Math.PI / 2));
+  assert.equal(pr.orbitRadius, 122, 'the orbiter sits on the tier orbit radius');
+  assert.equal(round6(Math.hypot(pr.x - ctx.player.x, pr.y - ctx.player.y)), 122);
+  assert.equal(pr.pierce, Infinity, 'an orbiter spawns with infinite pierce (ADR-0002)');
+  assert.equal(pr.rehitT, 0, 'a base orbiter arms its re-hit timer on its first step');
+  assert.equal(pr.damage, 3, 'a tier-4 orbiter carries the pedestal damage');
+  assert.equal(pr.evolved, false);
+  assert.equal(ctx.hits.length, 0, 'the arp deals no damage at fire time');
+}
+
+// A2. ORBIT MOTION. steer() returns TRUE — "I positioned this one myself" — and
+// that single return value is what keeps the shared travel step and the arena
+// rails off an orbiter. The angle advances by omega, the radius never does.
+{
+  const ctx = arpCtx([0]);
+  const inst = ARP.create();
+  inst.fire(ctx, arpTiers[3]);
+  const pr = ctx.spawned[0];
+  assert.equal(inst.projectile!.steer!(ctx, pr, 1 / 60), true,
+    'an orbiter steers itself, which is what exempts it from travel and the arena rails');
+  // 3.4 rad/s at 1/60 s. A LITERAL: reading ARP.stats.omega here would move
+  // with the very stat this is holding still.
+  assert.equal(round6(pr.orbitAngle), round6(3.4 / 60));
+  assert.equal(round6(pr.x), round6(Math.cos(3.4 / 60) * 122));
+  assert.equal(round6(pr.y), round6(Math.sin(3.4 / 60) * 122));
+
+  // A full sweep: the distance from the player is constant, so an orbiter never
+  // reaches inside its own orbit and never leaves it. That is the whole
+  // difference between "orbits you" and "a zone centered on you".
+  ctx.steer(inst, 120);
+  assert.equal(round6(Math.hypot(pr.x - ctx.player.x, pr.y - ctx.player.y)), 122,
+    'the orbit radius never changes for a base orbiter');
+  // 121 frames of 3.4 rad/s is more than a full revolution (2pi = 6.28 rad).
+  assert(pr.orbitAngle > Math.PI * 2, 'the orbiter completes a revolution in its lifetime');
+}
+
+// A3. The orbit is bound to the PLAYER, not to the arena. Moving the player
+// re-centers every orbiter on the next step, which is the underlying reason
+// ADR-0002 exempts orbiters from the arena rails.
+{
+  const ctx = arpCtx([0]);
+  const inst = ARP.create();
+  inst.fire(ctx, arpTiers[0]);
+  const pr = ctx.spawned[0];
+  ctx.player = { x: 500, y: -300, facingX: 1 };
+  ctx.steer(inst, 1);
+  assert.equal(round6(Math.hypot(pr.x - 500, pr.y - -300)), 80,
+    'an orbiter follows the player it orbits');
+}
+
+// A4. THE TIMER RE-HIT (#144, ADR-0002). The hit set is what stops a projectile
+// touching the same enemy twice; an orbiter empties it on a clock instead of
+// dying, so a slow sweep keeps chipping. 0.35s at 1/60 is 21 frames.
+{
+  const ctx = arpCtx([0]);
+  const inst = ARP.create();
+  inst.fire(ctx, arpTiers[3]);
+  const pr = ctx.spawned[0];
+  // The first step arms the timer (a base orbiter spawns with rehitT 0).
+  ctx.steer(inst, 1);
+  assert.equal(round6(pr.rehitT), 0.35, 'the base re-hit timer arms at 0.35s');
+  (pr.hit as Set<unknown>).add({});
+  ctx.steer(inst, 20);
+  assert.equal(pr.hit.size, 1, 'the same enemy is off-limits until the re-hit timer expires');
+  ctx.steer(inst, 2);
+  assert.equal(pr.hit.size, 0, 'after 0.35s the orbiter may chip the same enemy again');
+  assert.equal(round6(pr.rehitT), 0.35, 're-arming uses the same 0.35s interval, every time');
+}
+
+// A5. THE PIERCE EXEMPTION, ported AS-IS (#138 resolved as intended, ADR-0002).
+// onHit() returning false is the whole exemption: the shared loop skips its
+// `pr.pierce -= 1` and the orbiter survives its own sweep.
+{
+  const ctx = arpCtx([0]);
+  const inst = ARP.create();
+  inst.fire(ctx, arpTiers[3]);
+  const pr = ctx.spawned[0];
+  assert.equal(inst.projectile!.onHit!(ctx, pr, fakeTarget(0, 0)), false,
+    'an orbiter never spends pierce on a hit — it gates re-hits by time instead');
+  // Ten hits in a row, and it is still whole.
+  for (let i = 0; i < 10; i++) {
+    assert.equal(inst.projectile!.onHit!(ctx, pr, fakeTarget(i, 0)), false);
+  }
+  assert.equal(pr.pierce, Infinity, 'nothing in the hit path may consume an orbiter');
+}
+
+// A6. EVENT HORIZON: counter-rotating pairs, one draw, its own re-hit interval.
+{
+  const ctx = arpCtx([0], true);
+  const inst = ARP.create();
+  inst.fire(ctx, arpTiers[3]);
+  assert.equal(ctx.rngDraws, 1, 'one Event Horizon trigger draws exactly one rng value');
+  assert.equal(ctx.spawned.length, 2, 'Event Horizon spawns a counter-rotating PAIR per trigger');
+  const [cw, ccw] = ctx.spawned;
+  assert.deepEqual([cw.orbitDir, ccw.orbitDir], [1, -1], 'the pair counter-rotates');
+  assert.equal(round6(Math.abs(cw.orbitAngle - ccw.orbitAngle)), round6(Math.PI),
+    'the pair starts on opposite sides of the orbit');
+  // LITERALS: 3 * 0.8, 10 * 1.25, 3.2 * 1.35.
+  assert.equal(round6(cw.damage), 2.4, 'an Event Horizon orbiter trades punch for count');
+  assert.equal(round6(cw.radius), 12.5);
+  assert.equal(round6(cw.lifeS), 4.32);
+  assert.equal(cw.pierce, Infinity);
+  assert.equal(cw.evolved, true);
+  assert.equal(cw.rehitT, 0.45, 'Event Horizon arms its own 0.45s re-hit interval at spawn');
+}
+
+// A7. The evolved orbit BREATHES: it ignores the tier orbitRadius and sweeps
+// between 100 and 150 on the orbiter's own age. A fixed-radius evolved orbit
+// would pass every other check in this file.
+{
+  const ctx = arpCtx([0], true);
+  const inst = ARP.create();
+  inst.fire(ctx, arpTiers[3]);
+  const pr = ctx.spawned[0];
+  const radii: number[] = [];
+  for (let i = 0; i < 120; i++) {
+    ctx.steer(inst, 1);
+    radii.push(Math.hypot(pr.x - ctx.player.x, pr.y - ctx.player.y));
+  }
+  const min = Math.min(...radii);
+  const max = Math.max(...radii);
+  assert(min >= 100 - 1e-9 && max <= 150 + 1e-9,
+    'the Event Horizon orbit stays inside 100..150');
+  assert(max - min > 45, 'the Event Horizon orbit must actually breathe, not sit at a radius');
+  assert(min < 122, 'the breath reaches inside the tier-4 orbit it replaces');
+}
+
+// A8. THE ORBITER CAP. Event Horizon retires its OLDEST evolved orbiters down
+// to 24 whenever a trigger pushes it over. Two per trigger, so trigger 13 is
+// the first one that has to retire anything.
+{
+  const ctx = arpCtx(Array.from({ length: 20 }, (_, i) => i / 20), true);
+  const inst = ARP.create();
+  inst.fire(ctx, arpTiers[3]);
+  const firstPair = [...ctx.spawned];
+  for (let i = 1; i < 20; i++) inst.fire(ctx, arpTiers[3]);
+  assert.equal(ctx.spawned.length, 24,
+    'twenty triggers make forty orbiters; the cap holds the live count at 24');
+  for (const old of firstPair) {
+    assert(!ctx.spawned.includes(old), 'the cap retires the OLDEST orbiters, not the newest');
+  }
+  // Twelve triggers is exactly the cap, so nothing is retired at the boundary.
+  const under = arpCtx(Array.from({ length: 12 }, (_, i) => i / 12), true);
+  const underInst = ARP.create();
+  for (let i = 0; i < 12; i++) underInst.fire(under, arpTiers[3]);
+  assert.equal(under.spawned.length, 24, 'exactly at the cap, nothing is retired');
+}
+
+// A9. reset() has nothing to drop — every orbiter lives in the world's own
+// projectile array, which clearSandboxEntities empties. Pinned so that stays
+// true: a future arp that schedules something owes this check a body.
+{
+  const ctx = arpCtx([0]);
+  const inst = ARP.create();
+  inst.fire(ctx, arpTiers[0]);
+  inst.reset();
+  assert.equal(ctx.hits.length, 0, 'a reset arp lands no delayed damage');
+  assert.equal(ctx.fxLog.length, 0, 'the arp pushes no fx at all');
+}
+
+const snareTiers = SNARE.stats.tiers;
+
+// ---------------------------------------------------------------------------
+// The snare's tuning, pinned to LITERALS. Same rule as the kick and arp blocks
+// above: the right-hand sides are numbers a human typed after reading the
+// pre-#141 run.ts and config.ts, never an expression that reads the value it is
+// checking.
+// ---------------------------------------------------------------------------
+{
+  // The per-tier ladder, verbatim from config.WEAPONS.snare. A PIERCE ladder as
+  // much as a damage one: 2 -> 3 -> 4 -> 6 bodies per shot.
+  assert.deepEqual(
+    snareTiers.map((t) => [t.damage, t.speed, t.radius, t.lifetimeS, t.pierce]),
+    [
+      [5, 650, 7, 1.4, 2],
+      [7, 650, 7, 1.4, 3],
+      [9, 680, 8, 1.5, 4],
+      [13, 720, 8, 1.5, 6],
+    ],
+    'the snare damage/speed/size/lifetime/pierce ladder moved',
+  );
+  assert.equal(snareTiers.length, TIER_COUNT, 'the snare ladder must have exactly TIER_COUNT rungs');
+  assert.deepEqual(SNARE.stats.tierLines, [
+    'piercing shot on the backbeat',
+    'fires twice as often, pierces 1 more',
+    'adds weak ghost shots, pierces 1 more',
+    'burst of shots every 4th bar',
+  ], 'the snare pedestal copy moved');
+
+  // The base shot.
+  assert.equal(SNARE.stats.aimSpread, 0.08, 'the base snare aim jitter moved');
+  // WAS WEAPON_SHOVE.snare, a role-keyed table entry read inside the shared
+  // projectile loop. It is the snare's own tuning and this is now its only copy.
+  assert.equal(SNARE.stats.shove, 8, 'the base snare knock distance moved (was WEAPON_SHOVE.snare)');
+  // WAS the snare's membership of run.ts's SPARK_HIT_ROLES plus the two
+  // literals at the push site inside the shared loop.
+  assert.equal(SNARE.stats.sparkCount, 4, 'the snare hit-spark particle count moved');
+  assert.equal(SNARE.stats.sparkSpread, 12, 'the snare hit-spark spread moved');
+
+  // Railshot.
+  assert.equal(SNARE.stats.railAimSpread, 0.02, 'the Railshot aim jitter moved');
+  assert.equal(SNARE.stats.railRange, 900, 'the Railshot reach moved');
+  assert.equal(SNARE.stats.railDamageMul, 1.5, 'the Railshot damage multiplier moved');
+  assert.equal(SNARE.stats.railWidthMul, 1.25, 'the Railshot beam width multiplier moved');
+  assert.equal(SNARE.stats.railShove, 16, 'the Railshot knock distance moved');
+  assert.equal(SNARE.stats.railBeamWidthMul, 2, 'the drawn Railshot beam width moved');
+  // The two literals inside the old `Math.max(7, (conf.radius ?? 7) * 1.25)`.
+  // NEITHER IS REACHABLE by any legal build — every shipped rung sets radius,
+  // and the smallest rung times the multiplier is 8.75, already clear of the
+  // floor at the minimum legal areaMul of 1. They are pinned here BECAUSE no
+  // behavioral check can reach them; ported verbatim rather than dropped.
+  assert.equal(SNARE.stats.railWidthFloor, 7, 'the (unreachable) Railshot width floor moved');
+  assert.equal(SNARE.stats.railRadiusFallback, 7, 'the (unreachable) Railshot radius fallback moved');
+  assert(
+    Math.min(...snareTiers.map((t) => t.radius!)) * SNARE.stats.railWidthMul > SNARE.stats.railWidthFloor,
+    'the Railshot width floor is documented as unreachable; if a ladder rung ever drops under it ' +
+    'the floor becomes live behavior and needs a real check, not a literal pin',
+  );
+
+  // The twin rails.
+  assert.equal(SNARE.stats.twinCadence, 4, 'the Railshot twin-rail cadence moved');
+  assert.equal(SNARE.stats.twinOffset, 24, 'the twin rail offset moved');
+  assert.equal(SNARE.stats.twinWidthMul, 0.7, 'the twin rail width moved');
+  assert.equal(SNARE.stats.twinDamageMul, 0.65, 'the twin rail damage moved');
+  assert.equal(SNARE.stats.twinShove, 8, 'the twin rail knock distance moved');
+  assert.equal(SNARE.stats.twinBeamWidthMul, 1, 'the drawn twin beam width moved');
+
+  assert.equal(WEAPONS.snare, undefined, 'the snare module is the only copy of the snare ladder');
+  assert.equal(TIER_LINES.snare, undefined, 'the snare module is the only copy of the snare pedestal copy');
+  // The role-keyed table the snare used to share is GONE. WEAPON_SHOVE lost its
+  // last entry with the CLAP module (#141), so there is no table left to assert
+  // the snare's absence from; what replaced that assertion is the source scan in
+  // the clap block below, which pins the whole table's absence for every weapon
+  // at once. SNARE_STATS.shove above is the snare's only copy of its 8.
+
+  const snareModule = WEAPON_MODULES.find((m) => m.role === 'snare')!;
+  assert.equal(snareModule.tickAt, undefined,
+    'the snare owns no damage pass: base shots ride the shared projectile loop and Railshot ' +
+    'resolves inside fire()');
+  const behavior = snareModule.create().projectile;
+  assert(behavior, 'the snare lends the shared projectile loop its hit rule');
+  assert.equal(behavior.steer, undefined,
+    'a snare shot rides SHARED travel and the arena rails unchanged — implementing steer() would ' +
+    'silently take it off both, which is the half of ProjectileBehavior this weapon must not have');
+  assert.equal(SNARE.role, 'snare');
+}
+
+/** A fake context set up for the snare, with a scripted rng. */
+function snareCtx(rngValues: number[], evolved = false): FakeCtx {
+  const ctx = new FakeCtx();
+  ctx.role = 'snare';
+  ctx.color = ROLE_COLORS.snare;
+  ctx.evolved = evolved;
+  ctx.rngValues = rngValues;
+  return ctx;
+}
+
+/** Fire the way RunWorld.fireTrigger does: the world's per-role trigger counter
+ *  is bumped in the shared preamble BEFORE fire() runs, which is what makes the
+ *  FOURTH trigger the one where `% 4 === 0`. Getting this backwards moves the
+ *  twin rails onto the fifth trigger and nothing else changes. */
+function snareFire(ctx: FakeCtx, inst: WeaponInstance, conf: WeaponConf): void {
+  ctx.triggerCount += 1;
+  inst.fire(ctx, conf);
+}
+
+const sparks = (ctx: FakeCtx): Array<Extract<FxEvent, { type: 'spark' }>> =>
+  ctx.fxLog.filter((e): e is Extract<FxEvent, { type: 'spark' }> => e.type === 'spark');
+const beams = (ctx: FakeCtx): Array<Extract<FxEvent, { type: 'beam' }>> =>
+  ctx.fxLog.filter((e): e is Extract<FxEvent, { type: 'beam' }> => e.type === 'beam');
+
+// S1. ONE TRIGGER, ONE SHOT, ONE DRAW. The base snare spawns a plain projectile
+// and deals no damage at fire time; the aim costs exactly one rng value when
+// there is something to aim at.
+{
+  const ctx = snareCtx([0.5]);
+  const inst = SNARE.create();
+  ctx.targets.push(fakeTarget(300, 0));
+  snareFire(ctx, inst, snareTiers[3]);
+  assert.equal(ctx.rngDraws, 1, 'one snare trigger with a target in range draws exactly one rng value');
+  assert.equal(ctx.spawned.length, 1, 'one trigger, one shot');
+  assert.equal(ctx.hits.length, 0, 'the base snare deals no damage at fire time');
+  assert.equal(ctx.fxLog.length, 0, 'the base snare pushes no fx at fire time');
+  const pr = ctx.spawned[0];
+  // LITERALS, from the tier-4 rung: 13 damage, 6 pierce, 720 speed.
+  assert.equal(pr.damage, 13, 'a tier-4 shot carries the pedestal damage');
+  assert.equal(pr.pierce, 6, 'a tier-4 shot carries the pedestal pierce budget');
+  assert.equal(pr.maxPierce, 6);
+  assert.equal(pr.speed, 720);
+  // rng 0.5 means zero jitter, and the only target sits due east.
+  assert.equal(round6(pr.vx), 720, 'velocity is derived from pr.speed along the aim line');
+  assert.equal(round6(pr.vy), 0);
+  assert.equal(round6(Math.hypot(pr.vx, pr.vy)), 720,
+    'the speed FIELD must stay equal to |v| — the bounce path reads it');
+}
+
+// S2. THE EMPTY-SCREEN DRAW. With nothing to aim at, the world picks a random
+// heading and THEN jitters it: two draws, not one. Only the draw count sees
+// this, and getting it wrong desynchronises the whole run's rng stream.
+{
+  const ctx = snareCtx([0, 0.5]);
+  const inst = SNARE.create();
+  snareFire(ctx, inst, snareTiers[0]);
+  assert.equal(ctx.rngDraws, 2, 'an empty screen costs the snare TWO draws, not one');
+  assert.equal(ctx.spawned.length, 1, 'an empty screen still fires the shot');
+}
+
+// S3. DOUBLE TAKE fans extra shots off ONE aim. Three shots, still one draw.
+{
+  const ctx = snareCtx([0.5]);
+  const inst = SNARE.create();
+  ctx.buildMods = { ...ctx.buildMods, extraProjectiles: 2 };
+  ctx.targets.push(fakeTarget(300, 0));
+  snareFire(ctx, inst, snareTiers[0]);
+  assert.equal(ctx.rngDraws, 1, 'Double Take fans off a SINGLE aim: one draw however many shots');
+  assert.equal(ctx.spawned.length, 3, 'two extra projectiles means three shots');
+  const angles = ctx.spawned.map((pr) => Math.atan2(pr.vy, pr.vx));
+  assert.equal(round6(angles[0]), 0, 'the first shot rides the aim line itself');
+  assert.equal(round6(angles[1] + angles[2]), 0, 'the extras straddle the aim line symmetrically');
+}
+
+// S4. THE HIT RULE. This is where the snare's share of BOTH role-keyed tables
+// landed: the shove that was WEAPON_SHOVE.snare and the spark that was
+// SPARK_HIT_ROLES. onHit returns TRUE, so a snare shot spends pierce like every
+// other projectile — its ladder IS a pierce ladder.
+{
+  const ctx = snareCtx([0.5]);
+  const inst = SNARE.create();
+  ctx.targets.push(fakeTarget(300, 0));
+  snareFire(ctx, inst, snareTiers[3]);
+  const pr = ctx.spawned[0];
+  pr.x = 250;
+  pr.y = 10;
+  const target = ctx.targets[0];
+  assert.equal(inst.projectile!.onHit!(ctx, pr, target), true,
+    'a snare shot spends pierce on a hit — only the arp is exempt (ADR-0002)');
+  // A LITERAL 8: the number that used to be WEAPON_SHOVE.snare.
+  assert.deepEqual(ctx.shoveLog.map((s) => [s.x, s.y, s.d]), [[250, 10, 8]],
+    'the hit shove pushes away from the SHOT, at the snare\'s own knock distance');
+  assert.deepEqual(sparks(ctx).map((s) => [s.x, s.y, s.n, s.spread, s.color]),
+    [[300, 0, 4, 12, ROLE_COLORS.snare]],
+    'the hit spark lands on the TARGET, with the count and spread the shared loop used to push');
+}
+
+// S5. The shove is scaled by the build, and a build that cancels knockback
+// cancels the shove entirely rather than calling it with zero — the `if (sh)`
+// the shared loop had, ported verbatim.
+{
+  const scaled = snareCtx([0.5]);
+  scaled.buildMods = { ...scaled.buildMods, knockbackMul: 2 };
+  const scaledInst = SNARE.create();
+  scaled.targets.push(fakeTarget(300, 0));
+  snareFire(scaled, scaledInst, snareTiers[0]);
+  scaledInst.projectile!.onHit!(scaled, scaled.spawned[0], scaled.targets[0]);
+  assert.deepEqual(scaled.shoveLog.map((s) => s.d), [16], 'the build scales the hit shove');
+
+  const none = snareCtx([0.5]);
+  none.buildMods = { ...none.buildMods, knockbackMul: 0 };
+  const noneInst = SNARE.create();
+  none.targets.push(fakeTarget(300, 0));
+  snareFire(none, noneInst, snareTiers[0]);
+  noneInst.projectile!.onHit!(none, none.spawned[0], none.targets[0]);
+  assert.deepEqual(none.shoveLog, [], 'a zeroed knockback build shoves not at all');
+  assert.equal(sparks(none).length, 1, 'the spark is view-only and does not depend on the shove');
+}
+
+// S6. RAILSHOT IS INSTANT AND ITS PIERCE IS GENUINELY INFINITE.
+//
+// Not "a big number": there is no pierce budget in the rail path at all, which
+// is why this check is a fifteen-deep file rather than an assertion about a
+// stat. A rail that ever grew a budget — even Infinity fed through arithmetic —
+// would still pass a stat check and fail here the moment the budget was finite.
+{
+  const ctx = snareCtx([0.5], true);
+  const inst = SNARE.create();
+  const file = Array.from({ length: 15 }, (_, i) => fakeTarget(40 + i * 40, 0));
+  ctx.targets.push(...file);
+  snareFire(ctx, inst, snareTiers[3]);
+  assert.equal(ctx.spawned.length, 0, 'Railshot spawns no projectile — it resolves inside the trigger');
+  assert.equal(ctx.hits.length, 15, 'a rail drills the WHOLE file; it has no pierce budget to spend');
+  // LITERAL: tier-4 damage 13 * 1.50.
+  for (const hit of ctx.hits) assert.equal(round6(hit.amount), 19.5, 'every body in the file takes full rail damage');
+  assert.deepEqual(ctx.shoveLog.map((s) => s.d), Array(15).fill(16), 'every body in the file is shoved');
+  assert.equal(sparks(ctx).length, 0, 'Railshot pushes beams, not per-hit sparks');
+  // LITERALS: reach 900, drawn width 2 * max(7, 8 * 1.25) = 20.
+  assert.deepEqual(beams(ctx).map((b) => [b.x, b.y, round6(b.x2), round6(b.y2), b.width]),
+    [[0, 0, 900, 0, 20]], 'one rail, drawn along its whole 900 reach');
+}
+
+// S7. THE RAIL CORRIDOR. Reach and half-width are both measured against the
+// body's own radius, so a body is caught if it OVERLAPS the corridor.
+{
+  const ctx = snareCtx([0.5], true);
+  const inst = SNARE.create();
+  // The aim anchor must be the CLOSEST body, or the rail points somewhere else.
+  const anchor = fakeTarget(5, 0);              // in range, and the aim anchor
+  const justInside = fakeTarget(910, 0);        // 910 <= 900 + 12
+  const justOutside = fakeTarget(913, 0);       // 913 >  900 + 12
+  const behind = fakeTarget(-13, 0);            // -13 < -12, behind the player
+  const wide = fakeTarget(400, 23);             // 23 > 10 + 12, outside the band
+  const edge = fakeTarget(400, 21);             // 21 <= 10 + 12, inside it
+  ctx.targets.push(anchor, justInside, justOutside, behind, wide, edge);
+  snareFire(ctx, inst, snareTiers[3]);
+  assert.deepEqual(ctx.hits.map((h) => h.t), [anchor, justInside, edge],
+    'the rail catches exactly the bodies overlapping its 900-long, 10-half-wide corridor');
+}
+
+// S8. DAMAGE ORDER IS THE FIELD'S ARRAY ORDER — spawn order — not distance
+// order and not hash order. Every rng draw a kill triggers rides on this, so it
+// is behavior. `ctx.all()` is the matching primitive; `ctx.near()` is not.
+{
+  const ctx = snareCtx([0.5], true);
+  const inst = SNARE.create();
+  const far = fakeTarget(600, 0);
+  const near = fakeTarget(80, 0);
+  const mid = fakeTarget(300, 0);
+  ctx.targets.push(far, near, mid);
+  snareFire(ctx, inst, snareTiers[0]);
+  assert.deepEqual(ctx.hits.map((h) => h.t), [far, near, mid],
+    'a rail damages in the order the field was spawned in, NOT nearest-first');
+}
+
+// S9. THE TWIN CADENCE. Every fourth trigger fires a pair of rails either side
+// of the main one. The world bumps its trigger counter BEFORE fire(), so it is
+// trigger 4 — not 5 — and triggers 1-3 draw a single beam.
+{
+  const ctx = snareCtx([0.5, 0.5, 0.5, 0.5], true);
+  const inst = SNARE.create();
+  // Radius 20, deliberately: a twin sits 24 off the axis with a half-width of
+  // 7, so a body has to be fat enough to reach it. A default radius-12 body on
+  // the axis is missed by both twins, and this check would then pin nothing
+  // about them.
+  ctx.targets.push(fakeTarget(300, 0, { radius: 20 }));
+  for (let i = 0; i < 3; i++) {
+    ctx.fxLog.length = 0;
+    snareFire(ctx, inst, snareTiers[3]);
+    assert.equal(beams(ctx).length, 1, `trigger ${i + 1} fires a single rail`);
+  }
+  ctx.fxLog.length = 0;
+  ctx.hits.length = 0;
+  ctx.shoveLog.length = 0;
+  snareFire(ctx, inst, snareTiers[3]);
+  const twinBeams = beams(ctx);
+  assert.equal(twinBeams.length, 3, 'the fourth trigger fires the main rail plus TWIN rails');
+  // LITERALS: offset 24 either side of the aim line, main drawn at 20 wide and
+  // a twin at 10 — the twin is drawn NARROWER than the corridor it damages
+  // (half-width 7 means a 14-wide band). That mismatch is ported verbatim.
+  assert.deepEqual(twinBeams.map((b) => [round6(b.x), round6(b.y), b.width]),
+    [[0, 0, 20], [0, -24, 10], [0, 24, 10]],
+    'main rail first, then the twin at -1, then the twin at +1');
+  // Damage: the axis body is hit by all three rails. LITERALS: 13 * 1.5 and
+  // 13 * 1.5 * 0.65.
+  assert.deepEqual(ctx.hits.map((h) => round6(h.amount)), [19.5, 12.675, 12.675],
+    'a body on the axis takes the main rail and both twins');
+}
+
+// S10. TWIN SHOVE ORDER IS LOAD-BEARING. ctx.shove ASSIGNS the knock vector
+// rather than max()ing it, so on a twin trigger the LAST rail to touch a body
+// wins: a body on the axis ends up carrying the TWIN's smaller knock, not the
+// main rail's. Batching the damage or reordering the rails moves this.
+{
+  const ctx = snareCtx([0.5, 0.5, 0.5, 0.5], true);
+  const inst = SNARE.create();
+  ctx.targets.push(fakeTarget(300, 0, { radius: 20 }));
+  for (let i = 0; i < 4; i++) snareFire(ctx, inst, snareTiers[3]);
+  // LITERALS: 16 for the main rail, 8 for each twin.
+  assert.deepEqual(ctx.shoveLog.slice(-3).map((s) => [round6(s.y), s.d]),
+    [[0, 16], [-24, 8], [24, 8]],
+    'main rail, then twin(-1), then twin(+1) — the last one to touch a body sets its knock');
+}
+
+// S11. MID-EVOLVE. Base shots already in flight keep the base hit rule; the
+// module's onHit does not consult ctx.evolved, exactly as the role-keyed tables
+// it replaced did not.
+{
+  const ctx = snareCtx([0.5, 0.5], false);
+  const inst = SNARE.create();
+  ctx.targets.push(fakeTarget(300, 0));
+  snareFire(ctx, inst, snareTiers[3]);
+  const inFlight = ctx.spawned[0];
+  ctx.evolved = true;
+  ctx.hits.length = 0;
+  ctx.shoveLog.length = 0;
+  inst.projectile!.onHit!(ctx, inFlight, ctx.targets[0]);
+  assert.deepEqual(ctx.shoveLog.map((s) => s.d), [8],
+    'a base shot still in flight when the snare evolves keeps the base knock');
+}
+
+// S12. reset() has nothing to drop: base shots live in the world's projectile
+// array and Railshot leaves nothing behind at all. Pinned so that stays true.
+{
+  const ctx = snareCtx([0.5], true);
+  const inst = SNARE.create();
+  ctx.targets.push(fakeTarget(300, 0));
+  snareFire(ctx, inst, snareTiers[0]);
+  const before = ctx.hits.length;
+  inst.reset();
+  assert.equal(ctx.hits.length, before, 'a reset snare lands no delayed damage');
+}
+
+const hatTiers = HAT.stats.tiers;
+
+// ---------------------------------------------------------------------------
+// The hat's tuning, pinned to LITERALS. Same rule as the kick, arp and snare
+// blocks above: the right-hand sides are numbers a human typed after reading
+// the pre-#141 config.ts and run.ts, never an expression that reads the value
+// it is checking.
+// ---------------------------------------------------------------------------
+{
+  // The per-tier ladder, verbatim from config.WEAPONS.hat. Density is the
+  // ladder — per-trigger damage barely moves (2/2/2/3) while the chart carries
+  // the growth — and the pierce ladder pays for having no auto-aim.
+  assert.deepEqual(
+    hatTiers.map((t) => [t.damage, t.speed, t.radius, t.lifetimeS, t.pierce]),
+    [
+      [2, 440, 3, 0.8, 2],
+      [2, 450, 3, 0.85, 2],
+      [2, 460, 3, 0.9, 3],
+      [3, 480, 3, 0.95, 4],
+    ],
+    'the hat damage/speed/size/lifetime/pierce ladder moved',
+  );
+  assert.equal(hatTiers.length, TIER_COUNT, 'the hat ladder must have exactly TIER_COUNT rungs');
+  assert.deepEqual(HAT.stats.tierLines, [
+    'fast chips along your path',
+    'twice the chips',
+    'denser stream',
+    'a wall of chips',
+  ], 'the hat pedestal copy moved');
+
+  // Strobe Lane. The three multipliers were `1.30` inline in run.ts's spawner
+  // and HAT_LANE.speedMul / HAT_LANE.lifetimeMul in config.ts.
+  assert.equal(HAT.stats.laneDamageMul, 1.30, 'the Strobe Lane damage multiplier moved');
+  assert.equal(HAT.stats.laneSpeedMul, 1.5, 'the Strobe Lane speed multiplier moved (was HAT_LANE.speedMul)');
+  assert.equal(HAT.stats.laneLifetimeMul, 2.0, 'the Strobe Lane lifetime multiplier moved (was HAT_LANE.lifetimeMul)');
+  // WAS a bare `Infinity` written onto the shot at the spawn site.
+  assert.equal(HAT.stats.lanePierce, Infinity, 'the Strobe Lane pierce moved');
+  assert.deepEqual([...HAT.stats.laneStagger], [0, 26, 52, 78],
+    'the Strobe Lane spawn stagger moved (was HAT_LANE.stagger)');
+
+  assert.equal(WEAPONS.hat, undefined, 'the hat module is the only copy of the hat ladder');
+  assert.equal(TIER_LINES.hat, undefined, 'the hat module is the only copy of the hat pedestal copy');
+  // The hat was in NEITHER role-keyed table: a chip lands damage and nothing
+  // else. Both tables are gone now (SPARK_HIT_ROLES with the lead, WEAPON_SHOVE
+  // with the clap), so the absence is pinned where it can still be falsified —
+  // no stat on this module holds a knock, and inventing one is the tidy-up this
+  // line exists to fail.
+  assert.deepEqual(Object.keys(HAT.stats).filter((k) => /shove|knock/i.test(k)), [],
+    'a hat chip has never had a knock, and must not gain one');
+
+  const hatModule = WEAPON_MODULES.find((m) => m.role === 'hat')!;
+  assert.equal(hatModule.tickAt, undefined,
+    'the hat owns no damage pass: every chip rides the world\'s shared projectile loop');
+  assert.equal(hatModule.create().projectile, undefined,
+    'a hat chip rides SHARED travel, the arena rails and the shared pierce rule unchanged, and ' +
+    'lands damage and nothing else on a hit. Implementing steer() would take the lane off the ' +
+    'rails — and Mirrorball is Strobe Lane\'s partner item, so every lane chip bounces');
+  assert.equal(HAT.role, 'hat');
+}
+
+/** A fake context set up for the hat. Its rng() THROWS by default, which is
+ *  what turns "the hat never draws from the run stream" into an executable
+ *  assertion: this weapon aims by steering, so a single draw anywhere in fire()
+ *  is a desynchronised run. */
+function hatCtx(evolved = false): FakeCtx {
+  const ctx = new FakeCtx();
+  ctx.role = 'hat';
+  ctx.color = ROLE_COLORS.hat;
+  ctx.evolved = evolved;
+  return ctx;
+}
+
+/** Fire the way RunWorld.fireTrigger does: the world's per-role counter is
+ *  bumped in the shared preamble BEFORE fire() runs. The lane's stagger cycles
+ *  on that counter, so getting this backwards shifts every chip's spawn offset
+ *  by one rung. */
+function hatFire(ctx: FakeCtx, inst: WeaponInstance, conf: WeaponConf): void {
+  ctx.triggerCount += 1;
+  inst.fire(ctx, conf);
+}
+
+// H1. ONE TRIGGER, ONE CHIP, ZERO DRAWS. The base hat fires down the walk
+// heading and costs nothing from the run stream: FakeCtx.rng() throws.
+{
+  const ctx = hatCtx();
+  const inst = HAT.create();
+  hatFire(ctx, inst, hatTiers[3]);
+  assert.equal(ctx.rngDraws, 0, 'a hat trigger draws NOTHING — it steers, it does not aim');
+  assert.equal(ctx.spawned.length, 1, 'one trigger, one chip');
+  assert.equal(ctx.hits.length, 0, 'the hat deals no damage at fire time');
+  assert.equal(ctx.fxLog.length, 0, 'the hat pushes no fx at fire time');
+  const pr = ctx.spawned[0];
+  // LITERALS, from the tier-4 rung: 3 damage, 4 pierce, 480 speed, 0.95s.
+  assert.equal(pr.damage, 3, 'a tier-4 chip carries the pedestal damage');
+  assert.equal(pr.pierce, 4, 'a tier-4 chip carries the pedestal pierce budget');
+  assert.equal(pr.maxPierce, 4);
+  assert.equal(pr.speed, 480);
+  assert.equal(pr.lifeS, 0.95);
+  // The heading a run starts on, never walked: due east, and no jitter at all.
+  assert.equal(round6(pr.vx), 480, 'velocity is derived from pr.speed along the walk heading');
+  assert.equal(round6(pr.vy), 0);
+  assert.equal(round6(Math.hypot(pr.vx, pr.vy)), 480,
+    'the speed FIELD must stay equal to |v| — the bounce path reads it');
+  assert.equal(pr.x, 0, 'an unevolved chip spawns on the player, with no stagger');
+  assert.equal(pr.y, 0);
+}
+
+// H2. THE HEADING IS NOT THE TARGET. This is the identity that separates the
+// hat from every weapon migrated before it. An enemy sits due north and the
+// player walks due south; the chip goes SOUTH. If fire() ever reaches for
+// aimDir/aimFan, rng() throws and this check says so by name.
+{
+  const ctx = hatCtx();
+  const inst = HAT.create();
+  ctx.targets.push(fakeTarget(0, -200));
+  ctx.moveDirX = 0;
+  ctx.moveDirY = 1;
+  hatFire(ctx, inst, hatTiers[0]);
+  const pr = ctx.spawned[0];
+  assert.equal(round6(pr.vx), 0, 'the chip ignores the enemy and follows the heading');
+  assert.equal(round6(pr.vy), 440, 'due south, at the tier-1 speed');
+  assert.equal(ctx.rngDraws, 0, 'aiming would have cost a draw; steering costs none');
+}
+
+// H3. STANDING STILL STILL FIRES. movePlayer only overwrites the heading when
+// the stick clears its deadzone, so a stopped player keeps the last one. Drop
+// that and the heading becomes a zero vector and every chip spawns with zero
+// velocity — a silent, total loss of the weapon.
+{
+  const ctx = hatCtx();
+  const inst = HAT.create();
+  ctx.moveDirX = -1;
+  ctx.moveDirY = 0;
+  hatFire(ctx, inst, hatTiers[3]);
+  // Two triggers while the heading never changes produce the exact same angle.
+  hatFire(ctx, inst, hatTiers[3]);
+  assert.deepEqual(ctx.spawned.map((pr) => [round6(pr.vx), round6(pr.vy)]), [[-480, 0], [-480, 0]],
+    'a held heading fires the same angle every trigger — no jitter, no drift');
+}
+
+// H4. DOUBLE TAKE FANS AROUND THE HEADING, NEVER OFF IT — and still draws
+// nothing. The offsets are the shared MULTISHOT_FAN_RAD ladder (0, +1, -1),
+// applied to the walk heading rather than to an aim line.
+{
+  const ctx = hatCtx();
+  const inst = HAT.create();
+  ctx.buildMods = { ...ctx.buildMods, extraProjectiles: 2 };
+  hatFire(ctx, inst, hatTiers[3]);
+  assert.equal(ctx.spawned.length, 3, 'Double Take at level 2 makes three chips');
+  assert.equal(ctx.rngDraws, 0, 'a fanned volley is still zero draws — the fan is arithmetic');
+  const angles = ctx.spawned.map((pr) => round6(Math.atan2(pr.vy, pr.vx)));
+  assert.deepEqual(angles, [0, round6(MULTISHOT_FAN_RAD), round6(-MULTISHOT_FAN_RAD)],
+    'the extra chips alternate either side of the heading, centred on it');
+}
+
+// H5. STROBE LANE: the four multipliers, on one chip, against the tier-4 rung.
+// 3 x 1.30 damage, 480 x 1.5 speed, 0.95 x 2.0 life, and pierce written over
+// with Infinity.
+{
+  const ctx = hatCtx(true);
+  const inst = HAT.create();
+  hatFire(ctx, inst, hatTiers[3]);
+  const pr = ctx.spawned[0];
+  assert.equal(round6(pr.damage), 3.9, 'a lane chip hits 1.30x the tier damage');
+  assert.equal(pr.speed, 720, 'a lane chip travels 1.5x tier speed');
+  assert.equal(round6(Math.hypot(pr.vx, pr.vy)), 720,
+    'the velocity carries the lane speed, so the speed FIELD still equals |v|');
+  assert.equal(round6(pr.lifeS), 1.9, 'a lane chip lives twice as long');
+  assert.equal(pr.pierce, Infinity, 'a lane chip rails through the whole file');
+  assert.equal(pr.maxPierce, Infinity);
+  // 720 x 1.9 = 1368 units of reach, which is why the lane crosses the arena
+  // rails as a matter of course rather than as an edge case.
+  assert.equal(round6(pr.speed * pr.lifeS), 1368, 'the lane\'s reach is speed x life');
+}
+
+// H6. THE STAGGER CYCLES ON THE TRIGGER COUNT, AND THE COUNT DOES NOT RESET ON
+// EVOLUTION. Four lane triggers walk the whole [0, 26, 52, 78] ring and wrap.
+// The offset is along the heading, so it is a spawn position, not a velocity.
+{
+  const ctx = hatCtx(true);
+  const inst = HAT.create();
+  for (let i = 0; i < 5; i++) hatFire(ctx, inst, hatTiers[3]);
+  // triggerCount runs 1..5, so the first chip takes stagger[1 % 4] = 26.
+  assert.deepEqual(ctx.spawned.map((pr) => round6(pr.x)), [26, 52, 78, 0, 26],
+    'successive lane chips are pushed further along the heading, then wrap');
+  assert.deepEqual(ctx.spawned.map((pr) => round6(pr.y)), [0, 0, 0, 0, 0],
+    'the stagger runs along the heading and nowhere else');
+}
+
+// H7. EVOLVING MID-RUN DOES NOT RESTART THE STAGGER RING. One base trigger,
+// then evolve: the next chip takes stagger[2] = 52, not the 26 a hat that had
+// only ever fired one trigger as a lane would take. The counter is the world's,
+// running since the first trigger of the run.
+{
+  const ctx = hatCtx();
+  const inst = HAT.create();
+  hatFire(ctx, inst, hatTiers[3]);
+  ctx.evolved = true;
+  hatFire(ctx, inst, hatTiers[3]);
+  assert.equal(round6(ctx.spawned[1].x), 52,
+    'the stagger ring keeps counting across the evolution — it is the world\'s trigger counter');
+}
+
+// H8. NEEDLE TIPS: a real stacking build on the base hat, a total no-op on the
+// lane. `conf` arrives ALREADY BUILT, so the item's +5 pierce is already in it
+// (tier-4 4 -> 9); the base chip carries that 9, and the lane overwrites it
+// with Infinity.
+//
+// THAT OVERWRITE LOOKS EXACTLY LIKE THE BUG #146 FIXED on evolved lead, and it
+// is not one. Lead wrote a finite 6 over the pipeline's answer, so the item had
+// a bigger number it should have reached; there is no number above Infinity for
+// the item to reach here. Pinned in both directions so a future "fix" that
+// routes lane pierce through the pipeline has to argue with this check.
+{
+  const built: WeaponConf = { ...hatTiers[3], pierce: hatTiers[3].pierce! + 5 };
+  assert.equal(built.pierce, 9, 'Needle Tips at level 5 takes a tier-4 chip to 9 bodies');
+
+  const base = hatCtx();
+  hatFire(base, HAT.create(), built);
+  assert.equal(base.spawned[0].pierce, 9, 'the base hat spends the pierce the build gave it');
+  assert.equal(base.spawned[0].maxPierce, 9);
+
+  const lane = hatCtx(true);
+  hatFire(lane, HAT.create(), built);
+  assert.equal(lane.spawned[0].pierce, Infinity,
+    'Strobe Lane overwrites the built pierce, which makes Needle Tips a no-op on it. Correct ' +
+    'here (an infinity is not a floor to add to) and NOT the #146 shape it resembles');
+}
+
+// H9. reset() has nothing to drop: every chip lives in the world's projectile
+// array, which clearSandboxEntities empties. Pinned so that stays true.
+{
+  const ctx = hatCtx(true);
+  const inst = HAT.create();
+  hatFire(ctx, inst, hatTiers[0]);
+  inst.reset();
+  assert.equal(ctx.hits.length, 0, 'a reset hat lands no delayed damage');
+  assert.equal(ctx.fxLog.length, 0, 'the hat pushes no fx at all');
+  assert.equal(ctx.rngDraws, 0, 'and it never drew anything to begin with');
+}
+
+const bassTiers = BASS.stats.tiers;
+
+// ---------------------------------------------------------------------------
+// The bass's tuning, pinned to LITERALS. Same rule as the kick, arp, snare and
+// hat blocks above: the right-hand sides are numbers a human typed after
+// reading the pre-#141 config.ts and run.ts, never an expression that reads the
+// value it is checking.
+//
+// ONE OF THESE HAS A SPAWN-TIME HALF THAT IS UNREACHABLE FROM WORLD STATE, and
+// that is exactly why it is here. `quakeStartRadius` (40) is written onto a new
+// ring and then overwritten by the first growth step before anything reads it;
+// the baseline agent verified that by mutating run.ts's spawn-time 40 to 44 and
+// watching all 110 parity scenarios stay green. The module writes both the
+// spawn value and the growth-curve base from this ONE stat, so the stat is
+// observable — but the spawn-time write on its own still is not, and check B5
+// plus the literal below are its only cover.
+// ---------------------------------------------------------------------------
+{
+  // The per-tier ladder, verbatim from config.WEAPONS.bass. The weight ladder:
+  // per-trigger damage climbs harder than any other kit, and pierce is Infinity
+  // at every rung — the wave is stopped by its lifetime and by nothing else.
+  assert.deepEqual(
+    bassTiers.map((t) => [t.damage, t.speed, t.radius, t.lifetimeS, t.pierce]),
+    [
+      [3, 135, 22, 2.3, Infinity],
+      [5, 140, 28, 2.4, Infinity],
+      [8, 145, 34, 2.5, Infinity],
+      [13, 150, 42, 2.6, Infinity],
+    ],
+    'the bass damage/speed/size/lifetime/pierce ladder moved',
+  );
+  assert.equal(bassTiers.length, TIER_COUNT, 'the bass ladder must have exactly TIER_COUNT rungs');
+  assert.deepEqual(BASS.stats.tierLines, [
+    'slow piercing wave',
+    'waves twice as often',
+    'heavier, wider waves',
+    'massive wave every 4th bar',
+  ], 'the bass pedestal copy moved');
+
+  // The base wave.
+  assert.equal(BASS.stats.aimSpread, 0.08, 'the bass aim spread moved');
+  // WAS `WEAPON_SHOVE.bass`, read by role inside the shared projectile loop.
+  assert.equal(BASS.stats.shove, 6, 'the base wave knock moved (was WEAPON_SHOVE.bass)');
+
+  // Subquake. Every one of these was a bare literal in run.ts's spawnSubquake
+  // or updateShockwaves.
+  assert.equal(BASS.stats.quakeStartRadius, 40, 'the Subquake start radius moved');
+  assert.equal(BASS.stats.quakeMaxRadius, 288, 'the Subquake max radius moved');
+  assert.equal(BASS.stats.quakeLifeS, 1.2, 'the Subquake lifetime moved');
+  assert.equal(BASS.stats.quakeGrowthS, 1.2, 'the Subquake growth duration moved');
+  assert.equal(BASS.stats.quakeDamageMul, 1.55, 'the Subquake damage multiplier moved');
+  assert.equal(BASS.stats.quakeShove, 14, 'the Subquake knock moved');
+  // TWO stats that happen to hold the same number, and they must stay two. A
+  // ring dying exactly as it finishes expanding is a coincidence of tuning, not
+  // a structural identity; folding them into one would make it one silently.
+  assert.equal(BASS.stats.quakeLifeS, BASS.stats.quakeGrowthS,
+    'today a Subquake dies as it finishes growing — if that ever stops being true, this line ' +
+    'is the one to delete, NOT one of the two stats above');
+
+  // NO PIERCE BUDGET AND NO HIT CAP ANYWHERE. Infinity on both halves of this
+  // weapon is the absence of arithmetic, not a number, so the falsifiable form
+  // of "there is no cap" is that no stat exists to hold one. A future
+  // `quakeMaxHits` would be a real behavior change wearing documentation's
+  // clothes (the same argument Railshot's block makes).
+  assert.deepEqual(
+    Object.keys(BASS.stats).filter((k) => /pierce|cap|max(hits|targets|bodies)/i.test(k)),
+    [],
+    'Subquake has no pierce budget, no target count and no hit cap — inventing a stat to ' +
+    '"state" its infinite pierce would put a finite number on a path that has none',
+  );
+
+  assert.equal(WEAPONS.bass, undefined, 'the bass module is the only copy of the bass ladder');
+  assert.equal(TIER_LINES.bass, undefined, 'the bass module is the only copy of the bass pedestal copy');
+  // The bass's 6 left WEAPON_SHOVE, and the clap's 12 — the last entry — took
+  // the table itself (#141). BASS_STATS.shove above is the bass's only copy,
+  // applied from the module's own onHit; the table's absence is pinned by the
+  // source scan in the clap block below.
+
+  const bassModule = WEAPON_MODULES.find((m) => m.role === 'bass')!;
+  assert.equal(bassModule.tickAt, 'shockwaves',
+    'the bass owns the shockwave pass, in the phase RunWorld.updateShockwaves used to stand in ' +
+    '— after the shared projectile loop and the zones, before the gravity wells');
+  assert.equal(bassModule.create().projectile!.steer, undefined,
+    'a base wave rides SHARED travel and the arena rails unchanged. Implementing steer() would ' +
+    'exempt it from reflectProjectileFromArena exactly the way the arp is exempted, and only a ' +
+    'bouncing wave would ever notice');
+  assert.equal(BASS.role, 'bass');
+}
+
+/** A fake context set up for the bass. Its rng() THROWS by default: Subquake
+ *  aims at nothing and draws nothing, and the module's tick() must not draw
+ *  either, so both are executable assertions rather than comments. The base
+ *  volley, which does aim, gets an explicit script. */
+function bassCtx(evolved = false, rngValues: number[] | null = null): FakeCtx {
+  const ctx = new FakeCtx();
+  ctx.role = 'bass';
+  ctx.color = ROLE_COLORS.bass;
+  ctx.evolved = evolved;
+  ctx.rngValues = rngValues;
+  return ctx;
+}
+
+// B1. ONE TRIGGER, ONE WAVE, and the tier-4 stat row as LITERALS. A target in
+// range means aimDir takes its one-draw branch; 0.5 is the jitter's identity,
+// so the wave leaves along the aim line.
+{
+  const ctx = bassCtx(false, [0.5]);
+  const inst = BASS.create();
+  ctx.targets.push(fakeTarget(300, 0));
+  inst.fire(ctx, bassTiers[3]);
+  assert.equal(ctx.rngDraws, 1, 'a base bass trigger costs exactly one draw — the aim jitter');
+  assert.equal(ctx.spawned.length, 1, 'one trigger, one wave');
+  assert.equal(ctx.rings.length, 0, 'the BASE bass spawns no ring');
+  assert.equal(ctx.hits.length, 0, 'the base bass deals no damage at fire time');
+  assert.equal(ctx.fxLog.length, 0, 'the base bass pushes no fx at fire time');
+  const pr = ctx.spawned[0];
+  assert.equal(pr.damage, 13, 'a tier-4 wave carries the pedestal damage');
+  assert.equal(pr.speed, 150);
+  assert.equal(pr.radius, 42);
+  assert.equal(pr.lifeS, 2.6);
+  // INFINITE PIERCE, as the literal Infinity and not a large number. The shared
+  // rule subtracts one on every hit and never bites.
+  assert.equal(pr.pierce, Infinity, 'a wave rolls through everything');
+  assert.equal(pr.maxPierce, Infinity);
+  assert.equal(round6(pr.vx), 150, 'velocity is derived from pr.speed along the aim line');
+  assert.equal(round6(pr.vy), 0);
+  assert.equal(round6(Math.hypot(pr.vx, pr.vy)), 150,
+    'the speed FIELD must stay equal to |v| — the bounce path reads it');
+}
+
+// B2. DOUBLE TAKE FANS FROM ONE AIM. Three waves, still one draw: the "move the
+// draw inside the loop" mistake would cost three and desynchronise the run.
+{
+  const ctx = bassCtx(false, [0.5]);
+  const inst = BASS.create();
+  ctx.targets.push(fakeTarget(300, 0));
+  ctx.buildMods = { ...ctx.buildMods, extraProjectiles: 2 };
+  inst.fire(ctx, bassTiers[3]);
+  assert.equal(ctx.spawned.length, 3, 'Double Take at level 2 makes three waves');
+  assert.equal(ctx.rngDraws, 1, 'one aim per trigger, however many waves come off it');
+  const angles = ctx.spawned.map((pr) => round6(Math.atan2(pr.vy, pr.vx)));
+  assert.deepEqual(angles, [0, round6(MULTISHOT_FAN_RAD), round6(-MULTISHOT_FAN_RAD)],
+    'the extra waves alternate either side of the aim line, centred on it');
+}
+
+// B3. THE 6-UNIT KNOCK, FROM ONHIT, AND NOTHING ELSE. This is the bass's share
+// of WEAPON_SHOVE, in the slot the table lookup occupied. The shove is measured
+// from the WAVE, and the hit pushes NO spark: bass has never been in
+// SPARK_HIT_ROLES and must not gain one.
+{
+  const ctx = bassCtx(false, [0.5]);
+  const inst = BASS.create();
+  const target = fakeTarget(300, 0);
+  ctx.targets.push(target);
+  inst.fire(ctx, bassTiers[3]);
+  const pr = ctx.spawned[0];
+  pr.x = 290;
+  pr.y = 4;
+  const spends = inst.projectile!.onHit!(ctx, pr, target);
+  assert.equal(spends, true,
+    'a bass wave spends pierce like every other shot — its ladder just carries Infinity, and ' +
+    'Infinity minus one is Infinity. Returning false here would be the arp\'s timer exemption');
+  assert.deepEqual(ctx.shoveLog.map((s) => [s.t === target, s.x, s.y, s.d]), [[true, 290, 4, 6]],
+    'the knock is 6, away from the wave\'s own position');
+  assert.equal(ctx.fxLog.length, 0,
+    'a bass hit lands damage and a knock and NOTHING else — no spark, ever');
+  assert.equal(ctx.hits.length, 0, 'onHit does not deal the damage; the shared loop already did');
+}
+
+// B4. HEAVY AMP SCALES THE BASE KNOCK. buildMods.knockbackMul 1.20 takes the 6
+// to 7.2, which is the whole of what the item does to this half of the weapon.
+{
+  const ctx = bassCtx(false, [0.5]);
+  const inst = BASS.create();
+  const target = fakeTarget(300, 0);
+  ctx.targets.push(target);
+  ctx.buildMods = { ...ctx.buildMods, knockbackMul: 1.2 };
+  inst.fire(ctx, bassTiers[3]);
+  inst.projectile!.onHit!(ctx, ctx.spawned[0], target);
+  assert.equal(round6(ctx.shoveLog[0].d), 7.2, 'the base knock scales with buildMods.knockbackMul');
+}
+
+// B5. SUBQUAKE: ONE RING, ZERO DRAWS, ZERO FX, ZERO PROJECTILES. rng() throws
+// here, so "the evolution aims at nothing" is executable — and the ring's whole
+// spawn row is pinned as literals against the tier-4 rung, including the start
+// radius that no world-state check can ever see.
+{
+  const ctx = bassCtx(true);
+  const inst = BASS.create();
+  ctx.targets.push(fakeTarget(300, 0));
+  inst.fire(ctx, bassTiers[3]);
+  assert.equal(ctx.rngDraws, 0, 'Subquake does not aim, so it costs nothing from the run stream');
+  assert.equal(ctx.spawned.length, 0, 'Subquake spawns no projectile at all');
+  assert.equal(ctx.fxLog.length, 0,
+    'Subquake pushes NO fx: its entire visual is the view reading world.shockwaves');
+  assert.equal(ctx.hits.length, 0, 'the ring deals its damage in tick(), not at fire time');
+  assert.equal(ctx.rings.length, 1, 'one trigger, one ring');
+  const wave = ctx.rings[0];
+  assert.equal(wave.x, 0, 'the ring is anchored at the fire-time player position');
+  assert.equal(wave.y, 0);
+  assert.equal(wave.radius, 40,
+    'the ring is BORN at 40. tick() overwrites this on the first step, so no world-state check ' +
+    'can see it and this literal is its only cover');
+  assert.equal(wave.maxRadius, 288, 'and grows to 288 at areaMul 1');
+  assert.equal(wave.lifeS, 1.2);
+  assert.equal(wave.age, 0);
+  assert.equal(round6(wave.damage), 20.15, 'tier-4 13 x 1.55');
+  assert.equal(wave.shove, 14);
+  assert.equal(wave.source, 'bass', 'attribution is the world\'s to fill in, not the module\'s');
+  assert.equal(wave.color, ROLE_COLORS.bass);
+  assert.equal(wave.hit.size, 0);
+}
+
+// B6. THE RING READS areaMul AND NEVER READS conf.radius. Those two are easy to
+// confuse now that both modes sit behind one stats block, so the conf handed in
+// here carries an absurd radius: if the ring ever read it, maxRadius would be
+// that number instead of 288 x 1.30.
+{
+  const ctx = bassCtx(true);
+  const inst = BASS.create();
+  ctx.buildMods = { ...ctx.buildMods, areaMul: 1.3 };
+  inst.fire(ctx, { ...bassTiers[3], radius: 9999 });
+  assert.equal(round6(ctx.rings[0].maxRadius), 374.4, 'the ring grows with areaMul (288 x 1.30)');
+}
+
+// B7. THE RING'S KNOCK SCALES WITH knockbackMul, and Heavy Amp is Subquake's
+// own evolution item, so 14 is never sitting at identity in a real run.
+{
+  const ctx = bassCtx(true);
+  const inst = BASS.create();
+  ctx.buildMods = { ...ctx.buildMods, knockbackMul: 1.2 };
+  inst.fire(ctx, bassTiers[3]);
+  assert.equal(round6(ctx.rings[0].shove), 16.8, 'the ring knock scales with buildMods.knockbackMul');
+}
+
+// B8. THE GROWTH CURVE, READ OFF THE RING ITSELF. `40 + (max - 40) * min(1, age
+// / 1.2)`: linear from the start radius to the max over the growth duration,
+// then CLAMPED. Three readings — a third of the way, the moment it tops out,
+// and the clamp — separate the three constants, which one reading could not.
+//
+// The ring is retired in the same pass it deals its last damage in, which is
+// the pin on it living exactly as long as it takes to finish growing.
+{
+  const ctx = bassCtx(true);
+  const inst = BASS.create();
+  inst.fire(ctx, bassTiers[3]);
+  const wave = ctx.rings[0];
+  ctx.step(inst, 24);                                  // age 0.4 = a third
+  assert.equal(round6(wave.radius), 122.666667, 'a third of the way: 40 + 248 / 3');
+  ctx.step(inst, 48);                                  // age 1.2 exactly
+  assert.equal(round6(wave.radius), 288, 'the ring tops out at its max radius');
+  assert.equal(ctx.rings.length, 0,
+    'and dies in the same pass: the ring lives exactly as long as it takes to expand');
+  assert.equal(ctx.rngDraws, 0, 'growing a ring draws nothing');
+  assert.equal(ctx.fxLog.length, 0, 'and pushes nothing');
+}
+
+// B9. THE RING DOES NOT FOLLOW THE PLAYER. ctx.player is documented as a LIVE
+// getter and the kick depends on it being one, which makes reading it from
+// tick() the obvious shape — and it is wrong here. The player walks 400 units
+// away after the trigger; a ring that had followed him would sweep the body
+// parked beside his new position and leave the one beside the old.
+{
+  const ctx = bassCtx(true);
+  const inst = BASS.create();
+  // 40 units out: inside the ring's first step (radius 43.44 + a body's 12) and
+  // 400 units from where the player ends up. Its twin sits the same 40 units
+  // from the DESTINATION, well outside a ring that stayed put — the ring never
+  // grows past 288 + 12, so the two can never both be swept.
+  const atOrigin = fakeTarget(40, 0);
+  const atDestination = fakeTarget(440, 0);
+  ctx.targets.push(atOrigin, atDestination);
+  inst.fire(ctx, bassTiers[3]);
+  ctx.player = { x: 400, y: 0, facingX: 1 };
+  ctx.step(inst, 1);
+  assert.deepEqual(ctx.hits.map((h) => h.t === atOrigin), [true],
+    'the ring stays where it was fired: it swept the body by its ORIGIN, not the one by the ' +
+    'player\'s new position');
+  assert.equal(round6(ctx.shoveLog[0].x), 0, 'and it shoves away from that anchor');
+  assert.equal(round6(ctx.shoveLog[0].y), 0);
+}
+
+// B10. ONCE PER BODY, AND NO CAP ON BODIES. The `hit` set is the only thing
+// between "the edge crossed you" and "you are inside the ring", and everything
+// here is inside it for most of its life. Thirty bodies, one trigger, one hit
+// each — a lost hit set is not a subtle regression, it is ~70x the damage, and
+// an invented `maxHits` stat fails at whatever number it picked.
+{
+  const ctx = bassCtx(true);
+  const inst = BASS.create();
+  for (let i = 0; i < 30; i++) {
+    const angle = (Math.PI * 2 * i) / 30;
+    ctx.targets.push(fakeTarget(Math.cos(angle) * 100, Math.sin(angle) * 100));
+  }
+  inst.fire(ctx, bassTiers[3]);
+  ctx.step(inst, 72);
+  assert.equal(ctx.hits.length, 30, 'every one of the thirty bodies was hit — there is no cap');
+  assert.equal(new Set(ctx.hits.map((h) => h.t)).size, 30, 'and each was hit exactly ONCE');
+  assert.deepEqual(ctx.hits.map((h) => round6(h.amount)), new Array(30).fill(20.15));
+}
+
+// B11. THE RING WALKS ctx.all() IN ARRAY ORDER — spawn order, not distance
+// order, which is what an expanding ring looks like it should have and is not.
+// Every rng draw a kill triggers lands in this order, so it is behavior. The
+// three bodies below are placed FARTHEST FIRST, so array order and distance
+// order are exact opposites.
+//
+// ALL THREE ARE INSIDE THE RING'S FIRST STEP (reach 43.44 + a body's 12), on
+// purpose: order is only decidable inside ONE pass. Spread them out and the
+// edge reaches them on different frames, and what the hit list records is the
+// passage of time rather than the iteration order this check is about.
+{
+  const ctx = bassCtx(true);
+  const inst = BASS.create();
+  const far = fakeTarget(0, 50);
+  const mid = fakeTarget(0, 35);
+  const nearBody = fakeTarget(0, 10);
+  ctx.targets.push(far, mid, nearBody);
+  inst.fire(ctx, bassTiers[3]);
+  ctx.step(inst, 1);
+  assert.equal(ctx.hits.length, 3, 'one pass, all three bodies');
+  assert.deepEqual(ctx.hits.map((h) => h.t), [far, mid, nearBody],
+    'damage order is the order the field was spawned in, not the order the edge reaches it');
+}
+
+// B12. THE ENEMY ARRAY IS LIVE AND GROWS UNDER THE LOOP. `ctx.all()` hands back
+// the world's real array by reference, and a JS array iterator re-reads length,
+// so a splitter killed by this ring pushes children that THIS SAME RING visits
+// in THIS SAME PASS — already inside its radius, so hit immediately. A
+// defensive `[...ctx.all()]` in the module deletes those hits and every draw
+// behind them, and nothing else in this file would notice.
+{
+  class SplittingCtx extends FakeCtx {
+    burst = false;
+    override damage(t: WeaponTarget, amount: number): void {
+      super.damage(t, amount);
+      if (this.burst) return;
+      this.burst = true;
+      // A child at the parent's position: already inside the ring.
+      this.targets.push(fakeTarget((t as FakeTarget).x, (t as FakeTarget).y));
+    }
+  }
+  const ctx = new SplittingCtx();
+  ctx.role = 'bass';
+  ctx.color = ROLE_COLORS.bass;
+  ctx.evolved = true;
+  const inst = BASS.create();
+  ctx.targets.push(fakeTarget(0, 20));
+  inst.fire(ctx, bassTiers[3]);
+  ctx.step(inst, 1);
+  assert.equal(ctx.hits.length, 2,
+    'the child pushed by the parent\'s own hit is visited by the same ring in the same pass');
+  assert.equal(ctx.targets.length, 2);
+}
+
+// B13. MID-EVOLVE. A base wave still in flight when the bass evolves keeps the
+// base hit rule: onHit does not consult ctx.evolved, exactly as the role-keyed
+// table it replaced did not. The two modes coexist in two different arrays.
+{
+  const ctx = bassCtx(false, [0.5]);
+  const inst = BASS.create();
+  const target = fakeTarget(300, 0);
+  ctx.targets.push(target);
+  inst.fire(ctx, bassTiers[3]);
+  const inFlight = ctx.spawned[0];
+  ctx.evolved = true;
+  inst.fire(ctx, bassTiers[3]);
+  assert.equal(ctx.rings.length, 1, 'the next trigger is a ring');
+  assert.equal(ctx.spawned.length, 1, 'and the wave already in flight is still there');
+  inst.projectile!.onHit!(ctx, inFlight, target);
+  assert.deepEqual(ctx.shoveLog.map((s) => s.d), [6],
+    'a base wave still in flight when the bass evolves keeps the base knock, not the ring\'s 14');
+}
+
+// B14. reset() has nothing to drop. Base waves live in the world's projectile
+// array and rings in the world's shockwave array, and clearSandboxEntities
+// empties both itself — the module holds no schedule of its own. Pinned so that
+// stays true, and so a reset never draws or pushes anything.
+{
+  const ctx = bassCtx(true);
+  const inst = BASS.create();
+  ctx.targets.push(fakeTarget(60, 0));
+  inst.fire(ctx, bassTiers[3]);
+  inst.reset();
+  assert.equal(ctx.hits.length, 0, 'a reset bass lands no delayed damage');
+  assert.equal(ctx.fxLog.length, 0, 'and pushes no fx');
+  assert.equal(ctx.rngDraws, 0, 'and never drew anything to begin with');
+}
+
+
+const chordTiers = CHORD.stats.tiers;
+
+// ---------------------------------------------------------------------------
+// The chord's tuning, pinned to LITERALS. Same rule as the kick, arp, snare,
+// hat and bass blocks above: the right-hand sides are numbers a human typed
+// after reading the pre-#141 config.ts and run.ts, never an expression that
+// reads the value it is checking.
+//
+// ONE OF THESE IS UNREACHABLE IN A SHIPPED RUN, and that is exactly why it is
+// here. `mergeMaxRadius` (180) can never decide anything: Afterhours needs tier
+// 4 and Wide Lens at max, so every Afterhours zone is 76 x 1.30 x 1.55 = 153.14
+// units and the first merge already asks for sqrt(2) x 153.14 = 216.57. The
+// baseline agent replaced the whole `Math.min(180, Math.sqrt(...))` with
+// `a.radius + b.radius` and moved ZERO of the 140 parity scenarios. The literal
+// below and check C11 (which reaches the cap through a fake context, where
+// areaMul is 1) are its only cover.
+// ---------------------------------------------------------------------------
+{
+  // The per-tier ladder, verbatim from config.WEAPONS.chord. `damage` is PER
+  // TICK, not per trigger, which is why the ladder looks so flat next to every
+  // other kit: real output is damage x (1 + floor(lifetimeS / tickS)).
+  assert.deepEqual(
+    chordTiers.map((t) => [t.damage, t.radius, t.lifetimeS]),
+    [
+      [1, 48, 2.0],
+      [1, 56, 2.2],
+      [1, 64, 2.5],
+      [2, 76, 2.8],
+    ],
+    'the chord damage/size/lifetime ladder moved',
+  );
+  assert.equal(chordTiers.length, TIER_COUNT, 'the chord ladder must have exactly TIER_COUNT rungs');
+  // A zone is not a projectile: no speed, no pierce, nothing for the shared
+  // projectile loop to read. Pinned so a later edit cannot quietly give one.
+  assert.deepEqual(
+    chordTiers.flatMap((t) => [t.speed, t.pierce, t.arc]).filter((v) => v !== undefined),
+    [],
+    'a chord zone has no speed, no pierce and no arc — it is not a shot',
+  );
+  assert.deepEqual(CHORD.stats.tierLines, [
+    'zone on the nearest pack: damage + slow',
+    'zones twice as often',
+    'bigger, longer zones',
+    'the biggest, longest, hardest zones',
+  ], 'the chord pedestal copy moved');
+
+  // The three config.ts constants that came with this weapon.
+  assert.equal(CHORD.stats.throwRange, 420, 'the zone throw range moved (was ZONE_THROW_RANGE)');
+  assert.equal(CHORD.stats.tickS, 0.9, 'the zone tick interval moved (was ZONE_TICK_S)');
+  assert.equal(CHORD.stats.slowMul, 0.55, 'the base zone slow moved (was ZONE_SLOW_MUL)');
+  // Bare literals in run.ts's spawnZone / updateZones.
+  assert.equal(CHORD.stats.slowGraceS, 0.15, 'the slow grace moved (was the + 0.15 on slowT)');
+  assert.equal(CHORD.stats.damageCapMul, 3, 'the zone damage cap multiplier moved');
+
+  // THE RENEWAL RELATIONSHIP, stated as a check rather than a comment. A tick
+  // renews every `tickS` and the slow it applies lasts `tickS + slowGraceS`, so
+  // the slow is CONTINUOUS. The moment that stops being true a standing zone
+  // starts strobing enemies back to full speed between ticks, and nothing else
+  // in this file or the parity baseline would say why.
+  assert(CHORD.stats.tickS + CHORD.stats.slowGraceS > CHORD.stats.tickS,
+    'the slow must outlive the gap to the next tick, or a zone becomes a strobe');
+
+  // Afterhours.
+  assert.equal(CHORD.stats.afterhoursRadiusMul, 1.55, 'the Afterhours radius multiplier moved');
+  assert.equal(CHORD.stats.afterhoursLifetimeMul, 1.35, 'the Afterhours lifetime multiplier moved');
+  assert.equal(CHORD.stats.afterhoursDamageMul, 1.25, 'the Afterhours damage multiplier moved');
+  assert.equal(CHORD.stats.afterhoursSlowMul, 0.42, 'the Afterhours slow moved');
+  assert.equal(CHORD.stats.driftSpeed, 65, 'the Afterhours drift speed moved');
+  assert.equal(CHORD.stats.driftSamples, 30, 'the Afterhours drift sample count moved');
+  assert.equal(CHORD.stats.driftNeighborRadius, 120, 'the Afterhours neighbour radius moved');
+  assert.equal(CHORD.stats.mergeMaxRadius, 180, 'the merge radius cap moved');
+  assert.equal(CHORD.stats.mergeMaxLifeS, 4.5, 'the merge lifetime cap moved');
+  assert.equal(CHORD.stats.mergeLifeMul, 0.25, 'the merge lifetime coefficient moved');
+  assert.equal(CHORD.stats.mergeDamageMul, 0.5, 'the merge damage coefficient moved');
+
+  assert.equal(WEAPONS.chord, undefined, 'the chord module is the only copy of the chord ladder');
+  assert.equal(TIER_LINES.chord, undefined, 'the chord module is the only copy of the chord pedestal copy');
+
+  // THE ROLE-KEYED TABLES, AND THE CHORD IS IN NONE OF THEM. It took nothing
+  // when it left — a zone tick lands damage and a slow and nothing else, no
+  // knock and no spark — so the absences are pinned the way the hat's block
+  // pins its own.
+  //
+  // BOTH TABLES ARE GONE. SPARK_HIT_ROLES left run.ts with the lead module
+  // (#141) and WEAPON_SHOVE left config.ts with the clap module, each with its
+  // last member — so what is asserted now is that neither is back, and hence
+  // that there is no table a chord tick could quietly be added to. The chord's
+  // own side of it is that no stat on this module holds a knock.
+  assert.deepEqual(Object.keys(CHORD.stats).filter((k) => /shove|knock/i.test(k)), [],
+    'a chord tick has never had a knock, and must not gain one');
+  {
+    const runSource = readFileSync(new URL('./run.ts', import.meta.url), 'utf8');
+    assert(!/SPARK_HIT_ROLES/.test(runSource),
+      'SPARK_HIT_ROLES is back in run.ts. It was a role-keyed table inside the shared projectile ' +
+      'loop and it left with its last member (the lead, #141): a migrated weapon pushes its own ' +
+      'per-hit spark through ctx.fx from ProjectileBehavior.onHit. Reintroducing the table is a ' +
+      'per-weapon branch in shared physics, whichever weapon it is for');
+  }
+
+  const chordModule = WEAPON_MODULES.find((m) => m.role === 'chord')!;
+  assert.equal(chordModule.tickAt, 'zones',
+    'the chord owns the zone pass, in the phase RunWorld.updateZones used to stand in — after ' +
+    'the shared projectile loop and before the shockwaves');
+  assert.equal(chordModule.create().projectile, undefined,
+    'the chord spawns no projectile at all, so it has nothing to lend the shared projectile loop');
+  assert.equal(CHORD.role, 'chord');
+}
+
+/** A fake context set up for the chord. Its rng() THROWS by default, which is
+ *  what turns "the chord draws nothing from the run stream" into an executable
+ *  assertion: this weapon throws at ctx.nearestEnemy, and `aimDir(0)` — the
+ *  one-line-tidier spelling — would draw once with a target on screen and twice
+ *  without. Nothing but a draw counter ever notices that. */
+function chordCtx(evolved = false): FakeCtx {
+  const ctx = new FakeCtx();
+  ctx.role = 'chord';
+  ctx.color = ROLE_COLORS.chord;
+  ctx.evolved = evolved;
+  return ctx;
+}
+
+// C1. ONE TRIGGER, ONE ZONE, ZERO DRAWS, and the tier-4 spawn row as LITERALS.
+// The zone is THROWN: it lands on the body, not on the player.
+{
+  const ctx = chordCtx();
+  const inst = CHORD.create();
+  ctx.targets.push(fakeTarget(300, 0));
+  inst.fire(ctx, chordTiers[3]);
+  assert.equal(ctx.rngDraws, 0, 'a chord trigger draws NOTHING — it looks, it does not jitter');
+  assert.equal(ctx.fields.length, 1, 'one trigger, one zone');
+  assert.equal(ctx.spawned.length, 0, 'the chord spawns no projectile');
+  assert.equal(ctx.hits.length, 0, 'a zone deals its damage in tick(), never at fire time');
+  assert.equal(ctx.slowLog.length, 0, 'and slows nothing at fire time either');
+  assert.equal(ctx.fxLog.length, 0, 'the chord pushes NO fx: its whole appearance is the view');
+  const z = ctx.fields[0];
+  assert.equal(z.x, 300, 'the zone is thrown ONTO the nearest body, not dropped underfoot');
+  assert.equal(z.y, 0);
+  assert.equal(z.radius, 76, 'the tier-4 pedestal footprint');
+  assert.equal(z.damage, 2, 'the tier-4 pedestal damage, PER TICK');
+  assert.equal(z.lifeS, 2.8);
+  assert.equal(z.tickT, 0,
+    'a zone starts its timer at ZERO, which is why it lands one tick immediately instead of ' +
+    'waiting out an interval first');
+  assert.equal(z.slow, true);
+  assert.equal(z.evolved, false);
+  assert.equal(z.driftSpeed, 0, 'a base zone never moves');
+  assert.equal(z.damageCap, 6, 'the cap is 3x the damage the zone spawned with');
+  assert.equal(z.slowMul, 0.55);
+  assert.equal(z.source, 'chord', 'attribution is the world\'s to fill in, not the module\'s');
+  assert.equal(z.color, ROLE_COLORS.chord);
+}
+
+// C2. THE THROW RANGE IS A STRICT BOUNDARY at 420, on SQUARED distances. A body
+// one unit inside takes the zone; a body exactly on the line does not, and the
+// zone falls back underfoot. Both sides, because a `<=` here would move only
+// the exact-boundary case and nothing in the parity baseline sits on it.
+{
+  const inside = chordCtx();
+  inside.targets.push(fakeTarget(419, 0));
+  CHORD.create().fire(inside, chordTiers[3]);
+  assert.equal(inside.fields[0].x, 419, 'a body inside 420 catches the throw');
+
+  const outside = chordCtx();
+  outside.targets.push(fakeTarget(420, 0));
+  CHORD.create().fire(outside, chordTiers[3]);
+  assert.equal(outside.fields[0].x, 0, 'a body exactly ON 420 is out of range — the test is `<`');
+}
+
+// C3. AN EMPTY SCREEN DROPS THE ZONE UNDERFOOT, at the fire-time player
+// position, and still costs nothing from the run stream. This is the branch
+// where `aimDir(0)` would have drawn TWICE.
+{
+  const ctx = chordCtx();
+  ctx.player = { x: 90, y: -40, facingX: 1 };
+  CHORD.create().fire(ctx, chordTiers[3]);
+  assert.equal(ctx.rngDraws, 0, 'no target on screen still means no draw');
+  assert.deepEqual([ctx.fields[0].x, ctx.fields[0].y], [90, -40], 'the zone lands on the player');
+}
+
+// C4. THE TICK GRID: one tick immediately, then one every 0.9s for the zone's
+// whole life. `1 + floor(2.8 / 0.9)` is FOUR, and the zone is gone by the end
+// of the run of frames. A zone whose timer started at tickS instead of zero
+// would land three.
+{
+  const ctx = chordCtx();
+  const inst = CHORD.create();
+  const target = fakeTarget(0, 0);
+  ctx.targets.push(target);
+  inst.fire(ctx, chordTiers[3]);
+  ctx.step(inst, 1);
+  assert.equal(round6(ctx.fields[0].tickT), 0.9,
+    'the timer is RESET to tickS, not topped up by it. `tickT += tickS` looks equivalent and is ' +
+    'not: the timer is already slightly negative when it fires, so accumulating carries that ' +
+    'remainder forward and every later tick in the run drifts');
+  ctx.step(inst, 199);
+  assert.equal(ctx.hits.length, 4, 'a tier-4 base zone lands 1 + floor(2.8 / 0.9) = 4 ticks');
+  assert.deepEqual(ctx.hits.map((h) => h.amount), [2, 2, 2, 2], 'every tick is the same chip');
+  assert.equal(ctx.fields.length, 0, 'and the zone retires at the end of its life');
+  assert.equal(ctx.rngDraws, 0, 'ticking a zone draws nothing');
+  assert.equal(ctx.fxLog.length, 0, 'and pushes nothing');
+  assert.deepEqual(ctx.knocks, [], 'a zone tick lands damage and a slow and NO knock');
+}
+
+// C5. REACH IS `zone.radius + body.radius`, STRICTLY. The zone is dropped
+// underfoot and the bodies arrive afterwards, so this measures the footprint
+// and not the throw: 76 + 12 = 88, and 88 exactly is a miss.
+{
+  const ctx = chordCtx();
+  const inst = CHORD.create();
+  inst.fire(ctx, chordTiers[3]);
+  const grazing = fakeTarget(87, 0);
+  const clear = fakeTarget(88, 0);
+  ctx.targets.push(grazing, clear);
+  ctx.step(inst, 1);
+  assert.deepEqual(ctx.hits.map((h) => h.t), [grazing],
+    'reach is the zone radius PLUS the body radius, and the boundary itself is out');
+}
+
+// C5b. A DEAD BODY IS BILLED BY NEITHER PASS. ctx.near() is a SUPERSET that
+// includes the dead — the caller runs the shape test AND the liveness test —
+// and both of the chord's two loops over it need their own `!e.dead`. Dropping
+// either one is invisible until an earlier zone's tick kills something that a
+// later zone then hits again in the same frame.
+{
+  const ctx = chordCtx();
+  const inst = CHORD.create();
+  inst.fire(ctx, chordTiers[3]);
+  ctx.targets.push(fakeTarget(20, 0, { dead: true }));
+  ctx.step(inst, 1);
+  assert.equal(ctx.hits.length, 0, 'a dead body under the zone takes no damage');
+  assert.equal(ctx.slowLog.length, 0, 'and is not slowed either — both loops test liveness');
+}
+
+// C6. THE SLOW: 0.55 for 1.05 seconds, written on everything the tick covers,
+// and it is a min() FOLD rather than an assignment. The body arrives already
+// carrying a harsher multiplier, which the chord must not lift.
+{
+  const ctx = chordCtx();
+  const inst = CHORD.create();
+  const fresh = fakeTarget(0, 0);
+  const alreadySlower = fakeTarget(20, 0, { zoneSlowMul: 0.3 });
+  ctx.targets.push(fresh, alreadySlower);
+  inst.fire(ctx, chordTiers[3]);
+  ctx.step(inst, 1);
+  assert.deepEqual(ctx.slowLog.map((s) => [s.mul, round6(s.durationS)]), [[0.55, 1.05], [0.55, 1.05]],
+    'every body under the zone takes 0.55 for tickS + slowGraceS = 1.05s');
+  assert.equal(fresh.zoneSlowMul, 0.55);
+  assert.equal(alreadySlower.zoneSlowMul, 0.3,
+    'the fold is a min(): a chord tick can only ever make a body slower, never faster');
+  assert.equal(round6(alreadySlower.slowT), 1.05, 'but the TIMER is assigned outright, not max()\'d');
+}
+
+// C7. AFTERHOURS, AS LITERALS. Every multiplier is applied to the tier-4 rung,
+// and the cap is 3x the EVOLVED damage — a merge can take an Afterhours zone to
+// 7.5 per tick, not 6.
+{
+  const ctx = chordCtx(true);
+  const inst = CHORD.create();
+  inst.fire(ctx, chordTiers[3]);
+  const z = ctx.fields[0];
+  assert.equal(round6(z.radius), 117.8, 'tier-4 76 x 1.55');
+  assert.equal(round6(z.lifeS), 3.78, 'tier-4 2.8 x 1.35');
+  assert.equal(z.damage, 2.5, 'tier-4 2 x 1.25');
+  assert.equal(z.damageCap, 7.5, 'and the cap is 3x THAT');
+  assert.equal(z.slowMul, 0.42, 'Afterhours wades harder than the base 0.55');
+  assert.equal(z.driftSpeed, 65);
+  assert.equal(z.evolved, true);
+  assert.equal(ctx.rngDraws, 0, 'Afterhours does not aim either');
+  assert.equal(ctx.fxLog.length, 0, 'and pushes no fx');
+}
+
+// C8. THE EVOLVED MULTIPLIERS STACK ON TOP OF THE BUILD PIPELINE. `conf`
+// arrives already carrying areaMul in `radius`, so Wide Lens at max and
+// Afterhours together are 76 x 1.30 x 1.55 = 153.14 — the number every real
+// Afterhours zone in a shipped run is, and the reason the merge radius cap can
+// never bind out there.
+{
+  const ctx = chordCtx(true);
+  CHORD.create().fire(ctx, { ...chordTiers[3], radius: 76 * 1.3 });
+  assert.equal(round6(ctx.fields[0].radius), 153.14, 'areaMul first, then the Afterhours 1.55');
+}
+
+// C9. THE DRIFT: 65 units a second toward the densest pack, and a BASE zone
+// does not move at all. The zone is dropped underfoot on an empty screen and
+// the crowd arrives afterwards, so the throw cannot be what moved it.
+{
+  for (const evolved of [false, true]) {
+    const ctx = chordCtx(evolved);
+    const inst = CHORD.create();
+    inst.fire(ctx, chordTiers[3]);
+    // Far outside the zone's own footprint, so nothing here is about damage.
+    for (let i = 0; i < 5; i++) ctx.targets.push(fakeTarget(300 + i * 10, 0));
+    ctx.step(inst, 1);
+    assert.equal(round6(ctx.fields[0].x), evolved ? round6(65 / 60) : 0,
+      evolved ? 'an Afterhours zone crawls 65 units a second toward the crowd'
+              : 'a BASE zone never moves, whatever is on screen');
+  }
+}
+
+// C10. THE SAMPLING STRIDE IS BEHAVIOR. With 61 bodies the stride is
+// `max(1, floor(61 / 30))` = 2, so the drift only ever LOOKS at even indices.
+// The even bodies are a loose ring out at +x (about four neighbours each); the
+// odd bodies are thirty coincident points at -x (thirty neighbours each). A
+// full scan would find the packed clump and drive the zone to -x. The stride
+// cannot see it, and the zone goes the other way.
+{
+  const ctx = chordCtx(true);
+  const inst = CHORD.create();
+  inst.fire(ctx, chordTiers[3]);
+  for (let i = 0; i < 61; i++) {
+    if (i % 2 === 0) {
+      const angle = (Math.PI * 2 * i) / 61;
+      ctx.targets.push(fakeTarget(400 + Math.cos(angle) * 300, Math.sin(angle) * 300));
+    } else {
+      ctx.targets.push(fakeTarget(-400, 0));
+    }
+  }
+  ctx.step(inst, 1);
+  assert(ctx.fields[0].x > 0,
+    'the drift stepped past every packed body because they all sat on odd indices — "tidying" ' +
+    'the stride into a full scan sends every Afterhours zone somewhere else');
+  assert.equal(round6(Math.hypot(ctx.fields[0].x, ctx.fields[0].y)), round6(65 / 60),
+    'and it still travelled exactly one frame of drift');
+}
+
+// C11. THE MERGE, AND `a` IS THE NEWER ZONE. Two Afterhours zones overlap; the
+// one thrown SECOND survives, absorbs the first and keeps its OWN damage cap.
+// The two are given different damage so the survivor is identifiable: newer
+// wins gives 5 + 2.5 x 0.5 = 6.25, older wins would give 2.5 + 5 x 0.5 = 5.
+{
+  const ctx = chordCtx(true);
+  const inst = CHORD.create();
+  ctx.targets.push(fakeTarget(0, 0));
+  inst.fire(ctx, chordTiers[3]);                       // damage 2.5 at (0, 0)
+  ctx.targets.length = 0;
+  ctx.targets.push(fakeTarget(10, 0));
+  inst.fire(ctx, { ...chordTiers[3], damage: 4 });      // damage 5 at (10, 0)
+  ctx.targets.length = 0;
+  const older = ctx.fields[0];
+  const newer = ctx.fields[1];
+  ctx.step(inst, 1);
+  assert.deepEqual(ctx.fields, [newer], 'the SURVIVOR is the zone thrown second');
+  assert.equal(round6(newer.damage), 6.25, 'the survivor takes half the absorbed zone\'s damage');
+  assert.equal(newer.damageCap, 15, 'and keeps its own cap, not the absorbed zone\'s');
+  assert.equal(round6(newer.x), 5, 'the centre is the area-weighted centroid of the two');
+  assert.equal(round6(newer.y), 0);
+  // sqrt(117.8^2 + 117.8^2) = 166.594... — under the 180 cap ONLY because a
+  // fake context has areaMul 1. In a shipped run the first merge already asks
+  // for 216.57 and the cap decides, which is why the cap has a literal pin.
+  assert.equal(round6(newer.radius), round6(Math.sqrt(2 * 117.8 * 117.8)),
+    'the merged radius is sqrt(r_a^2 + r_b^2) under the cap');
+  assert(newer.radius < CHORD.stats.mergeMaxRadius);
+  assert.equal(older.evolved, true, 'the absorbed zone object itself is untouched, just dropped');
+}
+
+// C11b. THE PARTNER IS THE NEAREST LOWER INDEX, not the oldest overlapping
+// zone. With three zones on one line the inner scan walks DOWN from `a`, so the
+// newest zone absorbs the MIDDLE one and the oldest is left alone; scanning up
+// from zero instead would absorb the oldest and leave the middle. Both spellings
+// keep `i -= 1` correct and both halve a uniform field identically, so a
+// cascade of identical zones cannot tell them apart — only distinct damage can.
+{
+  const ctx = chordCtx(true);
+  const inst = CHORD.create();
+  for (const [damage, x] of [[2, 0], [4, 10], [8, 20]] as const) {
+    ctx.targets.length = 0;
+    ctx.targets.push(fakeTarget(x, 0));
+    inst.fire(ctx, { ...chordTiers[3], damage });
+  }
+  ctx.targets.length = 0;
+  ctx.step(inst, 1);
+  assert.deepEqual(ctx.fields.map((z) => round6(z.damage)), [2.5, 12.5],
+    'the newest zone (10 per tick) absorbed the MIDDLE one (5), not the oldest (2.5) — ' +
+    'absorbing the oldest would leave [5, 11.25]');
+  assert.equal(round6(ctx.fields[1].x), 15, 'and the centroid is of those two, not of the ends');
+}
+
+// C12. A BASE ZONE IS IMMUNE TO THE MERGE PASS, from both sides, and the flag
+// is frozen at SPAWN rather than read live. The weapon evolves between the two
+// triggers, so one base and one Afterhours zone sit on the same spot.
+//
+// THIS IS ALSO THE ONLY PLACE THE min() SLOW COMBINATION IS VISIBLE, and the
+// tick order it pins is NEWEST FIRST: the Afterhours zone bills its 2.5 before
+// the base zone bills its 2.
+{
+  const ctx = chordCtx();
+  const inst = CHORD.create();
+  const body = fakeTarget(0, 0);
+  ctx.targets.push(body);
+  inst.fire(ctx, chordTiers[3]);
+  ctx.evolved = true;
+  inst.fire(ctx, chordTiers[3]);
+  ctx.step(inst, 1);
+  assert.equal(ctx.fields.length, 2, 'a base zone cannot be absorbed, and cannot absorb');
+  assert.deepEqual(ctx.fields.map((z) => z.evolved), [false, true],
+    'the base zone kept base behavior across the evolution — evolved is frozen at spawn');
+  assert.equal(ctx.fields[0].driftSpeed, 0, 'and it still does not drift');
+  assert.deepEqual(ctx.hits.map((h) => h.amount), [2.5, 2],
+    'zones tick NEWEST FIRST: the Afterhours zone billed before the base zone');
+  assert.deepEqual(ctx.slowLog.map((s) => s.mul), [0.42, 0.55],
+    'and both zones wrote their own slow');
+  assert.equal(body.zoneSlowMul, 0.42,
+    'the body keeps the HARSHER of the two — a plain assignment would have left it at 0.55');
+}
+
+// C13. THE SAME-FRAME CASCADE. `i -= 1; break;` halves the population in one
+// pass, which is the only route to the damage cap and the lifetime cap at all:
+// zones arriving one trigger at a time converge on 5 per tick and never bind
+// either. Ten zones on one spot, then three frames.
+{
+  const ctx = chordCtx(true);
+  const inst = CHORD.create();
+  for (let i = 0; i < 10; i++) inst.fire(ctx, chordTiers[3]);
+  assert.equal(ctx.fields.length, 10);
+  ctx.step(inst, 1);
+  assert.equal(ctx.fields.length, 5, 'one pass halves the field — that is what `i -= 1` buys');
+  ctx.step(inst, 1);
+  assert.equal(ctx.fields.length, 3);
+  ctx.step(inst, 1);
+  assert.equal(ctx.fields.length, 2);
+  const supercell = ctx.fields[ctx.fields.length - 1];
+  assert.equal(round6(supercell.damage), 7.5, 'the cascade is the only thing that reaches the cap');
+  assert.equal(supercell.damage, supercell.damageCap);
+  assert.equal(round6(supercell.lifeS), 4.5, 'and the lifetime cap binds too');
+  assert.equal(round6(supercell.radius), 180, 'and so does the radius cap');
+  assert.equal(ctx.rngDraws, 0, 'merging draws nothing');
+  assert.equal(ctx.fxLog.length, 0, 'and pushes nothing');
+}
+
+// C14. TICKS RUN BEFORE MERGES. Two overlapping Afterhours zones on one body
+// both land their scheduled tick in the frame they merge in — the merge pass
+// runs after the tick loop, so absorbing a zone can never swallow a tick that
+// was already due. Merge first and the field quietly loses damage every time
+// two zones meet.
+{
+  const ctx = chordCtx(true);
+  const inst = CHORD.create();
+  ctx.targets.push(fakeTarget(0, 0));
+  inst.fire(ctx, chordTiers[3]);
+  inst.fire(ctx, chordTiers[3]);
+  ctx.step(inst, 1);
+  assert.deepEqual(ctx.hits.map((h) => h.amount), [2.5, 2.5],
+    'both zones billed their due tick in the frame they merged');
+  assert.equal(ctx.fields.length, 1, 'and then became one');
+}
+
+// C15. reset() has nothing to drop. Every zone lives in the world's zone array,
+// which clearSandboxEntities empties itself — the module holds no schedule of
+// its own. Pinned so that stays true, and so a reset never draws or pushes
+// anything.
+{
+  const ctx = chordCtx(true);
+  const inst = CHORD.create();
+  ctx.targets.push(fakeTarget(60, 0));
+  inst.fire(ctx, chordTiers[3]);
+  inst.reset();
+  assert.equal(ctx.hits.length, 0, 'a reset chord lands no delayed damage');
+  assert.equal(ctx.slowLog.length, 0, 'and no delayed slow');
+  assert.equal(ctx.fxLog.length, 0, 'and pushes no fx');
+  assert.equal(ctx.rngDraws, 0, 'and never drew anything to begin with');
+}
+
+
+const leadTiers = LEAD.stats.tiers;
+
+// ---------------------------------------------------------------------------
+// The lead's tuning, pinned to LITERALS. Same rule as the kick, arp, snare,
+// hat, bass and chord blocks above: the right-hand sides are numbers a human
+// typed after reading the pre-#141 config.ts and run.ts, never an expression
+// that recomputes the module's own answer.
+//
+// THE LEAD'S NUMBERS WERE THE MOST SCATTERED OF ANY WEAPON SO FAR. Three of
+// them — `homing`, `turnRate`, `homingRange` — were not lead's on paper at all:
+// they were defaults inside RunWorld.baseProjectile, the world's shared
+// defaulting for every weapon's shot, with a `role === 'lead'` test carrying
+// the first. Only a lead shot could ever observe them, so they are this
+// weapon's tuning and they are pinned here.
+// ---------------------------------------------------------------------------
+{
+  // The per-tier ladder, verbatim from config.WEAPONS.lead. A DENSITY ladder
+  // first — the chart thickens — with pierce arriving only on the top rung.
+  assert.deepEqual(
+    leadTiers.map((t) => [t.damage, t.speed, t.radius, t.lifetimeS, t.pierce]),
+    [
+      [2, 340, 6, 2.2, 1],
+      [3, 350, 6, 2.2, 1],
+      [3, 360, 6, 2.3, 1],
+      [4, 380, 7, 2.4, 2],
+    ],
+    'the lead damage/speed/size/lifetime/pierce ladder moved',
+  );
+  assert.equal(leadTiers.length, TIER_COUNT, 'the lead ladder must have exactly TIER_COUNT rungs');
+  assert.deepEqual(LEAD.stats.tierLines, [
+    'a few homing seekers',
+    'more seekers',
+    'the full melody of seekers',
+    'denser seekers that pierce',
+  ], 'the lead pedestal copy moved');
+
+  // The base seeker.
+  assert.equal(LEAD.stats.aimSpread, 0.08, 'the lead aim jitter moved');
+  // WAS `homing: role === 'lead'` inside RunWorld.baseProjectile — the one
+  // per-weapon test in the world's shared projectile defaulting.
+  assert.equal(LEAD.stats.homing, true,
+    'a lead shot HOMES; that is the weapon. It is a field on the shot now, not a role test in ' +
+    'the world\'s spawner');
+  assert.equal(LEAD.stats.turnRate, 10, 'the base seeker turn rate moved');
+  assert.equal(LEAD.stats.homingRange, Infinity,
+    'the base seeker searches the WHOLE SCREEN. Infinity is a stated value here, not an absent ' +
+    'one — Neon Serpent\'s whole change of character is replacing it with a finite gate');
+  // WAS this weapon's membership of run.ts's SPARK_HIT_ROLES plus the two
+  // literals at the push site inside the shared loop.
+  assert.equal(LEAD.stats.sparkCount, 4, 'the lead hit-spark particle count moved');
+  assert.equal(LEAD.stats.sparkSpread, 12, 'the lead hit-spark spread moved');
+
+  // Neon Serpent.
+  assert.equal(LEAD.stats.serpentDamageMul, 1.40, 'the Neon Serpent damage multiplier moved');
+  assert.equal(LEAD.stats.serpentBasePierce, 6, 'the Neon Serpent signature pierce moved');
+  assert.equal(LEAD.stats.serpentTurnRate, 14, 'the Neon Serpent turn rate moved');
+  assert.equal(LEAD.stats.serpentHomingRange, 320, 'the Neon Serpent homing gate moved');
+  // THE CONSTANT SUM (#146). `serpentBasePierce` is an INPUT to the build's
+  // +pierce rule, not a write over its output, and the sum is invariant:
+  // eligibleEvolution gates every evolution on its partner item being at
+  // ITEM_MAX_LEVEL and Needle Tips grants +1 per level, so a Neon Serpent only
+  // ever exists alongside extraPierce 5. Eleven, never six, never anything
+  // between. This asserts the SUM, so raising the 6 without meaning to raise
+  // eleven fails here.
+  assert.equal(LEAD.stats.serpentBasePierce + itemMaxLevel('needleTips'), 11,
+    'evolved lead pierce is INVARIANTLY 11 — one term of a constant sum, not a floor a player ' +
+    'ramps up from. If Needle Tips\' ladder or its cap changed, this number changed with it');
+  assert.equal(ITEMS.needleTips.evolutionPartner, 'lead',
+    'the constant sum above only holds while Needle Tips is the lead\'s evolution ingredient');
+
+  // The supercharged shot.
+  assert.equal(LEAD.stats.superchargeCadence, 5, 'the Neon Serpent supercharge cadence moved');
+  assert.equal(LEAD.stats.superchargeDamageMul, 2, 'the supercharged damage multiplier moved');
+  // BOTH HALVES OF `max(12, radius * 1.7)` ARE LIVE, unlike the snare's
+  // unreachable width floor: at tier 4 with no area build the floor wins
+  // (7 * 1.7 = 11.9 -> 12), and with Wide Lens it does not (9.1 * 1.7 = 15.47).
+  // Checks L7a/L7b below exercise one real build on each side of that, so
+  // dropping either half fails behaviorally and not only here.
+  assert.equal(LEAD.stats.superchargeRadiusFloor, 12, 'the supercharged radius floor moved');
+  assert.equal(LEAD.stats.superchargeRadiusMul, 1.7, 'the supercharged radius multiplier moved');
+  assert(leadTiers[3].radius! * LEAD.stats.superchargeRadiusMul < LEAD.stats.superchargeRadiusFloor,
+    'the supercharge floor is documented as LIVE at tier 4 with no area build; if the ladder ever ' +
+    'clears it the floor stops being observable and L7a is silently checking the multiplier twice');
+
+  assert.equal(WEAPONS.lead, undefined, 'the lead module is the only copy of the lead ladder');
+  assert.equal(TIER_LINES.lead, undefined, 'the lead module is the only copy of the lead pedestal copy');
+  // The role-keyed tables. The lead was the LAST member of SPARK_HIT_ROLES, so
+  // the Set itself left run.ts with this module — that absence is asserted
+  // against the source in the chord block above. It was never in WEAPON_SHOVE:
+  // a seeker has never knocked anything and must not start.
+  assert.deepEqual(Object.keys(LEAD.stats).filter((k) => /shove|knock/i.test(k)), [],
+    'a lead hit has never had a knock, and must not gain one');
+
+  const leadModule = WEAPON_MODULES.find((m) => m.role === 'lead')!;
+  assert.equal(leadModule.tickAt, undefined,
+    'the lead owns no damage pass: its seekers ride the shared projectile loop, homing search ' +
+    'and all');
+  const behavior = leadModule.create().projectile;
+  assert(behavior, 'the lead lends the shared projectile loop its hit rule');
+  // THE ABSENCE THAT MATTERS MOST IN THIS FILE. A seeker's motion is the shared
+  // loop's own homing path, driven by three FIELDS the module sets at spawn.
+  // A steer() that returned true would skip shared travel AND
+  // reflectProjectileFromArena together — and without Mirrorball `bounces` is 0
+  // and the rail path returns immediately, so a wrongly-steering module
+  // reproduces almost every scenario in the parity file exactly.
+  assert.equal(behavior.steer, undefined,
+    'a lead seeker rides SHARED travel and the arena rails: its homing is the loop\'s own ' +
+    'pr.homing path, fed by fields. Implementing steer() takes it off Mirrorball\'s bounces and ' +
+    'almost nothing else notices');
+  assert.equal(LEAD.role, 'lead');
+}
+
+/** A fake context set up for the lead, with a scripted rng. */
+function leadCtx(rngValues: number[], evolved = false): FakeCtx {
+  const ctx = new FakeCtx();
+  ctx.role = 'lead';
+  ctx.color = ROLE_COLORS.lead;
+  ctx.evolved = evolved;
+  ctx.rngValues = rngValues;
+  return ctx;
+}
+
+/** Fire the way RunWorld.fireTrigger does: the world's per-role trigger counter
+ *  is bumped in the shared preamble BEFORE fire() runs, which is what makes the
+ *  FIFTH trigger the one where `% 5 === 0`. The counter is WORLD-owned and
+ *  never resets, so it also keeps ticking while the weapon is unevolved —
+ *  L6b is the check that would catch a module-local tally. */
+function leadFire(ctx: FakeCtx, inst: WeaponInstance, conf: WeaponConf): void {
+  ctx.triggerCount += 1;
+  inst.fire(ctx, conf);
+}
+
+// L1. ONE TRIGGER, ONE SEEKER, ONE DRAW — and the three homing fields, which
+// are the whole of what this module lends the shared loop's motion path.
+{
+  const ctx = leadCtx([0.5]);
+  const inst = LEAD.create();
+  ctx.targets.push(fakeTarget(300, 0));
+  leadFire(ctx, inst, leadTiers[3]);
+  assert.equal(ctx.rngDraws, 1, 'one lead trigger with a target in range draws exactly one rng value');
+  assert.equal(ctx.spawned.length, 1, 'one trigger, one seeker');
+  assert.equal(ctx.hits.length, 0, 'the lead deals no damage at fire time');
+  assert.equal(ctx.fxLog.length, 0, 'the lead pushes no fx at fire time');
+  const pr = ctx.spawned[0];
+  // LITERALS, from the tier-4 rung: 4 damage, 2 pierce, 380 speed, radius 7.
+  assert.equal(pr.damage, 4, 'a tier-4 seeker carries the pedestal damage');
+  assert.equal(pr.pierce, 2, 'an UNEVOLVED seeker keeps the tier\'s own pierce budget');
+  assert.equal(pr.maxPierce, 2);
+  assert.equal(pr.speed, 380);
+  assert.equal(pr.radius, 7);
+  // The three fields. Forgetting one does not crash and does not fail
+  // typecheck: it silently produces a shot that flies straight, or one that
+  // homes across the whole arena.
+  assert.equal(pr.homing, true, 'a seeker homes — the field the shared loop reads');
+  assert.equal(pr.turnRate, 10, 'a base seeker turns at its own rate, not the spawner\'s default');
+  assert.equal(pr.homingRange, Infinity, 'a base seeker searches the whole screen');
+  // rng 0.5 means zero jitter, and the only target sits due east.
+  assert.equal(round6(pr.vx), 380, 'velocity is derived from pr.speed along the aim line');
+  assert.equal(round6(pr.vy), 0);
+  assert.equal(round6(Math.hypot(pr.vx, pr.vy)), 380,
+    'the speed FIELD must stay equal to |v| — the bounce path reads it');
+}
+
+// L1b. THE MODULE SETS ALL THREE HOMING FIELDS ITSELF — it does not INHERIT
+// them from the spawner. This needs its own check because two of the three
+// values the module writes are the same values RunWorld.baseProjectile happens
+// to default to (turnRate 10, homingRange Infinity), so deleting either line
+// from the module is invisible to L1, to every scenario in the parity file, and
+// to a reader. It stops being invisible the moment the world's defaults move
+// for some other weapon's reason — and then it is a lead bug with no lead-side
+// cause. So: poison the freshly spawned shot, and assert the module overwrites
+// all three regardless of what it was handed.
+{
+  const ctx = leadCtx([0.5]);
+  const inst = LEAD.create();
+  const spawn = ctx.spawnProjectile.bind(ctx);
+  ctx.spawnProjectile = (conf, damage) => {
+    const pr = spawn(conf, damage);
+    pr.homing = false;
+    pr.turnRate = -1;
+    pr.homingRange = 7;
+    return pr;
+  };
+  ctx.targets.push(fakeTarget(300, 0));
+  leadFire(ctx, inst, leadTiers[3]);
+  const pr = ctx.spawned[0];
+  assert.equal(pr.homing, true, 'the lead arms `homing` itself; it is this weapon\'s tuning');
+  assert.equal(pr.turnRate, 10, 'the lead arms `turnRate` itself, and does not ride a world default');
+  assert.equal(pr.homingRange, Infinity,
+    'the lead arms `homingRange` itself. Infinity is a value this module states, not one it ' +
+    'inherits by saying nothing');
+}
+
+// L2. THE EMPTY-SCREEN DRAW. With nothing to aim at, the world picks a random
+// heading and THEN jitters it: two draws, not one. Only the draw count sees
+// this, and getting it wrong desynchronises the whole run's rng stream.
+{
+  const ctx = leadCtx([0, 0.5]);
+  const inst = LEAD.create();
+  leadFire(ctx, inst, leadTiers[0]);
+  assert.equal(ctx.rngDraws, 2, 'an empty screen costs the lead TWO draws, not one');
+  assert.equal(ctx.spawned.length, 1, 'an empty screen still fires the seeker');
+}
+
+// L3. DOUBLE TAKE fans extra seekers off ONE aim. Three shots, still one draw:
+// the aim is per TRIGGER, not per shot. Moving the draw into the fan loop
+// triples the draw count and desynchronises everything after it.
+{
+  const ctx = leadCtx([0.5]);
+  const inst = LEAD.create();
+  ctx.buildMods = { ...ctx.buildMods, extraProjectiles: 2 };
+  ctx.targets.push(fakeTarget(300, 0));
+  leadFire(ctx, inst, leadTiers[0]);
+  assert.equal(ctx.rngDraws, 1, 'Double Take fans off a SINGLE aim: one draw however many seekers');
+  assert.equal(ctx.spawned.length, 3, 'two extra projectiles means three seekers');
+  const angles = ctx.spawned.map((pr) => Math.atan2(pr.vy, pr.vx));
+  assert.equal(round6(angles[0]), 0, 'the first seeker rides the aim line itself');
+  assert.equal(round6(angles[1] + angles[2]), 0, 'the extras straddle the aim line symmetrically');
+}
+
+// L4. NEON SERPENT, as literals. Harder turn, finite gate, 1.40x damage — and
+// on a trigger that is not the fifth, an untouched radius.
+{
+  const ctx = leadCtx([0.5], true);
+  const inst = LEAD.create();
+  ctx.targets.push(fakeTarget(300, 0));
+  leadFire(ctx, inst, leadTiers[3]);
+  const pr = ctx.spawned[0];
+  assert.equal(round6(pr.damage), 5.6, 'a serpent hits for 4 * 1.40');
+  assert.equal(pr.turnRate, 14, 'a serpent turns harder than a base seeker');
+  assert.equal(pr.homingRange, 320,
+    'a serpent snaps to what is CLOSE instead of crossing the screen — the 320-unit gate, as a ' +
+    'field on the shot');
+  assert.equal(pr.homing, true, 'a serpent is still a seeker');
+  assert.equal(pr.radius, 7, 'a trigger that is not the fifth spawns an ordinary-sized serpent');
+}
+
+// L5. THE PIERCE GOES THROUGH THE BUILD, NOT OVER IT (#146). The signature 6 is
+// an INPUT to the +pierce rule; with Needle Tips at its cap — the only state a
+// Neon Serpent can exist in — the answer is ELEVEN. The shape to never restore
+// is a write of 6 onto the shot AFTER the pipeline, which made Needle Tips a
+// no-op on the very evolution it unlocks.
+{
+  const ctx = leadCtx([0.5], true);
+  const inst = LEAD.create();
+  ctx.buildMods = { ...ctx.buildMods, extraPierce: 5 };
+  ctx.targets.push(fakeTarget(300, 0));
+  // The tier conf arrives ALREADY BUILT, so its own pierce already carries the
+  // +5. The serpent replaces it outright and re-adds the same +5 — it does not
+  // stack on the built tier value.
+  leadFire(ctx, inst, { ...leadTiers[3], pierce: leadTiers[3].pierce! + 5 });
+  const pr = ctx.spawned[0];
+  assert.equal(pr.pierce, 11, 'a Neon Serpent at Needle Tips 5 pierces eleven bodies, always');
+  assert.equal(pr.maxPierce, 11, 'and its budget and its ceiling agree');
+}
+
+// L5b. And with no Needle Tips at all the sum is the bare signature number.
+// UNREACHABLE IN A REAL RUN — eligibleEvolution will not hand out a Neon
+// Serpent without the item at max level — but it is what pins the 6 as an
+// addend rather than as a constant the module writes out.
+{
+  const ctx = leadCtx([0.5], true);
+  const inst = LEAD.create();
+  ctx.targets.push(fakeTarget(300, 0));
+  leadFire(ctx, inst, leadTiers[3]);
+  assert.equal(ctx.spawned[0].pierce, 6, 'with no +pierce in the build the serpent pierces six');
+}
+
+// L6. THE SUPERCHARGE LANDS ON THE FIFTH TRIGGER, not the sixth. The counter is
+// bumped BEFORE fire() runs, so the first trigger reads 1.
+{
+  const ctx = leadCtx([0.5, 0.5, 0.5, 0.5, 0.5], true);
+  const inst = LEAD.create();
+  ctx.targets.push(fakeTarget(300, 0));
+  for (let i = 0; i < 5; i++) leadFire(ctx, inst, leadTiers[3]);
+  const damages = ctx.spawned.map((pr) => round6(pr.damage));
+  assert.deepEqual(damages, [5.6, 5.6, 5.6, 5.6, 11.2],
+    'the FIFTH serpent of the run is the supercharged one: 4 * 1.40 * 2');
+  assert.equal(ctx.spawned[4].radius, 12,
+    'the supercharged shot is fattened to max(12, 7 * 1.7) — the FLOOR wins at tier 4 with no ' +
+    'area build');
+}
+
+// L6b. THE COUNTER IS WORLD-OWNED AND TICKS WHILE THE WEAPON IS UNEVOLVED. Four
+// base triggers, then evolve, then one serpent — and that serpent is the fifth
+// trigger of the run, so it is supercharged. A module-local tally starting at
+// zero, or restarting at the evolution, puts the doubled shot on a different
+// beat and nothing else in this file would say why.
+{
+  const ctx = leadCtx([0.5, 0.5, 0.5, 0.5, 0.5]);
+  const inst = LEAD.create();
+  ctx.targets.push(fakeTarget(300, 0));
+  for (let i = 0; i < 4; i++) leadFire(ctx, inst, leadTiers[3]);
+  ctx.evolved = true;
+  leadFire(ctx, inst, leadTiers[3]);
+  assert.deepEqual(ctx.spawned.map((pr) => round6(pr.damage)), [4, 4, 4, 4, 11.2],
+    'base triggers still advance the fifth-shot counter: the first serpent after evolving lands ' +
+    'on trigger five and is supercharged');
+}
+
+// L7a/L7b. BOTH HALVES OF `max(12, radius * 1.7)` ARE LIVE, one real build on
+// each side. L6 above already covered the floor at tier 4; here it is again
+// beside the case where the multiplier wins, because dropping either half
+// leaves the other one still looking correct.
+{
+  // Wide Lens at max: areaMul 1.30 has already been applied to the conf, so the
+  // seeker starts at 9.1 and 9.1 * 1.7 = 15.47 clears the floor.
+  const ctx = leadCtx([0.5, 0.5, 0.5, 0.5, 0.5], true);
+  const inst = LEAD.create();
+  ctx.targets.push(fakeTarget(300, 0));
+  for (let i = 0; i < 5; i++) leadFire(ctx, inst, { ...leadTiers[3], radius: 9.1 });
+  assert.equal(round6(ctx.spawned[4].radius), 15.47,
+    'with an area build the MULTIPLIER wins: 9.1 * 1.7, no floor in sight');
+  assert.equal(round6(ctx.spawned[0].radius), 9.1, 'and an ordinary serpent is not fattened at all');
+}
+
+// L8. THE HIT RULE. This is where the lead's share of SPARK_HIT_ROLES landed:
+// the spark lands on the TARGET, carries the shot's colour, and the count and
+// spread are the ones the shared loop used to push. onHit returns TRUE — a
+// seeker spends pierce like every other projectile; only the arp is exempt.
+{
+  const ctx = leadCtx([0.5]);
+  const inst = LEAD.create();
+  ctx.targets.push(fakeTarget(300, 0));
+  leadFire(ctx, inst, leadTiers[3]);
+  const pr = ctx.spawned[0];
+  pr.x = 250;
+  pr.y = 10;
+  const target = ctx.targets[0];
+  assert.equal(inst.projectile!.onHit!(ctx, pr, target), true,
+    'a lead seeker spends pierce on a hit — only the arp is exempt (ADR-0002)');
+  assert.deepEqual(sparks(ctx).map((s) => [s.x, s.y, s.n, s.spread, s.color]),
+    [[300, 0, 4, 12, ROLE_COLORS.lead]],
+    'the hit spark lands on the TARGET, with the count and spread the shared loop used to push');
+  assert.equal(ctx.shoveLog.length, 0, 'a lead hit knocks nothing — it never did');
+  assert.equal(ctx.hits.length, 0,
+    'onHit deals no damage of its own: the shared loop already dealt pr.damage before calling it');
+}
+
+// L9. reset() has nothing to drop. Every seeker lives in the world's projectile
+// array, which clearSandboxEntities empties itself — the module holds no
+// schedule, and no counter of its own to reset.
+{
+  const ctx = leadCtx([0.5], true);
+  const inst = LEAD.create();
+  ctx.targets.push(fakeTarget(60, 0));
+  leadFire(ctx, inst, leadTiers[3]);
+  const drawsBefore = ctx.rngDraws;
+  const spawnedBefore = ctx.spawned.length;
+  inst.reset();
+  assert.equal(ctx.hits.length, 0, 'a reset lead lands no delayed damage');
+  assert.equal(ctx.fxLog.length, 0, 'and pushes no fx');
+  assert.equal(ctx.rngDraws, drawsBefore, 'and draws nothing');
+  assert.equal(ctx.spawned.length, spawnedBefore,
+    'and does not retire shots it does not own the storage for');
+}
+
+
+const clapTiers = CLAP.stats.tiers;
+
+// ---------------------------------------------------------------------------
+// The clap's tuning, pinned to LITERALS. Same rule as every module block above:
+// the right-hand sides are numbers a human typed after reading the pre-#141
+// config.ts and run.ts, never an expression that recomputes the module's own
+// answer.
+//
+// THE CLAP IS THE WEAPON THAT EMPTIED THE ROLE-KEYED TABLES. WEAPON_SHOVE's
+// last entry was its 12, so the table, its import, BOTH of its read sites in
+// run.ts and its INTERIM_EXCEPTIONS entry in the shared-physics guard all left
+// with this module. TWO_HANDS went the same way, into the same stats block,
+// because base and evolved behavior belong to one weapon module.
+// ---------------------------------------------------------------------------
+{
+  // The per-tier ladder, verbatim from config.WEAPONS.clap. Damage, reach and
+  // arc all widen together — the Whip's whole ladder is "more slash".
+  assert.deepEqual(
+    clapTiers.map((t) => [t.damage, t.radius, t.arc]),
+    [
+      [2, 80, 0.65],
+      [3, 88, 0.72],
+      [4, 98, 0.8],
+      [6, 108, 0.9],
+    ],
+    'the clap damage/reach/arc ladder moved',
+  );
+  assert.equal(clapTiers.length, TIER_COUNT, 'the clap ladder must have exactly TIER_COUNT rungs');
+  assert.deepEqual(CLAP.stats.tierLines, [
+    'a wide slash close to you',
+    'wider, harder slash',
+    'sweeps a bigger arc',
+    'the widest, hardest slash',
+  ], 'the clap pedestal copy moved');
+
+  // The base cone. WAS config.WEAPON_SHOVE.clap and the bare `d < 34` inside
+  // RunWorld.damageCone.
+  assert.equal(CLAP.stats.shove, 12, 'the cone knock distance moved (was WEAPON_SHOVE.clap)');
+  assert.equal(CLAP.stats.pointBlankRadius, 34, 'the point-blank exemption radius moved');
+
+  // Two Hands, all of it verbatim from config.TWO_HANDS.
+  assert.equal(CLAP.stats.targets, 3, 'the Two Hands target count moved');
+  assert.equal(CLAP.stats.closeS, 0.12, 'the Two Hands close time moved');
+  assert.equal(CLAP.stats.openGap, 74, 'the Two Hands slab standoff moved');
+  assert.equal(CLAP.stats.pinchRadius, 42, 'the Two Hands crush radius moved');
+  assert.equal(CLAP.stats.damageMul, 1.52, 'the Two Hands damage multiplier moved');
+  assert.equal(CLAP.stats.tugRadius, 96, 'the Two Hands tug radius moved');
+  assert.equal(CLAP.stats.tug, 30, 'the Two Hands tug distance moved');
+  // `closeS` NEEDS THIS LITERAL MORE THAN ANY OTHER STAT IN THE FILE. Both
+  // scheduled moments a pincer has are observed only on the frame that crosses
+  // them, so 0.12 and 0.13 land on the same frame and the parity baseline cannot
+  // separate them (0.11 and 0.14 it can). The sub-frame residue is covered by
+  // the line above and by nothing else — deleting it silently removes the only
+  // check on an eighth of this constant's range.
+  assert(CLAP.stats.closeS * CLAP.stats.handMidFraction < 1 / 60 * 4,
+    'the halfway visual is documented as landing inside the close window; if closeS grows past ' +
+    'the point where that is frame-visible, the timing checks below are measuring the wrong frame');
+
+  // The slabs and the crush spark: every one of these was a bare literal in
+  // run.ts's drawPinchHands or updateClapPinches.
+  assert.equal(CLAP.stats.handHalfLengthMul, 1.15, 'the drawn slab half-length moved');
+  assert.equal(CLAP.stats.handWidth, 5, 'the drawn slab thickness moved');
+  // Read out BEFORE the two literal pins below: assert.equal narrows what it is
+  // handed, so comparing the two fields afterwards would compare two literal
+  // types and stop being a runtime check at all.
+  assert.notEqual(CLAP.stats.handMidT, CLAP.stats.handMidFraction,
+    'the hands are DRAWN slightly past halfway (0.45) at the halfway MOMENT (0.5). Two numbers, ' +
+    'and folding them into one would make the close read linear instead of snapping');
+  assert.equal(CLAP.stats.handMidFraction, 0.5, 'the halfway-visual moment moved');
+  assert.equal(CLAP.stats.handMidT, 0.45, 'the halfway-visual standoff moved');
+  assert.equal(CLAP.stats.sparkCount, 6, 'the crush spark particle count moved');
+  assert.equal(CLAP.stats.sparkSpreadMul, 0.7, 'the crush spark spread moved');
+
+  assert.equal(WEAPONS.clap, undefined, 'the clap module is the only copy of the clap ladder');
+  assert.equal(TIER_LINES.clap, undefined, 'the clap module is the only copy of the clap pedestal copy');
+
+  // THE TABLES ARE GONE, AND THIS IS THE CHECK THAT SAYS SO FOR ALL OF THEM.
+  // Every other module block used to assert its own absence from WEAPON_SHOVE;
+  // there is no table left to be absent from, so what is pinned instead is that
+  // neither table is back — in config.ts, where WEAPON_SHOVE and TWO_HANDS
+  // lived, or in run.ts, where they were read. A reintroduced role-keyed table
+  // is a per-weapon branch in shared code whichever weapon it is for.
+  {
+    const configSource = readFileSync(new URL('./config.ts', import.meta.url), 'utf8');
+    const runSource = readFileSync(new URL('./run.ts', import.meta.url), 'utf8');
+    assert(!/WEAPON_SHOVE\s*[:=]/.test(configSource) && !/WEAPON_SHOVE\[/.test(runSource),
+      'WEAPON_SHOVE is back. It was a role-keyed table of per-weapon knock distances read inside ' +
+      'the world\'s shared projectile loop, and it left with its last member (the clap, #141): a ' +
+      'migrated weapon applies its own knock through ctx.shove, from fire() or from its own ' +
+      'ProjectileBehavior.onHit. See SNARE_STATS.shove, BASS_STATS.shove and CLAP_STATS.shove');
+    assert(!/TWO_HANDS\s*[:=]/.test(configSource),
+      'TWO_HANDS is back in config.ts. An evolution\'s tuning belongs to the same module as the ' +
+      'base weapon\'s — that is what "one module per weapon" means — and it is CLAP_STATS now');
+  }
+
+  const clapModule = WEAPON_MODULES.find((m) => m.role === 'clap')!;
+  assert.equal(clapModule.tickAt, 'pinches',
+    'the clap owns the pincer pass, in the phase RunWorld.updateClapPinches used to stand in — ' +
+    'after the strikes and before the shared projectile loop');
+  // THE ABSENCE THAT DEFINES THIS WEAPON. The clap is MELEE: the base cone
+  // resolves synchronously inside fire() and a pincer resolves in tick(), so
+  // nothing it makes ever enters the shared projectile loop and it has nothing
+  // to lend it. An empty ProjectileBehavior would advertise a relationship that
+  // does not exist.
+  assert.equal(clapModule.create().projectile, undefined,
+    'the clap spawns no projectile at all — it is the only melee weapon in the roster besides ' +
+    'the kick, and like the kick it lends the shared projectile loop nothing');
+  assert.equal(CLAP.role, 'clap');
+  // NO STATE ON THE MODULE VALUE. The pinch queue is the most stateful thing any
+  // weapon owns, and systems-check builds many RunWorlds in one process; a queue
+  // parked here would leak pincers between them. C11 proves two instances are
+  // independent; this proves there is nowhere for shared state to hide.
+  assert.deepEqual(Object.keys(CLAP).sort(), ['create', 'role', 'stats', 'tickAt'],
+    'the clap module VALUE is static — role, stats, a phase and a factory. Any other field on it ' +
+    'is per-run state on a singleton');
+}
+
+/** A fake context set up for the clap. Its rng() THROWS by default: Two Hands
+ *  with a body on screen picks targets WITHOUT jittering and must draw nothing,
+ *  so that is an executable assertion rather than a comment. The base cone and
+ *  the empty-field branch, which do aim, get an explicit script. */
+function clapCtx(evolved = false, rngValues: number[] | null = null): FakeCtx {
+  const ctx = new FakeCtx();
+  ctx.role = 'clap';
+  ctx.color = ROLE_COLORS.clap;
+  ctx.evolved = evolved;
+  ctx.rngValues = rngValues;
+  return ctx;
+}
+
+/** Every shove this context recorded, as [wasThisTarget, originX, originY, dist]
+ *  rounded — the clap is the only weapon whose two knock paths use DIFFERENT
+ *  origins (the player for the cone, the mirrored body for the tug). */
+function shoves(ctx: FakeCtx): Array<[number, number, number]> {
+  return ctx.shoveLog.map((s) => [round6(s.x), round6(s.y), round6(s.d)]);
+}
+
+// C1. ONE TRIGGER, ONE SWEEP, ONE DRAW. The cone resolves synchronously at fire
+// time — no projectile, no schedule — and the tier-4 row is a LITERAL 6.
+{
+  const ctx = clapCtx(false, [0.5]);
+  const inst = CLAP.create();
+  const inArc = fakeTarget(60, 0);
+  const behind = fakeTarget(0, 60);
+  const tooFar = fakeTarget(200, 0);
+  ctx.targets.push(inArc, behind, tooFar);
+  inst.fire(ctx, clapTiers[3]);
+  assert.equal(ctx.rngDraws, 1, 'a clap trigger with a target in range draws exactly one rng value');
+  assert.equal(ctx.spawned.length, 0, 'the clap spawns no projectile — it is melee');
+  assert.deepEqual(ctx.hits.map((h) => [h.t === inArc, h.amount]), [[true, 6]],
+    'only the body inside the cone is hit, for the tier-4 pedestal damage');
+  assert.equal(behind.hp, 1e6, 'a body 90 degrees off the aim line is outside a 0.9 half-arc');
+  assert.equal(tooFar.hp, 1e6, 'a body past reach + its own radius is untouched');
+  // The arc fx is pushed AFTER the damage: every kill this sweep makes, and
+  // every drop rolled behind it, lands before the visual is queued.
+  assert.deepEqual(ctx.seq, ['damage', 'arc'], 'damage first, then the arc visual');
+  const arc = ctx.fxLog[0];
+  assert.equal(arc.type, 'arc');
+  assert.deepEqual([arc.x, arc.y, round6(arc.angle), arc.arc, arc.radius, arc.color],
+    [0, 0, 0, 0.9, 108, ROLE_COLORS.clap],
+    'the arc is drawn at the player, along the aim line, at the tier\'s own arc and reach');
+}
+
+// C2. THE POINT-BLANK EXEMPTION, bracketed. A body inside 34 is hit REGARDLESS
+// of the cone's angle — that is why a Whip has no blind spot — and one just
+// outside it takes the angular test and fails it. Both probes sit directly
+// BEHIND the aim line, which is the only place the exemption is visible.
+{
+  const ctx = clapCtx(false, [0.5]);
+  const inst = CLAP.create();
+  const anchor = fakeTarget(17, 0);
+  const inside = fakeTarget(-33.5, 0);
+  const outside = fakeTarget(-34.5, 0);
+  ctx.targets.push(anchor, inside, outside);
+  inst.fire(ctx, clapTiers[3]);
+  assert.equal(inside.hp, 1e6 - 6, 'a body inside the point-blank radius is hit from behind');
+  assert.equal(outside.hp, 1e6, 'a body just outside it takes the angular test, and is behind');
+  assert.equal(anchor.hp, 1e6 - 6, 'the aim anchor is hit too — it is inside the exemption itself');
+}
+
+// C3. REACH IS MEASURED TO THE BODY'S EDGE, not its centre: `d > reach + radius`.
+// A fat enemy is caught by its own radius where a swarmer at the same centre
+// distance would not be.
+{
+  const ctx = clapCtx(false, [0.5]);
+  const inst = CLAP.create();
+  const grazing = fakeTarget(119, 0);
+  const clear = fakeTarget(121, 0);
+  ctx.targets.push(grazing, clear);
+  inst.fire(ctx, clapTiers[3]);
+  assert.equal(grazing.hp, 1e6 - 6, 'reach 108 plus the body\'s own 12 reaches a centre at 119');
+  assert.equal(clear.hp, 1e6, 'and does not reach one at 121');
+}
+
+// C4. THE CONE'S KNOCK IS RAW. This is the clap's share of WEAPON_SHOVE, in the
+// slot the table lookup occupied — and the call site never scaled it by
+// buildMods.knockbackMul, unlike the shared projectile loop's copy of the very
+// same lookup and unlike this weapon's own evolved tug (C8). Heavy Amp at full
+// strength moves it not at all. The parity baseline pins both sides, so
+// "tidying" the two into agreement fails there as well as here.
+{
+  const ctx = clapCtx(false, [0.5]);
+  const inst = CLAP.create();
+  const target = fakeTarget(60, 0);
+  ctx.targets.push(target);
+  ctx.buildMods = { ...ctx.buildMods, knockbackMul: 1.5 };
+  inst.fire(ctx, clapTiers[3]);
+  assert.deepEqual(shoves(ctx), [[0, 0, 12]],
+    'the cone knock is a flat 12, pushed away from the PLAYER (the swing origin) and NOT scaled ' +
+    'by knockbackMul. It never was; the tug is the half of this weapon that scales');
+}
+
+// C5. THE EMPTY-SCREEN DRAW. With nothing to aim at the world picks a random
+// heading and then jitters it, so the trigger costs TWO draws instead of one. A
+// module that reached for nearestEnemy to save the draw would reproduce every
+// hit in this file and desynchronise the whole run.
+{
+  const ctx = clapCtx(false, [0.25, 0.5]);
+  const inst = CLAP.create();
+  inst.fire(ctx, clapTiers[3]);
+  assert.equal(ctx.rngDraws, 2, 'an empty screen costs the clap TWO draws, not one and not zero');
+  assert.equal(ctx.hits.length, 0, 'and connects with nothing');
+  assert.equal(ctx.fxLog.length, 1, 'the sweep is still drawn — an empty field does not eat the beat');
+}
+
+// C6. TWO HANDS: THREE PINCERS, ZERO DRAWS, NO DAMAGE YET. The evolution picks
+// targets with nearestEnemies, which LOOKS WITHOUT JITTERING — the rng() below
+// throws, so the zero-draw contract is executable. Nothing is damaged at fire
+// time; the whole weapon is deferred to tick().
+{
+  const ctx = clapCtx(true);
+  const inst = CLAP.create();
+  const near1 = fakeTarget(100, 0);
+  const near2 = fakeTarget(0, 120);
+  const near3 = fakeTarget(-140, 0);
+  const spare = fakeTarget(0, -300);
+  ctx.targets.push(near1, near2, near3, spare);
+  inst.fire(ctx, clapTiers[3]);
+  assert.equal(ctx.rngDraws, 0, 'Two Hands draws NOTHING with a body on screen');
+  assert.equal(ctx.hits.length, 0, 'Two Hands deals no damage at fire time — the hands have to meet');
+  assert.equal(ctx.spawned.length, 0, 'and spawns no projectile');
+  // Two slabs drawn per pincer, three pincers, and the fourth body gets none.
+  assert.equal(ctx.fxLog.length, 6, 'three pincers, two slabs each, drawn fully open');
+  assert(ctx.fxLog.every((e) => e.type === 'beam'), 'the slabs are beams');
+  // The first pincer is centred on the NEAREST body, and its slabs stand off by
+  // `openGap` along the axis from the player to that body — here +x, so the two
+  // bars sit at x = 100 -/+ 74 and run broadside (along y).
+  const first = ctx.fxLog[0];
+  assert.equal(first.type, 'beam');
+  const half = 42 * 1.15;
+  assert.deepEqual([round6(first.x), round6(first.y), round6(first.x2), round6(first.y2), first.width],
+    [round6(100 - 74), round6(-half), round6(100 - 74), round6(half), 5],
+    'the far slab stands off by openGap and runs broadside to the pinch axis');
+}
+
+// C6b. THE TARGET CAP IS THE STAT, and the pincers come out NEAREST FIRST —
+// which is the opposite of the order tick() resolves them in (C10).
+{
+  const ctx = clapCtx(true);
+  const inst = CLAP.create();
+  for (const d of [400, 100, 250, 180, 320]) ctx.targets.push(fakeTarget(d, 0));
+  inst.fire(ctx, clapTiers[3]);
+  const centres = ctx.fxLog.filter((e) => e.type === 'beam')
+    .map((e) => round6((e as { x: number; x2: number }).x))
+    .filter((_, i) => i % 2 === 0);
+  assert.deepEqual(centres, [100 - 74, 180 - 74, 250 - 74],
+    'exactly `targets` pincers, on the three CLOSEST bodies, in nearest-first order');
+}
+
+// C7. TWO HANDS ON AN EMPTY FIELD claps AHEAD OF THE PLAYER instead of eating
+// the trigger — the one branch of this weapon with no damage in it at all, so
+// its whole pin is the fx stream. It aims, so it costs the empty-screen TWO
+// draws even though the base weapon's cone is nowhere in sight.
+{
+  const ctx = clapCtx(true, [0.25, 0.5]);
+  const inst = CLAP.create();
+  inst.fire(ctx, clapTiers[3]);
+  assert.equal(ctx.rngDraws, 2, 'an empty field costs Two Hands two draws — it falls back to aimDir');
+  assert.equal(ctx.fxLog.length, 2, 'exactly ONE pincer, clapped ahead of the player');
+  assert.equal(ctx.hits.length, 0, 'and it damages nothing at fire time');
+  // rng 0.25 -> a heading of pi/2, jitter 0.5 -> no offset. The pincer centre is
+  // 74 units up-screen, and the slabs stand off 74 further along the same axis.
+  const [a, b] = ctx.fxLog as Array<{ type: string; x: number; y: number }>;
+  assert.equal(round6(a.y + b.y) / 2, 74,
+    'the pincer is centred openGap ahead of the player along the chosen heading');
+}
+
+// C8. THE PINCH STATE MACHINE, FRAME BY FRAME: nothing before the halfway
+// moment, ONE halfway visual, then the crush and the tug together on the frame
+// that crosses `closesAt`.
+//
+// The probe bodies are added AFTER the trigger on purpose. A pincer centre is
+// frozen at fire time, so this measures what a CLOSED pair does to whatever is
+// standing there — without those bodies stealing the other two pincer slots.
+{
+  const ctx = clapCtx(true);
+  const inst = CLAP.create();
+  const centre = fakeTarget(100, 0);
+  ctx.targets.push(centre);
+  inst.fire(ctx, clapTiers[3]);
+  ctx.fxLog.length = 0;
+  ctx.seq.length = 0;
+
+  const crushed = fakeTarget(150, 0);
+  const tugged = fakeTarget(170, 0);
+  const untouched = fakeTarget(199, 0);
+  // Inside the `d < 1` guard, which is not a distance the horde is ever likely
+  // to occupy on the frame a pincer closes — the parity baseline cannot reach
+  // it, so this is the only check on it. It stops a body from being shoved
+  // along a direction that is numerically meaningless, and it is a floor on the
+  // DISTANCE, not on the tug.
+  const onTop = fakeTarget(100.75, 0);
+  ctx.targets.push(crushed, tugged, untouched, onTop);
+
+  ctx.timeS = 0.05;
+  inst.tick!(ctx, 1 / 60);
+  assert.equal(ctx.fxLog.length, 0, 'before the halfway moment a pincer does nothing at all');
+
+  ctx.timeS = 0.07;
+  inst.tick!(ctx, 1 / 60);
+  assert.equal(ctx.fxLog.length, 2, 'the halfway visual is two slabs, part-closed');
+  const mid = ctx.fxLog[0] as { x: number };
+  assert.equal(round6(mid.x), round6(100 - 74 * 0.45),
+    'the halfway slabs are drawn at handMidT of the gap — 0.45, not 0.5');
+
+  ctx.timeS = 0.08;
+  inst.tick!(ctx, 1 / 60);
+  assert.equal(ctx.fxLog.length, 2, 'the halfway visual is emitted ONCE — midShown is a latch');
+
+  assert.equal(ctx.hits.length, 0, 'and nothing has been damaged yet');
+
+  ctx.timeS = 0.12;
+  inst.tick!(ctx, 1 / 60);
+  // 6 * 1.52 = 9.12: the tier-4 damage through the evolution's multiplier.
+  assert.deepEqual(ctx.hits.map((h) => [h.t === centre, h.t === crushed, h.t === onTop, round6(h.amount)]),
+    [[true, false, false, 9.12], [false, true, false, 9.12], [false, false, true, 9.12]],
+    'the crush hits what the closed hands overlap, for damage x damageMul');
+  assert.equal(untouched.hp, 1e6, 'a body 99 units out is past both the crush and the tug');
+  // The tug: mirrored origin, so the push is INWARD, and `Math.min(tug, d)`
+  // clamps it. The body sitting ON the centre is skipped entirely by the `d < 1`
+  // guard rather than being shoved along an undefined direction.
+  assert.deepEqual(shoves(ctx), [[200, 0, 30], [240, 0, 30]],
+    'survivors inside tugRadius are dragged inward by tug, from an origin mirrored through the ' +
+    'body. NEITHER the body ON the pinch centre nor the one 0.75 units off it is shoved: both ' +
+    'are inside the d < 1 guard, which is a floor on the DISTANCE and the only thing keeping a ' +
+    'body on the centre from being pushed along an undefined direction');
+  assert.deepEqual(ctx.seq.slice(-2), ['slam', 'spark'],
+    'the crush\'s visuals are pushed AFTER its damage and its tug, slam then spark');
+  const spark = ctx.fxLog[ctx.fxLog.length - 1];
+  assert.equal(spark.type, 'spark');
+  assert.deepEqual([spark.x, spark.y, spark.n, round6(spark.spread)], [100, 0, 6, round6(42 * 0.7)],
+    'the spark carries sparkCount particles over sparkSpreadMul of the pinch radius');
+
+  // The pincer is retired by its own crush: a second tick does nothing.
+  ctx.timeS = 0.2;
+  const hitsBefore = ctx.hits.length;
+  inst.tick!(ctx, 1 / 60);
+  assert.equal(ctx.hits.length, hitsBefore, 'a pincer crushes ONCE and leaves');
+}
+
+// C9. THE TUG'S CLAMP IS NOT SCALED BY ANYTHING. `Math.min(tug, d)` is applied
+// AFTER knockbackMul, so a body close to the pinch centre is dragged by its own
+// distance and Heavy Amp does nothing to it, while a body further out gets the
+// full scaled pull. Three baseline rows depend on this; here it is as one pair.
+{
+  const ctx = clapCtx(true);
+  const inst = CLAP.create();
+  ctx.buildMods = { ...ctx.buildMods, knockbackMul: 1.5 };
+  ctx.targets.push(fakeTarget(100, 0));
+  inst.fire(ctx, clapTiers[3]);
+  ctx.shoveLog.length = 0;
+  ctx.targets.length = 0;
+  ctx.targets.push(fakeTarget(120, 0), fakeTarget(150, 0));
+  ctx.timeS = 0.12;
+  inst.tick!(ctx, 1 / 60);
+  assert.deepEqual(shoves(ctx).map((s) => s[2]), [20, 45],
+    'a body 20 units from the centre is dragged 20 — the clamp, unscaled — while one at 50 gets ' +
+    'the full 30 x 1.5. Applying knockbackMul after the clamp instead would give 30 and 45');
+}
+
+// C10. THE QUEUE RESOLVES BACKWARDS. Three pincers from one trigger close on the
+// same frame, and tick() walks the array LAST-SPAWNED-FIRST — the reverse of the
+// nearest-first order fireTwoHands filled it in. While nothing dies the order is
+// invisible; the moment a body sits inside two crushes with little hp left it
+// decides which pinch is credited with the kill and where in the fx stream the
+// drop lands. Reversing this loop moves exactly one parity scenario.
+{
+  const ctx = clapCtx(true);
+  const inst = CLAP.create();
+  for (const d of [100, 200, 300]) ctx.targets.push(fakeTarget(d, 0));
+  inst.fire(ctx, clapTiers[3]);
+  ctx.fxLog.length = 0;
+  ctx.timeS = 0.12;
+  inst.tick!(ctx, 1 / 60);
+  assert.deepEqual(ctx.fxLog.filter((e) => e.type === 'slam').map((e) => (e as { x: number }).x),
+    [300, 200, 100],
+    'pincers resolve last-spawned-first, which is FARTHEST-first here — the reverse of the ' +
+    'nearest-first order they were queued in');
+}
+
+// C11. reset() DROPS EVERY PINCER IN FLIGHT, silently. A scheduled crush is
+// exactly the "delayed strike pointer" clearSandboxEntities promises will not
+// survive, and dropping one must not land its damage, push its slam, or draw.
+//
+// The second half is the check that would catch pinch state parked on the module
+// singleton: two instances, one reset, and the other still owes its crush.
+{
+  const ctxA = clapCtx(true);
+  const ctxB = clapCtx(true);
+  const instA = CLAP.create();
+  const instB = CLAP.create();
+  ctxA.targets.push(fakeTarget(100, 0));
+  ctxB.targets.push(fakeTarget(100, 0));
+  instA.fire(ctxA, clapTiers[3]);
+  instB.fire(ctxB, clapTiers[3]);
+  ctxA.fxLog.length = 0;
+  ctxB.fxLog.length = 0;
+
+  instA.reset();
+  assert.equal(ctxA.hits.length, 0, 'a reset clap lands no delayed damage');
+  assert.equal(ctxA.fxLog.length, 0, 'and pushes no fx');
+  assert.equal(ctxA.rngDraws, 0, 'and draws nothing');
+
+  ctxA.timeS = 0.12;
+  ctxB.timeS = 0.12;
+  instA.tick!(ctxA, 1 / 60);
+  instB.tick!(ctxB, 1 / 60);
+  assert.equal(ctxA.hits.length, 0, 'the dropped pincer never closes');
+  assert.equal(ctxB.hits.length, 1,
+    'and the OTHER world\'s pincer is untouched by it. If the pinch queue lived on the module ' +
+    'value instead of the instance, one world\'s reset would empty every other world\'s');
+}
+
+
+const bellTiers = BELL.stats.tiers;
+
+// ---------------------------------------------------------------------------
+// THE BELL (#141) — the last weapon out of run.ts.
+//
+// Its tuning, pinned to LITERALS. Same rule as every block above: the right-hand
+// sides are numbers a human typed after reading the pre-#141 config.ts and
+// run.ts, never an expression that reads the value it is checking.
+//
+// TWO OF THESE ARE UNREACHABLE FROM WORLD STATE and are here for exactly that
+// reason — the baseline agent mutated both and all 238 parity scenarios stayed
+// byte-identical, so the literals below are their ONLY cover:
+//
+//   `gravityShatterGate` (10). The shatter branch reads the COUNT only on the
+//   non-gravity path, and an evolved note always carries `gravity`, so any
+//   positive number behaves identically. It must not be deleted — it is the gate
+//   that arms the well — and it must not be folded into `wellBurstShards`, the
+//   OTHER 10, which is live and whose mutation IS caught.
+//
+//   the `dead` guard in the well's pull loop. reapEnemies splices every corpse
+//   at the end of the same frame, so a dragged body is gone before any digest
+//   reads it. Its observable sibling `dummy` gets a real check (BE11) instead.
+// ---------------------------------------------------------------------------
+{
+  // The per-tier ladder, verbatim from config.WEAPONS.bell, plus the shard
+  // count that used to sit beside it in config.BELL.shards — a second per-tier
+  // table indexed by the same tier, now a rung field.
+  assert.deepEqual(
+    bellTiers.map((t) => [t.damage, t.speed, t.radius, t.lifetimeS, t.pierce, t.shards]),
+    [
+      [2, 360, 6, 1.8, 1, 4],
+      [3, 370, 6, 1.9, 1, 5],
+      [4, 380, 7, 2.0, 1, 6],
+      [5, 400, 7, 2.1, 2, 8],
+    ],
+    'the bell damage/speed/size/lifetime/pierce/shard-count ladder moved',
+  );
+  assert.equal(bellTiers.length, TIER_COUNT, 'the bell ladder must have exactly TIER_COUNT rungs');
+  assert.deepEqual(BELL.stats.tierLines, [
+    'a note that shatters into shards',
+    'more shards on the shatter',
+    'sharper shards, further',
+    'a burst of shards, pierces',
+  ], 'the bell pedestal copy moved');
+
+  assert.equal(BELL.stats.aimSpread, 0.1, 'the bell aim spread moved');
+
+  // The shard, verbatim from config.BELL.
+  assert.equal(BELL.stats.shardSpeed, 320, 'the shard speed moved');
+  assert.equal(BELL.stats.shardDamageMul, 0.5, 'the shard damage fraction moved');
+  assert.equal(BELL.stats.shardLifeS, 0.45, 'the shard lifetime moved');
+  assert.equal(BELL.stats.shardRadius, 4, 'the shard radius moved');
+  assert.equal(BELL.stats.shardPierce, 1, 'the shard pierce budget moved');
+
+  // The shard ceiling: three bare literals in run.ts's spawnShards, and three
+  // stats, because none of them can stand in for another.
+  assert.equal(BELL.stats.maxShards, 36, 'the live-shard ceiling moved');
+  assert.equal(BELL.stats.crowdedDamageMul, 1.08, 'the amplification rate moved');
+  assert.equal(BELL.stats.crowdedDamageCapMul, 3, 'the amplification ceiling moved');
+
+  assert.equal(BELL.stats.shatterSparkCount, 6, 'the shatter spark count moved');
+  assert.equal(BELL.stats.shatterSparkSpread, 14, 'the shatter spark spread moved');
+
+  // Gravity Bell. Every one of these was a bare literal in run.ts's spawnBell,
+  // the shatter branch of the shared projectile loop, or updateGravityWells.
+  assert.equal(BELL.stats.gravityDamageMul, 1.35, 'the Gravity Bell note damage multiplier moved');
+  assert.equal(BELL.stats.gravityShatterGate, 10, 'the evolved shatter gate moved');
+  assert.equal(BELL.stats.wellRadius, 130, 'the well radius moved');
+  assert.equal(BELL.stats.wellLifeS, 1.1, 'the well lifetime moved');
+  assert.equal(BELL.stats.wellPullSpeed, 140, 'the well pull speed moved');
+  assert.equal(BELL.stats.wellBurstT, 0.35, 'the well burst delay moved');
+  assert.equal(BELL.stats.wellBurstDamageMul, 0.65, 'the well burst damage fraction moved');
+  assert.equal(BELL.stats.wellBurstShards, 10, 'the well burst shard count moved');
+  assert.equal(BELL.stats.seekerTurnRate, 4, 'the seeker turn rate moved');
+  assert.equal(BELL.stats.seekerMinBounces, 1, 'the seeker bounce floor moved');
+  assert.equal(BELL.stats.burstSparkCount, 10, 'the well burst spark count moved');
+  assert.equal(BELL.stats.burstSparkSpread, 24, 'the well burst spark spread moved');
+
+  // TWO TENS, ONE LIVE, AND THEY MUST STAY TWO STATS. They hold the same number
+  // and answer different questions: one arms a well, the other counts the
+  // shards a well throws. Folding them would make a dead value and a live one
+  // impossible to edit apart — and would put the caught mutation and the
+  // uncatchable one on the same line.
+  assert.equal(BELL.stats.gravityShatterGate, BELL.stats.wellBurstShards,
+    'today the evolved shatter gate and the burst shard count agree — if that ever stops being ' +
+    'true, this line is the one to delete, NOT one of the two stats above');
+
+  assert.equal(WEAPONS.bell, undefined, 'the bell module is the only copy of the bell ladder');
+  assert.equal(TIER_LINES.bell, undefined, 'the bell module is the only copy of the bell pedestal copy');
+  // config.BELL is gone with this module, and it was the LAST weapon-specific
+  // block in config.ts. What that file still holds is global knobs only.
+  assert.deepEqual(WEAPONS, {}, 'every weapon ladder now lives in its own module');
+  assert.deepEqual(TIER_LINES, {}, 'every weapon\'s pedestal copy now lives in its own module');
+
+  const bellModule = WEAPON_MODULES.find((m) => m.role === 'bell')!;
+  assert.equal(bellModule.tickAt, 'wells',
+    'the bell owns the gravity-well pass, in the phase RunWorld.updateGravityWells used to ' +
+    'stand in — LAST of all the damage phases, after the shockwaves');
+  assert.equal(bellModule.create().projectile!.steer, undefined,
+    'notes, shards and seekers all ride SHARED travel, shared homing and the arena rails. ' +
+    'Implementing steer() would exempt every bell shot from reflectProjectileFromArena the way ' +
+    'the arp is exempted, and the seekers\' bounce floor would stop meaning anything');
+  assert.equal(BELL.role, 'bell');
+}
+
+/** A fake context set up for the bell. Its rng() THROWS by default: opening a
+ *  well costs nothing from the run stream and neither does ticking one, so both
+ *  are executable assertions rather than comments. Aiming and shattering, which
+ *  do draw, get an explicit script. */
+function bellCtx(evolved = false, rngValues: number[] | null = null): FakeCtx {
+  const ctx = new FakeCtx();
+  ctx.role = 'bell';
+  ctx.color = ROLE_COLORS.bell;
+  ctx.evolved = evolved;
+  ctx.rngValues = rngValues;
+  return ctx;
+}
+
+/** Fire one trigger and hand back the note it lobbed — the LAST projectile in
+ *  the fake world, so it works on a context that already holds shots. */
+function bellNote(ctx: FakeCtx, inst: WeaponInstance, conf = bellTiers[3]): Projectile {
+  inst.fire(ctx, conf);
+  return ctx.spawned[ctx.spawned.length - 1];
+}
+
+// BE1. ONE TRIGGER, ONE NOTE, and the tier-4 stat row as LITERALS. A target in
+// range means aimDir takes its one-draw branch; 0.5 is the jitter's identity, so
+// the note leaves along the aim line. NOTHING happens at fire time beyond the
+// spawn: no damage, no fx, no well.
+{
+  const ctx = bellCtx(false, [0.5]);
+  const inst = BELL.create();
+  ctx.targets.push(fakeTarget(300, 0));
+  const pr = bellNote(ctx, inst);
+  assert.equal(ctx.rngDraws, 1, 'a bell trigger costs exactly one draw — the aim jitter');
+  assert.equal(ctx.spawned.length, 1, 'one trigger, one note');
+  assert.equal(ctx.wells.length, 0, 'the BASE bell opens no well');
+  assert.equal(ctx.hits.length, 0, 'the bell deals no damage at fire time');
+  assert.equal(ctx.fxLog.length, 0, 'and pushes no fx at fire time');
+  assert.equal(pr.damage, 5, 'a tier-4 note carries the pedestal damage');
+  assert.equal(pr.speed, 400);
+  assert.equal(pr.radius, 7);
+  assert.equal(pr.lifeS, 2.1);
+  assert.equal(pr.pierce, 2, 'tier 4 is the rung that pierces');
+  assert.equal(pr.maxPierce, 2);
+  assert.equal(pr.shatter, 8, 'and it carries its rung\'s shard count');
+  assert.equal(pr.shard, false, 'a note is not a shard');
+  assert.equal(pr.gravity, false, 'and a base note opens no well');
+  assert.equal(pr.homing, false, 'a note flies straight');
+  assert.equal(round6(pr.vx), 400, 'velocity is the aim line at conf.speed');
+  assert.equal(round6(pr.vy), 0);
+  assert.equal(round6(Math.hypot(pr.vx, pr.vy)), 400,
+    'the speed FIELD must stay equal to |v| — the bounce path reads it');
+}
+
+// BE2. DOUBLE TAKE FANS FROM ONE AIM. Three notes, still one draw: the "move the
+// draw inside the loop" mistake would cost three and desynchronise the run.
+{
+  const ctx = bellCtx(false, [0.5]);
+  const inst = BELL.create();
+  ctx.targets.push(fakeTarget(300, 0));
+  ctx.buildMods = { ...ctx.buildMods, extraProjectiles: 2 };
+  inst.fire(ctx, bellTiers[3]);
+  assert.equal(ctx.spawned.length, 3, 'Double Take at level 2 makes three notes');
+  assert.equal(ctx.rngDraws, 1, 'one aim per trigger, however many notes come off it');
+  assert.deepEqual(ctx.spawned.map((pr) => round6(Math.atan2(pr.vy, pr.vx))),
+    [0, round6(MULTISHOT_FAN_RAD), round6(-MULTISHOT_FAN_RAD)],
+    'the extra notes alternate either side of the aim line, centred on it');
+  assert.deepEqual(ctx.spawned.map((pr) => pr.shatter), [8, 8, 8],
+    'every note of the fan carries the rung\'s full shard count');
+}
+
+// BE3. THE SHATTER, FROM ONHIT. This is the whole of what used to be the
+// `pr.shatter > 0` branch inline in the shared projectile loop, and it is in
+// the slot that branch occupied — after the loop dealt pr.damage, before the
+// shared pierce rule. One draw (the ring's angle), eight shards, one spark AT
+// THE BODY, and pierce spent.
+//
+// The tier-4 note carries pierce 2, so the SECOND onHit is the one that proves
+// `pr.shatter = 0` is the once-only rule: a note that re-shattered on each
+// pierce would spray the same ring twice and read as a damage change.
+{
+  const ctx = bellCtx(false, [0.5, 0]);
+  const inst = BELL.create();
+  const target = fakeTarget(300, 0);
+  ctx.targets.push(target);
+  const note = bellNote(ctx, inst);
+  note.x = 292;
+  note.y = 3;
+  const spends = inst.projectile!.onHit!(ctx, note, target);
+  assert.equal(spends, true,
+    'a bell shot spends pierce like every other projectile. Returning false would be the arp\'s ' +
+    'chip-on-a-timer exemption, which this weapon does not have');
+  assert.equal(ctx.rngDraws, 2, 'the shatter costs ONE draw — the ring\'s starting angle');
+  assert.equal(ctx.spawned.length, 1 + 8, 'a tier-4 note throws eight shards');
+  assert.equal(note.shatter, 0, 'and the note is disarmed by its own shatter');
+  assert.equal(ctx.wells.length, 0, 'a base shatter opens no well');
+  assert.equal(ctx.hits.length, 0, 'onHit deals no damage; the shared loop already did');
+  const spark = ctx.fxLog[0] as Extract<FxEvent, { type: 'spark' }>;
+  assert.equal(ctx.fxLog.length, 1, 'one spark per shatter');
+  assert.deepEqual([spark.type, spark.x, spark.y, spark.n, spark.spread],
+    ['spark', 300, 0, 6, 14],
+    'the spark is thrown at the BODY the note hit, not at the shot — the two differ by up to a ' +
+    'radius and the parity fx stream records the position');
+  assert.equal(spark.color, ROLE_COLORS.bell);
+
+  // The second pierce. rngValues is exhausted, so a second shatter would THROW
+  // rather than quietly spray — the strongest available form of "this cannot
+  // happen twice".
+  const second = fakeTarget(320, 0);
+  inst.projectile!.onHit!(ctx, note, second);
+  assert.equal(ctx.spawned.length, 1 + 8, 'the note passes through the second body without ' +
+    're-shattering: `shatter = 0` is the whole once-only rule');
+  assert.equal(ctx.fxLog.length, 1, 'and pushes no second spark');
+}
+
+// BE4. THE SHARD ITSELF, AS LITERALS, AND THE RING'S GEOMETRY. Damage is half
+// the NOTE's damage; the ring's ORIENTATION is the one random draw and its SHAPE
+// is not — eight shards evenly spaced off that angle, spawned AT THE BODY rather
+// than underfoot.
+{
+  // rng 0.25 -> a base angle of pi/2, so the first shard leaves straight up and
+  // the arithmetic is readable rather than a pile of decimals.
+  const ctx = bellCtx(false, [0.5, 0.25]);
+  const inst = BELL.create();
+  const target = fakeTarget(300, 0);
+  ctx.targets.push(target);
+  const note = bellNote(ctx, inst);
+  note.x = 292;
+  note.y = 3;
+  inst.projectile!.onHit!(ctx, note, target);
+  const shards = ctx.spawned.slice(1);
+  assert.equal(shards.length, 8);
+  for (const shard of shards) {
+    assert.equal(shard.shard, true, 'every fragment is flagged as a shard');
+    assert.equal(shard.shatter, 0, 'so it can never itself re-shatter');
+    assert.equal(shard.damage, 2.5, 'a shard carries HALF the note\'s damage (5 x 0.5)');
+    assert.equal(shard.radius, 4);
+    assert.equal(shard.lifeS, 0.45);
+    assert.equal(shard.pierce, 1, 'one body each, before Needle Tips');
+    assert.equal(shard.maxPierce, 1);
+    assert.equal(shard.speed, 320);
+    assert.equal(shard.homing, false, 'a BASE shard does not home — only a well\'s seekers do');
+    assert.equal(round6(Math.hypot(shard.vx, shard.vy)), 320);
+    // AT THE SHOT, not at the player. Everything else in the game spawns
+    // underfoot; this is the pair of lines that makes the burst a ring around
+    // the body the note hit.
+    assert.equal(shard.x, 292, 'a shard starts where the note was, not where the player is');
+    assert.equal(shard.y, 3);
+  }
+  assert.deepEqual(shards.map((s) => round6(Math.atan2(s.vy, s.vx))),
+    [0, 1, 2, 3, -4, -3, -2, -1].map((k) => round6(Math.atan2(
+      Math.sin(Math.PI / 2 + (k < 0 ? k + 8 : k) * Math.PI / 4),
+      Math.cos(Math.PI / 2 + (k < 0 ? k + 8 : k) * Math.PI / 4),
+    ))),
+    'eight shards evenly spaced a quarter-turn apart, off the one drawn angle');
+}
+
+// BE5. THE FOUR BUILD MULTIPLIERS THE SHARDS READ, all at once and each on a
+// different field, so a module that applied one where another belonged fails on
+// three of the four lines below.
+//
+// `extraPierce` IS THE ONE WORTH READING TWICE. run.ts computed the shard budget
+// as `BELL.shardPierce + mods.extraPierce` — a bare addition standing beside a
+// helper whose doc comment claimed the +pierce rule lived in ONE place, which
+// made that claim false. The module routes it through ctx.withExtraPierce
+// instead, and this is the check that the helper is genuinely the only copy.
+{
+  const ctx = bellCtx(false, [0.5, 0]);
+  const inst = BELL.create();
+  const target = fakeTarget(300, 0);
+  ctx.targets.push(target);
+  ctx.buildMods = {
+    ...ctx.buildMods,
+    areaMul: 1.3, durationMul: 1.4, projectileSpeedMul: 1.2, extraPierce: 5,
+  };
+  const note = bellNote(ctx, inst);
+  inst.projectile!.onHit!(ctx, note, target);
+  const shard = ctx.spawned[1];
+  assert.equal(round6(shard.radius), 5.2, 'Wide Lens widens the shard (4 x 1.30)');
+  assert.equal(round6(shard.lifeS), 0.63, 'Extension Cable lengthens it (0.45 x 1.40)');
+  assert.equal(round6(shard.speed), 384, 'Fast Forward speeds it up (320 x 1.20)');
+  assert.equal(round6(Math.hypot(shard.vx, shard.vy)), 384, 'and the velocity follows the field');
+  assert.equal(shard.pierce, 6,
+    'Needle Tips reaches the shard THROUGH ctx.withExtraPierce (1 + 5). The budget is minted by ' +
+    'the module and never passes applyBuild, so nothing else would ever add the item to it');
+  assert.equal(shard.maxPierce, 6);
+}
+
+// BE6. THE 36-SHARD CEILING, and its three constants separated. Past 36 live
+// shards a burst stops spawning and AMPLIFIES its oldest live shard instead:
+// damage x 1.08, clamped to 3x the incoming burst's per-shard damage, and
+// lifetime raised to at least the incoming burst's.
+//
+// The ceiling is re-read on EVERY shard, inside the loop, which is what lets one
+// burst amplify the same shard repeatedly and is how the 1.08 compounds.
+{
+  const ctx = bellCtx(false, null);
+  const inst = BELL.create();
+  const target = fakeTarget(300, 0);
+  ctx.targets.push(target);
+
+  // Park 36 shards in the fake world by hand, all identical, so the "oldest" is
+  // unambiguous and its starting damage is a round number.
+  ctx.rngValues = [0.5, 0];
+  const note = bellNote(ctx, inst);
+  inst.projectile!.onHit!(ctx, note, target);
+  ctx.spawned.length = 1;
+  for (let i = 0; i < 36; i++) {
+    const parked = ctx.spawnProjectile({ damage: 1, radius: 4, lifetimeS: 0.1, pierce: 1 }, 1);
+    parked.shard = true;
+  }
+  const oldest = ctx.spawned[1];
+  assert.equal(ctx.projectiles().filter((pr) => pr.shard).length, 36, 'the field is exactly full');
+
+  // A fresh tier-4 shatter now spawns NOTHING and amplifies eight times.
+  ctx.rngValues = [0];
+  const second = bellNote(ctx, inst, bellTiers[3]);
+  ctx.rngValues = [0];
+  inst.projectile!.onHit!(ctx, second, target);
+  assert.equal(ctx.projectiles().filter((pr) => pr.shard).length, 36,
+    'a full field spawns no new shard at all — the cap converts overflow into concentration');
+  assert.equal(round6(oldest.damage), round6(Math.min(Math.pow(1.08, 8), 7.5)),
+    'the SAME oldest shard is amplified once per would-be shard, compounding at 1.08 until the ' +
+    'ceiling of 3 x the incoming 2.5 binds');
+  assert.equal(round6(oldest.damage), 1.850930, 'eight compounded 1.08s, still short of 7.5');
+  assert.equal(round6(oldest.lifeS), 0.45,
+    'and its life is raised to at least the incoming burst\'s, never lowered');
+}
+
+// BE7. THE CEILING BINDS. Same shape as BE6 with an oldest shard that starts
+// near the cap, so `Math.min` is the operator under test rather than the rate.
+{
+  const ctx = bellCtx(false, null);
+  const inst = BELL.create();
+  const target = fakeTarget(300, 0);
+  ctx.targets.push(target);
+  for (let i = 0; i < 36; i++) {
+    const parked = ctx.spawnProjectile({ damage: 7.4, radius: 4, lifetimeS: 0.1, pierce: 1 }, 7.4);
+    parked.shard = true;
+  }
+  const oldest = ctx.spawned[0];
+  ctx.rngValues = [0.5];
+  const note = bellNote(ctx, inst);
+  ctx.rngValues = [0];
+  inst.projectile!.onHit!(ctx, note, target);
+  assert.equal(round6(oldest.damage), 7.5,
+    'the amplification is clamped to crowdedDamageCapMul x the incoming burst\'s per-shard ' +
+    'damage (3 x 2.5), not to anything about the shard being amplified');
+}
+
+// BE8. GRAVITY BELL, THE NOTE. Damage x 1.35 on top of the whole build pipeline,
+// `gravity` set, and `shatter` overwritten with the GATE — which replaces the
+// rung's count, so the tier's 8 never reaches an evolved note.
+{
+  const ctx = bellCtx(true, [0.5]);
+  const inst = BELL.create();
+  ctx.targets.push(fakeTarget(300, 0));
+  const pr = bellNote(ctx, inst);
+  assert.equal(ctx.rngDraws, 1, 'an evolved trigger still costs exactly the aim jitter');
+  assert.equal(round6(pr.damage), 6.75, 'an evolved note hits for 5 x 1.35');
+  assert.equal(pr.gravity, true, 'and is armed to open a well');
+  assert.equal(pr.shatter, 10,
+    'the gate replaces the rung\'s shard count. Only `> 0` is ever read on this path, so the ' +
+    'VALUE is unobservable — but a 0 here means an evolved note lands and does nothing');
+  assert.equal(ctx.wells.length, 0, 'the well opens on the hit, not at fire time');
+}
+
+// BE9. GRAVITY BELL, THE WELL. onHit opens ONE well and spawns NO shard, and it
+// costs ZERO draws — rng() throws here, so "opening a well does not touch the
+// run stream" is executable. The whole spawn row is pinned as literals, which
+// matters more here than anywhere else in the file: the parity digest carries a
+// well's position and lifeS and NOTHING ELSE, so radius, pullSpeed, burstT,
+// burstDamage and burst have no direct channel at all outside this check.
+{
+  const ctx = bellCtx(true, [0.5]);
+  const inst = BELL.create();
+  const target = fakeTarget(300, 0);
+  ctx.targets.push(target);
+  const note = bellNote(ctx, inst);
+  note.x = 292;
+  note.y = 3;
+  ctx.rngValues = null;
+  inst.projectile!.onHit!(ctx, note, target);
+  assert.equal(ctx.spawned.length, 1, 'an evolved note throws no shards of its own');
+  assert.equal(ctx.wells.length, 1, 'it opens exactly one well');
+  const well = ctx.wells[0];
+  assert.equal(well.x, 292, 'anchored where the NOTE was, not at the body and not underfoot');
+  assert.equal(well.y, 3);
+  assert.equal(well.radius, 130, 'the pull reach at areaMul 1');
+  assert.equal(well.lifeS, 1.1);
+  assert.equal(well.pullSpeed, 140);
+  assert.equal(well.burstT, 0.35, 'the burst lands at less than a third of the well\'s life, so ' +
+    'the seekers fly while the pull is still holding their targets in place');
+  assert.equal(round6(well.burstDamage), 4.3875, 'burst damage is 0.65 of the NOTE\'s 6.75');
+  assert.equal(well.burst, false, 'a new well still owes its burst');
+  assert.equal(well.source, 'bell', 'attribution is the world\'s to fill in, not the module\'s');
+  assert.equal(well.color, ROLE_COLORS.bell);
+  // Same spark as a base shatter, at the body: opening a well LOOKS like a
+  // burst, and that sameness is behavior the fx stream records.
+  const spark = ctx.fxLog[0] as Extract<FxEvent, { type: 'spark' }>;
+  assert.deepEqual([spark.x, spark.y, spark.n, spark.spread], [300, 0, 6, 14]);
+}
+
+// BE10. WIDE LENS IS THE ONLY MOD THE WELL READS. areaMul widens the pull reach;
+// nothing else on the well is scaled by anything, and in particular the DRAG is
+// not a knock and Heavy Amp does nothing to it.
+{
+  const ctx = bellCtx(true, [0.5]);
+  const inst = BELL.create();
+  const target = fakeTarget(300, 0);
+  ctx.targets.push(target);
+  ctx.buildMods = {
+    ...ctx.buildMods, areaMul: 1.3, knockbackMul: 1.5, durationMul: 1.4, projectileSpeedMul: 1.2,
+  };
+  const note = bellNote(ctx, inst);
+  ctx.rngValues = null;
+  inst.projectile!.onHit!(ctx, note, target);
+  const well = ctx.wells[0];
+  assert.equal(round6(well.radius), 169, 'Wide Lens widens the well (130 x 1.30)');
+  assert.equal(well.lifeS, 1.1, 'Extension Cable does NOT lengthen a well');
+  assert.equal(well.pullSpeed, 140, 'and Heavy Amp does not strengthen the pull: it is a drag, ' +
+    'not a knock, and it has never gone through knockbackMul');
+  assert.equal(well.burstT, 0.35, 'nor does Fast Forward hurry the burst');
+}
+
+// BE11. THE PULL IS A DIRECT POSITION WRITE, AND IT SKIPS DUMMIES. Four bodies:
+// one inside the reach, one outside it, one sitting on the centre (inside the
+// `> 1` floor), and a practice DUMMY inside the reach.
+//
+// `dummy` is the observable half of the pair of guards at the top of that loop —
+// a dummy is never reaped, so a dragged one would stay somewhere else for good.
+// Its sibling `dead` guard cannot be checked here or anywhere: reapEnemies
+// discards its effect in the same frame, which is why the literal-pin block
+// above says so in words instead.
+{
+  const ctx = bellCtx(true, [0.5]);
+  const inst = BELL.create();
+  const seed = fakeTarget(300, 0);
+  ctx.targets.push(seed);
+  const note = bellNote(ctx, inst);
+  note.x = 0;
+  note.y = 0;
+  ctx.rngValues = null;
+  inst.projectile!.onHit!(ctx, note, seed);
+  ctx.targets.length = 0;
+
+  const inside = fakeTarget(120, 0);
+  const outside = fakeTarget(131, 0);
+  const onCentre = fakeTarget(0.5, 0);
+  const dummy = fakeTarget(100, 0, { dummy: true });
+  ctx.targets.push(inside, outside, onCentre, dummy);
+  ctx.fxLog.length = 0;
+  ctx.step(inst, 1);
+
+  assert.deepEqual(ctx.displaceLog.map((d) => d.t), [inside],
+    'only the body inside the reach is dragged: 131 is outside a 130 well, the body 0.5 from ' +
+    'the centre is inside the `> 1` floor, and a practice DUMMY is skipped outright');
+  // 140 * (1/60) = 2.333..., and the body moves TOWARD the centre.
+  assert.equal(round6(ctx.displaceLog[0].dx), -2.333333, 'one frame of pull is pullSpeed x dt');
+  assert.equal(round6(ctx.displaceLog[0].dy), 0);
+  assert.equal(round6(inside.x), 117.666667, 'and the position is written directly');
+  assert.equal(outside.x, 131, 'nothing outside the reach moves');
+  assert.equal(onCentre.x, 0.5);
+  assert.equal(dummy.x, 100, 'a dummy stands exactly where it was put');
+  assert.equal(ctx.knocks.length, 0,
+    'THE WELL WRITES NO KNOCK AT ALL. Expressing the drag as a knock would hand it ' +
+    'knockbackMul, a duration, and pursuit suppression, none of which it has ever had');
+  assert.equal(ctx.hits.length, 0, 'and the pull itself deals no damage');
+}
+
+// BE12. THE PULL NEVER OVERSHOOTS. `min(distance, pullSpeed * dt)` is what parks
+// a body on the centre instead of oscillating it across; without the clamp a
+// body 1.5 units out would be flung 2.33 units past it every frame.
+{
+  const ctx = bellCtx(true, [0.5]);
+  const inst = BELL.create();
+  const seed = fakeTarget(300, 0);
+  ctx.targets.push(seed);
+  const note = bellNote(ctx, inst);
+  note.x = 0;
+  note.y = 0;
+  ctx.rngValues = null;
+  inst.projectile!.onHit!(ctx, note, seed);
+  ctx.targets.length = 0;
+  const close = fakeTarget(1.5, 0);
+  ctx.targets.push(close);
+  ctx.step(inst, 1);
+  assert.equal(round6(ctx.displaceLog[0].dx), -1.5,
+    'a body 1.5 units out is moved exactly 1.5, not the full 2.33 step');
+  assert.equal(round6(close.x), 0, 'so it lands ON the centre and stops there');
+}
+
+// BE13. THE BURST FIRES ONCE, ON THE FRAME THE TIMER CROSSES ZERO. Ten seekers,
+// ONE draw, and a wider spark at the WELL's centre — and `burstT` keeps counting
+// down past zero afterwards, so the once-only flag is the only thing stopping a
+// second burst on every later frame.
+{
+  const ctx = bellCtx(true, [0.5]);
+  const inst = BELL.create();
+  const seed = fakeTarget(300, 0);
+  ctx.targets.push(seed);
+  const note = bellNote(ctx, inst);
+  note.x = 40;
+  note.y = -20;
+  ctx.rngValues = null;
+  inst.projectile!.onHit!(ctx, note, seed);
+  ctx.targets.length = 0;
+  ctx.spawned.length = 0;
+  ctx.fxLog.length = 0;
+
+  // A PAIR STRADDLING THE CROSSING FRAME, which is the only way to pin a
+  // scheduled moment: 21 frames of repeated subtraction leaves burstT a hair
+  // above zero and 22 takes it below, so 0.35 and 0.30 are told apart here and
+  // one reading could not do it.
+  ctx.step(inst, 21);
+  assert.equal(ctx.spawned.length, 0, 'nothing has burst one frame short of 0.35s');
+  assert.equal(ctx.fxLog.length, 0);
+
+  ctx.rngValues = [0.75];
+  ctx.step(inst, 1);
+  assert.equal(ctx.rngDraws, 2, 'the burst costs ONE draw, like any other shatter');
+  assert.equal(ctx.spawned.length, 10, 'ten seekers, the well\'s own count');
+  const burstSpark = ctx.fxLog[0] as Extract<FxEvent, { type: 'spark' }>;
+  assert.deepEqual([burstSpark.type, burstSpark.x, burstSpark.y, burstSpark.n, burstSpark.spread],
+    ['spark', 40, -20, 10, 24],
+    'the burst spark is at the WELL\'s centre and is bigger and wider than a shatter\'s');
+
+  for (const seeker of ctx.spawned) {
+    assert.equal(seeker.shard, true, 'a seeker is a shard');
+    assert.equal(seeker.homing, true, 'and it HOMES — the one thing that separates it from a ' +
+      'base shard, read by the shared loop off the shot and never by role');
+    assert.equal(seeker.turnRate, 4);
+    assert.equal(seeker.bounces, 1,
+      'with a bounce FLOOR of 1: without it a seeker with no Ricochet dies at the first rail ' +
+      'instead of turning back into the pack');
+    assert.equal(seeker.shatter, 0, 'and it can never open a second well');
+    assert.equal(round6(seeker.damage), 4.3875, 'each carries the well\'s burst damage');
+    assert.equal(seeker.x, 40, 'thrown from the well\'s centre');
+    assert.equal(seeker.y, -20);
+  }
+
+  // rngValues is exhausted again, so a second burst would THROW.
+  ctx.step(inst, 5);
+  assert.equal(ctx.spawned.length, 10, 'the well bursts ONCE, however long its timer keeps ' +
+    'counting down past zero');
+  assert.equal(ctx.fxLog.length, 1);
+}
+
+// BE14. THE BOUNCE FLOOR IS A FLOOR, NOT AN ASSIGNMENT. A build that already
+// grants more bounces keeps them.
+{
+  const ctx = bellCtx(true, [0.5]);
+  const inst = BELL.create();
+  const seed = fakeTarget(300, 0);
+  ctx.targets.push(seed);
+  ctx.buildMods = { ...ctx.buildMods, bounceCount: 3 };
+  const note = bellNote(ctx, inst);
+  ctx.rngValues = null;
+  inst.projectile!.onHit!(ctx, note, seed);
+  ctx.spawned.length = 0;
+  ctx.rngValues = [0];
+  ctx.step(inst, 22);
+  assert.deepEqual(new Set(ctx.spawned.map((s) => s.bounces)), new Set([3]),
+    'Ricochet\'s three bounces survive the seeker floor of 1');
+}
+
+// BE15. A WELL DIES ON ITS OWN CLOCK, and the module is the only thing that
+// retires it — there is no world-side sweep. 66 frames is 1.1s exactly.
+{
+  const ctx = bellCtx(true, [0.5]);
+  const inst = BELL.create();
+  const seed = fakeTarget(300, 0);
+  ctx.targets.push(seed);
+  const note = bellNote(ctx, inst);
+  ctx.rngValues = null;
+  inst.projectile!.onHit!(ctx, note, seed);
+  ctx.targets.length = 0;
+  ctx.rngValues = [0];
+  ctx.step(inst, 65);
+  assert.equal(ctx.wells.length, 1, 'still open one frame short of its life');
+  ctx.step(inst, 1);
+  assert.equal(ctx.wells.length, 0, 'and gone on the frame its life runs out');
+}
+
+// BE16. WELLS ARE WALKED NEWEST FIRST (downward index), which is the order the
+// old world loop used. With three wells bursting on the same frame it is the
+// order their bursts land in — and each burst costs a draw, so it is the run's
+// draw order too. Three wells at three x positions, and the burst sparks record
+// which went first.
+{
+  const ctx = bellCtx(true, null);
+  const inst = BELL.create();
+  const seed = fakeTarget(300, 0);
+  ctx.targets.push(seed);
+  for (const x of [100, 200, 300]) {
+    ctx.rngValues = [0.5];
+    const note = bellNote(ctx, inst, bellTiers[3]);
+    note.x = x;
+    note.y = 0;
+    ctx.rngValues = null;
+    inst.projectile!.onHit!(ctx, note, seed);
+    ctx.spawned.length = 0;
+  }
+  ctx.targets.length = 0;
+  ctx.fxLog.length = 0;
+  ctx.rngValues = [0, 0, 0];
+  ctx.step(inst, 22);
+  assert.deepEqual(
+    ctx.fxLog.filter((e) => e.type === 'spark').map((e) => (e as { x: number }).x),
+    [300, 200, 100],
+    'three wells burst newest-first, which is the reverse of the order they opened in');
+}
+
+// BE17. MID-EVOLVE: `gravity` IS STAMPED AT SPAWN, NOT READ AT TICK. A base note
+// already in the air when the world evolves still throws base shards. A module
+// that consulted ctx.evolved in onHit instead would turn it into a well.
+{
+  const ctx = bellCtx(false, [0.5, 0]);
+  const inst = BELL.create();
+  const target = fakeTarget(300, 0);
+  ctx.targets.push(target);
+  const inFlight = bellNote(ctx, inst);
+  ctx.evolved = true;
+  inst.projectile!.onHit!(ctx, inFlight, target);
+  assert.equal(ctx.wells.length, 0,
+    'a base note in flight when the bell evolves does NOT retroactively open a well');
+  assert.equal(ctx.spawned.length, 1 + 8, 'it throws its base ring of eight shards');
+  assert.equal(round6(ctx.spawned[1].damage), 2.5,
+    'at base damage, with no 1.35 anywhere in it');
+}
+
+// BE18. reset() has nothing to drop. Notes and shards live in the world's
+// projectile array and wells in the world's gravity-well array, and
+// clearSandboxEntities empties both itself — the module holds no schedule of its
+// own. Pinned so that stays true, and so a reset never draws or pushes anything.
+{
+  const ctx = bellCtx(true, [0.5]);
+  const inst = BELL.create();
+  const target = fakeTarget(300, 0);
+  ctx.targets.push(target);
+  const note = bellNote(ctx, inst);
+  ctx.rngValues = null;
+  inst.projectile!.onHit!(ctx, note, target);
+  ctx.fxLog.length = 0;
+  inst.reset();
+  assert.equal(ctx.hits.length, 0, 'a reset bell lands no delayed damage');
+  assert.equal(ctx.fxLog.length, 0, 'and pushes no fx');
+  ctx.rngValues = null;
+  ctx.step(inst, 1);
+  assert.equal(ctx.wells.length, 1,
+    'and the well is NOT the module\'s to drop — it lives in the world array, which ' +
+    'clearSandboxEntities empties');
+}
+
+// ---------------------------------------------------------------------------
+// 11. THE WORLD SIDE OF THE SEAM: the tick call site.
+//
+// Every check above (1-10) drives the module through a fake context and calls
+// inst.tick() directly. That pins the module's contract and pins nothing about
+// how the WORLD calls it. RunWorld.update() ticks migrated weapons by phase —
+// `this.tickWeapons('strikes', dt)` — and TickPhase has five legal names, so
+// mis-wiring that line to a phase no module declares is a clean compile, a
+// silent no-op, and every one of checks 1-10 still passing while all base kick
+// damage becomes zero.
+//
+// So: a REAL RunWorld. Add the weapon, place an enemy at a known offset, fire
+// one trigger, step real frames through update(), and assert the hp dropped by
+// a LITERAL amount. Nothing here reads KICK.stats; the numbers on the right are
+// the ones a designer would recognize off the pedestal.
+//
+// EVERY WEAPON THAT MIGRATES LATER NEEDS THIS. `worldStrike` is the reusable
+// shape: it is role-agnostic, so a new weapon is a new call, not a new harness.
+// The broad behavioral net lives next door in weapon-parity-check.ts; this is
+// the small, named, obvious-on-failure version.
+// ---------------------------------------------------------------------------
+
+/** Drive one trigger of one weapon through a REAL RunWorld and report what it
+ *  did to hand-placed enemies. Deterministic: seeded rng, fixed step, fixed
+ *  canvas, no stage director. */
+function worldStrike(opts: {
+  role: Role;
+  tier: number;
+  /** Item to max out, when the scenario needs an evolution or a build number. */
+  item?: ItemId;
+  evolve?: boolean;
+  /** [dx, dy] offsets from the player. Circle centers are pinned after spawn. */
+  offsets: readonly (readonly [number, number])[];
+  /** Park the targets: speed 0, so they stay exactly where they were placed.
+   *  Weapons that resolve in a frame or two do not need it. An arp orbiter
+   *  takes 1.85s to come around, and a chasing zombie has walked off the ring
+   *  long before then — freezing is what makes the placement mean anything for
+   *  a weapon measured over seconds instead of frames. */
+  frozen?: boolean;
+  /** Frames of 1/60 to run after the trigger. Zero for weapons that resolve
+   *  synchronously at fire time. */
+  frames: number;
+  /** Runs BETWEEN the trigger and the frames, on the real world. The pierce
+   *  exemption check below is the only caller: it needs to reach into a live
+   *  orbiter and give it a finite pierce budget, because the budget a spawner
+   *  arms is Infinity and Infinity is arithmetically immune to the very rule
+   *  the check exists to measure. */
+  afterFire?: (world: RunWorld) => void;
+}): { drops: number[]; damageDealt: number; world: RunWorld } {
+  const world = new RunWorld({ width: 1280, height: 720 }, events, {
+    scripted: false,
+    fx: false,
+    rng: mulberry32(0x7e57),
+  });
+  world.invincible = true;
+  world.addWeapon(opts.role, opts.tier);
+  if (opts.item) world.addItem(opts.item, 5);
+  if (opts.evolve) assert(world.evolve(opts.role), `${opts.role} is not eligible to evolve`);
+
+  const placed = opts.offsets.map(([dx, dy]) => {
+    const e = world.spawnEnemyAt('zombie', world.player.x + dx, world.player.y + dy)!;
+    // spawnEnemyAt takes a sprite-feet position and stores an offset circle
+    // center, so pin the center or the geometry under test is off by the foot
+    // offset. Absurd hp makes each enemy a damage meter: a target that dies
+    // hides exactly the difference this check exists to measure.
+    e.x = world.player.x + dx;
+    e.y = world.player.y + dy;
+    e.hp = 1e6;
+    if (opts.frozen) e.speed = 0;
+    return e;
+  });
+  // Build the spatial hash at the pinned positions; the strip queries it.
+  world.update(0);
+
+  const before = placed.map((e) => e.hp);
+  world.fireTrigger({ role: opts.role, time: 0, velocity: 1, step: 0 });
+  opts.afterFire?.(world);
+  for (let i = 0; i < opts.frames; i++) world.update(1 / 60);
+
+  return {
+    drops: placed.map((e, i) => before[i] - e.hp),
+    damageDealt: world.damageByRole[opts.role] ?? 0,
+    world,
+  };
+}
+
+{
+  // Deep inside the strip at every tier, so this measures DAMAGE and nothing
+  // else. One trigger, one hit, and the drop is the pedestal number.
+  // Twelve frames is exactly KICK liveS at 1/60 — the whole strike.
+  const ladder = [3, 5, 9, 15];
+  for (let tier = 1; tier <= 4; tier++) {
+    const { drops, damageDealt } = worldStrike({
+      role: 'kick',
+      tier,
+      offsets: [[40, 0]],
+      frames: 12,
+    });
+    assert.equal(drops[0], ladder[tier - 1],
+      `a tier-${tier} kick trigger must take exactly ${ladder[tier - 1]} hp off an enemy ` +
+      'inside the strip, through RunWorld.update() — a zero here means the world never ' +
+      "ticked the module (check RunWorld.update's tickWeapons phase against KICK.tickAt)");
+    assert.equal(damageDealt, ladder[tier - 1],
+      `tier-${tier} kick damage must be attributed to the kick`);
+  }
+
+  // The strip is a FACING-SIDE strip of finite reach, and this is where that
+  // shape is measured against the world's own spatial hash rather than a
+  // hand-written near() filter. Tier 1 deliberately: no opposite-side follow-up
+  // to muddy which side got hit.
+  //   40   deep inside          -> hit
+  //   110  inside full reach    -> hit  (a halved stripBaseWidth loses this one)
+  //   200  past the strip       -> miss
+  //   -60  behind the player    -> miss (facing is +X)
+  //   40 x 26  inside thickness -> hit  (a halved stripBaseHeight loses this one)
+  const reach = worldStrike({
+    role: 'kick',
+    tier: 1,
+    offsets: [[40, 0], [110, 0], [200, 0], [-60, 0], [40, 26]],
+    frames: 12,
+  });
+  assert.deepEqual(reach.drops, [3, 3, 0, 0, 3],
+    'the base strip reaches one facing side, out to its full width and thickness, and no further');
+
+  // Redline Stomp resolves synchronously at fire time — zero frames — and the
+  // drop carries the evolution multiplier. 15 * 1.35.
+  const stomp = worldStrike({
+    role: 'kick',
+    tier: 4,
+    item: 'highTops',
+    evolve: true,
+    // On the +X arm, on the +Y arm, and out in a corner the cross cannot reach.
+    offsets: [[600, 0], [0, 300], [500, 300]],
+    frames: 0,
+  });
+  assert.deepEqual(stomp.drops, [20.25, 20.25, 0],
+    'Redline Stomp crosses the arena for 15 * 1.35 damage and does not fill the corners');
+}
+
+{
+  // THE WORLD SIDE OF ProjectileBehavior. Nothing but RunWorld.updateProjectiles
+  // ever calls steer() or onHit(), so a mis-wired loop is a silent zero here
+  // while every fake-context check above stays green.
+  //
+  // A tier-4 orbiter: radius 122, 3.4 rad/s, 3.2s of life — a bit under two
+  // full revolutions, so an enemy sitting on the ring is swept at least once.
+  //   122  on the ring     -> chipped
+  //   20   inside the orbit-> never touched (an orbit is not a zone)
+  //   300  outside         -> never touched (an orbiter never leaves its orbit)
+  // 200 frames is 3.33s, just past the orbiter's 3.2s life, so the whole
+  // lifetime is inside the window and expiry is under test too.
+  const orbit = worldStrike({
+    role: 'arp',
+    tier: 4,
+    offsets: [[122, 0], [20, 0], [300, 0]],
+    frozen: true,
+    frames: 200,
+  });
+  assert(orbit.drops[0] > 0,
+    'a tier-4 orbiter must chip an enemy sitting on its orbit, through RunWorld.update() — ' +
+    'a zero here means the shared projectile loop never called ARP.projectile.steer()');
+  assert.equal(orbit.drops[0] % 3, 0, 'every chip from a tier-4 orbiter is exactly 3 damage');
+  assert.equal(orbit.drops[1], 0, 'an orbiter never reaches inside its own orbit');
+  assert.equal(orbit.drops[2], 0, 'an orbiter never leaves its orbit');
+
+  // THE PIERCE EXEMPTION, measured through the real loop (ADR-0002).
+  //
+  // WHY THIS IS NOT JUST "one orbiter sweeps twelve enemies". It used to be,
+  // and that check was VACUOUS: an arp spawner arms its orbiters with Infinity
+  // pierce (armOrbiterPierce), and `Infinity - 1` is still Infinity, so the
+  // shared `pr.pierce -= 1` can run on every single hit and the orbiter never
+  // dies. Deleting ARP.projectile.onHit entirely — replacing it with `return
+  // true` — left the whole sweep, all 35 parity scenarios and every check in
+  // this file green. Nothing measured the exemption.
+  //
+  // So: hand ONE live orbiter a FINITE pierce budget, then sweep it through the
+  // ring. That is the only way the question becomes answerable from outside.
+  //   onHit declining the rule  -> the budget is never touched: 12 enemies
+  //                                chipped and pierce comes back at exactly 3.
+  //   the rule applied          -> the budget is spent on hits 1, 2 and 3, the
+  //                                orbiter's lifeS is zeroed on the third, and
+  //                                the remaining nine enemies are never reached.
+  // The budget of 3 is a probe, not a tuning number: it exists only inside this
+  // check, and it is smaller than the ring so the difference is unmissable.
+  const ring = Array.from({ length: 12 }, (_, i) => {
+    const a = (Math.PI * 2 * i) / 12;
+    return [122 * Math.cos(a), 122 * Math.sin(a)] as const;
+  });
+  const PROBE_PIERCE = 3;
+  let probed: Projectile | undefined;
+  const sweep = worldStrike({
+    role: 'arp',
+    tier: 4,
+    offsets: ring,
+    frozen: true,
+    frames: 200,
+    afterFire: (world) => {
+      probed = world.projectiles.find((pr) => pr.role === 'arp');
+      assert(probed, 'an arp trigger must put an orbiter in the world');
+      probed.pierce = PROBE_PIERCE;
+      probed.maxPierce = PROBE_PIERCE;
+    },
+  });
+  assert.equal(sweep.drops.filter((d) => d > 0).length, 12,
+    'one orbiter must chip ALL twelve enemies on its ring even while carrying a pierce budget ' +
+    `of only ${PROBE_PIERCE}: it chips on a timer and never spends pierce (ADR-0002). Fewer ` +
+    'than twelve here means the shared pierce rule reached an orbiter and killed it mid-sweep — ' +
+    'check that ARP.projectile.onHit still returns ARP_STATS.spendsPierce (false).');
+  assert.equal(probed!.pierce, PROBE_PIERCE,
+    'the shared projectile loop must never decrement an orbiter pierce budget. A value below ' +
+    `${PROBE_PIERCE} means onHit returned true and the orbiter is spending pierce like every ` +
+    'other shot, which is the mechanism ADR-0002 exists to exempt it from.');
+  assert(sweep.damageDealt >= 12 * 3,
+    'one orbiter must sweep a whole ring, chipping every enemy on it for the tier-4 damage');
+  assert.equal(sweep.world.projectiles.filter((pr) => pr.role === 'arp').length, 0,
+    'the orbiter still dies of old age, like every other projectile');
+
+  // And the belt: with no probe, a real orbiter carries the budget its own stat
+  // implies. This is the assertion that keeps armOrbiterPierce derived from
+  // ARP_STATS.spendsPierce rather than being a bare `pr.pierce = Infinity`.
+  const armed = worldStrike({ role: 'arp', tier: 4, offsets: [[122, 0]], frozen: true, frames: 0 });
+  const orbiter = armed.world.projectiles.find((pr) => pr.role === 'arp')!;
+  assert.equal(orbiter.pierce, ARP.stats.spendsPierce ? orbiter.maxPierce : Infinity,
+    'an orbiter is armed with the pierce budget ARP_STATS.spendsPierce implies — the stat is ' +
+    'the single source, not a literal at the spawn site');
+}
+
+{
+  // NEON SERPENT'S 320-UNIT HOMING GATE. Collateral of #140: the arp extraction
+  // rewrote this out of the shared loop (it was a `pr.role !== 'lead'` test)
+  // and onto the shot as `pr.homingRange`. That made it an UNMIGRATED weapon's
+  // behavior, moved by another weapon's commit and pinned by nothing —
+  // `pr.homingRange = Infinity`, which deletes the gate outright, passed every
+  // check and all 35 parity scenarios. So it is pinned here, from both sides.
+  //
+  // The shape: a BAIT enemy at +60 on the firing axis takes the aim lock and
+  // the first hit, which puts it in the shot's hit set and frees the seeker to
+  // look for a second target. The second target then sits OFF the firing axis,
+  // so the only way it is ever reached is a homing turn.
+  //   250 off-axis -> inside the gate  -> homed onto and chipped
+  //   500 off-axis -> outside the gate -> never touched; the seeker rails past
+  // Tier 4 with pierce 6 and 380 speed over 2.4s travels ~912 units, so reach
+  // is not what stops it at 500 — the gate is.
+  const NEON = { role: 'lead' as const, tier: 4, item: 'needleTips' as const, evolve: true };
+  const inside = worldStrike({ ...NEON, offsets: [[60, 0], [0, 250]], frozen: true, frames: 150 });
+  assert(inside.drops[1] > 0,
+    'Neon Serpent must home onto a target 250 units away — inside its 320-unit gate. A zero ' +
+    'here means the seeker stopped homing at all (check pr.homingRange and pr.homing at spawn)');
+  const outside = worldStrike({ ...NEON, offsets: [[60, 0], [0, 500]], frozen: true, frames: 150 });
+  assert.equal(outside.drops[1], 0,
+    'Neon Serpent must NOT home onto a target 500 units away: it snaps to what is close ' +
+    'instead of crossing the screen, and that is the 320-unit gate on pr.homingRange set in ' +
+    'spawnProjectile. Damage here means the gate was widened or removed — it is an unmigrated ' +
+    "weapon's tuning, so it does not move without the lead's own issue saying so.");
+}
+
+// ---------------------------------------------------------------------------
+// THE RULE #140 EXISTS TO ESTABLISH: the world's SHARED physics loops contain
+// ZERO per-weapon branches, permanently.
+//
+// This is the one invariant seven more extractions depend on, and it is exactly
+// the kind of rule that decays the moment it is only written down. Weapon eight
+// will have some motion that "just needs one small branch here", and a code
+// review is a bad place to catch it. So the rule is read out of run.ts's own
+// source and enforced.
+//
+// Weapon-specific motion belongs to the owning weapon module, lent back through
+// ProjectileBehavior. Anything else a shot needs is a FIELD ON THE SHOT, set by
+// whatever spawned it — that is how the arp's orbit and the evolved lead's
+// homing range both left the projectile loop.
+//
+// WHAT THE FIRST VERSION OF THIS GUARD GOT WRONG (fixed here, #140 follow-up).
+// It matched `/\.role\s*[=!]==/`, i.e. strict equality on a `.role` property
+// access, over a slice of source taken BETWEEN two method names. Every one of
+// these went into updateProjectiles and passed the full `npm run verify`:
+//
+//     if (p.role != 'kick') { ... }                            // loose equality
+//     switch (p.role) { case 'arp': break; default: break; }   // switch
+//     const r = pr.role; if (r === 'bell') { ... }             // via a local
+//     if (({ arp: 1 } as Record<string, number>)[pr.role]) {}  // keyed lookup
+//
+// and moving reflectProjectileFromArena below spawnZone dropped it out of the
+// scanned slice while the guard's own integrity assert stayed green. Coverage
+// defined by source ORDERING is not coverage.
+//
+// SO THE RULE IS INVERTED. Instead of blacklisting spellings of a branch — an
+// endless game the writer always wins — a protected method may not mention a
+// role AT ALL except in the handful of approved, opaque forms listed below:
+//   1. no access to a role-bearing property (`.role`, `.source`) survives
+//      unless it matches an approved form exactly, and
+//   2. no Role name may appear as a string literal in a protected method.
+// Those catch equality (either kind), switch dispatch, a role parked in a
+// local read via `.role`, role-keyed object/Map/Set lookups, and `.includes`.
+//
+// ---------------------------------------------------------------------------
+// READ THIS BEFORE YOU TRUST IT. This check is a TRIPWIRE, NOT AN ENFORCEMENT.
+// It is a text scan, and text scans lose. Every one of these was verified to
+// pass a full green `npm run verify` against the commit that introduced this
+// guard:
+//   - `const { role: rr } = pr;`     destructuring, so no `.role` survives
+//   - `pr['role']`                   bracket access, so the dot never appears
+//   - a per-weapon `switch` moved into a NEW private method that the protected
+//     method simply calls — the branch sits one call frame outside the scan
+// The third is not exotic; it is the ordinary refactor anyone reaches for, and
+// it defeats this check completely. The INTERIM_EXCEPTIONS count below has the
+// same weakness: it bounds one exact SPELLING, not one USE, so a second use
+// written differently slips through.
+//
+// So do not read a green systems-check as proof that shared physics is free of
+// per-weapon branches. It proves only that nobody wrote one the obvious way.
+// The real fix is structural — give the shared loops a view of a projectile
+// that has no `role` field at all, so a branch will not COMPILE — and that is
+// tracked as its own issue for #141's finish line. Until then this catches the
+// careless case and review catches the rest.
+// ---------------------------------------------------------------------------
+//
+// SPAWNERS ARE NOT COVERED and deliberately so: baseProjectile and
+// spawnProjectile still branch on role for the four unmigrated projectile
+// weapons, and each of those branches leaves with its own weapon's module.
+// ---------------------------------------------------------------------------
+{
+  const source = readFileSync(new URL('./run.ts', import.meta.url), 'utf8');
+
+  /** The shared loops every weapon's entities ride. #140 named the projectile
+   *  loop and the arena rails; it named shared ZONE physics too, and the zone,
+   *  shockwave and gravity-well loops were never scanned at all. They were
+   *  added, and then, one weapon at a time, they left.
+   *
+   *  THIS LIST IS NOW THE TWO GENUINELY SHARED LOOPS AND NOTHING ELSE, which is
+   *  #141's finish line for it. Three entries left by being DELETED from run.ts,
+   *  never renamed:
+   *    - `updateShockwaves` with the BASS,
+   *    - `updateZones` with the CHORD — the first one that mattered while it was
+   *      still here, since the chord's whole pass lived inside a protected
+   *      method and "leave the loop and branch on z.source" was never an option,
+   *    - `updateGravityWells` with the BELL, the last weapon out and the last
+   *      protected method that belonged to a single weapon.
+   *  In all three cases storage stayed on the world (view.ts draws these arrays,
+   *  clearSandboxEntities empties them) and the whole update loop moved into the
+   *  owning module, which is now the array's sole mutator.
+   *
+   *  A method removed from here because the code left run.ts is the good ending;
+   *  a method removed because it was RENAMED is the bad one, and the `methodBody`
+   *  assert below is what tells the two apart for everything still listed. What
+   *  is left cannot leave the same way: no weapon owns projectile travel or the
+   *  arena rails, so these two shrink no further and adding to this list would
+   *  mean the world grew a new shared loop. */
+  const PROTECTED_METHODS = [
+    'updateProjectiles',
+    'reflectProjectileFromArena',
+  ] as const;
+
+  /** One approved way for a shared loop to name a role. */
+  interface RoleUse {
+    /** The EXACT source text, matched literally. Reformatting the line is
+     *  supposed to trip the staleness check below — an approved form is
+     *  approved as written, not as a pattern that might grow to fit. */
+    readonly snippet: string;
+    readonly why: string;
+  }
+
+  /** THE ONLY FORMS in which a shared loop may name a role at all. In every one
+   *  the role is an OPAQUE key: it is handed to damage attribution, or to the
+   *  generic module seam that turns "some role" into "that weapon's own code".
+   *  None of them asks WHICH weapon it is, and none of them grows a case when a
+   *  tenth weapon appears. That is the test for adding one here. */
+  const GENERIC_ROLE_USE: readonly RoleUse[] = [
+    {
+      snippet: 'this.projectileBehavior(pr.role)',
+      why: 'the generic module seam: a role in, that weapon\'s own steer/onHit out',
+    },
+    {
+      snippet: 'this.weaponCtx.get(pr.role)!',
+      why: 'the generic module seam: a role in, that weapon\'s own context out',
+    },
+    {
+      snippet: 'this.damageEnemy(e, pr.damage, pr.role)',
+      why: 'damage ATTRIBUTION — which weapon gets the credit, not which weapon acts',
+    },
+    // `this.damageArea(z.x, z.y, z.radius, z.damage, z.source)` was here,
+    // approved as damage attribution for a zone tick, and
+    // `this.damageEnemy(enemy, wave.damage, wave.source)` before it for a
+    // shockwave hit. Each went with its whole loop — the chord's and the bass's
+    // (#141) — and each module now bills through ctx.damage, whose role is
+    // bound at construction and cannot be forged.
+  ];
+
+  interface InterimException extends RoleUse {
+    /** Exact number of occurrences allowed across ALL protected methods. Exact,
+     *  not a minimum: a SECOND use of an allowed table is a new per-weapon
+     *  branch and has to be argued for. */
+    readonly count: number;
+    /** The weapon whose extraction deletes this entry. */
+    readonly deletedBy: string;
+  }
+
+  // ---- KNOWN INTERIM EXCEPTIONS ------------------------------------------
+  //
+  // THE LIST IS EMPTY, AND THAT IS #141'S FINISH LINE FOR THIS GUARD. It held
+  // one entry per role-keyed table that shared physics still read: SPARK_HIT_ROLES
+  // left with the lead module and WEAPON_SHOVE with the CLAP module (#141), each
+  // taking its last member, its lookup and its entry here at once. The shared
+  // projectile loop now names a role only through the two GENERIC forms above —
+  // attribution, and the module seam — neither of which grows a case when a
+  // weapon is added.
+  //
+  // The list is a RATCHET, not a permission slip, and an EMPTY one is a stronger
+  // ratchet than a short one:
+  //   - anything NOT listed fails, so no new per-weapon table can appear;
+  //   - `count` is exact, so a second use of a listed table would fail too;
+  //   - an entry that is listed but no longer in the source fails as STALE, so
+  //     removing the code FORCES removing the entry. That is why this list
+  //     actually reached empty instead of being left behind.
+  //
+  // ADDING AN ENTRY HERE IS NOW A REGRESSION, not a step. There is no unmigrated
+  // weapon left whose tuning could justify one: bell is the last weapon out of
+  // run.ts and its gravity wells are its own, not a table read by a shared loop.
+  const INTERIM_EXCEPTIONS: readonly InterimException[] = [];
+
+  // ---- source reading -----------------------------------------------------
+
+  /** Blank out comments — and optionally string bodies — character for
+   *  character, so every index into the result still lines up with the original
+   *  source and a reported line number is the real one. run.ts contains no
+   *  regex literals; if one ever appears inside a protected method the brace
+   *  matcher below has to learn about it. */
+  const mask = (src: string, alsoStrings: boolean): string => {
+    const out = src.split('');
+    const blank = (from: number, to: number): void => {
+      for (let k = from; k < to; k++) if (out[k] !== '\n') out[k] = ' ';
+    };
+    let i = 0;
+    while (i < src.length) {
+      const c = src[i];
+      if (c === '/' && src[i + 1] === '/') {
+        const nl = src.indexOf('\n', i);
+        const stop = nl < 0 ? src.length : nl;
+        blank(i, stop);
+        i = stop;
+      } else if (c === '/' && src[i + 1] === '*') {
+        const close = src.indexOf('*/', i + 2);
+        const stop = close < 0 ? src.length : close + 2;
+        blank(i, stop);
+        i = stop;
+      } else if (c === '"' || c === "'" || c === '`') {
+        let j = i + 1;
+        while (j < src.length && src[j] !== c) j += src[j] === '\\' ? 2 : 1;
+        j = Math.min(j + 1, src.length);
+        if (alsoStrings) blank(i + 1, j - 1);
+        i = j;
+      } else {
+        i += 1;
+      }
+    }
+    return out.join('');
+  };
+
+  const noComments = mask(source, false);
+  const noStrings = mask(noComments, true);
+
+  const lineOf = (index: number): number => {
+    let n = 1;
+    for (let k = 0; k < index; k++) if (source[k] === '\n') n += 1;
+    return n;
+  };
+  const lineAt = (index: number): string => {
+    const from = source.lastIndexOf('\n', index) + 1;
+    const to = source.indexOf('\n', index);
+    return source.slice(from, to < 0 ? source.length : to).trim();
+  };
+
+  /** Locate one RunWorld method BY NAME and return its body's [start, end).
+   *
+   *  By name, never by "everything between method A and method B": the previous
+   *  guard sliced updateProjectiles..spawnZone, so MOVING a method below
+   *  spawnZone silently removed it from the scanned region while the guard's
+   *  own integrity assert stayed green. A method that cannot be found fails
+   *  loudly here — the guard is never allowed to quietly scan nothing. */
+  const methodBody = (name: string): { start: number; end: number } => {
+    const marker = `\n  private ${name}(`;
+    const at = noStrings.indexOf(marker);
+    assert(at >= 0,
+      `the shared-physics guard cannot find RunWorld.${name} in run.ts. If it was renamed or ` +
+      'made non-private, update PROTECTED_METHODS — do not delete the entry. An unfindable ' +
+      'protected method means this guard is scanning nothing, which is worse than no guard.');
+    assert(noStrings.indexOf(marker, at + 1) < 0,
+      `run.ts declares RunWorld.${name} twice; the guard cannot tell which one it protects`);
+    let i = at + marker.length - 1;
+    let depth = 0;
+    for (; i < noStrings.length; i++) {
+      if (noStrings[i] === '(') depth += 1;
+      else if (noStrings[i] === ')') {
+        depth -= 1;
+        if (depth === 0) { i += 1; break; }
+      }
+    }
+    const open = noStrings.indexOf('{', i);
+    assert(open > 0, `the shared-physics guard cannot find the body of RunWorld.${name}`);
+    depth = 0;
+    for (i = open; i < noStrings.length; i++) {
+      if (noStrings[i] === '{') depth += 1;
+      else if (noStrings[i] === '}') {
+        depth -= 1;
+        if (depth === 0) return { start: open, end: i + 1 };
+      }
+    }
+    throw new Error(`the shared-physics guard cannot find the end of RunWorld.${name}`);
+  };
+
+  // ---- the scan -----------------------------------------------------------
+
+  /** Properties that carry a role. `pr.role` on a projectile, `z.source` on a
+   *  zone and `wave.source` on a shockwave are the same thing wearing two
+   *  names, so both are watched. */
+  const ROLE_BEARING = /\.(role|source)\b/g;
+  const ROLE_LITERAL = new RegExp(`['"\`](${ROLES.join('|')})['"\`]`, 'g');
+
+  const seen = new Map<string, number>();
+  const offenses: string[] = [];
+
+  for (const name of PROTECTED_METHODS) {
+    const { start, end } = methodBody(name);
+    assert(end - start > 120,
+      `RunWorld.${name} came back as an almost-empty body; the guard is misreading run.ts`);
+
+    // Blank every approved form, counting it. What is LEFT is unaccounted for —
+    // that inversion is what makes a novel spelling fail by default.
+    let region = noStrings.slice(start, end);
+    for (const { snippet } of [...GENERIC_ROLE_USE, ...INTERIM_EXCEPTIONS]) {
+      let from = 0;
+      for (;;) {
+        const at = region.indexOf(snippet, from);
+        if (at < 0) break;
+        region = region.slice(0, at) + ' '.repeat(snippet.length) + region.slice(at + snippet.length);
+        from = at + snippet.length;
+        seen.set(snippet, (seen.get(snippet) ?? 0) + 1);
+      }
+    }
+
+    for (const m of region.matchAll(ROLE_BEARING)) {
+      offenses.push(`  run.ts:${lineOf(start + m.index)} in ${name}()  ${lineAt(start + m.index)}`);
+    }
+    // Strings are back for this pass: a role spelled out inside a protected
+    // method is a per-weapon branch even when the role never came off a
+    // property — `const r = pr.role` gets caught above, `if (r === 'bell')`
+    // gets caught here, and either one alone is enough.
+    for (const m of noComments.slice(start, end).matchAll(ROLE_LITERAL)) {
+      offenses.push(`  run.ts:${lineOf(start + m.index)} in ${name}()  ${lineAt(start + m.index)}`);
+    }
+  }
+
+  assert.deepEqual(offenses, [],
+    'A SHARED PHYSICS LOOP NAMED A WEAPON (#140).\n\n' +
+    'The world\'s shared loops — the projectile loop and the arena rails — own travel, collision\n' +
+    'and lifetime for EVERY weapon, and they are\n' +
+    'not allowed to know which weapon a thing came from. Offending lines:\n\n' +
+    offenses.join('\n') +
+    '\n\nWhat to do instead, in order of preference:\n' +
+    '  1. Motion or hit rules -> the weapon module, lent back through\n' +
+    '     ProjectileBehavior.steer / ProjectileBehavior.onHit (see weapons/arp.ts).\n' +
+    '  2. Anything else the shot needs -> a FIELD ON THE SHOT, set by its own spawner. That is\n' +
+    '     how the evolved lead\'s homing range left this loop: `pr.homingRange = 320` at spawn,\n' +
+    '     and the loop just reads a number.\n' +
+    '  3. Genuinely generic use of the role (attribution, or the module seam) -> add it to\n' +
+    '     GENERIC_ROLE_USE above, but only if it would not grow a case when a tenth weapon\n' +
+    '     appears. If it would, it is a branch.\n' +
+    '  4. Interim per-weapon tuning that a #141 extraction will take away -> only by an explicit\n' +
+    '     entry in INTERIM_EXCEPTIONS naming the weapon that deletes it. That list is supposed\n' +
+    '     to shrink to empty; adding to it is a decision, not a workaround.');
+
+  for (const e of INTERIM_EXCEPTIONS) {
+    const found = seen.get(e.snippet) ?? 0;
+    assert.equal(found, e.count,
+      `STALE OR GROWN INTERIM EXCEPTION: \`${e.snippet}\` is listed with count ${e.count} but ` +
+      `appears ${found} time(s) in the shared loops.\n` +
+      (found === 0
+        ? '  It is GONE from the source — which is the good outcome. Delete its entry from\n' +
+          '  INTERIM_EXCEPTIONS in systems-check.ts. The list only shrinks because leaving a dead\n' +
+          '  entry behind fails here; that is the whole ratchet.\n' +
+          `  (It was: ${e.why}, to be removed by ${e.deletedBy})`
+        : found > e.count
+          ? '  It GREW. A second use of a role-keyed table is a new per-weapon branch in shared\n' +
+            '  physics. Move it into the owning weapon module instead of raising the count.'
+          : '  Its source text changed (a rename or a reformat), so the guard is no longer\n' +
+            '  matching the real line. Update the snippet to the exact new text — the form is\n' +
+            '  approved as written, not as a pattern.'));
+  }
+  for (const g of GENERIC_ROLE_USE) {
+    assert((seen.get(g.snippet) ?? 0) >= 1,
+      `STALE GENERIC ROLE USE: \`${g.snippet}\` is no longer anywhere in the shared loops.\n` +
+      `  It was approved because: ${g.why}\n` +
+      '  If the line was legitimately removed, delete this entry. If it was only renamed or\n' +
+      '  reformatted, update the snippet to the exact new text — otherwise the guard is quietly\n' +
+      '  approving nothing while the real line goes unchecked.');
+  }
+}
+
+console.log('systems-check: items, note shop, Stage Magnet, enemies, endless director, evolutions, and weapon modules passed');

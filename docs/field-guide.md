@@ -108,7 +108,7 @@ an evolution ingredient.
 | --- | --- | --- |
 | High-Tops | +20% movement speed | Kick |
 | Fast Forward | +100% speed for moving projectiles | Snare |
-| Needle Tips | +3 pierce and +12% moving-projectile damage | Lead |
+| Needle Tips | +5 pierce for moving projectiles | Lead |
 | Mirrorball | 3 wall bounces, retaining 85% power after each bounce | Hi-hat |
 | Wide Lens | +30% attack area and +15% orbit distance | Chord |
 | Heavy Amp | +25% damage and +20% enemy shove | Bass |
@@ -132,7 +132,7 @@ merely another percentage upgrade.
 | Hi-hat + Mirrorball | **Strobe Lane** | A barrage of chips rails down the way you walk, piercing everything in the lane. |
 | Bass + Heavy Amp | **Subquake** | The directional wave becomes an expanding ring with unlimited pierce. |
 | Chord + Wide Lens | **Afterhours** | Huge drifting slow zones seek dense crowds and merge into larger supercells. |
-| Lead + Needle Tips | **Neon Serpent** | A homing serpent pierces six targets and grows a giant head every fifth trigger. |
+| Lead + Needle Tips | **Neon Serpent** | A homing serpent pierces eleven targets and grows a giant head every fifth trigger. |
 | Clap + Padded Jacket | **Two Hands** | Paired slabs snap shut on the nearest few enemies, crushing them and dragging survivors inward. |
 | Arp + Extension Cable | **Event Horizon** | Counter-rotating pairs form a dense, breathing crown around the player. |
 | Bell + Magnet Lanyard | **Gravity Bell** | Impact pulls the crowd inward, then shatters into ten seeking crystals. |

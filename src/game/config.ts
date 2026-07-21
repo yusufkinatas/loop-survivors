@@ -675,12 +675,19 @@ export interface WeaponConf {
   pierce?: number;
   /** clap: half-angle of the forward damage cone (radians). */
   arc?: number;
-  /** arp: radius of the orbit around the player. */
+  /** arp: radius of the orbit around the player. Read by the arp module, and
+   *  by applyBuild for Wide Lens' orbitDistanceMul. */
   orbitRadius?: number;
   /** kick: Whip-style hitbox scale (1 = 258 x 39 at the reference view). */
   area?: number;
   /** kick: slashes per trigger; the second lands on the opposite side. */
   amount?: number;
+  /** bell: how many shards this tier's note throws on its first hit. WAS
+   *  config.BELL.shards, a second per-tier table sitting beside the ladder and
+   *  indexed by the same tier; it is a rung's worth of tuning, so it rides the
+   *  rung (#141). The build transform does not touch it — `...conf` carries it
+   *  through applyBuild unchanged, exactly like `arc` and `amount`. */
+  shards?: number;
 }
 
 /** Per-trigger gameplay effect of each kit, one block per tier ([tier-1]).
@@ -693,161 +700,23 @@ export interface WeaponConf {
 // preserved (bass climbs hard, hat barely moves). Zone/DoT weapons carry a
 // per-TICK number that floors at 1, so their listed damage can't drop a full
 // third — their real output is damage x ticks x rate; they lean on coverage.
-export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {
-  // The starting Kick uses Whip's horizontal pass-through strip instead of a
-  // radial aura. Damage/area/amount map to Whip levels 1, 3, 5 and 8.
-  kick: [
-    { damage: 3, area: 1, amount: 1 },
-    { damage: 5, area: 1, amount: 2 },
-    { damage: 9, area: 1.1, amount: 2 },
-    { damage: 15, area: 1.2, amount: 2 },
-  ],
-  // Backbeat sniper: few, fast, hard-hitting, drills a line. The premium
-  // single-target trigger — sparse chart, so each hit is a statement.
-  snare: [
-    { damage: 5, speed: 650, radius: 7, lifetimeS: 1.4, pierce: 2 },
-    { damage: 7, speed: 650, radius: 7, lifetimeS: 1.4, pierce: 3 },
-    { damage: 9, speed: 680, radius: 8, lifetimeS: 1.5, pierce: 4 },
-    { damage: 13, speed: 720, radius: 8, lifetimeS: 1.5, pierce: 6 },
-  ],
-  // Dense stream of weak fast chips fired straight down the walk heading, no
-  // scatter — the player aims by steering. Density IS the ladder; per-trigger
-  // damage barely moves. Tier I starts at 2 so even the quietest velocity roll
-  // (0.75x) reliably clears a 1-HP Static Mite in one hit. The pierce ladder
-  // pays for losing auto-aim: a straight line has to be worth walking down.
-  hat: [
-    { damage: 2, speed: 440, radius: 3, lifetimeS: 0.8, pierce: 2 },
-    { damage: 2, speed: 450, radius: 3, lifetimeS: 0.85, pierce: 2 },
-    { damage: 2, speed: 460, radius: 3, lifetimeS: 0.9, pierce: 3 },
-    { damage: 3, speed: 480, radius: 3, lifetimeS: 0.95, pierce: 4 },
-  ],
-  // Slow wide low wave that rolls through everything. The weight ladder:
-  // per-trigger damage climbs harder than any other kit.
-  bass: [
-    { damage: 3, speed: 135, radius: 22, lifetimeS: 2.3, pierce: Infinity },
-    { damage: 5, speed: 140, radius: 28, lifetimeS: 2.4, pierce: Infinity },
-    { damage: 8, speed: 145, radius: 34, lifetimeS: 2.5, pierce: Infinity },
-    { damage: 13, speed: 150, radius: 42, lifetimeS: 2.6, pierce: Infinity },
-  ],
-  // Zone thrown onto the nearest pack: ticks damage and slows enemies
-  // inside. Chip damage + control; the slow is the identity. NOTE: zone
-  // `damage` is PER TICK (every ZONE_TICK_S) for the zone's whole life, so
-  // effective DPS = trigger rate x damage x (1 + floor(lifetimeS /
-  // ZONE_TICK_S)) — a zone spawns with tickT 0, so it always lands one tick
-  // immediately. Keep per-tick numbers tiny; chart density and lifetime
-  // multiply them.
-  // Lifetimes were once trimmed alongside the ~1/3 damage pass (per-tick is
-  // floored at 1, so it can't drop a full third). That trim made every zone
-  // die before the next trigger fired, so Chord read as ONE area teleporting
-  // around instead of a carpet building up. Lifetimes now outlive at least
-  // two trigger intervals, and ZONE_TICK_S was doubled to match: ticks per
-  // zone are unchanged at every tier, so total damage output is identical —
-  // only the visual and slow footprint grows.
-  chord: [
-    { damage: 1, radius: 48, lifetimeS: 2.0 },
-    { damage: 1, radius: 56, lifetimeS: 2.2 },
-    { damage: 1, radius: 64, lifetimeS: 2.5 },
-    { damage: 2, radius: 76, lifetimeS: 2.8 },
-  ],
-  // Homing seeker per melody note: mid damage, never misses.
-  lead: [
-    { damage: 2, speed: 340, radius: 6, lifetimeS: 2.2, pierce: 1 },
-    { damage: 3, speed: 350, radius: 6, lifetimeS: 2.2, pierce: 1 },
-    { damage: 3, speed: 360, radius: 6, lifetimeS: 2.3, pierce: 1 },
-    { damage: 4, speed: 380, radius: 7, lifetimeS: 2.4, pierce: 2 },
-  ],
-  // Whip: a wide forward slash that hits everything in a close cone. Melee
-  // crowd control — no travel, instant, safest when the wall is on top of you.
-  clap: [
-    { damage: 2, radius: 80, arc: 0.65 },
-    { damage: 3, radius: 88, arc: 0.72 },
-    { damage: 4, radius: 98, arc: 0.8 },
-    { damage: 6, radius: 108, arc: 0.9 },
-  ],
-  // King Bible: notes that orbit the player, a rotating shield of damage.
-  // Each trigger adds one orbiter; a melody makes a ring.
-  arp: [
-    { damage: 2, radius: 8, lifetimeS: 2.0, orbitRadius: 80 },
-    { damage: 2, radius: 8, lifetimeS: 2.4, orbitRadius: 92 },
-    { damage: 2, radius: 9, lifetimeS: 2.8, orbitRadius: 106 },
-    { damage: 3, radius: 10, lifetimeS: 3.2, orbitRadius: 122 },
-  ],
-  // Bell (band, Melody): a note lobbed straight that shatters into shards on
-  // its first hit (shard count per tier in BELL). radius = the shot's own size.
-  bell: [
-    { damage: 2, speed: 360, radius: 6, lifetimeS: 1.8, pierce: 1 },
-    { damage: 3, speed: 370, radius: 6, lifetimeS: 1.9, pierce: 1 },
-    { damage: 4, speed: 380, radius: 7, lifetimeS: 2.0, pierce: 1 },
-    { damage: 5, speed: 400, radius: 7, lifetimeS: 2.1, pierce: 2 },
-  ],
-};
+//
+// EMPTY, AND THAT IS #141'S FINISH LINE FOR THIS TABLE. Every ladder that used
+// to live here now lives in its own weapon module's uniform stats block, the
+// bell's being the last one out. `weaponTiers()` in weapons/index.ts still falls
+// back to this table for a role no module owns, and every role has a module, so
+// the fallback never fires today; the empty object is what systems-check's
+// per-role `WEAPONS.<role> === undefined` ratchet asserts against, one line per
+// weapon, which is why it is still exported rather than deleted outright.
+export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {};
 
 /** The one honest gameplay-effect line on each pick card ([tier-1]). Terse
  *  VS-style, zero music description: the sound
  *  change is discovered by ear. Lines state what the chart + stat change
  *  actually does. */
-export const TIER_LINES: Partial<Record<Role, string[]>> = {
-  kick: [
-    'a facing-side strip, on the beat',
-    'adds an opposite-side follow-up',
-    'harder, wider double strike',
-    'maximum damage and reach',
-  ],
-  snare: [
-    'piercing shot on the backbeat',
-    'fires twice as often, pierces 1 more',
-    'adds weak ghost shots, pierces 1 more',
-    'burst of shots every 4th bar',
-  ],
-  hat: [
-    'fast chips along your path',
-    'twice the chips',
-    'denser stream',
-    'a wall of chips',
-  ],
-  bass: [
-    'slow piercing wave',
-    'waves twice as often',
-    'heavier, wider waves',
-    'massive wave every 4th bar',
-  ],
-  chord: [
-    'zone on the nearest pack: damage + slow',
-    'zones twice as often',
-    'bigger, longer zones',
-    'adds huge lingering zones every 4th bar',
-  ],
-  lead: [
-    'a few homing seekers',
-    'more seekers',
-    'the full melody of seekers',
-    'denser seekers that pierce',
-  ],
-  clap: [
-    'a wide slash close to you',
-    'wider, harder slash',
-    'sweeps a bigger arc',
-    'the widest, hardest slash',
-  ],
-  arp: [
-    'orbiting notes circle you',
-    'the orbit lasts longer',
-    'a wider, longer orbit',
-    'a dense ring of orbiters',
-  ],
-  bell: [
-    'a note that shatters into shards',
-    'more shards on the shatter',
-    'sharper shards, further',
-    'a burst of shards, pierces',
-  ],
-};
-
-/** Chord tier 4's pads get a matching gameplay peak: the same weapon, scaled
- *  up. */
-export const VARIANT_EFFECTS = {
-  chordPad: { radiusMul: 1.5, lifetimeMul: 2.0, damageMul: 0.6 },
-};
+// Empty for the same reason WEAPONS is: pedestal copy is part of a weapon's
+// identity and moved into the modules with the ladders (#141).
+export const TIER_LINES: Partial<Record<Role, string[]>> = {};
 
 /** How far weapons look for a target. */
 export const AIM_RANGE = 750;
@@ -856,80 +725,31 @@ export const AIM_RANGE = 750;
  *  enough to read as a spread, tight enough that aimed weapons stay aimed. */
 export const MULTISHOT_FAN_RAD = 7 * Math.PI / 180;
 
-/** Zone damage tick interval (chord). Slower than M1's 0.3: the zone now
- *  lands on the pack, so its per-tick reach is the whole horde — the slow
- *  is the identity, the damage is chip. Doubled from 0.45 when chord
- *  lifetimes were raised so zones overlap: ticks per zone (1 + floor(lifeS /
- *  ZONE_TICK_S)) come out identical at every tier, so the longer zones cost
- *  no extra damage. Chord is the only weapon that spawns zones, so this
- *  cannot spill onto another kit. */
-export const ZONE_TICK_S = 0.9;
-
-/** Chord zones: enemy speed multiplier while inside, and how far a zone
- *  can be thrown toward the nearest pack. */
-export const ZONE_SLOW_MUL = 0.55;
-export const ZONE_THROW_RANGE = 420;
-
-/** Arp orbiters sweep around the player at this angular speed (rad/s) and
- *  can re-hit an enemy every ORBIT_REHIT_S, so a slow sweep keeps chipping. */
-export const ARP_OMEGA = 3.4;
-export const ORBIT_REHIT_S = 0.35;
-
 // ---- weapon feel constants (Feature 3) ----
+
+/** Height-normalized parity scale: the visible world is always 800 units tall,
+ *  so movement, colliders, strip geometry, and spawn/event ellipses keep the
+ *  researched proportions at every resolution. Shared world geometry — the
+ *  player foot offset and enemy collider sizing derive from it too, so it is
+ *  not owned by any one weapon module. */
+export const WORLD_SCALE = 800 / 456;
 
 /** How long an enemy rides a weapon shove before resuming its chase. */
 export const SHOVE_S = 0.12;
 
-/** Per-weapon knock distance applied on hit (Feature 3). Absent = no shove. */
-export const WEAPON_SHOVE: Partial<Record<Role, number>> = { snare: 8, clap: 12, bass: 6 };
+// WEAPON_SHOVE IS GONE (#141). It was a role-keyed table of per-weapon knock
+// distances, read inside the world's shared projectile loop, and it shrank one
+// weapon at a time: the snare's 8 became SNARE_STATS.shove, the bass's 6 became
+// BASS_STATS.shove, and the clap's 12 — the last entry — became CLAP_STATS.shove
+// when the clap module landed. A weapon that knocks on a hit applies its own
+// number now, from its own module.
+//
+// TWO_HANDS is gone with it, into the same module: base and evolved behavior
+// belong to one weapon module, so the evolution's tuning cannot live in a
+// separate table in config.
 
-// ---- the pincer weapon ----
-
-/** Two Hands (evolved clap): a clap is two hands meeting, so each trigger
- *  picks the closest few enemies and snaps a pair of slabs shut on each one.
- *  Deliberately tiny — the identity is high single-target damage plus an
- *  inward tug that bunches the horde up for the rest of the band, NOT another
- *  player-centred blast (that is what Subquake is for). Keep `pinchRadius`
- *  well under Subquake's 288-375 unit ring. */
-export const TWO_HANDS = {
-  /** How many nearby enemies get their own pincer on a single trigger. */
-  targets: 3,
-  /** Seconds the two slabs take to travel from open to shut. */
-  closeS: 0.12,
-  /** How far out along the pinch axis each slab starts, in world units. */
-  openGap: 74,
-  /** Radius crushed at the pinch point once the hands meet. */
-  pinchRadius: 42,
-  /** Per-hit damage multiplier on the weapon's base damage — sits between
-   *  Railshot's 1.50 and Subquake's 1.55, because the footprint is a fraction
-   *  of either. */
-  damageMul: 1.52,
-  /** Radius over which survivors get dragged toward the pinch point. */
-  tugRadius: 96,
-  /** How far survivors are dragged inward. */
-  tug: 30,
-};
-
-// ---- the shatter weapon ----
-
-/** Bell shatter: per-tier shard count, and the shard projectiles' stats. Shards
- *  fly out radially from the first hit; each is a small, short-lived bell shot
- *  that does not itself re-shatter. */
-/** Evolved hi-hat (Strobe Lane): the chips stop being a spread and become a
- *  rail down the walk heading. Reach comes from speed + life + infinite
- *  pierce; `stagger` pushes successive chips further along the lane so a
- *  16th-note wall draws as one continuous streak instead of a clump. */
-export const HAT_LANE = {
-  speedMul: 1.5,
-  lifetimeMul: 2.0,
-  stagger: [0, 26, 52, 78],
-};
-
-export const BELL = {
-  shards: [4, 5, 6, 8],
-  shardSpeed: 320,
-  shardDamageMul: 0.5,
-  shardLifeS: 0.45,
-  shardRadius: 4,
-  shardPierce: 1,
-};
+// BELL IS GONE (#141), and it was the LAST weapon-specific block in this file.
+// The per-tier shard count became the `shards` rung field on WEAPONS.bell's
+// ladder — now BELL_STATS.tiers — and the five shard constants became named
+// stats in weapons/bell.ts. What is left in config.ts is global knobs only:
+// enemies, XP, damage feedback and run shape.

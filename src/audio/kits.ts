@@ -757,6 +757,17 @@ export const ROLE_META: Record<Role, RoleMeta> = {
   bell: { name: 'Bell', color: '#ffd76b', pitched: true, choke: false, variants: ['bell'] },
 };
 
+/** Each role's hue as a packed 0xRRGGBB number, which is the form PixiJS and
+ *  the world want; ROLE_META above carries the same value as a CSS string for
+ *  the DOM. DERIVED, never a second table.
+ *
+ *  WAS run.ts's KIT_COLORS (#141): a hand-maintained sixteen-entry duplicate of
+ *  exactly these hexes, which meant "the weapon's colour" had two sources of
+ *  truth that nothing checked against each other. ROLE_META is the single one. */
+export const ROLE_COLORS: Record<Role, number> = Object.fromEntries(
+  ROLES.map((role) => [role, Number.parseInt(ROLE_META[role].color.slice(1), 16)]),
+) as Record<Role, number>;
+
 /** Load a real sample file and decode it. The files are pre-corrected offline
  *  at asset-build time (ffmpeg strips silence, caps length, fades the tail, and
  *  peak-normalizes), so the runtime just plays them — no trimming or level
