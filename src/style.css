@@ -945,6 +945,14 @@ button.big {
   flex: 0 0 auto;
 }
 
+/* The ★ rung. The glyph renders small in the mono stack, so it needs a size
+   bump to carry the same weight as the roman numerals beside it — otherwise the
+   last rung reads as an afterthought rather than as part of the ladder. */
+.sb-btns .small.sb-evo-rung {
+  font-size: 15px;
+  line-height: 1;
+}
+
 .sb-btns .small.on {
   border-color: var(--signal);
   color: var(--signal);
@@ -1523,6 +1531,28 @@ button.big {
   justify-content: center;
 }
 
+/* Dev row at the foot of the shop panel. Borrows .start-dev-toggle wholesale so
+   it reads as the same quiet class of control as `sandbox` / `experiments`;
+   only the placement is new. */
+.shop-dev {
+  display: flex;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--line);
+}
+
+/* Armed reset: still no red. It gains the ordinary hover treatment so it looks
+   pressed rather than dangerous — the confirmation is the second click, and the
+   label says so. */
+.start-dev-toggle.armed {
+  color: var(--ink-dim);
+  border-color: var(--line-2);
+  background: var(--bg-3);
+}
+
 /* The same rack, shown roomier while paused. */
 .pause-rack {
   display: flex;
@@ -1610,14 +1640,6 @@ button.big {
   margin: 0;
   color: #b5c9bf;
   font: 700 10px/1.25 var(--font-mono);
-}
-
-/* Recipe reminder: which weapon this passive can evolve. Gold like the band
-   rack's evolved tag, so the two read as one language. */
-.pause-item-copy .pause-item-evo {
-  color: var(--gold);
-  font: 900 9px/1 var(--font-mono);
-  letter-spacing: 0.08em;
 }
 
 .sb-enemy-stats.passive-copy {

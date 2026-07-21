@@ -317,6 +317,37 @@ export class MetaStore {
     return true;
   }
 
+  /** Developer-only: put the career back to a genuine first-boot state.
+   *
+   *  "Just clear localStorage" fails this, twice over:
+   *
+   *  1. THERE IS A SECOND KEY. The constructor falls back to
+   *     LEGACY_META_SAVE_KEY and migrates it, so clearing only the v2 key lets
+   *     the v1 save resurrect the whole career on the next boot. Both go.
+   *  2. THE LIVE OBJECT OUTLIVES THE STORAGE. `state` is built once at startup
+   *     and held for the session, so clearing storage leaves the wallet, the
+   *     rank meter and the shop cards showing stale values until a reload. The
+   *     reset is therefore applied IN PLACE — `state` is readonly by reference
+   *     and every holder must see the same change.
+   *
+   *  Writing the fresh defaults back out is deliberate: it leaves a v2 save on
+   *  disk, so the next boot reads that and never consults the legacy key again. */
+  resetProgress(): void {
+    try {
+      this.storage?.removeItem(META_SAVE_KEY);
+      this.storage?.removeItem(LEGACY_META_SAVE_KEY);
+    } catch {
+      // Same reasoning as save(): storage can be unavailable, and the in-memory
+      // reset below still has to happen.
+    }
+    // `startItem` is OPTIONAL, so it is absent from defaultMetaState() and
+    // Object.assign cannot clear it. It has to go by hand, or a reset career
+    // keeps starting with a purchased item it no longer owns.
+    delete this.state.startItem;
+    Object.assign(this.state, defaultMetaState());
+    this.save();
+  }
+
   /** Developer-only sandbox helper. Normal runs earn notes only as pickups. */
   grantNotes(amount: number): void {
     const granted = Math.max(0, Math.floor(safeNumber(amount)));

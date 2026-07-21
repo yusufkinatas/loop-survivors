@@ -42,6 +42,7 @@ import {
   deriveBuildMods,
   eligibleEvolutions,
   itemMaxLevel,
+  EVOLUTION_BY_ROLE,
   paddedJacketHeal,
   type BuildMods,
   type EvolutionDefinition,
@@ -68,12 +69,17 @@ export const PLAYER_FOOT_OFFSET = {
   y: 7 * WORLD_SCALE,
 } as const;
 
-/** Rolling window for the sandbox dummy's live DPS. Weapons fire on the beat
- * grid, so a one-second average would jitter between "kick landed" and
- * "nothing landed"; four bars at 122 BPM is ~7.9s, so 8s reads steady. */
-const DUMMY_DPS_WINDOW = 8;
-const DUMMY_DPS_BUCKET = 0.25;
-const DUMMY_DPS_BUCKETS = Math.round(DUMMY_DPS_WINDOW / DUMMY_DPS_BUCKET);
+/** Seconds of no incoming damage that end a burst. The readout hard-resets to
+ * zero rather than decaying, so the number on screen is only ever the burst you
+ * are doing right now — never a fading ghost of one that already ended. */
+const DUMMY_DPS_IDLE_RESET = 5;
+/** Seconds of airtime credited to a burst's FIRST hit, so one landed trigger
+ * reads as a rate instead of a divide-by-zero spike. Weapons fire on the beat
+ * grid, and a beat at 122 BPM is ~0.49s, so a hit is credited the beat it
+ * arrived on: land 100 every beat and the readout says 200 from the very first
+ * hit and stays there. Slower weapons still start high and settle within a
+ * trigger or two. */
+const DUMMY_DPS_LEAD_IN = 0.5;
 
 /** Per-dummy damage bookkeeping behind the floating readout. */
 interface DummyReadout {
@@ -81,12 +87,21 @@ interface DummyReadout {
   spawnHp: number;
   /** Cumulative damage taken since spawn. */
   total: number;
-  /** Seconds alive since spawn. */
-  aliveT: number;
-  /** Ring buffer of per-bucket damage covering DUMMY_DPS_WINDOW seconds. */
-  buckets: number[];
-  head: number;
-  bucketT: number;
+  /** Whether a burst is open — i.e. damage has landed and DUMMY_DPS_IDLE_RESET
+   *  has not elapsed since. False on a fresh dummy and after every reset. */
+  bursting: boolean;
+  /** Damage taken since the current burst's first hit. */
+  burstDamage: number;
+  /** Seconds since the current burst's first hit. Advances every frame, but is
+   *  only ever READ when a hit lands, so it cannot move the displayed number on
+   *  its own. */
+  burstT: number;
+  /** Seconds since the last hit landed. */
+  idleT: number;
+  /** The displayed damage per second. Recomputed ONLY when damage lands; held
+   *  perfectly still between hits, and zeroed outright when a burst times out.
+   *  Nothing else may write this. */
+  dps: number;
 }
 
 export interface Enemy {
@@ -802,6 +817,30 @@ export class RunWorld {
     this.tiers.delete(role);
   }
 
+  /** Sandbox-only evolve that IGNORES THE RECIPE ENTIRELY — no tier gate, no
+   *  maxed partner passive, no eligibility check. `evolve` above is the real
+   *  one and keeps every rule; this exists so the panel can put an evolved
+   *  weapon on the field to look at it.
+   *
+   *  The sandbox used to reach the same place through `evolve` by force-setting
+   *  the partner item to max first, which satisfied the gate but SILENTLY
+   *  CHANGED THE BUILD IT WAS ABOUT TO MEASURE: maxing Heavy Amp to see
+   *  Subquake also bought its damage and area, so the ring under test was not
+   *  the ring a player would get. Testing an evolution should cost nothing but
+   *  the evolution.
+   *
+   *  Deliberately does NOT count toward evolutionsMade / evolutionsByRole or
+   *  mark the firstEvolution milestone. Those feed career progression, and a
+   *  dev button must not write to it. */
+  evolveForSandbox(role: Role): EvolutionDefinition | null {
+    const evolution = EVOLUTION_BY_ROLE[role];
+    if (!evolution || this.evolved.has(role)) return null;
+    this.evolved.add(role);
+    this.fx?.push({ type: 'evolution', x: this.player.x, y: this.player.y, color: evolution.color, label: evolution.name });
+    this.spawnRing(this.player.x, this.player.y, 320, 0xffdf74, 1);
+    return evolution;
+  }
+
   /** Sandbox-only reversal for testing the before/after evolution contract. */
   clearEvolutionForSandbox(role: Role): void {
     this.evolved.delete(role);
@@ -1332,10 +1371,11 @@ export class RunWorld {
         ? {
             spawnHp: scaledHp,
             total: 0,
-            aliveT: 0,
-            buckets: new Array<number>(DUMMY_DPS_BUCKETS).fill(0),
-            head: 0,
-            bucketT: 0,
+            bursting: false,
+            burstDamage: 0,
+            burstT: 0,
+            idleT: 0,
+            dps: 0,
           }
         : null,
     };
@@ -1571,8 +1611,17 @@ export class RunWorld {
     // upgrade roll, or a kill count.
     if (e.dummy && e.readout) {
       const landed = Number.isFinite(amount) ? amount : 0;
-      e.readout.total += landed;
-      e.readout.buckets[e.readout.head] += landed;
+      const r = e.readout;
+      r.total += landed;
+      // Open a burst on the first hit after a quiet stretch. updateDummies has
+      // already zeroed the carried state, so this only has to raise the flag.
+      r.bursting = true;
+      r.burstDamage += landed;
+      r.idleT = 0;
+      // The ONE place the displayed number moves. Every hit of a single trigger
+      // lands in the same frame, so a pierce or an AoE sweep folds into one
+      // credited beat rather than inflating the rate.
+      r.dps = r.burstDamage / (r.burstT + DUMMY_DPS_LEAD_IN);
       if (source) this.damageByRole[source] = (this.damageByRole[source] ?? 0) + landed;
       e.hp = e.readout.spawnHp;
       e.flashT = 0.08;
@@ -1609,31 +1658,34 @@ export class RunWorld {
     }
   }
 
-  /** Advance every practice target's rolling DPS window. Rotating the ring
-   *  buffer is what makes the readout fall back toward zero when the guns go
-   *  quiet instead of freezing on its last value. */
+  /** Time out any practice target's burst that has gone quiet.
+   *
+   *  This deliberately does NOT touch `dps` except to zero it at the timeout.
+   *  The readout used to be a rolling window whose buckets rotated here, which
+   *  meant it slid toward zero the moment you stopped shooting — a number that
+   *  moves while nothing is happening cannot be trusted at a glance. Now it
+   *  holds its last value until either a hit rewrites it or the burst expires. */
   private updateDummies(dt: number): void {
     for (const e of this.enemies) {
       if (!e.dummy || e.dead || !e.readout) continue;
       const r = e.readout;
-      r.aliveT += dt;
-      r.bucketT += dt;
-      while (r.bucketT >= DUMMY_DPS_BUCKET) {
-        r.bucketT -= DUMMY_DPS_BUCKET;
-        r.head = (r.head + 1) % r.buckets.length;
-        r.buckets[r.head] = 0;
+      if (!r.bursting) continue;
+      r.burstT += dt;
+      r.idleT += dt;
+      if (r.idleT >= DUMMY_DPS_IDLE_RESET) {
+        r.bursting = false;
+        r.burstDamage = 0;
+        r.burstT = 0;
+        r.dps = 0;
       }
     }
   }
 
-  /** Live damage per second over the trailing DUMMY_DPS_WINDOW. Divides by the
-   *  time actually elapsed while the window is still filling, so a fresh dummy
-   *  does not read artificially low. */
+  /** The frozen readout: the damage per second of the burst in progress, or 0
+   *  if none is. A pure read — the value is written by takeDamage and by the
+   *  timeout in updateDummies, never computed here. */
   dummyDps(e: Enemy): number {
-    if (!e.readout) return 0;
-    let sum = 0;
-    for (const bucket of e.readout.buckets) sum += bucket;
-    return sum / Math.max(DUMMY_DPS_BUCKET, Math.min(e.readout.aliveT, DUMMY_DPS_WINDOW));
+    return e.readout?.dps ?? 0;
   }
 
   /** Sandbox helper: drop every practice target without the collateral of

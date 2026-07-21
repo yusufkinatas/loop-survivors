@@ -19,7 +19,7 @@ import { RunWorld, type VacuumResult } from './run';
 import { SIM_DT } from './timing';
 import { preloadRunArt, RunView, type GroundPickView } from './view';
 import { mountSandboxPanel, type SandboxPanel } from './sandbox';
-import { ITEMS, ITEM_NEUTRAL_COLOR, type EvolutionDefinition } from './items';
+import { ITEMS, ITEM_NEUTRAL_COLOR, type EvolutionDefinition, type ItemId } from './items';
 import { MetaStore, type RunSettlement } from './meta';
 import { mulberry32 } from './rng';
 
@@ -206,6 +206,29 @@ export async function bootGame(
   }
   let groundPicks: GroundItem[] = [];
 
+  /** THE evolution-hint rule, in one place. A passive's recipe is taught on the
+   *  ground pick and nowhere else, and only when it is both NEW and ACTIONABLE:
+   *
+   *  - `firstCopy` — later levels of the same item would repeat a hint already
+   *    read. Teach once.
+   *  - the partner weapon is in the band — a recipe for an instrument the player
+   *    has not hired, and may never hire, is noise about a run that isn't
+   *    happening.
+   *
+   *  Returns the partner role to name, or undefined for no hint at all.
+   *
+   *  Both the pedestal and the pickup toast call this, which is the point: they
+   *  describe the same item at the same instant and must never disagree. Call it
+   *  BEFORE the item is added, so `firstCopy` still means what it says.
+   *
+   *  No "already evolved" check is needed: evolving requires the partner item at
+   *  max level, so an evolved weapon's item can never be on its first copy. */
+  function evolutionHintFor(w: RunWorld, item: ItemId, firstCopy: boolean): Role | undefined {
+    if (!firstCopy) return undefined;
+    const partner = ITEMS[item].evolutionPartner;
+    return partner && w.tiers.has(partner) ? partner : undefined;
+  }
+
   function clearGroundPicks(): void {
     if (groundPicks.length > 0) groundPicks = [];
     view?.setGroundPicks([]);
@@ -300,9 +323,9 @@ export async function bootGame(
         payload.push({ x, y, glyph: definition.glyph, color: ITEM_NEUTRAL_COLOR,
           name: definition.name, level: previous > 0 ? `${previous} → ${option.tier}` : '1',
           effect: definition.levelLines[option.tier - 1],
-          // Teach the recipe once, when the passive is new. Later levels of the
-          // same item would only repeat a hint the player has already read.
-          evoRole: previous === 0 ? definition.evolutionPartner : undefined });
+          // The pedestal is the ONE place the recipe is taught; see
+          // evolutionHintFor for when it earns the space.
+          evoRole: evolutionHintFor(w, option.item, previous === 0) });
       } else if (option.kind === 'encore') {
         const role: Role = option.encore === 'heal' ? 'clap' : option.encore === 'damage' ? 'bass' : option.encore === 'move' ? 'kick' : 'chord';
         const label = option.encore === 'heal' ? 'Emergency Water' : option.encore === 'damage' ? 'Hotter Signal' : option.encore === 'move' ? 'Quick Change' : 'Wider Stage';
@@ -344,10 +367,11 @@ export async function bootGame(
     const option = item.option;
     clearGroundPicks();
     if (option.kind === 'item') {
-      const firstCopy = (w.items.get(option.item) ?? 0) === 0;
+      // Resolved BEFORE addItem, so the toast and the pedestal the player just
+      // walked onto are answering the same question about the same state.
+      const partner = evolutionHintFor(w, option.item, (w.items.get(option.item) ?? 0) === 0);
       w.addItem(option.item, option.tier);
       const definition = ITEMS[option.item];
-      const partner = firstCopy ? definition.evolutionPartner : undefined;
       const evoCopy = partner ? ` · EVO ${kits.get(partner)?.name ?? partner}` : '';
       hud.showToast(`${definition.name} ${option.tier} · ${definition.levelLines[option.tier - 1]}${evoCopy}`);
       hud.levelPulse();
