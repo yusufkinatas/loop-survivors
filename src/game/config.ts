@@ -18,12 +18,12 @@ export const RUN = {
   magnetRadius: 53,
   pickupRadius: 16,
   gemPullSpeed: 420,
-  maxGems: 400,
+  maxGems: 10000,
   /** Currency pickups merge into an overflow note above this visual cap. */
-  maxMusicNotes: 180,
+  maxMusicNotes: 10000,
   /** Live projectile ceiling; the oldest shot is evicted past it. Double Take
    * multiplies six weapons' spawn rate at once, so this guards the late tour. */
-  maxProjectiles: 600,
+  maxProjectiles: 5000,
 };
 
 /** XP gem pickup sound — PROTOTYPE, not a shipped decision. Five candidate
