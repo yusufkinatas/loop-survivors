@@ -474,6 +474,7 @@ export async function bootGame(
         : 'STAGE MAGNET · FLOOR CLEAR');
     },
     onHealthPickup(healed: number): void {
+      engine.playHealthPickupCue();
       hud.showToast(`FIRST AID · +${Math.round(healed)} HP`);
     },
     onMilestone(id: string): void {
@@ -518,6 +519,7 @@ export async function bootGame(
         : 'STAGE MAGNET · FLOOR CLEAR');
     },
     onHealthPickup(healed: number): void {
+      engine.playHealthPickupCue();
       hud.showToast(`FIRST AID · +${Math.round(healed)} HP`);
     },
     onMilestone(id: string): void {
