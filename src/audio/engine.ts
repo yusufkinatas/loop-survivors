@@ -143,18 +143,19 @@ function voiceMixGain(role: Role): number {
 /** XP-gem pickup cue (prototype), split into two independent axes so they can
  *  be compared separately: WHAT it sounds like, and HOW its pitch moves.
  *  See MusicEngine.playGemCue. */
-export type GemCueTimbre = 'blip' | 'pluck' | 'bell' | 'tick';
+export type GemCueTimbre = 'blip' | 'pluck' | 'bell' | 'tick' | 'ding';
 export type GemCueMotion = 'static' | 'ladder' | 'xp-bar' | 'wander';
 
-export const GEM_CUE_TIMBRES: readonly GemCueTimbre[] = ['blip', 'pluck', 'bell', 'tick'];
+export const GEM_CUE_TIMBRES: readonly GemCueTimbre[] = ['blip', 'pluck', 'bell', 'tick', 'ding'];
 export const GEM_CUE_MOTIONS: readonly GemCueMotion[] = ['static', 'ladder', 'xp-bar', 'wander'];
 
 /** How far the cue may climb. TWO octaves, and the ceiling is the constraint
  *  that set it: 'xp-bar' maps a full bar to the top degree, so the top degree
  *  is a note the player actually hears on every level-up. At three octaves
  *  the tuned timbres ran past 6 kHz — and `blip`, which sits an octave up and
- *  stacks a fifth on top, reached the edge of hearing. Widen this only with
- *  the top of `blip` in mind; it is always the highest thing the cue plays. */
+ *  stacks a fifth on top, reached the edge of hearing. Widen this only after
+ *  checking the top of `blip` AND of `ding`, whose inharmonic partials climb
+ *  fastest of anything here (they have their own ceiling below). */
 const GEM_OCTAVES = 2;
 
 /** Pitches the gem cue is allowed to use: the run's own scale (SKELETON's
@@ -180,6 +181,10 @@ const GEM_DEGREES: readonly number[] = (() => {
  *  over a full band, low enough that the top of the ladder is still a note
  *  rather than a whistle, and in key by construction rather than by ear. */
 const GEM_ROOT_HZ = SKELETON.rootHz * 4;
+
+/** Upper bound for `ding`'s inharmonic partials. Above roughly this, a partial
+ *  stops adding metallic colour and starts adding fatigue. */
+const GEM_PARTIAL_CEILING_HZ = 9000;
 
 /** A pickup gap longer than this restarts the 'ladder' climb, so a lone gem
  *  always plays the root and only a genuine cluster climbs. */
@@ -592,6 +597,10 @@ export class MusicEngine {
    *              percussion hit. The one that never competes with the music.
    *              Being noise, its "pitch" is a filter sweep, so motion is
    *              subtler here than on the three tuned timbres.
+   *   - `ding`   the survivors-genre convention: short, bright, faintly
+   *              metallic, with a tiny upward inflection on the attack.
+   *              Written from scratch after that idiom — no other game's
+   *              recording is used or reproduced anywhere in this repo.
    *
    *  MOTION is how its pitch moves, always snapped to GEM_DEGREES so every
    *  note lands in the run's key:
@@ -682,6 +691,46 @@ export class MusicEngine {
         const env = this.ctx.createGain();
         env.gain.setValueAtTime(0.0001, now);
         env.gain.exponentialRampToValueAtTime(p.peak, now + 0.005);
+        env.gain.exponentialRampToValueAtTime(0.0001, now + p.decay);
+        osc.connect(env).connect(out);
+        osc.start(now);
+        osc.stop(now + p.decay + 0.02);
+      }
+      return;
+    }
+
+    if (opts.timbre === 'ding') {
+      // The survivors-genre convention: a short, bright, faintly metallic
+      // "ding!". Written from scratch — the genre's SHAPE (fast attack, tiny
+      // upward inflection, quick metallic decay) is a common idiom, not
+      // anyone's property, and no other game's recording is used here.
+      //
+      // Metallic comes from inharmonic partials: ratios that are not whole
+      // numbers, so the overtones never line up into a single sung note the
+      // way they do on `pluck`. The upward inflection at the onset is the
+      // "!" — pitch rising into the note is what makes it read as a reward.
+      const base = GEM_ROOT_HZ * ratio;
+      const partials = [
+        { ratio: 1, peak: 0.11, decay: 0.16 },
+        { ratio: 2.4, peak: 0.05, decay: 0.11 },
+        { ratio: 4.1, peak: 0.02, decay: 0.07 },
+      ];
+      for (const p of partials) {
+        // Inharmonic partials multiply the pitch, so at the top of a climb the
+        // highest one ran past 12 kHz — audible only as a thin shriek, and the
+        // first thing that would make this cue tiring. Drop partials that
+        // leave the musically useful range instead of letting them ring: the
+        // cue simply gets purer as it climbs, which is the right trade.
+        if (base * p.ratio > GEM_PARTIAL_CEILING_HZ) continue;
+        const osc = this.ctx.createOscillator();
+        osc.type = 'sine';
+        // Start a touch flat and snap up into pitch: a 12ms rise, fast enough
+        // to hear as attack rather than as a slide.
+        osc.frequency.setValueAtTime(base * p.ratio * 0.94, now);
+        osc.frequency.exponentialRampToValueAtTime(base * p.ratio, now + 0.012);
+        const env = this.ctx.createGain();
+        env.gain.setValueAtTime(0.0001, now);
+        env.gain.exponentialRampToValueAtTime(p.peak, now + 0.003);
         env.gain.exponentialRampToValueAtTime(0.0001, now + p.decay);
         osc.connect(env).connect(out);
         osc.start(now);
