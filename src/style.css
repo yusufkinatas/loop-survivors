@@ -1568,7 +1568,7 @@ button.big {
    says it without counting. Pause-only — the live rack carries neither. */
 .socket-tier {
   color: var(--voice-color);
-  font: 800 9px/1 var(--font-mono);
+  font: 800 var(--fs-xs)/1 var(--font-mono);
   letter-spacing: 0.1em;
 }
 
@@ -1588,37 +1588,39 @@ button.big {
 
 .pause-stat {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) auto;
-  gap: 7px;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  gap: 8px;
   align-items: baseline;
-  padding: 2px 4px;
+  padding: 3px 4px;
 }
 
 .pause-stat-glyph {
   /* The passives' shared neutral; keep in sync with ITEM_NEUTRAL_COLOR. */
   color: #cfd8e3;
-  font: 900 13px/1 var(--font-mono);
+  font: 900 16px/1 var(--font-mono);
   text-align: center;
 }
 
 .pause-stat-name {
   overflow: hidden;
   color: #e7f3ed;
-  font: 700 11px/1.2 var(--font-mono);
+  font: 700 var(--fs-body)/1.2 var(--font-mono);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
 .pause-stat-value {
   color: var(--signal);
-  font: 800 11px/1.2 var(--font-mono);
+  font: 800 var(--fs-body)/1.2 var(--font-mono);
 }
 
-/* A stat nothing has touched sits back so the invested ones read first. */
+/* A stat nothing has touched sits back so the invested ones read first — but
+   only as far as --ink-dim, which still clears 4.5:1 on this panel. The dimmer
+   --ink-faint lands at 3.3:1 and is not legible enough to say a real number. */
 .pause-stat.neutral .pause-stat-glyph,
 .pause-stat.neutral .pause-stat-name,
 .pause-stat.neutral .pause-stat-value {
-  color: #6b7a86;
+  color: var(--ink-dim);
 }
 
 .pause-items {
@@ -1636,13 +1638,14 @@ button.big {
   gap: 12px;
   margin-bottom: 8px;
   color: var(--signal);
-  font: 800 10px/1 var(--font-mono);
+  font: 800 var(--fs-sm)/1 var(--font-mono);
   letter-spacing: 0.1em;
 }
 
+/* --ink-faint would be 3.3:1 here — under AA for text this size. */
 .pause-items-head span {
-  color: var(--ink-faint);
-  font-size: 9px;
+  color: var(--ink-dim);
+  font-size: var(--fs-xs);
 }
 
 .pause-items-grid {
@@ -1658,8 +1661,8 @@ button.big {
   grid-template-columns: 30px minmax(0, 1fr);
   gap: 8px;
   align-items: center;
-  min-height: 46px;
-  padding: 6px 8px;
+  min-height: 54px;
+  padding: 7px 9px;
   background: #0b111a;
   border: 1px solid color-mix(in srgb, var(--item-color) 46%, #24303a);
   border-left: 4px solid var(--item-color);
@@ -1680,7 +1683,7 @@ button.big {
 .pause-item-copy strong {
   overflow: hidden;
   color: #f1fff8;
-  font: 800 11px/1.1 var(--font-mono);
+  font: 800 13px/1.15 var(--font-mono);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -1689,7 +1692,7 @@ button.big {
 .pause-items-empty {
   margin: 0;
   color: #b5c9bf;
-  font: 700 10px/1.25 var(--font-mono);
+  font: 700 var(--fs-sm)/1.25 var(--font-mono);
 }
 
 .sb-enemy-stats.passive-copy {
@@ -1707,17 +1710,17 @@ button.big {
   }
   .pause-overlay h1 { font-size: 28px; }
   .pause-rack { margin-block: 0 4px; }
-  .pause-items { width: 96vw; padding: 7px; }
-  .pause-items-grid { gap: 4px; }
-  .pause-item { grid-template-columns: 22px minmax(0, 1fr); gap: 5px; min-height: 42px; padding: 5px; }
-  .pause-item-glyph { font-size: 17px; }
-  .pause-item-copy strong { font-size: 9px; }
-  .pause-item-copy span { font-size: 8px; }
-  .pause-stats-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 4px 10px; }
-  .pause-stat { grid-template-columns: 14px minmax(0, 1fr) auto; gap: 5px; padding: 1px 2px; }
-  .pause-stat-glyph { font-size: 11px; }
+  .pause-items { width: 96vw; padding: 8px; }
+  .pause-items-grid { gap: 5px; grid-template-columns: minmax(0, 1fr); }
+  .pause-item { grid-template-columns: 24px minmax(0, 1fr); gap: 7px; min-height: 46px; padding: 6px; }
+  .pause-item-glyph { font-size: 18px; }
+  .pause-item-copy strong { font-size: var(--fs-sm); }
+  .pause-item-copy span { font-size: var(--fs-xs); }
+  .pause-stats-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 2px 10px; }
+  .pause-stat { grid-template-columns: 18px minmax(0, 1fr) auto; gap: 7px; padding: 2px; }
+  .pause-stat-glyph { font-size: 14px; }
   .pause-stat-name,
-  .pause-stat-value { font-size: 9px; }
+  .pause-stat-value { font-size: var(--fs-sm); }
   .band-rack {
     max-width: 96vw;
     gap: 2px;
