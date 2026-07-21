@@ -14,6 +14,16 @@ import {
   DEFAULT_AUDIO_SET_ID,
   type AudioSetId,
 } from './audio-sets';
+import {
+  GemCue,
+  playGameOverCue,
+  playHitCue,
+  playLevelCue,
+  playStageMagnetCue,
+  type GemCueOptions,
+} from './cues/index';
+
+export type { GemCueOptions };
 
 interface VoiceHit {
   src: AudioBufferSourceNode;
@@ -140,57 +150,6 @@ function voiceMixGain(role: Role): number {
   return VOICE_MIX_GAIN[role] ?? 1;
 }
 
-/** How far the gem cue may climb: two octaves of the run's scale. The ceiling
- *  is the constraint that set it — a full XP bar maps to the top degree, so
- *  the top degree is a note the player hears on every single level-up. At
- *  three octaves the cue ran past 6 kHz, and since `blip` stacks a fifth on
- *  top of its root it reached the edge of hearing. Widen this only after
- *  checking where the fifth lands. */
-const GEM_OCTAVES = 2;
-
-/** Pitches the gem cue is allowed to use: the run's own scale (SKELETON's
- *  note set, A minor pentatonic) stacked over GEM_OCTAVES, as semitone
- *  offsets from the cue root.
- *
- *  This is why the cue moves by SCALE STEP and not by the few percent of
- *  random detune that is the usual fix for a sound heard thousands of times.
- *  That advice assumes effects and music are separate layers. Here they are
- *  the same layer — a gem cue sitting a fraction of a semitone off would be
- *  the one element in the game permanently out of key. Snapping to the
- *  skeleton buys the same variety and stays in the track. */
-const GEM_DEGREES: readonly number[] = (() => {
-  const degrees: number[] = [];
-  for (let octave = 0; octave < GEM_OCTAVES; octave++) {
-    for (const semitone of SKELETON.noteSet) degrees.push(semitone + octave * 12);
-  }
-  return degrees;
-})();
-
-/** The cue's root, two octaves above the skeleton's (A5). High enough to read
- *  over a full band, low enough that the top of the climb is still a note
- *  rather than a whistle, and in key by construction rather than by ear. */
-const GEM_ROOT_HZ = SKELETON.rootHz * 4;
-
-/** Below this gap between pickups the stereo spread is at full width; by
- *  GEM_FLURRY_MAX_S it has closed back to centre. A lone gem should NOT jump
- *  to one ear — that reads as a bug, not an effect. Width is something a
- *  flurry earns. */
-const GEM_FLURRY_MIN_S = 0.15;
-const GEM_FLURRY_MAX_S = 0.6;
-
-export interface GemCueOptions {
-  /** Scales the cue's envelope peaks; 0 silences it. */
-  gain: number;
-  /** Minimum seconds between cues; extras are dropped, not queued. */
-  minGapS: number;
-  /** 0..1 toward the next level. Drives the cue's pitch. */
-  levelProgress: number;
-  /** 0..1 stereo width. Consecutive cues alternate sides, so a fast run of
-   *  pickups sweeps left/right instead of piling up in the middle. Scaled
-   *  down for isolated pickups (see GEM_FLURRY_MIN_S); 0 is mono. */
-  spread: number;
-}
-
 export class MusicEngine {
   readonly ctx: AudioContext;
   readonly clock: Clock;
@@ -230,13 +189,7 @@ export class MusicEngine {
   private nextTimedActionSeq = 0;
   private stepMarkers: { step: number; time: number }[] = [];
   private lastDueStep = 0;
-  /** Gem cue state (prototype): the throttle's clock, and how far the 'ladder'
-   *  variant has climbed. Audio-clock time, so a paused context freezes both. */
-  private lastGemCueTime = -Infinity;
-  /** Which side the next cue pans to. Strictly alternating rather than random:
-   *  true randomness clumps, and two or three cues landing on the same ear is
-   *  exactly the machine-gun texture the spread exists to break up. */
-  private gemPanSide = 1;
+  private readonly gemCue = new GemCue();
 
   constructor(
     ctx: AudioContext,
@@ -400,257 +353,34 @@ export class MusicEngine {
     g.linearRampToValueAtTime(1, now + Math.max(0.02, rampS));
   }
 
-  /** A short, bright "level up" chime — a quick ascending major sparkle.
-   *  Rides master (respects mute) on its own gain, bypassing the weapons bus
-   *  so the level-up dip never swallows it. Purely cosmetic. */
+  /** One-shot cues. Each is synthesised in `cues/`; what stays here is the
+   *  policy every cue shares — respect mute, and land on master rather than
+   *  the weapons bus so no duck can swallow the feedback. Game tuning arrives
+   *  as arguments; the engine holds none of its own. */
+
   playLevelCue(): void {
     if (this.masterTarget <= 0) return; // muted
-    const now = this.ctx.currentTime;
-    const out = this.ctx.createGain();
-    out.gain.value = 1;
-    const lp = this.ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.value = 5200;
-    out.connect(lp).connect(this.master);
-    // C6 major triad up to C7: a classic pickup sparkle, arpeggiated fast.
-    const notes = [1046.5, 1318.5, 1568.0, 2093.0];
-    for (let i = 0; i < notes.length; i++) {
-      const t0 = now + i * 0.045;
-      const osc = this.ctx.createOscillator();
-      osc.type = 'triangle';
-      osc.frequency.value = notes[i];
-      const env = this.ctx.createGain();
-      const peak = 0.16 * (1 - i * 0.12);
-      env.gain.setValueAtTime(0.0001, t0);
-      env.gain.exponentialRampToValueAtTime(peak, t0 + 0.008);
-      env.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.38);
-      osc.connect(env).connect(out);
-      osc.start(t0);
-      osc.stop(t0 + 0.42);
-    }
+    playLevelCue(this.ctx, this.master);
   }
 
-  /** Player took damage: one short, dark impact, and a dip of the whole
-   *  weapons bus underneath it so the thud lands in a hole it made itself.
-   *
-   *  Two layers, both deliberately un-musical — this is the one moment the game
-   *  is NOT making a track, and it should not sound like a voice joining the
-   *  build. A noise crack (the contact) over a body tone that falls off a
-   *  cliff, roughly 180 Hz down to 50 Hz in a tenth of a second. The fall is
-   *  what reads as "bad": pitch dropping fast is the shape of something going
-   *  wrong. It rides master like the other cues, so mute is respected and
-   *  neither its own duck nor a level-up duck can swallow it.
-   *
-   *  `duckDepth`/`duckHoldS` come from DAMAGE_FEEDBACK — the engine holds no
-   *  game tuning of its own. The two envelope peaks below (body, then noise)
-   *  are the loudness knobs, and they are deliberately hot: the body sits near
-   *  unity, well into the master limiter. That is the ceiling — pushing them
-   *  much further buys compression, not volume, and the limiter's 0.12s release
-   *  means an over-hot cue pumps the whole track down after every hit. If it
-   *  still needs to feel bigger, lower `hitDuckDepth` in config.ts so there is
-   *  more room underneath, or lengthen the body's fall; do not just raise these. */
   playHitCue(duckDepth: number, duckHoldS: number): void {
     if (this.masterTarget <= 0) return; // muted
-    const now = this.ctx.currentTime;
-    const out = this.ctx.createGain();
-    out.gain.value = 1;
-    out.connect(this.master);
-
-    // The dip. Fast in (the flinch), slower out (the recovery), and always
-    // ramping back to unity so repeated hits cannot stack the bus toward
-    // silence.
-    const g = this.hitDuck.gain;
-    const depth = Math.max(0, Math.min(1, duckDepth));
-    const hold = Math.max(0.05, duckHoldS);
-    g.cancelScheduledValues(now);
-    g.setValueAtTime(g.value, now);
-    g.linearRampToValueAtTime(depth, now + 0.02);
-    g.linearRampToValueAtTime(1, now + hold);
-
-    // Layer 1: the contact crack — a very short lowpassed noise burst.
-    const burstS = 0.09;
-    const noiseBuffer = this.ctx.createBuffer(
-      1,
-      Math.ceil(this.ctx.sampleRate * burstS),
-      this.ctx.sampleRate,
-    );
-    const samples = noiseBuffer.getChannelData(0);
-    for (let i = 0; i < samples.length; i++) {
-      const fade = 1 - i / samples.length;
-      samples[i] = (Math.random() * 2 - 1) * fade * fade;
-    }
-    const noise = this.ctx.createBufferSource();
-    noise.buffer = noiseBuffer;
-    const lp = this.ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.setValueAtTime(1800, now);
-    lp.frequency.exponentialRampToValueAtTime(320, now + burstS);
-    const noiseEnv = this.ctx.createGain();
-    noiseEnv.gain.setValueAtTime(0.45, now);
-    noiseEnv.gain.exponentialRampToValueAtTime(0.0001, now + burstS);
-    noise.connect(lp).connect(noiseEnv).connect(out);
-    noise.start(now);
-    noise.stop(now + burstS);
-
-    // Layer 2: the body — a falling low tone, the part you feel.
-    const body = this.ctx.createOscillator();
-    body.type = 'triangle';
-    body.frequency.setValueAtTime(180, now);
-    body.frequency.exponentialRampToValueAtTime(50, now + 0.1);
-    const bodyEnv = this.ctx.createGain();
-    bodyEnv.gain.setValueAtTime(0.0001, now);
-    bodyEnv.gain.exponentialRampToValueAtTime(0.85, now + 0.006);
-    bodyEnv.gain.exponentialRampToValueAtTime(0.0001, now + 0.24);
-    body.connect(bodyEnv).connect(out);
-    body.start(now);
-    body.stop(now + 0.26);
+    playHitCue(this.ctx, this.master, this.hitDuck.gain, duckDepth, duckHoldS);
   }
 
-  /** Stage Magnet pickup: one short suction sweep and two confirmation clicks.
-   * It rides the master like the level cue, so mute is respected and a
-   * level-up weapons duck cannot swallow the feedback. */
   playStageMagnetCue(): void {
-    if (this.masterTarget <= 0) return;
-    const now = this.ctx.currentTime;
-    const out = this.ctx.createGain();
-    out.gain.value = 1;
-    out.connect(this.master);
-
-    const duration = 0.46;
-    const noiseBuffer = this.ctx.createBuffer(
-      1,
-      Math.ceil(this.ctx.sampleRate * duration),
-      this.ctx.sampleRate,
-    );
-    const samples = noiseBuffer.getChannelData(0);
-    for (let i = 0; i < samples.length; i++) {
-      const fade = 1 - i / samples.length;
-      samples[i] = (Math.random() * 2 - 1) * fade;
-    }
-    const noise = this.ctx.createBufferSource();
-    noise.buffer = noiseBuffer;
-    const sweep = this.ctx.createBiquadFilter();
-    sweep.type = 'bandpass';
-    sweep.Q.value = 0.8;
-    sweep.frequency.setValueAtTime(420, now);
-    sweep.frequency.exponentialRampToValueAtTime(3600, now + duration);
-    const noiseEnv = this.ctx.createGain();
-    noiseEnv.gain.setValueAtTime(0.0001, now);
-    noiseEnv.gain.exponentialRampToValueAtTime(0.13, now + 0.035);
-    noiseEnv.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-    noise.connect(sweep).connect(noiseEnv).connect(out);
-    noise.start(now);
-    noise.stop(now + duration);
-
-    const lift = this.ctx.createOscillator();
-    lift.type = 'triangle';
-    lift.frequency.setValueAtTime(150, now);
-    lift.frequency.exponentialRampToValueAtTime(760, now + 0.38);
-    const liftEnv = this.ctx.createGain();
-    liftEnv.gain.setValueAtTime(0.0001, now);
-    liftEnv.gain.exponentialRampToValueAtTime(0.08, now + 0.025);
-    liftEnv.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
-    lift.connect(liftEnv).connect(out);
-    lift.start(now);
-    lift.stop(now + 0.44);
-
-    for (let i = 0; i < 2; i++) {
-      const t0 = now + 0.33 + i * 0.065;
-      const click = this.ctx.createOscillator();
-      click.type = 'square';
-      click.frequency.value = i === 0 ? 1568 : 2093;
-      const clickEnv = this.ctx.createGain();
-      clickEnv.gain.setValueAtTime(0.0001, t0);
-      clickEnv.gain.exponentialRampToValueAtTime(0.045, t0 + 0.004);
-      clickEnv.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.055);
-      click.connect(clickEnv).connect(out);
-      click.start(t0);
-      click.stop(t0 + 0.06);
-    }
+    if (this.masterTarget <= 0) return; // muted
+    playStageMagnetCue(this.ctx, this.master);
   }
 
-  /** XP gem pickup: a short two-note blip whose pitch tracks how full the XP
-   *  bar is, panned to alternating sides during a flurry.
-   *
-   *  It obeys the same three rules the other cues do: silent when muted, wired
-   *  to master so no duck can swallow it, and short — a gem lands dozens of
-   *  times a minute, so anything with a tail becomes mud.
-   *
-   *  PITCH carries information rather than decoration. The note is chosen from
-   *  GEM_DEGREES by `levelProgress`, so the cue climbs as the bar fills and
-   *  drops back to the root the moment it levels: you hear how close you are
-   *  without looking at the bar. Every degree is in the run's key, so a busy
-   *  pickup streak harmonises with the track instead of fighting it.
-   *
-   *  STEREO breaks up repetition. Sides strictly alternate — true randomness
-   *  clumps, and two or three cues on the same ear is exactly the machine-gun
-   *  texture this exists to avoid — while the amount stays random, so the
-   *  sweep is irregular without stacking.
-   *
-   *  `gain`, `minGapS`, `levelProgress` and `spread` are all caller tuning,
-   *  like playHitCue's duck: the engine holds no game numbers of its own. */
   playGemCue(opts: GemCueOptions): void {
     if (this.masterTarget <= 0) return; // muted
-    if (opts.gain <= 0) return;
-    const now = this.ctx.currentTime;
-    // Throttle. Cheap and deliberate: drop the cue rather than queue it, so a
-    // vacuum sounds like a handful of pickups, not a machine gun.
-    if (now - this.lastGemCueTime < opts.minGapS) return;
-    const sinceLast = now - this.lastGemCueTime;
-    this.lastGemCueTime = now;
+    this.gemCue.play(this.ctx, this.master, opts);
+  }
 
-    const progress = Math.max(0, Math.min(1, opts.levelProgress));
-    const degreeIndex = Math.round(progress * (GEM_DEGREES.length - 1));
-    const ratio = semitonesToRate(GEM_DEGREES[degreeIndex]);
-    // Higher notes read as louder at equal amplitude, so trim as the pitch
-    // climbs. Keeps a filling bar building instead of pinning the limiter.
-    const trim = Math.max(0.65, 1 - degreeIndex * 0.03);
-
-    const out = this.ctx.createGain();
-    out.gain.value = opts.gain * trim;
-
-    // Stereo placement. Width fades out for isolated pickups so a single gem
-    // stays where the player is looking; a vacuum earns the full sweep.
-    const spread = Math.max(0, Math.min(1, opts.spread));
-    if (spread > 0) {
-      const flurry =
-        1 -
-        Math.max(
-          0,
-          Math.min(
-            1,
-            (sinceLast - GEM_FLURRY_MIN_S) / (GEM_FLURRY_MAX_S - GEM_FLURRY_MIN_S),
-          ),
-        );
-      this.gemPanSide = -this.gemPanSide;
-      const panner = this.ctx.createStereoPanner();
-      // 0.55..1 of the available width: keeps every cue audibly off-centre
-      // rather than occasionally landing back in the middle by chance.
-      panner.pan.value = this.gemPanSide * spread * flurry * (0.55 + Math.random() * 0.45);
-      out.connect(panner).connect(this.master);
-    } else {
-      out.connect(this.master);
-    }
-
-    // Two square-wave notes a fifth apart (the interval in a power chord),
-    // rising. Square because it cuts through a dense band; a fifth because it
-    // is the one interval that stays consonant against every chord the
-    // skeleton can throw under it.
-    const root = GEM_ROOT_HZ * ratio;
-    const notes = [root, root * semitonesToRate(7)];
-    for (let i = 0; i < notes.length; i++) {
-      const t0 = now + i * 0.055;
-      const osc = this.ctx.createOscillator();
-      osc.type = 'square';
-      osc.frequency.value = notes[i];
-      const env = this.ctx.createGain();
-      env.gain.setValueAtTime(0.0001, t0);
-      env.gain.exponentialRampToValueAtTime(0.05, t0 + 0.005);
-      env.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.09);
-      osc.connect(env).connect(out);
-      osc.start(t0);
-      osc.stop(t0 + 0.1);
-    }
+  playGameOverCue(): void {
+    if (this.masterTarget <= 0) return; // muted
+    playGameOverCue(this.ctx, this.master);
   }
 
   /** Freeze already-scheduled lookahead audio at an intentional game pause.
