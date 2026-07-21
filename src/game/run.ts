@@ -2090,28 +2090,38 @@ export class RunWorld {
       return;
     }
     if (!this.overflowGem || !this.gems.includes(this.overflowGem) || this.overflowGem.vacuumed) {
+      // Prefer the farthest gem the player has not been given yet: a Stage
+      // Magnet is a point-in-time snapshot, and merging into an object already
+      // travelling in that snapshot hands the reward over almost immediately.
       let farthest: Gem | null = null;
       let farthestD = -1;
+      // A map-wide vacuum flags every gem at once, so "all inbound" is the
+      // normal case during a magnet, not an edge case. Fall back to the
+      // nearest inbound gem rather than growing the array past maxGems.
+      let nearestInbound: Gem | null = null;
+      let nearestInboundD = Infinity;
       for (const gem of this.gems) {
-        // A Stage Magnet is a point-in-time snapshot. Never merge a later
-        // reward into an object already travelling in that snapshot.
-        if (gem.vacuumed) continue;
         const dx = gem.x - this.player.x;
         const dy = gem.y - this.player.y;
         const d2 = dx * dx + dy * dy;
+        if (gem.vacuumed) {
+          if (d2 < nearestInboundD) {
+            nearestInboundD = d2;
+            nearestInbound = gem;
+          }
+          continue;
+        }
         if (d2 > farthestD) {
           farthestD = d2;
           farthest = gem;
         }
       }
-      if (!farthest) {
-        // All capped gems are already inbound. One temporary overflow object
-        // keeps later rewards independent; subsequent drops merge into it.
-        farthest = { x, y, xp: 0, tier: 'red' };
-        this.gems.push(farthest);
-      }
-      this.overflowGem = farthest;
-      farthest.tier = 'red';
+      const target = farthest ?? nearestInbound;
+      // gems.length === maxGems here, and maxGems is >= 1, so one of the two
+      // always exists. Bail rather than exceed the cap if that ever changes.
+      if (!target) return;
+      this.overflowGem = target;
+      target.tier = 'red';
     }
     this.overflowGem.xp += dropped;
     this.overflowGem.tier = 'red';
@@ -2177,53 +2187,61 @@ export class RunWorld {
       return;
     }
     if (!this.overflowMusicNote || !this.musicNotes.includes(this.overflowMusicNote) || this.overflowMusicNote.vacuumed) {
+      // Same shape as spawnGemAt: prefer the farthest note not already
+      // travelling, fall back to the nearest inbound one so a map-wide vacuum
+      // cannot push the array past maxMusicNotes.
       let farthest: MusicNotePickup | null = null;
       let farthestD = -1;
+      let nearestInbound: MusicNotePickup | null = null;
+      let nearestInboundD = Infinity;
       for (const note of this.musicNotes) {
-        if (note.vacuumed) continue;
         const dx = note.x - this.player.x;
         const dy = note.y - this.player.y;
         const d2 = dx * dx + dy * dy;
+        if (note.vacuumed) {
+          if (d2 < nearestInboundD) {
+            nearestInboundD = d2;
+            nearestInbound = note;
+          }
+          continue;
+        }
         if (d2 > farthestD) {
           farthestD = d2;
           farthest = note;
         }
       }
-      if (!farthest) {
-        farthest = { x, y, value: 0, tier: 'anthem' };
-        this.musicNotes.push(farthest);
-      }
-      this.overflowMusicNote = farthest;
+      const target = farthest ?? nearestInbound;
+      if (!target) return;
+      this.overflowMusicNote = target;
     }
     this.overflowMusicNote.value += amount;
     this.overflowMusicNote.tier = 'anthem';
   }
 
-  /** Snapshot the current camera rectangle and attract every freely
-   * collectable drop inside it. Decision-bearing rewards intentionally stay
-   * walk-to-choose: level-up pedestals and chests. */
-  vacuumVisiblePickups(): VacuumResult {
+  /** Attract every freely collectable drop on the map, however far off-screen
+   * it was left. Decision-bearing rewards intentionally stay walk-to-choose:
+   * level-up pedestals and chests. */
+  vacuumAllPickups(): VacuumResult {
     const cameraX = this.player.x + PLAYER_FOOT_OFFSET.x;
     const cameraY = this.player.y + PLAYER_FOOT_OFFSET.y;
-    const halfW = this.worldW / 2;
-    const halfH = this.worldH / 2;
-    const visible = (x: number, y: number): boolean =>
-      Math.abs(x - cameraX) <= halfW && Math.abs(y - cameraY) <= halfH;
     let gems = 0;
     let notes = 0;
     for (const gem of this.gems) {
-      if (!gem.vacuumed && visible(gem.x, gem.y)) {
+      if (!gem.vacuumed) {
         gem.vacuumed = true;
         gems += 1;
       }
     }
     for (const note of this.musicNotes) {
-      if (!note.vacuumed && visible(note.x, note.y)) {
+      if (!note.vacuumed) {
         note.vacuumed = true;
         notes += 1;
       }
     }
     const result = { gems, notes };
+    // Sized to the viewport only as a starting scale — the pulse expands past
+    // the screen edge, so it suggests reach beyond the view instead of drawing
+    // a boundary the map-wide pull ignores.
     const radius = Math.hypot(this.worldW, this.worldH) * 0.55;
     this.fx?.push({ type: 'vacuum', x: cameraX, y: cameraY, radius });
     this.fx?.push({ type: 'pressure', x: this.player.x, y: this.player.y, color: 0xa06bff, label: 'STAGE MAGNET' });
@@ -2244,7 +2262,7 @@ export class RunWorld {
       const dy = this.player.y - magnet.y;
       if (dx * dx + dy * dy > STAGE_MAGNET.pickupRadius * STAGE_MAGNET.pickupRadius) continue;
       this.stageMagnets.splice(i, 1);
-      this.vacuumVisiblePickups();
+      this.vacuumAllPickups();
     }
   }
 

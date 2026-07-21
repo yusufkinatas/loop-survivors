@@ -87,7 +87,8 @@ drop. Only one can wait on the floor, another cannot drop for 90 seconds, and
 a missed magnet fades after 45 seconds.
 
 Walk onto it to snapshot every blue/green/red experience gem and gold music
-note currently visible on the screen. They surge into the player at high speed
+note left anywhere on the map, including everything dropped screens away
+earlier in the run. They surge into the player at high speed
 through their normal collection rules, so experience multipliers, queued
 level-ups, note values, and pickup bonuses remain correct. New drops created
 after the activation are not pulled. The Stage Magnet deliberately leaves
@@ -218,6 +219,6 @@ altering the player's career.
   or clear a full loadout; toggle each of the nine complete evolution recipes;
   inspect the live combined modifiers.
 - **Career:** use a disposable in-memory note wallet; create physical notes,
-  XP pickup fields, Stage Magnets, and chests; trigger the full-screen vacuum;
+  XP pickup fields, Stage Magnets, and chests; trigger the map-wide vacuum;
   grant testing currency; exercise the real gated Afterhours Shop. Nothing in
   this tab touches the player save.

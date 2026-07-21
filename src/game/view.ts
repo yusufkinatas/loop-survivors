@@ -1162,7 +1162,9 @@ export class RunView {
           gfx.scale.set(1);
           gfx.blendMode = 'add';
           this.fxLayer.addChild(gfx);
-          this.pops.push({ gfx, t: -i * 0.07, dur: 0.52, fromScale: 1, toScale: 0.06 });
+          // Expands past the screen edge rather than collapsing to a radius:
+          // the pull is map-wide, so the visual must not draw a boundary.
+          this.pops.push({ gfx, t: -i * 0.07, dur: 0.62, fromScale: 0.08, toScale: 1.7 });
         }
         this.flashes.push({ start: this.world.timeS, dur: 0.34, color: SOUNDWOOD.violet, alpha: 0.22 });
         this.pushShake(5, 0.36);

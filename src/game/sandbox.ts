@@ -384,7 +384,7 @@ export function mountSandboxPanel(
       else world.spawnGemAt(x, y, i % 5 === 0 ? 3 : 1);
     }
   });
-  button(noteControls, 'TRIGGER VACUUM', () => world.vacuumVisiblePickups());
+  button(noteControls, 'TRIGGER VACUUM', () => world.vacuumAllPickups());
   const pickupReadout = el('div', 'sb-hint', careerPage);
 
   section(careerPage, 'afterhours shop');

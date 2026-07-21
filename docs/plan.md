@@ -56,9 +56,9 @@ ground when defeated. Walking onto a chest opens it: a ready weapon evolution,
 or a health top-up when no recipe is ready.
 
 A rare one-use **Stage Magnet** can fall from a defeated enemy. Walking onto
-it vacuums every freely collectible experience gem and music note currently
-visible, while decision-bearing reward pedestals and chests remain deliberate
-walk-to-choose interactions.
+it vacuums every freely collectible experience gem and music note left anywhere
+on the map, however far off-screen, while decision-bearing reward pedestals and
+chests remain deliberate walk-to-choose interactions.
 
 ## Build Progression
 
