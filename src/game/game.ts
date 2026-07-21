@@ -145,10 +145,24 @@ export async function bootGame(
   pauseOverlay.className = 'screen pause-overlay';
   pauseOverlay.style.display = 'none';
   pauseOverlay.innerHTML =
-    '<h1>Paused</h1><div class="pause-rack"></div><div class="pause-items"></div><button class="pause-resume">RESUME SET</button><p class="hint">Escape also resumes.</p>';
+    '<h1>Paused</h1><div class="pause-rack"></div><div class="pause-items"></div><div class="pause-items pause-stats"></div><button class="pause-resume">RESUME SET</button><p class="hint">Escape also resumes.</p>';
   root.appendChild(pauseOverlay);
   const pauseRack = pauseOverlay.querySelector('.pause-rack') as HTMLElement;
   const pauseItems = pauseOverlay.querySelector('.pause-items') as HTMLElement;
+  const pauseStats = pauseOverlay.querySelector('.pause-stats') as HTMLElement;
+  /** Everything the pause screen shows about the build, in one place so ESC and
+   * a mid-pause level-up paint the same panels. */
+  function paintPausePanels(w: RunWorld): void {
+    hud.renderBand(w.tiers, {
+      into: pauseRack,
+      deactivated: deactivatedRoles,
+      pending: pendingRoles,
+      evolved: w.evolved,
+      showTiers: true,
+    });
+    hud.renderItemDetails(w.items, pauseItems);
+    hud.renderStats({ maxHp: w.playerMaxHp, armor: w.playerArmor, mods: w.buildMods }, pauseStats);
+  }
   const resumeButton = pauseOverlay.querySelector('.pause-resume') as HTMLButtonElement;
   const pauseButton = document.createElement('button');
   pauseButton.className = 'pause-live';
@@ -165,11 +179,8 @@ export async function bootGame(
     if (paused) {
       engine.clock.pause();
       engine.holdTransport();
-      // Show the current band while paused (the same rack the HUD draws).
-      if (world) {
-        hud.renderBand(world.tiers, pauseRack, deactivatedRoles, pendingRoles, world.evolved);
-        hud.renderItemDetails(world.items, pauseItems);
-      }
+      // Show the current build while paused: the band, the passives, the totals.
+      if (world) paintPausePanels(world);
     } else {
       engine.releaseTransport();
       engine.clock.resume();
@@ -410,7 +421,7 @@ export async function bootGame(
         if (world !== w || state !== 'run') return;
         if (option.kind === 'weapon') w.addWeapon(option.role, option.tier);
         else w.evolve(option.evolution.role);
-        hud.renderBand(w.tiers, undefined, deactivatedRoles, pendingRoles, w.evolved);
+        hud.renderBand(w.tiers, { deactivated: deactivatedRoles, pending: pendingRoles, evolved: w.evolved });
         refreshTrackOverlay();
         view?.flourish(w.player.x, w.player.y);
         pickAwaitingBar = false;
@@ -496,7 +507,7 @@ export async function bootGame(
       }
       w.evolve(evolution.role);
       engine.setEvolutionGain(evolution.role, evolution.gainDb);
-      hud.renderBand(w.tiers, undefined, undefined, undefined, w.evolved);
+      hud.renderBand(w.tiers, { evolved: w.evolved });
       hud.showToast(`EVOLVED · ${evolution.name}`);
     },
     onStageMagnet(result: VacuumResult): void {
@@ -561,7 +572,7 @@ export async function bootGame(
     app.stage.addChild(view.stage);
     hud.showHud(true);
     pauseButton.style.display = '';
-    hud.renderBand(w.tiers, undefined, undefined, undefined, w.evolved);
+    hud.renderBand(w.tiers, { evolved: w.evolved });
     state = 'run';
     syncTimeScaleControl(); // arm the timeScale slider for the live run
     void engine.ctx.resume();
@@ -597,7 +608,7 @@ export async function bootGame(
     app.stage.addChild(view.stage);
     sandboxPanel = mountSandboxPanel(root, engine, w, {
       onLoadout: () => {
-        hud.renderBand(w.tiers, undefined, deactivatedRoles, pendingRoles, w.evolved);
+        hud.renderBand(w.tiers, { deactivated: deactivatedRoles, pending: pendingRoles, evolved: w.evolved });
         refreshTrackOverlay();
       },
       onExit: () => {
@@ -611,7 +622,7 @@ export async function bootGame(
     });
     hud.showHud(true, true);
     pauseButton.style.display = '';
-    hud.renderBand(w.tiers, undefined, undefined, undefined, w.evolved);
+    hud.renderBand(w.tiers, { evolved: w.evolved });
     state = 'sandbox';
     syncTimeScaleControl(); // arm the timeScale slider for the sandbox
     void engine.ctx.resume();
@@ -696,12 +707,9 @@ export async function bootGame(
   const pendingRoles = new Set<Role>();
   function paintBand(): void {
     if (!world) return;
-    hud.renderBand(world.tiers, undefined, deactivatedRoles, pendingRoles, world.evolved);
-    // The pause menu mirrors the same rack; keep it truthful if it's open.
-    if (paused) {
-      hud.renderBand(world.tiers, pauseRack, deactivatedRoles, pendingRoles, world.evolved);
-      hud.renderItemDetails(world.items, pauseItems);
-    }
+    hud.renderBand(world.tiers, { deactivated: deactivatedRoles, pending: pendingRoles, evolved: world.evolved });
+    // The pause menu mirrors the same build; keep it truthful if it's open.
+    if (paused) paintPausePanels(world);
     refreshTrackOverlay();
   }
   function toggleRoleActive(role: Role): void {
