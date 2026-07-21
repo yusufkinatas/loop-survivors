@@ -287,7 +287,6 @@ export interface Zone {
   slow: boolean;
   evolved: boolean;
   driftSpeed: number;
-  damageCap: number;
   slowMul: number;
 }
 
@@ -609,7 +608,6 @@ export class RunWorld {
       moveDir: () => world.moveDir(),
       fanAround: (base) => world.fanAround(base),
       near: (x, y, r) => world.hash.query(x, y, r, buf),
-      nearestEnemy: (range) => world.nearestEnemy(range),
       nearestEnemies: (range, count) => world.nearestEnemies(range, count),
       all: () => world.enemies,
       damage: (t, amount) => world.damageEnemy(t as Enemy, amount, role),
@@ -686,7 +684,6 @@ export class RunWorld {
           slow: spec.slow,
           evolved: spec.evolved,
           driftSpeed: spec.driftSpeed,
-          damageCap: spec.damageCap,
           slowMul: spec.slowMul,
         };
         world.zones.push(zone);

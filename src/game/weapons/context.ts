@@ -125,37 +125,28 @@ export interface WeaponContext {
    *  first result still live still corrupts itself. */
   near(x: number, y: number, radius: number): readonly WeaponTarget[];
 
-  /** The single closest LIVE enemy inside `range` of the player, or null when
-   *  the screen is empty inside that radius. Compares SQUARED distances against
-   *  `range * range` with a STRICT `<`, so a body sitting exactly on the
-   *  boundary is out of range, not in it.
-   *
-   *  DRAWS NO RNG. This is the half of aimDir() that does the looking, without
-   *  the jitter that costs a draw — which is the whole reason the chord can
-   *  throw its zone at a pack for zero draws per trigger. `aimDir(0)` is NOT a
-   *  tidier spelling of it: aimDir draws once with a target and twice without.
-   *
-   *  Reads the world's enemy array in ARRAY order and keeps the FIRST strictly
-   *  closest body, so an exact tie goes to whichever spawned earlier. */
-  nearestEnemy(range: number): WeaponTarget | null;
-
   /** The `count` closest LIVE enemies inside `range` of the player, NEAREST
-   *  FIRST. For weapons that work on more than one picked target at a time —
-   *  Two Hands is the only one, and it snaps a pincer shut on each.
+   *  FIRST. Compares SQUARED distances against `range * range` with a STRICT
+   *  `<`, so a body sitting exactly on the boundary is out of range, not in it.
    *
-   *  DRAWS NO RNG, like nearestEnemy. Fewer than `count` come back when the
-   *  screen is thin, and an EMPTY ARRAY when nothing is in range; Two Hands
-   *  branches on that emptiness, so the length is meaningful and not a
-   *  convenience.
+   *  THE ONLY TARGET QUERY MODULES GET, and it serves two different appetites:
+   *  Two Hands takes the first few and snaps a pincer shut on each, while the
+   *  chord takes a wide slice as the candidate pool for a weighted random
+   *  throw. A single-target `nearestEnemy` used to sit beside this; it went
+   *  when the chord stopped picking the nearest body, since `count` 1 is
+   *  exactly it.
+   *
+   *  DRAWS NO RNG — which is what lets the chord own its randomness rather than
+   *  inherit it, at a draw count it decides. Fewer than `count` come back when
+   *  the screen is thin, and an EMPTY ARRAY when nothing is in range; both Two
+   *  Hands and the chord branch on that emptiness, so the length is meaningful
+   *  and not a convenience.
    *
    *  Reads the world's enemy array, keeps everything with a squared distance
    *  STRICTLY below `range * range`, then SORTS by that distance. The sort is
    *  Array.prototype.sort — not stable across equal distances by specification,
    *  though V8's is — so two bodies at exactly the same distance are not
-   *  guaranteed to be handed back in spawn order. Nothing today depends on it.
-   *
-   *  NOT a repeated nearestEnemy: that one hands back the FIRST strictly closest
-   *  body and has no notion of a second place. */
+   *  guaranteed to be handed back in spawn order. Nothing today depends on it. */
   nearestEnemies(range: number, count: number): readonly WeaponTarget[];
 
   /** Lock a homing shot onto one specific body, or null to leave it chasing
@@ -346,12 +337,10 @@ interface ZoneSpec {
    *  immunity from the merge pass — for the rest of its life, while Afterhours
    *  zones spawned after it drift straight over the top of it. */
   readonly evolved: boolean;
-  /** Units per second the zone crawls toward the densest pack. 0 pins it. */
+  /** Units per second the zone crawls toward the nearest body it does not
+   *  already cover, measured from its OWN centre — so zones hunt locally and
+   *  stay spread out rather than converging. 0 pins it. */
   readonly driftSpeed: number;
-  /** Ceiling on what merging can raise `damage` to. Frozen at spawn from the
-   *  zone's own damage, so a merged supercell's ceiling is the ceiling of
-   *  whichever zone SURVIVED the merge. */
-  readonly damageCap: number;
   /** Speed multiplier written onto everything a tick covers. */
   readonly slowMul: number;
 }
