@@ -197,6 +197,22 @@ function formatDummyNumber(value: number): string {
   return Math.round(value).toLocaleString('en-US');
 }
 
+/** A slow left-right lean, on top of the two-frame walk cycle, so a crowd never
+ *  reads as a field of frozen stamps. The phase is keyed off `enemy.id` so
+ *  neighbours lean out of step with each other — a synchronised crowd looks more
+ *  mechanical than no tilt at all. Amplitude stays under 4°: enough to feel
+ *  alive, not enough to register as its own animation. */
+const TILT_RADIANS = 0.065;
+
+/** Radians per second, tuned by eye against a live crowd. Exactly τ, i.e. one
+ *  full lean-and-return per second — roughly two footsteps of the walk cycle
+ *  per sway, which reads as deliberate walking rather than idle drifting. */
+const TILT_SPEED = Math.PI * 2;
+
+function enemyTilt(enemy: Enemy, phase: number): number {
+  return Math.sin(phase + enemy.id * 1.7) * TILT_RADIANS;
+}
+
 function enemyFrame(enemy: Enemy, timeS: number): number {
   switch (enemy.kind) {
     case 'bat':
@@ -929,17 +945,23 @@ export class RunView {
       }
       gfx.position.set(snap(enemy.x), snap(enemy.y));
       gfx.tint = enemy.flashT > 0 ? 0xffffff : enemy.color;
-      gfx.rotation = 0;
+      const tilt = enemyTilt(enemy, this.world.timeS * TILT_SPEED);
+      gfx.rotation = tilt;
       gfx.scale.set(1);
       if (enemy.kind === 'ghost') gfx.alpha = 0.78 + Math.sin(this.world.timeS * 3 + enemy.id) * 0.08;
       else gfx.alpha = 1;
 
       if (enemy.kind === 'batSwarm' && (enemy.moveX !== 0 || enemy.moveY !== 0)) {
-        gfx.rotation = Math.atan2(enemy.moveY, enemy.moveX);
+        gfx.rotation = Math.atan2(enemy.moveY, enemy.moveX) + tilt;
       } else if (enemy.kind === 'darter' && (enemy.dashX !== 0 || enemy.dashY !== 0)) {
-        gfx.rotation = Math.atan2(enemy.dashY, enemy.dashX);
+        gfx.rotation = Math.atan2(enemy.dashY, enemy.dashX) + tilt;
       } else if (enemy.lastMoveX < -0.01) {
+        // A mirrored sprite mirrors its lean too, so an enemy crossing the
+        // player would visibly snap to the opposite tilt at the moment it
+        // flips. Negating here keeps the lean pointing the same way in world
+        // space, and the flip stays invisible.
         gfx.scale.x = -1;
+        gfx.rotation = -tilt;
       }
     }
     for (const [enemy, gfx] of this.enemyGfx) {
