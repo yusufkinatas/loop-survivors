@@ -907,6 +907,30 @@ button.big {
   border-bottom: 1px solid rgba(49, 90, 69, 0.2);
 }
 
+/* A weapon row carries its whole ladder: tiers on the first line, the evolution
+   on the second. Stacked rather than one wide line because a name, a slot tag,
+   six tier buttons, a recipe and an EVOLVE button do not fit the panel's width
+   on a narrow window or on mobile. */
+.sb-loadout.sb-weapon {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+}
+
+.sb-weapon-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Subordinate to the tier line above it: indented and dimmer, so the row still
+   reads as one weapon rather than two entries. */
+.sb-weapon-evo {
+  padding-left: 14px;
+  opacity: 0.85;
+}
+
 .sb-enemy-info {
   display: flex;
   flex-direction: column;

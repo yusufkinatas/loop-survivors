@@ -15,7 +15,7 @@ import {
 } from './config';
 import { TIER_NUMERALS } from './hud';
 import {
-  EVOLUTIONS,
+  EVOLUTION_BY_ROLE,
   ITEMS,
   ITEM_IDS,
   ITEM_MAX_LEVEL,
@@ -33,9 +33,6 @@ import { endlessScale } from './tour';
 const SANDBOX_ENEMY_CATALOG: readonly EnemyKind[] = ALL_ENEMY_KINDS;
 const SANDBOX_WEAPON_CATALOG: readonly Role[] = Object.freeze(supportedRoles());
 const SANDBOX_ITEM_CATALOG: readonly ItemId[] = ITEM_IDS;
-const SANDBOX_EVOLUTION_CATALOG: readonly EvolutionDefinition[] = Object.freeze(
-  Object.values(EVOLUTIONS),
-);
 
 type TabId = 'combat' | 'build' | 'career';
 
@@ -244,18 +241,29 @@ export function mountSandboxPanel(
     for (const role of SANDBOX_WEAPON_CATALOG) setWeaponTier(role, 0);
   });
 
+  // One weapon = one row = the whole ladder, off through IV through evolved.
+  // The evolve control used to live in its own section far below every weapon
+  // and every passive, so taking a single weapon from off to evolved meant
+  // scrolling past the entire tab and back for each weapon in turn.
+  //
+  // The row is TWO LINES rather than one wide one. A weapon line already
+  // carries a name, a slot tag and six tier buttons; adding a button plus
+  // recipe text to it would overflow the panel, which is width-constrained on a
+  // narrow window and on mobile. Two lines fit at any width without guessing.
   const weaponButtons = new Map<Role, ChoiceButtons<number>>();
+  const evolutionButtons = new Map<Role, HTMLButtonElement>();
   const custom = sampledRoles();
   for (const role of SANDBOX_WEAPON_CATALOG) {
     const voice = engine.voices.get(role);
     if (!voice) continue;
-    const row = el('div', 'sb-loadout', build);
+    const row = el('div', 'sb-loadout sb-weapon', build);
     row.style.setProperty('--voice-color', voice.kit.color);
-    const info = el('div', 'sb-enemy-info', row);
+    const tierLine = el('div', 'sb-weapon-line', row);
+    const info = el('div', 'sb-enemy-info', tierLine);
     const label = el('span', `sb-loadout-label ${custom.has(role) ? 'custom' : ''}`, info, voice.kit.name);
     label.title = `${SLOT_LABEL[slotOf(role)]} slot${custom.has(role) ? ' · sample-backed' : ''}`;
     el('span', 'sb-enemy-stats', info, SLOT_LABEL[slotOf(role)]);
-    const controls = el('div', 'sb-btns', row);
+    const controls = el('div', 'sb-btns', tierLine);
     const choices: ChoiceButtons<number> = { value: () => world.tiers.get(role) ?? 0, options: [] };
     choices.options.push({ value: 0, button: button(controls, '⏻', () => setWeaponTier(role, 0)) });
     for (let tier = 1; tier <= 4; tier++) {
@@ -265,6 +273,29 @@ export function mountSandboxPanel(
       });
     }
     weaponButtons.set(role, choices);
+
+    // The lookup is Partial by design, so a weapon may legitimately have no
+    // evolution. Every supported weapon has one today; if that ever changes the
+    // row simply ends after its tier line rather than growing an empty control.
+    const evolution = EVOLUTION_BY_ROLE[role];
+    if (!evolution) continue;
+    const evoLine = el('div', 'sb-weapon-line sb-weapon-evo', row);
+    // The evolved form is its own voice with its own colour — worth keeping,
+    // since the row above is tinted by the base weapon's.
+    evoLine.style.setProperty('--voice-color', `#${evolution.color.toString(16).padStart(6, '0')}`);
+    const evoInfo = el('div', 'sb-enemy-info', evoLine);
+    const evoName = el('span', 'sb-loadout-label', evoInfo, evolution.name);
+    evoName.title = evolution.description;
+    // The requirement line is the thing that tells you WHY an evolution is not
+    // available yet, so it has to survive the move off the old section.
+    el(
+      'span',
+      'sb-enemy-stats',
+      evoInfo,
+      `${ROLE_META[evolution.role].name} IV + ${ITEMS[evolution.item].name} V`,
+    );
+    const evoControls = el('div', 'sb-btns', evoLine);
+    evolutionButtons.set(role, button(evoControls, 'EVOLVE', () => toggleEvolution(evolution)));
   }
 
   section(build, 'passive items');
@@ -300,25 +331,6 @@ export function mountSandboxPanel(
       });
     }
     itemButtons.set(id, choices);
-  }
-
-  section(build, 'evolution recipes · click to toggle');
-  const evolutionButtons = new Map<Role, HTMLButtonElement>();
-  for (const evolution of SANDBOX_EVOLUTION_CATALOG) {
-    const row = el('div', 'sb-loadout', build);
-    row.style.setProperty('--voice-color', `#${evolution.color.toString(16).padStart(6, '0')}`);
-    const info = el('div', 'sb-enemy-info', row);
-    const name = el('span', 'sb-loadout-label', info, evolution.name);
-    name.title = evolution.description;
-    el(
-      'span',
-      'sb-enemy-stats',
-      info,
-      `${ROLE_META[evolution.role].name} IV + ${ITEMS[evolution.item].name} V`,
-    );
-    const controls = el('div', 'sb-btns', row);
-    const evolveButton = button(controls, 'EVOLVE', () => toggleEvolution(evolution));
-    evolutionButtons.set(evolution.role, evolveButton);
   }
 
   const buildReadout = el('div', 'sb-hint', build);
@@ -504,9 +516,10 @@ export function mountSandboxPanel(
     invulnButton.textContent = `INVULN ${world.invincible ? 'ON' : 'OFF'}`;
     threatStatus.textContent = `minute ${Math.floor(world.timeS / 60)} · freshly spawned enemies use this scale`;
     levelStatus.textContent = `level ${world.level} · HP ${Math.ceil(world.player.hp)}/${world.playerMaxHp}`;
-    for (const evolution of SANDBOX_EVOLUTION_CATALOG) {
-      const evolved = world.evolved.has(evolution.role);
-      const control = evolutionButtons.get(evolution.role)!;
+    // Driven off the buttons that actually exist, not off a catalog: a weapon
+    // with no evolution contributes no entry and needs no special case.
+    for (const [role, control] of evolutionButtons) {
+      const evolved = world.evolved.has(role);
       control.classList.toggle('on', evolved);
       control.textContent = evolved ? 'CLEAR EVO' : 'EVOLVE';
     }

@@ -188,7 +188,7 @@ const EVOLUTION_IDS = [
   'gravityBell',
 ] as const;
 
-export type EvolutionId = (typeof EVOLUTION_IDS)[number];
+type EvolutionId = (typeof EVOLUTION_IDS)[number];
 
 export interface EvolutionDefinition {
   id: EvolutionId;
@@ -201,7 +201,7 @@ export interface EvolutionDefinition {
   gainDb: number;
 }
 
-export const EVOLUTIONS: Record<EvolutionId, EvolutionDefinition> = {
+const EVOLUTIONS: Record<EvolutionId, EvolutionDefinition> = {
   redlineStomp: {
     id: 'redlineStomp', role: 'kick', item: 'highTops', name: 'Redline Stomp', color: 0xff8a55, gainDb: 0,
     description: 'Four floor strips cross through the entire crowd in one colossal stomp.', signature: 'four-way cross',
