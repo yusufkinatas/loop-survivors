@@ -151,7 +151,7 @@ merely another percentage upgrade.
 | Bass + Heavy Amp | **Subquake** | The directional wave becomes an expanding ring with unlimited pierce. |
 | Chord + Wide Lens | **Afterhours** | Huge drifting slow zones seek dense crowds and merge into larger supercells. |
 | Lead + Needle Tips | **Neon Serpent** | A homing serpent pierces eleven targets and grows a giant head every fifth trigger. |
-| Clap + Padded Jacket | **Two Hands** | Paired slabs snap shut on the nearest few enemies, crushing them and dragging survivors inward. |
+| Clap + Padded Jacket | **Two Hands** | Paired slabs snap shut on the nearest few enemies and crush whatever they close on. |
 | Arp + Extension Cable | **Event Horizon** | Counter-rotating pairs form a dense, breathing crown around the player. |
 
 Once every ordinary weapon and passive reward is exhausted, level-ups become
