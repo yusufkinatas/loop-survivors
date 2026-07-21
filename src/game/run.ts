@@ -15,6 +15,7 @@ import {
   DAMAGE_FEEDBACK,
   DARTER,
   ENEMIES,
+  BUILD,
   HEALTH_PICKUP,
   MAD_FOREST_FRAMES,
   MAX_ALIVE_HARD,
@@ -884,11 +885,15 @@ export class RunWorld {
   }
 
   /** Add a weapon or raise its tier. The pulse fires when the change lands
-   *  (next-bar entry), so eye and ear agree on the moment. */
+   *  (next-bar entry), so eye and ear agree on the moment.
+   *
+   *  `tiers` doubles as the slot order the rack and the number keys read, so
+   *  this must only ever append: `Map.set` on a role already present raises
+   *  its tier WITHOUT moving it, which is exactly the wanted behaviour. */
   addWeapon(role: Role, tier = 1): void {
     this.tiers.set(role, tier);
     this.spawnRing(this.player.x, this.player.y, 220, ROLE_COLORS[role], 0.6);
-    if (this.tiers.size >= 7) this.markMilestone('fullBand');
+    if (this.tiers.size >= BUILD.weaponCap) this.markMilestone('fullBand');
   }
 
   /** Sandbox loadout editor: drop a weapon entirely. */

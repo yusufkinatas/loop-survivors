@@ -8,7 +8,6 @@ import { getChart } from '../audio/chartstore';
 import type { MusicEngine } from '../audio/engine';
 import type { Kit, Role } from '../audio/kits';
 import { STEPS_PER_BAR, STEPS_PER_PHRASE } from '../audio/scale';
-import { SLOTS, ownerOfSlot } from './band';
 
 interface Row {
   /** Phrase steps (0..63) on which this voice's chart fires. */
@@ -45,9 +44,8 @@ export function mountTrackOverlay(
   ): void {
     root.replaceChildren();
     rows = [];
-    for (const slot of SLOTS) {
-      const role = ownerOfSlot(slot, tiers);
-      if (!role) continue;
+    // Acquisition order, matching the HUD rack and the number-key toggles.
+    for (const role of tiers.keys()) {
       const kit = kits.get(role)!;
       const tier = tiers.get(role) ?? 1;
       const off = deactivated.has(role);

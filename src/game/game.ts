@@ -7,7 +7,6 @@ import type { MusicEngine } from '../audio/engine';
 import { SOUNDSET } from '../audio/soundset';
 import { ROLE_COLORS, ROLES, type Kit, type Role } from '../audio/kits';
 import { LEVELUP } from './config';
-import { SLOTS, ownerOfSlot } from './band';
 import { mountTrackOverlay } from './trackoverlay';
 import { Hud } from './hud';
 import { pushDamageFeedback } from './damage-feedback';
@@ -626,6 +625,9 @@ export async function bootGame(
     resetUpgradeQueue();
     liveAcc = 0;
     applyGain();
+    // Cue first, then cut the track: the collapse rides master, so it rings
+    // out over the silence the stopped clock leaves behind.
+    engine.playGameOverCue();
     engine.clock.stop();
     engine.clearBarQueue();
     hud.showHud(false);
@@ -680,8 +682,8 @@ export async function bootGame(
     if (show) refreshTrackOverlay();
   }
 
-  // Number-key instrument toggles (dev mechanism): Digit1..Digit7 map to the
-  // seven band slots in rack order and activate/deactivate the instrument owning
+  // Number-key instrument toggles (dev mechanism): Digit1..Digit5 map to the
+  // five weapon slots in acquisition order and activate/deactivate the weapon in
   // that slot, quantized to the next heard bar. Deactivation flips the voice's
   // `enabled` flag: a disabled voice generates no triggers, so its sound AND its
   // damage stop together because live damage rides the engine's triggers.
@@ -960,10 +962,9 @@ export async function bootGame(
       return;
     }
     // Number-key instrument toggles are live only in a run or sandbox.
-    if (/^Digit[1-7]$/.test(e.code) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (/^Digit[1-5]$/.test(e.code) && !e.ctrlKey && !e.metaKey && !e.altKey) {
       if ((state === 'run' || state === 'sandbox') && world) {
-        const slot = SLOTS[Number(e.code.slice(5)) - 1];
-        const role = ownerOfSlot(slot, world.tiers);
+        const role = [...world.tiers.keys()][Number(e.code.slice(5)) - 1];
         if (role) toggleRoleActive(role); // empty slot: the key does nothing
       }
       return;

@@ -6,7 +6,6 @@ import type { MusicEngine } from '../audio/engine';
 import { type Role, ROLE_META } from '../audio/kits';
 import { sampledRoles } from '../audio/kits/index';
 import { supportedRoles } from '../audio/soundset';
-import { SLOT_LABEL, slotOf } from './band';
 import {
   ALL_ENEMY_KINDS,
   ENEMY_LABELS,
@@ -265,8 +264,7 @@ export function mountSandboxPanel(
     row.style.setProperty('--voice-color', voice.kit.color);
     const info = el('div', 'sb-enemy-info', row);
     const label = el('span', `sb-loadout-label ${custom.has(role) ? 'custom' : ''}`, info, voice.kit.name);
-    label.title = `${SLOT_LABEL[slotOf(role)]} slot${custom.has(role) ? ' · sample-backed' : ''}`;
-    el('span', 'sb-enemy-stats', info, SLOT_LABEL[slotOf(role)]);
+    if (custom.has(role)) label.title = 'sample-backed';
     const controls = el('div', 'sb-btns', row);
     // EVOLVED_RUNG is the selected value when the weapon is evolved, so ★ and
     // the tier buttons are one exclusive set and the highlight cannot land on
