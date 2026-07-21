@@ -966,17 +966,21 @@ export async function bootGame(
   const GEM_TIMBRE_KEY = 'loop.gemcue.timbre';
   const GEM_MOTION_KEY = 'loop.gemcue.motion';
   const GEM_GAIN_KEY = 'loop.gemcue.gain';
+  const GEM_SPREAD_KEY = 'loop.gemcue.spread';
   const storedTimbre = localStorage.getItem(GEM_TIMBRE_KEY) as GemCueTimbre | null;
   if (storedTimbre && GEM_CUE_TIMBRES.includes(storedTimbre)) GEM_CUE.timbre = storedTimbre;
   const storedMotion = localStorage.getItem(GEM_MOTION_KEY) as GemCueMotion | null;
   if (storedMotion && GEM_CUE_MOTIONS.includes(storedMotion)) GEM_CUE.motion = storedMotion;
   // Read the raw string first: Number(null) is 0, so parsing unconditionally
   // would start every fresh browser silent instead of at the config default.
-  const storedGainRaw = localStorage.getItem(GEM_GAIN_KEY);
-  if (storedGainRaw !== null) {
-    const storedGain = Number(storedGainRaw);
-    if (Number.isFinite(storedGain) && storedGain >= 0) GEM_CUE.gain = storedGain;
-  }
+  const storedNumber = (key: string): number | null => {
+    const raw = localStorage.getItem(key);
+    if (raw === null) return null;
+    const value = Number(raw);
+    return Number.isFinite(value) && value >= 0 ? value : null;
+  };
+  GEM_CUE.gain = storedNumber(GEM_GAIN_KEY) ?? GEM_CUE.gain;
+  GEM_CUE.spread = storedNumber(GEM_SPREAD_KEY) ?? GEM_CUE.spread;
 
   /** Audition the current settings. A random bar position so the 'xp-bar'
    *  motion demonstrates its range; the other motions ignore it. */
@@ -1021,29 +1025,42 @@ export async function bootGame(
     localStorage.setItem(GEM_MOTION_KEY, value);
   });
 
-  const gemGainControl = document.createElement('label');
-  gemGainControl.className = 'ts-control';
-  const gemGainLabel = document.createElement('span');
-  gemGainLabel.className = 'ts-label';
-  const gemGainSlider = document.createElement('input');
-  gemGainSlider.type = 'range';
-  gemGainSlider.min = '0';
-  gemGainSlider.max = '1.5';
-  gemGainSlider.step = '0.05';
-  gemGainSlider.value = String(GEM_CUE.gain);
-  gemGainControl.append(gemGainLabel, gemGainSlider);
-  hud.appendDebug(gemGainControl);
-  const paintGemGain = (): void => {
-    gemGainLabel.textContent = `gem vol ${GEM_CUE.gain.toFixed(2)}`;
+  const gemSlider = (
+    labelText: string,
+    max: number,
+    key: string,
+    read: () => number,
+    write: (value: number) => void,
+  ): void => {
+    const control = document.createElement('label');
+    control.className = 'ts-control';
+    const label = document.createElement('span');
+    label.className = 'ts-label';
+    const slider = document.createElement('input');
+    slider.type = 'range';
+    slider.min = '0';
+    slider.max = String(max);
+    slider.step = '0.05';
+    slider.value = String(read());
+    control.append(label, slider);
+    hud.appendDebug(control);
+    const paint = (): void => {
+      label.textContent = `${labelText} ${read().toFixed(2)}`;
+    };
+    slider.addEventListener('input', () => {
+      write(Number(slider.value));
+      localStorage.setItem(key, String(read()));
+      paint();
+      // Dragging fires these fast enough to count as a flurry, which is what
+      // opens the stereo width up — so the spread slider auditions itself.
+      auditionGemCue();
+    });
+    slider.addEventListener('change', () => slider.blur());
+    paint();
   };
-  gemGainSlider.addEventListener('input', () => {
-    GEM_CUE.gain = Number(gemGainSlider.value);
-    localStorage.setItem(GEM_GAIN_KEY, String(GEM_CUE.gain));
-    paintGemGain();
-    auditionGemCue();
-  });
-  gemGainSlider.addEventListener('change', () => gemGainSlider.blur());
-  paintGemGain();
+
+  gemSlider('gem vol', 1.5, GEM_GAIN_KEY, () => GEM_CUE.gain, (v) => (GEM_CUE.gain = v));
+  gemSlider('spread', 1, GEM_SPREAD_KEY, () => GEM_CUE.spread, (v) => (GEM_CUE.spread = v));
 
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Escape') {

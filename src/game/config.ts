@@ -45,6 +45,11 @@ export const GEM_CUE = {
   motion: 'ladder' as GemCueMotion,
   /** Scales the cue's envelope peaks. 0 silences it. */
   gain: 0.7,
+  /** Stereo width. Consecutive pickups alternate ears, so vacuuming a big
+   *  floor sweeps across the field rather than chattering in the centre.
+   *  Fades toward mono for isolated pickups — a lone gem jumping to one ear
+   *  reads as a bug. 0 is mono. */
+  spread: 0.7,
   /** Minimum seconds between cues; extras are dropped, not queued. */
   minGapS: 0.06,
 };

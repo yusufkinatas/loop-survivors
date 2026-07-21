@@ -190,6 +190,13 @@ const GEM_PARTIAL_CEILING_HZ = 9000;
  *  always plays the root and only a genuine cluster climbs. */
 const GEM_LADDER_RESET_S = 0.55;
 
+/** Below this gap between pickups, the stereo spread is at full width; by
+ *  GEM_FLURRY_MAX_S it has closed back to centre. The point is that a lone
+ *  gem should NOT jump to one ear — that reads as a bug, not an effect. Width
+ *  is something a flurry earns. */
+const GEM_FLURRY_MIN_S = 0.15;
+const GEM_FLURRY_MAX_S = 0.6;
+
 export interface GemCueOptions {
   timbre: GemCueTimbre;
   motion: GemCueMotion;
@@ -199,6 +206,10 @@ export interface GemCueOptions {
   minGapS: number;
   /** 0..1 toward the next level. Only the 'xp-bar' motion reads it. */
   levelProgress: number;
+  /** 0..1 stereo width. Consecutive cues alternate sides, so a fast run of
+   *  pickups sweeps left/right instead of piling up in the middle. Scaled
+   *  down for isolated pickups (see GEM_FLURRY_MIN_S); 0 is mono. */
+  spread: number;
 }
 
 export class MusicEngine {
@@ -244,6 +255,10 @@ export class MusicEngine {
    *  variant has climbed. Audio-clock time, so a paused context freezes both. */
   private lastGemCueTime = -Infinity;
   private gemLadderStep = 0;
+  /** Which side the next cue pans to. Strictly alternating rather than random:
+   *  true randomness clumps, and two or three cues landing on the same ear is
+   *  exactly the machine-gun texture the spread exists to break up. */
+  private gemPanSide = 1;
 
   constructor(
     ctx: AudioContext,
@@ -637,7 +652,31 @@ export class MusicEngine {
 
     const out = this.ctx.createGain();
     out.gain.value = opts.gain * trim;
-    out.connect(this.master);
+
+    // Stereo placement. Sides alternate strictly; only the AMOUNT is random,
+    // so a vacuum sweeps across the field instead of chattering in the centre,
+    // and never lands twice on the same ear. Width fades out for isolated
+    // pickups so a single gem stays where the player is looking.
+    const spread = Math.max(0, Math.min(1, opts.spread));
+    if (spread > 0) {
+      const flurry =
+        1 -
+        Math.max(
+          0,
+          Math.min(
+            1,
+            (sinceLast - GEM_FLURRY_MIN_S) / (GEM_FLURRY_MAX_S - GEM_FLURRY_MIN_S),
+          ),
+        );
+      this.gemPanSide = -this.gemPanSide;
+      const panner = this.ctx.createStereoPanner();
+      // 0.55..1 of the available width: keeps every cue audibly off-centre
+      // rather than occasionally landing back in the middle by chance.
+      panner.pan.value = this.gemPanSide * spread * flurry * (0.55 + Math.random() * 0.45);
+      out.connect(panner).connect(this.master);
+    } else {
+      out.connect(this.master);
+    }
 
     if (opts.timbre === 'blip') {
       const root = GEM_ROOT_HZ * ratio;
