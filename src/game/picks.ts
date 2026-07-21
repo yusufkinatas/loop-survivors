@@ -26,12 +26,12 @@ import {
 } from './items';
 import type { Rng } from './rng';
 
-export const OFFER_COUNT = 3;
-export const WEAPON_WEIGHT = 3;
-export const NEW_ITEM_WEIGHT = 2.4;
-export const OWNED_ITEM_WEIGHT = 2.8;
-export const FORCED_ITEM_LEVEL = 5;
-export const FORCED_ITEM_UNTIL_OWNED = 2;
+const OFFER_COUNT = 3;
+const WEAPON_WEIGHT = 3;
+const NEW_ITEM_WEIGHT = 2.4;
+const OWNED_ITEM_WEIGHT = 2.8;
+const FORCED_ITEM_LEVEL = 5;
+const FORCED_ITEM_UNTIL_OWNED = 2;
 
 export interface WeaponPickOption {
   kind: 'weapon';
@@ -39,16 +39,16 @@ export interface WeaponPickOption {
   tier: number;
 }
 
-export interface ItemPickOption {
+interface ItemPickOption {
   kind: 'item';
   item: ItemId;
   tier: number;
 }
 
-export const ENCORE_IDS = ['heal', 'damage', 'move', 'area'] as const;
-export type EncoreId = (typeof ENCORE_IDS)[number];
+const ENCORE_IDS = ['heal', 'damage', 'move', 'area'] as const;
+type EncoreId = (typeof ENCORE_IDS)[number];
 
-export interface EncorePickOption {
+interface EncorePickOption {
   kind: 'encore';
   encore: EncoreId;
   /** Heal amount or percentage-point increase to the run-only bonus. */
@@ -57,14 +57,14 @@ export interface EncorePickOption {
   cap: number | null;
 }
 
-export type PickKind = 'weapon' | 'item' | 'encore';
+type PickKind = 'weapon' | 'item' | 'encore';
 
 /**
  * A pick discriminated by `kind`. The default remains the weapon shape while
  * the existing shell migrates to configured offers; use `AnyPickOption` (or
  * `PickOption<PickKind>`) anywhere that handles the complete economy.
  */
-export type PickOption<K extends PickKind = 'weapon'> =
+type PickOption<K extends PickKind = 'weapon'> =
   K extends 'weapon'
     ? WeaponPickOption
     : K extends 'item'
@@ -76,13 +76,13 @@ export type PickOption<K extends PickKind = 'weapon'> =
 export type AnyPickOption = PickOption<PickKind>;
 
 /** Current run-only Encore bonuses, stored as percentage points. */
-export interface EncoreProgress {
+interface EncoreProgress {
   damagePct: number;
   movePct: number;
   areaPct: number;
 }
 
-export const EMPTY_ENCORE_PROGRESS: Readonly<EncoreProgress> = {
+const EMPTY_ENCORE_PROGRESS: Readonly<EncoreProgress> = {
   damagePct: 0,
   movePct: 0,
   areaPct: 0,

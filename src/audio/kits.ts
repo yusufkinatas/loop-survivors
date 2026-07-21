@@ -65,7 +65,7 @@ export interface Kit {
   tune?: number;
 }
 
-export const RENDER_RATE = 44100;
+const RENDER_RATE = 44100;
 
 /** A mono offline render context of `seconds` length at the render rate.
  *  Exported so the soundset kit builders (src/audio/kits/*) synthesize on the

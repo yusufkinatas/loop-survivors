@@ -40,7 +40,7 @@ export interface LabVoiceDef {
   build: (ctx: BaseAudioContext) => Promise<Map<string, AudioBuffer>>;
 }
 
-export interface LabSection {
+interface LabSection {
   id: string;
   name: string;
   /** voice id -> chart; a voice missing from a section is silent in it. */

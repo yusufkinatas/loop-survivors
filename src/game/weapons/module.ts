@@ -14,7 +14,7 @@ import type { WeaponContext, WeaponTarget } from './context';
  *  NOTE the shared, world-owned projectile loop sits BETWEEN 'pinches' and
  *  'zones'. It is not a phase name because no module owns it — weapons whose
  *  behavior lives inside it get ProjectileBehavior instead. */
-export const TICK_PHASES = ['strikes', 'pinches', 'zones', 'shockwaves', 'wells'] as const;
+const TICK_PHASES = ['strikes', 'pinches', 'zones', 'shockwaves', 'wells'] as const;
 export type TickPhase = (typeof TICK_PHASES)[number];
 
 /** The world-independent half of a weapon's identity: numbers only, no state. */
@@ -25,8 +25,9 @@ export interface WeaponStats {
    *  generically: the module owns the TABLE, the world owns the TRANSFORM. */
   readonly tiers: readonly [WeaponConf, WeaponConf, WeaponConf, WeaponConf];
   /** Pedestal copy, indexed [tier - 1]. Relocated verbatim from config's
-   *  TIER_LINES, which today has NO reader anywhere in src/ — relocating it
-   *  must not "helpfully" wire it into the pedestal. */
+   *  TIER_LINES (since deleted, along with the empty fallback it fed). Has NO
+   *  reader anywhere in src/ — owning it here must not "helpfully" wire it
+   *  into the pedestal. */
   readonly tierLines: readonly [string, string, string, string];
 }
 

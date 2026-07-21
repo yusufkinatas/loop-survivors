@@ -11,7 +11,7 @@ import { DAMAGE_FEEDBACK } from '../../game/config';
  *  whatever window it gets, so the whole box is always visible. */
 export const ARENA = { w: 1240, h: 760 };
 
-export const BOSS_PLAYER = {
+const BOSS_PLAYER = {
   hp: 100,
   speed: 258,
   radius: 11,

@@ -122,7 +122,7 @@ export type EnemyKind =
   | 'shielded'
   | 'elite'
   // Mad Forest parity roster. The legacy kinds above remain for development
-  // fixtures and the dormant pre-parity director.
+  // fixtures.
   | 'bat'
   | 'redBat'
   | 'redBat2'
@@ -167,11 +167,11 @@ export interface EnemyConf {
 /** Official-demo coordinate conversion, normalized from a 456-high legacy
  * world to the 800-high reference view, with current normal Mad Forest's
  * enemy MoveSpeed x1.1 modifier (official wiki revision 89346). */
-export const ENEMY_SPEED_UNIT = 0.231 * (800 / 456) * 1.1;
+const ENEMY_SPEED_UNIT = 0.231 * (800 / 456) * 1.1;
 
 /** Phaser 3.55 floors the half-width used by circle intersection after the
  * source requests a radius of 40% of the active atlas-frame width. */
-export function legacyEnemyRadius(spriteWidth: number): number {
+function legacyEnemyRadius(spriteWidth: number): number {
   return Math.floor(spriteWidth * 0.4) * (800 / 456);
 }
 
@@ -215,7 +215,7 @@ export const MAD_FOREST_FRAMES: Partial<Record<EnemyKind, readonly LegacyEnemyFr
   ],
 };
 
-export const BAT_SWARM_RADII = MAD_FOREST_FRAMES.batSwarm!.map(
+const BAT_SWARM_RADII = MAD_FOREST_FRAMES.batSwarm!.map(
   (frame) => legacyEnemyRadius(frame.width),
 ) as readonly number[];
 
@@ -406,43 +406,6 @@ export function madForestEnemyStats(kind: EnemyKind, playerLevel: number) {
   };
 }
 
-/** @deprecated Archival pre-parity visual scaling; RunWorld does not call it.
- * Visual toughness bands (gate B round 3: a minute-7 swarmer is 16x a
- *  minute-1 swarmer and looked identical). The shape stays the kind's
- *  read; the band carries the danger read: color runs cool to hot, size
- *  creeps up, and the top band gets a dark core. */
-export const ENEMY_BANDS = {
-  /** Run progress (0..1) at which the next band starts. */
-  t01: [0.28, 0.55, 0.78],
-  sizeMul: [1, 1.12, 1.22, 1.34],
-  colors: {
-    swarmer: [0x9aa0b4, 0xc9b478, 0xd98a56, 0xd94f5a],
-    tank: [0x6a7086, 0x94805e, 0xb06a46, 0xc04858],
-    darter: [0xe08a5a, 0xe8a04a, 0xff7a3c, 0xff4658],
-    splitter: [0x8fb46a, 0xa8b45e, 0xc09a4e, 0xc85a52],
-    circler: [0x6ac2d0, 0x6ab0c8, 0x7a9ad0, 0x9a6ad0],
-    shielded: [0x9a86c0, 0xa07ab0, 0xb06a90, 0xc04858],
-    elite: [0xd94f8a, 0xe0507a, 0xe85068, 0xff4050],
-  } as Record<EnemyKind, number[]>,
-};
-
-/** @deprecated Archival pre-parity scaling. */
-export function enemyScaling(
-  t01: number,
-  kind: EnemyKind,
-): { hpMul: number; dmgMul: number; spdMul: number; xpMul: number; band: number } {
-  const t = Math.min(1, Math.max(0, t01));
-  let band = 0;
-  for (const th of ENEMY_BANDS.t01) if (t >= th) band++;
-  return {
-    hpMul: 1 + (ENEMIES.hpScaleEnd - 1) * Math.pow(t, ENEMIES.rampExp),
-    dmgMul: 1 + (ENEMIES.damageScaleEnd - 1) * t,
-    spdMul: kind === 'darter' ? 1 : 1 + (ENEMIES.speedScaleEnd - 1) * t,
-    xpMul: 1 + 3 * Math.pow(t, 1.3),
-    band,
-  };
-}
-
 /** Darter burst cycle: dash flat-out, stop, re-aim, dash again. */
 export const DARTER = {
   dashS: 0.55,
@@ -458,214 +421,6 @@ export const CIRCLER = { orbitR: 150 };
 
 /** Shielded: shield pool = hp*shieldMul, scaled by hpMul. */
 export const SHIELDED = { shieldMul: 1.0 };
-
-/** @deprecated Archival pre-parity director. Active stage data lives in
- * madforest.ts and this table is never read by RunWorld. `set` beats change
- *  the steady pressure (rate + weighted kind mix) from that time on; `event`
- *  beats fire a formation once. Breathers = low-rate `set` beats after event
- *  clusters. The steady rate must overrun an AFK player by the finale. */
-export type Formation = 'ring' | 'surge' | 'pincer' | 'elite';
-export type KindWeights = Partial<Record<EnemyKind, number>>;
-
-export type DirectorBeat =
-  | { atS: number; set: { rate: number; mix: KindWeights } }
-  | { atS: number; event: { formation: Formation; kind: EnemyKind; count: number } };
-
-/** Time-sorted. Beats at equal `atS` fire in array order in the same frame.
- *
- *  Sawtooth structure (VS compressed to 8 min): each minute introduces one
- *  new kind as a telegraphed spike (its intro event), pressure climbs to a
- *  minute-end event cluster, then a short low-rate breather resets tension.
- *  Introduction order: swarmer 0:00, darter 0:40, circler 1:30, splitter
- *  2:30, shielded 4:30, tank 5:30; elite recurs as an
- *  objective event from 1:15. Danger scales via density + HP; the finale
- *  (7:00 on) drops the breathers and overruns any build. */
-export const SPAWN_DIRECTOR: DirectorBeat[] = [
-  // -- minute 0: swarmers only, hot enough that standing still already hurts.
-  { atS: 0, set: { rate: 6, mix: { swarmer: 1 } } },
-  { atS: 20, set: { rate: 9, mix: { swarmer: 1 } } },
-  // -- 0:40 darter intro spike, then darters join the steady mix.
-  { atS: 40, event: { formation: 'surge', kind: 'darter', count: 16 } },
-  { atS: 45, set: { rate: 10, mix: { swarmer: 0.86, darter: 0.14 } } },
-  // -- minute 1: first ring, breather, then the first elite objective.
-  { atS: 60, event: { formation: 'ring', kind: 'swarmer', count: 30 } },
-  { atS: 62, set: { rate: 5, mix: { swarmer: 0.86, darter: 0.14 } } }, // breather
-  { atS: 72, set: { rate: 11, mix: { swarmer: 0.86, darter: 0.14 } } },
-  { atS: 75, event: { formation: 'elite', kind: 'elite', count: 1 } },
-  // -- 1:30 circler intro: a harassing orbit forces movement.
-  { atS: 90, event: { formation: 'surge', kind: 'circler', count: 8 } },
-  { atS: 92, set: { rate: 12, mix: { swarmer: 0.8, darter: 0.12, circler: 0.08 } } },
-  { atS: 105, event: { formation: 'pincer', kind: 'darter', count: 10 } },
-  // -- minute 2 spike: bigger ring, breather after.
-  { atS: 120, event: { formation: 'ring', kind: 'swarmer', count: 50 } },
-  { atS: 122, set: { rate: 6, mix: { swarmer: 0.84, darter: 0.08, circler: 0.08 } } }, // breather
-  { atS: 135, set: { rate: 13, mix: { swarmer: 0.84, darter: 0.08, circler: 0.08 } } },
-  // -- 2:30 splitter intro: the early-mid wall (5-10s of focused fire).
-  { atS: 150, event: { formation: 'surge', kind: 'splitter', count: 5 } },
-  {
-    atS: 152,
-    set: { rate: 14, mix: { swarmer: 0.78, darter: 0.08, circler: 0.08, splitter: 0.06 } },
-  },
-  // -- minute 3 spike: elite + darter pincer, breather after.
-  { atS: 180, event: { formation: 'elite', kind: 'elite', count: 1 } },
-  { atS: 190, event: { formation: 'pincer', kind: 'darter', count: 12 } },
-  {
-    atS: 192,
-    set: { rate: 7, mix: { swarmer: 0.78, darter: 0.08, circler: 0.08, splitter: 0.06 } },
-  }, // breather
-  {
-    atS: 205,
-    set: { rate: 14, mix: { swarmer: 0.78, darter: 0.08, circler: 0.08, splitter: 0.06 } },
-  },
-  {
-    atS: 212,
-    set: {
-      rate: 15,
-      mix: { swarmer: 0.72, darter: 0.08, circler: 0.08, splitter: 0.06 },
-    },
-  },
-  // -- minute 4 spike: the biggest ring yet, breather after.
-  { atS: 240, event: { formation: 'ring', kind: 'swarmer', count: 90 } },
-  {
-    atS: 242,
-    set: {
-      rate: 8,
-      mix: { swarmer: 0.72, darter: 0.08, circler: 0.08, splitter: 0.06 },
-    },
-  }, // breather
-  {
-    atS: 256,
-    set: {
-      rate: 17,
-      mix: { swarmer: 0.72, darter: 0.08, circler: 0.08, splitter: 0.06 },
-    },
-  },
-  // -- 4:30 shielded intro: the mid-game wall closes in from all sides.
-  { atS: 270, event: { formation: 'ring', kind: 'shielded', count: 8 } },
-  {
-    atS: 272,
-    set: {
-      rate: 18,
-      mix: {
-        swarmer: 0.68,
-        darter: 0.08,
-        circler: 0.08,
-        splitter: 0.06,
-        shielded: 0.05,
-      },
-    },
-  },
-  // -- minute 5 spike: double elite + splitter surge, breather after.
-  { atS: 300, event: { formation: 'elite', kind: 'elite', count: 2 } },
-  { atS: 308, event: { formation: 'surge', kind: 'splitter', count: 10 } },
-  {
-    atS: 312,
-    set: {
-      rate: 9,
-      mix: {
-        swarmer: 0.68,
-        darter: 0.08,
-        circler: 0.08,
-        splitter: 0.06,
-        shielded: 0.05,
-      },
-    },
-  }, // breather
-  {
-    atS: 326,
-    set: {
-      rate: 21,
-      mix: {
-        swarmer: 0.68,
-        darter: 0.08,
-        circler: 0.08,
-        splitter: 0.06,
-        shielded: 0.05,
-      },
-    },
-  },
-  // -- 5:30 tank intro: the late wall lumbers in.
-  { atS: 330, event: { formation: 'surge', kind: 'tank', count: 4 } },
-  {
-    atS: 332,
-    set: {
-      rate: 22,
-      mix: {
-        swarmer: 0.64,
-        darter: 0.08,
-        circler: 0.07,
-        splitter: 0.06,
-        shielded: 0.05,
-        tank: 0.05,
-      },
-    },
-  },
-  // -- minute 6 spike: huge ring + darter surge, the last real breather.
-  { atS: 360, event: { formation: 'ring', kind: 'swarmer', count: 140 } },
-  { atS: 365, event: { formation: 'surge', kind: 'darter', count: 20 } },
-  {
-    atS: 367,
-    set: {
-      rate: 10,
-      mix: {
-        swarmer: 0.64,
-        darter: 0.08,
-        circler: 0.07,
-        splitter: 0.06,
-        shielded: 0.05,
-        tank: 0.05,
-      },
-    },
-  }, // breather
-  {
-    atS: 382,
-    set: {
-      rate: 26,
-      mix: {
-        swarmer: 0.64,
-        darter: 0.08,
-        circler: 0.07,
-        splitter: 0.06,
-        shielded: 0.05,
-        tank: 0.05,
-      },
-    },
-  },
-  // -- 7:00 finale: no more breathers, everything escalates until overrun.
-  {
-    atS: 420,
-    set: {
-      rate: 34,
-      mix: {
-        swarmer: 0.6,
-        darter: 0.09,
-        circler: 0.07,
-        splitter: 0.07,
-        shielded: 0.06,
-        tank: 0.05,
-      },
-    },
-  },
-  { atS: 420, event: { formation: 'elite', kind: 'elite', count: 3 } },
-  { atS: 435, event: { formation: 'ring', kind: 'swarmer', count: 200 } },
-  {
-    atS: 450,
-    set: {
-      rate: 42,
-      mix: {
-        swarmer: 0.58,
-        darter: 0.1,
-        circler: 0.07,
-        splitter: 0.07,
-        shielded: 0.06,
-        tank: 0.06,
-      },
-    },
-  },
-  { atS: 450, event: { formation: 'ring', kind: 'shielded', count: 12 } },
-  { atS: 460, event: { formation: 'surge', kind: 'splitter', count: 14 } },
-  { atS: 470, event: { formation: 'surge', kind: 'darter', count: 40 } },
-];
 
 export interface WeaponConf {
   damage: number;
@@ -695,14 +450,6 @@ export interface WeaponConf {
  *  ladder's character says so — bass per-trigger damage climbs hard (weight),
  *  hat barely moves (density is its whole story). */
 export const WEAPONS: Partial<Record<Role, WeaponConf[]>> = {};
-
-/** The one honest gameplay-effect line on each pick card ([tier-1]). Terse
- *  VS-style, zero music description: the sound
- *  change is discovered by ear. Lines state what the chart + stat change
- *  actually does. */
-// Empty for the same reason WEAPONS is: pedestal copy is part of a weapon's
-// identity and moved into the modules with the ladders (#141).
-export const TIER_LINES: Partial<Record<Role, string[]>> = {};
 
 /** How far weapons look for a target. */
 export const AIM_RANGE = 750;

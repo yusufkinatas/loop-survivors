@@ -11,7 +11,7 @@ import type { WeaponInstance, WeaponModule, WeaponStats } from './module';
  *  values are unchanged. Nothing in the behavior code may be a bare literal —
  *  an evolution's damage multiplier is a named stat, not a `* 1.35` buried in a
  *  branch (ADR-0002: the exemption must be visible as a stat). */
-export interface KickStats extends WeaponStats {
+interface KickStats extends WeaponStats {
   /** Reach of the facing-side strip at area 1, in H800 world units. Read by
    *  view.ts's whipDimensions; kept short so the strip stays a close-range
    *  crowd tool, not a screen-wide beam. */
@@ -40,7 +40,7 @@ export interface KickStats extends WeaponStats {
   readonly evolvedShove: number;
 }
 
-export const KICK_STATS: KickStats = {
+const KICK_STATS: KickStats = {
   // The starting Kick uses Whip's horizontal pass-through strip instead of a
   // radial aura. Damage/area/amount map to Whip levels 1, 3, 5 and 8.
   tiers: [

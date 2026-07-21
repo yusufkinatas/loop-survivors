@@ -17,7 +17,7 @@ const HASH_QUERY_PAD = 24;
  *  or a bare literal in run.ts's `case 'clap'` / damageCone / fireTwoHands /
  *  spawnPinch / drawPinchHands / updateClapPinches; values are unchanged.
  *  Nothing in the behavior code below may be a bare literal. */
-export interface ClapStats extends WeaponStats {
+interface ClapStats extends WeaponStats {
   // ---------------- the base cone ------------------------------------------
 
   readonly shove: number;
@@ -90,7 +90,7 @@ export interface ClapStats extends WeaponStats {
   readonly sparkSpreadMul: number;
 }
 
-export const CLAP_STATS: ClapStats = {
+const CLAP_STATS: ClapStats = {
   // Whip: a wide forward slash that hits everything in a close cone. Melee crowd
   // control — no travel, instant, safest when the wall is on top of you.
   tiers: [

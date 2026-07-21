@@ -5,29 +5,29 @@
 import type { Role } from '../audio/kits';
 import { ITEM_IDS, type ItemId } from './items';
 
-export const META_SAVE_KEY = 'loop-survivors.meta.v2';
-export const LEGACY_META_SAVE_KEY = 'loop-survivors.meta.v1';
+const META_SAVE_KEY = 'loop-survivors.meta.v2';
+const LEGACY_META_SAVE_KEY = 'loop-survivors.meta.v1';
 
-export const MILESTONE_IDS = [
+const MILESTONE_IDS = [
   'first5m',
   'fullBand',
   'firstEvolution',
 ] as const;
 
-export type MilestoneId = (typeof MILESTONE_IDS)[number];
+type MilestoneId = (typeof MILESTONE_IDS)[number];
 
-export interface MasteryProgress {
+interface MasteryProgress {
   damage: number;
   kills: number;
   evolutions: number;
 }
 
-export const CORE_WEAPONS: readonly Role[] = ['kick', 'snare', 'hat', 'bass', 'chord'];
-export const CORE_ITEMS: readonly ItemId[] = ['highTops', 'fastForward', 'mirrorball', 'wideLens'];
+const CORE_WEAPONS: readonly Role[] = ['kick', 'snare', 'hat', 'bass', 'chord'];
+const CORE_ITEMS: readonly ItemId[] = ['highTops', 'fastForward', 'mirrorball', 'wideLens'];
 
 const META_WEAPONS: readonly Role[] = ['kick', 'snare', 'hat', 'bass', 'chord', 'clap', 'arp', 'lead', 'bell'];
 
-export const SHOP_OFFER_IDS = [
+const SHOP_OFFER_IDS = [
   'heavyAmp',
   'clap',
   'arp',
@@ -44,7 +44,7 @@ export const SHOP_OFFER_IDS = [
 ] as const;
 
 export type ShopOfferId = (typeof SHOP_OFFER_IDS)[number];
-export type ShopOfferKind = 'weapon' | 'item' | 'perk';
+type ShopOfferKind = 'weapon' | 'item' | 'perk';
 
 export interface ShopOffer {
   id: ShopOfferId;
@@ -126,7 +126,7 @@ export interface CollectionProgress {
   complete: boolean;
 }
 
-export function defaultMetaState(): MetaV2 {
+function defaultMetaState(): MetaV2 {
   return {
     version: 2,
     runs: 0,
@@ -385,9 +385,3 @@ export class MetaStore {
     };
   }
 }
-
-export const MASTERY_THRESHOLDS = {
-  evolutionHintDamage: 100_000,
-  projectileSkinKills: 1_000,
-  goldIconEvolutions: 3,
-} as const;

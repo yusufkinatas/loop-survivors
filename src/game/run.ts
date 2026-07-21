@@ -71,12 +71,12 @@ export const PLAYER_FOOT_OFFSET = {
 /** Rolling window for the sandbox dummy's live DPS. Weapons fire on the beat
  * grid, so a one-second average would jitter between "kick landed" and
  * "nothing landed"; four bars at 122 BPM is ~7.9s, so 8s reads steady. */
-export const DUMMY_DPS_WINDOW = 8;
+const DUMMY_DPS_WINDOW = 8;
 const DUMMY_DPS_BUCKET = 0.25;
 const DUMMY_DPS_BUCKETS = Math.round(DUMMY_DPS_WINDOW / DUMMY_DPS_BUCKET);
 
 /** Per-dummy damage bookkeeping behind the floating readout. */
-export interface DummyReadout {
+interface DummyReadout {
   /** HP restored after every hit, so the dummy never reaches zero. */
   spawnHp: number;
   /** Cumulative damage taken since spawn. */

@@ -30,10 +30,10 @@ import { endlessScale } from './tour';
 
 /** Exported coverage catalogs keep the no-test-framework verification script
  * able to prove that future content cannot silently disappear from the panel. */
-export const SANDBOX_ENEMY_CATALOG: readonly EnemyKind[] = ALL_ENEMY_KINDS;
-export const SANDBOX_WEAPON_CATALOG: readonly Role[] = Object.freeze(supportedRoles());
-export const SANDBOX_ITEM_CATALOG: readonly ItemId[] = ITEM_IDS;
-export const SANDBOX_EVOLUTION_CATALOG: readonly EvolutionDefinition[] = Object.freeze(
+const SANDBOX_ENEMY_CATALOG: readonly EnemyKind[] = ALL_ENEMY_KINDS;
+const SANDBOX_WEAPON_CATALOG: readonly Role[] = Object.freeze(supportedRoles());
+const SANDBOX_ITEM_CATALOG: readonly ItemId[] = ITEM_IDS;
+const SANDBOX_EVOLUTION_CATALOG: readonly EvolutionDefinition[] = Object.freeze(
   Object.values(EVOLUTIONS),
 );
 

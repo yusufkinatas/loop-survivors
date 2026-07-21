@@ -87,7 +87,10 @@ export function resetChart(role: Role, tier: number): void {
 }
 
 /** JSON of every edited chart, for baking edits back into the ladder file.
- *  Console: copy(loop.charts.exportEdits()) */
+ *  Console: copy(loop.charts.exportEdits())
+ *
+ *  @public Reached only through main.ts's `import * as charts` -> window.loop,
+ *  so static analysis sees no importer. Do not "clean up" as unused. */
 export function exportEdits(): string {
   const out: Record<string, { bars: number; events: Chart['events'] }> = {};
   for (const key of edited) {

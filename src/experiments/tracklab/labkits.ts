@@ -89,68 +89,6 @@ export async function kick808(opts: {
   return ctx.startRendering();
 }
 
-/** 909-flavored kick: harder mid-punch and a snappier attack, the house
- *  floor. */
-export async function kick909(opts: { decay?: number; drive?: number } = {}): Promise<AudioBuffer> {
-  const { decay = 0.28, drive = 2.2 } = opts;
-  const ctx = offline(decay + 0.1);
-  const osc = ctx.createOscillator();
-  osc.type = 'sine';
-  osc.frequency.setValueAtTime(210, 0);
-  osc.frequency.exponentialRampToValueAtTime(54, 0.055);
-  const g = ctx.createGain();
-  g.gain.setValueAtTime(1.0, 0);
-  g.gain.exponentialRampToValueAtTime(0.001, decay);
-  const shaper = driveNode(ctx, drive);
-  osc.connect(g).connect(shaper).connect(ctx.destination);
-  const c = ctx.createBufferSource();
-  c.buffer = noiseBuffer(ctx, 0.008);
-  const cg = ctx.createGain();
-  cg.gain.setValueAtTime(0.5, 0);
-  cg.gain.exponentialRampToValueAtTime(0.001, 0.008);
-  const bp = ctx.createBiquadFilter();
-  bp.type = 'bandpass';
-  bp.frequency.value = 3400;
-  c.connect(bp).connect(cg).connect(ctx.destination);
-  osc.start(0);
-  c.start(0);
-  return ctx.startRendering();
-}
-
-/** Snare with tunable body/noise balance; drive it for phonk crack. */
-export async function snare(opts: {
-  tone?: number;
-  noiseHz?: number;
-  decay?: number;
-  drive?: number;
-} = {}): Promise<AudioBuffer> {
-  const { tone = 185, noiseHz = 2200, decay = 0.22, drive = 1.8 } = opts;
-  const ctx = offline(decay + 0.1);
-  const out = driveNode(ctx, drive);
-  out.connect(ctx.destination);
-  const noise = ctx.createBufferSource();
-  noise.buffer = noiseBuffer(ctx, decay);
-  const bp = ctx.createBiquadFilter();
-  bp.type = 'bandpass';
-  bp.frequency.value = noiseHz;
-  bp.Q.value = 0.7;
-  const ng = ctx.createGain();
-  ng.gain.setValueAtTime(0.8, 0);
-  ng.gain.exponentialRampToValueAtTime(0.001, decay);
-  noise.connect(bp).connect(ng).connect(out);
-  const t = ctx.createOscillator();
-  t.type = 'triangle';
-  t.frequency.setValueAtTime(tone, 0);
-  t.frequency.exponentialRampToValueAtTime(tone * 0.75, 0.07);
-  const tg = ctx.createGain();
-  tg.gain.setValueAtTime(0.5, 0);
-  tg.gain.exponentialRampToValueAtTime(0.001, 0.1);
-  t.connect(tg).connect(out);
-  noise.start(0);
-  t.start(0);
-  return ctx.startRendering();
-}
-
 /** 909-style clap: three noise bursts into a bandpass, then the tail. */
 export async function clap909(opts: { decay?: number } = {}): Promise<AudioBuffer> {
   const { decay = 0.25 } = opts;
@@ -221,22 +159,6 @@ export async function noiseRiser(opts: { seconds: number; peak?: number } = { se
   g.gain.exponentialRampToValueAtTime(peak, seconds * 0.985);
   g.gain.linearRampToValueAtTime(0.001, seconds + 0.05);
   noise.connect(bp).connect(g).connect(ctx.destination);
-  noise.start(0);
-  return ctx.startRendering();
-}
-
-export async function crash(opts: { decay?: number } = {}): Promise<AudioBuffer> {
-  const { decay = 1.4 } = opts;
-  const ctx = offline(decay + 0.1);
-  const noise = ctx.createBufferSource();
-  noise.buffer = noiseBuffer(ctx, decay);
-  const hp = ctx.createBiquadFilter();
-  hp.type = 'highpass';
-  hp.frequency.value = 5200;
-  const g = ctx.createGain();
-  g.gain.setValueAtTime(0.5, 0);
-  g.gain.exponentialRampToValueAtTime(0.001, decay);
-  noise.connect(hp).connect(g).connect(ctx.destination);
   noise.start(0);
   return ctx.startRendering();
 }

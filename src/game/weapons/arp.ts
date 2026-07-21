@@ -25,7 +25,7 @@ import type {
  *  evolution's damage multiplier is a named stat, not a `* 0.8` buried in a
  *  spawner, and the re-hit interval is a named stat, not a comment on a
  *  collision branch (ADR-0002, #144). */
-export interface ArpStats extends WeaponStats {
+interface ArpStats extends WeaponStats {
   // ---------------- the timer re-hit: this weapon chips on a timer ----------
   //
   // READ THESE FIRST. An arp orbiter is the one projectile in the game that
@@ -78,7 +78,7 @@ export interface ArpStats extends WeaponStats {
   readonly evolvedOrbiterCap: number;
 }
 
-export const ARP_STATS: ArpStats = {
+const ARP_STATS: ArpStats = {
   // King Bible: notes that orbit the player, a rotating shield of damage.
   // Each trigger adds one orbiter; a melody makes a ring.
   tiers: [

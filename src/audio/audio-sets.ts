@@ -5,14 +5,14 @@
 
 import type { Role } from './kits';
 
-export const SAMPLE_PI_SOURCE = {
+const SAMPLE_PI_SOURCE = {
   repository: 'https://github.com/alex-esc/sample-pi',
   commit: 'f14596be37abf227bf77d198c9b0b60d9eb4dca9',
   license: 'CC0-1.0',
   licenseUrl: 'https://creativecommons.org/publicdomain/zero/1.0/',
 } as const;
 
-export const AUDIO_SET_IDS = [
+const AUDIO_SET_IDS = [
   'midnight-warehouse',
 ] as const;
 
@@ -60,7 +60,7 @@ const sample = (
 
 const root = (id: AudioSetId): string => `/samples/audio-sets/${id}`;
 
-export const AUDIO_SETS: Record<AudioSetId, AudioSetDefinition> = {
+const AUDIO_SETS: Record<AudioSetId, AudioSetDefinition> = {
   'midnight-warehouse': {
     id: 'midnight-warehouse',
     name: 'Midnight Warehouse',
@@ -95,13 +95,9 @@ export const AUDIO_SETS: Record<AudioSetId, AudioSetDefinition> = {
   },
 };
 
-export const AUDIO_SET_LIST: readonly AudioSetDefinition[] = AUDIO_SET_IDS.map(
-  (id) => AUDIO_SETS[id],
-);
-
 export const DEFAULT_AUDIO_SET_ID: AudioSetId = 'midnight-warehouse';
 
-export function isAudioSetId(value: string): value is AudioSetId {
+function isAudioSetId(value: string): value is AudioSetId {
   return (AUDIO_SET_IDS as readonly string[]).includes(value);
 }
 
