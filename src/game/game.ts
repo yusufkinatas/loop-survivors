@@ -858,7 +858,6 @@ export async function bootGame(
     setAutoMode(mode);
     const w: RunWorld = new RunWorld(app.screen, events, {
       control: () => playerControl(w),
-      startingItem: meta.state.startItem,
       secondWind: meta.state.secondWind,
     });
     world = w;

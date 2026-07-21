@@ -39,7 +39,6 @@ const SHOP_OFFER_IDS = [
   'doubleTake',
   'magnetLanyard',
   'secondWind',
-  'startItem',
 ] as const;
 
 export type ShopOfferId = (typeof SHOP_OFFER_IDS)[number];
@@ -82,8 +81,6 @@ export const SHOP_OFFERS: readonly ShopOffer[] = [
     description: 'Long-range pickup pull: gems reach farther and fly faster.' },
   { id: 'secondWind', kind: 'perk', contentId: 'secondWind', name: 'Second Wind', cost: 320, minOwned: 8,
     description: 'Revive once per run at 30% health.' },
-  { id: 'startItem', kind: 'perk', contentId: 'startItem', name: 'Opening Loadout', cost: 300, minOwned: 8,
-    description: 'Choose one unlocked passive to begin at tier I.' },
 ] as const;
 
 const SHOP_BY_ID = new Map<ShopOfferId, ShopOffer>(SHOP_OFFERS.map((offer) => [offer.id, offer]));
@@ -102,7 +99,6 @@ export interface MetaV2 {
   unlockedWeapons: Role[];
   unlockedItems: ItemId[];
   secondWind: boolean;
-  startItem?: ItemId;
   milestones: string[];
   mastery: Partial<Record<Role, MasteryProgress>>;
   seen: string[];
@@ -167,10 +163,6 @@ function rebuildUnlocks(state: MetaV2): void {
     if (offer.kind === 'item') addUnique(state.unlockedItems, offer.contentId as ItemId);
     if (id === 'secondWind') state.secondWind = true;
   }
-  if (!state.purchases.includes('startItem') ||
-      (state.startItem && !state.unlockedItems.includes(state.startItem))) {
-    delete state.startItem;
-  }
 }
 
 function inferLegacyPurchases(raw: Record<string, unknown>): ShopOfferId[] {
@@ -182,11 +174,6 @@ function inferLegacyPurchases(raw: Record<string, unknown>): ShopOfferId[] {
     if (offer.kind === 'item' && items.includes(offer.contentId as ItemId)) addUnique(purchases, offer.id);
   }
   if (raw.secondWind === true) addUnique(purchases, 'secondWind');
-  // Preserve perks that an old automatic rank had earned even when no starting
-  // passive was selected. This threshold is the old rank-12 lifetime
-  // reputation floor.
-  const reputation = Math.floor(safeNumber(raw.reputation));
-  if (reputation >= 2_255) addUnique(purchases, 'startItem');
   return purchases;
 }
 
@@ -212,9 +199,6 @@ function sanitize(raw: unknown): MetaV2 {
   state.notes = Math.floor(isV2 ? safeNumber(parsed.notes) : safeNumber(parsed.reputation) / 4);
   state.lifetimeNotes = Math.max(state.notes, Math.floor(safeNumber(parsed.lifetimeNotes, state.notes)));
 
-  if (typeof parsed.startItem === 'string' && ITEM_IDS.includes(parsed.startItem as ItemId)) {
-    state.startItem = parsed.startItem as ItemId;
-  }
   if (parsed.mastery && typeof parsed.mastery === 'object') {
     const mastery = parsed.mastery as Partial<Record<Role, Partial<MasteryProgress>>>;
     for (const role of META_WEAPONS) {
@@ -337,10 +321,6 @@ export class MetaStore {
       // Same reasoning as save(): storage can be unavailable, and the in-memory
       // reset below still has to happen.
     }
-    // `startItem` is OPTIONAL, so it is absent from defaultMetaState() and
-    // Object.assign cannot clear it. It has to go by hand, or a reset career
-    // keeps starting with a purchased item it no longer owns.
-    delete this.state.startItem;
     Object.assign(this.state, defaultMetaState());
     this.save();
   }
@@ -363,18 +343,6 @@ export class MetaStore {
 
   unlockedItemIds(): Set<ItemId> {
     return new Set(this.state.unlockedItems);
-  }
-
-  selectStartItem(item: ItemId | undefined): boolean {
-    if (item === undefined) {
-      delete this.state.startItem;
-      this.save();
-      return true;
-    }
-    if (!this.hasPurchase('startItem') || !this.state.unlockedItems.includes(item)) return false;
-    this.state.startItem = item;
-    this.save();
-    return true;
   }
 
   settleRun(run: RunProgressInput): RunSettlement {

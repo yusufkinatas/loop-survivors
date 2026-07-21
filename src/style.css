@@ -2320,32 +2320,23 @@ button.big {
   letter-spacing: 0.08em;
 }
 
-.start-loadout,
 .recipe-hints {
   display: grid;
   gap: 7px;
   margin-top: 12px;
 }
 
-.loadout-choices,
 .recipe-hints {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
 }
 
-.loadout-chip,
 .recipe-chip {
   padding: 5px 8px;
   border-radius: 2px;
   color: #b6c8bf;
   font-size: 10px;
-}
-
-.loadout-chip.selected {
-  color: var(--gold);
-  border-color: var(--gold);
-  box-shadow: inset 0 -2px var(--gold);
 }
 
 .start-btn,
@@ -2499,7 +2490,6 @@ button.big {
   .shop-toggle,
   .shop-buy,
   .shop-close,
-  button.loadout-chip,
   .start-dev .small { min-height: 44px; }
   .shop-head { top: -1px; }
   .rep-breakdown { grid-template-columns: 1fr; }
