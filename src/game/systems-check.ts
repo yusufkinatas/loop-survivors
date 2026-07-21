@@ -4939,6 +4939,50 @@ function worldStrike(opts: {
   }
 }
 
+// ---------------------------------------------------------------------------
+// THE ZERO-BRANCHES RULE IS A TYPE NOW (#148), and this is the pin on that.
+//
+// The scan below is the older guard and it stays, but it never could have won:
+// `const { role: rr } = pr`, `pr['role']` and — the refactor anyone reaches for
+// — moving a branch one call frame away into a fresh helper all pass it green.
+// A text scan can only ever chase spellings.
+//
+// What actually enforces the rule is the SIGNATURE of stepProjectile: it takes
+// a ProjectileView, which is `Omit<Projectile, 'role'>`, so `pr.role` is not a
+// property that exists and every spelling of it is a compile error at once.
+// Helper extraction inherits the guarantee instead of escaping it, because a
+// helper can only be handed the same role-free type.
+//
+// Two source pins, because the whole thing rests on two words. Widen the
+// parameter back to `Projectile` and the scan alone would not notice — it reads
+// the body, not the signature.
+// ---------------------------------------------------------------------------
+{
+  const source = readFileSync(new URL('./run.ts', import.meta.url), 'utf8');
+
+  assert.match(source, /export type ProjectileView = Omit<Projectile, 'role'>;/,
+    'ProjectileView must stay the role-free projection. Adding `role` back to it — or aliasing '
+    + 'it to Projectile — silently returns shared physics to a text-scanned honour system');
+
+  assert.match(
+    source,
+    /private stepProjectile\(pr: ProjectileView, owner: ProjectileOwner, dt: number\): boolean/,
+    'shared projectile physics must take the PROJECTION, not a Projectile. This signature is '
+    + 'the enforcement; the scan below is the belt to its braces',
+  );
+
+  // And the seam it leans on: an owner that hands the role back would make the
+  // projection decorative. ProjectileOwner is three closures and no fields.
+  const ownerDecl = source.slice(
+    source.indexOf('interface ProjectileOwner {'),
+    source.indexOf('export interface Zone {'),
+  );
+  assert(ownerDecl.length > 0, 'ProjectileOwner must still be declared above Zone');
+  assert(!/role/.test(ownerDecl.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')),
+    'ProjectileOwner must not expose a role. If it does, `if (owner.role === ...)` compiles and '
+    + 'the projection has bought nothing');
+}
+
 {
   const source = readFileSync(new URL('./run.ts', import.meta.url), 'utf8');
 
@@ -4968,6 +5012,7 @@ function worldStrike(opts: {
    *  mean the world grew a new shared loop. */
   const PROTECTED_METHODS = [
     'updateProjectiles',
+    'stepProjectile',
     'reflectProjectileFromArena',
   ] as const;
 
@@ -4987,17 +5032,18 @@ function worldStrike(opts: {
    *  tenth weapon appears. That is the test for adding one here. */
   const GENERIC_ROLE_USE: readonly RoleUse[] = [
     {
-      snippet: 'this.projectileBehavior(pr.role)',
-      why: 'the generic module seam: a role in, that weapon\'s own steer/onHit out',
+      snippet: 'this.ownerOf(shot.role)',
+      why: 'the ONE role read on a shot\'s way into shared physics (#148). It resolves the '
+        + 'module seam and damage attribution into closures ONCE, and hands back a '
+        + 'ProjectileOwner with no role on it — so this is the last frame in which the '
+        + 'question "which weapon?" can be asked at all',
     },
-    {
-      snippet: 'this.weaponCtx.get(pr.role)!',
-      why: 'the generic module seam: a role in, that weapon\'s own context out',
-    },
-    {
-      snippet: 'this.damageEnemy(e, pr.damage, pr.role)',
-      why: 'damage ATTRIBUTION — which weapon gets the credit, not which weapon acts',
-    },
+    // Three entries stood here until #148: `this.projectileBehavior(pr.role)`,
+    // `this.weaponCtx.get(pr.role)!` (both the module seam) and
+    // `this.damageEnemy(e, pr.damage, pr.role)` (attribution). All three were
+    // genuinely generic and all three are gone from the loop — they live inside
+    // ProjectileOwner's three closures, resolved once by the single line above.
+    // The loop body cannot reach them, and cannot name a role to try.
     // `this.damageArea(z.x, z.y, z.radius, z.damage, z.source)` was here,
     // approved as damage attribution for a zone tick, and
     // `this.damageEnemy(enemy, wave.damage, wave.source)` before it for a
@@ -5167,6 +5213,63 @@ function worldStrike(opts: {
     // gets caught here, and either one alone is enough.
     for (const m of noComments.slice(start, end).matchAll(ROLE_LITERAL)) {
       offenses.push(`  run.ts:${lineOf(start + m.index)} in ${name}()  ${lineAt(start + m.index)}`);
+    }
+  }
+
+  // THE LIST ABOVE IS NOW CHECKED-COMPLETE, which is the other half of #148.
+  //
+  // PROTECTED_METHODS is a fixed list of names, and that was its weakness: a
+  // branch one call frame away — in a method nobody added to the list — is
+  // invisible to the scan. The ProjectileView projection closes that for any
+  // helper the loop HANDS a shot to, because such a helper can only take the
+  // role-free type. It does NOT close the other shape: a fresh method that
+  // re-walks `this.projectiles` from scratch gets Projectile[] and may branch
+  // freely.
+  //
+  // So walking the array is itself the trigger. Any method that iterates
+  // this.projectiles must either be scanned above or be named here as a
+  // spawner-side exception — a new one fails until someone decides which.
+  {
+    const ALLOWED_WALKERS = new Set<string>([
+      // The RUN.maxProjectiles ceiling: it walks live shots to evict the oldest
+      // and never asks whose they are. A spawner concern, not shared physics.
+      'pushProjectile',
+    ]);
+
+    /** Every `private name(` in run.ts, with the source range it owns. */
+    const methodRanges: Array<{ name: string; start: number; end: number }> = [];
+    for (const m of noStrings.matchAll(/\n  private (\w+)\(/g)) {
+      const name = m[1];
+      const { start, end } = methodBody(name);
+      methodRanges.push({ name, start, end });
+    }
+    const enclosing = (index: number): string | null => {
+      let best: { name: string; start: number; end: number } | null = null;
+      for (const r of methodRanges) {
+        if (index < r.start || index >= r.end) continue;
+        if (!best || r.start > best.start) best = r;
+      }
+      return best?.name ?? null;
+    };
+
+    const walkers = new Set<string>();
+    for (const m of noStrings.matchAll(/(?:of this\.projectiles|this\.projectiles\.length - 1)/g)) {
+      const name = enclosing(m.index);
+      if (name) walkers.add(name);
+    }
+    assert(walkers.size > 0, 'the walker scan found nothing; it has stopped reading run.ts');
+
+    for (const name of walkers) {
+      assert(
+        (PROTECTED_METHODS as readonly string[]).includes(name) || ALLOWED_WALKERS.has(name),
+        `RunWorld.${name} ITERATES this.projectiles but is neither scanned nor allowed.\n\n` +
+        '  Walking the shared projectile array is shared physics wherever it is written, and a\n' +
+        '  method outside PROTECTED_METHODS can branch on pr.role with nothing to stop it — the\n' +
+        '  ProjectileView projection only guards shots HANDED to a helper, not an array re-read\n' +
+        '  from scratch.\n\n' +
+        `  Either add '${name}' to PROTECTED_METHODS so its body is scanned, or — if it genuinely\n` +
+        '  never asks which weapon a shot came from — to ALLOWED_WALKERS with a reason.',
+      );
     }
   }
 
