@@ -231,7 +231,7 @@ const EVOLUTIONS: Record<EvolutionId, EvolutionDefinition> = {
   },
   twoHands: {
     id: 'twoHands', role: 'clap', item: 'paddedJacket', name: 'Two Hands', color: 0xff719f, gainDb: 0,
-    description: 'Paired slabs snap shut on the nearest few enemies, crushing them and dragging survivors inward.', signature: 'target-picked pincer',
+    description: 'Paired slabs snap shut on the nearest few enemies and crush whatever they close on.', signature: 'target-picked pincer',
   },
   eventHorizon: {
     id: 'eventHorizon', role: 'arp', item: 'extensionCable', name: 'Event Horizon', color: 0x5effd8, gainDb: 0,

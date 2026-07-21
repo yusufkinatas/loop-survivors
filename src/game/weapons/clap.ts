@@ -5,8 +5,8 @@ import type { WeaponInstance, WeaponModule, WeaponStats } from './module';
 
 /** How much wider than the shape the spatial-hash query goes before the exact
  *  distance test decides. NOT TUNING, and deliberately not a stat: it is a copy
- *  of the `+ 24` widening RunWorld.damageCone, damageArea and dragInward each
- *  did on their query, and it is arithmetically unobservable — SpatialHash.query
+ *  of the `+ 24` widening RunWorld.damageCone and damageArea each did on their
+ *  query, and it is arithmetically unobservable — SpatialHash.query
  *  already widens by the largest inserted radius, and every candidate it returns
  *  is cut again by the real reach test below. Nothing about the clap's footprint
  *  is decided here. */
@@ -34,8 +34,8 @@ interface ClapStats extends WeaponStats {
   //
   // A clap is two hands meeting, so each trigger picks the closest few enemies
   // and snaps a pair of slabs shut on each one. Deliberately tiny — the identity
-  // is high single-target damage plus an inward tug that bunches the horde up
-  // for the rest of the band, NOT another player-centred blast (that is what
+  // is high single-target damage that MOVES NOTHING, leaving the horde's shape
+  // to the rest of the band, NOT another player-centred blast (that is what
   // Subquake is for). Keep `pinchRadius` well under Subquake's 144-unit ring.
 
   /** How many nearby enemies get their own pincer on a single trigger. WAS
@@ -54,17 +54,6 @@ interface ClapStats extends WeaponStats {
    *  Railshot's 1.50 and Subquake's 1.55, because the footprint is a fraction of
    *  either. WAS TWO_HANDS.damageMul. */
   readonly damageMul: number;
-  /** Radius over which survivors get dragged toward the pinch point. WAS
-   *  TWO_HANDS.tugRadius. A bare CENTRE-DISTANCE compare, not circlesOverlap —
-   *  the crush and the tug resolve at different geometric gates and that
-   *  difference is real. */
-  readonly tugRadius: number;
-  /** How far survivors are dragged inward. WAS TWO_HANDS.tug. Scaled by
-   *  buildMods.knockbackMul at the call site, and then CLAMPED to the body's own
-   *  distance from the pinch centre, so a body sitting on the centre is dragged
-   *  by that tiny distance and Heavy Amp does nothing to it at all. */
-  readonly tug: number;
-
   // ---------------- the slabs, which are view only -------------------------
 
   /** Half-length of a drawn slab, as a multiple of the pinch radius. WAS the
@@ -114,8 +103,6 @@ const CLAP_STATS: ClapStats = {
   openGap: 74,
   pinchRadius: 42,
   damageMul: 1.52,
-  tugRadius: 96,
-  tug: 30,
 
   handHalfLengthMul: 1.15,
   handWidth: 5,
@@ -307,12 +294,10 @@ class ClapInstance implements WeaponInstance {
         }
         continue;
       }
-      // The crush itself: no shove, because the whole move pulls inward. The
-      // absence is the tuning — granting the crush a knock would fight the tug
-      // that follows it one line later.
+      // The crush itself: NO SHOVE AND NO TUG. Two Hands moves nothing — it is
+      // pure damage at a fixed point, and bodies caught in it stand exactly where
+      // they were. The absence is the tuning, not an oversight.
       this.crush(ctx, pinch);
-      this.dragInward(ctx, pinch.x, pinch.y, CLAP_STATS.tugRadius * ctx.buildMods.areaMul,
-        CLAP_STATS.tug * ctx.buildMods.knockbackMul);
       ctx.fx({ type: 'slam', x: pinch.x, y: pinch.y, radius: pinch.radius, color: pinch.color });
       ctx.fx({
         type: 'spark',
@@ -335,33 +320,6 @@ class ClapInstance implements WeaponInstance {
     const area = { x: pinch.x, y: pinch.y, radius: pinch.radius };
     for (const e of ctx.near(pinch.x, pinch.y, pinch.radius + HASH_QUERY_PAD)) {
       if (!e.dead && circlesOverlap(area, e)) ctx.damage(e, pinch.damage);
-    }
-  }
-
-  /** Drag every enemy within `radius` toward (x, y) by up to `dist`. Runs through
-   *  ctx.shove with the origin MIRRORED THROUGH THE ENEMY, so knockback
-   *  resistance and the Drop lift apply exactly as they do on a push and a
-   *  knock-immune body is immune to the tug too. WAS RunWorld.dragInward.
-   *
-   *  A SECOND ctx.near() call, after the crush's. Deliberate: near() hands back
-   *  a scratch buffer the crush above has already consumed, the two passes were
-   *  two separate queries in the original, and the sets genuinely differ — a body
-   *  the crush just killed is skipped here.
-   *
-   *  `Math.min(dist, d)` IS A CLAMP WITH REAL CONSEQUENCES. A body sitting on the
-   *  pinch centre is dragged by its own tiny distance, not by `tug`, so Heavy
-   *  Amp's knockbackMul — already folded into `dist` by the caller — has no
-   *  effect on it at all. The `d < 1` skip is what keeps a body exactly on the
-   *  centre from being shoved along an undefined direction. */
-  private dragInward(ctx: WeaponContext, x: number, y: number, radius: number, dist: number): void {
-    if (dist <= 0) return;
-    for (const e of ctx.near(x, y, radius + HASH_QUERY_PAD)) {
-      if (e.dead) continue;
-      // A bare CENTRE-DISTANCE compare, unlike the crush's circlesOverlap: the
-      // tug does not reach a body by its radius.
-      const d = Math.hypot(e.x - x, e.y - y);
-      if (d > radius || d < 1) continue;
-      ctx.shove(e, 2 * e.x - x, 2 * e.y - y, Math.min(dist, d));
     }
   }
 
