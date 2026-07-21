@@ -61,17 +61,22 @@ export const HEALTH_PICKUP = {
 
 /** Player take-damage feedback, shared by every arena (normal run, sandbox,
  *  and boss) through damage-feedback.ts. One place for the whole feel: the
- *  recovery window, the red edge tint, and the hit screenshake. The flash
- *  timing/color/intensity are pushed onto the `.hit-flash` element as CSS
- *  variables at runtime, so changing them here is enough (no CSS edit needed).
- *  `flashDurS` is meant to track `iframesS`: the tint lasts exactly as long as
- *  the recovery window. */
+ *  recovery window, the red edge tint, the hit screenshake, and the audio cue.
+ *  The flash timing/color/intensity are pushed onto the `.hit-flash` element as
+ *  CSS variables at runtime, so changing them here is enough (no CSS edit
+ *  needed). `flashDurS` is meant to track `iframesS`: the tint lasts exactly as
+ *  long as the recovery window. */
 export const DAMAGE_FEEDBACK = {
   /** Recovery window after a landed hit: no further contact damage until it
-   *  elapses. Both the run and the boss read this one value. */
-  iframesS: 0.5,
+   *  elapses. Both the run and the boss read this one value.
+   *
+   *  Deliberately short. A long window let the player stand inside the horde
+   *  and pay almost nothing; at 0.3s contact is a real, per-second cost, which
+   *  is what makes repositioning the actual defence. It also bounds the hit cue
+   *  below: at most ~3 cues a second, so the duck never machine-guns. */
+  iframesS: 0.3,
   /** How long the red edge tint holds, then fades (seconds). */
-  flashDurS: 0.5,
+  flashDurS: 0.3,
   /** CSS color of the edge tint, including its own base alpha. */
   flashColor: 'rgba(255, 77, 94, 0.55)',
   /** Peak opacity of the flash during its hold (0..1). */
@@ -79,6 +84,12 @@ export const DAMAGE_FEEDBACK = {
   /** Screenshake kicked on a landed hit (magnitude in view px, duration s). */
   shakeMag: 7,
   shakeDurS: 0.12,
+  /** The hit cue ducks the weapons bus so the damage thud lands in a hole
+   *  rather than fighting the track — the mix itself flinches. Depth is a
+   *  fraction of unity; the hold is short enough that the music is back before
+   *  the next hit can land (see `iframesS`). */
+  hitDuckDepth: 0.45,
+  hitDuckS: 0.26,
 } as const;
 
 /** Level-up ground picks (diegetic reward). Instead of a full-screen menu, the

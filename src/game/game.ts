@@ -439,7 +439,7 @@ export async function bootGame(
       // Endless mode has no victory terminal; kept for the shared interface.
     },
     onHit(): void {
-      pushDamageFeedback(hud.flashEl, view);
+      pushDamageFeedback(hud.flashEl, view, engine);
     },
     onMinute(minute: number): void {
       updateArenaMinute(minute);
@@ -481,7 +481,7 @@ export async function bootGame(
     },
     onVictory(): void {},
     onHit(): void {
-      pushDamageFeedback(hud.flashEl, view);
+      pushDamageFeedback(hud.flashEl, view, engine);
     },
     onMinute(minute: number): void {
       updateArenaMinute(minute);

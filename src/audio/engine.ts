@@ -154,6 +154,11 @@ export class MusicEngine {
    *  dip the whole soundtrack for its slow-mo moment while the level cue,
    *  which rides master directly, rings out over the dip. */
   private weaponsBus: GainNode;
+  /** The take-damage dip, its own node between weaponsBus and master. Separate
+   *  from weaponsBus.gain (which duckWeapons owns) on purpose: the two dips
+   *  multiply instead of cancelling, so a hit taken during a level-up moment
+   *  neither restores the level-up dip early nor gets swallowed by it. */
+  private hitDuck: GainNode;
   private audioSetId: AudioSetId;
   /** Independent transport gate: intentional game pauses mute immediately
    * while AudioContext.suspend() crosses the browser control boundary. */
@@ -186,7 +191,10 @@ export class MusicEngine {
     this.master.gain.value = 0.8;
     this.weaponsBus = ctx.createGain();
     this.weaponsBus.gain.value = 1;
-    this.weaponsBus.connect(this.master);
+    this.hitDuck = ctx.createGain();
+    this.hitDuck.gain.value = 1;
+    this.weaponsBus.connect(this.hitDuck);
+    this.hitDuck.connect(this.master);
     this.transport = ctx.createGain();
     this.transport.gain.value = 1;
     // Soft-knee limiter on the master so any build stays clean (Pillar 2:
@@ -362,6 +370,76 @@ export class MusicEngine {
       osc.start(t0);
       osc.stop(t0 + 0.42);
     }
+  }
+
+  /** Player took damage: one short, dark impact, and a dip of the whole
+   *  weapons bus underneath it so the thud lands in a hole it made itself.
+   *
+   *  Two layers, both deliberately un-musical — this is the one moment the game
+   *  is NOT making a track, and it should not sound like a voice joining the
+   *  build. A noise crack (the contact) over a body tone that falls off a
+   *  cliff, roughly 180 Hz down to 50 Hz in a tenth of a second. The fall is
+   *  what reads as "bad": pitch dropping fast is the shape of something going
+   *  wrong. It rides master like the other cues, so mute is respected and
+   *  neither its own duck nor a level-up duck can swallow it.
+   *
+   *  `duckDepth`/`duckHoldS` come from DAMAGE_FEEDBACK — the engine holds no
+   *  game tuning of its own. */
+  playHitCue(duckDepth: number, duckHoldS: number): void {
+    if (this.masterTarget <= 0) return; // muted
+    const now = this.ctx.currentTime;
+    const out = this.ctx.createGain();
+    out.gain.value = 1;
+    out.connect(this.master);
+
+    // The dip. Fast in (the flinch), slower out (the recovery), and always
+    // ramping back to unity so repeated hits cannot stack the bus toward
+    // silence.
+    const g = this.hitDuck.gain;
+    const depth = Math.max(0, Math.min(1, duckDepth));
+    const hold = Math.max(0.05, duckHoldS);
+    g.cancelScheduledValues(now);
+    g.setValueAtTime(g.value, now);
+    g.linearRampToValueAtTime(depth, now + 0.02);
+    g.linearRampToValueAtTime(1, now + hold);
+
+    // Layer 1: the contact crack — a very short lowpassed noise burst.
+    const burstS = 0.09;
+    const noiseBuffer = this.ctx.createBuffer(
+      1,
+      Math.ceil(this.ctx.sampleRate * burstS),
+      this.ctx.sampleRate,
+    );
+    const samples = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < samples.length; i++) {
+      const fade = 1 - i / samples.length;
+      samples[i] = (Math.random() * 2 - 1) * fade * fade;
+    }
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = noiseBuffer;
+    const lp = this.ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(1800, now);
+    lp.frequency.exponentialRampToValueAtTime(320, now + burstS);
+    const noiseEnv = this.ctx.createGain();
+    noiseEnv.gain.setValueAtTime(0.22, now);
+    noiseEnv.gain.exponentialRampToValueAtTime(0.0001, now + burstS);
+    noise.connect(lp).connect(noiseEnv).connect(out);
+    noise.start(now);
+    noise.stop(now + burstS);
+
+    // Layer 2: the body — a falling low tone, the part you feel.
+    const body = this.ctx.createOscillator();
+    body.type = 'triangle';
+    body.frequency.setValueAtTime(180, now);
+    body.frequency.exponentialRampToValueAtTime(50, now + 0.1);
+    const bodyEnv = this.ctx.createGain();
+    bodyEnv.gain.setValueAtTime(0.0001, now);
+    bodyEnv.gain.exponentialRampToValueAtTime(0.42, now + 0.006);
+    bodyEnv.gain.exponentialRampToValueAtTime(0.0001, now + 0.24);
+    body.connect(bodyEnv).connect(out);
+    body.start(now);
+    body.stop(now + 0.26);
   }
 
   /** Stage Magnet pickup: one short suction sweep and two confirmation clicks.
