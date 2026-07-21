@@ -39,6 +39,23 @@ export const BUILD = {
   itemCap: 5,
 } as const;
 
+/** How a gem or note travels once it has committed to flying at the player.
+ * It does not go straight there: it first drifts a little the *other* way, then
+ * turns and rushes in. The wind-back is what sells the pull as something acting
+ * on the pickup rather than the pickup simply sliding, and it is the same read
+ * Vampire Survivors uses. Purely presentational — the trip is still short and
+ * the reach is still `RUN.magnetRadius`. */
+export const PICKUP_PULL = {
+  /** Seconds spent easing away from the player before the turnaround. */
+  windbackTime: 0.12,
+  /** Retreat speed at the instant the pull starts; it eases to a standstill
+   * across `windbackTime`, so the pickup backs off roughly 10px. */
+  windbackSpeed: 170,
+  /** Seconds from the turnaround to full pull speed. Short enough that the
+   * gem still lands about as fast as a straight line would have delivered it. */
+  rushRampTime: 0.09,
+} as const;
+
 /** Rare one-use arena pickup. This is deliberately separate from Magnet
  * Lanyard, the passive item that increases ordinary pickup reach. */
 export const STAGE_MAGNET = {
