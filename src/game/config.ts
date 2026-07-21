@@ -563,12 +563,6 @@ export interface WeaponConf {
   area?: number;
   /** kick: slashes per trigger; the second lands on the opposite side. */
   amount?: number;
-  /** bell: how many shards this tier's note throws on its first hit. WAS
-   *  config.BELL.shards, a second per-tier table sitting beside the ladder and
-   *  indexed by the same tier; it is a rung's worth of tuning, so it rides the
-   *  rung (#141). The build transform does not touch it — `...conf` carries it
-   *  through applyBuild unchanged, exactly like `arc` and `amount`. */
-  shards?: number;
 }
 
 /** Per-trigger gameplay effect of each kit, one block per tier ([tier-1]).
@@ -607,8 +601,6 @@ export const SHOVE_S = 0.12;
 // belong to one weapon module, so the evolution's tuning cannot live in a
 // separate table in config.
 
-// BELL IS GONE (#141), and it was the LAST weapon-specific block in this file.
-// The per-tier shard count became the `shards` rung field on WEAPONS.bell's
-// ladder — now BELL_STATS.tiers — and the five shard constants became named
-// stats in weapons/bell.ts. What is left in config.ts is global knobs only:
-// enemies, XP, damage feedback and run shape.
+// NO WEAPON-SPECIFIC BLOCK REMAINS IN THIS FILE (#141). Every weapon's tuning
+// lives as named stats in its own module under weapons/. What is left in
+// config.ts is global knobs only: enemies, XP, damage feedback and run shape.

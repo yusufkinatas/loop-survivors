@@ -64,7 +64,7 @@ const FLOOR_GROUPS: { label: string; anyOf: Role[] }[] = [
   { label: 'a beat (Pulse)', anyOf: ['kick'] },
   { label: 'a low end (Bass)', anyOf: ['bass'] },
   { label: 'a tick (Hats)', anyOf: ['hat'] },
-  { label: 'a melodic voice (Harmony/Melody)', anyOf: ['chord', 'lead', 'bell'] },
+  { label: 'a melodic voice (Harmony/Melody)', anyOf: ['chord', 'lead'] },
 ];
 
 // Guard the soundset's track at build time: a bad shipped chart is a build

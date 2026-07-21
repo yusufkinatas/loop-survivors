@@ -25,7 +25,7 @@ interface MasteryProgress {
 const CORE_WEAPONS: readonly Role[] = ['kick', 'snare', 'hat', 'bass', 'chord'];
 const CORE_ITEMS: readonly ItemId[] = ['highTops', 'fastForward', 'mirrorball', 'wideLens'];
 
-const META_WEAPONS: readonly Role[] = ['kick', 'snare', 'hat', 'bass', 'chord', 'clap', 'arp', 'lead', 'bell'];
+export const META_WEAPONS: readonly Role[] = ['kick', 'snare', 'hat', 'bass', 'chord', 'clap', 'arp', 'lead'];
 
 const SHOP_OFFER_IDS = [
   'heavyAmp',
@@ -37,7 +37,6 @@ const SHOP_OFFER_IDS = [
   'extensionCable',
   'paddedJacket',
   'doubleTake',
-  'bell',
   'magnetLanyard',
   'secondWind',
   'startItem',
@@ -79,10 +78,8 @@ export const SHOP_OFFERS: readonly ShopOffer[] = [
   { id: 'doubleTake', kind: 'item', contentId: 'doubleTake', name: 'Double Take', cost: 280, minOwned: 5,
     description: 'Two levels only: every projectile weapon fires one, then two extra shots.' },
 
-  { id: 'bell', kind: 'weapon', contentId: 'bell', name: 'Bell', cost: 360, minOwned: 8,
-    description: 'Heavy crystal shots that shatter on impact.' },
   { id: 'magnetLanyard', kind: 'item', contentId: 'magnetLanyard', name: 'Magnet Lanyard', cost: 220, minOwned: 8,
-    description: 'Long-range pickup pull and the Bell evolution recipe.' },
+    description: 'Long-range pickup pull: gems reach farther and fly faster.' },
   { id: 'secondWind', kind: 'perk', contentId: 'secondWind', name: 'Second Wind', cost: 320, minOwned: 8,
     description: 'Revive once per run at 30% health.' },
   { id: 'startItem', kind: 'perk', contentId: 'startItem', name: 'Opening Loadout', cost: 300, minOwned: 8,

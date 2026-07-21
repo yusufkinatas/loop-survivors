@@ -1,5 +1,5 @@
 // The soundset kit: the voicing of the instrument catalog the engine plays.
-// The nine live voices are freshly rendered by buildSoundsetKit (below); one
+// The eight live voices are freshly rendered by buildSoundsetKit (below); one
 // selected drum palette overlays its signature hits. Pitched/melodic voices
 // stay procedural so every palette remains locked to the same allowed notes.
 //
@@ -25,7 +25,7 @@ export function sampledRoles(setId: AudioSetId | string = DEFAULT_AUDIO_SET_ID):
 
 /** Blend the palette's extra percussion accent under its kick. The accent is
  * intentionally not a tenth weapon: it makes every one of the 18 sourced
- * files audible while keeping the nine-weapon arrangement coherent. */
+ * files audible while keeping the eight-weapon arrangement coherent. */
 async function mixKickTexture(kick: AudioBuffer, texture: AudioBuffer): Promise<AudioBuffer> {
   const textureDelay = 0.012;
   const ctx = offline(Math.max(kick.duration, textureDelay + texture.duration) + 0.02);
@@ -100,7 +100,7 @@ async function overlaySamples(
 // whichever kit happened to load first.
 const cache = new Map<string, Promise<Map<Role, Kit>>>();
 
-/** The complete live soundset: nine fresh procedural voices with the selected
+/** The complete live soundset: eight fresh procedural voices with the selected
  *  real drum palette overlaid. Existing callers may omit `setId` and receive
  *  the default palette. Built lazily and cached. */
 export function buildSoundsetKit(

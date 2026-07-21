@@ -166,16 +166,13 @@ function damageLine(
  *  onHit is the whole of it, and it is where the snare's share of the two
  *  role-keyed tables landed. It runs after the loop deals pr.damage and before
  *  the shared pierce rule — the same slot the two table lookups occupied,
- *  with nothing observable in between for a snare shot (the shatter branch
- *  between them is bell-only and `pr.shatter` is 0 on every snare shot). */
+ *  with nothing observable in between for a snare shot. */
 const SHOT_BEHAVIOR: ProjectileBehavior = {
   onHit(ctx: WeaponContext, pr: Projectile, target: WeaponTarget): boolean {
     // Shove (sim, deterministic). Writes only the shared knock channel.
     const shove = SNARE_STATS.shove * ctx.buildMods.knockbackMul;
     if (shove) ctx.shove(target, pr.x, pr.y, shove);
-    // Per-hit spark (view-only). The old push was additionally gated on
-    // `!pr.shard`; a snare shot is never a shard — only a bell shatter makes
-    // those — so the gate had no snare-side meaning and left with the table.
+    // Per-hit spark (view-only).
     ctx.fx({
       type: 'spark',
       x: target.x,

@@ -370,7 +370,6 @@ export class RunView {
   private floorRows = 0;
 
   private telegraphGfx = new Graphics({ roundPixels: true });
-  private systemZoneGfx = new Graphics({ roundPixels: true });
   private trailGfx = new Graphics({ roundPixels: true });
   private projectileLayer = new Container();
   private systemAttackGfx = new Graphics({ roundPixels: true });
@@ -435,7 +434,7 @@ export class RunView {
 
     this.tiledGroundLayer.addChild(this.floorFallback, this.floorTileLayer, this.floorShade);
     this.environmentLayer.addChild(this.environmentFloorGfx);
-    this.zoneLayer.addChild(this.systemZoneGfx, this.telegraphGfx);
+    this.zoneLayer.addChild(this.telegraphGfx);
     this.attackLayer.addChild(
       this.trailGfx,
       this.projectileLayer,
@@ -647,7 +646,6 @@ export class RunView {
     this.drawArenaEnvironment(cameraX, cameraY);
     this.updateScenery(cameraX, cameraY);
     this.syncZones();
-    this.drawSystemZones(cameraX, cameraY);
     this.drawEnemyTelegraphs(cameraX, cameraY);
     this.syncGems(cameraX, cameraY);
     this.syncMusicNotes(cameraX, cameraY);
@@ -877,30 +875,6 @@ export class RunView {
         gfx.destroy();
         this.zoneGfx.delete(zone);
       }
-    }
-  }
-
-  private drawSystemZones(cameraX: number, cameraY: number): void {
-    const gfx = this.systemZoneGfx;
-    gfx.clear();
-
-    for (const well of this.world.gravityWells) {
-      if (
-        Math.abs(well.x - cameraX) > this.world.worldW / 2 + well.radius ||
-        Math.abs(well.y - cameraY) > this.world.worldH / 2 + well.radius
-      ) continue;
-      const lifePulse = Math.min(1, well.lifeS * 3);
-      gfx.poly(regularPixelPoly(16, well.radius, this.world.timeS * 0.18)
-        .map((value, i) => snap(value + (i % 2 === 0 ? well.x : well.y))))
-        .fill({ color: SOUNDWOOD.ink, alpha: 0.34 * lifePulse })
-        .stroke({ width: 4, color: well.color, alpha: 0.52 * lifePulse });
-      for (let ring = 1; ring <= 3; ring++) {
-        const radius = well.radius * (0.2 + ring * 0.2);
-        gfx.poly(regularPixelPoly(8 + ring * 4, radius, -this.world.timeS * (0.3 + ring * 0.08))
-          .map((value, i) => snap(value + (i % 2 === 0 ? well.x : well.y))))
-          .stroke({ width: Math.max(1, 5 - ring), color: ring === 3 ? well.color : 0xffffff, alpha: (0.42 - ring * 0.07) * lifePulse });
-      }
-      pixelDiamond(gfx, well.x, well.y, Math.max(5, well.radius * 0.12), 0x02040c, 0.95);
     }
   }
 

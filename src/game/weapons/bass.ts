@@ -91,9 +91,8 @@ const BASS_STATS: BassStats = {
  *  onHit is the whole of it, and it is where the bass's share of WEAPON_SHOVE
  *  landed. It runs after the loop deals pr.damage and before the shared pierce
  *  rule — the same slot the table lookup occupied, with nothing observable in
- *  between for a bass wave (the shatter branch is bell-only and `pr.shatter` is
- *  0 on every wave; the spark branch never matched bass, which is not in
- *  SPARK_HIT_ROLES). */
+ *  between for a bass wave (the spark branch never matched bass, which is not
+ *  in SPARK_HIT_ROLES). */
 const WAVE_BEHAVIOR: ProjectileBehavior = {
   onHit(ctx: WeaponContext, pr: Projectile, target: WeaponTarget): boolean {
     // Shove (sim, deterministic). Writes only the shared knock channel, from
@@ -194,10 +193,9 @@ class BassInstance implements WeaponInstance {
 export const BASS = {
   role: 'bass',
   stats: BASS_STATS,
-  // The 'shockwaves' phase: after the shared projectile loop and the zones,
-  // before the gravity wells — exactly where RunWorld.updateShockwaves stood.
-  // On a frame where a base wave and a ring both land, the wave's damage is
-  // attributed first.
+  // The 'shockwaves' phase: after the shared projectile loop and the zones —
+  // exactly where RunWorld.updateShockwaves stood. On a frame where a base wave
+  // and a ring both land, the wave's damage is attributed first.
   tickAt: 'shockwaves',
   create: () => new BassInstance(),
 } satisfies WeaponModule;

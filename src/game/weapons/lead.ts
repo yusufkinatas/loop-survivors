@@ -139,13 +139,10 @@ const LEAD_STATS: LeadStats = {
  *  onHit is the whole of it, and it is where this weapon's share of
  *  SPARK_HIT_ROLES landed. It runs after the loop deals pr.damage and before
  *  the shared pierce rule — the exact slot the Set lookup occupied, with
- *  nothing observable in between for a lead shot (the shatter branch above it
- *  is bell-only, and `pr.shatter` is 0 on every seeker). */
+ *  nothing observable in between for a lead shot. */
 const SEEKER_BEHAVIOR: ProjectileBehavior = {
   onHit(ctx: WeaponContext, pr: Projectile, target: WeaponTarget): boolean {
-    // Per-hit spark (view-only). The old push was additionally gated on
-    // `!pr.shard`; a seeker is never a shard — only a bell shatter makes those
-    // — so the gate had no lead-side meaning and left with the Set.
+    // Per-hit spark (view-only).
     ctx.fx({
       type: 'spark',
       x: target.x,

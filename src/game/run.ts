@@ -226,20 +226,14 @@ export interface Projectile {
    *  target dies or this shot has already hit it, so a seeker never strands
    *  itself on a body it can no longer damage. */
   homingTarget: Enemy | null;
-  /** bell: shards to spawn on this shot's first hit (0 for a shard itself, so
-   *  shards never re-shatter). */
-  shatter: number;
-  /** True for a bell shard (a fragment shot), so its hit path skips shattering. */
-  shard: boolean;
   bounces: number;
   bounceRetention: number;
   evolved: boolean;
   /** How fast a homing shot may turn, radians per second. Meaningful only when
    *  `homing` is set, so every value that reaches it comes from the spawner
-   *  that armed the shot (weapons/lead.ts, and bell's gravity shards). */
+   *  that armed the shot (weapons/lead.ts). */
   turnRate: number;
   orbitDir: 1 | -1;
-  gravity: boolean;
 }
 
 /** A shot as SHARED PHYSICS is allowed to see it: everything except which
@@ -265,7 +259,7 @@ export type ProjectileView = Omit<Projectile, 'role'>;
  *  here. Each is a closure resolved from the role ONCE, at the top of the
  *  shot's frame, and NONE of them hands the role back — there is deliberately
  *  no `role` field on this interface, because one would re-open every hole the
- *  projection just closed (`if (owner.role === 'bell')` compiles fine).
+ *  projection just closed (`if (owner.role === 'lead')` compiles fine).
  *
  *  The widening cast back to Projectile lives inside these three methods and
  *  nowhere else. Modules legitimately see role, so the projection stops at this
@@ -312,25 +306,6 @@ export interface Shockwave {
    *  Typed as the weapon-facing view because the owning weapon module (#141)
    *  is the only code that reads or writes it — the world just carries it. */
   hit: Set<WeaponTarget>;
-}
-
-export interface GravityWell {
-  x: number;
-  y: number;
-  radius: number;
-  lifeS: number;
-  pullSpeed: number;
-  color: number;
-  burstT: number;
-  burstDamage: number;
-  /** Whether the one shard burst this well owes has been thrown. The timer
-   *  above keeps counting past zero for the rest of the well's life, so this
-   *  flag — not the timer — is what makes the burst once-only. */
-  burst: boolean;
-  /** Weapon that opened this well: its damage is attributed here, and the
-   *  owning weapon module (#141) is the only code that reads or writes anything
-   *  above. The world just carries it. */
-  source: Role;
 }
 
 /** A treasure chest dropped by a defeated elite/boss enemy. Walking into it
@@ -534,7 +509,6 @@ export class RunWorld {
   readonly stageMagnets: StageMagnetPickup[] = [];
   readonly healthPickups: HealthPickup[] = [];
   readonly shockwaves: Shockwave[] = [];
-  readonly gravityWells: GravityWell[] = [];
   readonly chests: Chest[] = [];
 
   secondWindReady = false;
@@ -642,14 +616,6 @@ export class RunWorld {
         e.knockY = vy;
         e.knockT = s;
       },
-      /** A DIRECT position write, deliberately not the knock channel: a Gravity
-       *  Bell's well drags rather than pushes. The fifth and last cast back to
-       *  a mutable Enemy in this file. */
-      displace: (t, dx, dy) => {
-        const e = t as Enemy;
-        e.x += dx;
-        e.y += dy;
-      },
       lockSeeker: (pr, target) => { pr.homingTarget = (target as Enemy | null) ?? null; },
       withExtraPierce: (basePierce) => world.withExtraPierce(basePierce),
       slow: (t, mul, durationS) => {
@@ -726,33 +692,6 @@ export class RunWorld {
       retireZone: (zone) => {
         const index = world.zones.indexOf(zone);
         if (index >= 0) world.zones.splice(index, 1);
-      },
-      // Gravity-well storage stays world-side for the fourth and last time and
-      // the same reason: view.ts draws world.gravityWells and
-      // clearSandboxEntities empties it. The world owns the ARRAY;
-      // weapons/bell.ts owns everything that happens to what is in it. There is
-      // no world-side gravity-well loop.
-      spawnGravityWell: (spec) => {
-        const well: GravityWell = {
-          x: spec.x,
-          y: spec.y,
-          radius: spec.radius,
-          lifeS: spec.lifeS,
-          pullSpeed: spec.pullSpeed,
-          burstT: spec.burstT,
-          burstDamage: spec.burstDamage,
-          // The world's own bookkeeping: a new well still owes its one burst.
-          burst: false,
-          color,
-          source: role,
-        };
-        world.gravityWells.push(well);
-        return well;
-      },
-      gravityWells: () => world.gravityWells.filter((well) => well.source === role),
-      retireGravityWell: (well) => {
-        const index = world.gravityWells.indexOf(well);
-        if (index >= 0) world.gravityWells.splice(index, 1);
       },
     };
   }
@@ -895,10 +834,10 @@ export class RunWorld {
     this.triggerCounts[t.role] = (this.triggerCounts[t.role] ?? 0) + 1;
 
     // A weapon owns its whole identity behind the weapon context. THE SWITCH
-    // THAT USED TO STAND HERE IS GONE (#141): the bell was its last case, and
-    // with it the last weapon-specific line in this file. A role with no module
-    // simply does nothing, which is the honest answer — there is no half-owned
-    // weapon left for the world to finish off.
+    // THAT USED TO STAND HERE IS GONE (#141), and with it the last
+    // weapon-specific line in this file. A role with no module simply does
+    // nothing, which is the honest answer — there is no half-owned weapon left
+    // for the world to finish off.
     this.weapons.get(t.role)?.fire(this.weaponCtx.get(t.role)!, conf);
   }
 
@@ -1085,7 +1024,6 @@ export class RunWorld {
     this.updateProjectiles(dt);
     this.tickWeapons('zones', dt);
     this.tickWeapons('shockwaves', dt);
-    this.tickWeapons('wells', dt);
     this.updateStageMagnets();
     this.updateHealthPickups();
     this.updateGems(dt);
@@ -1586,7 +1524,6 @@ export class RunWorld {
     this.healthPickups.length = 0;
     this.chests.length = 0;
     this.shockwaves.length = 0;
-    this.gravityWells.length = 0;
     if (this.fx) this.fx.length = 0;
     for (const inst of this.weapons.values()) inst.reset();
     this.overflowGem = null;
@@ -2016,9 +1953,8 @@ export class RunWorld {
    *  the lead module took it (#141); it is plain false now, and a shot that
    *  homes says so itself. `turnRate` and `homingRange` are only ever read
    *  while `homing` is set, and every spawner that sets it also sets them
-   *  (weapons/lead.ts sets all three; bell's gravity shards set turnRate and
-   *  keep Infinity). Do not read these two as any weapon's tuning — a weapon's
-   *  numbers live in its own stats block. */
+   *  (weapons/lead.ts sets all three). Do not read these two as any weapon's
+   *  tuning — a weapon's numbers live in its own stats block. */
   private baseProjectile(role: Role, conf: WeaponConf, color: number, damage: number): Projectile {
     return {
       role,
@@ -2040,14 +1976,11 @@ export class RunWorld {
       orbitAngle: 0,
       orbitRadius: 0,
       rehitT: 0,
-      shatter: 0,
-      shard: false,
       bounces: this.buildMods.bounceCount,
       bounceRetention: this.buildMods.bounceRetention,
       evolved: this.evolved.has(role),
       turnRate: 10,
       orbitDir: 1,
-      gravity: false,
       homingRange: Infinity,
     };
   }
@@ -2056,11 +1989,11 @@ export class RunWorld {
    *  regardless of which weapon spawned it. */
   private pushProjectile(projectile: Projectile): void {
     if (this.projectiles.length >= RUN.maxProjectiles) {
-      // Retire the oldest live shot rather than splicing it out. A Bell shatter
-      // reaches here through spawnShards from inside updateProjectiles' downward
-      // loop, so removing an element now would renumber every index below the
-      // cursor; the normal lifeS <= 0 sweep collects it instead. Appending is
-      // safe either way: new shots land above the cursor and wait a frame.
+      // Retire the oldest live shot rather than splicing it out. A weapon can
+      // reach here from inside updateProjectiles' downward loop, so removing an
+      // element now would renumber every index below the cursor; the normal
+      // lifeS <= 0 sweep collects it instead. Appending is safe either way: new
+      // shots land above the cursor and wait a frame.
       for (const live of this.projectiles) {
         if (live.lifeS > 0) {
           live.lifeS = 0;
@@ -2071,17 +2004,9 @@ export class RunWorld {
     this.projectiles.push(projectile);
   }
 
-  // The bell left this file with its module (#141), and it took three methods
-  // with it: spawnBell, spawnShards and updateGravityWells. The world still
-  // STORES gravity wells — view.ts draws world.gravityWells and
-  // clearSandboxEntities empties it — but it no longer opens, ages, pulls,
-  // bursts or retires one: weapons/bell.ts owns all of it through
-  // ctx.spawnGravityWell / ctx.gravityWells / ctx.retireGravityWell, and its
-  // tick() runs in the 'wells' phase where updateGravityWells used to stand.
-  //
-  // updateGravityWells was the LAST entry in the shared-physics guard's
-  // protected set that belonged to a single weapon. With it gone the guard
-  // watches only the two loops that are genuinely shared by every weapon.
+  // No weapon-specific method survives in this file (#141): the shared-physics
+  // guard's protected set watches only the two loops that are genuinely shared
+  // by every weapon.
 
   /** The SHARED projectile loop. It owns travel, arena rails, the hit pass and
    *  the pierce rule for EVERY weapon, and — since #140 — it contains no

@@ -80,7 +80,7 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
   },
   magnetLanyard: {
     id: 'magnetLanyard', name: 'Magnet Lanyard', shortName: 'Pickup', glyph: '✦',
-    description: 'Experience gems find you from farther away and fly faster.', evolutionPartner: 'bell',
+    description: 'Experience gems find you from farther away and fly faster.',
     levelLines: ['+20% gem range, +8% pull', '+40% range, +16% pull', '+60% range, +24% pull', '+80% range, +32% pull', '+100% range, +40% pull'],
   },
   paddedJacket: {
@@ -189,7 +189,6 @@ const EVOLUTION_IDS = [
   'neonSerpent',
   'twoHands',
   'eventHorizon',
-  'gravityBell',
 ] as const;
 
 type EvolutionId = (typeof EVOLUTION_IDS)[number];
@@ -237,10 +236,6 @@ const EVOLUTIONS: Record<EvolutionId, EvolutionDefinition> = {
   eventHorizon: {
     id: 'eventHorizon', role: 'arp', item: 'extensionCable', name: 'Event Horizon', color: 0x5effd8, gainDb: 0,
     description: 'Counter-rotating pairs breathe around you as a dense orbiting crown.', signature: 'counter-orbiting crown',
-  },
-  gravityBell: {
-    id: 'gravityBell', role: 'bell', item: 'magnetLanyard', name: 'Gravity Bell', color: 0xffe77a, gainDb: -2.5,
-    description: 'The impact pulls the horde inward before shattering into ten seeking crystals.', signature: 'gravity well shatter',
   },
 };
 

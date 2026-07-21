@@ -13,6 +13,7 @@ import {
   type BuildMods,
   type ItemId,
 } from './items';
+import { META_WEAPONS } from './meta';
 import type { MetaStore, RunSettlement } from './meta';
 
 import { TIER_COUNT } from '../audio/charts';
@@ -348,7 +349,7 @@ export class Hud {
         'Collected notes bank when the set ends. Shop purchases unlock new instruments, passives, and perks.');
 
       const collection = el('div', 'collection-strip', profile);
-      el('span', '', collection, `${meta.state.unlockedWeapons.length}/9 WEAPONS`);
+      el('span', '', collection, `${meta.state.unlockedWeapons.length}/${META_WEAPONS.length} WEAPONS`);
       el('span', '', collection, `${meta.state.unlockedItems.length}/${ITEM_IDS.length} PASSIVES`);
 
       if (meta.hasPurchase('startItem')) {
