@@ -124,6 +124,21 @@ export function resetTuning(kind: EnemyKind | null): void {
   save();
 }
 
+/** Put one field back to its shipped value, leaving the kind's other edits
+ *  alone — the usual move when a slider turned out to be the wrong lever. */
+export function resetTuningField(kind: EnemyKind, key: TunableKey): void {
+  const entry = overrides.get(kind);
+  if (!entry) return;
+  delete entry[key];
+  if (Object.keys(entry).length === 0) overrides.delete(kind);
+  save();
+}
+
+/** Whether one field specifically differs from its shipped value. */
+export function isFieldTuned(kind: EnemyKind, key: TunableKey): boolean {
+  return overrides.get(kind)?.[key] !== undefined;
+}
+
 export function isTuned(kind: EnemyKind): boolean {
   return overrides.has(kind);
 }

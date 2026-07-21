@@ -16,8 +16,10 @@ import {
   enemyStats,
   exportTuning,
   fieldRange,
+  isFieldTuned,
   isTuned,
   resetTuning,
+  resetTuningField,
   setTuning,
   shippedValue,
   tunedKindCount,
@@ -286,10 +288,16 @@ export function mountSandboxPanel(
   });
 
   section(lab, 'base stats');
+  // The endless-minute scale stated ONCE for the whole tab. Every row used to
+  // carry its own scaled number, which read as a second copy of the value in
+  // the box rather than as "and this is what actually spawns at minute 8".
+  const scaleNote = el('div', 'sb-hint', lab);
+  scaleNote.style.marginTop = '0';
   interface TuneRow {
     field: TunableField;
     slider: HTMLInputElement;
     number: HTMLInputElement;
+    reset: HTMLButtonElement;
     readout: HTMLElement;
   }
   const tuneRows: TuneRow[] = [];
@@ -302,16 +310,25 @@ export function mountSandboxPanel(
     number.type = 'number';
     number.className = 'sb-tune-num';
     headRow.appendChild(number);
+    const track = el('div', 'sb-tune-track', row);
     const slider = document.createElement('input');
     slider.type = 'range';
     slider.className = 'sb-tune-slider';
-    row.appendChild(slider);
+    track.appendChild(slider);
+    // Per-field revert. Sits at the end of its own slider so the thing it
+    // undoes is unambiguous; RESET KIND below still drops the whole set.
+    const reset = button(track, '↺', () => {
+      resetTuningField(labKind, field.key);
+      tuningRevision++;
+      world.retuneAliveEnemies();
+    });
+    reset.classList.add('sb-tune-reset');
     const readout = el('span', 'sb-enemy-stats', row);
     // 'input' not 'change': the horde must move while the slider is moving,
     // which is the entire reason this is a slider and not a text box.
     slider.oninput = () => applyTuning(field.key, Number(slider.value));
     number.onchange = () => applyTuning(field.key, Number(number.value));
-    tuneRows.push({ field, slider, number, readout });
+    tuneRows.push({ field, slider, number, reset, readout });
   }
 
   const labActions = el('div', 'sb-btns sb-controls', lab);
@@ -545,20 +562,6 @@ export function mountSandboxPanel(
     }, logged);
   }
 
-  /** The minute scale that a freshly spawned enemy of this kind would take, so
-   *  each row can show the tuned base AND what it actually becomes right now. */
-  function liveMultiplier(key: TunableKey): number {
-    const scale = endlessScale(Math.floor(world.timeS / 60));
-    switch (key) {
-      case 'hp': return scale.hpMul;
-      case 'speed': return scale.speedMul;
-      case 'damage': return scale.damageMul;
-      case 'xp': return scale.xpMul;
-      // Size and knockback are not on the endless ramp.
-      default: return 1;
-    }
-  }
-
   function refreshLab(): void {
     const tuned = tunedKindCount();
     labBanner.textContent = tuned === 0
@@ -570,7 +573,17 @@ export function mountSandboxPanel(
       // A dot, not a colour: the picker is already a dense grid of toggles.
       pick.textContent = isTuned(kind) ? `• ${ENEMY_LABELS[kind]}` : ENEMY_LABELS[kind];
     }
-    for (const { field, slider, number, readout } of tuneRows) {
+    const minute = Math.floor(world.timeS / 60);
+    const scale = endlessScale(minute);
+    const scaled: string[] = [];
+    if (scale.hpMul !== 1) scaled.push(`health ×${scale.hpMul.toFixed(2)}`);
+    if (scale.damageMul !== 1) scaled.push(`damage ×${scale.damageMul.toFixed(2)}`);
+    if (scale.speedMul !== 1) scaled.push(`speed ×${scale.speedMul.toFixed(2)}`);
+    if (scale.xpMul !== 1) scaled.push(`xp ×${scale.xpMul.toFixed(2)}`);
+    scaleNote.textContent = scaled.length === 0
+      ? 'Base values. At threat minute 0 an enemy spawns with exactly these numbers.'
+      : `Base values. At threat minute ${minute} a spawn takes ${scaled.join(', ')} on top.`;
+    for (const { field, slider, number, reset, readout } of tuneRows) {
       const { min, max, step } = fieldRange(labKind, field);
       const value = tunedValue(labKind, field.key);
       const shipped = shippedValue(labKind, field.key);
@@ -585,14 +598,16 @@ export function mountSandboxPanel(
       // focused number input would move the caret mid-type.
       if (document.activeElement !== slider) slider.value = String(value);
       if (document.activeElement !== number) number.value = String(Number(value.toFixed(3)));
-      const changed = value !== shipped;
+      const changed = isFieldTuned(labKind, field.key);
       slider.classList.toggle('tuned', changed);
       number.classList.toggle('tuned', changed);
-      const mul = liveMultiplier(field.key);
-      readout.textContent =
-        `shipped ${formatStat(shipped)}` +
-        (mul === 1 ? '' : ` · on the field now ${formatStat(value * mul)}`) +
-        ` · ${field.hint}`;
+      // Nothing to revert to on an untouched field, so the control says so
+      // rather than sitting there as a live-looking no-op.
+      reset.disabled = !changed;
+      reset.title = changed
+        ? `Back to the shipped ${field.label}: ${formatStat(shipped)}`
+        : `${field.label} is at its shipped value (${formatStat(shipped)})`;
+      readout.textContent = `shipped ${formatStat(shipped)} · ${field.hint}`;
     }
     resetKindButton.disabled = !isTuned(labKind);
     resetAllButton.disabled = tuned === 0;
