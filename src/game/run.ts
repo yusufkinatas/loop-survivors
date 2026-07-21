@@ -201,6 +201,43 @@ export interface Projectile {
   gravity: boolean;
 }
 
+/** A shot as SHARED PHYSICS is allowed to see it: everything except which
+ *  weapon fired it.
+ *
+ *  #140 established that shared projectile physics contains zero per-weapon
+ *  branches, and `553c0d9` backed it with a text scan of this file. A text scan
+ *  cannot win that argument — `const { role: rr } = pr`, `pr['role']` and, most
+ *  ordinarily, moving a branch one call frame away into a new helper all pass a
+ *  green scan. The writer always has another spelling.
+ *
+ *  So the rule stopped being a scan and became a TYPE. The shared step below
+ *  takes this, not a Projectile: `pr.role` is not a property that exists, and a
+ *  per-weapon branch is a compile error rather than a review finding. Helper
+ *  extraction — the bypass a scan is weakest against — inherits the guarantee,
+ *  because any helper the step can hand `pr` to has this same role-free type. */
+export type ProjectileView = Omit<Projectile, 'role'>;
+
+/** The seam between shared physics and the weapon that owns a shot.
+ *
+ *  #148's open question was where the GENUINELY generic uses of role go once
+ *  the loop cannot see role: the module hooks and damage attribution. They go
+ *  here. Each is a closure resolved from the role ONCE, at the top of the
+ *  shot's frame, and NONE of them hands the role back — there is deliberately
+ *  no `role` field on this interface, because one would re-open every hole the
+ *  projection just closed (`if (owner.role === 'bell')` compiles fine).
+ *
+ *  The widening cast back to Projectile lives inside these three methods and
+ *  nowhere else. Modules legitimately see role, so the projection stops at this
+ *  seam rather than propagating into ProjectileBehavior. */
+interface ProjectileOwner {
+  /** ProjectileBehavior.steer, or false when the weapon has no opinion. */
+  steer(pr: ProjectileView, dt: number): boolean;
+  /** ProjectileBehavior.onHit, or true (spend pierce) when there is no hook. */
+  onHit(pr: ProjectileView, target: Enemy): boolean;
+  /** damageEnemy with this weapon's attribution already bound. */
+  damage(target: Enemy, amount: number): void;
+}
+
 export interface Zone {
   x: number;
   y: number;
@@ -1845,93 +1882,129 @@ export class RunWorld {
    *  weapon module, which lends it back through ProjectileBehavior; anything
    *  else a shot needs is a FIELD ON THE SHOT, set by whatever spawned it.
    *  Adding a `pr.role === '...'` here is the thing this loop exists not to do. */
+  /** The ONE place a shot's role is read on its way into shared physics.
+   *
+   *  Cached per role: the loops run every frame over every live shot, and the
+   *  projection must not cost an allocation per shot per frame (#148 asked).
+   *  The closures resolve `weapons` and `weaponCtx` at call time, which is the
+   *  same answer the old inline lookups gave — neither map is mutated during an
+   *  update, only by addWeapon/evolve between them. */
+  private readonly projectileOwners = new Map<Role, ProjectileOwner>();
+
+  private ownerOf(role: Role): ProjectileOwner {
+    const cached = this.projectileOwners.get(role);
+    if (cached) return cached;
+    // The widening cast back to the full Projectile lives here, at the seam,
+    // and is the only one: a module is entitled to see the role of the shot it
+    // owns. What it must not do is reach shared physics, and it cannot.
+    const owner: ProjectileOwner = {
+      steer: (pr, dt) =>
+        this.projectileBehavior(role)?.steer?.(this.weaponCtx.get(role)!, pr as Projectile, dt)
+          ?? false,
+      onHit: (pr, target) =>
+        this.projectileBehavior(role)?.onHit?.(this.weaponCtx.get(role)!, pr as Projectile, target)
+          ?? true,
+      damage: (target, amount) => this.damageEnemy(target, amount, role),
+    };
+    this.projectileOwners.set(role, owner);
+    return owner;
+  }
+
   private updateProjectiles(dt: number): void {
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
-      const pr = this.projectiles[i];
-      const step = dt;
-      const travelStep = step;
-      pr.age += step;
-      pr.lifeS -= step;
+      const shot = this.projectiles[i];
+      // Role is read HERE, once, and does not travel any further.
+      if (this.stepProjectile(shot, this.ownerOf(shot.role), dt)) this.projectiles.splice(i, 1);
+    }
+  }
 
-      // A module that steers its own shots positions them itself, which skips
-      // shared travel AND the arena rails together (the arp's two ADR-0002
-      // exemptions). No module, or a module that only nudged velocity: shared
-      // motion runs, exactly as it always has.
-      const behavior = this.projectileBehavior(pr.role);
-      const steered = behavior?.steer?.(this.weaponCtx.get(pr.role)!, pr, step) ?? false;
-      if (!steered) {
-        if (pr.homing) {
-          let best: Enemy | null = null;
-          let bestD = Infinity;
-          for (const e of this.enemies) {
-            if (e.dead || pr.hit.has(e)) continue;
-            const dx = e.x - pr.x;
-            const dy = e.y - pr.y;
-            const d = dx * dx + dy * dy;
-            if (d < bestD && d <= pr.homingRange * pr.homingRange) {
-              bestD = d;
-              best = e;
-            }
-          }
-          if (best) {
-            const ang = Math.atan2(best.y - pr.y, best.x - pr.x);
-            const cur = Math.atan2(pr.vy, pr.vx);
-            let diff = ang - cur;
-            while (diff > Math.PI) diff -= Math.PI * 2;
-            while (diff < -Math.PI) diff += Math.PI * 2;
-            // tight turn so seekers snap to targets instead of orbiting them
-            const turn = Math.max(-pr.turnRate * step, Math.min(pr.turnRate * step, diff));
-            const next = cur + turn;
-            pr.vx = Math.cos(next) * pr.speed;
-            pr.vy = Math.sin(next) * pr.speed;
+  /** Shared projectile physics. Returns true when the shot is spent.
+   *
+   *  THE ZERO-BRANCHES RULE IS THIS SIGNATURE. `pr` has no `role` and `owner`
+   *  hands none back, so there is no per-weapon branch to write here — see
+   *  ProjectileView. Anything a weapon needs to do differently goes through one
+   *  of the two ProjectileBehavior hooks or a field its own spawner set. */
+  private stepProjectile(pr: ProjectileView, owner: ProjectileOwner, dt: number): boolean {
+    const step = dt;
+    const travelStep = step;
+    pr.age += step;
+    pr.lifeS -= step;
+
+    // A module that steers its own shots positions them itself, which skips
+    // shared travel AND the arena rails together (the arp's two ADR-0002
+    // exemptions). No module, or a module that only nudged velocity: shared
+    // motion runs, exactly as it always has.
+    const steered = owner.steer(pr, step);
+    if (!steered) {
+      if (pr.homing) {
+        let best: Enemy | null = null;
+        let bestD = Infinity;
+        for (const e of this.enemies) {
+          if (e.dead || pr.hit.has(e)) continue;
+          const dx = e.x - pr.x;
+          const dy = e.y - pr.y;
+          const d = dx * dx + dy * dy;
+          if (d < bestD && d <= pr.homingRange * pr.homingRange) {
+            bestD = d;
+            best = e;
           }
         }
-        pr.x += pr.vx * travelStep;
-        pr.y += pr.vy * travelStep;
-        this.reflectProjectileFromArena(pr);
-      }
-
-      const near = this.hash.query(pr.x, pr.y, pr.radius + 24, this.queryBuf);
-      for (const e of near) {
-        if (e.dead || pr.hit.has(e) || !circlesOverlap(pr, e)) continue;
-        pr.hit.add(e);
-        this.damageEnemy(e, pr.damage, pr.role);
-        // The per-weapon shove lookup that stood here is GONE (#141). It read
-        // the WEAPON_SHOVE table by pr.role — the last role-keyed table in this
-        // loop and the last entry in INTERIM_EXCEPTIONS; the clap module took
-        // the table with it. A weapon that knocks on a projectile hit does it from its own
-        // ProjectileBehavior.onHit now — see SNARE_STATS.shove and
-        // BASS_STATS.shove, both applied that way.
-        // The shatter branch that stood here is GONE (#141). It was already
-        // generic — it keyed on `pr.shatter > 0`, a field the bell's own spawner
-        // set, and named no role — but generic is not the same as SHARED: it
-        // called spawnShards and pushed a gravity well, which is one weapon's
-        // behavior sitting in everyone's loop. It moved into the bell module's
-        // ProjectileBehavior.onHit, which is the slot directly below and the one
-        // reserved for exactly this: after the loop deals pr.damage, before the
-        // shared pierce rule. The sequence is unchanged; only the owner is.
-        // The shared pierce rule, and the one hook that can decline it. A
-        // module returning false chips on a timer instead (ADR-0002); no hook
-        // means spend, which is what every unmigrated role does today.
-        const spendsPierce = behavior?.onHit?.(this.weaponCtx.get(pr.role)!, pr, e) ?? true;
-        if (!spendsPierce) continue;
-        pr.pierce -= 1;
-        if (pr.pierce <= 0) {
-          pr.lifeS = 0;
-          break;
+        if (best) {
+          const ang = Math.atan2(best.y - pr.y, best.x - pr.x);
+          const cur = Math.atan2(pr.vy, pr.vx);
+          let diff = ang - cur;
+          while (diff > Math.PI) diff -= Math.PI * 2;
+          while (diff < -Math.PI) diff += Math.PI * 2;
+          // tight turn so seekers snap to targets instead of orbiting them
+          const turn = Math.max(-pr.turnRate * step, Math.min(pr.turnRate * step, diff));
+          const next = cur + turn;
+          pr.vx = Math.cos(next) * pr.speed;
+          pr.vy = Math.sin(next) * pr.speed;
         }
       }
+      pr.x += pr.vx * travelStep;
+      pr.y += pr.vy * travelStep;
+      this.reflectProjectileFromArena(pr);
+    }
 
-      if (pr.lifeS <= 0) {
-        this.projectiles.splice(i, 1);
+    const near = this.hash.query(pr.x, pr.y, pr.radius + 24, this.queryBuf);
+    for (const e of near) {
+      if (e.dead || pr.hit.has(e) || !circlesOverlap(pr, e)) continue;
+      pr.hit.add(e);
+      owner.damage(e, pr.damage);
+      // The per-weapon shove lookup that stood here is GONE (#141). It read
+      // the WEAPON_SHOVE table by pr.role — the last role-keyed table in this
+      // loop and the last entry in INTERIM_EXCEPTIONS; the clap module took
+      // the table with it. A weapon that knocks on a projectile hit does it from its own
+      // ProjectileBehavior.onHit now — see SNARE_STATS.shove and
+      // BASS_STATS.shove, both applied that way.
+      // The shatter branch that stood here is GONE (#141). It was already
+      // generic — it keyed on `pr.shatter > 0`, a field the bell's own spawner
+      // set, and named no role — but generic is not the same as SHARED: it
+      // called spawnShards and pushed a gravity well, which is one weapon's
+      // behavior sitting in everyone's loop. It moved into the bell module's
+      // ProjectileBehavior.onHit, which is the slot directly below and the one
+      // reserved for exactly this: after the loop deals pr.damage, before the
+      // shared pierce rule. The sequence is unchanged; only the owner is.
+      // The shared pierce rule, and the one hook that can decline it. A
+      // module returning false chips on a timer instead (ADR-0002); no hook
+      // means spend, which is what every unmigrated role does today.
+      const spendsPierce = owner.onHit(pr, e);
+      if (!spendsPierce) continue;
+      pr.pierce -= 1;
+      if (pr.pierce <= 0) {
+        pr.lifeS = 0;
+        break;
       }
     }
+
+    return pr.lifeS <= 0;
   }
 
   /** Arena rails. Only ever reached from the shared-travel path, so a shot a
    *  module steered itself never gets here — which is how the arp's rail
    *  exemption survives without naming the arp. */
-  private reflectProjectileFromArena(projectile: Projectile): void {
+  private reflectProjectileFromArena(projectile: ProjectileView): void {
     if (projectile.bounces <= 0) return;
     const minX = this.player.x - this.worldW * 0.52;
     const maxX = this.player.x + this.worldW * 0.52;

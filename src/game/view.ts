@@ -7,6 +7,7 @@ import { RUN } from './config';
 import { KICK } from './weapons';
 import {
   PLAYER_FOOT_OFFSET,
+  type Chest,
   type Enemy,
   type FxEvent,
   type Gem,
@@ -61,36 +62,6 @@ const DMG_CAP = 100;
 const DMG_DUR = 0.62;
 const DMG_RISE = 38;
 const CHAPTER_TINTS = [0xffffff, 0xe6f5ff, 0xe9fff0, 0xf1e8ff, 0xfff0d7, 0xffdedb];
-
-interface StructuralShockwave {
-  x: number;
-  y: number;
-  radius: number;
-  maxRadius: number;
-  age: number;
-  lifeS: number;
-  color: number;
-}
-
-interface StructuralGravityWell {
-  x: number;
-  y: number;
-  radius: number;
-  lifeS: number;
-  color: number;
-}
-
-interface StructuralChest {
-  x: number;
-  y: number;
-  color: number;
-}
-
-interface StructuralTourWorld {
-  shockwaves?: StructuralShockwave[];
-  gravityWells?: StructuralGravityWell[];
-  chests?: StructuralChest[];
-}
 
 /** The single arena color palette. */
 const ARENA_PALETTE = { tint: 0xf1ffff, accent: SOUNDWOOD.cyan, secondary: SOUNDWOOD.magenta } as const;
@@ -203,15 +174,7 @@ const BANNER_STYLE = new TextStyle({
 });
 
 function roleIsEvolved(world: RunWorld, role: Role): boolean {
-  const record = world as unknown as Record<string, unknown>;
-  for (const key of ['evolved', 'evolvedWeapons', 'evolutions']) {
-    const value = record[key];
-    if (value instanceof Set) return value.has(role);
-    if (value instanceof Map) return value.has(role) && value.get(role) !== false;
-    if (Array.isArray(value)) return value.includes(role);
-    if (value && typeof value === 'object' && Boolean((value as Record<string, unknown>)[role])) return true;
-  }
-  return false;
+  return world.evolved.has(role);
 }
 
 function evolvedCount(world: RunWorld): number {
@@ -224,10 +187,6 @@ function evolvedCount(world: RunWorld): number {
  * arena tint and fires a "crowd surge" burst. */
 function visualChapter(world: RunWorld): number {
   return Math.max(0, Math.floor(world.timeS / 300));
-}
-
-function tourWorld(world: RunWorld): StructuralTourWorld {
-  return world as unknown as StructuralTourWorld;
 }
 
 function multiplyTint(a: number, b: number): number {
@@ -404,7 +363,7 @@ export class RunView {
   private musicNoteGfx = new Map<MusicNotePickup, MusicNoteGfx>();
   private stageMagnetGfx = new Map<StageMagnetPickup, StageMagnetGfx>();
   private scenery = new Map<string, SceneryCell>();
-  private chestGfx = new Map<StructuralChest, ChestGfx>();
+  private chestGfx = new Map<Chest, ChestGfx>();
   private groundPickGfx: RewardGfx[] = [];
   private pops: Pop[] = [];
   private floaters: Floater[] = [];
@@ -781,10 +740,9 @@ export class RunView {
 
   private drawSystemZones(cameraX: number, cameraY: number): void {
     const gfx = this.systemZoneGfx;
-    const tour = tourWorld(this.world);
     gfx.clear();
 
-    for (const well of tour.gravityWells ?? []) {
+    for (const well of this.world.gravityWells) {
       if (
         Math.abs(well.x - cameraX) > this.world.worldW / 2 + well.radius ||
         Math.abs(well.y - cameraY) > this.world.worldH / 2 + well.radius
@@ -1060,11 +1018,10 @@ export class RunView {
 
   private drawTourAttacks(cameraX: number, cameraY: number): void {
     const gfx = this.systemAttackGfx;
-    const tour = tourWorld(this.world);
     const halfW = this.world.worldW / 2 + 120;
     const halfH = this.world.worldH / 2 + 120;
     gfx.clear();
-    for (const wave of tour.shockwaves ?? []) {
+    for (const wave of this.world.shockwaves) {
       if (Math.abs(wave.x - cameraX) > halfW || Math.abs(wave.y - cameraY) > halfH) continue;
       // age counts up while lifeS counts down, so age + lifeS is the invariant total life.
       // Dividing by lifeS alone made the ring vanish at half the sweep while it kept damaging.
@@ -1121,9 +1078,8 @@ export class RunView {
   }
 
   private syncChests(): void {
-    const tour = tourWorld(this.world);
-    const liveChests = new Set<StructuralChest>();
-    for (const chest of tour.chests ?? []) {
+    const liveChests = new Set<Chest>();
+    for (const chest of this.world.chests) {
       let gfx = this.chestGfx.get(chest);
       if (!gfx) {
         gfx = makeChestGfx(chest);
