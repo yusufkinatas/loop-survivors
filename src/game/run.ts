@@ -42,6 +42,7 @@ import {
   deriveBuildMods,
   eligibleEvolutions,
   itemMaxLevel,
+  EVOLUTION_BY_ROLE,
   paddedJacketHeal,
   type BuildMods,
   type EvolutionDefinition,
@@ -816,6 +817,30 @@ export class RunWorld {
   /** Sandbox loadout editor: drop a weapon entirely. */
   removeWeapon(role: Role): void {
     this.tiers.delete(role);
+  }
+
+  /** Sandbox-only evolve that IGNORES THE RECIPE ENTIRELY — no tier gate, no
+   *  maxed partner passive, no eligibility check. `evolve` above is the real
+   *  one and keeps every rule; this exists so the panel can put an evolved
+   *  weapon on the field to look at it.
+   *
+   *  The sandbox used to reach the same place through `evolve` by force-setting
+   *  the partner item to max first, which satisfied the gate but SILENTLY
+   *  CHANGED THE BUILD IT WAS ABOUT TO MEASURE: maxing Heavy Amp to see
+   *  Subquake also bought its damage and area, so the ring under test was not
+   *  the ring a player would get. Testing an evolution should cost nothing but
+   *  the evolution.
+   *
+   *  Deliberately does NOT count toward evolutionsMade / evolutionsByRole or
+   *  mark the firstEvolution milestone. Those feed career progression, and a
+   *  dev button must not write to it. */
+  evolveForSandbox(role: Role): EvolutionDefinition | null {
+    const evolution = EVOLUTION_BY_ROLE[role];
+    if (!evolution || this.evolved.has(role)) return null;
+    this.evolved.add(role);
+    this.fx?.push({ type: 'evolution', x: this.player.x, y: this.player.y, color: evolution.color, label: evolution.name });
+    this.spawnRing(this.player.x, this.player.y, 320, 0xffdf74, 1);
+    return evolution;
   }
 
   /** Sandbox-only reversal for testing the before/after evolution contract. */

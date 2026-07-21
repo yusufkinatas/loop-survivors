@@ -19,7 +19,7 @@ export const ITEM_IDS = [
 
 export type ItemId = (typeof ITEM_IDS)[number];
 
-export const ITEM_MAX_LEVEL = 5;
+const ITEM_MAX_LEVEL = 5;
 export const ITEM_SLOT_CAP = 6;
 
 /** Hue is the weapon language: every role owns one (`ROLE_COLORS`). Passives

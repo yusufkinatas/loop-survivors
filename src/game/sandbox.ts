@@ -18,7 +18,6 @@ import {
   EVOLUTION_BY_ROLE,
   ITEMS,
   ITEM_IDS,
-  ITEM_MAX_LEVEL,
   ITEM_NEUTRAL_CSS,
   itemMaxLevel,
   type EvolutionDefinition,
@@ -33,6 +32,11 @@ import { endlessScale } from './tour';
 const SANDBOX_ENEMY_CATALOG: readonly EnemyKind[] = ALL_ENEMY_KINDS;
 const SANDBOX_WEAPON_CATALOG: readonly Role[] = Object.freeze(supportedRoles());
 const SANDBOX_ITEM_CATALOG: readonly ItemId[] = ITEM_IDS;
+
+/** The ★ rung's value in a weapon row's ChoiceButtons. One past tier IV so it
+ *  sorts and reads as the end of the ladder; it is NOT a tier the game has, and
+ *  nothing outside this panel should treat it as one. */
+const EVOLVED_RUNG = 5;
 
 type TabId = 'combat' | 'build' | 'career';
 
@@ -241,30 +245,36 @@ export function mountSandboxPanel(
     for (const role of SANDBOX_WEAPON_CATALOG) setWeaponTier(role, 0);
   });
 
-  // One weapon = one row = the whole ladder, off through IV through evolved.
+  // One weapon = one row = one ladder: off, I–IV, then ★ for the evolved form.
   // The evolve control used to live in its own section far below every weapon
   // and every passive, so taking a single weapon from off to evolved meant
   // scrolling past the entire tab and back for each weapon in turn.
   //
-  // The row is TWO LINES rather than one wide one. A weapon line already
-  // carries a name, a slot tag and six tier buttons; adding a button plus
-  // recipe text to it would overflow the panel, which is width-constrained on a
-  // narrow window and on mobile. Two lines fit at any width without guessing.
+  // ★ IS PRESENTED AS A FIFTH RUNG, which the real game does not have —
+  // evolving is a recipe (tier IV plus a maxed partner passive), not the top of
+  // the tier ladder. The panel deliberately does not model that. Here the
+  // question is only ever "show me this weapon in this state", and one row of
+  // mutually exclusive states answers it in one click. The recipe still governs
+  // real runs; see RunWorld.evolve, which this path does not go through.
   const weaponButtons = new Map<Role, ChoiceButtons<number>>();
-  const evolutionButtons = new Map<Role, HTMLButtonElement>();
   const custom = sampledRoles();
   for (const role of SANDBOX_WEAPON_CATALOG) {
     const voice = engine.voices.get(role);
     if (!voice) continue;
-    const row = el('div', 'sb-loadout sb-weapon', build);
+    const row = el('div', 'sb-loadout', build);
     row.style.setProperty('--voice-color', voice.kit.color);
-    const tierLine = el('div', 'sb-weapon-line', row);
-    const info = el('div', 'sb-enemy-info', tierLine);
+    const info = el('div', 'sb-enemy-info', row);
     const label = el('span', `sb-loadout-label ${custom.has(role) ? 'custom' : ''}`, info, voice.kit.name);
     label.title = `${SLOT_LABEL[slotOf(role)]} slot${custom.has(role) ? ' · sample-backed' : ''}`;
     el('span', 'sb-enemy-stats', info, SLOT_LABEL[slotOf(role)]);
-    const controls = el('div', 'sb-btns', tierLine);
-    const choices: ChoiceButtons<number> = { value: () => world.tiers.get(role) ?? 0, options: [] };
+    const controls = el('div', 'sb-btns', row);
+    // EVOLVED_RUNG is the selected value when the weapon is evolved, so ★ and
+    // the tier buttons are one exclusive set and the highlight cannot land on
+    // two rungs at once.
+    const choices: ChoiceButtons<number> = {
+      value: () => (world.evolved.has(role) ? EVOLVED_RUNG : world.tiers.get(role) ?? 0),
+      options: [],
+    };
     choices.options.push({ value: 0, button: button(controls, '⏻', () => setWeaponTier(role, 0)) });
     for (let tier = 1; tier <= 4; tier++) {
       choices.options.push({
@@ -272,30 +282,21 @@ export function mountSandboxPanel(
         button: button(controls, TIER_NUMERALS[tier - 1], () => setWeaponTier(role, tier)),
       });
     }
-    weaponButtons.set(role, choices);
-
     // The lookup is Partial by design, so a weapon may legitimately have no
     // evolution. Every supported weapon has one today; if that ever changes the
-    // row simply ends after its tier line rather than growing an empty control.
+    // row simply ends after IV rather than growing a dead button.
     const evolution = EVOLUTION_BY_ROLE[role];
     if (!evolution) continue;
-    const evoLine = el('div', 'sb-weapon-line sb-weapon-evo', row);
-    // The evolved form is its own voice with its own colour — worth keeping,
-    // since the row above is tinted by the base weapon's.
-    evoLine.style.setProperty('--voice-color', `#${evolution.color.toString(16).padStart(6, '0')}`);
-    const evoInfo = el('div', 'sb-enemy-info', evoLine);
-    const evoName = el('span', 'sb-loadout-label', evoInfo, evolution.name);
-    evoName.title = evolution.description;
-    // The requirement line is the thing that tells you WHY an evolution is not
-    // available yet, so it has to survive the move off the old section.
-    el(
-      'span',
-      'sb-enemy-stats',
-      evoInfo,
-      `${ROLE_META[evolution.role].name} IV + ${ITEMS[evolution.item].name} V`,
-    );
-    const evoControls = el('div', 'sb-btns', evoLine);
-    evolutionButtons.set(role, button(evoControls, 'EVOLVE', () => toggleEvolution(evolution)));
+    const star = button(controls, '★', () => setWeaponEvolved(role, evolution));
+    star.classList.add('sb-evo-rung');
+    // The row has no space for the recipe, and in here it is not a requirement
+    // anyway — so it moves into the tooltip as context rather than as a gate.
+    star.title =
+      `${evolution.name} — ${evolution.description}\n` +
+      `In a run: ${ROLE_META[role].name} IV + ${ITEMS[evolution.item].name} V. ` +
+      `In the sandbox neither is needed.`;
+    choices.options.push({ value: EVOLVED_RUNG, button: star });
+    weaponButtons.set(role, choices);
   }
 
   section(build, 'passive items');
@@ -401,13 +402,6 @@ export function mountSandboxPanel(
     shopButtons.set(offer.id, buy);
   }
 
-  el(
-    'div',
-    'sb-hint',
-    panel,
-    'Stage spawns are off. O = perf, C = track, K = clear visible, 1–7 = mute a band slot.',
-  );
-
   function setTab(id: TabId): void {
     activeTab = id;
     for (const [tabId, page] of pages) page.style.display = tabId === id ? 'flex' : 'none';
@@ -421,12 +415,15 @@ export function mountSandboxPanel(
 
   function setWeaponTier(role: Role, tier: number): void {
     const next = Math.max(0, Math.min(4, Math.floor(tier)));
+    // ALWAYS clears the evolution, including for IV. The rungs are one
+    // exclusive set, so picking any numbered tier means "show me the base
+    // weapon at this tier" — landing on IV *while still evolved* would leave
+    // the row highlighting a rung the field does not match.
+    clearEvolution(role);
     if (next === 0) {
-      clearEvolution(role);
       engine.setVoiceEnabled(role, false);
       world.removeWeapon(role);
     } else {
-      if (next < 4) clearEvolution(role);
       engine.setVoiceTier(role, next);
       engine.setVoiceEnabled(role, true);
       world.addWeapon(role, next);
@@ -434,24 +431,27 @@ export function mountSandboxPanel(
     opts.onLoadout?.();
   }
 
-  function setItemLevel(id: ItemId, level: number): void {
-    const next = Math.max(0, Math.min(itemMaxLevel(id), Math.floor(level)));
-    world.setItemLevelForSandbox(id, next);
-    const partner = ITEMS[id].evolutionPartner;
-    if (partner && next < ITEM_MAX_LEVEL) clearEvolution(partner);
+  /** The ★ rung: put this weapon on the field in its evolved form.
+   *
+   *  Sets tier IV underneath because every evolved weapon reads its built tier
+   *  damage — but it does NOT touch the partner passive. Going through
+   *  world.evolve would have meant maxing that passive to satisfy the recipe,
+   *  which buys its whole build effect as a side effect and quietly changes the
+   *  thing being measured. See RunWorld.evolveForSandbox. */
+  function setWeaponEvolved(role: Role, evolution: EvolutionDefinition): void {
+    if (world.evolved.has(role)) return;
+    setWeaponTier(role, 4);
+    if (world.evolveForSandbox(role)) engine.setEvolutionGain(role, evolution.gainDb);
     opts.onLoadout?.();
   }
 
-  function toggleEvolution(evolution: EvolutionDefinition): void {
-    if (world.evolved.has(evolution.role)) {
-      clearEvolution(evolution.role);
-      opts.onLoadout?.();
-      return;
-    }
-    setWeaponTier(evolution.role, 4);
-    setItemLevel(evolution.item, ITEM_MAX_LEVEL);
-    const made = world.evolve(evolution.role);
-    if (made) engine.setEvolutionGain(evolution.role, evolution.gainDb);
+  function setItemLevel(id: ItemId, level: number): void {
+    const next = Math.max(0, Math.min(itemMaxLevel(id), Math.floor(level)));
+    world.setItemLevelForSandbox(id, next);
+    // Dropping a passive no longer un-evolves its partner. That coupling only
+    // existed because the panel evolved THROUGH the recipe; now that ★ ignores
+    // the recipe, an evolved weapon has no claim on any passive, and pulling a
+    // passive out from under it to isolate a variable must not undo it.
     opts.onLoadout?.();
   }
 
@@ -516,13 +516,8 @@ export function mountSandboxPanel(
     invulnButton.textContent = `INVULN ${world.invincible ? 'ON' : 'OFF'}`;
     threatStatus.textContent = `minute ${Math.floor(world.timeS / 60)} · freshly spawned enemies use this scale`;
     levelStatus.textContent = `level ${world.level} · HP ${Math.ceil(world.player.hp)}/${world.playerMaxHp}`;
-    // Driven off the buttons that actually exist, not off a catalog: a weapon
-    // with no evolution contributes no entry and needs no special case.
-    for (const [role, control] of evolutionButtons) {
-      const evolved = world.evolved.has(role);
-      control.classList.toggle('on', evolved);
-      control.textContent = evolved ? 'CLEAR EVO' : 'EVOLVE';
-    }
+    // No separate evolution pass: ★ is a rung of the weapon's own ChoiceButtons
+    // and is synced by the loop above with every other rung.
     const mods = world.buildMods;
     buildReadout.textContent =
       `build: move ×${mods.moveMul.toFixed(2)} · damage ×${mods.damageMul.toFixed(2)}` +
