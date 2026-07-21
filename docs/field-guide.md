@@ -83,8 +83,9 @@ repeatable permanent damage, health, or speed purchases.
 
 Every eligible enemy kill has a 0.12% chance to drop a **Stage Magnet**. Bad
 luck cannot last forever: the 700th eligible kill without one guarantees the
-drop. Only one can wait on the floor, another cannot drop for 90 seconds, and
-a missed magnet fades after 45 seconds.
+drop. That is the whole rule — a lucky streak may drop several in a row, any
+number can wait on the floor at once, and one left behind stays there for the
+rest of the run.
 
 Walk onto it to snapshot every blue/green/red experience gem and gold music
 note left anywhere on the map, including everything dropped screens away
@@ -95,6 +96,22 @@ after the activation are not pulled. The Stage Magnet deliberately leaves
 level-up reward pedestals and chests alone because those are player choices
 rather than loose resources. It is also separate from the permanent **Magnet
 Lanyard** passive.
+
+## Rare floor pickup: First Aid
+
+Every eligible enemy kill has a 0.12% chance to drop a **First Aid** cross on
+the floor where the enemy died. That is the whole rule: a flat probability, on
+its own random stream so it cannot make Stage Magnets rarer. A lucky streak may
+drop several in a row, any number can wait on the floor, and one you walk past
+stays there for the rest of the run.
+
+Walking onto it restores **20% of maximum health**, so the heal keeps pace with
+Padded Jacket rather than shrinking against a raised ceiling. Collecting it at
+high health is allowed and simply tops the player up — overheal is clamped, not
+refused. Leaving it on the floor until it is needed is a legitimate play.
+
+A Stage Magnet does **not** vacuum it. Like a chest, it must be walked onto, so
+deciding whether to cross the arena for it stays a real decision.
 
 ## The eleven passive items
 

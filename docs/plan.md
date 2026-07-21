@@ -55,6 +55,11 @@ Elite and boss enemies (Vampire-Survivors style) drop a **chest** on the
 ground when defeated. Walking onto a chest opens it: a ready weapon evolution,
 or a health top-up when no recipe is ready.
 
+A rare **First Aid** cross can fall from a defeated enemy. Walking onto it
+restores a fifth of maximum health. It is the only way to heal by playing well
+rather than by reaching a menu, and unlike gems and notes a Stage Magnet will
+not vacuum it in — reaching it is meant to be a decision.
+
 A rare one-use **Stage Magnet** can fall from a defeated enemy. Walking onto
 it vacuums every freely collectible experience gem and music note left anywhere
 on the map, however far off-screen, while decision-bearing reward pedestals and

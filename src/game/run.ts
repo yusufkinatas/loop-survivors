@@ -15,6 +15,7 @@ import {
   DAMAGE_FEEDBACK,
   DARTER,
   ENEMIES,
+  HEALTH_PICKUP,
   MAD_FOREST_FRAMES,
   MAX_ALIVE_HARD,
   RUN,
@@ -345,8 +346,15 @@ export interface MusicNotePickup {
 export interface StageMagnetPickup {
   x: number;
   y: number;
-  /** Seconds remaining before a missed pickup fades away. */
-  lifeS: number;
+}
+
+/** Rare floor heal. Deliberately NOT vacuumed by a Stage Magnet: crossing a
+ * dangerous arena to reach it is the decision this pickup exists to create,
+ * the same reason chests are left alone. It carries no lifetime — a heal the
+ * player has not needed yet stays on the floor until they want it. */
+export interface HealthPickup {
+  x: number;
+  y: number;
 }
 
 export interface VacuumResult {
@@ -385,6 +393,7 @@ export interface RunEvents {
   onChest?(chest: Chest): void;
   onNoteCollected?(value: number, runTotal: number): void;
   onStageMagnet?(result: VacuumResult): void;
+  onHealthPickup?(healed: number): void;
   onMilestone?(id: 'first5m' | 'fullBand' | 'firstEvolution'): void;
 }
 
@@ -401,6 +410,7 @@ export interface RunWorldOpts {
   rng?: Rng;
   /** Independent rare-drop stream; injectable only for deterministic checks. */
   stageMagnetRng?: Rng;
+  healthPickupRng?: Rng;
   /** Movement axis provider (magnitude 0..1). */
   control?: () => { x: number; y: number };
   /** False for non-visual fixtures that do not consume effects. */
@@ -456,6 +466,7 @@ export class RunWorld {
   readonly gems: Gem[] = [];
   readonly musicNotes: MusicNotePickup[] = [];
   readonly stageMagnets: StageMagnetPickup[] = [];
+  readonly healthPickups: HealthPickup[] = [];
   readonly shockwaves: Shockwave[] = [];
   readonly gravityWells: GravityWell[] = [];
   readonly chests: Chest[] = [];
@@ -488,7 +499,8 @@ export class RunWorld {
   private noteDropPity = 0;
   private readonly stageMagnetRng: Rng;
   private stageMagnetDropPity = 0;
-  private nextStageMagnetDropAt = 0;
+  /** Its own stream, so this pickup cannot shift Stage Magnet luck. */
+  private readonly healthPickupRng: Rng;
   private lastMinute = -1;
   private triggerCounts: Partial<Record<Role, number>> = {};
   private encoreDamageBonus = 0;
@@ -513,6 +525,7 @@ export class RunWorld {
     this.rng = opts.rng ?? Math.random;
     const magnetSeed = Math.floor(this.rng() * 0x7fffffff);
     this.stageMagnetRng = opts.stageMagnetRng ?? mulberry32(magnetSeed ^ 0x4d41474e);
+    this.healthPickupRng = opts.healthPickupRng ?? mulberry32(magnetSeed ^ 0x48454154);
     this.control = opts.control ?? (() => ({ x: 0, y: 0 }));
     this.fx = (opts.fx ?? true) ? [] : null;
     if (opts.startingItem) this.items.set(opts.startingItem, 1);
@@ -733,7 +746,7 @@ export class RunWorld {
     const next = Math.max(previous, Math.min(itemMaxLevel(id), level));
     this.items.set(id, next);
     if (id === 'paddedJacket') {
-      this.player.hp = Math.min(this.playerMaxHp, this.player.hp + paddedJacketHeal(previous, next));
+      this.healPlayer(paddedJacketHeal(previous, next));
     }
     this.spawnRing(this.player.x, this.player.y, 190, 0xffd875, 0.5, true);
   }
@@ -751,8 +764,17 @@ export class RunWorld {
     }
   }
 
+  /** The one place player health goes up. Callers pass how much they want to
+   *  restore and get back how much actually landed; overheal is this method's
+   *  problem, never the caller's. */
+  healPlayer(amount: number): number {
+    const before = this.player.hp;
+    this.player.hp = Math.min(this.playerMaxHp, this.player.hp + Math.max(0, amount));
+    return this.player.hp - before;
+  }
+
   applyEncoreChoice(kind: 'heal' | 'damage' | 'move' | 'area'): void {
-    if (kind === 'heal') this.player.hp = Math.min(this.playerMaxHp, this.player.hp + 15);
+    if (kind === 'heal') this.healPlayer(15);
     if (kind === 'damage') this.encoreDamageBonus = Math.min(0.20, this.encoreDamageBonus + 0.02);
     if (kind === 'move') this.encoreMoveBonus = Math.min(0.10, this.encoreMoveBonus + 0.02);
     if (kind === 'area') this.encoreAreaBonus = Math.min(0.15, this.encoreAreaBonus + 0.03);
@@ -994,7 +1016,8 @@ export class RunWorld {
     this.tickWeapons('zones', dt);
     this.tickWeapons('shockwaves', dt);
     this.tickWeapons('wells', dt);
-    this.updateStageMagnets(dt);
+    this.updateStageMagnets();
+    this.updateHealthPickups();
     this.updateGems(dt);
     this.updateMusicNotes(dt);
     this.updateChests();
@@ -1008,7 +1031,7 @@ export class RunWorld {
   private updatePassiveRecovery(dt: number): void {
     const rate = this.buildMods.hpRegenPerSecond;
     if (rate <= 0 || this.player.hp <= 0 || this.player.hp >= this.playerMaxHp) return;
-    this.player.hp = Math.min(this.playerMaxHp, this.player.hp + rate * dt);
+    this.healPlayer(rate * dt);
   }
 
   private movePlayer(dt: number): void {
@@ -1440,6 +1463,7 @@ export class RunWorld {
     this.gems.length = 0;
     this.musicNotes.length = 0;
     this.stageMagnets.length = 0;
+    this.healthPickups.length = 0;
     this.chests.length = 0;
     this.shockwaves.length = 0;
     this.gravityWells.length = 0;
@@ -1449,7 +1473,6 @@ export class RunWorld {
     this.overflowMusicNote = null;
     this.noteDropPity = 0;
     this.stageMagnetDropPity = 0;
-    this.nextStageMagnetDropAt = 0;
     this.hash.clear();
     this.queryBuf.length = 0;
   }
@@ -1659,6 +1682,7 @@ export class RunWorld {
       this.spawnGem(e.x, e.y, e.xp);
       this.spawnMusicNoteForEnemy(e);
       this.spawnStageMagnetForEnemy(e);
+      this.spawnHealthPickupForEnemy(e);
       // Elite and boss enemies (Vampire-Survivors style) drop a chest on the
       // ground. Walk into it to open it: a ready weapon evolution, or health.
       if (elite) {
@@ -2148,12 +2172,10 @@ export class RunWorld {
   }
 
   private spawnStageMagnetForEnemy(enemy: Enemy): void {
-    if (this.stageMagnets.length > 0 || this.timeS < this.nextStageMagnetDropAt) return;
     this.stageMagnetDropPity += 1;
     const guaranteed = this.stageMagnetDropPity >= STAGE_MAGNET.pityKills;
     if (!guaranteed && this.stageMagnetRng() >= STAGE_MAGNET.dropChance) return;
     this.stageMagnetDropPity = 0;
-    this.nextStageMagnetDropAt = this.timeS + STAGE_MAGNET.dropCooldownS;
     this.spawnStageMagnetAt(
       enemy.x - enemy.radius * 0.24,
       enemy.y - enemy.radius * 0.32,
@@ -2161,14 +2183,47 @@ export class RunWorld {
   }
 
   /** Public Sandbox fixture; normal runs receive Stage Magnets only from
-   * enemy deaths. Only one may wait on the floor at a time. */
+   * enemy deaths. Any number may wait on the floor, for as long as the player
+   * leaves them there. */
   spawnStageMagnetAt(x: number, y: number): StageMagnetPickup {
-    const existing = this.stageMagnets[0];
-    if (existing) return existing;
-    const magnet = { x, y, lifeS: STAGE_MAGNET.lifetimeS };
+    const magnet = { x, y };
     this.stageMagnets.push(magnet);
     this.fx?.push({ type: 'spark', x, y, color: 0xa06bff, n: 8, spread: 22 });
     return magnet;
+  }
+
+  /** One flat probability per eligible kill. No cooldown, no floor cap, no
+   *  full-health suppression: a lucky streak may drop three in a row, and a
+   *  heal that lands while the player is healthy is theirs to leave and come
+   *  back for. */
+  private spawnHealthPickupForEnemy(enemy: Enemy): void {
+    if (this.healthPickupRng() >= HEALTH_PICKUP.dropChance) return;
+    this.spawnHealthPickupAt(
+      enemy.x + enemy.radius * 0.22,
+      enemy.y - enemy.radius * 0.3,
+    );
+  }
+
+  /** Public Sandbox fixture; normal runs receive these only from enemy deaths. */
+  spawnHealthPickupAt(x: number, y: number): HealthPickup {
+    const pickup: HealthPickup = { x, y };
+    this.healthPickups.push(pickup);
+    this.fx?.push({ type: 'spark', x, y, color: 0xff665a, n: 8, spread: 22 });
+    return pickup;
+  }
+
+  /** Walk-onto collection only, and no ageing: these sit until collected. */
+  private updateHealthPickups(): void {
+    for (let i = this.healthPickups.length - 1; i >= 0; i--) {
+      const pickup = this.healthPickups[i];
+      const dx = this.player.x - pickup.x;
+      const dy = this.player.y - pickup.y;
+      if (dx * dx + dy * dy > HEALTH_PICKUP.pickupRadius * HEALTH_PICKUP.pickupRadius) continue;
+      this.healthPickups.splice(i, 1);
+      const healed = this.healPlayer(this.playerMaxHp * HEALTH_PICKUP.healFraction);
+      this.fx?.push({ type: 'pressure', x: this.player.x, y: this.player.y, color: 0xff665a, label: `+${Math.round(healed)} HP` });
+      this.events.onHealthPickup?.(healed);
+    }
   }
 
   /** The single construction site for a chest: elite and boss deaths route
@@ -2269,15 +2324,9 @@ export class RunWorld {
     return result;
   }
 
-  private updateStageMagnets(dt: number): void {
+  private updateStageMagnets(): void {
     for (let i = this.stageMagnets.length - 1; i >= 0; i--) {
       const magnet = this.stageMagnets[i];
-      magnet.lifeS -= dt;
-      if (magnet.lifeS <= 0) {
-        this.stageMagnets.splice(i, 1);
-        this.fx?.push({ type: 'spark', x: magnet.x, y: magnet.y, color: 0xa06bff, n: 4, spread: 14 });
-        continue;
-      }
       const dx = this.player.x - magnet.x;
       const dy = this.player.y - magnet.y;
       if (dx * dx + dy * dy > STAGE_MAGNET.pickupRadius * STAGE_MAGNET.pickupRadius) continue;

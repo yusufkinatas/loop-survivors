@@ -15,6 +15,7 @@ import {
   type Projectile,
   type RunWorld,
   type StageMagnetPickup,
+  type HealthPickup,
   type Zone,
 } from './run';
 import {
@@ -37,6 +38,7 @@ import {
   makeChestGfx,
   makeSceneryCell,
   makeStageMagnetGfx,
+  makeHealthPickupGfx,
   makeZoneGfx,
   refreshProjectileContext,
   type EnemyGfx,
@@ -47,6 +49,7 @@ import {
   type RewardGfx,
   type SceneryCell,
   type StageMagnetGfx,
+  type HealthPickupGfx,
   type ChestGfx,
 } from './soundwood-shapes';
 
@@ -354,6 +357,7 @@ export class RunView {
   private gemGfx = new Map<Gem, GemGfx>();
   private musicNoteGfx = new Map<MusicNotePickup, MusicNoteGfx>();
   private stageMagnetGfx = new Map<StageMagnetPickup, StageMagnetGfx>();
+  private healthPickupGfx = new Map<HealthPickup, HealthPickupGfx>();
   private scenery = new Map<string, SceneryCell>();
   private chestGfx = new Map<Chest, ChestGfx>();
   private groundPickGfx: RewardGfx[] = [];
@@ -507,6 +511,7 @@ export class RunView {
     this.syncGems(cameraX, cameraY);
     this.syncMusicNotes(cameraX, cameraY);
     this.syncStageMagnets(cameraX, cameraY);
+    this.syncHealthPickups(cameraX, cameraY);
     this.syncEnemies(cameraX, cameraY);
     this.syncDummyLabels(cameraX, cameraY);
     this.syncProjectiles(cameraX, cameraY);
@@ -551,6 +556,7 @@ export class RunView {
     this.gemGfx.clear();
     this.musicNoteGfx.clear();
     this.stageMagnetGfx.clear();
+    this.healthPickupGfx.clear();
     this.scenery.clear();
     this.chestGfx.clear();
     this.groundPickGfx.length = 0;
@@ -844,10 +850,8 @@ export class RunView {
         const t = this.world.timeS;
         const bob = Math.sin(t * 4.8 + magnet.x * 0.02) * 2;
         const pulse = 1 + Math.sin(t * 5.6) * 0.045;
-        const expiring = magnet.lifeS < 6;
         gfx.position.set(snap(magnet.x), snap(magnet.y + bob));
         gfx.scale.set(pulse);
-        gfx.alpha = expiring && Math.floor(t * 9) % 2 === 0 ? 0.48 : 1;
         gfx.__beam.rotation = t * 0.42;
         gfx.__beam.alpha = 0.32 + Math.sin(t * 3.2) * 0.12;
         gfx.__field.position.x = snap(Math.sin(t * 7) * 3);
@@ -861,6 +865,41 @@ export class RunView {
       if (!this.live.has(magnet)) {
         gfx.destroy({ children: true });
         this.stageMagnetGfx.delete(magnet);
+      }
+    }
+  }
+
+  private syncHealthPickups(cameraX: number, cameraY: number): void {
+    const halfW = this.world.worldW / 2 + 70;
+    const halfH = this.world.worldH / 2 + 70;
+    this.live.clear();
+    for (const pickup of this.world.healthPickups) {
+      let gfx = this.healthPickupGfx.get(pickup);
+      if (!gfx) {
+        gfx = makeHealthPickupGfx(pickup);
+        this.healthPickupGfx.set(pickup, gfx);
+        this.rarePickupLayer.addChild(gfx);
+      }
+      const visible = Math.abs(pickup.x - cameraX) < halfW && Math.abs(pickup.y - cameraY) < halfH;
+      gfx.renderable = visible;
+      if (visible) {
+        const t = this.world.timeS;
+        const bob = Math.sin(t * 4.2 + pickup.x * 0.02) * 2;
+        // Steady heartbeat rather than the magnet's shimmer, so it reads as
+        // health without a legend.
+        const beat = 1 + Math.abs(Math.sin(t * 3.4)) * 0.07;
+        gfx.position.set(snap(pickup.x), snap(pickup.y + bob));
+        gfx.scale.set(beat);
+        gfx.__pulse.rotation = -t * 0.3;
+        gfx.__pulse.alpha = 0.3 + Math.abs(Math.sin(t * 3.4)) * 0.32;
+        gfx.__cross.alpha = 0.9 + Math.sin(t * 6.4) * 0.1;
+      }
+      this.live.add(pickup);
+    }
+    for (const [pickup, gfx] of this.healthPickupGfx) {
+      if (!this.live.has(pickup)) {
+        gfx.destroy({ children: true });
+        this.healthPickupGfx.delete(pickup);
       }
     }
   }

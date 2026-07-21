@@ -372,6 +372,9 @@ export function mountSandboxPanel(
   button(noteControls, 'DROP STAGE MAGNET', () => {
     world.spawnStageMagnetAt(world.player.x + 115, world.player.y);
   });
+  button(noteControls, 'DROP HEALTH', () => {
+    world.spawnHealthPickupAt(world.player.x + 115, world.player.y + 60);
+  });
   button(noteControls, 'DROP CHEST', () => {
     world.spawnChestAt(world.player.x + 115, world.player.y);
   });
