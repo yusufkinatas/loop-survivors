@@ -384,7 +384,13 @@ export class MusicEngine {
    *  neither its own duck nor a level-up duck can swallow it.
    *
    *  `duckDepth`/`duckHoldS` come from DAMAGE_FEEDBACK — the engine holds no
-   *  game tuning of its own. */
+   *  game tuning of its own. The two envelope peaks below (body, then noise)
+   *  are the loudness knobs, and they are deliberately hot: the body sits near
+   *  unity, well into the master limiter. That is the ceiling — pushing them
+   *  much further buys compression, not volume, and the limiter's 0.12s release
+   *  means an over-hot cue pumps the whole track down after every hit. If it
+   *  still needs to feel bigger, lower `hitDuckDepth` in config.ts so there is
+   *  more room underneath, or lengthen the body's fall; do not just raise these. */
   playHitCue(duckDepth: number, duckHoldS: number): void {
     if (this.masterTarget <= 0) return; // muted
     const now = this.ctx.currentTime;
@@ -422,7 +428,7 @@ export class MusicEngine {
     lp.frequency.setValueAtTime(1800, now);
     lp.frequency.exponentialRampToValueAtTime(320, now + burstS);
     const noiseEnv = this.ctx.createGain();
-    noiseEnv.gain.setValueAtTime(0.22, now);
+    noiseEnv.gain.setValueAtTime(0.45, now);
     noiseEnv.gain.exponentialRampToValueAtTime(0.0001, now + burstS);
     noise.connect(lp).connect(noiseEnv).connect(out);
     noise.start(now);
@@ -435,7 +441,7 @@ export class MusicEngine {
     body.frequency.exponentialRampToValueAtTime(50, now + 0.1);
     const bodyEnv = this.ctx.createGain();
     bodyEnv.gain.setValueAtTime(0.0001, now);
-    bodyEnv.gain.exponentialRampToValueAtTime(0.42, now + 0.006);
+    bodyEnv.gain.exponentialRampToValueAtTime(0.85, now + 0.006);
     bodyEnv.gain.exponentialRampToValueAtTime(0.0001, now + 0.24);
     body.connect(bodyEnv).connect(out);
     body.start(now);

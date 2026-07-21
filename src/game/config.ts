@@ -88,8 +88,8 @@ export const DAMAGE_FEEDBACK = {
    *  rather than fighting the track — the mix itself flinches. Depth is a
    *  fraction of unity; the hold is short enough that the music is back before
    *  the next hit can land (see `iframesS`). */
-  hitDuckDepth: 0.45,
-  hitDuckS: 0.26,
+  hitDuckDepth: 0,
+  hitDuckS: 2.5,
 } as const;
 
 /** Level-up ground picks (diegetic reward). Instead of a full-screen menu, the
