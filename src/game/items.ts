@@ -128,25 +128,6 @@ export interface BuildMods {
   extraProjectiles: number;
 }
 
-export const BASE_BUILD_MODS: Readonly<BuildMods> = {
-  moveMul: 1,
-  projectileSpeedMul: 1,
-  extraPierce: 0,
-  bounceCount: 0,
-  bounceRetention: 0.65,
-  areaMul: 1,
-  orbitDistanceMul: 1,
-  knockbackMul: 1,
-  damageMul: 1,
-  durationMul: 1,
-  magnetMul: 1,
-  pullMul: 1,
-  maxHpBonus: 0,
-  armorBonus: 0,
-  hpRegenPerSecond: 0,
-  extraProjectiles: 0,
-};
-
 export function itemLevel(items: ReadonlyMap<ItemId, number>, id: ItemId): number {
   return Math.max(0, Math.min(itemMaxLevel(id), Math.floor(items.get(id) ?? 0)));
 }
@@ -195,7 +176,7 @@ export function paddedJacketHeal(previousLevel: number, nextLevel: number): numb
   return Math.max(0, Math.min(ITEM_MAX_LEVEL, nextLevel) - Math.max(0, previousLevel)) * 8;
 }
 
-export const EVOLUTION_IDS = [
+const EVOLUTION_IDS = [
   'redlineStomp',
   'railshot',
   'prismRain',
@@ -263,7 +244,7 @@ export const EVOLUTION_BY_ROLE: Partial<Record<Role, EvolutionDefinition>> = Obj
   Object.values(EVOLUTIONS).map((evolution) => [evolution.role, evolution]),
 ) as Partial<Record<Role, EvolutionDefinition>>;
 
-export function eligibleEvolution(
+function eligibleEvolution(
   role: Role,
   weaponTier: number,
   items: ReadonlyMap<ItemId, number>,

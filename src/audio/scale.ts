@@ -2,7 +2,7 @@
 // M1, structured as data so nothing downstream bakes it in.
 
 /** Semitone offsets of the minor pentatonic scale from the root. */
-export const MINOR_PENTATONIC = [0, 3, 5, 7, 10] as const;
+const MINOR_PENTATONIC = [0, 3, 5, 7, 10] as const;
 
 export interface Skeleton {
   /** Beats per minute. A live variable: the scheduler reads it every step. */

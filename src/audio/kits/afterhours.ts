@@ -5,11 +5,11 @@
 
 import { makeKit, noiseBuffer, offline, softClipCurve, type Kit, type Role } from '../kits';
 
-export const AFTERHOURS_ROLES = [
+const AFTERHOURS_ROLES = [
   'kick', 'snare', 'hat', 'bass', 'chord', 'lead', 'clap', 'arp', 'bell',
 ] as const satisfies readonly Role[];
 
-export const AFTERHOURS_VARIANTS: Readonly<Partial<Record<Role, readonly string[]>>> = {
+const AFTERHOURS_VARIANTS: Readonly<Partial<Record<Role, readonly string[]>>> = {
   kick: ['hard'],
   snare: ['snare'],
   hat: ['closed', 'open'],

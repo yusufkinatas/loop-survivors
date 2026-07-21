@@ -31,7 +31,6 @@ import {
   makeEnemyGfx,
   makeGemGfx,
   makeMusicNoteGfx,
-  makePixelGlow,
   makePlayerGfx,
   makeProjectileGfx,
   makeRewardGfx,
@@ -65,13 +64,6 @@ const CHAPTER_TINTS = [0xffffff, 0xe6f5ff, 0xe9fff0, 0xf1e8ff, 0xfff0d7, 0xffded
 
 /** The single arena color palette. */
 const ARENA_PALETTE = { tint: 0xf1ffff, accent: SOUNDWOOD.cyan, secondary: SOUNDWOOD.magenta } as const;
-
-export const GLOW = { alpha: 0.28, scale: 1.8, blend: 'add' as const };
-
-/** Kept as a public renderer utility for the existing visual contract. */
-export function makeGlow(radius: number, color: number): Graphics {
-  return makePixelGlow(radius, color, GLOW.alpha);
-}
 
 /** Optional integration hook: callers may await this before constructing a
  * run, while RunView also starts the preload itself for backward compatibility. */

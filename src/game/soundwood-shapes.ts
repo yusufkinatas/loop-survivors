@@ -9,7 +9,7 @@ import { drawWeaponIcon } from './weaponicons';
 
 const shapes = new Map<string, GraphicsContext>();
 
-export function cachedPixelShape(key: string, draw: (ctx: GraphicsContext) => void): GraphicsContext {
+function cachedPixelShape(key: string, draw: (ctx: GraphicsContext) => void): GraphicsContext {
   let context = shapes.get(key);
   if (!context) {
     context = new GraphicsContext();
@@ -40,7 +40,7 @@ function pixelDiamond(g: GraphicsContext, x: number, y: number, radius: number, 
   g.poly([snap(x), snap(y - r), snap(x + r), snap(y), snap(x), snap(y + r), snap(x - r), snap(y)]).fill(color);
 }
 
-export function makePixelGlow(radius: number, color: number, alpha = 0.25): Graphics {
+function makePixelGlow(radius: number, color: number, alpha = 0.25): Graphics {
   const r = Math.max(2, snap(radius));
   const gfx = pixelGraphics(cachedPixelShape('glow:' + r, (g) => {
     g.poly(regularPixelPoly(12, r, Math.PI / 12)).fill(0xffffff);

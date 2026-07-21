@@ -57,24 +57,3 @@ export const STAGE_EVENTS: readonly StageEvent[] = [
   { atS: 445, type: 'batSweep', kind: 'batSwarm', count: 150, chance: 0.8 },
   { atS: 450, type: 'batSweep', kind: 'batSwarm', count: 150, chance: 0.8 },
 ] as const;
-
-/** Every enemy the active eight-minute stage can produce, ordered by its first
- *  appearance in the timeline. This is derived from the stage data so adding a
- *  wave/event enemy automatically exposes it to developer rosters. */
-export const ACTIVE_ENEMY_KINDS: readonly EnemyKind[] = (() => {
-  const rows = [
-    { atS: -1, kinds: [STAGE_STARTING_KIND] as const },
-    ...STAGE_WAVES.map((wave) => ({ atS: wave.atS, kinds: wave.pattern })),
-    ...STAGE_EVENTS.map((event) => ({ atS: event.atS, kinds: [event.kind] as const })),
-  ].sort((a, b) => a.atS - b.atS);
-  const seen = new Set<EnemyKind>();
-  const kinds: EnemyKind[] = [];
-  for (const row of rows) {
-    for (const kind of row.kinds) {
-      if (seen.has(kind)) continue;
-      seen.add(kind);
-      kinds.push(kind);
-    }
-  }
-  return Object.freeze(kinds);
-})();

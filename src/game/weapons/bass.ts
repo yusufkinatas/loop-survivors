@@ -12,7 +12,7 @@ import type {
  *  config.WEAPONS.bass, the `bass` entry of config.WEAPON_SHOVE, or a bare
  *  literal in run.ts's `case 'bass'` / spawnSubquake / updateShockwaves; values
  *  are unchanged. Nothing in the behavior code may be a bare literal. */
-export interface BassStats extends WeaponStats {
+interface BassStats extends WeaponStats {
   // ---------------- the base wave ------------------------------------------
 
   /** Aim jitter, radians, for the base volley. */
@@ -54,7 +54,7 @@ export interface BassStats extends WeaponStats {
   readonly quakeShove: number;
 }
 
-export const BASS_STATS: BassStats = {
+const BASS_STATS: BassStats = {
   // Slow wide low wave that rolls through everything. The weight ladder:
   // per-trigger damage climbs harder than any other kit.
   tiers: [

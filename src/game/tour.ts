@@ -6,7 +6,7 @@
 // ---------------------------------------------------------------------------
 // Endless minute scaling and wave recipes
 
-export const ENDLESS_START_MINUTE = 8;
+const ENDLESS_START_MINUTE = 8;
 
 export interface EndlessScale {
   minute: number;
@@ -54,7 +54,7 @@ export function endlessScale(minute: number): EndlessScale {
   };
 }
 
-export const TOUR_ENEMY_IDS = [
+const TOUR_ENEMY_IDS = [
   'bat',
   'redBat',
   'redBat2',
@@ -73,17 +73,17 @@ export const TOUR_ENEMY_IDS = [
   'darter',
 ] as const;
 
-export type TourEnemyId = (typeof TOUR_ENEMY_IDS)[number];
+type TourEnemyId = (typeof TOUR_ENEMY_IDS)[number];
 
-export type EndlessMinuteEvent = { type: 'boss'; count: number };
+type EndlessMinuteEvent = { type: 'boss'; count: number };
 
-export interface EndlessWaveRow {
+interface EndlessWaveRow {
   readonly id: string;
   readonly pattern: readonly TourEnemyId[];
 }
 
 /** Exact post-minute-eight roster rows. From minute 15 onward adjacent rows combine. */
-export const ENDLESS_WAVE_ROWS: readonly Readonly<EndlessWaveRow>[] = freezeWaveRows([
+const ENDLESS_WAVE_ROWS: readonly Readonly<EndlessWaveRow>[] = freezeWaveRows([
   { id: 'm8-bone-dash', pattern: ['skeleton', 'darter'] },
   { id: 'm9-haunt-orbit', pattern: ['ghost', 'circler', 'zombie'] },
   { id: 'm10-mud-split', pattern: ['greenMudman', 'splitter'] },

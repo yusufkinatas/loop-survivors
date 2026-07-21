@@ -28,7 +28,7 @@ export interface WeaponTarget {
 }
 
 /** Read-only player state. Modules never move the player. */
-export interface WeaponPlayer {
+interface WeaponPlayer {
   readonly x: number;
   readonly y: number;
   readonly facingX: 1 | -1;
@@ -373,7 +373,7 @@ export interface WeaponContext {
 /** Everything a module chooses about a new gravity well. Deliberately NOT the
  *  whole GravityWell: `source`, `color` and `burst` are the world's to fill in,
  *  so they cannot be got wrong from a module. */
-export interface GravityWellSpec {
+interface GravityWellSpec {
   /** Well centre, in world coordinates. A POINT, not a body, and it never
    *  moves: a well is anchored where the note that opened it made contact, and
    *  the player walking away does not drag it. */
@@ -396,7 +396,7 @@ export interface GravityWellSpec {
 /** Everything a module chooses about a new zone. Deliberately NOT the whole
  *  Zone: `source`, `color` and `tickT` are the world's to fill in, so they
  *  cannot be got wrong from a module. */
-export interface ZoneSpec {
+interface ZoneSpec {
   /** Zone centre, in world coordinates. A POINT, not a body — an Afterhours
    *  zone moves under its own drift and a base zone never moves at all, so
    *  neither one tracks anything it was spawned on. */
@@ -427,7 +427,7 @@ export interface ZoneSpec {
 /** Everything a module chooses about a new shockwave. Deliberately NOT the
  *  whole Shockwave: `source`, `color`, `age` and `hit` are the world's to fill
  *  in, so they cannot be got wrong from a module. */
-export interface ShockwaveSpec {
+interface ShockwaveSpec {
   /** Ring centre, in world coordinates. A POINT, not a body: Subquake anchors
    *  at the fire-time player position and never moves afterwards, which is why
    *  this is passed once at spawn rather than re-read in tick(). */

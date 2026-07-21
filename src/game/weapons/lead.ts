@@ -13,7 +13,7 @@ import type {
  *  RunWorld.baseProjectile that only a lead shot could observe, or a bare
  *  literal at the spawn site / inside the shared loop's spark push; values are
  *  unchanged. Nothing in the behavior code may be a bare literal. */
-export interface LeadStats extends WeaponStats {
+interface LeadStats extends WeaponStats {
   // ---------------- the base seeker ----------------------------------------
 
   /** Aim jitter, radians. One aim per TRIGGER — Double Take fans the extra
@@ -91,7 +91,7 @@ export interface LeadStats extends WeaponStats {
   readonly superchargeRadiusMul: number;
 }
 
-export const LEAD_STATS: LeadStats = {
+const LEAD_STATS: LeadStats = {
   // Homing seeker per melody note: mid damage, never misses. The ladder is a
   // density ladder first — the chart thickens — with pierce arriving only at
   // the top rung.

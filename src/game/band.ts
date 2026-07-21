@@ -33,17 +33,6 @@ export const SLOTS: readonly Slot[] = [
   'melody',
 ];
 
-/** Internal design names (docs/code only — never shown to the player). */
-export const SLOT_DESIGN: Record<Slot, string> = {
-  pulse: 'Pulse',
-  backbeat: 'Backbeat',
-  hats: 'Hats',
-  motion: 'Motion',
-  bass: 'Bass',
-  harmony: 'Harmony',
-  melody: 'Melody',
-};
-
 /** Plain player-facing words — the only slot names that reach the screen. */
 export const SLOT_LABEL: Record<Slot, string> = {
   pulse: 'Beat',
@@ -58,7 +47,7 @@ export const SLOT_LABEL: Record<Slot, string> = {
 // The roster for each slot — the full instrument catalog. The soundset
 // supports only a subset (supportedRoster filters to it); the rest stay dormant
 // code, never offered and never voiced.
-export const SLOT_ROSTER: Record<Slot, Role[]> = {
+const SLOT_ROSTER: Record<Slot, Role[]> = {
   pulse: ['kick'],
   backbeat: ['snare', 'clap'],
   hats: ['hat'],
@@ -69,7 +58,7 @@ export const SLOT_ROSTER: Record<Slot, Role[]> = {
 };
 
 /** Inverse of SLOT_ROSTER, built once so the two can never drift. */
-export const ROLE_SLOT: Record<Role, Slot> = (() => {
+const ROLE_SLOT: Record<Role, Slot> = (() => {
   const map = {} as Record<Role, Slot>;
   for (const slot of SLOTS) {
     for (const role of SLOT_ROSTER[slot]) map[role] = slot;
@@ -86,12 +75,6 @@ export function slotOf(role: Role): Slot {
  *  Empty when the soundset drops the whole slot (supports no member of it). */
 export function supportedRoster(slot: Slot): Role[] {
   return SLOT_ROSTER[slot].filter((r) => soundsetSupports(r));
-}
-
-/** The band slots the soundset actually fills (drops the ones it supports
- *  nothing in). */
-export function supportedSlots(): Slot[] {
-  return SLOTS.filter((s) => supportedRoster(s).length > 0);
 }
 
 /** The instrument currently filling a slot, if any, given the owned tiers. */
@@ -115,7 +98,7 @@ export function slotFilled(slot: Slot, tiers: ReadonlyMap<Role, number>): boolea
  * thumb on the scale, not a guarantee — an all-melody build stays possible and
  * stays the player's own fault.
  */
-export const EARLY_NUDGE_UNTIL_S = 120;
+const EARLY_NUDGE_UNTIL_S = 120;
 export const EARLY_NUDGE_FACTOR = 1.7;
 const EARLY_NUDGE_SLOTS: ReadonlySet<Slot> = new Set<Slot>(['pulse', 'backbeat']);
 

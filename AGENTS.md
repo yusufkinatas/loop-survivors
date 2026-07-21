@@ -25,7 +25,7 @@ src/           Game code.
 
 ```
 npm run dev     Vite dev server; play the game in the browser
-npm run check   Typecheck (tsc --noEmit)
+npm run check   Typecheck (tsc --noEmit) + dead-code scan (knip)
 ```
 
 ## Agent skills

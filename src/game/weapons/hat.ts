@@ -31,7 +31,7 @@ import type { WeaponInstance, WeaponModule, WeaponStats } from './module';
 /** The hat's tuning. Every number below was either a rung of config.WEAPONS.hat,
  *  an entry of config.HAT_LANE, or a bare literal in run.ts's spawnProjectile;
  *  values are unchanged. Nothing in the behavior code may be a bare literal. */
-export interface HatStats extends WeaponStats {
+interface HatStats extends WeaponStats {
   // ---------------- Strobe Lane --------------------------------------------
   //
   // The chips stop being a spread and become a rail down the walk heading.
@@ -88,7 +88,7 @@ export interface HatStats extends WeaponStats {
   readonly laneStagger: readonly number[];
 }
 
-export const HAT_STATS: HatStats = {
+const HAT_STATS: HatStats = {
   // Dense stream of weak fast chips fired straight down the walk heading, no
   // scatter — the player aims by steering. Density IS the ladder; per-trigger
   // damage barely moves (the chart carries the growth). The pierce ladder pays

@@ -61,6 +61,3 @@ export function m(role: Role, bars: number, hits: Hit[]): Chart {
     })),
   };
 }
-
-/** A full four-tier ladder for one role. */
-export type Ladder = [Chart, Chart, Chart, Chart];

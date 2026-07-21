@@ -12,7 +12,7 @@ import type {
  *  `fireRailshot`, an entry in a role-keyed table (WEAPON_SHOVE.snare,
  *  SPARK_HIT_ROLES), or a rung of config.WEAPONS.snare; values are unchanged.
  *  Nothing in the behavior code may be a bare literal. */
-export interface SnareStats extends WeaponStats {
+interface SnareStats extends WeaponStats {
   // ---------------- the base shot ------------------------------------------
 
   /** Aim jitter, radians, for the base volley. The snare is the backbeat
@@ -80,7 +80,7 @@ export interface SnareStats extends WeaponStats {
   readonly twinBeamWidthMul: number;
 }
 
-export const SNARE_STATS: SnareStats = {
+const SNARE_STATS: SnareStats = {
   // Backbeat sniper: few, fast, hard-hitting, drills a line. The premium
   // single-target trigger — sparse chart, so each hit is a statement. The
   // ladder is a PIERCE ladder as much as a damage one.

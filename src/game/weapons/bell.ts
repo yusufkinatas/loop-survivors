@@ -13,7 +13,7 @@ import type {
  *  `case 'bell'` / spawnBell / spawnShards / updateGravityWells / the shatter
  *  branch of the shared projectile loop; values are unchanged. Nothing in the
  *  behavior code may be a bare literal. */
-export interface BellStats extends WeaponStats {
+interface BellStats extends WeaponStats {
   // ---------------- the note ------------------------------------------------
 
   /** Aim jitter, radians, for the lobbed note. */
@@ -105,7 +105,7 @@ export interface BellStats extends WeaponStats {
   readonly burstSparkSpread: number;
 }
 
-export const BELL_STATS: BellStats = {
+const BELL_STATS: BellStats = {
   // Bell (band, Melody): a note lobbed straight that shatters into shards on
   // its first hit. `radius` is the NOTE's own size; `shards` is how many
   // fragments this rung throws.

@@ -17,7 +17,7 @@ const HASH_QUERY_PAD = 24;
  *  config.WEAPONS.chord, one of config.ts's three ZONE_* constants, or a bare
  *  literal in run.ts's `case 'chord'` / spawnZone / updateZones; values are
  *  unchanged. Nothing in the behavior code may be a bare literal. */
-export interface ChordStats extends WeaponStats {
+interface ChordStats extends WeaponStats {
   // ---------------- both modes ---------------------------------------------
 
   /** How far from the player the zone may be thrown, in units. WAS
@@ -101,7 +101,7 @@ export interface ChordStats extends WeaponStats {
   readonly mergeDamageMul: number;
 }
 
-export const CHORD_STATS: ChordStats = {
+const CHORD_STATS: ChordStats = {
   // Zone thrown onto the nearest pack: ticks damage and slows enemies inside.
   // Chip damage plus control; the slow is the identity. `damage` here is PER
   // TICK, so the ladder is deceptively flat — real output is damage x ticks,

@@ -74,7 +74,7 @@ interface PendingTrigger {
 
 /** Find a phrase-zero step that the scheduler has prepared but the listener
  * has not heard yet. `afterAudioTime` reserves a strictly later phrase. */
-export function nextUnheardPhraseTime(
+function nextUnheardPhraseTime(
   markers: readonly { step: number; time: number }[],
   currentTime: number,
   afterAudioTime = currentTime,
@@ -88,7 +88,7 @@ export function nextUnheardPhraseTime(
 /** Decide whether a queued phrase callback owns this boundary. Starts wait
  * through overdue catch-up steps for the next genuinely unheard phrase;
  * phrase-end callbacks may opt into the first elapsed boundary after start. */
-export function canDispatchPhraseBoundary(
+function canDispatchPhraseBoundary(
   boundaryTime: number,
   currentTime: number,
   afterAudioTime: number,
@@ -124,7 +124,7 @@ const EVOLUTION_SATURATION = softClipCurve(2.4);
  *  limiter-headroom problem that is not there. Arp still has room to 2.0 (+6 dB)
  *  before the master limiter (threshold -10, ratio 8) is the binding constraint.
  *  Every number here wants a listening pass; none of them is derivable on paper. */
-export const VOICE_MIX_GAIN: Readonly<Partial<Record<Role, number>>> = {
+const VOICE_MIX_GAIN: Readonly<Partial<Record<Role, number>>> = {
   hat: 0.708, // -3 dB
   chord: 1.334, // +2.5 dB
   arp: 1.778, // +5 dB
