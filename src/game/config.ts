@@ -26,8 +26,8 @@ export const RUN = {
 };
 
 /** XP gem pickup sound. Chosen by ear against four other candidates and three
- *  other pitch behaviours; engine.playGemCue holds the synthesis and explains
- *  the pitch and stereo reasoning.
+ *  other pitch behaviours; audio/cues/gem.ts holds the synthesis and
+ *  explains the pitch and stereo reasoning.
  *
  *  `minGapS` is the reason this is a config block at all: gems arrive in
  *  bursts, and a Stage Magnet delivers the entire map at once. At 60 ms the
@@ -46,6 +46,37 @@ export const GEM_CUE = {
   spread: 0.7,
   /** Minimum seconds between cues; extras are dropped, not queued. */
   minGapS: 0.06,
+} as const;
+
+/** How large a build may grow. Two flat counts and nothing else: no typed
+ * positions, no rosters, no rule that owning one weapon retires another. Every
+ * weapon in the catalog stays offerable until the cap is reached, at which
+ * point offers become tier-ups of what is already owned.
+ *
+ * Weapon slots are numbered by ACQUISITION ORDER — the first weapon hired is
+ * slot 1 — which is why RunWorld.tiers is a Map and is only ever appended to.
+ * Reordering it would renumber the rack and the number-key toggles underneath
+ * the player mid-run. */
+export const BUILD = {
+  weaponCap: 5,
+  itemCap: 5,
+} as const;
+
+/** How a gem or note travels once it has committed to flying at the player.
+ * It does not go straight there: it first drifts a little the *other* way, then
+ * turns and rushes in. The wind-back is what sells the pull as something acting
+ * on the pickup rather than the pickup simply sliding, and it is the same read
+ * Vampire Survivors uses. Purely presentational — the trip is still short and
+ * the reach is still `RUN.magnetRadius`. */
+export const PICKUP_PULL = {
+  /** Seconds spent easing away from the player before the turnaround. */
+  windbackTime: 0.12,
+  /** Retreat speed at the instant the pull starts; it eases to a standstill
+   * across `windbackTime`, so the pickup backs off roughly 10px. */
+  windbackSpeed: 170,
+  /** Seconds from the turnaround to full pull speed. Short enough that the
+   * gem still lands about as fast as a straight line would have delivered it. */
+  rushRampTime: 0.09,
 } as const;
 
 /** Rare one-use arena pickup. This is deliberately separate from Magnet

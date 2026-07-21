@@ -17,6 +17,7 @@ import {
 import {
   GemCue,
   playGameOverCue,
+  playHealthPickupCue,
   playHitCue,
   playLevelCue,
   playStageMagnetCue,
@@ -376,6 +377,11 @@ export class MusicEngine {
   playGemCue(opts: GemCueOptions): void {
     if (this.masterTarget <= 0) return; // muted
     this.gemCue.play(this.ctx, this.master, opts);
+  }
+
+  playHealthPickupCue(): void {
+    if (this.masterTarget <= 0) return; // muted
+    playHealthPickupCue(this.ctx, this.master);
   }
 
   playGameOverCue(): void {

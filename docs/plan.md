@@ -131,13 +131,19 @@ at once. It is the main engine of the game.
   loudness and pitch, baked kit variants, and progression-driven change (richer
   charts, new notes, new voices, changed character).
 
-**The band cap.** Instruments live in typed band-position slots. A build holds
-at most one instrument per slot, and picks are permanent, so a full build is a
-band — one voice per slot, each in its own frequency lane and rhythmic job.
-Filling a slot retires that slot's other candidates from the pick pool. This is
-the structural fix for cacophony by accumulation and role collision: it is what
-keeps a full build sounding like a track instead of a pile of voices. (The
-exact slot count and catalog size are implementation details; read the code.)
+**The band cap.** A build holds a small fixed number of weapons and a small
+fixed number of passive items, and picks are permanent. Any weapon may sit
+alongside any other: there are no categories, no typed positions, and hiring
+one weapon never retires another from the pool. Weapon slots are numbered by
+the order they were filled, so the rack reads as the order the player built it.
+
+The cap is the structural fix for cacophony by accumulation: a build stays
+small enough to sound like a track rather than a pile of voices, and reaching
+the cap turns every later level-up into deepening what is already playing.
+Which voices collide is left to the player — a build that stacks two similar
+instruments is allowed to, and is the player's own doing. (The exact cap
+numbers and catalog size are implementation details; read `BUILD` in
+`src/game/config.ts`.)
 
 **Coherence skeleton.** Each run locks its set of allowed notes at the start.
 Tempo is a live variable that design events may move. Because content is single
