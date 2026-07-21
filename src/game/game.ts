@@ -625,6 +625,9 @@ export async function bootGame(
     resetUpgradeQueue();
     liveAcc = 0;
     applyGain();
+    // Cue first, then cut the track: the collapse rides master, so it rings
+    // out over the silence the stopped clock leaves behind.
+    engine.playGameOverCue();
     engine.clock.stop();
     engine.clearBarQueue();
     hud.showHud(false);
