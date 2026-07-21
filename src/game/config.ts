@@ -179,6 +179,14 @@ export const CHEST = {
   bigWinChance: 0.22,
   /** Health garnish stacked on top of the level-ups, by payout size. */
   healBySize: { 1: 10, 3: 20, 5: 40 } as Record<1 | 3 | 5, number>,
+  /** The payout does not apply silently: each level-up drops as a pedestal
+   *  around the player — first one this long after the reel stops... */
+  dropDelayS: 0.12,
+  /** ...then one per gap (bam, bam, bam), each with its own pushback thump. */
+  dropGapS: 0.16,
+  /** Scatter distance from the player for landed drops (closer than the
+   *  choice triangle's itemRadius: these are all yours, just scoop them). */
+  dropRadius: 115,
   /** Reel ticks across the spin; intervals grow geometrically (fast flicker
    *  into heavy final clunks — the wheel decelerating). */
   tickCount: 14,

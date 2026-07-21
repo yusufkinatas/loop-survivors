@@ -409,6 +409,10 @@ export class RunView {
     pop: number;
   } | null = null;
   private groundPickGfx: RewardGfx[] = [];
+  /** Chest payout pedestals. Separate from groundPickGfx because the shell's
+   *  semantics differ: these are grants scooped one by one, not a choice that
+   *  clears its siblings — and they skip the safe-zone ring. */
+  private chestDropGfx: RewardGfx[] = [];
   private pops: Pop[] = [];
   private floaters: Floater[] = [];
   private live = new Set<object>();
@@ -616,6 +620,18 @@ export class RunView {
     }
   }
 
+  /** Replace the chest payout pedestals (the shell re-sends the survivors
+   *  after each scoop). Same pedestal art as ground picks, no safe ring. */
+  setChestDrops(picks: GroundPickView[]): void {
+    for (const reward of this.chestDropGfx) reward.destroy({ children: true });
+    this.chestDropGfx.length = 0;
+    for (const pick of picks) {
+      const reward = makeRewardGfx(pick);
+      this.rewardLayer.addChild(reward);
+      this.chestDropGfx.push(reward);
+    }
+  }
+
   update(dt: number, realDt = dt): void {
     for (const fx of this.world.fx ?? []) this.spawnFx(fx);
     if (this.world.fx) this.world.fx.length = 0;
@@ -687,6 +703,7 @@ export class RunView {
     this.scenery.clear();
     this.chestGfx.clear();
     this.groundPickGfx.length = 0;
+    this.chestDropGfx.length = 0;
     this.pops.length = 0;
     this.floaters.length = 0;
     this.trails.clear();
@@ -1236,6 +1253,12 @@ export class RunView {
     this.rewardSafeGfx.alpha = this.groundPickGfx.length
       ? 0.72 + Math.sin(time * 2.2) * 0.16
       : 0;
+    for (let i = 0; i < this.chestDropGfx.length; i++) {
+      const reward = this.chestDropGfx[i];
+      const pulse = 1 + Math.sin(time * 3.2 + i * 2.1) * 0.035;
+      reward.__platform.scale.set(pulse);
+      reward.__beam.alpha = 0.72 + Math.sin(time * 2.4 + i) * 0.16;
+    }
   }
 
   private syncChests(): void {

@@ -681,6 +681,91 @@ export class MusicEngine {
     }
   }
 
+  /** A chest reward thudding onto the boards: a kick-like punch under a short
+   *  knock. Pitched a pentatonic step higher per `index`, so a jackpot's five
+   *  drops land as a rising bam-bam-bam-bam-bam run instead of five copies of
+   *  the same thud. */
+  playChestDropCue(index = 0): void {
+    if (this.masterTarget <= 0) return; // muted
+    const now = this.ctx.currentTime;
+    const out = this.ctx.createGain();
+    out.gain.value = 1;
+    out.connect(this.master);
+
+    const pentatonic = [0, 3, 5, 7, 10];
+    const lift = Math.pow(2, pentatonic[index % 5] / 12);
+
+    // The punch: a falling sine body, the part you feel.
+    const body = this.ctx.createOscillator();
+    body.type = 'sine';
+    body.frequency.setValueAtTime(175 * lift, now);
+    body.frequency.exponentialRampToValueAtTime(58 * lift, now + 0.09);
+    const bodyEnv = this.ctx.createGain();
+    bodyEnv.gain.setValueAtTime(0.0001, now);
+    bodyEnv.gain.exponentialRampToValueAtTime(0.55, now + 0.005);
+    bodyEnv.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
+    body.connect(bodyEnv).connect(out);
+    body.start(now);
+    body.stop(now + 0.24);
+
+    // The knock: a very short lowpassed noise tap on top.
+    const knockS = 0.06;
+    const noiseBuffer = this.ctx.createBuffer(
+      1,
+      Math.ceil(this.ctx.sampleRate * knockS),
+      this.ctx.sampleRate,
+    );
+    const samples = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < samples.length; i++) {
+      const fade = 1 - i / samples.length;
+      samples[i] = (Math.random() * 2 - 1) * fade * fade;
+    }
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = noiseBuffer;
+    const lp = this.ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 1100;
+    const noiseEnv = this.ctx.createGain();
+    noiseEnv.gain.setValueAtTime(0.16, now);
+    noiseEnv.gain.exponentialRampToValueAtTime(0.0001, now + knockS);
+    noise.connect(lp).connect(noiseEnv).connect(out);
+    noise.start(now);
+    noise.stop(now + knockS);
+  }
+
+  /** Walking onto a ground reward: a tiny two-note "got it" chirp. `step`
+   *  climbs it up the pentatonic while the player keeps scooping (a chest's
+   *  scattered payout reads as one rising run), resetting after a beat —
+   *  the shell owns that timer and passes the step in. */
+  playPickupCue(step = 0): void {
+    if (this.masterTarget <= 0) return; // muted
+    const now = this.ctx.currentTime;
+    const out = this.ctx.createGain();
+    out.gain.value = 1;
+    const lp = this.ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 6400;
+    out.connect(lp).connect(this.master);
+
+    const pentatonic = [0, 3, 5, 7, 10];
+    const lift = Math.pow(2, (pentatonic[step % 5] + 12 * Math.floor(step / 5)) / 12);
+    // E6 up to A6 (then higher with the combo): quick, bright, out of the way.
+    const notes = [1318.5 * lift, 1760 * lift];
+    for (let i = 0; i < notes.length; i++) {
+      const t0 = now + i * 0.055;
+      const osc = this.ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.value = notes[i];
+      const env = this.ctx.createGain();
+      env.gain.setValueAtTime(0.0001, t0);
+      env.gain.exponentialRampToValueAtTime(0.1 + i * 0.03, t0 + 0.006);
+      env.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.22);
+      osc.connect(env).connect(out);
+      osc.start(t0);
+      osc.stop(t0 + 0.25);
+    }
+  }
+
   /** The run is over: the track sags and dies.
    *
    *  Every other cue in here is an event *inside* a track. This one is the
