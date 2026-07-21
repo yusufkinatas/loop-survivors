@@ -87,8 +87,6 @@ interface DummyReadout {
   spawnHp: number;
   /** Cumulative damage taken since spawn. */
   total: number;
-  /** Seconds alive since spawn. */
-  aliveT: number;
   /** Whether a burst is open — i.e. damage has landed and DUMMY_DPS_IDLE_RESET
    *  has not elapsed since. False on a fresh dummy and after every reset. */
   bursting: boolean;
@@ -1373,7 +1371,6 @@ export class RunWorld {
         ? {
             spawnHp: scaledHp,
             total: 0,
-            aliveT: 0,
             bursting: false,
             burstDamage: 0,
             burstT: 0,
@@ -1661,7 +1658,7 @@ export class RunWorld {
     }
   }
 
-  /** Age every practice target and time out any burst that has gone quiet.
+  /** Time out any practice target's burst that has gone quiet.
    *
    *  This deliberately does NOT touch `dps` except to zero it at the timeout.
    *  The readout used to be a rolling window whose buckets rotated here, which
@@ -1672,7 +1669,6 @@ export class RunWorld {
     for (const e of this.enemies) {
       if (!e.dummy || e.dead || !e.readout) continue;
       const r = e.readout;
-      r.aliveT += dt;
       if (!r.bursting) continue;
       r.burstT += dt;
       r.idleT += dt;

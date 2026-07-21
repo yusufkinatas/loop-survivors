@@ -931,12 +931,9 @@ export class RunView {
       const visible = Math.abs(enemy.x - cameraX) < halfW && Math.abs(enemy.y - cameraY) < halfH;
       label.renderable = visible;
       if (!visible) continue;
-      const readout = enemy.readout;
-      const average = readout.total / Math.max(0.25, readout.aliveT);
       label.text =
         `DPS ${formatDummyNumber(this.world.dummyDps(enemy))}\n` +
-        `AVG ${formatDummyNumber(average)}\n` +
-        `TOTAL ${formatDummyNumber(readout.total)}`;
+        `TOTAL ${formatDummyNumber(enemy.readout.total)}`;
       label.position.set(snap(enemy.x), snap(enemy.y - enemy.radius - 28));
     }
     for (const [enemy, label] of this.dummyLabels) {
