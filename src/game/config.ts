@@ -4,7 +4,7 @@
 // One stat block per tier, indexed [tier - 1].
 
 import type { Role } from '../audio/kits';
-import type { GemCueVariant } from '../audio/engine';
+import type { GemCueMotion, GemCueTimbre } from '../audio/engine';
 
 export const RUN = {
   /** Antonio baseline: 100 base HP +20 character bonus, +1 Armor. */
@@ -37,7 +37,12 @@ export const RUN = {
  *  enough that the limiter is not the thing shaping it. Same reasoning as
  *  DAMAGE_FEEDBACK.iframesS bounding the hit cue. */
 export const GEM_CUE = {
-  variant: 'pluck' as GemCueVariant,
+  /** What it sounds like. */
+  timbre: 'pluck' as GemCueTimbre,
+  /** How its pitch moves. Snapped to the run's scale, so every option stays
+   *  in key — see GEM_DEGREES in engine.ts for why this is scale steps and
+   *  not the usual random detune. */
+  motion: 'ladder' as GemCueMotion,
   /** Scales the cue's envelope peaks. 0 silences it. */
   gain: 0.7,
   /** Minimum seconds between cues; extras are dropped, not queued. */

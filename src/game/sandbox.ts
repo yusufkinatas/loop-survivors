@@ -388,6 +388,15 @@ export function mountSandboxPanel(
     }
   });
   button(noteControls, 'TRIGGER VACUUM', () => world.vacuumAllPickups());
+  // Gem cue prototype: a straight line of gems to walk down, which is the
+  // only way to actually judge a motion — 'ladder' needs a run of pickups to
+  // climb, 'xp-bar' needs the bar to fill. Tight spacing so one walk-through
+  // plays the whole shape. Leaves with GEM_CUE.
+  button(noteControls, 'GEM TRAIL (walk it)', () => {
+    for (let i = 0; i < 24; i++) {
+      world.spawnGemAt(world.player.x + 70 + i * 46, world.player.y, 1);
+    }
+  });
   const pickupReadout = el('div', 'sb-hint', careerPage);
 
   section(careerPage, 'afterhours shop');
