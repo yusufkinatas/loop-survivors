@@ -1737,7 +1737,7 @@ export class RunWorld {
         color: e.color,
         elite,
       });
-      this.spawnGem(e.x, e.y, e.xp);
+      this.spawnGemAt(e.x, e.y, e.xp);
       this.spawnMusicNoteForEnemy(e);
       this.spawnStageMagnetForEnemy(e);
       this.spawnHealthPickupForEnemy(e);
@@ -2161,22 +2161,14 @@ export class RunWorld {
 
   // ---- pickups and juice ----
 
-  private spawnGem(x: number, y: number, xp: number): void {
-    // The published legacy implementation randomizes the listed XP value.
-    // Current Unity internals are unpublished, so this is the version-pinned
-    // observable reference used by our parity model.
-    const dropped = Math.floor((this.rng() + 0.5) * xp);
-    if (dropped <= 0) return;
-    this.spawnGemAt(x, y, dropped);
-  }
-
-  /** Public for the Sandbox pickup field. Enemy rewards still pass through
-   * spawnGem(), which preserves their authored random XP roll. */
+  /** A kill drops a gem worth exactly the enemy's XP, as VS does (spec §7).
+   * There is no random roll and no integer floor, so fractional authored
+   * values (ghost 1.5, mudmen 2.5) reach the player intact. */
   spawnGemAt(x: number, y: number, xp = 1): void {
-    const dropped = Math.max(1, Math.floor(xp));
-    const tier: Gem['tier'] = dropped <= 2 ? 'blue' : dropped <= 9 ? 'green' : 'red';
+    if (xp <= 0) return;
+    const tier: Gem['tier'] = xp <= 2 ? 'blue' : xp <= 9 ? 'green' : 'red';
     if (this.gems.length < RUN.maxGems) {
-      this.gems.push({ x, y, xp: dropped, tier });
+      this.gems.push({ x, y, xp, tier });
       return;
     }
     if (!this.overflowGem || !this.gems.includes(this.overflowGem) || this.overflowGem.vacuumed) {
@@ -2213,7 +2205,7 @@ export class RunWorld {
       this.overflowGem = target;
       target.tier = 'red';
     }
-    this.overflowGem.xp += dropped;
+    this.overflowGem.xp += xp;
     this.overflowGem.tier = 'red';
   }
 
