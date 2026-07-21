@@ -184,22 +184,78 @@ export const LEVELUP = {
   enemyPushRadius: 375,
   /** Fixed proximity to collect a dropped item (independent of pickup buffs). */
   itemPickupRadius: 40,
+  /** Collecting a ground reward shoves nearby enemies out a little too — a
+   *  third of the drop-time enemyPushRadius, so the take has a physical kick
+   *  without re-clearing the arena. */
+  pickupPushRadius: 125,
   /** Triangle points, in degrees (placed with Math.cos/sin in the shell — a
    *  cosmetic, non-simulation position, so the native trig is fine here). */
   angles: [0, 120, 240] as const,
   /** Max duration of the cosmetic slow-mo / duck moment, real seconds. Ends
    *  early the instant the player collects a pick (see collectGroundPick). */
   momentS: 2,
-  /** Shorter moment for a chest open. A five-minute mark can drop up to four
-   *  elite bosses, and their chests present one after another — four back-to-back
-   *  full-length slow-mos would read as the game stuttering rather than as four
-   *  separate celebrations. A level-up is rarer, so it keeps the full momentS. */
-  chestMomentS: 1,
   /** Time scale during the moment (composes with the dev timeScale). */
   slowScale: 0.75,
   /** Weapon (master) volume multiplier during the moment. */
   duckDepth: 0.32,
 };
+
+/** The chest slot machine. Walking onto a chest starts a short in-world reel
+ * spin — icons cycling above the case, ticks decelerating like a slot wheel —
+ * that lands on the payout: a ready weapon evolution when one exists, else
+ * 1 / 3 / 5 free level-ups of things the player already owns (plus a health
+ * garnish). The spin is pure anticipation: the outcome is rolled at open.
+ *
+ * Chests can arrive back to back (a five-minute mark drops up to four elites),
+ * so ceremonies QUEUE — one full ritual after another, never stacked slow-mos. */
+export const CHEST = {
+  /** Reel spin duration, real seconds (slow-mo, rattle, ticks). */
+  spinS: 2.1,
+  /** Landing celebration duration after the reel stops, real seconds. */
+  landS: 0.9,
+  /** Time scale during the ceremony — deeper than a level-up's; this is the
+   *  game's biggest reward beat. */
+  slowScale: 0.6,
+  /** Weapon-bus volume multiplier while the reel spins. */
+  duckDepth: 0.28,
+  /** Scripted payout sizes for a save's first chests (Vampire Survivors'
+   *  1-1-3-1-1-5): every new player is guaranteed an early jackpot taste.
+   *  Indexed by lifetime chests opened; random weights take over after. */
+  openingSequence: [1, 1, 3, 1, 1, 5] as readonly (1 | 3 | 5)[],
+  /** After the script: chance of a ×5 jackpot, then of a ×3 big win. */
+  jackpotChance: 0.06,
+  bigWinChance: 0.22,
+  /** Health garnish stacked on top of the level-ups, by payout size. */
+  healBySize: { 1: 10, 3: 20, 5: 40 } as Record<1 | 3 | 5, number>,
+  /** The payout does not apply silently: each level-up drops as a pedestal
+   *  around the player — first one this long after the reel stops... */
+  dropDelayS: 0.12,
+  /** ...then one per gap (bam, bam, bam), each with its own pushback thump. */
+  dropGapS: 0.16,
+  /** Scatter distance from the player for landed drops (closer than the
+   *  choice triangle's itemRadius: these are all yours, just scoop them). */
+  dropRadius: 115,
+  /** Reel ticks across the spin; intervals grow geometrically (fast flicker
+   *  into heavy final clunks — the wheel decelerating). */
+  tickCount: 14,
+  tickGrowth: 1.15,
+};
+
+/** When each reel tick fires, seconds from spin start. The audio cue and the
+ * visual reel both consume this one schedule, so eye and ear agree on every
+ * click. The last tick lands exactly at CHEST.spinS — the stop. */
+export function chestTickTimes(): number[] {
+  const { spinS, tickCount, tickGrowth } = CHEST;
+  const total = (Math.pow(tickGrowth, tickCount) - 1) / (tickGrowth - 1);
+  const first = spinS / total;
+  const times: number[] = [];
+  let t = 0;
+  for (let i = 0; i < tickCount; i++) {
+    t += first * Math.pow(tickGrowth, i);
+    times.push(t);
+  }
+  return times;
+}
 
 /** Exact Vampire Survivors XP requirement for the next level. `level` is the
  * player's current level (1 means the 5 XP step from level 1 -> 2). */
@@ -266,12 +322,19 @@ export interface EnemyConf {
   fixedDirection?: boolean;
   /** Source knockback multiplier: 0 ignores pushes, 1 receives them fully. */
   knockback?: number;
+  /** Uniform body scale, default 1. The one size lever that works for every
+   *  kind: frame-backed kinds derive their radius per-spawn from
+   *  MAD_FOREST_FRAMES and ignore `radius` entirely, so a single absolute
+   *  number cannot express their size. RunWorld multiplies the resolved body
+   *  radius and its foot offsets by this. */
+  sizeMul?: number;
 }
 
 /** Official-demo coordinate conversion, normalized from a 456-high legacy
  * world to the 800-high reference view, with current normal Mad Forest's
- * enemy MoveSpeed x1.1 modifier (official wiki revision 89346). */
-const ENEMY_SPEED_UNIT = 0.231 * (800 / 456) * 1.1;
+ * enemy MoveSpeed x1.1 modifier (official wiki revision 89346). Exported so
+ * the enemy lab can print tuned speeds back in this file's own idiom. */
+export const ENEMY_SPEED_UNIT = 0.231 * (800 / 456) * 1.1;
 
 /** Phaser 3.55 floors the half-width used by circle intersection after the
  * source requests a radius of 40% of the active atlas-frame width. */
@@ -496,9 +559,12 @@ export const ENEMY_LABELS: Record<EnemyKind, string> = {
 
 /** Base spawn-time stats before endless-minute scaling. Contact `damage` is
  * deliberately raw Power: RunWorld subtracts the player's current armor at
- * collision time so Padded Jacket also protects against enemies already alive. */
-export function madForestEnemyStats(kind: EnemyKind, playerLevel: number) {
-  const conf = ENEMIES[kind];
+ * collision time so Padded Jacket also protects against enemies already alive.
+ *
+ * Takes a conf rather than a kind so the enemy lab can push the SAME derivation
+ * through its edited values — see enemyStats in enemy-tuning.ts. Pass
+ * ENEMIES[kind] for the shipped baseline. */
+export function madForestEnemyStats(conf: EnemyConf, playerLevel: number) {
   return {
     radius: conf.radius,
     hp: conf.hp * (conf.hpPerLevel ? Math.max(1, playerLevel) : 1),

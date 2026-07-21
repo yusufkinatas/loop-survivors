@@ -26,12 +26,12 @@ import {
   SHOVE_S,
   SPLITTER,
   WORLD_SCALE,
-  madForestEnemyStats,
   xpPickupMultiplier,
   xpForNextLevel,
   type EnemyKind,
   type WeaponConf,
 } from './config';
+import { enemyStats } from './enemy-tuning';
 import {
   STAGE_EVENTS,
   STAGE_STARTING_KIND,
@@ -84,10 +84,13 @@ const DUMMY_DPS_IDLE_RESET = 5;
  * trigger or two. */
 const DUMMY_DPS_LEAD_IN = 0.5;
 
+/** What the gold amped roll is worth on top of an ordinary enemy's scaled
+ *  stats. Named because two places apply it: the spawn, and the enemy lab's
+ *  live retune, which must rebuild the same enemy it would have spawned. */
+const AMPED = { hpMul: 2.2, damageMul: 1.25, xpMul: 3 };
+
 /** Per-dummy damage bookkeeping behind the floating readout. */
 interface DummyReadout {
-  /** HP restored after every hit, so the dummy never reaches zero. */
-  spawnHp: number;
   /** Cumulative damage taken since spawn. */
   total: number;
   /** Whether a burst is open — i.e. damage has landed and DUMMY_DPS_IDLE_RESET
@@ -117,6 +120,10 @@ export interface Enemy {
   footOffsetX: number;
   footOffsetY: number;
   hp: number;
+  /** HP this enemy spawned with, after every scale that applied to it. Restores
+   *  a practice dummy after each hit, and lets the enemy lab retune a live
+   *  horde without healing it — the wounded stay proportionally wounded. */
+  spawnHp: number;
   speed: number;
   damage: number;
   xp: number;
@@ -165,6 +172,13 @@ export interface Enemy {
   spawnMinute: number;
   /** Gold-outline ordinary enemy with extra health/power/XP. */
   amped: boolean;
+  /** Took the elite boss health multiplier on top of its minute scale. Part of
+   *  the spawn identity so retuneAliveEnemies can rebuild this enemy exactly. */
+  eliteScaled: boolean;
+  /** The body scale this enemy was built at, so a size edit can rescale its
+   *  radius and foot offsets by ratio rather than re-deriving a frame body it
+   *  no longer remembers which frame it drew. */
+  sizeMul: number;
   prevX: number;
   prevY: number;
   /** Sandbox practice target: undying, immobile, harmless. A flag keeps the
@@ -319,12 +333,16 @@ export interface GravityWell {
   source: Role;
 }
 
-/** A treasure chest dropped by a defeated elite/boss enemy. Walk into it to
- *  open it: it grants a weapon evolution when one is ready, otherwise health. */
+/** A treasure chest dropped by a defeated elite/boss enemy. Walking into it
+ *  starts the shell's slot ceremony (game.ts): a ready weapon evolution is the
+ *  top prize, otherwise 1/3/5 free level-ups of owned weapons and passives. */
 export interface Chest {
   x: number;
   y: number;
   color: number;
+  /** Sandbox-only: pin the slot payout size instead of rolling it, so the
+   *  panel can put a specific ceremony (e.g. the ×5 jackpot) on demand. */
+  forceSize?: 1 | 3 | 5;
 }
 
 export interface Gem {
@@ -1232,7 +1250,9 @@ export class RunWorld {
     enemy.spawnClass = 'boss';
     const extraHp = endlessScale(enemy.spawnMinute).bossHpMul;
     enemy.hp *= extraHp;
+    enemy.spawnHp *= extraHp;
     enemy.shieldHp *= extraHp;
+    enemy.eliteScaled = true;
     enemy.band = 3;
     enemy.color = 0xffcf5a;
     this.fx?.push({ type: 'pressure', x: enemy.x, y: enemy.y, color: 0xffcf5a, label: 'ELITE' });
@@ -1409,8 +1429,10 @@ export class RunWorld {
   ): Enemy | null {
     if (this.enemies.length >= MAX_ALIVE_HARD) return null;
     const conf = ENEMIES[kind];
-    const stats = madForestEnemyStats(kind, this.level);
-    const body = this.nextEnemyBody(kind, stats.radius);
+    // Tuned, not shipped: the enemy lab's overrides are the live truth for
+    // every spawn (see enemy-tuning.ts).
+    const stats = enemyStats(kind, this.level);
+    const body = this.nextEnemyBody(kind, stats.radius, stats.sizeMul);
     const minute = Math.floor(this.timeS / 60);
     const scale = endlessScale(minute);
     const dummy = kind === 'dummy';
@@ -1418,7 +1440,7 @@ export class RunWorld {
     // amped outline, no band danger diamonds, no minute-scaled stats drift.
     const amped = !dummy && spawnClass === 'regular' && minute >= 12 &&
       this.rng() < scale.ampedChance;
-    const scaledHp = stats.hp * scale.hpMul * (amped ? 2.2 : 1);
+    const scaledHp = stats.hp * scale.hpMul * (amped ? AMPED.hpMul : 1);
     const enemy: Enemy = {
       id: this.nextEnemyId++,
       kind,
@@ -1428,9 +1450,10 @@ export class RunWorld {
       footOffsetX: body.footOffsetX,
       footOffsetY: body.footOffsetY,
       hp: scaledHp,
+      spawnHp: scaledHp,
       speed: stats.speed * scale.speedMul,
-      damage: stats.damage * scale.damageMul * (amped ? 1.25 : 1),
-      xp: stats.xp * scale.xpMul * (amped ? 3 : 1),
+      damage: stats.damage * scale.damageMul * (amped ? AMPED.damageMul : 1),
+      xp: stats.xp * scale.xpMul * (amped ? AMPED.xpMul : 1),
       color: stats.color,
       band: dummy ? 0 : conf.boss ? 3 : Math.min(3, Math.floor(minute / 5)),
       flashT: 0,
@@ -1455,12 +1478,13 @@ export class RunWorld {
       knockbackMul: stats.knockback,
       spawnMinute: minute,
       amped,
+      eliteScaled: false,
+      sizeMul: stats.sizeMul,
       prevX: x - body.footOffsetX,
       prevY: y - body.footOffsetY,
       dummy,
       readout: dummy
         ? {
-            spawnHp: scaledHp,
             total: 0,
             bursting: false,
             burstDamage: 0,
@@ -1474,20 +1498,25 @@ export class RunWorld {
     return enemy;
   }
 
+  /** sizeMul scales the finished body — radius and the foot offsets together —
+   *  so a resized enemy keeps standing on its own feet instead of sinking into
+   *  or floating above the floor. It is applied AFTER the source's floor(), so
+   *  parity with the legacy collider is exact whenever sizeMul is 1. */
   private nextEnemyBody(
     kind: EnemyKind,
     fallback: number,
+    sizeMul = 1,
   ): { radius: number; footOffsetX: number; footOffsetY: number } {
     const frames = MAD_FOREST_FRAMES[kind];
     if (!frames || frames.length === 0) {
-      return { radius: fallback, footOffsetX: 0, footOffsetY: 0 };
+      return { radius: fallback * sizeMul, footOffsetX: 0, footOffsetY: 0 };
     }
     const counter = this.enemyFrameCounters[kind] ?? 0;
     this.enemyFrameCounters[kind] = counter + 1;
     const frame = frames[counter % frames.length];
     const requestedRadius = frame.width * 0.4;
     const effectiveRadius = Math.floor(requestedRadius);
-    const scale = WORLD_SCALE;
+    const scale = WORLD_SCALE * sizeMul;
     // Phaser Body.setCircle(r, r/2, r/2), sprite origin (0.5, 1). Circle
     // intersection uses floor(r) as halfWidth; reconstruct feet from center.
     return {
@@ -1510,6 +1539,45 @@ export class RunWorld {
   /** Sandbox: remove every enemy without kills, gems, or pops. */
   clearEnemies(): void {
     this.enemies.length = 0;
+  }
+
+  /** The enemy lab edited a kind: bring the horde already on screen in line
+   *  instead of making the designer clear and respawn to feel a slider.
+   *
+   *  Each enemy is rebuilt from its own spawn identity — spawn minute, amped
+   *  roll, elite scaling — so a tuned number lands on a live enemy exactly as
+   *  it would on a fresh one. Health is moved by RATIO, so a nearly-dead enemy
+   *  does not heal when you nudge its max HP, and a shielded enemy keeps the
+   *  dent already in its shield.
+   *
+   *  One deliberate inexactness: hpPerLevel kinds re-derive against the
+   *  CURRENT player level, not the level they spawned at. "What would this
+   *  enemy be if it spawned now" is the question the lab is asking. */
+  retuneAliveEnemies(): void {
+    for (const e of this.enemies) {
+      if (e.dead) continue;
+      const stats = enemyStats(e.kind, this.level);
+      const scale = endlessScale(e.spawnMinute);
+      const fullHp =
+        stats.hp * scale.hpMul *
+        (e.amped ? AMPED.hpMul : 1) *
+        (e.eliteScaled ? scale.bossHpMul : 1);
+      const hpRatio = e.spawnHp > 0 ? fullHp / e.spawnHp : 1;
+      e.spawnHp = fullHp;
+      e.hp *= hpRatio;
+      e.shieldHp *= hpRatio;
+      e.speed = stats.speed * scale.speedMul;
+      e.damage = stats.damage * scale.damageMul * (e.amped ? AMPED.damageMul : 1);
+      e.xp = stats.xp * scale.xpMul * (e.amped ? AMPED.xpMul : 1);
+      e.knockbackMul = stats.knockback;
+      if (stats.sizeMul !== e.sizeMul) {
+        const sizeRatio = e.sizeMul > 0 ? stats.sizeMul / e.sizeMul : 1;
+        e.radius *= sizeRatio;
+        e.footOffsetX *= sizeRatio;
+        e.footOffsetY *= sizeRatio;
+        e.sizeMul = stats.sizeMul;
+      }
+    }
   }
 
   /** Reset every transient sandbox entity without touching the player, loadout,
@@ -1714,7 +1782,7 @@ export class RunWorld {
       // credited beat rather than inflating the rate.
       r.dps = r.burstDamage / (r.burstT + DUMMY_DPS_LEAD_IN);
       if (source) this.damageByRole[source] = (this.damageByRole[source] ?? 0) + landed;
-      e.hp = e.readout.spawnHp;
+      e.hp = e.spawnHp;
       e.flashT = 0.08;
       return;
     }

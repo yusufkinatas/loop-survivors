@@ -52,8 +52,19 @@ that a strong build can keep finding a new ceiling, but uncapped health and
 damage ensure every run eventually ends.
 
 Elite and boss enemies (Vampire-Survivors style) drop a **chest** on the
-ground when defeated. Walking onto a chest opens it: a ready weapon evolution,
-or a health top-up when no recipe is ready.
+ground when defeated. Walking onto a chest starts a short slot-machine
+ceremony — the case rattles under a reel of possible rewards while ticks climb
+the run's own scale, then the reel stops on the payout. A ready weapon
+evolution is always the top prize. Otherwise the chest pays 1, 3, or 5 free
+level-ups of weapons and passives the player already owns (plus a small health
+garnish), so a chest is never a dead reward at any point in a run. The payout
+is physical: each level-up thuds onto the ground around the player one beat
+after the last — pushing the horde back with every drop — and is collected by
+walking onto it, with a pickup chirp that climbs while the player keeps
+scooping. A save's
+first chests follow a scripted 1-1-3-1-1-5 payout sequence, guaranteeing every
+new player an early jackpot; after that, jackpots are rare rolls. Chests
+opened while a ceremony is playing queue and present back to back.
 
 A rare **First Aid** cross can fall from a defeated enemy. Walking onto it
 restores a fifth of maximum health. It is the only way to heal by playing well

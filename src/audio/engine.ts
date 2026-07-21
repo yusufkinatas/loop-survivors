@@ -17,10 +17,14 @@ import {
 import {
   GemCue,
   NoteCue,
+  playChestDropCue,
+  playChestLandCue,
+  playChestSpinCue,
   playGameOverCue,
   playHealthPickupCue,
   playHitCue,
   playLevelCue,
+  playPickupCue,
   playStageMagnetCue,
   type GemCueOptions,
   type NoteCueOptions,
@@ -386,6 +390,26 @@ export class MusicEngine {
   playNoteCue(opts: NoteCueOptions): void {
     if (this.masterTarget <= 0) return; // muted
     this.noteCue.play(this.ctx, this.master, opts);
+  }
+
+  playChestSpinCue(tickTimes: number[]): void {
+    if (this.masterTarget <= 0) return; // muted
+    playChestSpinCue(this.ctx, this.master, tickTimes);
+  }
+
+  playChestLandCue(size: 1 | 2 | 3): void {
+    if (this.masterTarget <= 0) return; // muted
+    playChestLandCue(this.ctx, this.master, size);
+  }
+
+  playChestDropCue(index = 0): void {
+    if (this.masterTarget <= 0) return; // muted
+    playChestDropCue(this.ctx, this.master, index);
+  }
+
+  playPickupCue(step = 0): void {
+    if (this.masterTarget <= 0) return; // muted
+    playPickupCue(this.ctx, this.master, step);
   }
 
   playHealthPickupCue(): void {

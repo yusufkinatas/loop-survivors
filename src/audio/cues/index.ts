@@ -14,6 +14,8 @@
 export { playLevelCue } from './level';
 export { playHitCue } from './hit';
 export { playStageMagnetCue } from './magnet';
+export { playChestSpinCue, playChestLandCue, playChestDropCue } from './chest';
+export { playPickupCue } from './reward';
 export { playHealthPickupCue } from './health';
 export { playGameOverCue } from './gameover';
 export { GemCue, type GemCueOptions } from './gem';

@@ -168,6 +168,22 @@ const BANNER_STYLE = new TextStyle({
   stroke: { color: SOUNDWOOD.ink, width: 7, join: 'round' },
 });
 
+/** The chest reel window: one cycling reward name above the rattling case. */
+const REEL_STYLE = new TextStyle({
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  fontSize: 15,
+  fontWeight: '900',
+  letterSpacing: 1,
+  fill: 0xffffff,
+  stroke: { color: SOUNDWOOD.ink, width: 5, join: 'round' },
+});
+
+/** One face of the chest slot reel: a possible reward's name and color. */
+export interface ChestReelEntry {
+  label: string;
+  color: number;
+}
+
 function roleIsEvolved(world: RunWorld, role: Role): boolean {
   return world.evolved.has(role);
 }
@@ -376,7 +392,27 @@ export class RunView {
   private healthPickupGfx = new Map<HealthPickup, HealthPickupGfx>();
   private scenery = new Map<string, SceneryCell>();
   private chestGfx = new Map<Chest, ChestGfx>();
+  /** The one live chest slot ceremony: a rattling case with a reel window
+   *  cycling above it. Shell-driven (game.ts owns the timing and payout);
+   *  the view only animates the spin and throws the landing party. */
+  private chestCeremony: {
+    root: Container;
+    chest: ChestGfx;
+    plate: Container;
+    reelText: Text;
+    x: number;
+    y: number;
+    tickTimes: number[];
+    entries: ChestReelEntry[];
+    t: number;
+    tick: number;
+    pop: number;
+  } | null = null;
   private groundPickGfx: RewardGfx[] = [];
+  /** Chest payout pedestals. Separate from groundPickGfx because the shell's
+   *  semantics differ: these are grants scooped one by one, not a choice that
+   *  clears its siblings — and they skip the safe-zone ring. */
+  private chestDropGfx: RewardGfx[] = [];
   private pops: Pop[] = [];
   private floaters: Floater[] = [];
   private live = new Set<object>();
@@ -474,6 +510,83 @@ export class RunView {
     this.flashes.push({ start: this.world.timeS, dur: 0.48, color: SOUNDWOOD.cyan, alpha: 0.2 });
   }
 
+  /** Start the chest slot spin at the opened chest's spot: a fresh case that
+   *  rattles harder as the wheel slows, under a reel window cycling through
+   *  the possible rewards on the SAME tick schedule the audio cue plays. */
+  startChestCeremony(x: number, y: number, tickTimes: number[], entries: ChestReelEntry[]): void {
+    this.clearChestCeremony();
+    const root = new Container();
+    root.position.set(snap(x), snap(y));
+    const chest = makeChestGfx({ x, y, color: 0xffd45c });
+    const plate = new Container();
+    plate.position.set(0, -108);
+    const frame = new Graphics({ roundPixels: true });
+    frame.rect(-80, -19, 160, 38).fill({ color: SOUNDWOOD.ink, alpha: 0.85 });
+    frame.rect(-80, -19, 160, 38).stroke({ width: 3, color: 0xffd45c, alpha: 0.8 });
+    pixelDiamond(frame, -90, 0, 4, 0xffd45c, 0.9);
+    pixelDiamond(frame, 90, 0, 4, 0xffd45c, 0.9);
+    const reelText = new Text({ text: '· · ·', style: REEL_STYLE, roundPixels: true });
+    reelText.anchor.set(0.5);
+    plate.addChild(frame, reelText);
+    root.addChild(chest, plate);
+    this.tourRewardLayer.addChild(root);
+    this.chestCeremony = { root, chest, plate, reelText, x, y, tickTimes, entries, t: 0, tick: -1, pop: 0 };
+  }
+
+  /** The reel stopped: tear down the spin and land the payout — banner, spark
+   *  spray, and for a jackpot the full burst-and-shake treatment. */
+  landChestCeremony(label: string, color: number, opts: { big: boolean; jackpot: boolean }): void {
+    const ceremony = this.chestCeremony;
+    if (!ceremony) return;
+    this.clearChestCeremony();
+    this.spawnWorldBanner(label, ceremony.x, ceremony.y, color, opts.big);
+    this.spawnFx({
+      type: 'spark',
+      x: ceremony.x,
+      y: ceremony.y - 10,
+      color,
+      n: opts.jackpot ? 34 : 16,
+      spread: opts.jackpot ? 180 : 110,
+    });
+    if (opts.jackpot) {
+      this.levelBurst(ceremony.x, ceremony.y);
+      this.pushShake(10, 0.6);
+    }
+  }
+
+  /** Drop the ceremony visuals without landing (run ended, world reset). */
+  clearChestCeremony(): void {
+    if (!this.chestCeremony) return;
+    this.chestCeremony.root.destroy({ children: true });
+    this.chestCeremony = null;
+  }
+
+  /** Spin animation, on REAL time: the audio cue is scheduled in wall-clock
+   *  AudioContext time, so the reel must ignore the ceremony's own slow-mo to
+   *  keep every visible frame flip on its audible tick. */
+  private updateChestCeremony(realDt: number): void {
+    const c = this.chestCeremony;
+    if (!c) return;
+    c.t += realDt;
+    while (c.tick + 1 < c.tickTimes.length && c.t >= c.tickTimes[c.tick + 1]) {
+      c.tick++;
+      const entry = c.entries[c.tick % c.entries.length];
+      c.reelText.text = entry.label.toUpperCase();
+      c.reelText.tint = entry.color;
+      c.pop = 0.09;
+    }
+    c.pop = Math.max(0, c.pop - realDt);
+    const spinS = c.tickTimes[c.tickTimes.length - 1] || 1;
+    const progress = Math.min(1, c.t / spinS);
+    // The case can barely hold it in: rattle and glow grow as the wheel slows.
+    const rattle = this.reducedMotion ? 0 : 0.8 + 3.4 * progress;
+    c.chest.__case.x = Math.sin(c.t * 55) * rattle;
+    c.chest.__case.rotation = this.reducedMotion ? 0 : Math.sin(c.t * 43) * 0.05 * progress;
+    c.chest.__case.scale.set(1 + 0.06 * progress);
+    c.chest.__beam.alpha = 0.5 + 0.42 * progress + Math.sin(c.t * 30) * 0.08;
+    c.plate.scale.set(1 + (c.pop / 0.09) * 0.12);
+  }
+
   setGroundPicks(picks: GroundPickView[]): void {
     for (const reward of this.groundPickGfx) reward.destroy({ children: true });
     this.groundPickGfx.length = 0;
@@ -507,7 +620,19 @@ export class RunView {
     }
   }
 
-  update(dt: number): void {
+  /** Replace the chest payout pedestals (the shell re-sends the survivors
+   *  after each scoop). Same pedestal art as ground picks, no safe ring. */
+  setChestDrops(picks: GroundPickView[]): void {
+    for (const reward of this.chestDropGfx) reward.destroy({ children: true });
+    this.chestDropGfx.length = 0;
+    for (const pick of picks) {
+      const reward = makeRewardGfx(pick);
+      this.rewardLayer.addChild(reward);
+      this.chestDropGfx.push(reward);
+    }
+  }
+
+  update(dt: number, realDt = dt): void {
     for (const fx of this.world.fx ?? []) this.spawnFx(fx);
     if (this.world.fx) this.world.fx.length = 0;
 
@@ -538,6 +663,7 @@ export class RunView {
     this.updatePlayer();
     this.updateGroundPicks();
     this.syncChests();
+    this.updateChestCeremony(realDt);
     this.drawForeground(cameraX, cameraY);
     this.drawFlash(cameraX, cameraY);
 
@@ -563,6 +689,7 @@ export class RunView {
 
   destroy(): void {
     this.destroyed = true;
+    this.chestCeremony = null; // its root dies with the stage below
     this.stage.destroy({ children: true });
     this.floorTiles.length = 0;
     this.enemyGfx.clear();
@@ -576,6 +703,7 @@ export class RunView {
     this.scenery.clear();
     this.chestGfx.clear();
     this.groundPickGfx.length = 0;
+    this.chestDropGfx.length = 0;
     this.pops.length = 0;
     this.floaters.length = 0;
     this.trails.clear();
@@ -938,10 +1066,11 @@ export class RunView {
       if (!visible) continue;
 
       const shield = enemy.shieldHp > 0;
-      if (gfx.__frame !== frame || gfx.__shield !== shield) {
+      if (gfx.__frame !== frame || gfx.__shield !== shield || gfx.__radius !== enemy.radius) {
         gfx.context = enemyContext(enemy, shield, frame);
         gfx.__frame = frame;
         gfx.__shield = shield;
+        gfx.__radius = enemy.radius;
       }
       gfx.position.set(snap(enemy.x), snap(enemy.y));
       gfx.tint = enemy.flashT > 0 ? 0xffffff : enemy.color;
@@ -1125,6 +1254,12 @@ export class RunView {
     this.rewardSafeGfx.alpha = this.groundPickGfx.length
       ? 0.72 + Math.sin(time * 2.2) * 0.16
       : 0;
+    for (let i = 0; i < this.chestDropGfx.length; i++) {
+      const reward = this.chestDropGfx[i];
+      const pulse = 1 + Math.sin(time * 3.2 + i * 2.1) * 0.035;
+      reward.__platform.scale.set(pulse);
+      reward.__beam.alpha = 0.72 + Math.sin(time * 2.4 + i) * 0.16;
+    }
   }
 
   private syncChests(): void {
