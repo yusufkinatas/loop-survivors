@@ -333,12 +333,16 @@ export interface GravityWell {
   source: Role;
 }
 
-/** A treasure chest dropped by a defeated elite/boss enemy. Walk into it to
- *  open it: it grants a weapon evolution when one is ready, otherwise health. */
+/** A treasure chest dropped by a defeated elite/boss enemy. Walking into it
+ *  starts the shell's slot ceremony (game.ts): a ready weapon evolution is the
+ *  top prize, otherwise 1/3/5 free level-ups of owned weapons and passives. */
 export interface Chest {
   x: number;
   y: number;
   color: number;
+  /** Sandbox-only: pin the slot payout size instead of rolling it, so the
+   *  panel can put a specific ceremony (e.g. the ×5 jackpot) on demand. */
+  forceSize?: 1 | 3 | 5;
 }
 
 export interface Gem {

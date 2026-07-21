@@ -6,7 +6,7 @@ import { Application } from 'pixi.js';
 import type { MusicEngine } from '../audio/engine';
 import { SOUNDSET } from '../audio/soundset';
 import { ROLE_COLORS, ROLES, type Kit, type Role } from '../audio/kits';
-import { LEVELUP } from './config';
+import { CHEST, chestTickTimes, LEVELUP } from './config';
 import { mountTrackOverlay } from './trackoverlay';
 import { Hud } from './hud';
 import { pushDamageFeedback } from './damage-feedback';
@@ -14,11 +14,12 @@ import { createGreedyMover, createKiter, type AutoMover } from './auto-move';
 import { autoMove, Input, type AutoMoveMode } from './input';
 import { mountJoystick } from './joystick';
 import { rollOffers, rollStartingWeapons, type AnyPickOption } from './picks';
-import { RunWorld, type VacuumResult } from './run';
+import { RunWorld, type Chest, type VacuumResult } from './run';
 import { SIM_DT } from './timing';
-import { preloadRunArt, RunView, type GroundPickView } from './view';
+import { preloadRunArt, RunView, type ChestReelEntry, type GroundPickView } from './view';
 import { mountSandboxPanel, type SandboxPanel } from './sandbox';
-import { ITEMS, ITEM_NEUTRAL_COLOR, type EvolutionDefinition, type ItemId } from './items';
+import { ITEMS, ITEM_NEUTRAL_COLOR, itemMaxLevel, type EvolutionDefinition, type ItemId } from './items';
+import { weaponTiers } from './weapons';
 import { MetaStore, type RunSettlement } from './meta';
 import { mulberry32 } from './rng';
 
@@ -202,6 +203,54 @@ export async function bootGame(
   // actually entered on its next bar.
   const pendingUpgrades: number[] = [];
   const pendingEvolutionChoices: EvolutionDefinition[][] = [];
+  // The chest slot machine (docs/plan.md, "Chests"): opened chests queue here
+  // and play one full ceremony at a time — spin, land, payout — so a
+  // five-minute mark's chest burst reads as back-to-back rituals, never
+  // stacked slow-mos.
+  // `index` is the chest's lifetime ordinal, captured AT OPEN: a burst of
+  // chests queues several ceremonies, and each must keep the scripted-payout
+  // position it was opened at, not the one its ceremony finally starts at.
+  const pendingChests: { x: number; y: number; index: number; forceSize?: 1 | 3 | 5 }[] = [];
+  let chestCeremony: {
+    x: number;
+    y: number;
+    size: 1 | 3 | 5;
+    evolution: boolean;
+    /** Real seconds since the spin started (the reel runs on wall clock). */
+    t: number;
+    landed: boolean;
+    /** The rolled payout, spawned one pedestal per drop tick after landing. */
+    drops?: ChestDropPlan[];
+    dropped: number;
+  } | null = null;
+  // A landed chest's payout, physically on the ground: pre-rolled GRANTS (not
+  // choices) waiting to be walked onto. Unlike the level-up triangle, a pickup
+  // leaves its siblings in place — you scoop them one by one.
+  type ChestDropOption =
+    | { kind: 'chestWeapon'; role: Role; tier: number }
+    | { kind: 'chestItem'; item: ItemId; level: number }
+    | { kind: 'chestEncore'; encore: 'damage' | 'area' | 'move' };
+  interface ChestDropPlan {
+    option: ChestDropOption;
+    view: GroundPickView;
+  }
+  const chestDrops: ChestDropPlan[] = [];
+  // Weapon tiers promised by a chest but not yet applied — tier changes enter
+  // on the next bar like every weapon pick, and un-scooped drops keep their
+  // reservation. Read when rolling later payouts so two chests can never
+  // promise the same tier twice. plannedItemLevels is the passive twin.
+  const scheduledWeaponTiers = new Map<Role, number>();
+  const plannedItemLevels = new Map<ItemId, number>();
+  // The pickup chirp climbs while the player keeps scooping rewards (a chest
+  // scatter reads as one rising run), and resets after a short gap.
+  let pickupStep = 0;
+  let lastPickupAudioT = -Infinity;
+  function nextPickupStep(): number {
+    const now = engine.ctx.currentTime;
+    pickupStep = now - lastPickupAudioT < 1.6 ? Math.min(pickupStep + 1, 9) : 0;
+    lastPickupAudioT = now;
+    return pickupStep;
+  }
   let pickAwaitingBar = false;
   let presentQueuedPickAtAudioT: number | null = null;
   // The level-up offers currently dropped on the ground as physical items, in
@@ -247,6 +296,13 @@ export async function bootGame(
   function resetUpgradeQueue(): void {
     pendingUpgrades.length = 0;
     pendingEvolutionChoices.length = 0;
+    pendingChests.length = 0;
+    chestCeremony = null;
+    chestDrops.length = 0;
+    scheduledWeaponTiers.clear();
+    plannedItemLevels.clear();
+    view?.clearChestCeremony();
+    view?.setChestDrops([]);
     pickAwaitingBar = false;
     presentQueuedPickAtAudioT = null;
     clearGroundPicks();
@@ -264,6 +320,7 @@ export async function bootGame(
   // entered on the next bar (pickAwaitingBar / presentQueuedPickAtAudioT).
   function presentNextUpgrade(): void {
     if (!world || state !== 'run' || pickAwaitingBar || presentQueuedPickAtAudioT !== null) return;
+    if (chestCeremony !== null) return; // the slot reel owns the moment
     if (groundPicks.length > 0) return; // one triangle at a time
 
     const w = world;
@@ -273,7 +330,8 @@ export async function bootGame(
         .filter(({ role }) => eligibleNow.has(role))
         .slice(0, 3)
         .map((evolution): EvolutionPick => ({ kind: 'evolution', evolution }));
-      if (evolutionOptions.length > 0) dropGroundPicks(w, evolutionOptions, 'chest');
+      // 'none': the chest ceremony that queued these already played the fanfare.
+      if (evolutionOptions.length > 0) dropGroundPicks(w, evolutionOptions, 'none');
       else presentNextUpgrade();
       return;
     }
@@ -298,11 +356,11 @@ export async function bootGame(
 
   /** How loudly a ground-pick drop is celebrated.
    *  - `'level'`: the full LEVELUP.momentS slow-mo — a real level-up.
-   *  - `'chest'`: the same beat at LEVELUP.chestMomentS, because chests arrive
-   *    in bursts and present back to back.
-   *  - `'none'`: no slow-mo, no mix duck, no level cue and no HUD pulse (the
-   *    opening hire) — only the burst that reads as "here are your options". */
-  type Celebration = 'level' | 'chest' | 'none';
+   *  - `'none'`: no slow-mo, no mix duck, no level cue and no HUD pulse — only
+   *    the burst that reads as "here are your options". Used for the opening
+   *    hire, and for evolution triangles queued by a chest whose slot ceremony
+   *    already played the fanfare. */
+  type Celebration = 'level' | 'none';
 
   /** Drop the offered options as items in a triangle around the player, shove
    *  the horde clear of them, and fire the cosmetic level-up moment. */
@@ -350,7 +408,7 @@ export async function bootGame(
     view?.setGroundPicks(payload);
     w.shoveEnemiesOut(cx, cy, LEVELUP.enemyPushRadius);
     if (celebrate === 'none') view?.levelBurst(cx, cy);
-    else startLevelMoment(cx, cy, celebrate === 'chest' ? LEVELUP.chestMomentS : LEVELUP.momentS);
+    else startLevelMoment(cx, cy, LEVELUP.momentS);
   }
 
   /** The satisfying beat: slowScale slow-mo plus a short mix dip, held for
@@ -374,6 +432,10 @@ export async function bootGame(
     // The player reached a pick before momentS elapsed: snap game speed and
     // weapon volume back now instead of riding out the full slow-mo.
     endLevelMoment();
+    // Every walk-onto collection chirps and kicks — the level-up cue announced
+    // the offer; the chirp plus a small enemy shove confirm the take.
+    engine.playPickupCue(nextPickupStep());
+    w.shoveEnemiesOut(item.x, item.y, LEVELUP.pickupPushRadius);
     const option = item.option;
     clearGroundPicks();
     if (option.kind === 'item') {
@@ -433,6 +495,239 @@ export async function bootGame(
   }
 
 
+  // ---------------------------------------------------------------------------
+  // The chest slot machine. Walking onto a chest no longer resolves instantly:
+  // the case rattles under a reel of possible rewards while ticks climb the
+  // scale (each one a note higher, the intervals stretching like a slowing
+  // wheel), then the reel stops on the payout. A ready evolution is always the
+  // top prize; otherwise the chest pays 1/3/5 free level-ups of things already
+  // owned — an early chest is never just a consolation heal.
+
+  /** Payout size for this chest: the save's first few follow the scripted
+   *  opening sequence (a guaranteed early jackpot taste), then random weights. */
+  function rollChestSize(index: number): 1 | 3 | 5 {
+    const scripted = CHEST.openingSequence[index];
+    if (scripted !== undefined) return scripted;
+    const roll = Math.random();
+    if (roll < CHEST.jackpotChance) return 5;
+    if (roll < CHEST.jackpotChance + CHEST.bigWinChance) return 3;
+    return 1;
+  }
+
+  /** Eligible evolutions NOT already promised by a queued or dropped triangle.
+   *  Without this, two chests opened back to back with one recipe ready would
+   *  both land "EVOLUTION READY" — and the second would pay nothing. */
+  function unpromisedEvolutions(w: RunWorld): EvolutionDefinition[] {
+    const promised = new Set<Role>();
+    for (const choices of pendingEvolutionChoices) for (const choice of choices) promised.add(choice.role);
+    for (const pick of groundPicks) {
+      if (pick.option.kind === 'evolution') promised.add(pick.option.evolution.role);
+    }
+    return w.eligibleEvolutions().filter(({ role }) => !promised.has(role));
+  }
+
+  /** Everything the reel can visibly land on, shuffled: owned weapons and
+   *  passives by name and color, the health garnish, and — when a recipe is
+   *  ready — the evolutions, so the spin teases the real prize. */
+  function chestReelEntries(w: RunWorld, evolutions: EvolutionDefinition[]): ChestReelEntry[] {
+    const entries: ChestReelEntry[] = [];
+    for (const evolution of evolutions) entries.push({ label: evolution.name, color: evolution.color });
+    for (const role of w.tiers.keys()) entries.push({ label: kits.get(role)!.name, color: ROLE_COLORS[role] });
+    for (const item of w.items.keys()) entries.push({ label: ITEMS[item].name, color: ITEM_NEUTRAL_COLOR });
+    entries.push({ label: '+HP', color: 0xff665a });
+    for (let i = entries.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [entries[i], entries[j]] = [entries[j], entries[i]];
+    }
+    return entries;
+  }
+
+  /** Start the next queued ceremony, if none is running: deep slow-mo, mix
+   *  duck, the spin cue, and the view's rattling reel — all on one schedule. */
+  function tryStartChestCeremony(): void {
+    const w = world;
+    if (!w || chestCeremony || (state !== 'run' && state !== 'sandbox')) return;
+    const chest = pendingChests.shift();
+    if (!chest) return;
+    const evolutions = unpromisedEvolutions(w);
+    const evolution = evolutions.length > 0;
+    chestCeremony = { x: chest.x, y: chest.y, size: evolution ? 5 : chest.forceSize ?? rollChestSize(chest.index), evolution, t: 0, landed: false, dropped: 0 };
+    // Rides the level-moment slow-mo machinery: deeper and longer than a
+    // level-up (this is the game's biggest reward beat), released just after
+    // the landing burst.
+    momentT = CHEST.spinS + CHEST.landS;
+    momentScale = CHEST.slowScale;
+    applyClockRate();
+    engine.duckWeapons(CHEST.duckDepth, CHEST.spinS + CHEST.landS);
+    const ticks = chestTickTimes();
+    engine.playChestSpinCue(ticks);
+    w.shoveEnemiesOut(chest.x, chest.y, LEVELUP.enemyPushRadius);
+    view?.startChestCeremony(chest.x, chest.y, ticks, chestReelEntries(w, evolutions));
+  }
+
+  /** The reel stopped: resolve and celebrate the payout. */
+  function landChest(): void {
+    const w = world;
+    const ceremony = chestCeremony;
+    if (!w || !ceremony || (state !== 'run' && state !== 'sandbox')) return;
+    if (ceremony.evolution) {
+      const choices = unpromisedEvolutions(w);
+      if (choices.length > 0) {
+        engine.playChestLandCue(3);
+        view?.landChestCeremony('EVOLUTION READY', 0xffdf74, { big: true, jackpot: true });
+        if (state === 'sandbox') {
+          // No ground-pick flow in the sandbox: evolve the first ready role.
+          const evolution = choices[0];
+          w.evolve(evolution.role);
+          engine.setEvolutionGain(evolution.role, evolution.gainDb);
+          paintBand();
+          hud.showToast(`EVOLVED · ${evolution.name}`);
+        } else {
+          pendingEvolutionChoices.push(choices);
+        }
+        return;
+      }
+      ceremony.size = 1; // eligibility evaporated mid-spin; pay a level-up
+    }
+    engine.playChestLandCue(ceremony.size === 5 ? 3 : ceremony.size === 3 ? 2 : 1);
+    const healed = w.healPlayer(CHEST.healBySize[ceremony.size]);
+    ceremony.drops = rollChestDrops(w, ceremony.size);
+    const banner = ceremony.size === 5 ? 'JACKPOT ×5' : ceremony.size === 3 ? 'BIG WIN ×3'
+      : (ceremony.drops[0]?.view.name ?? 'CHEST').toUpperCase();
+    view?.landChestCeremony(banner, ceremony.size === 1 ? 0xffd45c : 0xffdf74,
+      { big: ceremony.size >= 3, jackpot: ceremony.size === 5 });
+    hud.showToast(healed > 0 ? `CHEST ×${ceremony.size} · +${Math.round(healed)} HP` : `CHEST ×${ceremony.size}`);
+    hud.levelPulse();
+    // The payout scatters around the player, so clear the landing area — the
+    // per-drop shoves keep it clear while the pedestals thud in.
+    w.shoveEnemiesOut(w.player.x, w.player.y, LEVELUP.enemyPushRadius);
+  }
+
+  /** Roll a chest's payout: `count` level-ups of things the player already
+   *  owns, as drop plans — NOTHING is applied here. Each plan becomes a
+   *  pedestal that thuds in after the reel stops and applies when scooped.
+   *  Weapon tiers and passive levels are reserved at roll time so a later
+   *  chest can never promise a level twice; the pool is rebuilt per drop so
+   *  a ×5 spends its hits across what can still level. A fully maxed build
+   *  converts leftover hits into encore bonuses. */
+  function rollChestDrops(w: RunWorld, count: 1 | 3 | 5): ChestDropPlan[] {
+    const cx = w.player.x;
+    const cy = w.player.y;
+    // Same portrait-screen clamp as the level-up triangle: pedestals must stay
+    // fully readable inside the camera.
+    const horizontalRoom = Math.max(LEVELUP.itemPickupRadius + 4, w.worldW / 2 - 92);
+    const startDeg = Math.random() * 360;
+    const weaponTierNow = (role: Role): number =>
+      Math.max(w.tiers.get(role) ?? 0, scheduledWeaponTiers.get(role) ?? 0);
+    const itemLevelNow = (item: ItemId): number =>
+      Math.max(w.items.get(item) ?? 0, plannedItemLevels.get(item) ?? 0);
+    const encoreKinds = ['damage', 'area', 'move'] as const;
+    const drops: ChestDropPlan[] = [];
+    for (let i = 0; i < count; i++) {
+      const deg = startDeg + (360 / count) * i + (Math.random() - 0.5) * 24;
+      const rad = (deg * Math.PI) / 180;
+      const radius = CHEST.dropRadius + (Math.random() - 0.5) * 30;
+      const x = cx + Math.max(-horizontalRoom, Math.min(horizontalRoom, Math.cos(rad) * radius));
+      const y = cy + Math.sin(rad) * radius;
+      const pool: ({ kind: 'weapon'; role: Role } | { kind: 'item'; item: ItemId })[] = [];
+      for (const role of w.tiers.keys()) {
+        if (weaponTierNow(role) < (weaponTiers(role)?.length ?? 0)) pool.push({ kind: 'weapon', role });
+      }
+      for (const item of w.items.keys()) {
+        if (itemLevelNow(item) < itemMaxLevel(item)) pool.push({ kind: 'item', item });
+      }
+      if (pool.length === 0) {
+        const encore = encoreKinds[i % encoreKinds.length];
+        const role: Role = encore === 'damage' ? 'bass' : encore === 'move' ? 'kick' : 'chord';
+        const label = encore === 'damage' ? 'Hotter Signal' : encore === 'move' ? 'Quick Change' : 'Wider Stage';
+        drops.push({ option: { kind: 'chestEncore', encore },
+          view: { x, y, role, color: ROLE_COLORS[role], name: label, level: 'ENCORE' } });
+        continue;
+      }
+      const target = pool[Math.floor(Math.random() * pool.length)];
+      if (target.kind === 'weapon') {
+        const tier = weaponTierNow(target.role) + 1;
+        scheduledWeaponTiers.set(target.role, tier); // reserved until scooped
+        drops.push({ option: { kind: 'chestWeapon', role: target.role, tier },
+          view: { x, y, role: target.role, color: ROLE_COLORS[target.role],
+            name: kits.get(target.role)!.name, level: `${tier - 1} → ${tier}` } });
+      } else {
+        const level = itemLevelNow(target.item) + 1;
+        plannedItemLevels.set(target.item, level); // reserved until scooped
+        const definition = ITEMS[target.item];
+        drops.push({ option: { kind: 'chestItem', item: target.item, level },
+          view: { x, y, glyph: definition.glyph, color: ITEM_NEUTRAL_COLOR, name: definition.name,
+            level: `${level - 1} → ${level}`, effect: definition.levelLines[level - 1] } });
+      }
+    }
+    return drops;
+  }
+
+  /** One reward thuds onto the boards: pedestal in, enemies shoved back, a
+   *  pitched bam. The staggered ticker calls this once per drop. */
+  function spawnChestDrop(w: RunWorld, drop: ChestDropPlan, index: number): void {
+    chestDrops.push(drop);
+    view?.setChestDrops(chestDrops.map((d) => d.view));
+    engine.playChestDropCue(index);
+    w.shoveEnemiesOut(drop.view.x, drop.view.y, 150);
+    w.fx?.push({ type: 'ring', x: drop.view.x, y: drop.view.y, radius: 120, color: drop.view.color, dur: 0.45, soft: true });
+    view?.pushShake(3, 0.22);
+  }
+
+  /** Walk-onto collection of one chest drop: apply just that reward — its
+   *  siblings stay on the ground — and chirp the pickup cue. */
+  function collectChestDrop(drop: ChestDropPlan): void {
+    const w = world;
+    if (!w) return;
+    chestDrops.splice(chestDrops.indexOf(drop), 1);
+    view?.setChestDrops(chestDrops.map((d) => d.view));
+    engine.playPickupCue(nextPickupStep());
+    w.shoveEnemiesOut(drop.view.x, drop.view.y, LEVELUP.pickupPushRadius);
+    view?.flourish(drop.view.x, drop.view.y);
+    hud.levelPulse();
+    const option = drop.option;
+    if (option.kind === 'chestWeapon') {
+      applyChestWeaponGrants(w, new Map([[option.role, option.tier]]));
+      hud.showToast(`${kits.get(option.role)!.name} → tier ${option.tier}`);
+    } else if (option.kind === 'chestItem') {
+      w.addItem(option.item, option.level);
+      if (plannedItemLevels.get(option.item) === option.level) plannedItemLevels.delete(option.item);
+      const definition = ITEMS[option.item];
+      hud.showToast(`${definition.name} ${option.level} · ${definition.levelLines[option.level - 1]}`);
+    } else {
+      w.applyEncoreChoice(option.encore);
+      hud.showToast(`Encore ${option.encore}`);
+    }
+  }
+
+  /** Chest-granted weapon tiers enter on the next bar, exactly like a picked
+   *  tier-up: the chart changes now for the bar's first note, the world's tier
+   *  waits for the heard timestamp so old-tier damage stays truthful. */
+  function applyChestWeaponGrants(w: RunWorld, grants: Map<Role, number>): void {
+    if (grants.size === 0) return;
+    // max, never overwrite: a role can carry a HIGHER un-scooped reservation
+    // (two drops of the same weapon — the second pedestal still owns tier+2).
+    for (const [role, tier] of grants) {
+      scheduledWeaponTiers.set(role, Math.max(scheduledWeaponTiers.get(role) ?? 0, tier));
+    }
+    engine.atNextBar((barAudioTime) => {
+      if (world !== w || (state !== 'run' && state !== 'sandbox')) return;
+      // max against the live tier: scooping a tier-4 drop before a tier-3 drop
+      // of the same role must never downgrade the chart.
+      for (const [role, tier] of grants) {
+        engine.setVoiceTier(role, Math.max(w.tiers.get(role) ?? 0, tier));
+      }
+      engine.atAudioTime(barAudioTime, () => {
+        if (world !== w || (state !== 'run' && state !== 'sandbox')) return;
+        for (const [role, tier] of grants) {
+          w.addWeapon(role, Math.max(w.tiers.get(role) ?? 0, tier));
+          if ((scheduledWeaponTiers.get(role) ?? 0) <= tier) scheduledWeaponTiers.delete(role);
+        }
+        paintBand();
+      });
+    });
+  }
+
   const updateArenaMinute = (minute: number): void => {
     engine.clock.bpm = SOUNDSET.bpm * (1 + Math.min(0.08, minute * 0.002));
     if (minute > 0) hud.showToast(`PRESSURE ${minute} · enemies scale up`);
@@ -454,17 +749,10 @@ export async function bootGame(
     onMinute(minute: number): void {
       updateArenaMinute(minute);
     },
-    onChest(): void {
-      const w = world;
-      if (!w || state !== 'run') return;
-      const choices = w.eligibleEvolutions();
-      if (choices.length === 0) {
-        w.applyEncoreChoice('heal');
-        hud.showToast('Chest · +15 HP (no recipe ready)');
-        return;
-      }
-      pendingEvolutionChoices.push(choices);
-      presentNextUpgrade();
+    onChest(chest: Chest): void {
+      if (!world || state !== 'run') return;
+      pendingChests.push({ x: chest.x, y: chest.y, index: meta.state.lifetimeChests + world.chestsOpened - 1 });
+      tryStartChestCeremony();
     },
     onStageMagnet(result: VacuumResult): void {
       engine.playStageMagnetCue();
@@ -497,19 +785,13 @@ export async function bootGame(
     onMinute(minute: number): void {
       updateArenaMinute(minute);
     },
-    onChest(): void {
-      const w = world;
-      if (!w || state !== 'sandbox') return;
-      const evolution = w.eligibleEvolutions()[0];
-      if (!evolution) {
-        w.applyEncoreChoice('heal');
-        hud.showToast('Chest · +15 HP (no recipe ready)');
-        return;
-      }
-      w.evolve(evolution.role);
-      engine.setEvolutionGain(evolution.role, evolution.gainDb);
-      hud.renderBand(w.tiers, { evolved: w.evolved });
-      hud.showToast(`EVOLVED · ${evolution.name}`);
+    onChest(chest: Chest): void {
+      if (!world || state !== 'sandbox') return;
+      // Sandbox chests skip the scripted opening (index past the sequence), so
+      // the panel's DROP CHEST button exercises the random weights — unless
+      // the chest carries a pinned size from a ×1/×3/×5 button.
+      pendingChests.push({ x: chest.x, y: chest.y, index: CHEST.openingSequence.length + world.chestsOpened, forceSize: chest.forceSize });
+      tryStartChestCeremony();
     },
     onStageMagnet(result: VacuumResult): void {
       engine.playStageMagnetCue();
@@ -799,6 +1081,36 @@ export async function bootGame(
         steps++;
         w.update(SIM_DT);
       }
+      // Chest ceremony clock, on REAL seconds: the spin cue is scheduled in
+      // wall-clock AudioContext time, so the landing must be too. Land the
+      // payout mid-ceremony, then clear and start the next queued chest.
+      if (chestCeremony && world === w && state === steppingState) {
+        chestCeremony.t += frameS;
+        if (!chestCeremony.landed && chestCeremony.t >= CHEST.spinS) {
+          chestCeremony.landed = true;
+          landChest();
+        }
+        // The staggered payout: one pedestal per drop tick — bam, bam, bam.
+        if (chestCeremony?.drops) {
+          const ceremony = chestCeremony;
+          const drops = ceremony.drops!;
+          while (
+            ceremony.dropped < drops.length &&
+            ceremony.t >= CHEST.spinS + CHEST.dropDelayS + ceremony.dropped * CHEST.dropGapS
+          ) {
+            spawnChestDrop(w, drops[ceremony.dropped], ceremony.dropped);
+            ceremony.dropped++;
+          }
+        }
+        if (
+          chestCeremony?.landed &&
+          chestCeremony.t >= CHEST.spinS + CHEST.landS &&
+          chestCeremony.dropped >= (chestCeremony.drops?.length ?? 0)
+        ) {
+          chestCeremony = null;
+          tryStartChestCeremony();
+        }
+      }
       if (
         presentQueuedPickAtAudioT !== null &&
         engine.ctx.currentTime >= presentQueuedPickAtAudioT &&
@@ -828,10 +1140,24 @@ export async function bootGame(
           }
         }
       }
+      // Chest drops scoop the same way — one per frame, but siblings stay put.
+      // Live in the sandbox too (DROP CHEST exercises the whole ceremony).
+      if (chestDrops.length > 0 && world === w && (state === 'run' || state === 'sandbox')) {
+        const p = w.player;
+        const rr = LEVELUP.itemPickupRadius * LEVELUP.itemPickupRadius;
+        for (const drop of chestDrops) {
+          const dx = p.x - drop.view.x;
+          const dy = p.y - drop.view.y;
+          if (dx * dx + dy * dy <= rr) {
+            collectChestDrop(drop);
+            break;
+          }
+        }
+      }
       // A level-up/death can change state inside a fixed step. Paused gameplay
       // never resumes with fractional time banked from before the screen opened.
       if (state !== steppingState || world !== w) liveAcc = 0;
-      view?.update(visualDt);
+      view?.update(visualDt, Math.min(frameS, 1 / 20));
       hud.setStatus(
         w.player.hp / w.playerMaxHp,
         w.xpProgress(),

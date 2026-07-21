@@ -503,9 +503,16 @@ export function mountSandboxPanel(
   button(noteControls, 'DROP HEALTH', () => {
     world.spawnHealthPickupAt(world.player.x + 115, world.player.y + 60);
   });
+  // Random weights, then the three pinned payouts (×5 = the jackpot ceremony).
+  // A ready evolution still outranks a pinned size, exactly like a real run.
   button(noteControls, 'DROP CHEST', () => {
     world.spawnChestAt(world.player.x + 115, world.player.y);
   });
+  for (const size of [1, 3, 5] as const) {
+    button(noteControls, `DROP CHEST ×${size}`, () => {
+      world.spawnChestAt(world.player.x + 115, world.player.y).forceSize = size;
+    });
+  }
   button(noteControls, 'PICKUP FIELD', () => {
     for (let i = 0; i < 18; i++) {
       const angle = (i / 18) * Math.PI * 2;
