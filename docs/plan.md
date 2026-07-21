@@ -26,10 +26,10 @@ music, and the system guarantees the result always sounds decent.
    game, it never excuses a broken one. A muted run has to hold up on its own.
 4. **Combinations over volume.** Depth comes from systems interacting, not
    from content mass.
-5. **A run ends when The Hush overwhelms the stage.** There is no victory
-   timer. Threat rises at every minute mark forever, with an authored opening
-   act flowing into an endless procedural escalation that must eventually
-   overwhelm the player.
+5. **A run is a 30-minute authored set.** The Hush's assault follows an
+   authored schedule from the first bar to the last; surviving all 30 minutes
+   is victory, and the stage clears when the set completes. A run ends early
+   only when The Hush overwhelms the player. There is no endless escalation.
 6. **Career progress favors expression over stat grind.** Players collect
    music notes from enemies and choose weapons, passive items, and a few
    authored perks in the Afterhours Shop. Nothing unlocks automatically, and
@@ -41,17 +41,18 @@ rendering, or sharing systems in v1.
 
 ## Run Shape
 
-The first eight minutes are a deliberately authored opening act. The enemy
+The whole run is a 30-minute authored set: a clean-room mirror of Vampire
+Survivors' Mad Forest normal-mode schedule at its exact values (the locked
+numbers live in [the Mad Forest spec](mad-forest-spec.md)). The enemy
 faction is **The Hush**: living interference formed from static, cable, broken
 stage equipment, light, and Soundwood growth rather than borrowed fantasy
-monsters. After the opening, an endless director recombines Hush families,
-formation patterns, population pressure, Amped variants, and periodic elite
-bosses. Every minute is a visible threat step: enemy health, damage, speed,
-rewards, density, and a small tempo lift scale together. Scaling is slow enough
-that a strong build can keep finding a new ceiling, but uncapped health and
-damage ensure every run eventually ends.
+monsters. Difficulty rises only through the schedule itself — tougher
+variants, higher enemy floors, faster spawn drips, scheduled bosses and swarm
+events — never through per-minute stat scaling, and the set plays at a
+constant tempo. At 30:00 the stage clears and the run is won with a demo-end
+win screen.
 
-Elite and boss enemies (Vampire-Survivors style) drop a **chest** on the
+Scheduled boss enemies drop a **chest** on the
 ground when defeated. Walking onto a chest starts a short slot-machine
 ceremony — the case rattles under a reel of possible rewards while ticks climb
 the run's own scale, then the reel stops on the payout. A ready weapon
