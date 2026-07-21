@@ -8,6 +8,7 @@ import { sampledRoles } from '../audio/kits/index';
 import { supportedRoles } from '../audio/soundset';
 import {
   ALL_ENEMY_KINDS,
+  ENEMIES,
   ENEMY_LABELS,
   type EnemyKind,
 } from './config';
@@ -39,7 +40,6 @@ import {
 } from './items';
 import { MetaStore, SHOP_OFFERS, type ShopOfferId } from './meta';
 import type { RunWorld } from './run';
-import { endlessScale } from './tour';
 
 /** Exported coverage catalogs keep the no-test-framework verification script
  * able to prove that future content cannot silently disappear from the panel. */
@@ -169,13 +169,13 @@ export function mountSandboxPanel(
   const careerPage = pages.get('career')!;
 
   // -----------------------------------------------------------------------
-  // Combat: exact threat minute, complete enemy catalog, repeatable fixtures.
+  // Combat: exact stage minute, complete enemy catalog, repeatable fixtures.
 
-  section(combat, 'threat minute');
+  section(combat, 'stage minute');
   const threatChoices = [0, 5, 8, 12, 20, 30] as const;
   const threatRow = el('div', 'sb-enemy', combat);
   const threatInfo = el('div', 'sb-enemy-info', threatRow);
-  el('span', 'sb-enemy-name', threatInfo, 'endless scale');
+  el('span', 'sb-enemy-name', threatInfo, 'wave table');
   const threatStatus = el('span', 'sb-enemy-stats', threatInfo);
   const threatButtons = el('div', 'sb-btns', threatRow);
   const threatChoice: ChoiceButtons<number> = {
@@ -204,7 +204,7 @@ export function mountSandboxPanel(
 
   const fixtureControls = el('div', 'sb-btns sb-controls', combat);
   fixtureControls.style.marginLeft = '0';
-  button(fixtureControls, 'ELITE BOSS', () => world.spawnSandboxBoss('mantis'));
+  button(fixtureControls, 'BOSS SPAWN', () => world.spawnSandboxBoss('mantis'));
   button(fixtureControls, 'MINUTE WAVE', () => world.spawnSandboxWave());
   button(fixtureControls, 'SPAWN DUMMY', () => {
     world.spawnEnemyAt('dummy', world.player.x + 190, world.player.y);
@@ -288,9 +288,9 @@ export function mountSandboxPanel(
   });
 
   section(lab, 'base stats');
-  // The endless-minute scale stated ONCE for the whole tab. Every row used to
-  // carry its own scaled number, which read as a second copy of the value in
-  // the box rather than as "and this is what actually spawns at minute 8".
+  // The one and only scaling rule, stated ONCE for the whole tab. Every row
+  // used to carry its own scaled number, which read as a second copy of the
+  // value in the box rather than as "and this is what actually spawns".
   const scaleNote = el('div', 'sb-hint', lab);
   scaleNote.style.marginTop = '0';
   interface TuneRow {
@@ -598,16 +598,13 @@ export function mountSandboxPanel(
       // A dot, not a colour: the picker is already a dense grid of toggles.
       pick.textContent = isTuned(kind) ? `• ${ENEMY_LABELS[kind]}` : ENEMY_LABELS[kind];
     }
-    const minute = Math.floor(world.timeS / 60);
-    const scale = endlessScale(minute);
-    const scaled: string[] = [];
-    if (scale.hpMul !== 1) scaled.push(`health ×${scale.hpMul.toFixed(2)}`);
-    if (scale.damageMul !== 1) scaled.push(`damage ×${scale.damageMul.toFixed(2)}`);
-    if (scale.speedMul !== 1) scaled.push(`speed ×${scale.speedMul.toFixed(2)}`);
-    if (scale.xpMul !== 1) scaled.push(`xp ×${scale.xpMul.toFixed(2)}`);
-    scaleNote.textContent = scaled.length === 0
-      ? 'Base values. At threat minute 0 an enemy spawns with exactly these numbers.'
-      : `Base values. At threat minute ${minute} a spawn takes ${scaled.join(', ')} on top.`;
+    scaleNote.textContent = ENEMIES[labKind].hpPerLevel
+      ? `Base values. ${ENEMY_LABELS[labKind]} carries HP×Level, so it spawns with `
+        + `health ×${Math.max(1, world.level)} at player level ${world.level}. `
+        + 'Nothing else scales — the clock changes nothing.'
+      : 'Base values. This is exactly what spawns, at any minute and any player '
+        + 'level: HP×Level is the only scaling in the game, and this kind '
+        + 'does not carry it.';
     for (const { field, slider, number, reset, readout } of tuneRows) {
       const { min, max, step } = fieldRange(labKind, field);
       const value = tunedValue(labKind, field.key);
@@ -702,18 +699,16 @@ export function mountSandboxPanel(
   }
 
   function refreshStats(): void {
-    const minute = Math.floor(world.timeS / 60);
-    const key = `${minute}/${world.level}/${tuningRevision}`;
+    const key = `${world.level}/${tuningRevision}`;
     if (key === lastStatsKey) return;
     lastStatsKey = key;
-    const scale = endlessScale(minute);
     for (const [kind, node] of enemyStatNodes) {
       // Tuned, not shipped: this row must say what a NEAR press will actually
       // put on the floor, or the catalog and the lab disagree.
       const base = enemyStats(kind, world.level);
       node.textContent =
-        `hp ${formatStat(base.hp * scale.hpMul)} · dmg ${formatStat(base.damage * scale.damageMul)}` +
-        ` · spd ${formatStat(base.speed * scale.speedMul)} · xp ${formatStat(base.xp * scale.xpMul)}` +
+        `hp ${formatStat(base.hp)} · dmg ${formatStat(base.damage)}` +
+        ` · spd ${formatStat(base.speed)} · xp ${formatStat(base.xp)}` +
         (isTuned(kind) ? ' · TUNED' : '');
     }
   }
@@ -754,7 +749,8 @@ export function mountSandboxPanel(
     for (const choice of itemButtons.values()) syncChoice(choice);
     invulnButton.classList.toggle('on', world.invincible);
     invulnButton.textContent = `INVULN ${world.invincible ? 'ON' : 'OFF'}`;
-    threatStatus.textContent = `minute ${Math.floor(world.timeS / 60)} · freshly spawned enemies use this scale`;
+    threatStatus.textContent =
+      `minute ${Math.floor(world.timeS / 60)} · MINUTE WAVE reads this row of the 30-minute table`;
     levelStatus.textContent = `level ${world.level} · HP ${Math.ceil(world.player.hp)}/${world.playerMaxHp}`;
     // No separate evolution pass: ★ is a rung of the weapon's own ChoiceButtons
     // and is synced by the loop above with every other rung.

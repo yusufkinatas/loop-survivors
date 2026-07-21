@@ -196,7 +196,7 @@ export async function bootGame(
   overlay.style.display = 'none';
   root.appendChild(overlay);
 
-  // Every XP threshold and every elite kill grants one upgrade. Several can
+  // Every XP threshold and every chest grants one upgrade. Several can
   // arrive in the same simulation tick, including while the first pick screen
   // is already open, so callbacks enqueue instead of being discarded by the
   // state guard. A queued pick is not presented until the previous choice has
@@ -741,7 +741,9 @@ export async function bootGame(
       endRun(false);
     },
     onVictory(): void {
-      // Endless mode has no victory terminal; kept for the shared interface.
+      // No victory terminal yet: the 30-minute demo end is its own ticket.
+      // The hook is already plumbed for it, right through to showEnd's
+      // `_victory` flag.
     },
     onHit(): void {
       pushDamageFeedback(hud.flashEl, view, engine);
@@ -1132,7 +1134,7 @@ export async function bootGame(
         presentQueuedPickAtAudioT = null;
         presentNextUpgrade();
       }
-      // Level and elite rewards are raised from inside RunWorld.update(). Drop
+      // Level and chest rewards are raised from inside RunWorld.update(). Drop
       // their triangle only after the full fixed step has survived, so contact
       // damage later in that same step cannot end a run mid-reward.
       if (steps > 0 && world === w && state === 'run') presentNextUpgrade();

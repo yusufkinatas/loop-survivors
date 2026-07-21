@@ -39,8 +39,8 @@ export interface TunableField {
 
 /** Ordered as the panel renders them: the three the request named first. */
 export const TUNABLE_FIELDS: readonly TunableField[] = [
-  { key: 'hp', label: 'health', span: 5, minSpan: 20, integral: true, hint: 'base HP before the minute scale' },
-  { key: 'speed', label: 'speed', span: 3, minSpan: 120, integral: false, hint: 'px/s before the minute scale' },
+  { key: 'hp', label: 'health', span: 5, minSpan: 20, integral: true, hint: 'base HP, before HP×Level on the kinds that carry it' },
+  { key: 'speed', label: 'speed', span: 3, minSpan: 120, integral: false, hint: 'px/s — never scales, at any minute' },
   { key: 'sizeMul', label: 'size', span: 4, minSpan: 4, integral: false, hint: 'body scale — hitbox and sprite together' },
   { key: 'damage', label: 'damage', span: 4, minSpan: 20, integral: true, hint: 'contact Power, before the player’s armor' },
   { key: 'xp', label: 'xp', span: 4, minSpan: 10, integral: false, hint: 'gem value dropped on death' },

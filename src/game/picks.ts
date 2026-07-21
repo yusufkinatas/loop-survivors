@@ -1,8 +1,8 @@
 // The level-up economy's one source of truth. A configured roll mixes weapon
 // hires/upgrades with passive items until the build fills its two flat caps
 // (BUILD.weaponCap / BUILD.itemCap). Once that finite build is complete, the
-// same API rolls a small capped set of run-only Encore bonuses so an endless
-// run keeps paying out.
+// same API rolls a small capped set of run-only Encore bonuses so a long run
+// keeps paying out.
 //
 // There are no weapon categories: any weapon may be offered alongside any
 // other, and hiring one never retires another from the pool. The only thing

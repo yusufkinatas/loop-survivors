@@ -203,8 +203,9 @@ export const LEVELUP = {
  * 1 / 3 / 5 free level-ups of things the player already owns (plus a health
  * garnish). The spin is pure anticipation: the outcome is rolled at open.
  *
- * Chests can arrive back to back (a five-minute mark drops up to four elites),
- * so ceremonies QUEUE — one full ritual after another, never stacked slow-mos. */
+ * Chests can arrive back to back (21:00 is a double boss, and boss minutes sit
+ * one after another late in the table), so ceremonies QUEUE — one full ritual
+ * after another, never stacked slow-mos. */
 export const CHEST = {
   /** Reel spin duration, real seconds (slow-mo, rattle, ticks). */
   spinS: 2.1,
@@ -304,11 +305,11 @@ export type EnemyKind =
   | 'giantWerewolf'
   | 'giantMummy'
   | 'giantBlueVenus'
-  // Sandbox-only measurement prop. Never appears in a stage or endless row.
+  // Sandbox-only measurement prop. Never appears in a stage row.
   | 'dummy';
 
-/** Complete simulation catalog. The sandbox consumes this directly so an
- * opening-act change cannot hide endless-tour enemies from its controls. */
+/** Complete simulation catalog. The sandbox consumes this directly so a change
+ * to the wave table cannot hide any kind from its controls. */
 export const ALL_ENEMY_KINDS: readonly EnemyKind[] = [
   'bat', 'redBat', 'redBat2', 'zombie', 'skeleton', 'ghost',
   'greenMudman', 'grayMudman', 'flower', 'glowingBat', 'mantis', 'batSwarm',
@@ -717,7 +718,9 @@ export const ENEMY_LABELS: Record<EnemyKind, string> = {
   dummy: 'Practice Cabinet',
 };
 
-/** Base spawn-time stats before endless-minute scaling. Contact `damage` is
+/** Spawn-time stats, final. HP×Level is applied here and is the ONLY scaling in
+ * the game (mad-forest-spec §5) — nothing multiplies these afterwards, and no
+ * value here moves with the clock. Contact `damage` is
  * deliberately raw Power: RunWorld subtracts the player's current armor at
  * collision time so Padded Jacket also protects against enemies already alive.
  *

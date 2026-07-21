@@ -817,7 +817,7 @@ export class RunView {
   }
 
   /** Arena floor motifs: sparse floor paint and architecture shadows, never
-   * colliders. Cable loops and drain grates give the endless arena a
+   * colliders. Cable loops and drain grates give the arena a
    * deliberately urban read while staying much dimmer than enemies, pickups,
    * and attack telegraphs. */
   private drawArenaEnvironment(cameraX: number, cameraY: number): void {

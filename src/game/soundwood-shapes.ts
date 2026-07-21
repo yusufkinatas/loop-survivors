@@ -946,7 +946,7 @@ const CASE_LABEL = new TextStyle({
   stroke: { color: SOUNDWOOD.ink, width: 5, join: 'round' },
 });
 
-/** Chests are elite/boss drops: a bright road case with chunky metal corners,
+/** Chests are boss drops: a bright road case with chunky metal corners,
  * a literal handle, and a beam tall enough to find through a horde. */
 export function makeChestGfx(spec: ChestSpec): ChestGfx {
   const root = new Container() as ChestGfx;

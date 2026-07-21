@@ -53,10 +53,6 @@ import {
   type ItemId,
 } from './items';
 import {
-  endlessScale,
-  waveRecipe,
-} from './tour';
-import {
   WEAPON_MODULES,
   weaponTiers,
   type ProjectileBehavior,
@@ -85,11 +81,6 @@ const DUMMY_DPS_IDLE_RESET = 5;
  * trigger or two. */
 const DUMMY_DPS_LEAD_IN = 0.5;
 
-/** What the gold amped roll is worth on top of an ordinary enemy's scaled
- *  stats. Named because two places apply it: the spawn, and the enemy lab's
- *  live retune, which must rebuild the same enemy it would have spawned. */
-const AMPED = { hpMul: 2.2, damageMul: 1.25, xpMul: 3 };
-
 /** Per-dummy damage bookkeeping behind the floating readout. */
 interface DummyReadout {
   /** Cumulative damage taken since spawn. */
@@ -116,11 +107,14 @@ interface DummyReadout {
  *  walk in with the crowd at one minute and arrive as a boss at another. */
 type SpawnClass = 'regular' | 'boss' | 'event';
 
-/** The class a kind takes when the caller does not ask for one. Only the two
- *  scripted body shapes are implied by the kind itself: fixed-direction sweeps
- *  and the flower wall. Everything else is crowd until a spawn row says boss. */
+/** The class a kind takes when the caller does not ask for one. Only ONE body
+ *  shape is implied by the kind itself: a fixed-direction sweep is always a
+ *  scripted event body. `flower` is deliberately NOT in here — it is an
+ *  ordinary crowd enemy in minutes 21-24 and 26 (mad-forest-spec §3), and the
+ *  flower wall gets its event bodies by asking for `'event'` explicitly.
+ *  Everything else is crowd until a spawn row says boss. */
 function defaultSpawnClass(kind: EnemyKind): SpawnClass {
-  return ENEMIES[kind].fixedDirection || kind === 'flower' ? 'event' : 'regular';
+  return ENEMIES[kind].fixedDirection ? 'event' : 'regular';
 }
 
 /** One firing of an authored event row. The data file stays at one row per
@@ -243,13 +237,10 @@ export interface Enemy {
   /** Scripted event expiry; 0 means normal lifetime/recycling. */
   despawnAt: number;
   knockbackMul: number;
-  /** Endless-run spawn identity. Stats never change after this minute. */
+  /** The minute this body walked in on. Purely a record — no stat on this
+   *  enemy derives from it (mad-forest-spec §5: HP×Level is the only scaling,
+   *  and there is no time-based ramp). The view's danger band reads it. */
   spawnMinute: number;
-  /** Gold-outline ordinary enemy with extra health/power/XP. */
-  amped: boolean;
-  /** Took the elite boss health multiplier on top of its minute scale. Part of
-   *  the spawn identity so retuneAliveEnemies can rebuild this enemy exactly. */
-  eliteScaled: boolean;
   /** The body scale this enemy was built at, so a size edit can rescale its
    *  radius and foot offsets by ratio rather than re-deriving a frame body it
    *  no longer remembers which frame it drew. */
@@ -382,8 +373,8 @@ export interface Shockwave {
   hit: Set<WeaponTarget>;
 }
 
-/** A treasure chest dropped by a defeated elite/boss enemy. Walking into it
- *  starts the shell's slot ceremony (game.ts): a ready weapon evolution is the
+/** A treasure chest dropped by a defeated boss whose row carried one. Walking
+ *  into it starts the shell's slot ceremony (game.ts): a weapon evolution is the
  *  top prize, otherwise 1/3/5 free level-ups of owned weapons and passives. */
 export interface Chest {
   x: number;
@@ -605,8 +596,6 @@ export class RunWorld {
   private eventIdx = 0;
   private currentWave: StageWave | null = null;
   private nextSpawnT = 0;
-  private endlessMinute = -1;
-  private endlessNextSpawnT = 0;
   private stageStarted = false;
   private nextEnemyId = 1;
   /** Deterministic clean-room equivalent of the source's uniform frame pick.
@@ -963,20 +952,25 @@ export class RunWorld {
     this.evolved.delete(role);
   }
 
-  /** Move the sandbox to a deterministic threat minute without running every
-   * preceding frame. Newly spawned enemies use that minute's endless scale. */
+  /** Move the sandbox to a deterministic stage minute without running every
+   *  preceding frame. Enemy stats do not depend on the clock at all any more
+   *  (mad-forest-spec §5) — what the minute selects is which wave row the
+   *  MINUTE WAVE fixture reads and how the arena reads on screen. */
   setSandboxThreatMinute(minute: number): void {
     const next = Math.max(0, Math.floor(minute));
     this.timeS = next * 60 + 0.01;
     this.lastMinute = next - 1;
-    this.endlessMinute = -1;
-    this.endlessNextSpawnT = this.timeS;
   }
 
+  /** Drop the authored roster for a minute of the 30-minute table as rings, so
+   *  a build can be measured against a real wave instead of a guess. Minutes
+   *  past the table's end reuse its last row, exactly as a live run does. */
   spawnSandboxWave(minute = Math.floor(this.timeS / 60)): void {
-    const recipe = waveRecipe(Math.max(8, Math.floor(minute)));
-    for (let i = 0; i < recipe.pattern.length; i++) {
-      this.spawnRingOf(recipe.pattern[i], Math.max(6, Math.floor(36 / recipe.pattern.length)));
+    const atS = Math.max(0, Math.floor(minute)) * 60;
+    let wave = STAGE_WAVES[0];
+    for (const row of STAGE_WAVES) if (row.atS <= atS) wave = row;
+    for (const kind of wave.pattern) {
+      this.spawnRingOf(kind, Math.max(6, Math.floor(36 / wave.pattern.length)));
     }
   }
 
@@ -1173,18 +1167,16 @@ export class RunWorld {
 
   /** Mad Forest's quota/interval semantics. `minimum` is a live population
    * floor, not a spawn rate: a due attempt fills the deficit immediately;
-   * otherwise it emits the row's complete pattern. */
+   * otherwise it emits the row's complete pattern.
+   *
+   * The authored table is the WHOLE script (mad-forest-spec §1): every minute
+   * from 0:00 to 29:00 is a row here, nothing procedural takes over, and past
+   * the last row the 29:00 wave simply keeps running. No victory branch exists
+   * yet — the demo end at 30:00 lands with its own ticket. */
   private runDirector(_dt: number): void {
     if (!this.stageStarted) {
       this.stageStarted = true;
       for (let i = 0; i < STAGE_STARTING_SPAWNS; i++) this.spawnEnemy(STAGE_STARTING_KIND);
-    }
-
-    // Preserve the authored opening exactly, then hand off to the endlessly
-    // rotating tour director at 8:00. No victory branch exists.
-    if (this.timeS >= 480) {
-      this.runEndlessDirector();
-      return;
     }
 
     while (this.waveIdx + 1 < STAGE_WAVES.length && this.timeS >= STAGE_WAVES[this.waveIdx + 1].atS) {
@@ -1208,7 +1200,6 @@ export class RunWorld {
           // A chest-less boss row is still a boss in every other way: it keeps
           // the ring, the glow, and the teleport-back. It just dies empty.
           spawned.dropsChest = occ.chest;
-          if (occ.atS > 0 && occ.atS % 300 === 0) this.scaleEliteBoss(spawned);
         }
       } else if (occ.type === 'sweep') {
         // The roll is this occurrence's own, never the group's.
@@ -1227,54 +1218,6 @@ export class RunWorld {
     }
   }
 
-  private runEndlessDirector(): void {
-    const minute = Math.floor(this.timeS / 60);
-    const recipe = waveRecipe(minute);
-    const pattern = recipe.pattern;
-    const minimum = recipe.minimum;
-    const interval = recipe.intervalS;
-    if (minute !== this.endlessMinute) {
-      this.endlessMinute = minute;
-      this.endlessNextSpawnT = this.timeS + interval;
-      // Every minute arrives as a visible formation instead of a silent stat bump.
-      this.spawnRingOf(pattern[0], Math.min(80, 20 + minute * 2));
-      if (recipe.bossCount > 0) {
-        for (let i = 0; i < recipe.bossCount; i++) {
-          const before = this.enemies.length;
-          this.spawnEnemy(i % 2 === 0 ? 'mantis' : 'glowingBat', undefined, 1, true, 'boss');
-          const boss = this.enemies.length > before ? this.enemies[this.enemies.length - 1] : null;
-          if (boss) this.scaleEliteBoss(boss);
-        }
-      }
-    }
-    while (this.timeS + 1e-9 >= this.endlessNextSpawnT) {
-      let alive = this.aliveCount();
-      do {
-        for (const kind of pattern) {
-          if (alive >= ENEMIES.maxAlive) break;
-          this.spawnEnemy(kind);
-          alive += 1;
-        }
-      } while (alive < minimum && alive < ENEMIES.maxAlive);
-      this.endlessNextSpawnT += interval;
-    }
-  }
-
-  /** Promote an ordinary enemy into a gold-marked elite boss: the endless
-   * director's periodic five-minute bosses. Elites persist as objectives and
-   * drop a chest on death. */
-  private scaleEliteBoss(enemy: Enemy): void {
-    enemy.spawnClass = 'boss';
-    const extraHp = endlessScale(enemy.spawnMinute).bossHpMul;
-    enemy.hp *= extraHp;
-    enemy.spawnHp *= extraHp;
-    enemy.shieldHp *= extraHp;
-    enemy.eliteScaled = true;
-    enemy.band = 3;
-    enemy.color = 0xffcf5a;
-    this.fx?.push({ type: 'pressure', x: enemy.x, y: enemy.y, color: 0xffcf5a, label: 'ELITE' });
-  }
-
   private aliveCount(): number {
     let n = 0;
     for (const e of this.enemies) if (!e.dead) n++;
@@ -1283,6 +1226,9 @@ export class RunWorld {
 
   private spawnWaveAttempt(wave: StageWave): void {
     let alive = this.aliveCount();
+    // mad-forest-spec §6: at 300+ alive PERIODIC spawning stops outright. Boss
+    // rows and event bodies keep firing past it (they go through spawnEnemy's
+    // wave path / pushEnemy, both capped at the 500 absolute ceiling instead).
     if (alive >= ENEMIES.maxAlive) return;
     // Backfill repeats complete enabled sets and can therefore overshoot the
     // floor by pattern.length-1. Once the floor is met, an attempt emits one
@@ -1431,17 +1377,21 @@ export class RunWorld {
     return this.pushEnemy(kind, x, y, spawnClass, moveX, moveY, despawnAt);
   }
 
-  /** Sandbox helper: spawn a real scaled elite boss (it drops a chest on death). */
+  /** Sandbox helper: spawn a real boss-class body of a kind — the ring, the
+   *  glow, the teleport-back, and a chest on death — exactly as an authored
+   *  boss row would. Boss-ness is the spawn class and nothing else; the stats
+   *  are the kind's own (mad-forest-spec §2a). */
   spawnSandboxBoss(kind: EnemyKind = 'mantis'): Enemy | null {
-    const enemy = this.spawnEnemyAt(kind, this.player.x + 320, this.player.y, 'boss');
-    if (enemy) this.scaleEliteBoss(enemy);
-    return enemy;
+    return this.spawnEnemyAt(kind, this.player.x + 320, this.player.y, 'boss');
   }
 
   /** Construct one enemy from a source sprite-feet position. The simulation
    * stores its exact circle center; old project-native kinds have zero offset.
-   * Opening rows preserve their authored composition while the endless-run
-   * minute scale applies immutable stats at spawn time. */
+   *
+   * Stats land here EXACTLY as `enemyStats` reports them. The only scaling in
+   * the game is HP×Level (mad-forest-spec §5), which `enemyStats` already
+   * applies for the kinds that carry it, once, at this spawn — there is no
+   * minute multiplier, no amped roll, and no elite promotion to layer on. */
   private pushEnemy(
     kind: EnemyKind,
     x: number,
@@ -1457,13 +1407,7 @@ export class RunWorld {
     const stats = enemyStats(kind, this.level);
     const body = this.nextEnemyBody(kind, stats.radius, stats.sizeMul);
     const minute = Math.floor(this.timeS / 60);
-    const scale = endlessScale(minute);
     const dummy = kind === 'dummy';
-    // A measurement prop must look identical whenever it is spawned: no gold
-    // amped outline, no band danger diamonds, no minute-scaled stats drift.
-    const amped = !dummy && spawnClass === 'regular' && minute >= 12 &&
-      this.rng() < scale.ampedChance;
-    const scaledHp = stats.hp * scale.hpMul * (amped ? AMPED.hpMul : 1);
     const enemy: Enemy = {
       id: this.nextEnemyId++,
       kind,
@@ -1472,11 +1416,11 @@ export class RunWorld {
       radius: body.radius,
       footOffsetX: body.footOffsetX,
       footOffsetY: body.footOffsetY,
-      hp: scaledHp,
-      spawnHp: scaledHp,
-      speed: stats.speed * scale.speedMul,
-      damage: stats.damage * scale.damageMul * (amped ? AMPED.damageMul : 1),
-      xp: stats.xp * scale.xpMul * (amped ? AMPED.xpMul : 1),
+      hp: stats.hp,
+      spawnHp: stats.hp,
+      speed: stats.speed,
+      damage: stats.damage,
+      xp: stats.xp,
       color: stats.color,
       band: dummy ? 0 : spawnClass === 'boss' ? 3 : Math.min(3, Math.floor(minute / 5)),
       flashT: 0,
@@ -1492,7 +1436,7 @@ export class RunWorld {
       knockT: 0,
       lastMoveX: 0,
       lastMoveY: 0,
-      shieldHp: kind === 'shielded' ? scaledHp * SHIELDED.shieldMul : 0,
+      shieldHp: kind === 'shielded' ? stats.hp * SHIELDED.shieldMul : 0,
       spin: kind === 'circler' ? (this.rng() < 0.5 ? 1 : -1) : 0,
       spawnClass,
       dropsChest: spawnClass === 'boss',
@@ -1501,8 +1445,6 @@ export class RunWorld {
       despawnAt,
       knockbackMul: stats.knockback,
       spawnMinute: minute,
-      amped,
-      eliteScaled: false,
       sizeMul: stats.sizeMul,
       prevX: x - body.footOffsetX,
       prevY: y - body.footOffsetY,
@@ -1568,11 +1510,10 @@ export class RunWorld {
   /** The enemy lab edited a kind: bring the horde already on screen in line
    *  instead of making the designer clear and respawn to feel a slider.
    *
-   *  Each enemy is rebuilt from its own spawn identity — spawn minute, amped
-   *  roll, elite scaling — so a tuned number lands on a live enemy exactly as
-   *  it would on a fresh one. Health is moved by RATIO, so a nearly-dead enemy
-   *  does not heal when you nudge its max HP, and a shielded enemy keeps the
-   *  dent already in its shield.
+   *  Each enemy is rebuilt straight from its kind, because a kind's stats are
+   *  now the whole story — there is no spawn-time scale to reapply. Health is
+   *  moved by RATIO, so a nearly-dead enemy does not heal when you nudge its
+   *  max HP, and a shielded enemy keeps the dent already in its shield.
    *
    *  One deliberate inexactness: hpPerLevel kinds re-derive against the
    *  CURRENT player level, not the level they spawned at. "What would this
@@ -1581,18 +1522,13 @@ export class RunWorld {
     for (const e of this.enemies) {
       if (e.dead) continue;
       const stats = enemyStats(e.kind, this.level);
-      const scale = endlessScale(e.spawnMinute);
-      const fullHp =
-        stats.hp * scale.hpMul *
-        (e.amped ? AMPED.hpMul : 1) *
-        (e.eliteScaled ? scale.bossHpMul : 1);
-      const hpRatio = e.spawnHp > 0 ? fullHp / e.spawnHp : 1;
-      e.spawnHp = fullHp;
+      const hpRatio = e.spawnHp > 0 ? stats.hp / e.spawnHp : 1;
+      e.spawnHp = stats.hp;
       e.hp *= hpRatio;
       e.shieldHp *= hpRatio;
-      e.speed = stats.speed * scale.speedMul;
-      e.damage = stats.damage * scale.damageMul * (e.amped ? AMPED.damageMul : 1);
-      e.xp = stats.xp * scale.xpMul * (e.amped ? AMPED.xpMul : 1);
+      e.speed = stats.speed;
+      e.damage = stats.damage;
+      e.xp = stats.xp;
       e.knockbackMul = stats.knockback;
       if (stats.sizeMul !== e.sizeMul) {
         const sizeRatio = e.sizeMul > 0 ? stats.sizeMul / e.sizeMul : 1;
@@ -1885,11 +1821,12 @@ export class RunWorld {
     }
   }
 
-  /** Off-screen recycle (the VS model): silently kill any non-elite enemy that
-   *  falls far behind the moving player, so the horde is always a wall ahead
-   *  and CPU stays bounded. Setting e.dead directly (not via damageEnemy)
-   *  means no gem, no kill, no splitter burst — a true recycle. Elites persist
-   *  (they are objectives). Pure geometry, deterministic, fx-free. */
+  /** Off-screen recycle (the VS model): silently kill any enemy that falls far
+   *  behind the moving player, so the horde is always a wall ahead and CPU
+   *  stays bounded. Setting e.dead directly (not via damageEnemy) means no gem,
+   *  no kill, no splitter burst — a true recycle. Boss-class spawns are the
+   *  exception (mad-forest-spec §6): they never despawn, they teleport back.
+   *  Pure geometry, deterministic, fx-free. */
   private recycleEnemies(): void {
     const p = this.player;
     const playerFootX = p.x + PLAYER_FOOT_OFFSET.x;
@@ -2355,8 +2292,8 @@ export class RunWorld {
     }
   }
 
-  /** The single construction site for a chest: elite and boss deaths route
-   * here, and the Sandbox drops one on demand. A chest carries no reward of
+  /** The single construction site for a chest: boss deaths route here, and the
+   * Sandbox drops one on demand. A chest carries no reward of
    * its own — contents are decided when the player walks into it. */
   spawnChestAt(x: number, y: number): Chest {
     const chest: Chest = { x, y, color: 0xffd45c };
@@ -2369,12 +2306,12 @@ export class RunWorld {
     this.noteDropPity += 1;
     const boss = enemy.spawnClass === 'boss';
     const chance = Math.min(0.3, 0.08 + Math.sqrt(Math.max(1, enemy.xp)) * 0.035);
-    const guaranteed = boss || enemy.amped || this.noteDropPity >= 7;
+    const guaranteed = boss || this.noteDropPity >= 7;
     if (!guaranteed && this.rng() >= chance) return;
     this.noteDropPity = 0;
     const value = boss
       ? 10
-      : enemy.amped || enemy.xp >= 10
+      : enemy.xp >= 10
         ? 3
         : enemy.xp >= 3
           ? 2
