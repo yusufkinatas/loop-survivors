@@ -326,6 +326,9 @@ export interface Chest {
   x: number;
   y: number;
   color: number;
+  /** Sandbox-only: pin the slot payout size instead of rolling it, so the
+   *  panel can put a specific ceremony (e.g. the ×5 jackpot) on demand. */
+  forceSize?: 1 | 3 | 5;
 }
 
 export interface Gem {

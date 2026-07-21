@@ -140,6 +140,10 @@ export const LEVELUP = {
   enemyPushRadius: 375,
   /** Fixed proximity to collect a dropped item (independent of pickup buffs). */
   itemPickupRadius: 40,
+  /** Collecting a ground reward shoves nearby enemies out a little too — a
+   *  third of the drop-time enemyPushRadius, so the take has a physical kick
+   *  without re-clearing the arena. */
+  pickupPushRadius: 125,
   /** Triangle points, in degrees (placed with Math.cos/sin in the shell — a
    *  cosmetic, non-simulation position, so the native trig is fine here). */
   angles: [0, 120, 240] as const,

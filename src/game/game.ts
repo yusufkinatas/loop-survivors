@@ -210,7 +210,7 @@ export async function bootGame(
   // `index` is the chest's lifetime ordinal, captured AT OPEN: a burst of
   // chests queues several ceremonies, and each must keep the scripted-payout
   // position it was opened at, not the one its ceremony finally starts at.
-  const pendingChests: { x: number; y: number; index: number }[] = [];
+  const pendingChests: { x: number; y: number; index: number; forceSize?: 1 | 3 | 5 }[] = [];
   let chestCeremony: {
     x: number;
     y: number;
@@ -432,9 +432,10 @@ export async function bootGame(
     // The player reached a pick before momentS elapsed: snap game speed and
     // weapon volume back now instead of riding out the full slow-mo.
     endLevelMoment();
-    // Every walk-onto collection chirps — the level-up cue announced the offer,
-    // this one confirms the take.
+    // Every walk-onto collection chirps and kicks — the level-up cue announced
+    // the offer; the chirp plus a small enemy shove confirm the take.
     engine.playPickupCue(nextPickupStep());
+    w.shoveEnemiesOut(item.x, item.y, LEVELUP.pickupPushRadius);
     const option = item.option;
     clearGroundPicks();
     if (option.kind === 'item') {
@@ -550,7 +551,7 @@ export async function bootGame(
     if (!chest) return;
     const evolutions = unpromisedEvolutions(w);
     const evolution = evolutions.length > 0;
-    chestCeremony = { x: chest.x, y: chest.y, size: evolution ? 5 : rollChestSize(chest.index), evolution, t: 0, landed: false, dropped: 0 };
+    chestCeremony = { x: chest.x, y: chest.y, size: evolution ? 5 : chest.forceSize ?? rollChestSize(chest.index), evolution, t: 0, landed: false, dropped: 0 };
     // Rides the level-moment slow-mo machinery: deeper and longer than a
     // level-up (this is the game's biggest reward beat), released just after
     // the landing burst.
@@ -681,6 +682,7 @@ export async function bootGame(
     chestDrops.splice(chestDrops.indexOf(drop), 1);
     view?.setChestDrops(chestDrops.map((d) => d.view));
     engine.playPickupCue(nextPickupStep());
+    w.shoveEnemiesOut(drop.view.x, drop.view.y, LEVELUP.pickupPushRadius);
     view?.flourish(drop.view.x, drop.view.y);
     hud.levelPulse();
     const option = drop.option;
@@ -785,8 +787,9 @@ export async function bootGame(
     onChest(chest: Chest): void {
       if (!world || state !== 'sandbox') return;
       // Sandbox chests skip the scripted opening (index past the sequence), so
-      // the panel's DROP CHEST button exercises the random weights.
-      pendingChests.push({ x: chest.x, y: chest.y, index: CHEST.openingSequence.length + world.chestsOpened });
+      // the panel's DROP CHEST button exercises the random weights — unless
+      // the chest carries a pinned size from a ×1/×3/×5 button.
+      pendingChests.push({ x: chest.x, y: chest.y, index: CHEST.openingSequence.length + world.chestsOpened, forceSize: chest.forceSize });
       tryStartChestCeremony();
     },
     onStageMagnet(result: VacuumResult): void {
