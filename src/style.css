@@ -1564,6 +1564,62 @@ button.big {
   max-width: 84px;
   font-size: var(--fs-sm);
 }
+/* The weapon's level, spelled out. Pips say "how far of four"; the numeral
+   says it without counting. Pause-only — the live rack carries neither. */
+.socket-tier {
+  color: var(--voice-color);
+  font: 800 9px/1 var(--font-mono);
+  letter-spacing: 0.1em;
+}
+
+/* The stat list: what the whole build adds up to, in the same panel skin as
+   the passive readout above it (it carries .pause-items too). */
+.pause-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 6px 18px;
+}
+
+.pause-stats-group {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+}
+
+.pause-stat {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: baseline;
+  padding: 2px 4px;
+}
+
+.pause-stat-glyph {
+  /* The passives' shared neutral; keep in sync with ITEM_NEUTRAL_COLOR. */
+  color: #cfd8e3;
+  font: 900 13px/1 var(--font-mono);
+  text-align: center;
+}
+
+.pause-stat-name {
+  overflow: hidden;
+  color: #e7f3ed;
+  font: 700 11px/1.2 var(--font-mono);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pause-stat-value {
+  color: var(--signal);
+  font: 800 11px/1.2 var(--font-mono);
+}
+
+/* A stat nothing has touched sits back so the invested ones read first. */
+.pause-stat.neutral .pause-stat-glyph,
+.pause-stat.neutral .pause-stat-name,
+.pause-stat.neutral .pause-stat-value {
+  color: #6b7a86;
+}
 
 .pause-items {
   width: min(92vw, 760px);
@@ -1657,6 +1713,11 @@ button.big {
   .pause-item-glyph { font-size: 17px; }
   .pause-item-copy strong { font-size: 9px; }
   .pause-item-copy span { font-size: 8px; }
+  .pause-stats-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 4px 10px; }
+  .pause-stat { grid-template-columns: 14px minmax(0, 1fr) auto; gap: 5px; padding: 1px 2px; }
+  .pause-stat-glyph { font-size: 11px; }
+  .pause-stat-name,
+  .pause-stat-value { font-size: 9px; }
   .band-rack {
     max-width: 96vw;
     gap: 2px;
@@ -1810,18 +1871,14 @@ button.big {
 }
 
 .item-name {
+  grid-row: 1 / -1;
+  align-self: center;
   overflow: hidden;
   color: #e7f3ed;
   font-size: 8px;
   font-weight: 800;
   white-space: nowrap;
   text-overflow: ellipsis;
-}
-
-.item-tier {
-  color: var(--item-color);
-  font-size: 10px;
-  font-weight: 900;
 }
 
 .screen.start-screen,
@@ -2313,7 +2370,6 @@ button.big {
   }
   .item-glyph { font-size: 14px; }
   .item-name { display: none; }
-  .item-tier { align-self: center; }
   .toast-stack { top: calc(env(safe-area-inset-top) + 204px); }
   .pause-live { display: flex; align-items: center; justify-content: center; }
   .start-hero { min-height: 220px; }

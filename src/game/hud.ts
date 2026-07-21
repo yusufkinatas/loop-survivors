@@ -5,7 +5,14 @@
 
 import { type Kit, type Role } from '../audio/kits';
 import { BUILD } from './config';
-import { EVOLUTION_BY_ROLE, ITEM_IDS, ITEMS, ITEM_NEUTRAL_CSS, type ItemId } from './items';
+import {
+  EVOLUTION_BY_ROLE,
+  ITEM_IDS,
+  ITEMS,
+  ITEM_NEUTRAL_CSS,
+  type BuildMods,
+  type ItemId,
+} from './items';
 import type { MetaStore, RunSettlement } from './meta';
 
 import { TIER_COUNT } from '../audio/charts';
@@ -98,13 +105,15 @@ export class Hud {
         el('span', 'item-glyph', socket, '·');
         continue;
       }
-      const [id, level] = entry;
+      // Deliberately level-free: the live rack answers "what am I carrying?".
+      // "How far up is it?" is a question you ask between decisions, and the
+      // pause screen is where that whole readout lives (renderStats below).
+      const [id] = entry;
       const item = ITEMS[id];
       socket.style.setProperty('--item-color', ITEM_NEUTRAL_CSS);
       el('span', 'item-glyph', socket, item.glyph);
       el('span', 'item-name', socket, item.shortName);
-      el('span', 'item-tier', socket, String(level));
-      const itemSummary = `${item.name} ${level}: ${item.levelLines[level - 1]}. ${item.description}`;
+      const itemSummary = `${item.name}: ${item.description}`;
       socket.title = itemSummary;
       socket.setAttribute('aria-label', itemSummary);
     }
@@ -142,23 +151,56 @@ export class Hud {
     }
   }
 
+  /** Everything the build currently adds up to, as one flat list — the pause
+   * screen's answer to "what am I actually playing right now?". Items and
+   * weapons each show a level a few lines up; this is the total they make
+   * together, including the Encore run bonuses that belong to no item. A stat
+   * sitting at its baseline reads as a dash rather than "+0%", so the ones you
+   * have invested in are the ones that catch the eye. */
+  renderStats(stats: BuildStats, into: HTMLElement): void {
+    into.replaceChildren();
+    const head = el('div', 'pause-items-head', into);
+    el('strong', '', head, 'STATS');
+    el('span', '', head, 'CURRENT TOTALS');
+    const grid = el('div', 'pause-stats-grid', into);
+    for (const group of statGroups(stats)) {
+      const column = el('div', 'pause-stats-group', grid);
+      for (const row of group) {
+        const line = el('div', `pause-stat ${row.value === NEUTRAL ? 'neutral' : ''}`, column);
+        el('span', 'pause-stat-glyph', line, row.glyph);
+        el('span', 'pause-stat-name', line, row.name);
+        el('span', 'pause-stat-value', line, row.value);
+        line.setAttribute('aria-label', `${row.name}: ${row.value === NEUTRAL ? 'none' : row.value}`);
+      }
+    }
+  }
+
   /** The band rack: BUILD.weaponCap numbered sockets, empty ones asking to be
-   *  filled, filled ones showing the hired instrument (its color + name) and
-   *  its tier as pips. Sockets are numbered by acquisition order — the number
-   *  a socket carries is the number key that toggles it — so the rack reads in
-   *  the order the player built it, and an already-placed weapon never
-   *  renumbers. Rebuilt on every pick (cheap: 5 sockets). Renders into the HUD
-   *  rack by default, or any supplied container so the pause menu can show the
-   *  same band. The dev number-key toggles mark a deactivated owner's socket
-   *  dimmed, and a socket with a change scheduled for the next bar pulses (up
-   *  from dim toward on, or down from full toward off). */
+   *  filled, filled ones showing the hired instrument (its color + name).
+   *  Sockets are numbered by acquisition order — the number a socket carries is
+   *  the number key that toggles it — so the rack reads in the order the player
+   *  built it, and an already-placed weapon never renumbers. Rebuilt on every
+   *  pick (cheap: 5 sockets). Renders into the HUD rack by default, or any
+   *  supplied container so the pause menu can show the same band. The dev
+   *  number-key toggles mark a deactivated owner's socket dimmed, and a socket
+   *  with a change scheduled for the next bar pulses (up from dim toward on, or
+   *  down from full toward off).
+   *
+   *  Tier pips are opt-in (`showTiers`) and only the pause screen asks for
+   *  them: the live rack says who is on stage, the pause screen says how far
+   *  each of them has come. */
   renderBand(
     tiers: ReadonlyMap<Role, number>,
-    into: HTMLElement = this.rack,
-    deactivated?: ReadonlySet<Role>,
-    pending?: ReadonlySet<Role>,
-    evolved?: ReadonlySet<Role>,
+    opts: {
+      into?: HTMLElement;
+      deactivated?: ReadonlySet<Role>;
+      pending?: ReadonlySet<Role>;
+      evolved?: ReadonlySet<Role>;
+      showTiers?: boolean;
+    } = {},
   ): void {
+    const { deactivated, pending, evolved, showTiers = false } = opts;
+    const into = opts.into ?? this.rack;
     into.replaceChildren();
     const owned = [...tiers.keys()];
     // A run can never exceed the cap, so this is always exactly weaponCap
@@ -185,9 +227,12 @@ export class Hud {
         socket.style.setProperty('--voice-color', kit.color);
         el('span', 'socket-name', socket, kit.name);
         const tier = tiers.get(owner) ?? 1;
-        const pips = el('span', 'socket-pips', socket);
-        for (let i = 1; i <= TIER_COUNT; i++) {
-          el('span', `pip ${i <= tier ? 'on' : ''}`, pips);
+        if (showTiers) {
+          const pips = el('span', 'socket-pips', socket);
+          for (let i = 1; i <= TIER_COUNT; i++) {
+            el('span', `pip ${i <= tier ? 'on' : ''}`, pips);
+          }
+          el('span', 'socket-tier', socket, `LV ${tier}`);
         }
       }
     }
@@ -606,6 +651,74 @@ export class Hud {
     this.screen?.remove();
     this.screen = null;
   }
+}
+
+/** What the pause screen needs to print the stat list: the two totals that
+ * live on the world (they fold a base value in) plus the raw modifier bag. */
+export interface BuildStats {
+  maxHp: number;
+  armor: number;
+  mods: BuildMods;
+}
+
+interface StatRow {
+  glyph: string;
+  name: string;
+  value: string;
+}
+
+/** Shown instead of "+0%" for a stat nothing has touched yet. */
+const NEUTRAL = '–';
+
+/** A multiplier as the bonus a player recognises from the item copy: 1.24 →
+ * "+24%". Rounded, because the item ladders are whole percents and a build
+ * that reads "+23.999%" is a bug report waiting to happen. */
+function bonusPct(mul: number): string {
+  const pct = Math.round((mul - 1) * 100);
+  return pct === 0 ? NEUTRAL : `${pct > 0 ? '+' : ''}${pct}%`;
+}
+
+function bonusCount(n: number): string {
+  return n === 0 ? NEUTRAL : `+${n}`;
+}
+
+/** Grouped the way the build reads: what keeps you alive, what your weapons
+ * hit with, and what everything else does. Glyphs match the passive items that
+ * feed each line so the list and the item panel above it speak one language. */
+function statGroups(stats: BuildStats): StatRow[][] {
+  const m = stats.mods;
+  return [
+    [
+      { glyph: '♥', name: 'Max Health', value: String(stats.maxHp) },
+      {
+        glyph: '✚',
+        name: 'Recovery',
+        value: m.hpRegenPerSecond === 0 ? NEUTRAL : `${m.hpRegenPerSecond.toFixed(1)}/s`,
+      },
+      { glyph: '▣', name: 'Armor', value: String(stats.armor) },
+      { glyph: '↗', name: 'Move Speed', value: bonusPct(m.moveMul) },
+    ],
+    [
+      { glyph: '▲', name: 'Might', value: bonusPct(m.damageMul) },
+      { glyph: '»', name: 'Shot Speed', value: bonusPct(m.projectileSpeedMul) },
+      { glyph: '∞', name: 'Duration', value: bonusPct(m.durationMul) },
+      { glyph: '◉', name: 'Area', value: bonusPct(m.areaMul) },
+      { glyph: '↦', name: 'Shove', value: bonusPct(m.knockbackMul) },
+    ],
+    [
+      { glyph: '⧉', name: 'Amount', value: bonusCount(m.extraProjectiles) },
+      { glyph: '◆', name: 'Pierce', value: bonusCount(m.extraPierce) },
+      {
+        glyph: '◇',
+        name: 'Bounce',
+        value:
+          m.bounceCount === 0
+            ? NEUTRAL
+            : `${m.bounceCount} · ${Math.round(m.bounceRetention * 100)}%`,
+      },
+      { glyph: '✦', name: 'Magnet', value: bonusPct(m.magnetMul) },
+    ],
+  ];
 }
 
 function el(tag: string, className: string, parent: HTMLElement, text = ''): HTMLElement {
