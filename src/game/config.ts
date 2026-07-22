@@ -74,10 +74,15 @@ export const NOTE_CUE = {
  * Weapon slots are numbered by ACQUISITION ORDER — the first weapon hired is
  * slot 1 — which is why RunWorld.tiers is a Map and is only ever appended to.
  * Reordering it would renumber the rack and the number-key toggles underneath
- * the player mid-run. */
+ * the player mid-run.
+ *
+ * The two counts are deliberately unequal and must stay independent: passives
+ * are pure stats, so a sixth one only lengthens the build, while a sixth weapon
+ * would be a sixth concurrent voice in the mix. Build-as-track outranks
+ * verbatim parity, so the passive cap moved to 6 and the weapon cap did not. */
 export const BUILD = {
   weaponCap: 5,
-  itemCap: 5,
+  itemCap: 6,
 } as const;
 
 /** How a gem or note travels once it has committed to flying at the player.

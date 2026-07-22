@@ -126,7 +126,11 @@ export class Hud {
   renderItemDetails(items: ReadonlyMap<ItemId, number>, into: HTMLElement): void {
     into.replaceChildren();
     const head = el('div', 'pause-items-head', into);
-    const countCopy = items.size > 6 ? `${items.size} ACTIVE · RUN CAP 6` : `${items.size}/6`;
+    // Read from the cap, never a literal: the sandbox loads the whole catalog
+    // and legitimately sits above it, and a run's cap has moved before.
+    const countCopy = items.size > BUILD.itemCap
+      ? `${items.size} ACTIVE · RUN CAP ${BUILD.itemCap}`
+      : `${items.size}/${BUILD.itemCap}`;
     el('strong', '', head, `PASSIVE ITEMS · ${countCopy}`);
     el('span', '', head, 'CURRENT TOTALS');
     if (items.size === 0) {
