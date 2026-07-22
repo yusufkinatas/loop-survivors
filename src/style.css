@@ -935,6 +935,15 @@ button.big {
   margin-left: auto;
 }
 
+/* The weapon ladder is the one rung group too long for a single row: off,
+   I–VIII and ★ is ten buttons, wider than the panel on a phone. It is the
+   exception to the no-wrap rule above; the numerals still read left to right,
+   the overflow just continues on a second line. */
+.sb-btns.sb-ladder {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .sb-btns .small {
   min-width: 27px;
   min-height: 26px;
@@ -1161,7 +1170,9 @@ button.big {
   position: absolute;
   left: max(12px, env(safe-area-inset-left));
   bottom: max(12px, env(safe-area-inset-bottom));
-  width: 280px;
+  /* Widened from 280px when weapons went to eight levels: the pip strip
+     doubled and the 16-step grid must not be pushed off the row. */
+  width: 300px;
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -1203,15 +1214,17 @@ button.big {
   color: var(--voice-color);
 }
 
+/* Eight pips on a 300px row: smaller and tighter than the four they replaced,
+   so the strip costs the row about the same width it always did. */
 .tr-pips {
   flex: none;
   display: flex;
-  gap: 2px;
+  gap: 1px;
 }
 
 .tr-pips .pip {
-  width: 4px;
-  height: 4px;
+  width: 3px;
+  height: 3px;
   border-radius: 50%;
   border: 1px solid color-mix(in srgb, var(--voice-color) 55%, transparent);
 }
@@ -1327,7 +1340,7 @@ button.big {
   }
 
   .track-overlay {
-    width: min(280px, calc(100vw - 24px));
+    width: min(300px, calc(100vw - 24px));
   }
 }
 

@@ -84,15 +84,23 @@ const CLAP_STATS: ClapStats = {
   // control — no travel, instant, safest when the wall is on top of you.
   tiers: [
     { damage: 2, radius: 80, arc: 0.65 },
+    { damage: 2, radius: 88, arc: 0.72 },
     { damage: 3, radius: 88, arc: 0.72 },
+    { damage: 3, radius: 88, arc: 0.8 },
     { damage: 4, radius: 98, arc: 0.8 },
+    { damage: 5, radius: 98, arc: 0.8 },
+    { damage: 5, radius: 108, arc: 0.85 },
     { damage: 6, radius: 108, arc: 0.9 },
   ],
   tierLines: [
-    'a wide slash close to you',
-    'wider, harder slash',
-    'sweeps a bigger arc',
-    'the widest, hardest slash',
+    'a crushing cone',
+    'wider, broader sweep',
+    'damage up',
+    'broader sweep',
+    'damage up, wider',
+    'damage up',
+    'widest, broader sweep',
+    'maximum damage',
   ],
 
   shove: 12,

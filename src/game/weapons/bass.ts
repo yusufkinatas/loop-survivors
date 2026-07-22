@@ -57,17 +57,26 @@ interface BassStats extends WeaponStats {
 const BASS_STATS: BassStats = {
   // Slow wide low wave that rolls through everything. The weight ladder:
   // per-trigger damage climbs harder than any other kit.
+  // Pierce stays Infinity at every level: the wave never stops.
   tiers: [
     { damage: 3, speed: 135, radius: 22, lifetimeS: 2.3, pierce: Infinity },
-    { damage: 5, speed: 140, radius: 28, lifetimeS: 2.4, pierce: Infinity },
-    { damage: 8, speed: 145, radius: 34, lifetimeS: 2.5, pierce: Infinity },
+    { damage: 3, speed: 135, radius: 28, lifetimeS: 2.3, pierce: Infinity },
+    { damage: 5, speed: 135, radius: 28, lifetimeS: 2.4, pierce: Infinity },
+    { damage: 5, speed: 140, radius: 34, lifetimeS: 2.4, pierce: Infinity },
+    { damage: 8, speed: 140, radius: 34, lifetimeS: 2.5, pierce: Infinity },
+    { damage: 10, speed: 145, radius: 34, lifetimeS: 2.5, pierce: Infinity },
+    { damage: 10, speed: 150, radius: 42, lifetimeS: 2.5, pierce: Infinity },
     { damage: 13, speed: 150, radius: 42, lifetimeS: 2.6, pierce: Infinity },
   ],
   tierLines: [
-    'slow piercing wave',
-    'waves twice as often',
-    'heavier, wider waves',
-    'massive wave every 4th bar',
+    'a slow wave through everything',
+    'wider wave',
+    'damage up, rolls longer',
+    'wider, faster',
+    'damage up, rolls longer',
+    'damage up, faster',
+    'widest, fastest',
+    'maximum weight',
   ],
 
   aimSpread: 0.08,
