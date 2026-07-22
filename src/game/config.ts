@@ -203,8 +203,9 @@ export const LEVELUP = {
  * 1 / 3 / 5 free level-ups of things the player already owns (plus a health
  * garnish). The spin is pure anticipation: the outcome is rolled at open.
  *
- * Chests can arrive back to back (a five-minute mark drops up to four elites),
- * so ceremonies QUEUE — one full ritual after another, never stacked slow-mos. */
+ * Chests can arrive back to back (21:00 is a double boss, and boss minutes sit
+ * one after another late in the table), so ceremonies QUEUE — one full ritual
+ * after another, never stacked slow-mos. */
 export const CHEST = {
   /** Reel spin duration, real seconds (slow-mo, rattle, ticks). */
   spinS: 2.1,
@@ -271,15 +272,7 @@ export function xpPickupMultiplier(level: number): number {
 }
 
 export type EnemyKind =
-  | 'swarmer'
-  | 'tank'
-  | 'darter'
-  | 'splitter'
-  | 'circler'
-  | 'shielded'
-  | 'elite'
-  // Mad Forest parity roster. The legacy kinds above remain for development
-  // fixtures.
+  // Mad Forest parity roster.
   | 'bat'
   | 'redBat'
   | 'redBat2'
@@ -292,15 +285,28 @@ export type EnemyKind =
   | 'glowingBat'
   | 'mantis'
   | 'batSwarm'
-  // Sandbox-only measurement prop. Never appears in a stage or endless row.
+  | 'giantBat'
+  | 'silverBat'
+  | 'werewolf'
+  | 'bigMummy'
+  | 'venus'
+  | 'ghostSwarm'
+  // The four Giants: separate stat blocks, not promotions of the base kinds
+  // (mad-forest-spec 2d). They draw the base silhouette at 1.5x.
+  | 'giantMantis'
+  | 'giantWerewolf'
+  | 'giantMummy'
+  | 'giantBlueVenus'
+  // Sandbox-only measurement prop. Never appears in a stage row.
   | 'dummy';
 
-/** Complete simulation catalog. The sandbox consumes this directly so an
- * opening-act change cannot hide endless-tour enemies from its controls. */
+/** Complete simulation catalog. The sandbox consumes this directly so a change
+ * to the wave table cannot hide any kind from its controls. */
 export const ALL_ENEMY_KINDS: readonly EnemyKind[] = [
   'bat', 'redBat', 'redBat2', 'zombie', 'skeleton', 'ghost',
   'greenMudman', 'grayMudman', 'flower', 'glowingBat', 'mantis', 'batSwarm',
-  'swarmer', 'tank', 'darter', 'splitter', 'circler', 'shielded', 'elite',
+  'giantBat', 'silverBat', 'werewolf', 'bigMummy', 'venus', 'ghostSwarm',
+  'giantMantis', 'giantWerewolf', 'giantMummy', 'giantBlueVenus',
   'dummy',
 ] as const;
 
@@ -315,7 +321,6 @@ export interface EnemyConf {
   power?: number;
   /** HP is multiplied by the player's level when the enemy spawns. */
   hpPerLevel?: boolean;
-  boss?: boolean;
   fixedDirection?: boolean;
   /** Source knockback multiplier: 0 ignores pushes, 1 receives them fully. */
   knockback?: number;
@@ -377,58 +382,34 @@ export const MAD_FOREST_FRAMES: Partial<Record<EnemyKind, readonly LegacyEnemyFr
     { width: 25, height: 24 },
     { width: 30, height: 27 },
   ],
+  giantBat: [{ width: 50, height: 39 }],
+  silverBat: [{ width: 27, height: 25 }],
+  werewolf: [{ width: 32, height: 34 }],
+  bigMummy: [{ width: 37, height: 50 }],
+  venus: [{ width: 51, height: 50 }],
+  // The sweep wears the Ghost frame; the source lists no swarm-specific size.
+  ghostSwarm: [{ width: 29, height: 32 }],
+  // Giants reuse their base kind's frames verbatim: the source has no separate
+  // Giant sprites, only an explicit 1.5x scale note. nextEnemyBody applies
+  // sizeMul after the source's floor(), so the radius parity holds.
+  giantMantis: [{ width: 48, height: 47 }],
+  giantWerewolf: [{ width: 32, height: 34 }],
+  giantMummy: [{ width: 37, height: 50 }],
+  giantBlueVenus: [{ width: 51, height: 50 }],
 };
 
 const BAT_SWARM_RADII = MAD_FOREST_FRAMES.batSwarm!.map(
   (frame) => legacyEnemyRadius(frame.width),
 ) as readonly number[];
 
-// The first eight entries and legacy scaling fields remain for sandbox and
-// regression fixtures. RunWorld's active parity path reads the Mad
-// Forest entries below and never applies those continuous scaling fields.
+// Every entry is a Mad Forest statline plus the sandbox dummy. Stats are final
+// at spawn: HP×Level is the only scaling in the game (mad-forest-spec §5), so
+// there are no continuous ramp factors here to apply.
 export const ENEMIES: Record<EnemyKind, EnemyConf> & {
   spawnMargin: number;
   maxAlive: number;
-  hpScaleEnd: number;
-  damageScaleEnd: number;
-  speedScaleEnd: number;
-  rampExp: number;
   recycleFactor: number;
 } = {
-  swarmer: {
-    radius: 9,
-    speed: 95,
-    hp: 5,
-    damage: 10,
-    xp: 1,
-    color: 0xf29caf,
-  },
-  /** The late-game wall: slow, fat, soaks a build for 5-10s. */
-  tank: {
-    radius: 22,
-    speed: 45,
-    hp: 110,
-    damage: 22,
-    xp: 10,
-    color: 0x98445f,
-  },
-  /** Fast, fragile, rushes the player in straight bursts. */
-  darter: {
-    radius: 8,
-    speed: 360, // dash speed; it pauses between bursts (see run.ts)
-    hp: 6,
-    damage: 10,
-    xp: 2,
-    color: 0xff845f,
-  },
-  /** Bursts into a knot of swarmers on death. The early-mid wall. */
-  splitter: { radius: 14, speed: 70, hp: 40, damage: 14, xp: 5, color: 0xd35f8d },
-  /** Fast, fragile, orbits the player at range and harasses. */
-  circler: { radius: 10, speed: 170, hp: 10, damage: 12, xp: 2, color: 0xb868db },
-  /** A shield pool absorbs damage before its hp; the mid-game wall. */
-  shielded: { radius: 16, speed: 55, hp: 40, damage: 16, xp: 7, color: 0xd474c8 },
-  /** Slow, huge, tanky objective; drops one large gem (xp=big drop). */
-  elite: { radius: 34, speed: 48, hp: 420, damage: 25, xp: 80, color: 0x8e3b68 },
   // Mad Forest normal-mode bestiary values. `damage` is what Antonio actually
   // loses after his +1 Armor; `power` retains the source number for audits/UI.
   bat: { radius: legacyEnemyRadius(19), speed: 140 * ENEMY_SPEED_UNIT, hp: 1, power: 5, damage: 4, xp: 1, color: 0xf07aa6, knockback: 1 },
@@ -459,7 +440,6 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
     xp: 30,
     color: 0xffd45c,
     hpPerLevel: true,
-    boss: true,
     knockback: 1,
   },
   mantis: {
@@ -470,7 +450,6 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
     damage: 19,
     xp: 3,
     color: 0xbf64ff,
-    boss: true,
     knockback: 0,
   },
   batSwarm: {
@@ -484,6 +463,134 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
     color: 0xffa36b,
     fixedDirection: true,
     knockback: 1,
+  },
+  /** Woofer: the heavy bat. Barely shoves (knockback 0.1) — it wades through
+   *  a build instead of being pushed by it. */
+  giantBat: {
+    radius: legacyEnemyRadius(50),
+    speed: 140 * ENEMY_SPEED_UNIT,
+    hp: 270,
+    power: 10,
+    damage: 9,
+    xp: 2.5,
+    color: 0xa32f4d,
+    knockback: 0.1,
+  },
+  /** Silver Crown: a deliberate stat-copy of Signal Crown (the source's own
+   *  design — the silver bat is a recolor), so it carries HP×Level too. */
+  silverBat: {
+    radius: legacyEnemyRadius(27),
+    speed: 140 * ENEMY_SPEED_UNIT,
+    hp: 50,
+    power: 10,
+    damage: 9,
+    xp: 30,
+    color: 0xc9d6e4,
+    hpPerLevel: true,
+    knockback: 1,
+  },
+  werewolf: {
+    radius: legacyEnemyRadius(32),
+    speed: 130 * ENEMY_SPEED_UNIT,
+    hp: 180,
+    power: 14,
+    damage: 13,
+    xp: 2,
+    color: 0xff8c2b,
+    knockback: 0.8,
+  },
+  /** Gaffer Husk and Snare Bloom share Shearjaw's 500/20/80/3 statline — the
+   *  source authors all three from the same block. */
+  bigMummy: {
+    radius: legacyEnemyRadius(37),
+    speed: 80 * ENEMY_SPEED_UNIT,
+    hp: 500,
+    power: 20,
+    damage: 19,
+    xp: 3,
+    color: 0x77808a,
+    knockback: 0,
+  },
+  venus: {
+    radius: legacyEnemyRadius(51),
+    speed: 80 * ENEMY_SPEED_UNIT,
+    hp: 500,
+    power: 20,
+    damage: 19,
+    xp: 3,
+    color: 0x62c452,
+    knockback: 0,
+  },
+  /** Echo Rush: the Static Rush sweep with ghost bodies. Same fixed-direction
+   *  event movement; stats mirror batSwarm (the source lists none of its own). */
+  ghostSwarm: {
+    radius: legacyEnemyRadius(29),
+    speed: 700 * ENEMY_SPEED_UNIT,
+    hp: 1,
+    power: 1,
+    damage: 1,
+    xp: 1,
+    color: 0x9b7bf0,
+    fixedDirection: true,
+    knockback: 1,
+  },
+  /** The four Giants (mad-forest-spec 2d). Distinct stat blocks, not scaled
+   *  copies: their numbers do not derive from the base kind by any multiplier.
+   *  The low base HP is the point — HP×Level is what makes them durable, and
+   *  they are only ever authored as spawnClass 'boss' rows. Freeze resistance
+   *  is not mirrored (this game has no freeze). */
+  giantMantis: {
+    radius: legacyEnemyRadius(48),
+    speed: 160 * ENEMY_SPEED_UNIT,
+    hp: 150,
+    power: 20,
+    damage: 19,
+    xp: 50,
+    color: 0xbf64ff,
+    hpPerLevel: true,
+    knockback: 0,
+    sizeMul: 1.5,
+  },
+  /** XP 2 is a verbatim source oddity — the other three give 25-50. Giant
+   *  Howlback's reward moment is the boss chest, not the gem. */
+  giantWerewolf: {
+    radius: legacyEnemyRadius(32),
+    speed: 130 * ENEMY_SPEED_UNIT,
+    hp: 200,
+    power: 20,
+    damage: 19,
+    xp: 2,
+    color: 0xff8c2b,
+    hpPerLevel: true,
+    knockback: 0.1,
+    sizeMul: 1.5,
+  },
+  giantMummy: {
+    radius: legacyEnemyRadius(37),
+    speed: 80 * ENEMY_SPEED_UNIT,
+    hp: 250,
+    power: 20,
+    damage: 19,
+    xp: 25,
+    color: 0x77808a,
+    hpPerLevel: true,
+    knockback: 0,
+    sizeMul: 1.5,
+  },
+  /** The one Giant that does not inherit its base hue: blue instead of Snare
+   *  Bloom's plant green. makeEnemyGfx tints from this colour, so the shared
+   *  hushBloom geometry needs no variant. */
+  giantBlueVenus: {
+    radius: legacyEnemyRadius(51),
+    speed: 160 * ENEMY_SPEED_UNIT,
+    hp: 150,
+    power: 30,
+    damage: 29,
+    xp: 50,
+    color: 0x4f8cff,
+    hpPerLevel: true,
+    knockback: 0,
+    sizeMul: 1.5,
   },
   /** Sandbox measurement prop: undying, immobile, harmless. RunWorld special-
    *  cases it in every mover and in damageEnemy; the values here only need to
@@ -503,23 +610,6 @@ export const ENEMIES: Record<EnemyKind, EnemyConf> & {
   /** Soft cap on the steady-state horde (VS-density target, see gate B
    *  round 2: the screen must crowd, not trickle). */
   maxAlive: 300,
-  /** Enemy HP multiplier reached at minute 8 (curved by rampExp). Gate B
-   *  round 2 calibration: any build's damage grows multiplicatively, so
-   *  enemies must eventually win the scaling race — the player's damage
-   *  carves a bubble in the horde, it never clears the screen, and an AFK
-   *  player gets overrun no matter the build. */
-  hpScaleEnd: 8,
-  /** Contact damage multiplier reached at minute 8, linear. Kept shallow:
-   *  danger scales via density + HP (time-to-kill), never burst damage —
-   *  a minute-8 swarmer still hits for ~13% of player HP, not 20%. */
-  damageScaleEnd: 1.3,
-  /** Speed multiplier reached at minute 8, linear, darters excluded (their
-   *  dash is tuned to stay dodgeable): open-field kiting stops being free
-   *  once the pack can close during any hesitation. */
-  speedScaleEnd: 1.3,
-  /** Exponent shaping the spawn-rate and HP ramps: >1 keeps the early game
-   *  close to M1 and piles the growth into the back half (the horde). */
-  rampExp: 1.8,
   /** Enemies farther than spawnDist*recycleFactor behind the moving player are
    *  silently recycled (no gem/kill). >1 so fresh spawns aren't culled. */
   recycleFactor: 1.45,
@@ -532,13 +622,6 @@ export const MAX_ALIVE_HARD = 500;
 /** Player-facing names for The Hush. Internal keys remain stable simulation
  * IDs so the proven movement/stat tables do not change with the new fiction. */
 export const ENEMY_LABELS: Record<EnemyKind, string> = {
-  swarmer: 'Shardling',
-  tank: 'Wallstack',
-  darter: 'Needlejack',
-  splitter: 'Crackbox',
-  circler: 'Orbit Leech',
-  shielded: 'Phase Guard',
-  elite: 'Blackout Idol',
   bat: 'Static Mite',
   redBat: 'Flare Mite',
   redBat2: 'Night Mite',
@@ -551,10 +634,22 @@ export const ENEMY_LABELS: Record<EnemyKind, string> = {
   glowingBat: 'Signal Crown',
   mantis: 'The Shear',
   batSwarm: 'Static Rush',
+  giantBat: 'Woofer',
+  silverBat: 'Silver Crown',
+  werewolf: 'Howlback',
+  bigMummy: 'Gaffer Husk',
+  venus: 'Snare Bloom',
+  ghostSwarm: 'Echo Rush',
+  giantMantis: 'Giant Shearjaw',
+  giantWerewolf: 'Giant Howlback',
+  giantMummy: 'Giant Gaffer Husk',
+  giantBlueVenus: 'Giant Snare Bloom',
   dummy: 'Practice Cabinet',
 };
 
-/** Base spawn-time stats before endless-minute scaling. Contact `damage` is
+/** Spawn-time stats, final. HP×Level is applied here and is the ONLY scaling in
+ * the game (mad-forest-spec §5) — nothing multiplies these afterwards, and no
+ * value here moves with the clock. Contact `damage` is
  * deliberately raw Power: RunWorld subtracts the player's current armor at
  * collision time so Padded Jacket also protects against enemies already alive.
  *
@@ -572,22 +667,6 @@ export function madForestEnemyStats(conf: EnemyConf, playerLevel: number) {
     knockback: conf.knockback ?? 1,
   };
 }
-
-/** Darter burst cycle: dash flat-out, stop, re-aim, dash again. */
-export const DARTER = {
-  dashS: 0.55,
-  pauseS: 0.7,
-};
-
-/** Splitter: bursts into this many children of childKind on death. Children
- *  are swarmers (never split → no recursion). */
-export const SPLITTER = { childKind: 'swarmer' as EnemyKind, childCount: 4 };
-
-/** Circler: orbits the player at this radius. */
-export const CIRCLER = { orbitR: 150 };
-
-/** Shielded: shield pool = hp*shieldMul, scaled by hpMul. */
-export const SHIELDED = { shieldMul: 1.0 };
 
 export interface WeaponConf {
   damage: number;
@@ -645,3 +724,24 @@ export const SHOVE_S = 0.12;
 // NO WEAPON-SPECIFIC BLOCK REMAINS IN THIS FILE (#141). Every weapon's tuning
 // lives as named stats in its own module under weapons/. What is left in
 // config.ts is global knobs only: enemies, XP, damage feedback and run shape.
+
+/** The demo end (mad-forest-spec §8). Surviving to `atS` wins the run: the
+ *  stage script stops spawning, the player becomes untouchable, and a single
+ *  wave sweeps outward from the player killing every live enemy — no XP, no
+ *  kill credit, no chest, a boss included. Then the stage is quiet for
+ *  `quietBeatS` while the win flourish rings out, and the win screen opens.
+ *
+ *  `sweepSpeed` is deliberately fast — about a screen width every third of a
+ *  second, the whole arena inside a second. The clear is punctuation, not a
+ *  fight: it should read as one gesture, and it has to be finished well
+ *  before the empty-stage beat it is clearing the stage for. */
+export const VICTORY = {
+  atS: 30 * 60,
+  /** Kill-wave radius growth, world px per second. */
+  sweepSpeed: 2600,
+  /** How far the wave travels before it retires; well past any spawn ring. */
+  sweepReach: 2600,
+  sweepColor: 0xffe9a8,
+  /** Empty-stage beat between the track's last bar and the win screen. */
+  quietBeatS: 2.6,
+};

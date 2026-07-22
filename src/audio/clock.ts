@@ -104,6 +104,11 @@ export class Clock {
       // leaving the grid backbone even.
       const swung = this.nextStep % 4 === 2 ? this.swing * step : 0;
       this.onStep(this.nextStep, this.nextStepTime + swung);
+      // A step callback is allowed to stop the transport (the demo end stops
+      // the track exactly on a bar line). Honour it inside the loop instead of
+      // scheduling the rest of the lookahead window past the stop, which would
+      // leak audible steps after the intended last one.
+      if (this.timer === null) return;
       this.nextStepTime += step;
       this.nextStep += 1;
     }

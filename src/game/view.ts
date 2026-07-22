@@ -28,6 +28,7 @@ import {
 } from './soundwood-art';
 import {
   animateSceneryCell,
+  BOSS_RING_SCALE,
   enemyContext,
   makeEnemyGfx,
   makeGemGfx,
@@ -225,6 +226,17 @@ const TILT_RADIANS = 0.065;
  *  per sway, which reads as deliberate walking rather than idle drifting. */
 const TILT_SPEED = Math.PI * 2;
 
+/** The boss glow: three stacked discs in the boss's own colour, widest and
+ *  faintest first, so the edge falls off instead of ending on a hard rim. All
+ *  three are sized against the white ring, so the glow always sits just inside
+ *  and under it whatever the body's radius. */
+const BOSS_GLOW_LAYERS = [[1, 0.05], [0.78, 0.06], [0.5, 0.08]] as const;
+
+/** Radians per second of the breath, and how far it swings. Slow and shallow:
+ *  a boss should look like it is idling, not pulsing an alarm. */
+const BOSS_GLOW_SPEED = 1.6;
+const BOSS_GLOW_DEPTH = 0.07;
+
 function enemyTilt(enemy: Enemy, phase: number): number {
   return Math.sin(phase + enemy.id * 1.7) * TILT_RADIANS;
 }
@@ -238,18 +250,22 @@ function enemyFrame(enemy: Enemy, timeS: number): number {
     case 'batSwarm':
     case 'flower':
     case 'mantis':
-    case 'darter':
+    case 'giantBat':
+    case 'silverBat':
+    case 'ghostSwarm':
+    case 'venus':
+    case 'giantMantis':
+    case 'giantBlueVenus':
+    // The lunge reads as a run, not a walk: it keeps the faster cycle.
+    case 'werewolf':
+    case 'giantWerewolf':
       return Math.floor(timeS * 8 + enemy.id * 0.73) & 1;
     case 'zombie':
     case 'skeleton':
+    case 'bigMummy':
+    case 'giantMummy':
     case 'greenMudman':
     case 'grayMudman':
-    case 'swarmer':
-    case 'tank':
-    case 'splitter':
-    case 'circler':
-    case 'shielded':
-    case 'elite':
       return Math.floor(timeS * 4 + enemy.id * 0.41) & 1;
     default:
       return 0;
@@ -370,6 +386,7 @@ export class RunView {
   private floorRows = 0;
 
   private telegraphGfx = new Graphics({ roundPixels: true });
+  private bossGlowGfx = new Graphics({ roundPixels: true });
   private trailGfx = new Graphics({ roundPixels: true });
   private projectileLayer = new Container();
   private systemAttackGfx = new Graphics({ roundPixels: true });
@@ -434,7 +451,10 @@ export class RunView {
 
     this.tiledGroundLayer.addChild(this.floorFallback, this.floorTileLayer, this.floorShade);
     this.environmentLayer.addChild(this.environmentFloorGfx);
-    this.zoneLayer.addChild(this.telegraphGfx);
+    // Additive, and below the enemy layer: the glow reads as light thrown on
+    // the floor under the boss rather than a disc painted over it.
+    this.bossGlowGfx.blendMode = 'add';
+    this.zoneLayer.addChild(this.bossGlowGfx, this.telegraphGfx);
     this.attackLayer.addChild(
       this.trailGfx,
       this.projectileLayer,
@@ -790,7 +810,7 @@ export class RunView {
   }
 
   /** Arena floor motifs: sparse floor paint and architecture shadows, never
-   * colliders. Cable loops and drain grates give the endless arena a
+   * colliders. Cable loops and drain grates give the arena a
    * deliberately urban read while staying much dimmer than enemies, pickups,
    * and attack telegraphs. */
   private drawArenaEnvironment(cameraX: number, cameraY: number): void {
@@ -880,15 +900,25 @@ export class RunView {
 
   private drawEnemyTelegraphs(cameraX: number, cameraY: number): void {
     const gfx = this.telegraphGfx;
+    const glow = this.bossGlowGfx;
     gfx.clear();
+    glow.clear();
     const halfW = this.world.worldW / 2 + 80;
     const halfH = this.world.worldH / 2 + 80;
     for (const enemy of this.world.enemies) {
       if (Math.abs(enemy.x - cameraX) > halfW || Math.abs(enemy.y - cameraY) > halfH) continue;
-      if ((enemy.kind === 'mantis' || enemy.kind === 'glowingBat' || enemy.kind === 'elite') && enemy.spawnClass !== 'regular') {
-        gfx.poly(regularPixelPoly(12, enemy.radius * 1.7, Math.PI / 12)
+      // Boss marking (mad-forest-spec 2e), keyed off the spawn and nothing
+      // else: the silhouette carries the white ring, this pass carries the
+      // breathing glow under it.
+      if (enemy.spawnClass !== 'boss') continue;
+      gfx.poly(regularPixelPoly(12, enemy.radius * 1.7, Math.PI / 12)
+        .map((value, i) => snap(value + (i % 2 === 0 ? enemy.x : enemy.y))))
+        .stroke({ width: 2, color: SOUNDWOOD.amber, alpha: 0.26 });
+      const breath = 1 + Math.sin(this.world.timeS * BOSS_GLOW_SPEED + enemy.id) * BOSS_GLOW_DEPTH;
+      for (const [scale, alpha] of BOSS_GLOW_LAYERS) {
+        glow.poly(regularPixelPoly(12, enemy.radius * BOSS_RING_SCALE * scale * breath, Math.PI / 12)
           .map((value, i) => snap(value + (i % 2 === 0 ? enemy.x : enemy.y))))
-          .stroke({ width: 2, color: SOUNDWOOD.amber, alpha: 0.26 });
+          .fill({ color: enemy.color, alpha });
       }
     }
   }
@@ -1039,11 +1069,9 @@ export class RunView {
       gfx.renderable = visible;
       if (!visible) continue;
 
-      const shield = enemy.shieldHp > 0;
-      if (gfx.__frame !== frame || gfx.__shield !== shield || gfx.__radius !== enemy.radius) {
-        gfx.context = enemyContext(enemy, shield, frame);
+      if (gfx.__frame !== frame || gfx.__radius !== enemy.radius) {
+        gfx.context = enemyContext(enemy, frame);
         gfx.__frame = frame;
-        gfx.__shield = shield;
         gfx.__radius = enemy.radius;
       }
       gfx.position.set(snap(enemy.x), snap(enemy.y));
@@ -1052,12 +1080,13 @@ export class RunView {
       gfx.rotation = tilt;
       gfx.scale.set(1);
       if (enemy.kind === 'ghost') gfx.alpha = 0.78 + Math.sin(this.world.timeS * 3 + enemy.id) * 0.08;
+      // The sweep is a wall of bodies passing through: it holds the locked
+      // 0.82 rather than breathing, so the whole rush reads as one pass.
+      else if (enemy.kind === 'ghostSwarm') gfx.alpha = 0.82;
       else gfx.alpha = 1;
 
-      if (enemy.kind === 'batSwarm' && (enemy.moveX !== 0 || enemy.moveY !== 0)) {
+      if ((enemy.kind === 'batSwarm' || enemy.kind === 'ghostSwarm') && (enemy.moveX !== 0 || enemy.moveY !== 0)) {
         gfx.rotation = Math.atan2(enemy.moveY, enemy.moveX) + tilt;
-      } else if (enemy.kind === 'darter' && (enemy.dashX !== 0 || enemy.dashY !== 0)) {
-        gfx.rotation = Math.atan2(enemy.dashY, enemy.dashX) + tilt;
       } else if (enemy.lastMoveX < -0.01) {
         // A mirrored sprite mirrors its lean too, so an enemy crossing the
         // player would visibly snap to the opposite tilt at the moment it

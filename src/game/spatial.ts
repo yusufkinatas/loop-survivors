@@ -8,8 +8,8 @@ export interface Circle {
   radius: number;
 }
 
-// Sized to the swarmer, the entity that packs: big cells return the whole
-// packed wall as candidates for every tiny separation query.
+// Sized to the smallest bodies, the ones that pack: big cells return the
+// whole packed wall as candidates for every tiny separation query.
 const CELL = 32;
 
 export class SpatialHash<T extends Circle> {

@@ -6,7 +6,7 @@ import { Application } from 'pixi.js';
 import type { MusicEngine } from '../audio/engine';
 import { SOUNDSET } from '../audio/soundset';
 import { ROLE_COLORS, ROLES, type Kit, type Role } from '../audio/kits';
-import { CHEST, chestTickTimes, GEM_CUE, LEVELUP, NOTE_CUE } from './config';
+import { CHEST, chestTickTimes, GEM_CUE, LEVELUP, NOTE_CUE, VICTORY } from './config';
 import { mountTrackOverlay } from './trackoverlay';
 import { Hud } from './hud';
 import { pushDamageFeedback } from './damage-feedback';
@@ -59,7 +59,6 @@ export async function bootGame(
   let view: RunView | null = null;
   let muted = false;
   let paused = false;
-  let lastWarningMinute = -1;
 
   // Global time scale (issue #21): one knob scaling the sim, audio tempo, and
   // world juice together, live mid-run, in run + sandbox only. Continuous
@@ -196,7 +195,7 @@ export async function bootGame(
   overlay.style.display = 'none';
   root.appendChild(overlay);
 
-  // Every XP threshold and every elite kill grants one upgrade. Several can
+  // Every XP threshold and every chest grants one upgrade. Several can
   // arrive in the same simulation tick, including while the first pick screen
   // is already open, so callbacks enqueue instead of being discarded by the
   // state guard. A queued pick is not presented until the previous choice has
@@ -310,7 +309,7 @@ export async function bootGame(
   }
 
   function enqueueUpgrade(level: number): void {
-    if (!world || state !== 'run') return;
+    if (!world || state !== 'run' || world.won) return;
     pendingUpgrades.push(level);
   }
 
@@ -320,6 +319,7 @@ export async function bootGame(
   // entered on the next bar (pickAwaitingBar / presentQueuedPickAtAudioT).
   function presentNextUpgrade(): void {
     if (!world || state !== 'run' || pickAwaitingBar || presentQueuedPickAtAudioT !== null) return;
+    if (world.won) return; // the set is over; the demo end offers nothing more
     if (chestCeremony !== null) return; // the slot reel owns the moment
     if (groundPicks.length > 0) return; // one triangle at a time
 
@@ -728,11 +728,6 @@ export async function bootGame(
     });
   }
 
-  const updateArenaMinute = (minute: number): void => {
-    engine.clock.bpm = SOUNDSET.bpm * (1 + Math.min(0.08, minute * 0.002));
-    if (minute > 0) hud.showToast(`PRESSURE ${minute} · enemies scale up`);
-  };
-
   const events = {
     onLevelUp(level: number): void {
       enqueueUpgrade(level);
@@ -741,13 +736,10 @@ export async function bootGame(
       endRun(false);
     },
     onVictory(): void {
-      // Endless mode has no victory terminal; kept for the shared interface.
+      beginVictoryOutro();
     },
     onHit(): void {
       pushDamageFeedback(hud.flashEl, view, engine);
-    },
-    onMinute(minute: number): void {
-      updateArenaMinute(minute);
     },
     onChest(chest: Chest): void {
       if (!world || state !== 'run') return;
@@ -788,9 +780,6 @@ export async function bootGame(
     onHit(): void {
       pushDamageFeedback(hud.flashEl, view, engine);
     },
-    onMinute(minute: number): void {
-      updateArenaMinute(minute);
-    },
     onChest(chest: Chest): void {
       if (!world || state !== 'sandbox') return;
       // Sandbox chests skip the scripted opening (index past the sequence), so
@@ -822,6 +811,10 @@ export async function bootGame(
   };
   let sandboxPanel: SandboxPanel | null = null;
   let liveAcc = 0;
+  /** Audio-clock instant the win screen is due, or null outside the demo end.
+   *  Audio time, not wall time, so a pause (which suspends the context) holds
+   *  the empty-stage beat instead of running it out behind the pause overlay. */
+  let victoryScreenAtAudioT: number | null = null;
   const LIVE_MAX_STEPS = 6;
 
   function applyGain(): void {
@@ -830,9 +823,9 @@ export async function bootGame(
 
   function resetWorld(): void {
     paused = false;
-    lastWarningMinute = -1;
     resetUpgradeQueue();
     liveAcc = 0;
+    victoryScreenAtAudioT = null;
     setTimeScale(1); // every new run or sandbox starts at normal speed
     syncTimeScaleControl(); // disabled until startRun/startSandbox re-enables it
     setAutoMode('off'); // manual by default; startRun re-arms it if chosen
@@ -924,16 +917,44 @@ export async function bootGame(
     engine.clock.start();
   }
 
-  function endRun(_victory = false): void {
+  /** The demo end (mad-forest-spec §8), from the world's 30:00 onward. The
+   *  world has already frozen its clock, made the player untouchable and armed
+   *  the clear wave; the shell owns everything the world cannot see:
+   *
+   *  1. Every pending reward is dropped on the floor of the ticket — a queued
+   *     level-up, an un-scooped triangle, a mid-spin chest. The set is over;
+   *     nothing new is offered and nothing half-shown survives into the screen.
+   *  2. The track plays out its current bar and stops ON the bar line, and the
+   *     win flourish rings out from exactly that instant into the silence.
+   *  3. `quietBeatS` of empty stage, timed off the same bar line, and then the
+   *     win screen — the one caller that has ever passed victory = true.
+   *
+   *  The run stays in state 'run' throughout: the world keeps stepping, so the
+   *  sweep animates and the player can still walk their empty stage. */
+  function beginVictoryOutro(): void {
+    if (!world || state !== 'run' || victoryScreenAtAudioT !== null) return;
+    const w = world;
+    resetUpgradeQueue();
+    engine.stopAtBarEnd((barAudioTime) => {
+      if (world !== w || state !== 'run') return;
+      engine.playWinCue(barAudioTime);
+      victoryScreenAtAudioT = barAudioTime + VICTORY.quietBeatS;
+    });
+  }
+
+  function endRun(victory = false): void {
     if (!world || state === 'end') return;
     state = 'end';
+    victoryScreenAtAudioT = null;
     syncTimeScaleControl(); // no live world to scale on the end screen
     resetUpgradeQueue();
     liveAcc = 0;
     applyGain();
     // Cue first, then cut the track: the collapse rides master, so it rings
-    // out over the silence the stopped clock leaves behind.
-    engine.playGameOverCue();
+    // out over the silence the stopped clock leaves behind. A win has already
+    // had both — the track stopped on its bar line and the flourish rang out
+    // across the empty-stage beat — so it arrives here with nothing to play.
+    if (!victory) engine.playGameOverCue();
     engine.clock.stop();
     engine.clearBarQueue();
     hud.showHud(false);
@@ -951,7 +972,7 @@ export async function bootGame(
       evolutionsByRole: world.evolutionsByRole,
     });
     hud.showEnd(
-      false,
+      victory,
       {
         timeS: world.timeS,
         kills: world.kills,
@@ -1132,7 +1153,7 @@ export async function bootGame(
         presentQueuedPickAtAudioT = null;
         presentNextUpgrade();
       }
-      // Level and elite rewards are raised from inside RunWorld.update(). Drop
+      // Level and chest rewards are raised from inside RunWorld.update(). Drop
       // their triangle only after the full fixed step has survived, so contact
       // damage later in that same step cannot end a run mid-reward.
       if (steps > 0 && world === w && state === 'run') presentNextUpgrade();
@@ -1165,6 +1186,16 @@ export async function bootGame(
           }
         }
       }
+      // The empty-stage beat is up: the demo end's win screen. Timed off the
+      // audio clock the win flourish started on, so the two never drift.
+      if (
+        victoryScreenAtAudioT !== null &&
+        world === w &&
+        state === 'run' &&
+        engine.ctx.currentTime >= victoryScreenAtAudioT
+      ) {
+        endRun(true);
+      }
       // A level-up/death can change state inside a fixed step. Paused gameplay
       // never resumes with fractional time banked from before the screen opened.
       if (state !== steppingState || world !== w) liveAcc = 0;
@@ -1181,12 +1212,6 @@ export async function bootGame(
         w.notesCollected,
       );
       sandboxPanel?.update();
-      const minute = Math.floor(w.timeS / 60);
-      const second = w.timeS - minute * 60;
-      if (state === 'run' && second >= 57 && lastWarningMinute !== minute) {
-        lastWarningMinute = minute;
-        hud.showToast('PRESSURE RISES IN 3');
-      }
     }
     if (trackOverlayEl.style.display !== 'none') trackOverlay.tick();
     if (overlay.style.display !== 'none' && world) {

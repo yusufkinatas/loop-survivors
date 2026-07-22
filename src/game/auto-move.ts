@@ -3,19 +3,25 @@ import type { Enemy, RunWorld } from './run';
 export type AutoMover = (world: RunWorld) => { x: number; y: number };
 
 const HEAVY_THREATS = new Set<Enemy['kind']>([
-  'tank',
-  'elite',
   'greenMudman',
   'grayMudman',
   'glowingBat',
   'mantis',
+  'giantBat',
+  'silverBat',
+  'werewolf',
+  'bigMummy',
+  'venus',
+  'giantMantis',
+  'giantWerewolf',
+  'giantMummy',
+  'giantBlueVenus',
 ]);
 
 function weightedThreat(enemy: Enemy, base: number): number {
   let weight = base;
   if (HEAVY_THREATS.has(enemy.kind)) weight *= 1.5;
-  if (enemy.kind === 'batSwarm') weight *= 2.5;
-  if (enemy.kind === 'darter' && enemy.dashing) weight *= 2;
+  if (enemy.kind === 'batSwarm' || enemy.kind === 'ghostSwarm') weight *= 2.5;
   return weight;
 }
 

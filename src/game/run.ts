@@ -11,9 +11,7 @@ import type { ScheduledTrigger } from '../audio/engine';
 import {
   AIM_RANGE,
   MULTISHOT_FAN_RAD,
-  CIRCLER,
   DAMAGE_FEEDBACK,
-  DARTER,
   ENEMIES,
   BUILD,
   HEALTH_PICKUP,
@@ -22,9 +20,8 @@ import {
   PICKUP_PULL,
   RUN,
   STAGE_MAGNET,
-  SHIELDED,
+  VICTORY,
   SHOVE_S,
-  SPLITTER,
   WORLD_SCALE,
   xpPickupMultiplier,
   xpForNextLevel,
@@ -37,6 +34,7 @@ import {
   STAGE_STARTING_KIND,
   STAGE_STARTING_SPAWNS,
   STAGE_WAVES,
+  type StageEvent,
   type StageWave,
 } from './madforest';
 import { mulberry32, type Rng } from './rng';
@@ -51,10 +49,6 @@ import {
   type EvolutionDefinition,
   type ItemId,
 } from './items';
-import {
-  endlessScale,
-  waveRecipe,
-} from './tour';
 import {
   WEAPON_MODULES,
   weaponTiers,
@@ -84,11 +78,6 @@ const DUMMY_DPS_IDLE_RESET = 5;
  * trigger or two. */
 const DUMMY_DPS_LEAD_IN = 0.5;
 
-/** What the gold amped roll is worth on top of an ordinary enemy's scaled
- *  stats. Named because two places apply it: the spawn, and the enemy lab's
- *  live retune, which must rebuild the same enemy it would have spawned. */
-const AMPED = { hpMul: 2.2, damageMul: 1.25, xpMul: 3 };
-
 /** Per-dummy damage bookkeeping behind the floating readout. */
 interface DummyReadout {
   /** Cumulative damage taken since spawn. */
@@ -110,6 +99,76 @@ interface DummyReadout {
   dps: number;
 }
 
+/** What a spawn is, as opposed to what kind it is. Boss-ness is authored on
+ *  the spawn row, never on the kind (mad-forest-spec 2a), so the same kind can
+ *  walk in with the crowd at one minute and arrive as a boss at another. */
+type SpawnClass = 'regular' | 'boss' | 'event';
+
+/** The class a kind takes when the caller does not ask for one. Only ONE body
+ *  shape is implied by the kind itself: a fixed-direction sweep is always a
+ *  scripted event body. `flower` is deliberately NOT in here — it is an
+ *  ordinary crowd enemy in minutes 21-24 and 26 (mad-forest-spec §3), and the
+ *  flower wall gets its event bodies by asking for `'event'` explicitly.
+ *  Everything else is crowd until a spawn row says boss. */
+function defaultSpawnClass(kind: EnemyKind): SpawnClass {
+  return ENEMIES[kind].fixedDirection ? 'event' : 'regular';
+}
+
+/** One firing of an authored event row. The data file stays at one row per
+ *  wiki table cell (mad-forest-spec §4); the director is what unrolls an
+ *  occurrence group into the individual firings below. Everything shared by a
+ *  group is copied onto each occurrence, so the fire path never has to look
+ *  back at the row it came from — and `chance` is therefore rolled per
+ *  occurrence, which is the whole point of the split. */
+type StageOccurrence =
+  | { atS: number; type: 'boss'; kind: EnemyKind; chest: boolean }
+  | { atS: number; type: 'sweep'; kind: EnemyKind; countPer: number; chance: number }
+  | {
+      atS: number;
+      type: 'flowerWall';
+      kind: 'flower';
+      ringCount: number;
+      durationS: number;
+      chance: number;
+    };
+
+/** Occurrence i (0-based) of a repeatable row fires at `atS + i * spacingS`;
+ *  the row's own `atS` is already the first occurrence. Boss rows are single,
+ *  unconditional firings. The result is sorted by time, stably, so rows that
+ *  share a timestamp keep their authored order (5:00's boss lands before its
+ *  flower wall). */
+function unrollStageEvents(rows: readonly StageEvent[]): readonly StageOccurrence[] {
+  const out: { at: number; seq: number; occ: StageOccurrence }[] = [];
+  for (const row of rows) {
+    if (row.type === 'boss') {
+      out.push({ at: row.atS, seq: out.length, occ: row });
+      continue;
+    }
+    for (let i = 0; i < row.occurrences; i++) {
+      const atS = row.atS + i * row.spacingS;
+      out.push({
+        at: atS,
+        seq: out.length,
+        occ:
+          row.type === 'sweep'
+            ? { atS, type: 'sweep', kind: row.kind, countPer: row.countPer, chance: row.chance }
+            : {
+                atS,
+                type: 'flowerWall',
+                kind: row.kind,
+                ringCount: row.ringCount,
+                durationS: row.durationS,
+                chance: row.chance,
+              },
+      });
+    }
+  }
+  out.sort((a, b) => a.at - b.at || a.seq - b.seq);
+  return out.map((entry) => entry.occ);
+}
+
+const STAGE_OCCURRENCES = unrollStageEvents(STAGE_EVENTS);
+
 export interface Enemy {
   id: number;
   kind: EnemyKind;
@@ -128,16 +187,8 @@ export interface Enemy {
   damage: number;
   xp: number;
   color: number;
-  /** Toughness band 0-3 (visual danger read; the view draws it). */
-  band: number;
   flashT: number;
   dead: boolean;
-  /** Darter burst state: time left in the current dash/pause, and the
-   *  locked dash direction (darters do not steer mid-dash). */
-  dashT: number;
-  dashX: number;
-  dashY: number;
-  dashing: boolean;
   /** The shared SLOW channel: time left slowed, and the speed multiplier while
    *  it lasts. Written only through WeaponContext.slow — which folds the
    *  multiplier in with min() and assigns the timer — and consumed in
@@ -155,26 +206,22 @@ export interface Enemy {
    * hit response that reverses motion instead of pushing radially. */
   lastMoveX: number;
   lastMoveY: number;
-  /** shielded: absorbs damage before hp; 0 for others. */
-  shieldHp: number;
-  /** circler: +1/-1 orbit direction; 0 for others. */
-  spin: number;
   /** Spawn origin. All classes count toward the periodic 300 check; scripted
-   * bosses/events may themselves spawn beyond it up to the 500 hard cap. */
-  spawnClass: 'regular' | 'boss' | 'event';
+   * bosses/events may themselves spawn beyond it up to the 500 hard cap.
+   * `'boss'` is the whole of boss-ness (mad-forest-spec 2a): it drives the
+   * chest drop, the teleport-back instead of a despawn, and the ring + glow.
+   * The same kind is a crowd enemy or a boss depending only on this. */
+  spawnClass: SpawnClass;
+  /** Whether this body leaves a chest behind. Boss spawns carry one by
+   *  default; an authored boss row with `chest: false` clears it, and that boss
+   *  dies empty while staying a boss in every other respect. */
+  dropsChest: boolean;
   /** Scripted sweep motion. Zeroes mean normal direct homing. */
   moveX: number;
   moveY: number;
   /** Scripted event expiry; 0 means normal lifetime/recycling. */
   despawnAt: number;
   knockbackMul: number;
-  /** Endless-run spawn identity. Stats never change after this minute. */
-  spawnMinute: number;
-  /** Gold-outline ordinary enemy with extra health/power/XP. */
-  amped: boolean;
-  /** Took the elite boss health multiplier on top of its minute scale. Part of
-   *  the spawn identity so retuneAliveEnemies can rebuild this enemy exactly. */
-  eliteScaled: boolean;
   /** The body scale this enemy was built at, so a size edit can rescale its
    *  radius and foot offsets by ratio rather than re-deriving a frame body it
    *  no longer remembers which frame it drew. */
@@ -307,8 +354,8 @@ export interface Shockwave {
   hit: Set<WeaponTarget>;
 }
 
-/** A treasure chest dropped by a defeated elite/boss enemy. Walking into it
- *  starts the shell's slot ceremony (game.ts): a ready weapon evolution is the
+/** A treasure chest dropped by a defeated boss whose row carried one. Walking
+ *  into it starts the shell's slot ceremony (game.ts): a weapon evolution is the
  *  top prize, otherwise 1/3/5 free level-ups of owned weapons and passives. */
 export interface Chest {
   x: number;
@@ -429,7 +476,6 @@ export interface RunEvents {
   onDeath(): void;
   onVictory(): void;
   onHit(): void;
-  onMinute?(minute: number): void;
   onChest?(chest: Chest): void;
   onNoteCollected?(value: number, runTotal: number): void;
   /** One XP gem picked up. Fires per gem, including during a Stage Magnet
@@ -530,8 +576,6 @@ export class RunWorld {
   private eventIdx = 0;
   private currentWave: StageWave | null = null;
   private nextSpawnT = 0;
-  private endlessMinute = -1;
-  private endlessNextSpawnT = 0;
   private stageStarted = false;
   private nextEnemyId = 1;
   /** Deterministic clean-room equivalent of the source's uniform frame pick.
@@ -557,6 +601,11 @@ export class RunWorld {
    *  snapshotted. */
   private readonly weaponCtx = new Map<Role, WeaponContext>();
   private scripted: boolean;
+  /** The run has been won (mad-forest-spec §8). Set once, never cleared: a
+   *  world that reached 30:00 only ever plays out its clear wave. */
+  won = false;
+  /** Radius of the victory clear wave, growing from the player. */
+  private sweepR = 0;
 
   constructor(
     view: { width: number; height: number },
@@ -888,20 +937,25 @@ export class RunWorld {
     this.evolved.delete(role);
   }
 
-  /** Move the sandbox to a deterministic threat minute without running every
-   * preceding frame. Newly spawned enemies use that minute's endless scale. */
+  /** Move the sandbox to a deterministic stage minute without running every
+   *  preceding frame. Enemy stats do not depend on the clock at all any more
+   *  (mad-forest-spec §5) — what the minute selects is which wave row the
+   *  MINUTE WAVE fixture reads and how the arena reads on screen. */
   setSandboxThreatMinute(minute: number): void {
     const next = Math.max(0, Math.floor(minute));
     this.timeS = next * 60 + 0.01;
     this.lastMinute = next - 1;
-    this.endlessMinute = -1;
-    this.endlessNextSpawnT = this.timeS;
   }
 
+  /** Drop the authored roster for a minute of the 30-minute table as rings, so
+   *  a build can be measured against a real wave instead of a guess. Minutes
+   *  past the table's end reuse its last row, exactly as a live run does. */
   spawnSandboxWave(minute = Math.floor(this.timeS / 60)): void {
-    const recipe = waveRecipe(Math.max(8, Math.floor(minute)));
-    for (let i = 0; i < recipe.pattern.length; i++) {
-      this.spawnRingOf(recipe.pattern[i], Math.max(6, Math.floor(36 / recipe.pattern.length)));
+    const atS = Math.max(0, Math.floor(minute)) * 60;
+    let wave = STAGE_WAVES[0];
+    for (const row of STAGE_WAVES) if (row.atS <= atS) wave = row;
+    for (const kind of wave.pattern) {
+      this.spawnRingOf(kind, Math.max(6, Math.floor(36 / wave.pattern.length)));
     }
   }
 
@@ -945,7 +999,6 @@ export class RunWorld {
     const minute = Math.floor(this.timeS / 60);
     if (minute !== this.lastMinute) {
       this.lastMinute = minute;
-      this.events.onMinute?.(minute);
       if (minute >= 5) this.markMilestone('first5m');
     }
   }
@@ -992,7 +1045,7 @@ export class RunWorld {
       if (d >= minRadius) continue;
       // A reward-moment clear, NOT a combat knock: push the full deficit
       // regardless of knockback resistance, so even knockback-immune kinds
-      // (ghost, some elites — knockbackMul 0) still vacate the ring. Writes the
+      // (ghost, the mudmen — knockbackMul 0 or low) still vacate the ring. Writes the
       // knock channel directly, deliberately bypassing shove()'s knockbackMul
       // scaling; moveEnemies rides this vector for SHOVE_S with pursuit fully
       // suppressed, so the displacement is ~= push (small overshoot for margin).
@@ -1004,13 +1057,21 @@ export class RunWorld {
   }
 
   update(dt: number): void {
-    this.timeS += dt;
-    this.updateMinuteSystems(dt);
+    // The won world keeps running — the band plays its last bar out, shots
+    // stay in flight, the player still walks — but its clock is frozen at the
+    // winning time (so the end screen reads exactly 30:00), the stage script
+    // stops, and the clear wave takes over as the only thing that kills.
+    if (!this.won) {
+      this.timeS += dt;
+      if (this.scripted && this.timeS >= VICTORY.atS) this.beginVictory();
+    }
+    if (!this.won) this.updateMinuteSystems(dt);
     this.updatePassiveRecovery(dt);
     this.movePlayer(dt);
-    if (this.scripted) {
+    if (this.scripted && !this.won) {
       this.runDirector(dt);
     }
+    if (this.won) this.advanceVictorySweep(dt);
 
     this.moveEnemies(dt);
     this.updateDummies(dt);
@@ -1098,18 +1159,17 @@ export class RunWorld {
 
   /** Mad Forest's quota/interval semantics. `minimum` is a live population
    * floor, not a spawn rate: a due attempt fills the deficit immediately;
-   * otherwise it emits the row's complete pattern. */
+   * otherwise it emits the row's complete pattern.
+   *
+   * The authored table is the WHOLE script (mad-forest-spec §1): every minute
+   * from 0:00 to 29:00 is a row here, nothing procedural takes over, and past
+   * the last row the 29:00 wave keeps running for its final minute — until
+   * 30:00, where update() takes the victory branch and this stops being
+   * called at all. */
   private runDirector(_dt: number): void {
     if (!this.stageStarted) {
       this.stageStarted = true;
       for (let i = 0; i < STAGE_STARTING_SPAWNS; i++) this.spawnEnemy(STAGE_STARTING_KIND);
-    }
-
-    // Preserve the authored opening exactly, then hand off to the endlessly
-    // rotating tour director at 8:00. No victory branch exists.
-    if (this.timeS >= 480) {
-      this.runEndlessDirector();
-      return;
     }
 
     while (this.waveIdx + 1 < STAGE_WAVES.length && this.timeS >= STAGE_WAVES[this.waveIdx + 1].atS) {
@@ -1120,17 +1180,25 @@ export class RunWorld {
       this.nextSpawnT = this.currentWave.atS + this.currentWave.intervalS;
     }
 
-    while (this.eventIdx < STAGE_EVENTS.length && this.timeS >= STAGE_EVENTS[this.eventIdx].atS) {
-      const event = STAGE_EVENTS[this.eventIdx++];
-      if (event.type === 'boss') {
+    while (
+      this.eventIdx < STAGE_OCCURRENCES.length &&
+      this.timeS >= STAGE_OCCURRENCES[this.eventIdx].atS
+    ) {
+      const occ = STAGE_OCCURRENCES[this.eventIdx++];
+      if (occ.type === 'boss') {
         const before = this.enemies.length;
-        this.spawnEnemy(event.kind, undefined, 1, true);
+        this.spawnEnemy(occ.kind, undefined, 1, true, 'boss');
         const spawned = this.enemies.length > before ? this.enemies[this.enemies.length - 1] : null;
-        if (spawned && event.atS > 0 && event.atS % 300 === 0) this.scaleEliteBoss(spawned);
-      } else if (event.type === 'batSweep') {
-        if (this.rng() < event.chance) this.spawnBatSweep(event.kind, event.count);
-      } else {
-        this.spawnFlowerWall(event.kind, event.count, event.durationS);
+        if (spawned) {
+          // A chest-less boss row is still a boss in every other way: it keeps
+          // the ring, the glow, and the teleport-back. It just dies empty.
+          spawned.dropsChest = occ.chest;
+        }
+      } else if (occ.type === 'sweep') {
+        // The roll is this occurrence's own, never the group's.
+        if (this.rng() < occ.chance) this.spawnSweep(occ.kind, occ.countPer);
+      } else if (this.rng() < occ.chance) {
+        this.spawnFlowerWall(occ.kind, occ.ringCount, occ.durationS);
       }
     }
 
@@ -1143,52 +1211,50 @@ export class RunWorld {
     }
   }
 
-  private runEndlessDirector(): void {
-    const minute = Math.floor(this.timeS / 60);
-    const recipe = waveRecipe(minute);
-    const pattern = recipe.pattern;
-    const minimum = recipe.minimum;
-    const interval = recipe.intervalS;
-    if (minute !== this.endlessMinute) {
-      this.endlessMinute = minute;
-      this.endlessNextSpawnT = this.timeS + interval;
-      // Every minute arrives as a visible formation instead of a silent stat bump.
-      this.spawnRingOf(pattern[0], Math.min(80, 20 + minute * 2));
-      if (recipe.bossCount > 0) {
-        for (let i = 0; i < recipe.bossCount; i++) {
-          const before = this.enemies.length;
-          this.spawnEnemy(i % 2 === 0 ? 'mantis' : 'glowingBat', undefined, 1, true);
-          const boss = this.enemies.length > before ? this.enemies[this.enemies.length - 1] : null;
-          if (boss) this.scaleEliteBoss(boss);
-        }
-      }
-    }
-    while (this.timeS + 1e-9 >= this.endlessNextSpawnT) {
-      let alive = this.aliveCount();
-      do {
-        for (const kind of pattern) {
-          if (alive >= ENEMIES.maxAlive) break;
-          this.spawnEnemy(kind);
-          alive += 1;
-        }
-      } while (alive < minimum && alive < ENEMIES.maxAlive);
-      this.endlessNextSpawnT += interval;
-    }
+  /** 30:00: the set is played (mad-forest-spec §8). Freeze the clock on the
+   *  winning time, make the player untouchable, and arm the clear wave. The
+   *  shell takes it from here — it stops the track on the next bar line, rings
+   *  the win flourish, and opens the win screen after the quiet beat. */
+  private beginVictory(): void {
+    this.won = true;
+    this.timeS = VICTORY.atS;
+    this.invincible = true;
+    this.player.iframesT = 0;
+    this.sweepR = 0;
+    this.spawnRing(
+      this.player.x,
+      this.player.y,
+      VICTORY.sweepReach,
+      VICTORY.sweepColor,
+      VICTORY.sweepReach / VICTORY.sweepSpeed,
+    );
+    this.events.onVictory();
   }
 
-  /** Promote an ordinary enemy into a gold-marked elite boss: the endless
-   * director's periodic five-minute bosses. Elites persist as objectives and
-   * drop a chest on death. */
-  private scaleEliteBoss(enemy: Enemy): void {
-    enemy.spawnClass = 'boss';
-    const extraHp = endlessScale(enemy.spawnMinute).bossHpMul;
-    enemy.hp *= extraHp;
-    enemy.spawnHp *= extraHp;
-    enemy.shieldHp *= extraHp;
-    enemy.eliteScaled = true;
-    enemy.band = 3;
-    enemy.color = 0xffcf5a;
-    this.fx?.push({ type: 'pressure', x: enemy.x, y: enemy.y, color: 0xffcf5a, label: 'ELITE' });
+  /** The clear wave: everything the expanding ring has passed dies where it
+   *  stands. Kills here are NOT kills — `dead` is set directly rather than
+   *  through damageEnemy, exactly like the off-screen recycle, so nothing
+   *  drops a gem or a note, nothing scores, no splitter bursts, and a boss
+   *  caught at 30:00 is swept chestless with everything else. */
+  private advanceVictorySweep(dt: number): void {
+    if (this.sweepR >= VICTORY.sweepReach) return;
+    this.sweepR = Math.min(VICTORY.sweepReach, this.sweepR + VICTORY.sweepSpeed * dt);
+    const r2 = this.sweepR * this.sweepR;
+    for (const e of this.enemies) {
+      if (e.dead || e.dummy) continue;
+      const dx = e.x - this.player.x;
+      const dy = e.y - this.player.y;
+      if (dx * dx + dy * dy > r2) continue;
+      e.dead = true;
+      this.fx?.push({
+        type: 'death',
+        x: e.x,
+        y: e.y,
+        radius: e.radius,
+        color: VICTORY.sweepColor,
+        elite: false,
+      });
+    }
   }
 
   private aliveCount(): number {
@@ -1199,6 +1265,9 @@ export class RunWorld {
 
   private spawnWaveAttempt(wave: StageWave): void {
     let alive = this.aliveCount();
+    // mad-forest-spec §6: at 300+ alive PERIODIC spawning stops outright. Boss
+    // rows and event bodies keep firing past it (they go through spawnEnemy's
+    // wave path / pushEnemy, both capped at the 500 absolute ceiling instead).
     if (alive >= ENEMIES.maxAlive) return;
     // Backfill repeats complete enabled sets and can therefore overshoot the
     // floor by pattern.length-1. Once the floor is met, an attempt emits one
@@ -1212,8 +1281,10 @@ export class RunWorld {
     } while (alive < wave.minimum);
   }
 
-  /** A 50-enemy event fan crosses the screen without homing. */
-  private spawnBatSweep(kind: EnemyKind, count: number): void {
+  /** A kind-generic event fan crosses the screen without homing. Bat Swarm and
+   *  Ghost Swarm share this code path verbatim (mad-forest-spec §4); only the
+   *  kind and the per-occurrence count differ. */
+  private spawnSweep(kind: EnemyKind, count: number): void {
     // Official-demo geometry: start on an elliptical 0.72W/0.72H arc, advance
     // π/500 radians per bat (~18 degrees across 50), and lock each bat toward
     // the player's position at event time. The result is a converging fan.
@@ -1280,7 +1351,13 @@ export class RunWorld {
     }
   }
 
-  spawnEnemy(kind: EnemyKind, angle?: number, distMul = 1, wave = false): void {
+  spawnEnemy(
+    kind: EnemyKind,
+    angle?: number,
+    distMul = 1,
+    wave = false,
+    spawnClass: SpawnClass = defaultSpawnClass(kind),
+  ): void {
     if (this.enemies.length >= (wave ? MAX_ALIVE_HARD : ENEMIES.maxAlive)) return;
     const playerFootX = this.player.x + PLAYER_FOOT_OFFSET.x;
     const playerFootY = this.player.y + PLAYER_FOOT_OFFSET.y;
@@ -1303,7 +1380,6 @@ export class RunWorld {
         y = playerFootY + (edge === 2 ? -1 : 1) * (this.worldH / 2 + margin);
       }
     }
-    const spawnClass = ENEMIES[kind].boss ? 'boss' : ENEMIES[kind].fixedDirection || kind === 'flower' ? 'event' : 'regular';
     let moveX = 0;
     let moveY = 0;
     let despawnAt = 0;
@@ -1320,12 +1396,12 @@ export class RunWorld {
 
   /** Sandbox/lab helper: construct a real enemy at an explicit world-space
    *  source-feet position, using the same stats/body path as stage spawns. */
-  spawnEnemyAt(kind: EnemyKind, x: number, y: number): Enemy | null {
-    const spawnClass = ENEMIES[kind].boss
-      ? 'boss'
-      : ENEMIES[kind].fixedDirection || kind === 'flower'
-        ? 'event'
-        : 'regular';
+  spawnEnemyAt(
+    kind: EnemyKind,
+    x: number,
+    y: number,
+    spawnClass: SpawnClass = defaultSpawnClass(kind),
+  ): Enemy | null {
     let moveX = 0;
     let moveY = 0;
     let despawnAt = 0;
@@ -1340,40 +1416,36 @@ export class RunWorld {
     return this.pushEnemy(kind, x, y, spawnClass, moveX, moveY, despawnAt);
   }
 
-  /** Sandbox helper: spawn a real scaled elite boss (it drops a chest on death). */
+  /** Sandbox helper: spawn a real boss-class body of a kind — the ring, the
+   *  glow, the teleport-back, and a chest on death — exactly as an authored
+   *  boss row would. Boss-ness is the spawn class and nothing else; the stats
+   *  are the kind's own (mad-forest-spec §2a). */
   spawnSandboxBoss(kind: EnemyKind = 'mantis'): Enemy | null {
-    const enemy = this.spawnEnemyAt(kind, this.player.x + 320, this.player.y);
-    if (enemy) this.scaleEliteBoss(enemy);
-    return enemy;
+    return this.spawnEnemyAt(kind, this.player.x + 320, this.player.y, 'boss');
   }
 
   /** Construct one enemy from a source sprite-feet position. The simulation
    * stores its exact circle center; old project-native kinds have zero offset.
-   * Opening rows preserve their authored composition while the endless-run
-   * minute scale applies immutable stats at spawn time. */
+   *
+   * Stats land here EXACTLY as `enemyStats` reports them. The only scaling in
+   * the game is HP×Level (mad-forest-spec §5), which `enemyStats` already
+   * applies for the kinds that carry it, once, at this spawn — there is no
+   * minute multiplier and no promotion of any sort to layer on. */
   private pushEnemy(
     kind: EnemyKind,
     x: number,
     y: number,
-    spawnClass: 'regular' | 'boss' | 'event' = 'regular',
+    spawnClass: SpawnClass = 'regular',
     moveX = 0,
     moveY = 0,
     despawnAt = 0,
   ): Enemy | null {
     if (this.enemies.length >= MAX_ALIVE_HARD) return null;
-    const conf = ENEMIES[kind];
     // Tuned, not shipped: the enemy lab's overrides are the live truth for
     // every spawn (see enemy-tuning.ts).
     const stats = enemyStats(kind, this.level);
     const body = this.nextEnemyBody(kind, stats.radius, stats.sizeMul);
-    const minute = Math.floor(this.timeS / 60);
-    const scale = endlessScale(minute);
     const dummy = kind === 'dummy';
-    // A measurement prop must look identical whenever it is spawned: no gold
-    // amped outline, no band danger diamonds, no minute-scaled stats drift.
-    const amped = !dummy && spawnClass === 'regular' && minute >= 12 &&
-      this.rng() < scale.ampedChance;
-    const scaledHp = stats.hp * scale.hpMul * (amped ? AMPED.hpMul : 1);
     const enemy: Enemy = {
       id: this.nextEnemyId++,
       kind,
@@ -1382,19 +1454,14 @@ export class RunWorld {
       radius: body.radius,
       footOffsetX: body.footOffsetX,
       footOffsetY: body.footOffsetY,
-      hp: scaledHp,
-      spawnHp: scaledHp,
-      speed: stats.speed * scale.speedMul,
-      damage: stats.damage * scale.damageMul * (amped ? AMPED.damageMul : 1),
-      xp: stats.xp * scale.xpMul * (amped ? AMPED.xpMul : 1),
+      hp: stats.hp,
+      spawnHp: stats.hp,
+      speed: stats.speed,
+      damage: stats.damage,
+      xp: stats.xp,
       color: stats.color,
-      band: dummy ? 0 : conf.boss ? 3 : Math.min(3, Math.floor(minute / 5)),
       flashT: 0,
       dead: false,
-      dashT: 0,
-      dashX: 0,
-      dashY: 0,
-      dashing: false,
       slowT: 0,
       zoneSlowMul: 1,
       knockX: 0,
@@ -1402,16 +1469,12 @@ export class RunWorld {
       knockT: 0,
       lastMoveX: 0,
       lastMoveY: 0,
-      shieldHp: kind === 'shielded' ? scaledHp * SHIELDED.shieldMul : 0,
-      spin: kind === 'circler' ? (this.rng() < 0.5 ? 1 : -1) : 0,
       spawnClass,
+      dropsChest: spawnClass === 'boss',
       moveX,
       moveY,
       despawnAt,
       knockbackMul: stats.knockback,
-      spawnMinute: minute,
-      amped,
-      eliteScaled: false,
       sizeMul: stats.sizeMul,
       prevX: x - body.footOffsetX,
       prevY: y - body.footOffsetY,
@@ -1459,16 +1522,6 @@ export class RunWorld {
     };
   }
 
-  /** Splitter death: burst into a knot of children around the corpse. */
-  private spawnChildren(e: Enemy): void {
-    const k = SPLITTER.childKind;
-    const cr = ENEMIES[k].radius;
-    for (let i = 0; i < SPLITTER.childCount; i++) {
-      const a = this.rng() * Math.PI * 2;
-      this.pushEnemy(k, e.x + Math.cos(a) * (e.radius + cr), e.y + Math.sin(a) * (e.radius + cr));
-    }
-  }
-
   /** Sandbox: remove every enemy without kills, gems, or pops. */
   clearEnemies(): void {
     this.enemies.length = 0;
@@ -1477,11 +1530,10 @@ export class RunWorld {
   /** The enemy lab edited a kind: bring the horde already on screen in line
    *  instead of making the designer clear and respawn to feel a slider.
    *
-   *  Each enemy is rebuilt from its own spawn identity — spawn minute, amped
-   *  roll, elite scaling — so a tuned number lands on a live enemy exactly as
-   *  it would on a fresh one. Health is moved by RATIO, so a nearly-dead enemy
-   *  does not heal when you nudge its max HP, and a shielded enemy keeps the
-   *  dent already in its shield.
+   *  Each enemy is rebuilt straight from its kind, because a kind's stats are
+   *  now the whole story — there is no spawn-time scale to reapply. Health is
+   *  moved by RATIO, so a nearly-dead enemy does not heal when you nudge its
+   *  max HP.
    *
    *  One deliberate inexactness: hpPerLevel kinds re-derive against the
    *  CURRENT player level, not the level they spawned at. "What would this
@@ -1490,18 +1542,12 @@ export class RunWorld {
     for (const e of this.enemies) {
       if (e.dead) continue;
       const stats = enemyStats(e.kind, this.level);
-      const scale = endlessScale(e.spawnMinute);
-      const fullHp =
-        stats.hp * scale.hpMul *
-        (e.amped ? AMPED.hpMul : 1) *
-        (e.eliteScaled ? scale.bossHpMul : 1);
-      const hpRatio = e.spawnHp > 0 ? fullHp / e.spawnHp : 1;
-      e.spawnHp = fullHp;
+      const hpRatio = e.spawnHp > 0 ? stats.hp / e.spawnHp : 1;
+      e.spawnHp = stats.hp;
       e.hp *= hpRatio;
-      e.shieldHp *= hpRatio;
-      e.speed = stats.speed * scale.speedMul;
-      e.damage = stats.damage * scale.damageMul * (e.amped ? AMPED.damageMul : 1);
-      e.xp = stats.xp * scale.xpMul * (e.amped ? AMPED.xpMul : 1);
+      e.speed = stats.speed;
+      e.damage = stats.damage;
+      e.xp = stats.xp;
       e.knockbackMul = stats.knockback;
       if (stats.sizeMul !== e.sizeMul) {
         const sizeRatio = e.sizeMul > 0 ? stats.sizeMul / e.sizeMul : 1;
@@ -1574,51 +1620,6 @@ export class RunWorld {
         continue;
       }
 
-      if (e.kind === 'darter') {
-        // Straight bursts: lock onto the player's position, dash flat out,
-        // stop dead, re-aim, dash again. Threat is the dodge, not the chase.
-        e.dashT -= dt;
-        if (e.dashT <= 0) {
-          e.dashing = !e.dashing;
-          if (e.dashing) {
-            const dd = Math.hypot(p.x - e.x, p.y - e.y) || 1;
-            e.dashX = (p.x - e.x) / dd;
-            e.dashY = (p.y - e.y) / dd;
-            e.dashT = DARTER.dashS;
-          } else {
-            e.dashT = DARTER.pauseS;
-          }
-        }
-        if (e.dashing) {
-          e.lastMoveX = e.dashX * speed;
-          e.lastMoveY = e.dashY * speed;
-          e.x += e.dashX * speed * dt;
-          e.y += e.dashY * speed * dt;
-        }
-        continue;
-      }
-
-      if (e.kind === 'circler') {
-        // Orbit-and-harass: blend a radial pull toward the orbit radius with a
-        // tangent sweep (spin ±1). Contact damage is handled when it brushes.
-        const dx = p.x - e.x;
-        const dy = p.y - e.y;
-        const d = Math.hypot(dx, dy) || 1;
-        const ux = dx / d;
-        const uy = dy / d;
-        const radial = Math.max(-1, Math.min(1, (d - CIRCLER.orbitR) / CIRCLER.orbitR));
-        const tx = -uy * e.spin;
-        const ty = ux * e.spin;
-        const mx = ux * radial + tx * (1 - Math.abs(radial) * 0.5);
-        const my = uy * radial + ty * (1 - Math.abs(radial) * 0.5);
-        const m = Math.hypot(mx, my) || 1;
-        e.lastMoveX = (mx / m) * speed;
-        e.lastMoveY = (my / m) * speed;
-        e.x += (mx / m) * speed * dt;
-        e.y += (my / m) * speed * dt;
-        continue;
-      }
-
       let dx = p.x + PLAYER_FOOT_OFFSET.x - (e.x + e.footOffsetX);
       let dy = p.y + PLAYER_FOOT_OFFSET.y - (e.y + e.footOffsetY);
       const d = Math.hypot(dx, dy) || 1;
@@ -1672,6 +1673,11 @@ export class RunWorld {
 
   private damageEnemy(e: Enemy, amount: number, source?: Role): void {
     if (e.dead) return;
+    // Past 30:00 the clear wave is the only thing that kills. The band is
+    // still playing its final bar and its shots are still in the air, but they
+    // score nothing: the run's kill count, XP and drops are settled at the
+    // moment of the win, so what the sweep passes through cannot pad them.
+    if (this.won) return;
     // Floating damage number (view-only). Weapon-colored,
     // rounded; sub-1 ticks and instakills (Infinity) don't get a number.
     if (this.fx && Number.isFinite(amount)) {
@@ -1684,17 +1690,6 @@ export class RunWorld {
           amount: shown,
           color: source ? ROLE_COLORS[source] : 0xcfd2e0,
         });
-    }
-    // Shielded: a shield pool absorbs damage before hp. Attribution stays
-    // honest — absorbed damage is counted once here, hp damage once below.
-    if (e.shieldHp > 0) {
-      const before = e.shieldHp;
-      e.shieldHp = Math.max(0, before - amount);
-      const absorbed = before - e.shieldHp;
-      if (source) this.damageByRole[source] = (this.damageByRole[source] ?? 0) + absorbed;
-      e.flashT = 0.08;
-      amount -= absorbed;
-      if (amount <= 0) return; // shield held
     }
     // The practice target absorbs everything, including killVisible's
     // Infinity: record the hit, refill, and leave before the death path so it
@@ -1718,7 +1713,7 @@ export class RunWorld {
       e.flashT = 0.08;
       return;
     }
-    // Effective damage only: overkill on a 3hp swarmer must not count as a
+    // Effective damage only: overkill on a 1hp bat must not count as a
     // 34-damage contribution, or AoE sweeps inflate their share.
     const dealt = Math.min(e.hp, amount);
     e.hp -= amount;
@@ -1728,25 +1723,24 @@ export class RunWorld {
       e.dead = true;
       this.kills++;
       if (source) this.killsByRole[source] = (this.killsByRole[source] ?? 0) + 1;
-      const elite = ENEMIES[e.kind].boss === true || e.kind === 'elite';
+      const boss = e.spawnClass === 'boss';
       this.fx?.push({
         type: 'death',
         x: e.x,
         y: e.y,
         radius: e.radius,
         color: e.color,
-        elite,
+        elite: boss,
       });
-      this.spawnGem(e.x, e.y, e.xp);
+      this.spawnGemAt(e.x, e.y, e.xp);
       this.spawnMusicNoteForEnemy(e);
       this.spawnStageMagnetForEnemy(e);
       this.spawnHealthPickupForEnemy(e);
-      // Elite and boss enemies (Vampire-Survivors style) drop a chest on the
-      // ground. Walk into it to open it: a ready weapon evolution, or health.
-      if (elite) {
+      // Boss spawns (Vampire-Survivors style) drop a chest on the ground.
+      // Walk into it to open it: a ready weapon evolution, or health.
+      if (e.dropsChest) {
         this.spawnChestAt(e.x, e.y);
       }
-      if (e.kind === 'splitter') this.spawnChildren(e);
     }
   }
 
@@ -1794,11 +1788,12 @@ export class RunWorld {
     }
   }
 
-  /** Off-screen recycle (the VS model): silently kill any non-elite enemy that
-   *  falls far behind the moving player, so the horde is always a wall ahead
-   *  and CPU stays bounded. Setting e.dead directly (not via damageEnemy)
-   *  means no gem, no kill, no splitter burst — a true recycle. Elites persist
-   *  (they are objectives). Pure geometry, deterministic, fx-free. */
+  /** Off-screen recycle (the VS model): silently kill any enemy that falls far
+   *  behind the moving player, so the horde is always a wall ahead and CPU
+   *  stays bounded. Setting e.dead directly (not via damageEnemy) means no gem,
+   *  no kill, no drop — a true recycle. Boss-class spawns are the
+   *  exception (mad-forest-spec §6): they never despawn, they teleport back.
+   *  Pure geometry, deterministic, fx-free. */
   private recycleEnemies(): void {
     const p = this.player;
     const playerFootX = p.x + PLAYER_FOOT_OFFSET.x;
@@ -2161,22 +2156,14 @@ export class RunWorld {
 
   // ---- pickups and juice ----
 
-  private spawnGem(x: number, y: number, xp: number): void {
-    // The published legacy implementation randomizes the listed XP value.
-    // Current Unity internals are unpublished, so this is the version-pinned
-    // observable reference used by our parity model.
-    const dropped = Math.floor((this.rng() + 0.5) * xp);
-    if (dropped <= 0) return;
-    this.spawnGemAt(x, y, dropped);
-  }
-
-  /** Public for the Sandbox pickup field. Enemy rewards still pass through
-   * spawnGem(), which preserves their authored random XP roll. */
+  /** A kill drops a gem worth exactly the enemy's XP, as VS does (spec §7).
+   * There is no random roll and no integer floor, so fractional authored
+   * values (ghost 1.5, mudmen 2.5) reach the player intact. */
   spawnGemAt(x: number, y: number, xp = 1): void {
-    const dropped = Math.max(1, Math.floor(xp));
-    const tier: Gem['tier'] = dropped <= 2 ? 'blue' : dropped <= 9 ? 'green' : 'red';
+    if (xp <= 0) return;
+    const tier: Gem['tier'] = xp <= 2 ? 'blue' : xp <= 9 ? 'green' : 'red';
     if (this.gems.length < RUN.maxGems) {
-      this.gems.push({ x, y, xp: dropped, tier });
+      this.gems.push({ x, y, xp, tier });
       return;
     }
     if (!this.overflowGem || !this.gems.includes(this.overflowGem) || this.overflowGem.vacuumed) {
@@ -2213,7 +2200,7 @@ export class RunWorld {
       this.overflowGem = target;
       target.tier = 'red';
     }
-    this.overflowGem.xp += dropped;
+    this.overflowGem.xp += xp;
     this.overflowGem.tier = 'red';
   }
 
@@ -2272,8 +2259,8 @@ export class RunWorld {
     }
   }
 
-  /** The single construction site for a chest: elite and boss deaths route
-   * here, and the Sandbox drops one on demand. A chest carries no reward of
+  /** The single construction site for a chest: boss deaths route here, and the
+   * Sandbox drops one on demand. A chest carries no reward of
    * its own — contents are decided when the player walks into it. */
   spawnChestAt(x: number, y: number): Chest {
     const chest: Chest = { x, y, color: 0xffd45c };
@@ -2284,14 +2271,14 @@ export class RunWorld {
 
   private spawnMusicNoteForEnemy(enemy: Enemy): void {
     this.noteDropPity += 1;
-    const boss = ENEMIES[enemy.kind].boss === true || enemy.spawnClass === 'boss';
+    const boss = enemy.spawnClass === 'boss';
     const chance = Math.min(0.3, 0.08 + Math.sqrt(Math.max(1, enemy.xp)) * 0.035);
-    const guaranteed = boss || enemy.amped || this.noteDropPity >= 7;
+    const guaranteed = boss || this.noteDropPity >= 7;
     if (!guaranteed && this.rng() >= chance) return;
     this.noteDropPity = 0;
     const value = boss
       ? 10
-      : enemy.amped || enemy.xp >= 10
+      : enemy.xp >= 10
         ? 3
         : enemy.xp >= 3
           ? 2
