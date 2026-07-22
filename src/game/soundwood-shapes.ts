@@ -535,12 +535,28 @@ export interface MusicNoteGfx extends Container {
 }
 
 /** Shop currency: an unmistakable gold pixel music note, never confused with
- * blue/green/red XP diamonds. Higher-value drops become a beamed pair. */
+ * blue/green/red XP diamonds. Higher-value drops become a beamed pair, and the
+ * ×100 Stage Light bundle — the rarest thing in the drop table — takes that
+ * pair, whitens the gold, and sets it inside a starburst so it is legible as a
+ * jackpot from across the arena rather than as one more big note. */
 export function makeMusicNoteGfx(note: MusicNotePickup): MusicNoteGfx {
-  const anthem = note.tier === 'anthem';
+  const jackpot = note.tier === 'jackpot';
+  // The jackpot draws the anthem's beamed pair, so anything keyed on "the big
+  // two-notehead shape" holds for both.
+  const anthem = jackpot || note.tier === 'anthem';
   const phrase = note.tier === 'phrase';
-  const color = anthem ? SOUNDWOOD.amber : phrase ? 0xffdf78 : 0xffc857;
+  const color = jackpot ? 0xfff3c0 : anthem ? SOUNDWOOD.amber : phrase ? 0xffdf78 : 0xffc857;
   const body = pixelGraphics(cachedPixelShape(`music-note:${note.tier}`, (g) => {
+    if (jackpot) {
+      // Behind the note: two offset rings and a spoke of sparks. Stroke-only,
+      // so the pair below still reads as the subject.
+      g.poly(regularPixelPoly(8, 25, Math.PI / 8)).stroke({ width: 2, color: 0xffffff, alpha: 0.5 });
+      g.poly(regularPixelPoly(8, 19, 0)).stroke({ width: 1, color: 0xffffff, alpha: 0.32 });
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
+        pixelDiamond(g, Math.cos(a) * 25, Math.sin(a) * 25 - 4, 3, 0xffffff);
+      }
+    }
     const stemH = anthem ? 18 : 15;
     box(g, 1, -stemH, 6, stemH + 6, SOUNDWOOD.ink);
     box(g, 3, -stemH + 2, 2, stemH, 0xffffff);
@@ -560,7 +576,11 @@ export function makeMusicNoteGfx(note: MusicNotePickup): MusicNoteGfx {
     }
   }));
   body.tint = color;
-  const glow = makePixelGlow(anthem ? 24 : phrase ? 18 : 14, color, anthem ? 0.48 : 0.34);
+  const glow = makePixelGlow(
+    jackpot ? 36 : anthem ? 24 : phrase ? 18 : 14,
+    color,
+    jackpot ? 0.66 : anthem ? 0.48 : 0.34,
+  );
   const result = new Container() as MusicNoteGfx;
   result.__tier = note.tier;
   result.addChild(glow, body);
