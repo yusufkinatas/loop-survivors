@@ -1103,10 +1103,10 @@ const SCENERY_SCALE = 2;
 
 /** How far the props sink into the floor. They are set dressing, and the
  *  enemies have to win the fight for attention outright — so the props keep
- *  about a third of their opacity and take a cool dark tint that pulls them
- *  toward the floor's own value. The tint does most of the blending, which is
- *  what lets the alpha stay high enough for the props to still read as shapes. */
-const SCENERY_ALPHA = 0.34;
+ *  half their opacity and take a cool dark tint that pulls them toward the
+ *  floor's own value. The tint does most of the blending, which is what lets
+ *  the alpha stay high enough for the props to still read as shapes. */
+const SCENERY_ALPHA = 0.5;
 const SCENERY_TINT = 0x66748f;
 
 /** The generated prop for each variant, and how tall it stands in world units
