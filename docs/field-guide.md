@@ -137,19 +137,19 @@ an evolution ingredient.
 
 ## The eight weapon evolutions
 
-Raise a weapon to tier IV and its paired passive to level five. The next
-collected chest offers any completed recipe. An evolution changes the attack
-pattern, visual language, audio processing, and damage behavior; it is not
-merely another percentage upgrade.
+Raise a weapon to its maximum level and own its paired passive at any level —
+level one is enough. The next collected chest offers any completed recipe. An
+evolution changes the attack pattern, visual language, audio processing, and
+damage behavior; it is not merely another percentage upgrade.
 
-| Maxed recipe | Evolution | What it becomes |
+| Recipe | Evolution | What it becomes |
 | --- | --- | --- |
 | Kick + High-Tops | **Redline Stomp** | Four floor strips cross the complete arena in one colossal stomp. |
 | Snare + Fast Forward | **Railshot** | An instant 900-range beam with unlimited pierce; every fourth hit fires twin rails. |
 | Hi-hat + Mirrorball | **Strobe Lane** | A barrage of chips rails down the way you walk, piercing everything in the lane. |
 | Bass + Heavy Amp | **Subquake** | The directional wave becomes an expanding ring with unlimited pierce. |
 | Chord + Wide Lens | **Afterhours** | Huge drifting slow zones seek dense crowds and merge into larger supercells. |
-| Lead + Needle Tips | **Neon Serpent** | A homing serpent pierces eleven targets and grows a giant head every fifth trigger. |
+| Lead + Needle Tips | **Neon Serpent** | A homing serpent pierces seven targets — eleven with Needle Tips maxed — and grows a giant head every fifth trigger. |
 | Clap + Padded Jacket | **Two Hands** | Paired slabs snap shut on the nearest few enemies and crush whatever they close on. |
 | Arp + Extension Cable | **Event Horizon** | Counter-rotating pairs form a dense, breathing crown around the player. |
 
@@ -165,9 +165,9 @@ objectives in between, and from minute eight the endless director keeps
 spawning periodic gold-marked elite bosses whose health scales with the run.
 
 Every defeated elite or boss drops a **chest** on the ground. Chests are not
-magnetized, so the player walks onto one to open it. If a maxed weapon/passive
-recipe is ready, the chest offers an evolution; otherwise it restores 15
-health. Bosses also drop 10 music notes.
+magnetized, so the player walks onto one to open it. If a completed
+weapon/passive recipe is ready, the chest offers an evolution; otherwise it
+restores 15 health. Bosses also drop 10 music notes.
 
 ## The Hush bestiary
 

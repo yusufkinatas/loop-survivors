@@ -905,8 +905,8 @@ export class RunWorld {
     this.tiers.delete(role);
   }
 
-  /** Sandbox-only evolve that IGNORES THE RECIPE ENTIRELY — no tier gate, no
-   *  maxed partner passive, no eligibility check. `evolve` above is the real
+  /** Sandbox-only evolve that IGNORES THE RECIPE ENTIRELY — no level gate, no
+   *  partner passive at all, no eligibility check. `evolve` above is the real
    *  one and keeps every rule; this exists so the panel can put an evolved
    *  weapon on the field to look at it.
    *

@@ -228,7 +228,7 @@ const EVOLUTIONS: Record<EvolutionId, EvolutionDefinition> = {
   },
   neonSerpent: {
     id: 'neonSerpent', role: 'lead', item: 'needleTips', name: 'Neon Serpent', color: 0xff70d4, gainDb: -1.5,
-    description: 'A sharp homing serpent pierces eleven targets and grows a giant head every fifth trigger.', signature: 'retargeting serpent',
+    description: 'A sharp homing serpent pierces deep through the file and grows a giant head every fifth trigger.', signature: 'retargeting serpent',
   },
   twoHands: {
     id: 'twoHands', role: 'clap', item: 'paddedJacket', name: 'Two Hands', color: 0xff719f, gainDb: 0,
@@ -244,6 +244,18 @@ export const EVOLUTION_BY_ROLE: Partial<Record<Role, EvolutionDefinition>> = Obj
   Object.values(EVOLUTIONS).map((evolution) => [evolution.role, evolution]),
 ) as Partial<Record<Role, EvolutionDefinition>>;
 
+/** THE EVOLUTION GATE, in one expression: the weapon at max level, the paired
+ *  passive merely OWNED — any level, level 1 included. That is Vampire
+ *  Survivors' classic rule, adopted in #227 because the weapon ladder stretched
+ *  to eight levels: 8 weapon picks + 1 passive is the same ~9-pick investment
+ *  the old 4 + 5 recipe asked for, so evolution pacing survives the stretch.
+ *
+ *  The consequence is deliberate: a passive's levels 2-5 are pure stat value
+ *  and are never evolution currency. Do not put an item-level floor back here
+ *  to make a recipe "cost more" — the cost lives in the weapon's eight levels.
+ *
+ *  Eligibility is a question asked at chest-open; there is no minimum-time
+ *  rule and nothing here reads the clock. */
 function eligibleEvolution(
   role: Role,
   weaponTier: number,
@@ -252,7 +264,7 @@ function eligibleEvolution(
 ): EvolutionDefinition | null {
   const evolution = EVOLUTION_BY_ROLE[role];
   if (!evolution || evolved.has(role) || weaponTier < WEAPON_MAX_LEVEL) return null;
-  return itemLevel(items, evolution.item) >= ITEM_MAX_LEVEL ? evolution : null;
+  return itemLevel(items, evolution.item) >= 1 ? evolution : null;
 }
 
 export function eligibleEvolutions(

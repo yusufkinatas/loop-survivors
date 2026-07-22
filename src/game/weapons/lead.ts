@@ -50,12 +50,12 @@ interface LeadStats extends WeaponStats {
    *  build's +pierce rule rather than over the top of it, so evolved pierce is
    *  `serpentBasePierce + extraPierce`.
    *
-   *  In practice that sum is INVARIANTLY 11. `eligibleEvolution` (items.ts)
-   *  gates every evolution on its partner item being at ITEM_MAX_LEVEL, and
-   *  Needle Tips caps at 5, so a Neon Serpent can only ever exist alongside
-   *  `extraPierce: 5`. There is no ladder from 6 to 11 for a player to climb
-   *  and no build that observes any value in between. Change the 6 and you are
-   *  changing 11.
+   *  That sum used to be INVARIANTLY 11: the old gate demanded a MAXED partner
+   *  item, so a Neon Serpent could only exist alongside `extraPierce: 5`. Since
+   *  #227 the gate is the partner item merely OWNED, so the serpent's pierce is
+   *  a real 7-to-11 ladder the player climbs with Needle Tips 1 through 5 —
+   *  which is the point of routing the 6 through the pipeline rather than over
+   *  it. Change the 6 and you move that whole range.
    *
    *  It used to be written straight onto the shot AFTER the pipeline had run,
    *  which made Needle Tips a no-op on the very evolution it unlocks. That is
