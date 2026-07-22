@@ -95,9 +95,10 @@ damage, duration, pickup reach, protection, and slow regeneration—so
 combinations are useful even with the sound muted. Utility passives may stand
 alone when the tradeoff is interesting; a passive is not required to be an
 evolution ingredient. Once a weapon reaches its top level and the player owns
-its paired passive at any level, the next chest offers an evolution. The evolved weapon receives a new name,
-visuals, audio processing, damage profile, and attack pattern; evolution is a
-qualitative transformation rather than another percentage level.
+its paired passive at any level, the next chest offers an evolution. The
+evolved weapon receives a new name, visuals, audio processing, damage profile,
+and attack pattern; evolution is a qualitative transformation rather than
+another percentage level.
 
 After all normal build slots and levels are complete, level-ups become
 **Encores**: a fixed two-option choice between a **First Aid**, worth a fifth

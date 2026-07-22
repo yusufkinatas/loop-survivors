@@ -16,9 +16,9 @@ import {
 import { META_WEAPONS } from './meta';
 import type { MetaStore, RunSettlement } from './meta';
 
-import { TIER_COUNT } from '../audio/charts';
-/** Tier numerals used by the band rack. */
-export const TIER_NUMERALS = ['I', 'II', 'III', 'IV'];
+import { WEAPON_MAX_LEVEL } from './weapons/levels';
+/** Tier numerals used by the band rack. One per weapon level. */
+export const TIER_NUMERALS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
 
 export interface DebugAction {
   label: string;
@@ -126,7 +126,11 @@ export class Hud {
   renderItemDetails(items: ReadonlyMap<ItemId, number>, into: HTMLElement): void {
     into.replaceChildren();
     const head = el('div', 'pause-items-head', into);
-    const countCopy = items.size > 6 ? `${items.size} ACTIVE · RUN CAP 6` : `${items.size}/6`;
+    // Read from the cap, never a literal: the sandbox loads the whole catalog
+    // and legitimately sits above it, and a run's cap has moved before.
+    const countCopy = items.size > BUILD.itemCap
+      ? `${items.size} ACTIVE · RUN CAP ${BUILD.itemCap}`
+      : `${items.size}/${BUILD.itemCap}`;
     el('strong', '', head, `PASSIVE ITEMS · ${countCopy}`);
     el('span', '', head, 'CURRENT TOTALS');
     if (items.size === 0) {
@@ -155,9 +159,8 @@ export class Hud {
   /** Everything the build currently adds up to, as one flat list — the pause
    * screen's answer to "what am I actually playing right now?". Items and
    * weapons each show a level a few lines up; this is the total they make
-   * together, including the Encore run bonuses that belong to no item. A stat
-   * sitting at its baseline reads as a dash rather than "+0%", so the ones you
-   * have invested in are the ones that catch the eye. */
+   * together. A stat sitting at its baseline reads as a dash rather than
+   * "+0%", so the ones you have invested in are the ones that catch the eye. */
   renderStats(stats: BuildStats, into: HTMLElement): void {
     into.replaceChildren();
     const head = el('div', 'pause-items-head', into);
@@ -205,7 +208,7 @@ export class Hud {
     into.replaceChildren();
     const owned = [...tiers.keys()];
     // A run can never exceed the cap, so this is always exactly weaponCap
-    // sockets there. The sandbox bypasses the cap on purpose (FULL BAND IV
+    // sockets there. The sandbox bypasses the cap on purpose (FULL BAND VIII
     // loads the whole catalog); growing rather than truncating keeps the rack
     // from hiding weapons that are audibly playing.
     const socketCount = Math.max(BUILD.weaponCap, owned.length);
@@ -230,7 +233,7 @@ export class Hud {
         const tier = tiers.get(owner) ?? 1;
         if (showTiers) {
           const pips = el('span', 'socket-pips', socket);
-          for (let i = 1; i <= TIER_COUNT; i++) {
+          for (let i = 1; i <= WEAPON_MAX_LEVEL; i++) {
             el('span', `pip ${i <= tier ? 'on' : ''}`, pips);
           }
           el('span', 'socket-tier', socket, `LV ${tier}`);

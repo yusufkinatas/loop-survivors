@@ -25,7 +25,10 @@ export interface Chart {
   events: ChartEvent[];
 }
 
-/** Tiers per weapon ladder. Tier 1 = first pick, tier 4 = maxed. */
+/** Chart stages per weapon ladder: the hand-authored sound rungs, stage 1 to
+ *  stage 4. AUDIO ONLY — a weapon's gameplay ladder has its own length
+ *  (WEAPON_MAX_LEVEL, src/game/weapons/levels.ts), and a level reaches a voice
+ *  only through chartStageForLevel. */
 export const TIER_COUNT = 4;
 
 /** Validate one chart against the coherence skeleton. Used when the soundset's

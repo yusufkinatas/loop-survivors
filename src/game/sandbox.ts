@@ -40,6 +40,7 @@ import {
 } from './items';
 import { MetaStore, SHOP_OFFERS, type ShopOfferId } from './meta';
 import type { RunWorld } from './run';
+import { WEAPON_MAX_LEVEL, chartStageForLevel } from './weapons/levels';
 
 /** Exported coverage catalogs keep the no-test-framework verification script
  * able to prove that future content cannot silently disappear from the panel. */
@@ -47,10 +48,10 @@ const SANDBOX_ENEMY_CATALOG: readonly EnemyKind[] = ALL_ENEMY_KINDS;
 const SANDBOX_WEAPON_CATALOG: readonly Role[] = Object.freeze(supportedRoles());
 const SANDBOX_ITEM_CATALOG: readonly ItemId[] = ITEM_IDS;
 
-/** The ★ rung's value in a weapon row's ChoiceButtons. One past tier IV so it
- *  sorts and reads as the end of the ladder; it is NOT a tier the game has, and
- *  nothing outside this panel should treat it as one. */
-const EVOLVED_RUNG = 5;
+/** The ★ rung's value in a weapon row's ChoiceButtons. One past the top weapon
+ *  level so it sorts and reads as the end of the ladder; it is NOT a tier the
+ *  game has, and nothing outside this panel should treat it as one. */
+const EVOLVED_RUNG = WEAPON_MAX_LEVEL + 1;
 
 type TabId = 'combat' | 'enemies' | 'build' | 'career';
 
@@ -362,11 +363,11 @@ export function mountSandboxPanel(
   el('div', 'sb-hint', build, `${instrumentNames.length} live weapons: ${instrumentNames.join(', ')}`);
   const bandControls = el('div', 'sb-btns sb-controls', build);
   bandControls.style.marginLeft = '0';
-  button(bandControls, 'FULL BAND IV', () => {
+  button(bandControls, `FULL BAND ${TIER_NUMERALS[WEAPON_MAX_LEVEL - 1]}`, () => {
     for (const role of SANDBOX_WEAPON_CATALOG) {
-      engine.setVoiceTier(role, 4);
+      engine.setVoiceTier(role, chartStageForLevel(WEAPON_MAX_LEVEL));
       engine.setVoiceEnabled(role, true);
-      world.addWeapon(role, 4);
+      world.addWeapon(role, WEAPON_MAX_LEVEL);
     }
     opts.onLoadout?.();
   });
@@ -374,17 +375,17 @@ export function mountSandboxPanel(
     for (const role of SANDBOX_WEAPON_CATALOG) setWeaponTier(role, 0);
   });
 
-  // One weapon = one row = one ladder: off, I–IV, then ★ for the evolved form.
-  // The evolve control used to live in its own section far below every weapon
-  // and every passive, so taking a single weapon from off to evolved meant
-  // scrolling past the entire tab and back for each weapon in turn.
+  // One weapon = one row = one ladder: off, I–VIII, then ★ for the evolved
+  // form. The evolve control used to live in its own section far below every
+  // weapon and every passive, so taking a single weapon from off to evolved
+  // meant scrolling past the entire tab and back for each weapon in turn.
   //
-  // ★ IS PRESENTED AS A FIFTH RUNG, which the real game does not have —
-  // evolving is a recipe (tier IV plus a maxed partner passive), not the top of
-  // the tier ladder. The panel deliberately does not model that. Here the
-  // question is only ever "show me this weapon in this state", and one row of
-  // mutually exclusive states answers it in one click. The recipe still governs
-  // real runs; see RunWorld.evolve, which this path does not go through.
+  // ★ IS PRESENTED AS ONE RUNG PAST THE TOP LEVEL, which the real game does not
+  // have — evolving is a recipe (max weapon level plus the partner passive
+  // owned), not the top of the level ladder. The panel does not model that.
+  // Here the question is only ever "show me this weapon in this state", and one
+  // row of mutually exclusive states answers it in one click. The recipe still
+  // governs real runs; see RunWorld.evolve, which this path does not go through.
   const weaponButtons = new Map<Role, ChoiceButtons<number>>();
   const custom = sampledRoles();
   for (const role of SANDBOX_WEAPON_CATALOG) {
@@ -395,7 +396,7 @@ export function mountSandboxPanel(
     const info = el('div', 'sb-enemy-info', row);
     const label = el('span', `sb-loadout-label ${custom.has(role) ? 'custom' : ''}`, info, voice.kit.name);
     if (custom.has(role)) label.title = 'sample-backed';
-    const controls = el('div', 'sb-btns', row);
+    const controls = el('div', 'sb-btns sb-ladder', row);
     // EVOLVED_RUNG is the selected value when the weapon is evolved, so ★ and
     // the tier buttons are one exclusive set and the highlight cannot land on
     // two rungs at once.
@@ -404,7 +405,7 @@ export function mountSandboxPanel(
       options: [],
     };
     choices.options.push({ value: 0, button: button(controls, '⏻', () => setWeaponTier(role, 0)) });
-    for (let tier = 1; tier <= 4; tier++) {
+    for (let tier = 1; tier <= WEAPON_MAX_LEVEL; tier++) {
       choices.options.push({
         value: tier,
         button: button(controls, TIER_NUMERALS[tier - 1], () => setWeaponTier(role, tier)),
@@ -412,7 +413,7 @@ export function mountSandboxPanel(
     }
     // The lookup is Partial by design, so a weapon may legitimately have no
     // evolution. Every supported weapon has one today; if that ever changes the
-    // row simply ends after IV rather than growing a dead button.
+    // row simply ends after VIII rather than growing a dead button.
     const evolution = EVOLUTION_BY_ROLE[role];
     if (!evolution) continue;
     const star = button(controls, '★', () => setWeaponEvolved(role, evolution));
@@ -421,7 +422,8 @@ export function mountSandboxPanel(
     // anyway — so it moves into the tooltip as context rather than as a gate.
     star.title =
       `${evolution.name} — ${evolution.description}\n` +
-      `In a run: ${ROLE_META[role].name} IV + ${ITEMS[evolution.item].name} V. ` +
+      `In a run: ${ROLE_META[role].name} ${TIER_NUMERALS[WEAPON_MAX_LEVEL - 1]} + ` +
+      `${ITEMS[evolution.item].name} at any level. ` +
       `In the sandbox neither is needed.`;
     choices.options.push({ value: EVOLVED_RUNG, button: star });
     weaponButtons.set(role, choices);
@@ -648,17 +650,17 @@ export function mountSandboxPanel(
   }
 
   function setWeaponTier(role: Role, tier: number): void {
-    const next = Math.max(0, Math.min(4, Math.floor(tier)));
-    // ALWAYS clears the evolution, including for IV. The rungs are one
-    // exclusive set, so picking any numbered tier means "show me the base
-    // weapon at this tier" — landing on IV *while still evolved* would leave
+    const next = Math.max(0, Math.min(WEAPON_MAX_LEVEL, Math.floor(tier)));
+    // ALWAYS clears the evolution, including for the top rung. The rungs are
+    // one exclusive set, so picking any numbered tier means "show me the base
+    // weapon at this tier" — landing on VIII *while still evolved* would leave
     // the row highlighting a rung the field does not match.
     clearEvolution(role);
     if (next === 0) {
       engine.setVoiceEnabled(role, false);
       world.removeWeapon(role);
     } else {
-      engine.setVoiceTier(role, next);
+      engine.setVoiceTier(role, chartStageForLevel(next));
       engine.setVoiceEnabled(role, true);
       world.addWeapon(role, next);
     }
@@ -667,14 +669,14 @@ export function mountSandboxPanel(
 
   /** The ★ rung: put this weapon on the field in its evolved form.
    *
-   *  Sets tier IV underneath because every evolved weapon reads its built tier
-   *  damage — but it does NOT touch the partner passive. Going through
-   *  world.evolve would have meant maxing that passive to satisfy the recipe,
-   *  which buys its whole build effect as a side effect and quietly changes the
-   *  thing being measured. See RunWorld.evolveForSandbox. */
+   *  Sets the top level underneath because every evolved weapon reads its built
+   *  tier damage — but it does NOT touch the partner passive. Going through
+   *  world.evolve would have meant granting that passive to satisfy the recipe,
+   *  which buys a build effect as a side effect and quietly changes the thing
+   *  being measured. See RunWorld.evolveForSandbox. */
   function setWeaponEvolved(role: Role, evolution: EvolutionDefinition): void {
     if (world.evolved.has(role)) return;
-    setWeaponTier(role, 4);
+    setWeaponTier(role, WEAPON_MAX_LEVEL);
     if (world.evolveForSandbox(role)) engine.setEvolutionGain(role, evolution.gainDb);
     opts.onLoadout?.();
   }

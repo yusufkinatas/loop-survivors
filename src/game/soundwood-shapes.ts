@@ -535,12 +535,28 @@ export interface MusicNoteGfx extends Container {
 }
 
 /** Shop currency: an unmistakable gold pixel music note, never confused with
- * blue/green/red XP diamonds. Higher-value drops become a beamed pair. */
+ * blue/green/red XP diamonds. Higher-value drops become a beamed pair, and the
+ * ×100 Stage Light bundle — the rarest thing in the drop table — takes that
+ * pair, whitens the gold, and sets it inside a starburst so it is legible as a
+ * jackpot from across the arena rather than as one more big note. */
 export function makeMusicNoteGfx(note: MusicNotePickup): MusicNoteGfx {
-  const anthem = note.tier === 'anthem';
+  const jackpot = note.tier === 'jackpot';
+  // The jackpot draws the anthem's beamed pair, so anything keyed on "the big
+  // two-notehead shape" holds for both.
+  const anthem = jackpot || note.tier === 'anthem';
   const phrase = note.tier === 'phrase';
-  const color = anthem ? SOUNDWOOD.amber : phrase ? 0xffdf78 : 0xffc857;
+  const color = jackpot ? 0xfff3c0 : anthem ? SOUNDWOOD.amber : phrase ? 0xffdf78 : 0xffc857;
   const body = pixelGraphics(cachedPixelShape(`music-note:${note.tier}`, (g) => {
+    if (jackpot) {
+      // Behind the note: two offset rings and a spoke of sparks. Stroke-only,
+      // so the pair below still reads as the subject.
+      g.poly(regularPixelPoly(8, 25, Math.PI / 8)).stroke({ width: 2, color: 0xffffff, alpha: 0.5 });
+      g.poly(regularPixelPoly(8, 19, 0)).stroke({ width: 1, color: 0xffffff, alpha: 0.32 });
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
+        pixelDiamond(g, Math.cos(a) * 25, Math.sin(a) * 25 - 4, 3, 0xffffff);
+      }
+    }
     const stemH = anthem ? 18 : 15;
     box(g, 1, -stemH, 6, stemH + 6, SOUNDWOOD.ink);
     box(g, 3, -stemH + 2, 2, stemH, 0xffffff);
@@ -560,7 +576,11 @@ export function makeMusicNoteGfx(note: MusicNotePickup): MusicNoteGfx {
     }
   }));
   body.tint = color;
-  const glow = makePixelGlow(anthem ? 24 : phrase ? 18 : 14, color, anthem ? 0.48 : 0.34);
+  const glow = makePixelGlow(
+    jackpot ? 36 : anthem ? 24 : phrase ? 18 : 14,
+    color,
+    jackpot ? 0.66 : anthem ? 0.48 : 0.34,
+  );
   const result = new Container() as MusicNoteGfx;
   result.__tier = note.tier;
   result.addChild(glow, body);
@@ -670,6 +690,63 @@ export function makeHealthPickupGfx(pickup: HealthPickup): HealthPickupGfx {
   root.__pulse = pulse;
   root.addChild(glow, pulse, cross);
   root.position.set(snap(pickup.x), snap(pickup.y));
+  return root;
+}
+
+export interface StageLightGfx extends Container {
+  /** The lens and the floor spill it throws: the two parts that breathe, and
+   *  the two that surge when a weapon hitbox chips the prop. Both are ADDITIVE,
+   *  which is what makes a hit readable at all — Pixi's tint multiplies, so a
+   *  silhouette cut from ink has no way to flash brighter. */
+  __lens: Graphics;
+  __beam: Graphics;
+}
+
+/** The Stage Light: a toppled follow-spot lying on the floor, throwing a warm
+ * amber wedge across it. The only warm light in the arena that is not a pickup,
+ * and the only floor object with a beam, so it never reads as something to walk
+ * onto — which matters, because walking onto it does nothing at all.
+ *
+ * Drawn lying on its side and facing right, then flipped per light so the field
+ * does not look stamped. Everything is one cached context: at most ten exist. */
+export function makeStageLightGfx(): StageLightGfx {
+  const root = new Container() as StageLightGfx;
+  const glow = makePixelGlow(34, SOUNDWOOD.amber, 0.3);
+
+  // The spill on the floor, drawn under the housing so the fixture sits in it.
+  const beam = pixelGraphics(cachedPixelShape('stage-light:beam', (g) => {
+    g.poly([12, -6, 46, -22, 46, 22, 12, 6].map(snap))
+      .fill({ color: 0xffffff, alpha: 0.16 });
+    g.poly([12, -4, 34, -13, 34, 13, 12, 4].map(snap))
+      .fill({ color: 0xffffff, alpha: 0.2 });
+  }));
+  beam.tint = SOUNDWOOD.amber;
+  beam.blendMode = 'add';
+
+  const body = pixelGraphics(cachedPixelShape('stage-light:body', (g) => {
+    // Toppled: the shadow it casts is flat and offset, not centred under it.
+    g.ellipse(2, 9, 19, 6).fill({ color: SOUNDWOOD.ink, alpha: 0.6 });
+    // Barrel, hood ring, and the bent yoke it fell off, all ink silhouette.
+    box(g, -16, -10, 26, 20, SOUNDWOOD.ink);
+    box(g, 9, -12, 6, 24, SOUNDWOOD.ink);
+    box(g, -20, -4, 5, 12, SOUNDWOOD.ink);
+    box(g, -13, 8, 20, 5, SOUNDWOOD.ink);
+    // Cold housing plate, so the warm parts have something to sit against.
+    box(g, -14, -7, 21, 14, SOUNDWOOD.barkLight);
+    box(g, -14, -7, 21, 4, SOUNDWOOD.bark);
+  }));
+
+  const lens = pixelGraphics(cachedPixelShape('stage-light:lens', (g) => {
+    box(g, 9, -9, 5, 18, SOUNDWOOD.amber);
+    box(g, 10, -6, 3, 12, 0xffffff);
+    // The filament still burning behind the glass.
+    pixelDiamond(g, 0, 0, 3, SOUNDWOOD.amber);
+  }));
+  lens.blendMode = 'add';
+
+  root.__beam = beam;
+  root.__lens = lens;
+  root.addChild(glow, beam, body, lens);
   return root;
 }
 
