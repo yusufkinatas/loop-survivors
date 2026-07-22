@@ -3,11 +3,11 @@
 // grid with a moving playhead. Built for the game; the rehearsal room keeps
 // the full editable playground.
 
-import { TIER_COUNT } from '../audio/charts';
 import { getChart } from '../audio/chartstore';
 import type { MusicEngine } from '../audio/engine';
 import type { Kit, Role } from '../audio/kits';
 import { STEPS_PER_BAR, STEPS_PER_PHRASE } from '../audio/scale';
+import { WEAPON_MAX_LEVEL, chartStageForLevel } from './weapons/levels';
 
 interface Row {
   /** Phrase steps (0..63) on which this voice's chart fires. */
@@ -65,7 +65,7 @@ export function mountTrackOverlay(
       name.textContent = kit.name;
       const pips = document.createElement('span');
       pips.className = 'tr-pips';
-      for (let i = 1; i <= TIER_COUNT; i++) {
+      for (let i = 1; i <= WEAPON_MAX_LEVEL; i++) {
         const pip = document.createElement('span');
         pip.className = `pip${i <= tier ? ' on' : ''}`;
         pips.appendChild(pip);
@@ -79,7 +79,7 @@ export function mountTrackOverlay(
 
       // Charts loop inside the 4-bar phrase, so precompute which phrase step
       // each event lands on; the per-bar repaint is then a set lookup.
-      const chart = getChart(role, tier);
+      const chart = getChart(role, chartStageForLevel(tier));
       const chartSteps = chart.bars * STEPS_PER_BAR;
       const hits = new Set<number>();
       for (const ev of chart.events) {

@@ -16,7 +16,7 @@ import {
 import { META_WEAPONS } from './meta';
 import type { MetaStore, RunSettlement } from './meta';
 
-import { TIER_COUNT } from '../audio/charts';
+import { WEAPON_MAX_LEVEL } from './weapons/levels';
 /** Tier numerals used by the band rack. */
 export const TIER_NUMERALS = ['I', 'II', 'III', 'IV'];
 
@@ -234,7 +234,7 @@ export class Hud {
         const tier = tiers.get(owner) ?? 1;
         if (showTiers) {
           const pips = el('span', 'socket-pips', socket);
-          for (let i = 1; i <= TIER_COUNT; i++) {
+          for (let i = 1; i <= WEAPON_MAX_LEVEL; i++) {
             el('span', `pip ${i <= tier ? 'on' : ''}`, pips);
           }
           el('span', 'socket-tier', socket, `LV ${tier}`);

@@ -12,7 +12,6 @@
 // catalog order and weighted draws use a stable index tie-break, so a seeded
 // run receives identical offers on every platform.
 
-import { TIER_COUNT } from '../audio/charts';
 import { soundsetSupports } from '../audio/soundset';
 import { ROLES, type Role } from '../audio/kits';
 import { BUILD } from './config';
@@ -22,6 +21,7 @@ import {
   itemLevel,
   type ItemId,
 } from './items';
+import { WEAPON_MAX_LEVEL } from './weapons/levels';
 import type { Rng } from './rng';
 
 const OFFER_COUNT = 3;
@@ -158,11 +158,11 @@ function buildFinitePool(input: RollOffersInput): WeightedOption<BuildPickOption
     // no longer lists it as unlocked. New hires require both meta unlock and
     // soundset support.
     if (!soundsetSupports(role)) continue;
-    const tier = Math.max(0, Math.min(TIER_COUNT, Math.floor(input.tiers.get(role) ?? 0)));
+    const tier = Math.max(0, Math.min(WEAPON_MAX_LEVEL, Math.floor(input.tiers.get(role) ?? 0)));
     if (tier === 0) {
       if (weaponSlotsFull || !input.unlockedRoles.has(role)) continue;
       pool.push({ option: { kind: 'weapon', role, tier: 1 }, weight: weaponWeight(role, input.timeS) });
-    } else if (tier < TIER_COUNT) {
+    } else if (tier < WEAPON_MAX_LEVEL) {
       pool.push({
         option: { kind: 'weapon', role, tier: tier + 1 },
         weight: weaponWeight(role, input.timeS),
@@ -326,7 +326,7 @@ export function rollStartingWeapons(input: RollStartingWeaponsInput): WeaponPick
   for (const role of ROLES) {
     if (!soundsetSupports(role)) continue;
     if (!input.unlockedRoles.has(role)) continue;
-    const tier = Math.max(0, Math.min(TIER_COUNT, Math.floor(input.tiers.get(role) ?? 0)));
+    const tier = Math.max(0, Math.min(WEAPON_MAX_LEVEL, Math.floor(input.tiers.get(role) ?? 0)));
     if (tier !== 0) continue;
     pool.push({
       option: { kind: 'weapon', role, tier: 1 },

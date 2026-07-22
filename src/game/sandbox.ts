@@ -40,6 +40,7 @@ import {
 } from './items';
 import { MetaStore, SHOP_OFFERS, type ShopOfferId } from './meta';
 import type { RunWorld } from './run';
+import { chartStageForLevel } from './weapons/levels';
 
 /** Exported coverage catalogs keep the no-test-framework verification script
  * able to prove that future content cannot silently disappear from the panel. */
@@ -364,7 +365,7 @@ export function mountSandboxPanel(
   bandControls.style.marginLeft = '0';
   button(bandControls, 'FULL BAND IV', () => {
     for (const role of SANDBOX_WEAPON_CATALOG) {
-      engine.setVoiceTier(role, 4);
+      engine.setVoiceTier(role, chartStageForLevel(4));
       engine.setVoiceEnabled(role, true);
       world.addWeapon(role, 4);
     }
@@ -658,7 +659,7 @@ export function mountSandboxPanel(
       engine.setVoiceEnabled(role, false);
       world.removeWeapon(role);
     } else {
-      engine.setVoiceTier(role, next);
+      engine.setVoiceTier(role, chartStageForLevel(next));
       engine.setVoiceEnabled(role, true);
       world.addWeapon(role, next);
     }
