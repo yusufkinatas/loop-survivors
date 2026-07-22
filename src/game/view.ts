@@ -3,7 +3,7 @@
 
 import { Container, Graphics, Sprite, Text, TextStyle, type Texture } from 'pixi.js';
 import type { Role } from '../audio/kits';
-import { RUN } from './config';
+import { RUN, STAGE_LIGHT } from './config';
 import { KICK } from './weapons';
 import {
   PLAYER_FOOT_OFFSET,
@@ -14,6 +14,7 @@ import {
   type MusicNotePickup,
   type Projectile,
   type RunWorld,
+  type StageLight,
   type StageMagnetPickup,
   type HealthPickup,
   type Zone,
@@ -38,6 +39,7 @@ import {
   makeRewardGfx,
   makeChestGfx,
   makeSceneryCell,
+  makeStageLightGfx,
   makeStageMagnetGfx,
   makeHealthPickupGfx,
   makeZoneGfx,
@@ -49,6 +51,7 @@ import {
   type ProjectileGfx,
   type RewardGfx,
   type SceneryCell,
+  type StageLightGfx,
   type StageMagnetGfx,
   type HealthPickupGfx,
   type ChestGfx,
@@ -365,6 +368,10 @@ export class RunView {
   // own layer, so spawn timing cannot accidentally hide the player or rewards.
   private tiledGroundLayer = new Container();
   private environmentLayer = new Container();
+  /** Stage Lights. Above the floor scenery so their spill reads, below the
+   *  zones and everything that fights, because the prop is furniture: bodies,
+   *  shots and the player all pass over it. */
+  private propLayer = new Container();
   private zoneLayer = new Container();
   private gemLayer = new Container();
   private enemyLayer = new Container();
@@ -404,6 +411,7 @@ export class RunView {
   private zoneGfx = new Map<Zone, ZoneGfx>();
   private gemGfx = new Map<Gem, GemGfx>();
   private musicNoteGfx = new Map<MusicNotePickup, MusicNoteGfx>();
+  private stageLightGfx = new Map<StageLight, StageLightGfx>();
   private stageMagnetGfx = new Map<StageMagnetPickup, StageMagnetGfx>();
   private healthPickupGfx = new Map<HealthPickup, HealthPickupGfx>();
   private scenery = new Map<string, SceneryCell>();
@@ -469,6 +477,7 @@ export class RunView {
     this.stage.addChild(
       this.tiledGroundLayer,
       this.environmentLayer,
+      this.propLayer,
       this.zoneLayer,
       this.gemLayer,
       this.enemyLayer,
@@ -665,6 +674,7 @@ export class RunView {
     this.updateFloor(cameraX, cameraY);
     this.drawArenaEnvironment(cameraX, cameraY);
     this.updateScenery(cameraX, cameraY);
+    this.syncStageLights(cameraX, cameraY);
     this.syncZones();
     this.drawEnemyTelegraphs(cameraX, cameraY);
     this.syncGems(cameraX, cameraY);
@@ -919,6 +929,58 @@ export class RunView {
         glow.poly(regularPixelPoly(12, enemy.radius * BOSS_RING_SCALE * scale * breath, Math.PI / 12)
           .map((value, i) => snap(value + (i % 2 === 0 ? enemy.x : enemy.y))))
           .fill({ color: enemy.color, alpha });
+      }
+    }
+  }
+
+  /** Stage Lights. They spawn barely off-screen, so the cull margin is wide
+   *  enough that one is already drawn by the time it crosses the edge rather
+   *  than popping in — the amber at the rim is half of what the prop is for.
+   *
+   *  The flicker is a slow amber breath, deliberately unlike the pickups' tight
+   *  pulse: this is scenery burning, not something asking to be collected. A
+   *  chip surges the fixture for `flashT`, which is the ONLY feedback a hit
+   *  gets — the break itself is a spark burst and silence. */
+  private syncStageLights(cameraX: number, cameraY: number): void {
+    const halfW = this.world.worldW / 2 + 120;
+    const halfH = this.world.worldH / 2 + 120;
+    this.live.clear();
+    for (const light of this.world.stageLights) {
+      // A broken light stays in the array until the world's next sweep. It
+      // leaves the screen NOW, on the frame its spark burst is queued — the
+      // cleanup below destroys anything this pass did not claim.
+      if (light.dead) continue;
+      let gfx = this.stageLightGfx.get(light);
+      if (!gfx) {
+        gfx = makeStageLightGfx();
+        // Half the fixtures face left, keyed off where the light landed so the
+        // same prop never changes its mind mid-run.
+        gfx.scale.x = hash2(Math.round(light.x), Math.round(light.y)) < 0.5 ? -1 : 1;
+        // Placed once and never again: a Stage Light does not move, and the
+        // camera pans the whole stage rather than each object.
+        gfx.position.set(snap(light.x), snap(light.y));
+        this.stageLightGfx.set(light, gfx);
+        this.propLayer.addChild(gfx);
+      }
+      const visible = Math.abs(light.x - cameraX) < halfW && Math.abs(light.y - cameraY) < halfH;
+      gfx.renderable = visible;
+      if (visible) {
+        const t = this.world.timeS;
+        const flicker = 0.72 + Math.sin(t * 2.1 + light.x * 0.05) * 0.14
+          + Math.sin(t * 7.3 + light.y * 0.05) * 0.06;
+        // A chip surges the fixture instead of tinting it: both bright parts
+        // blend additively, so full alpha plus a white lens is the flash.
+        const hit = light.flashT > 0;
+        gfx.__beam.alpha = hit ? 1 : flicker;
+        gfx.__lens.alpha = hit ? 1 : 0.82 + flicker * 0.18;
+        gfx.__lens.tint = hit ? 0xffffff : STAGE_LIGHT.color;
+      }
+      this.live.add(light);
+    }
+    for (const [light, gfx] of this.stageLightGfx) {
+      if (!this.live.has(light)) {
+        gfx.destroy({ children: true });
+        this.stageLightGfx.delete(light);
       }
     }
   }

@@ -97,6 +97,53 @@ export const PICKUP_PULL = {
   rushRampTime: 0.09,
 } as const;
 
+/** The Stage Light: a destructible prop — a toppled follow-spot The Hush has
+ * not consumed, glowing warm amber (player-power-spec §6a-6c). The game has no
+ * Luck stat, so every number here is the spec's already collapsed at
+ * `totalLuck ≡ 1.0`; there is no formula left to feed. */
+export const STAGE_LIGHT = {
+  /** Seconds between spawn attempts. */
+  attemptS: 1,
+  /** Flat chance one attempt lands a light. */
+  chance: 0.1,
+  /** Most that may be alive at once. A successful attempt AT the cap still
+   * spawns — closest to the player — and retires the OLDEST light to make
+   * room. That retirement is a despawn, not a break: no spark, no drop. */
+  maxAlive: 10,
+  hp: 10,
+  /** Damage footprint. A light collides with nothing, so this is only what a
+   * weapon hitbox has to overlap to chip it. */
+  radius: 15,
+  /** Inner edge of the spawn oval, as a multiple of the view's half extents.
+   * √2 is the SMALLEST oval that clears the whole screen — it passes exactly
+   * through the four corners — so a hair above it is "barely off-screen" for
+   * an oval, the way a plain circle of half the larger dimension is not. */
+  spawnFrac: 1.45,
+  /** How much further out an ordinary spawn may land, same units, so the ring
+   * is a band rather than a line. A spawn at the cap skips this entirely and
+   * lands on the inner edge — the closest an off-screen spawn can be. */
+  spawnBandFrac: 0.2,
+  /** How many points around the oval count as possible spawn locations. Below
+   * the cap the angle is simply random and this is unused; AT the cap the
+   * source picks "a location closest to the player" out of its candidates, and
+   * this is that candidate set. An oval is nearest the player on its SHORT
+   * axis, so a finer ring means a tighter, less varied at-cap choice — 24
+   * leaves the pick wandering about ±7 degrees. */
+  spawnPoints: 24,
+  /** The locked color anchor: warm amber against the Hush's cold static
+   * palette. Spelled as a literal for the same reason VICTORY.sweepColor is —
+   * run.ts is pure simulation and cannot reach the renderer's palette — and it
+   * is `SOUNDWOOD.amber` to the digit, which the view relies on. */
+  color: 0xffd56a,
+  /** The break's ONLY feedback: a spark burst. Breaking a light is silent —
+   * pillar 1, only weapons make sounds. */
+  sparkCount: 16,
+  sparkSpread: 34,
+  /** Seconds of hit flash on a chip that does not break it. Matches the
+   * enemy flash so a light reads as taking the same hit. */
+  flashS: 0.08,
+} as const;
+
 /** Rare one-use arena pickup. This is deliberately separate from Magnet
  * Lanyard, the passive item that increases ordinary pickup reach. */
 export const STAGE_MAGNET = {

@@ -237,6 +237,17 @@ class KickInstance implements WeaponInstance {
         ctx.shove(enemy, player.x, player.y, shove);
       }
     }
+    // The same cross over the props: a stomp that reaches a Stage Light chips
+    // it incidentally. No shove — a light is not going anywhere.
+    for (const light of ctx.props()) {
+      if (light.dead) continue;
+      const dx = Math.abs(light.x - player.x);
+      const dy = Math.abs(light.y - player.y);
+      if ((dx <= reachX + light.radius && dy <= half + light.radius) ||
+          (dy <= reachY + light.radius && dx <= half + light.radius)) {
+        ctx.damage(light, damage);
+      }
+    }
     for (const [x2, y2] of [
       [player.x + reachX, player.y], [player.x - reachX, player.y],
       [player.x, player.y + reachY], [player.x, player.y - reachY],

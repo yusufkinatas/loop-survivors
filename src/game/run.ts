@@ -19,6 +19,7 @@ import {
   MAX_ALIVE_HARD,
   PICKUP_PULL,
   RUN,
+  STAGE_LIGHT,
   STAGE_MAGNET,
   VICTORY,
   SHOVE_S,
@@ -235,6 +236,46 @@ export interface Enemy {
   readout: DummyReadout | null;
 }
 
+/** A Stage Light: a destructible prop, warm amber against the Hush's cold
+ *  static palette (player-power-spec §6). It is SCENERY, not a body — it is not
+ *  in the spatial hash, so nothing collides with it; it is not in `enemies`, so
+ *  no target query can reach it; and the only thing that can hurt it is a
+ *  weapon hitbox that happens to overlap it.
+ *
+ *  IT SATISFIES WeaponTarget ON PURPOSE. That is what lets the world hand a
+ *  light back through the SAME `ctx.near()` a weapon already uses to find
+ *  bodies, so every existing hit pass chips one for free and no module has to
+ *  learn a second shape. `prop` is the single field that separates it from an
+ *  enemy: the world reads it to route damage, and the two raw movement channels
+ *  (setKnock, slow) read it and decline.
+ *
+ *  The three "how does this body move" fields are FIXED AT ZERO, and
+ *  `knockbackMul: 0` in particular is load-bearing rather than decorative:
+ *  RunWorld.shove and the kick's reverse-pursuit both bail on it, so a light
+ *  absorbs a knock without a guard anywhere in weapon code. */
+export interface StageLight {
+  /** Always true. Absent on every Enemy, which is the whole discriminant. */
+  readonly prop: true;
+  x: number;
+  y: number;
+  radius: number;
+  hp: number;
+  /** Set the instant it breaks; the sweep in updateStageLights drops it a
+   *  frame later. Marked rather than spliced so a weapon walking this frame's
+   *  scratch buffer, or the array itself, never has an element renumbered out
+   *  from under it — the same discipline `Enemy.dead` keeps. */
+  dead: boolean;
+  /** Hit flash, view-only. */
+  flashT: number;
+  /** Immovable furniture: it never chases, never gets pushed, and is never a
+   *  practice dummy. */
+  readonly speed: number;
+  readonly knockbackMul: number;
+  readonly dummy: boolean;
+  readonly lastMoveX: number;
+  readonly lastMoveY: number;
+}
+
 export interface Projectile {
   role: Role;
   x: number;
@@ -249,7 +290,10 @@ export interface Projectile {
   homing: boolean;
   speed: number;
   color: number;
-  hit: Set<Enemy>;
+  /** Everything this shot has already touched. WeaponTarget, not Enemy, so a
+   *  Stage Light it passed through is remembered too and a slow shot resting on
+   *  one chips it once instead of every frame. */
+  hit: Set<WeaponTarget>;
   /** Total time alive. Behavior otherwise keys off FIELDS, never off role: a
    *  seeker homes because `homing` is true, an orbiter orbits because its
    *  module steers it. */
@@ -314,10 +358,13 @@ export type ProjectileView = Omit<Projectile, 'role'>;
 interface ProjectileOwner {
   /** ProjectileBehavior.steer, or false when the weapon has no opinion. */
   steer(pr: ProjectileView, dt: number): boolean;
-  /** ProjectileBehavior.onHit, or true (spend pierce) when there is no hook. */
+  /** ProjectileBehavior.onHit, or true (spend pierce) when there is no hook.
+   *  BODIES ONLY — a Stage Light never reaches a weapon's on-hit hook, because
+   *  it never spends pierce and there is nothing for a module to decide. */
   onHit(pr: ProjectileView, target: Enemy): boolean;
-  /** damageEnemy with this weapon's attribution already bound. */
-  damage(target: Enemy, amount: number): void;
+  /** Damage with this weapon's attribution already bound, routed by kind: a
+   *  body scores, a Stage Light only chips. */
+  damage(target: WeaponTarget, amount: number): void;
 }
 
 export interface Zone {
@@ -560,6 +607,9 @@ export class RunWorld {
   readonly healthPickups: HealthPickup[] = [];
   readonly shockwaves: Shockwave[] = [];
   readonly chests: Chest[] = [];
+  /** Live Stage Lights, OLDEST FIRST. The order is the whole of the cap rule:
+   *  a successful attempt at the cap retires `stageLights[0]`. */
+  readonly stageLights: StageLight[] = [];
 
   secondWindReady = false;
 
@@ -589,6 +639,12 @@ export class RunWorld {
   private stageMagnetDropPity = 0;
   /** Its own stream, so this pickup cannot shift Stage Magnet luck. */
   private readonly healthPickupRng: Rng;
+  /** Its own stream for the same reason: a light spawning is a once-a-second
+   *  roll for the whole run, and it must not shift enemy or drop luck by one
+   *  draw. Not injectable — nothing needs to pin it yet. */
+  private readonly stageLightRng: Rng;
+  /** Seconds owed to the once-a-second spawn attempt. */
+  private stageLightAttemptT = 0;
   private lastMinute = -1;
   private triggerCounts: Partial<Record<Role, number>> = {};
   private encoreDamageBonus = 0;
@@ -619,6 +675,7 @@ export class RunWorld {
     const magnetSeed = Math.floor(this.rng() * 0x7fffffff);
     this.stageMagnetRng = opts.stageMagnetRng ?? mulberry32(magnetSeed ^ 0x4d41474e);
     this.healthPickupRng = opts.healthPickupRng ?? mulberry32(magnetSeed ^ 0x48454154);
+    this.stageLightRng = mulberry32(magnetSeed ^ 0x4c494748);
     this.control = opts.control ?? (() => ({ x: 0, y: 0 }));
     this.fx = (opts.fx ?? true) ? [] : null;
     this.secondWindReady = opts.secondWind ?? false;
@@ -632,8 +689,11 @@ export class RunWorld {
 
   /** The narrow surface the world hands a weapon module: queries about the
    *  world in, effects out. This is the ONLY place a WeaponTarget is cast back
-   *  to a mutable Enemy — five casts, one file, all inside effects the world
-   *  implements. */
+   *  to a mutable Enemy — four casts, one file, all inside effects the world
+   *  implements. Since Stage Lights ride `near()` alongside bodies, every cast
+   *  is now reached only for a real body: the two raw movement channels test
+   *  `prop` outright, `shove` bails on a light's knockbackMul 0, and
+   *  `lockSeeker` is fed exclusively by nearestEnemies. */
   private makeWeaponContext(role: Role): WeaponContext {
     const world = this;
     const color = ROLE_COLORS[role];
@@ -641,6 +701,11 @@ export class RunWorld {
     // another's iteration. SpatialHash.query truncates on entry, so contents
     // and order are unchanged from the shared queryBuf.
     const buf: Enemy[] = [];
+    // A second private buffer, used only on the frames a Stage Light is in
+    // reach: near() has to hand back bodies AND props as one list, and the hash
+    // query owns `buf`. With no light nearby the hash result is returned
+    // untouched, so the ordinary case allocates and copies nothing.
+    const nearBuf: WeaponTarget[] = [];
     return {
       role,
       color,
@@ -656,12 +721,18 @@ export class RunWorld {
       aimFan: (spread) => world.aimFan(spread),
       moveDir: () => world.moveDir(),
       fanAround: (base) => world.fanAround(base),
-      near: (x, y, r) => world.hash.query(x, y, r, buf),
+      near: (x, y, r) => world.nearHittable(x, y, r, buf, nearBuf),
       nearestEnemies: (range, count) => world.nearestEnemies(range, count),
       all: () => world.enemies,
-      damage: (t, amount) => world.damageEnemy(t as Enemy, amount, role),
+      props: () => world.stageLights,
+      damage: (t, amount) => world.damageHittable(t, amount, role),
       shove: (t, fx, fy, d) => world.shove(t as Enemy, fx, fy, d),
       setKnock: (t, vx, vy, s) => {
+        // A prop has no knock channel to write (spec §6c: a Stage Light never
+        // moves). The kick, today's only caller, already bails on
+        // knockbackMul 0 before it gets here; this is the guarantee, not the
+        // path.
+        if (t.prop) return;
         const e = t as Enemy;
         e.knockX = vx;
         e.knockY = vy;
@@ -670,6 +741,9 @@ export class RunWorld {
       lockSeeker: (pr, target) => { pr.homingTarget = (target as Enemy | null) ?? null; },
       withExtraPierce: (basePierce) => world.withExtraPierce(basePierce),
       slow: (t, mul, durationS) => {
+        // Scenery has no walk to wade through. A chord zone covering a Stage
+        // Light still damages it every tick; the slow half is simply absent.
+        if (t.prop) return;
         const e = t as Enemy;
         e.slowT = durationS;
         e.zoneSlowMul = Math.min(e.zoneSlowMul, mul);
@@ -1068,6 +1142,10 @@ export class RunWorld {
     if (!this.won) this.updateMinuteSystems(dt);
     this.updatePassiveRecovery(dt);
     this.movePlayer(dt);
+    // AFTER movePlayer, BEFORE the weapon phases: the spawn oval is measured
+    // from where the player is now, and the sweep here is what clears the
+    // lights broken during last frame's hit passes.
+    this.updateStageLights(dt);
     if (this.scripted && !this.won) {
       this.runDirector(dt);
     }
@@ -1571,6 +1649,8 @@ export class RunWorld {
     this.healthPickups.length = 0;
     this.chests.length = 0;
     this.shockwaves.length = 0;
+    this.stageLights.length = 0;
+    this.stageLightAttemptT = 0;
     if (this.fx) this.fx.length = 0;
     for (const inst of this.weapons.values()) inst.reset();
     this.overflowGem = null;
@@ -2032,7 +2112,7 @@ export class RunWorld {
       onHit: (pr, target) =>
         this.projectileBehavior(role)?.onHit?.(this.weaponCtx.get(role)!, pr as Projectile, target)
           ?? true,
-      damage: (target, amount) => this.damageEnemy(target, amount, role),
+      damage: (target, amount) => this.damageHittable(target, amount, role),
     };
     this.projectileOwners.set(role, owner);
     return owner;
@@ -2102,6 +2182,18 @@ export class RunWorld {
       pr.x += pr.vx * travelStep;
       pr.y += pr.vy * travelStep;
       this.reflectProjectileFromArena(pr);
+    }
+
+    // Props FIRST, and separately (spec §6c). A Stage Light is walk-through
+    // scenery: a shot passing over one damages it and KEEPS FLYING — no pierce
+    // spent, no onHit hook, no early break — so resolving it ahead of the body
+    // pass is what stops a shot that runs out of pierce on the same frame from
+    // silently skipping the light it was already overlapping. Bodies own the
+    // rng stream and props draw nothing, so the order costs no roll.
+    for (const light of this.stageLights) {
+      if (light.dead || pr.hit.has(light) || !circlesOverlap(pr, light)) continue;
+      pr.hit.add(light);
+      owner.damage(light, pr.damage);
     }
 
     const near = this.hash.query(pr.x, pr.y, pr.radius + 24, this.queryBuf);
@@ -2324,6 +2416,175 @@ export class RunWorld {
     }
     this.overflowMusicNote.value += amount;
     this.overflowMusicNote.tier = 'anthem';
+  }
+
+  // ---- Stage Lights (player-power-spec §6) ---------------------------------
+
+  /** Drop last frame's broken lights, then run the once-a-second spawn attempt.
+   *
+   *  The sweep is FIRST, so the cap below counts only lights that are really
+   *  still standing, and it is a splice-from-the-back pass rather than a filter
+   *  because `stageLights` order IS the age order the cap rule retires by.
+   *
+   *  The attempt drains a whole frame's worth of owed seconds, the same way
+   *  runDirector drains its spawn schedule: a long frame must not swallow an
+   *  attempt. A won world still sweeps but never spawns — past 30:00 the clear
+   *  wave is the only thing happening. */
+  private updateStageLights(dt: number): void {
+    for (let i = this.stageLights.length - 1; i >= 0; i--) {
+      const light = this.stageLights[i];
+      if (light.dead) this.stageLights.splice(i, 1);
+      else if (light.flashT > 0) light.flashT -= dt;
+    }
+    if (this.won) return;
+    this.stageLightAttemptT += dt;
+    while (this.stageLightAttemptT >= STAGE_LIGHT.attemptS) {
+      this.stageLightAttemptT -= STAGE_LIGHT.attemptS;
+      this.attemptStageLight();
+    }
+  }
+
+  /** One spawn attempt (spec §6b): a flat 10% chance, a spot barely off-screen
+   *  on an oval around the player, and at the cap the newcomer lands as CLOSE
+   *  to the player as an off-screen spawn can while the OLDEST light leaves.
+   *
+   *  Lights may land on top of each other, and nothing else ever despawns one:
+   *  a light left behind stays lit until a weapon breaks it or the cap pushes
+   *  it out.
+   *
+   *  ALL THREE DRAWS HAPPEN ON EVERY SUCCESSFUL ATTEMPT, including the band
+   *  draw the at-cap branch ignores, so the stream advances identically above
+   *  and below the cap.
+   *
+   *  THE CAP COUNTS LIVE LIGHTS, not array entries, and the retirement takes
+   *  the oldest LIVE one. A light marked dead is still in the array until the
+   *  next sweep, and a frame long enough to owe two attempts would otherwise
+   *  retire the same already-dead light twice and leave eleven standing. */
+  private attemptStageLight(): void {
+    if (this.stageLightRng() >= STAGE_LIGHT.chance) return;
+    const base = this.stageLightRng() * Math.PI * 2;
+    const band = this.stageLightRng();
+    let alive = 0;
+    let oldest: StageLight | null = null;
+    for (const light of this.stageLights) {
+      if (light.dead) continue;
+      alive++;
+      oldest ??= light;
+    }
+    const atCap = alive >= STAGE_LIGHT.maxAlive;
+    const reach = STAGE_LIGHT.spawnFrac + (atCap ? 0 : band * STAGE_LIGHT.spawnBandFrac);
+    const rx = (this.worldW / 2) * reach;
+    const ry = (this.worldH / 2) * reach;
+    let angle = base;
+    if (oldest && atCap) {
+      // At the cap the angle stops being a free choice: the spawn takes the
+      // CLOSEST of the oval's possible locations, which lands it near the
+      // oval's short axis — the newcomer comes to the player. The random draw
+      // above still decides where the candidate ring sits, so the pick wanders
+      // rather than repeating the same two points.
+      let bestD = Infinity;
+      for (let i = 0; i < STAGE_LIGHT.spawnPoints; i++) {
+        const a = base + (i / STAGE_LIGHT.spawnPoints) * Math.PI * 2;
+        const d = Math.hypot(Math.cos(a) * rx, Math.sin(a) * ry);
+        if (d < bestD) {
+          bestD = d;
+          angle = a;
+        }
+      }
+      // A despawn, NOT a break: the oldest light is simply gone — no spark, no
+      // drop, no sound. The sweep above collects it next frame.
+      oldest.dead = true;
+    }
+    this.stageLights.push({
+      prop: true,
+      x: this.player.x + PLAYER_FOOT_OFFSET.x + Math.cos(angle) * rx,
+      y: this.player.y + PLAYER_FOOT_OFFSET.y + Math.sin(angle) * ry,
+      radius: STAGE_LIGHT.radius,
+      hp: STAGE_LIGHT.hp,
+      dead: false,
+      flashT: 0,
+      speed: 0,
+      knockbackMul: 0,
+      dummy: false,
+      lastMoveX: 0,
+      lastMoveY: 0,
+    });
+  }
+
+  /** Incidental damage on a prop. Deliberately NOT damageEnemy: a light is not
+   *  a body, so nothing here scores a kill, credits damageByRole, drops a gem,
+   *  or pushes a death burst. It takes no `source` AT ALL — damageHittable
+   *  drops the attribution on the way in, because breaking lights is
+   *  positioning rather than DPS and crediting it would put scenery in the
+   *  per-weapon damage readout.
+   *
+   *  Like the enemy path it refuses to resolve in a won world: past 30:00 the
+   *  run's drops are settled. */
+  private damageStageLight(light: StageLight, amount: number): void {
+    if (light.dead || this.won) return;
+    light.hp -= amount;
+    light.flashT = STAGE_LIGHT.flashS;
+    if (light.hp > 0) return;
+    light.dead = true;
+    // SILENT (spec §6a, pillar 1): a spark burst and nothing else. The world
+    // pushes no cue and the shell has no break event to listen for.
+    this.fx?.push({
+      type: 'spark',
+      x: light.x,
+      y: light.y,
+      color: STAGE_LIGHT.color,
+      n: STAGE_LIGHT.sparkCount,
+      spread: STAGE_LIGHT.sparkSpread,
+    });
+    this.dropForStageLight(light);
+  }
+
+  /** THE DROP SEAM. Every broken Stage Light resolves its one guaranteed drop
+   *  here and nowhere else — one call site, one light, one pickup.
+   *
+   *  Today it is a placeholder single note. The weighted table of spec §6d
+   *  (note / First Aid / note bundle ×10 / Stage Magnet / bundle ×100, with the
+   *  two level gates) replaces the body of THIS function and nothing around
+   *  it: the break path above neither knows nor cares what comes out. */
+  private dropForStageLight(light: StageLight): void {
+    this.spawnMusicNoteAt(light.x, light.y);
+  }
+
+  /** Damage routing for the weapon seam: a body goes to damageEnemy with full
+   *  attribution, a prop goes to the incidental path. THE ONE PLACE the two
+   *  kinds of damageable part company, so no weapon module and no shared loop
+   *  ever has to branch on it. */
+  private damageHittable(target: WeaponTarget, amount: number, source: Role): void {
+    if (target.prop) this.damageStageLight(target as StageLight, amount);
+    else this.damageEnemy(target as Enemy, amount, source);
+  }
+
+  /** Everything a hitbox at (x, y, radius) could touch: this frame's spatial
+   *  hash candidates in bucket order, then any Stage Light in reach.
+   *
+   *  Bodies stay FIRST and in hash order, because that order is the kill order
+   *  and therefore the rng draw order of every weapon that walks this list.
+   *  Props are appended after them and draw no rng at all, so a light standing
+   *  in a crowd cannot move a single roll. */
+  private nearHittable(
+    x: number,
+    y: number,
+    radius: number,
+    buf: Enemy[],
+    out: WeaponTarget[],
+  ): readonly WeaponTarget[] {
+    const bodies = this.hash.query(x, y, radius, buf);
+    if (this.stageLights.length === 0) return bodies;
+    out.length = 0;
+    for (const body of bodies) out.push(body);
+    for (const light of this.stageLights) {
+      if (light.dead) continue;
+      const dx = light.x - x;
+      const dy = light.y - y;
+      const reach = radius + light.radius;
+      if (dx * dx + dy * dy <= reach * reach) out.push(light);
+    }
+    return out;
   }
 
   /** Attract every freely collectable drop on the map, however far off-screen
