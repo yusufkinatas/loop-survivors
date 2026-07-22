@@ -159,9 +159,8 @@ export class Hud {
   /** Everything the build currently adds up to, as one flat list — the pause
    * screen's answer to "what am I actually playing right now?". Items and
    * weapons each show a level a few lines up; this is the total they make
-   * together, including the Encore run bonuses that belong to no item. A stat
-   * sitting at its baseline reads as a dash rather than "+0%", so the ones you
-   * have invested in are the ones that catch the eye. */
+   * together. A stat sitting at its baseline reads as a dash rather than
+   * "+0%", so the ones you have invested in are the ones that catch the eye. */
   renderStats(stats: BuildStats, into: HTMLElement): void {
     into.replaceChildren();
     const head = el('div', 'pause-items-head', into);

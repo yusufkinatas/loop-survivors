@@ -160,7 +160,7 @@ class ChordInstance implements WeaponInstance {
     const evolved = ctx.evolved;
     const target = this.pickTarget(ctx);
     // Damage and lifetime stack ON TOP of the build pipeline: `conf` already
-    // carries powerMul/damageMul in `damage` and Encore's lifetime bonus in
+    // carries powerMul/damageMul in `damage` and the build's duration bonus in
     // `lifetimeS`. A module must not re-apply any of that.
     const damage = conf.damage * (evolved ? CHORD_STATS.afterhoursDamageMul : 1);
     // RADIUS IS THE ONE EXCEPTION, and the only place a module ignores what the

@@ -12,6 +12,7 @@ import {
   AIM_RANGE,
   MULTISHOT_FAN_RAD,
   DAMAGE_FEEDBACK,
+  ENCORE,
   ENEMIES,
   BUILD,
   HEALTH_PICKUP,
@@ -591,9 +592,6 @@ export class RunWorld {
   private readonly healthPickupRng: Rng;
   private lastMinute = -1;
   private triggerCounts: Partial<Record<Role, number>> = {};
-  private encoreDamageBonus = 0;
-  private encoreMoveBonus = 0;
-  private encoreAreaBonus = 0;
   /** Per-run weapon-module state, one instance per migrated role. */
   private readonly weapons = new Map<Role, WeaponInstance>();
   /** The weapon context handed to each module: built once per role per world,
@@ -771,13 +769,7 @@ export class RunWorld {
   }
 
   get buildMods(): BuildMods {
-    const mods = deriveBuildMods(this.items);
-    return {
-      ...mods,
-      damageMul: mods.damageMul * (1 + this.encoreDamageBonus),
-      moveMul: mods.moveMul * (1 + this.encoreMoveBonus),
-      areaMul: mods.areaMul * (1 + this.encoreAreaBonus),
-    };
+    return deriveBuildMods(this.items);
   }
 
   get playerMaxHp(): number {
@@ -786,14 +778,6 @@ export class RunWorld {
 
   get playerArmor(): number {
     return RUN.playerArmor + this.buildMods.armorBonus;
-  }
-
-  get encoreProgress(): { damagePct: number; movePct: number; areaPct: number } {
-    return {
-      damagePct: Math.round(this.encoreDamageBonus * 100),
-      movePct: Math.round(this.encoreMoveBonus * 100),
-      areaPct: Math.round(this.encoreAreaBonus * 100),
-    };
   }
 
   addItem(id: ItemId, level = (this.items.get(id) ?? 0) + 1): void {
@@ -828,11 +812,24 @@ export class RunWorld {
     return this.player.hp - before;
   }
 
-  applyEncoreChoice(kind: 'heal' | 'damage' | 'move' | 'area'): void {
-    if (kind === 'heal') this.healPlayer(15);
-    if (kind === 'damage') this.encoreDamageBonus = Math.min(0.20, this.encoreDamageBonus + 0.02);
-    if (kind === 'move') this.encoreMoveBonus = Math.min(0.10, this.encoreMoveBonus + 0.02);
-    if (kind === 'area') this.encoreAreaBonus = Math.min(0.15, this.encoreAreaBonus + 0.03);
+  /** Notes paid straight into the run total, with no pickup to walk to: the
+   *  Tip Jar. Routes through the same total and the same event as a collected
+   *  note, so the HUD counter and the career credit see one kind of income. */
+  grantNotes(value: number): void {
+    const amount = Math.max(0, Math.floor(value));
+    if (amount <= 0) return;
+    this.notesCollected += amount;
+    this.events.onNoteCollected?.(amount, this.notesCollected);
+  }
+
+  /** An Encore pick, applied on the spot — neither option touches the build.
+   *  First Aid is the Stage Light drop's heal, offered (and wastable) at full
+   *  HP; a Tip Jar is a flat bundle of notes. Returns what actually landed:
+   *  HP restored for First Aid, notes granted for a Tip Jar. */
+  applyEncoreChoice(kind: 'firstAid' | 'tipJar'): number {
+    if (kind === 'firstAid') return this.healPlayer(this.playerMaxHp * HEALTH_PICKUP.healFraction);
+    this.grantNotes(ENCORE.tipJarNotes);
+    return ENCORE.tipJarNotes;
   }
 
   eligibleEvolutions(): EvolutionDefinition[] {
@@ -2404,8 +2401,7 @@ export class RunWorld {
         : RUN.gemPullSpeed * this.buildMods.pullMul * 1.15;
       const remaining = inRange ? advancePickupPull(note, p.x, p.y, speed, dt) : d;
       if (remaining < RUN.pickupRadius + 4) {
-        this.notesCollected += note.value;
-        this.events.onNoteCollected?.(note.value, this.notesCollected);
+        this.grantNotes(note.value);
         this.fx?.push({ type: 'spark', x: note.x, y: note.y, color: 0xffd45c, n: 4, spread: 12 });
         this.musicNotes.splice(i, 1);
         if (note === this.overflowMusicNote) this.overflowMusicNote = null;
