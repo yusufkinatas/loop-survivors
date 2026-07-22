@@ -31,7 +31,7 @@ music, and the system guarantees the result always sounds decent.
    is victory, and the stage clears when the set completes. A run ends early
    only when The Hush overwhelms the player. There is no endless escalation.
 6. **Career progress favors expression over stat grind.** Players collect
-   music notes from enemies and choose weapons, passive items, and a few
+   music notes off the stage and choose weapons, passive items, and a few
    authored perks in the Afterhours Shop. Nothing unlocks automatically, and
    the shop never becomes an uncapped treadmill of permanent damage, health,
    or speed.
@@ -67,15 +67,25 @@ first chests follow a scripted 1-1-3-1-1-5 payout sequence, guaranteeing every
 new player an early jackpot; after that, jackpots are rare rolls. Chests
 opened while a ceremony is playing queue and present back to back.
 
-A rare **First Aid** cross can fall from a defeated enemy. Walking onto it
-restores a fifth of maximum health. It is the only way to heal by playing well
-rather than by reaching a menu, and unlike gems and notes a Stage Magnet will
-not vacuum it in — reaching it is meant to be a decision.
+A defeated enemy drops an **experience gem and nothing else**; a boss adds a
+guaranteed music note alongside its chest. Everything else worth picking up
+comes from the **Stage Light** — a destructible toppled follow-spot The Hush
+has not finished consuming, glowing warm amber against the faction's cold
+static. A handful stand on the field at any moment. They break silently under
+weapon fire that happens to sweep them, never by being aimed at, and every
+broken light drops exactly one pickup: usually music notes, sometimes a First
+Aid, rarely a Stage Magnet. Hanging the floor economy on a prop the player has
+to walk to and break makes gathering a positioning decision rather than a
+passive dividend on kills.
 
-A rare one-use **Stage Magnet** can fall from a defeated enemy. Walking onto
-it vacuums every freely collectible experience gem and music note left anywhere
-on the map, however far off-screen, while decision-bearing reward pedestals and
-chests remain deliberate walk-to-choose interactions.
+A **First Aid** cross restores a fifth of maximum health. It is the only way to
+heal by playing well rather than by reaching a menu, and unlike gems and notes
+a Stage Magnet will not vacuum it in — reaching it is meant to be a decision.
+
+A one-use **Stage Magnet** vacuums every freely collectible experience gem and
+music note left anywhere on the map, however far off-screen, while
+decision-bearing reward pedestals and chests remain deliberate walk-to-choose
+interactions.
 
 ## Build Progression
 
@@ -84,19 +94,24 @@ combat verbs—movement speed, projectile speed, piercing, wall bounces, size,
 damage, duration, pickup reach, protection, and slow regeneration—so
 combinations are useful even with the sound muted. Utility passives may stand
 alone when the tradeoff is interesting; a passive is not required to be an
-evolution ingredient. Once a weapon is maxed and its paired passive is owned at
-any level, the next chest offers an evolution. The evolved weapon receives a
-new name, visuals, audio processing, damage profile, and attack pattern;
-evolution is a qualitative transformation rather than another percentage level.
+evolution ingredient. Once a weapon reaches its top level and the player owns
+its paired passive at any level, the next chest offers an evolution. The
+evolved weapon receives a new name, visuals, audio processing, damage profile,
+and attack pattern; evolution is a qualitative transformation rather than
+another percentage level.
 
-After all normal build slots and levels are complete, level-ups become Encore
-picks. Encore bonuses are small, diminishing run-only improvements, preventing
-dead rewards without displacing the authored weapon and item balance.
+After all normal build slots and levels are complete, level-ups become
+**Encores**: a fixed two-option choice between a **First Aid**, worth a fifth
+of maximum health, and a **Tip Jar** of 25 music notes granted on the spot.
+Both are offered every time, even at full health. A maxed build's power is
+final — the Encore keeps a level-up from being a dead reward without bolting a
+late stat treadmill onto the authored weapon and item balance. A maxed build's
+chests convert their leftover level-up hits into Tip Jars the same way.
 
 ## Meta Progression
 
-Enemies shed collectible music notes during a run. Notes only enter the career
-wallet when the run ends, then the player spends them in the Afterhours Shop.
+Broken Stage Lights shed collectible music notes during a run, and every boss
+drops one. Notes only enter the career wallet when the run ends, then the player spends them in the Afterhours Shop.
 Purchases unlock new choice-space: instruments, passive items, and one
 30%-health Second Wind. Later shelves open
 after enough earlier purchases, but no survival result, kill total, or hidden
