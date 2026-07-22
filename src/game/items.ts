@@ -2,6 +2,7 @@
 // offer cards, simulation modifiers, HUD copy, and evolution recipes.
 
 import type { Role } from '../audio/kits';
+import { WEAPON_MAX_LEVEL } from './weapons/levels';
 
 export const ITEM_IDS = [
   'highTops',
@@ -250,7 +251,7 @@ function eligibleEvolution(
   evolved: ReadonlySet<Role>,
 ): EvolutionDefinition | null {
   const evolution = EVOLUTION_BY_ROLE[role];
-  if (!evolution || evolved.has(role) || weaponTier < 4) return null;
+  if (!evolution || evolved.has(role) || weaponTier < WEAPON_MAX_LEVEL) return null;
   return itemLevel(items, evolution.item) >= ITEM_MAX_LEVEL ? evolution : null;
 }
 

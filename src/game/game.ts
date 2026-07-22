@@ -20,6 +20,7 @@ import { preloadRunArt, RunView, type ChestReelEntry, type GroundPickView } from
 import { mountSandboxPanel, type SandboxPanel } from './sandbox';
 import { ITEMS, ITEM_NEUTRAL_COLOR, itemMaxLevel, type EvolutionDefinition, type ItemId } from './items';
 import { weaponTiers } from './weapons';
+import { chartStageForLevel } from './weapons/levels';
 import { MetaStore, type RunSettlement } from './meta';
 import { mulberry32 } from './rng';
 
@@ -465,7 +466,7 @@ export async function bootGame(
       // Audio is scheduled ahead, so its chart must change now for the first
       // note of the new bar. World state waits for the exact heard timestamp
       // below, preserving old-tier damage on any older trigger.
-      if (option.kind === 'weapon') engine.setVoiceTier(option.role, option.tier);
+      if (option.kind === 'weapon') engine.setVoiceTier(option.role, chartStageForLevel(option.tier));
       else {
         const stillEligible = w.eligibleEvolutions().some(({ role }) => role === option.evolution.role);
         if (!stillEligible) {
@@ -715,7 +716,7 @@ export async function bootGame(
       // max against the live tier: scooping a tier-4 drop before a tier-3 drop
       // of the same role must never downgrade the chart.
       for (const [role, tier] of grants) {
-        engine.setVoiceTier(role, Math.max(w.tiers.get(role) ?? 0, tier));
+        engine.setVoiceTier(role, chartStageForLevel(Math.max(w.tiers.get(role) ?? 0, tier)));
       }
       engine.atAudioTime(barAudioTime, () => {
         if (world !== w || (state !== 'run' && state !== 'sandbox')) return;
