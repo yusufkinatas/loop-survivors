@@ -955,8 +955,8 @@ export class RunView {
    *
    *  The flicker is a slow amber breath, deliberately unlike the pickups' tight
    *  pulse: this is scenery burning, not something asking to be collected. A
-   *  chip surges the fixture for `flashT`, which is the ONLY feedback a hit
-   *  gets — the break itself is a spark burst and silence. */
+   *  chip flashes the fixture white for `flashT` — the same hit feedback an
+   *  enemy gets — and the break itself is a spark burst and silence. */
   private syncStageLights(cameraX: number, cameraY: number): void {
     const halfW = this.world.worldW / 2 + 120;
     const halfH = this.world.worldH / 2 + 120;
@@ -984,12 +984,12 @@ export class RunView {
         const t = this.world.timeS;
         const flicker = 0.72 + Math.sin(t * 2.1 + light.x * 0.05) * 0.14
           + Math.sin(t * 7.3 + light.y * 0.05) * 0.06;
-        // A chip surges the fixture instead of tinting it: both bright parts
-        // blend additively, so full alpha plus a white lens is the flash.
-        const hit = light.flashT > 0;
-        gfx.__beam.alpha = hit ? 1 : flicker;
-        gfx.__lens.alpha = hit ? 1 : 0.82 + flicker * 0.18;
-        gfx.__lens.tint = hit ? 0xffffff : STAGE_LIGHT.color;
+        gfx.__beam.alpha = flicker;
+        gfx.__lens.alpha = 0.82 + flicker * 0.18;
+        gfx.__lens.tint = STAGE_LIGHT.color;
+        // The hit flash: a white silhouette of the fixture, the same feedback
+        // an enemy gets when a hitbox chips it.
+        gfx.__flash.renderable = light.flashT > 0;
       }
       this.live.add(light);
     }
