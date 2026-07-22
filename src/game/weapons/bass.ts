@@ -188,6 +188,16 @@ class BassInstance implements WeaponInstance {
           ctx.shove(enemy, wave.x, wave.y, wave.shove);
         }
       }
+      // The ring crosses Stage Lights incidentally, once each, on the same
+      // `hit` set — a ring that has already passed a light does not chip it
+      // again as it keeps growing. No shove: a light is not going anywhere.
+      for (const light of ctx.props()) {
+        if (light.dead || wave.hit.has(light)) continue;
+        if (Math.hypot(light.x - wave.x, light.y - wave.y) <= wave.radius + light.radius) {
+          wave.hit.add(light);
+          ctx.damage(light, wave.damage);
+        }
+      }
       if (wave.lifeS <= 0) ctx.retireShockwave(wave);
     }
   }
