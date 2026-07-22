@@ -85,9 +85,31 @@ const ENEMY_LOOPS: Partial<Record<EnemyKind, LoopSpec>> = {
   giantWerewolf: { name: 'howl-lope', fps: 8 },
 };
 
+/** Single-image props and pickups (#234). These are not loops: one texture
+ *  each, trimmed to its alpha bounds by make-strips.py so the renderer can size
+ *  them by scaling to a target world height. The two pickups are deliberately
+ *  near-white — the renderer tints one shape into three tiers, and tint
+ *  multiplies, so pale is the only value a tint can still colour. */
+export type ObjectName =
+  | 'gem'
+  | 'note'
+  | 'prop-stump'
+  | 'prop-rune'
+  | 'prop-mushrooms'
+  | 'prop-cableroot'
+  | 'prop-fern'
+  | 'prop-stagelight';
+
+const OBJECT_NAMES: readonly ObjectName[] = [
+  'gem', 'note',
+  'prop-stump', 'prop-rune', 'prop-mushrooms',
+  'prop-cableroot', 'prop-fern', 'prop-stagelight',
+];
+
 const FRAMES_PER_LOOP = 4;
 
 const loops = new Map<string, SpriteLoop>();
+const objects = new Map<ObjectName, Texture>();
 let loadPromise: Promise<void> | null = null;
 
 /** Slice one strip of `FRAMES_PER_LOOP` frames laid out left to right. */
@@ -117,18 +139,36 @@ async function loadLoop(spec: LoopSpec): Promise<void> {
   });
 }
 
-/** Load every generated loop once. A failure leaves the map empty and the
- *  renderer falls back to the drawn silhouettes, so the game stays playable
- *  with the art missing. */
+async function loadObject(name: ObjectName): Promise<void> {
+  const texture = await Assets.load<Texture>(`/art/pixellab/objects/${name}.png`);
+  texture.source.scaleMode = 'nearest';
+  objects.set(name, texture);
+}
+
+/** Load every generated loop and object once. A failure leaves that entry
+ *  missing and the renderer falls back to the drawn shape, so the game stays
+ *  playable with any part of the art absent. */
 export function preloadPixelArt(): Promise<void> {
   if (loadPromise) return loadPromise;
   const specs = [PLAYER_LOOP, ...Object.values(ENEMY_LOOPS)];
-  loadPromise = Promise.all(specs.map((spec) =>
-    loadLoop(spec).catch((error: unknown) => {
-      console.warn(`[pixelart] ${spec.name} failed to load; using drawn art`, error);
-    }),
-  )).then(() => undefined);
+  loadPromise = Promise.all([
+    ...specs.map((spec) =>
+      loadLoop(spec).catch((error: unknown) => {
+        console.warn(`[pixelart] ${spec.name} failed to load; using drawn art`, error);
+      }),
+    ),
+    ...OBJECT_NAMES.map((name) =>
+      loadObject(name).catch((error: unknown) => {
+        console.warn(`[pixelart] ${name} failed to load; using drawn art`, error);
+      }),
+    ),
+  ]).then(() => undefined);
   return loadPromise;
+}
+
+/** This object's texture, or null before it has loaded / if it failed. */
+export function objectTexture(name: ObjectName): Texture | null {
+  return objects.get(name) ?? null;
 }
 
 /** The player's walk loop, or null before it has loaded / if it failed. */

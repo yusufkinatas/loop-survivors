@@ -57,6 +57,22 @@ LOOPS = {
 
 FLOOR = ("candidates/floor-earth.png", "floor-earth.png")
 
+# Single-image props and pickups (#234). Unlike the loops these ARE trimmed to
+# their alpha bounds: there is no sibling frame to stay in register with, and
+# the renderer sizes each one by scaling its texture to a target world height,
+# which only works if the texture is the art rather than the art plus however
+# much transparent margin the generator happened to leave.
+OBJECTS = [
+    "gem",
+    "note",
+    "prop-stump",
+    "prop-rune",
+    "prop-mushrooms",
+    "prop-cableroot",
+    "prop-fern",
+    "prop-stagelight",
+]
+
 
 def build_loop(name: str, frame_files: list[str]) -> None:
     frames = [Image.open(SRC / f).convert("RGBA") for f in frame_files]
@@ -78,10 +94,23 @@ def build_loop(name: str, frame_files: list[str]) -> None:
     print(f"{name}: {len(frames)} frames, {width}x{height} each -> {strip.size[0]}x{strip.size[1]}")
 
 
+def build_object(name: str) -> None:
+    image = Image.open(SRC / "objects" / f"{name}.png").convert("RGBA")
+    bbox = image.getbbox()
+    if bbox is None:
+        raise SystemExit(f"{name}: fully transparent")
+    trimmed = image.crop(bbox)
+    trimmed.save(OUT / "objects" / f"{name}.png")
+    print(f"{name}: {image.size[0]}x{image.size[1]} -> {trimmed.size[0]}x{trimmed.size[1]}")
+
+
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
+    (OUT / "objects").mkdir(parents=True, exist_ok=True)
     for name, frame_files in LOOPS.items():
         build_loop(name, frame_files)
+    for name in OBJECTS:
+        build_object(name)
     shutil.copyfile(SRC / FLOOR[0], OUT / FLOOR[1])
     tile = Image.open(OUT / FLOOR[1])
     print(f"floor: {tile.size[0]}x{tile.size[1]}")

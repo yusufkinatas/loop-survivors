@@ -4,7 +4,7 @@
 import { Container, Graphics, GraphicsContext, Sprite, Text, TextStyle } from 'pixi.js';
 import { ROLE_COLORS, type Role } from '../audio/kits';
 import { ENEMIES, WORLD_SCALE } from './config';
-import { playerLoop, type SpriteLoop } from './pixelart';
+import { objectTexture, playerLoop, type ObjectName, type SpriteLoop } from './pixelart';
 import type { Enemy, Gem, HealthPickup, MusicNotePickup, Projectile, StageMagnetPickup, Zone } from './run';
 import { SOUNDWOOD, hash2, regularPixelPoly, snap } from './soundwood-art';
 import { drawWeaponIcon } from './weaponicons';
@@ -568,12 +568,37 @@ export interface GemGfx extends Container {
   __tier: Gem['tier'];
 }
 
+/** Scale a generated object texture so it stands `height` world units tall.
+ *  The textures are trimmed to their alpha bounds by make-strips.py, so this is
+ *  the whole sizing story: the art is the art, with no canvas padding to
+ *  discount. */
+function objectSprite(name: ObjectName, height: number): Sprite | null {
+  const texture = objectTexture(name);
+  if (!texture) return null;
+  const sprite = new Sprite({ texture, anchor: 0.5, roundPixels: true });
+  sprite.scale.set(height / texture.height);
+  return sprite;
+}
+
 export function makeGemGfx(gem: Gem): GemGfx {
   const style = gem.tier === 'red'
     ? { size: 9, color: SOUNDWOOD.coral, glow: 17, alpha: 0.45 }
     : gem.tier === 'green'
       ? { size: 7, color: 0x6dff8d, glow: 13, alpha: 0.34 }
       : { size: 5, color: SOUNDWOOD.blue, glow: 10, alpha: 0.28 };
+  // The generated gem is one near-white diamond for all three tiers; the tier
+  // is carried by the same tint and size the drawn gem always used. That only
+  // works because the art is pale: tint multiplies, so it can darken white into
+  // blue/green/red but could never lift a baked colour into another one.
+  const sprite = objectSprite('gem', (style.size + 2) * 2);
+  if (sprite) {
+    sprite.tint = style.color;
+    const result = new Container() as GemGfx;
+    result.__tier = gem.tier;
+    result.addChild(makePixelGlow(style.glow, style.color, style.alpha), sprite);
+    result.position.set(snap(gem.x), snap(gem.y));
+    return result;
+  }
   const body = pixelGraphics(cachedPixelShape('gem:' + gem.tier, (g) => {
     pixelDiamond(g, 0, 1, style.size + 2, SOUNDWOOD.ink);
     pixelDiamond(g, 0, 0, style.size, 0xffffff);
@@ -602,6 +627,22 @@ export function makeMusicNoteGfx(note: MusicNotePickup): MusicNoteGfx {
   const anthem = note.tier === 'anthem';
   const phrase = note.tier === 'phrase';
   const color = anthem ? SOUNDWOOD.amber : phrase ? 0xffdf78 : 0xffc857;
+  // One generated near-white eighth note for all three tiers, separated by the
+  // gold tint and by size. The drawn anthem was a *beamed pair* rather than a
+  // bigger single note; that distinction is lost here, so anthem leans harder
+  // on size (36 against 26) and on its much wider glow.
+  const sprite = objectSprite('note', anthem ? 36 : phrase ? 30 : 26);
+  if (sprite) {
+    sprite.tint = color;
+    const result = new Container() as MusicNoteGfx;
+    result.__tier = note.tier;
+    result.addChild(
+      makePixelGlow(anthem ? 24 : phrase ? 18 : 14, color, anthem ? 0.48 : 0.34),
+      sprite,
+    );
+    result.position.set(snap(note.x), snap(note.y));
+    return result;
+  }
   const body = pixelGraphics(cachedPixelShape(`music-note:${note.tier}`, (g) => {
     const stemH = anthem ? 18 : 15;
     box(g, 1, -stemH, 6, stemH + 6, SOUNDWOOD.ink);
@@ -1053,12 +1094,55 @@ function sceneryContext(variant: number): GraphicsContext {
   });
 }
 
+/** The generated prop for each variant, and how tall it stands in world units.
+ *  Six props where the drawn scenery had five: the stage light is new with the
+ *  art (#234), so `SCENERY_PROPS.length` rather than a literal 5 is what the
+ *  variant wraps around. Heights are read off the drawn shapes they replace, so
+ *  the arena keeps its existing sense of scale. */
+const SCENERY_PROPS: readonly { name: ObjectName; height: number }[] = [
+  { name: 'prop-stump', height: 68 },
+  { name: 'prop-rune', height: 72 },
+  { name: 'prop-mushrooms', height: 34 },
+  { name: 'prop-cableroot', height: 44 },
+  { name: 'prop-fern', height: 58 },
+  { name: 'prop-stagelight', height: 64 },
+];
+
+/** The fog pad and ground litter that sit under every prop, drawn or generated.
+ *  Splitting them out of `sceneryContext` lets the generated props reuse them,
+ *  so a cell keeps its soft footing instead of a sprite sitting on bare floor. */
+function sceneryBedContext(variant: number): GraphicsContext {
+  return cachedPixelShape('scenery-bed:' + variant, (g) => {
+    const rx = (hash2(variant, 1, 31) - 0.5) * 150;
+    const ry = (hash2(variant, 2, 53) - 0.5) * 150;
+    box(g, rx - 72, ry - 20, 144, 32, 0x8ba7a2, 0.025);
+    box(g, rx - 48, ry - 28, 96, 48, 0x8ba7a2, 0.022);
+    for (let i = 0; i < 3; i++) {
+      const x = (hash2(variant, i, 91) - 0.5) * 210;
+      const y = (hash2(variant, i, 117) - 0.5) * 210;
+      box(g, x - 7, y - 3, 14, 6, SOUNDWOOD.barkLight, 0.32);
+      box(g, x - 3, y - 5, 7, 3, SOUNDWOOD.pineLight, 0.26);
+    }
+  });
+}
+
 export function makeSceneryCell(ix: number, iy: number): SceneryCell {
   const variant = Math.floor(hash2(ix, iy, 1201) * 20);
   const root = new Container() as SceneryCell;
-  const prop = pixelGraphics(sceneryContext(variant));
+  const spec = SCENERY_PROPS[variant % SCENERY_PROPS.length];
+  const generated = objectSprite(spec.name, spec.height);
+  const prop: Container = generated ?? pixelGraphics(sceneryContext(variant));
+  if (generated) {
+    // The drawn props are authored around an offset centre; the sprites are
+    // trimmed and centre-anchored, so they take that offset explicitly.
+    generated.position.set(
+      snap((hash2(variant, 1, 31) - 0.5) * 150),
+      snap((hash2(variant, 2, 53) - 0.5) * 150),
+    );
+    root.addChild(pixelGraphics(sceneryBedContext(variant)));
+  }
   prop.alpha = 0.78;
-  prop.scale.x = (ix + iy) % 2 === 0 ? 1 : -1;
+  prop.scale.x = ((ix + iy) % 2 === 0 ? 1 : -1) * Math.abs(prop.scale.x);
   const flies = new Graphics({ roundPixels: true });
   for (let i = 0; i < 3; i++) {
     const x = snap((hash2(ix, iy, 300 + i) - 0.5) * 190);
