@@ -1096,17 +1096,18 @@ function sceneryContext(variant: number): GraphicsContext {
   });
 }
 
-/** Scenery props draw at 4x the size the drawn shapes used. At a 256-unit cell
- *  that makes each one roughly cell-sized: landmarks the arena is built around
- *  rather than clutter scattered across it. */
-const SCENERY_SCALE = 4;
+/** Scenery props draw at 2x the size the drawn shapes used: big enough to
+ *  furnish the arena, small enough that a 256-unit cell holds one with room
+ *  around it rather than being filled by it. */
+const SCENERY_SCALE = 2;
 
-/** How far the props sink into the floor. Blown up to landmark size they would
- *  otherwise compete with the enemies for attention, and the enemies have to
- *  win that fight — so the props lose most of their opacity and take a cool
- *  dark tint that pulls them toward the floor's own value. */
-const SCENERY_ALPHA = 0.34;
-const SCENERY_TINT = 0x7d8db0;
+/** How far the props sink into the floor. They are set dressing, and the
+ *  enemies have to win the fight for attention outright — so the props keep
+ *  barely a quarter of their opacity and take a cool dark tint that pulls them
+ *  toward the floor's own value. Low enough that they read as depth behind the
+ *  action rather than as objects in it. */
+const SCENERY_ALPHA = 0.24;
+const SCENERY_TINT = 0x66748f;
 
 /** The generated prop for each variant, and how tall it stands in world units
  *  before `SCENERY_SCALE`. Six props where the drawn scenery had five: the
