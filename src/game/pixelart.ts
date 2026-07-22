@@ -51,6 +51,38 @@ const ENEMY_LOOPS: Partial<Record<EnemyKind, LoopSpec>> = {
   skeleton: { name: 'jack-march', fps: 5 },
   flower: { name: 'bloom-sway', fps: 3 },
   batSwarm: { name: 'rush-charge', fps: 10 },
+  // Wave 2 (#220) is all sibling pairs, and each pair shares a speed — so
+  // tempo comes from build rather than from speed alone, and ends up being a
+  // separator in its own right. The Cabinets both move at 100: Moss is the
+  // heavier body and trudges, Cracked is half its HP and broken so it shuffles
+  // quicker and unevenly. The Crowns both move at 140, so the one with long
+  // legs takes fewer, longer strides than the one on stubby legs.
+  greenMudman: { name: 'moss-trudge', fps: 3 },
+  grayMudman: { name: 'crack-shuffle', fps: 5 },
+  glowingBat: { name: 'signal-lope', fps: 6 },
+  silverBat: { name: 'silver-scuttle', fps: 9 },
+  // Waves 3 and 4, generated in one pass (#234). Tempo still comes from how
+  // each kind moves, and where two kinds share a speed it comes from build:
+  // Snare Bloom and The Shear both move at 80, so the one carrying its weight
+  // in its head lumbers a beat slower than the one swinging long arms. The
+  // three mites all move at 140, so their cadence ramps by size instead --
+  // smallest is twitchiest, which puts Night Mite's shipped 8 fps at the top.
+  venus: { name: 'bloom-chomp', fps: 3 },
+  mantis: { name: 'shear-swing', fps: 4 },
+  giantBat: { name: 'woofer-wade', fps: 4 },
+  werewolf: { name: 'howl-lope', fps: 8 },
+  ghost: { name: 'shard-drift', fps: 6 },
+  ghostSwarm: { name: 'echo-sweep', fps: 10 },
+  redBat: { name: 'flare-hover', fps: 9 },
+  bat: { name: 'static-hover', fps: 10 },
+  // The four Giants ride free on their base kind's art at sizeMul 1.5, which
+  // spriteEnemyScale already applies from the radius ratio. Giant Snare Bloom
+  // reuses the green art despite the drawn renderer tinting it blue: the blue
+  // is a Vampire Survivors artifact, not this game's fiction (map #217).
+  giantMummy: { name: 'gaffer-lumber', fps: 3 },
+  giantBlueVenus: { name: 'bloom-chomp', fps: 3 },
+  giantMantis: { name: 'shear-swing', fps: 4 },
+  giantWerewolf: { name: 'howl-lope', fps: 8 },
 };
 
 const FRAMES_PER_LOOP = 4;

@@ -25,6 +25,11 @@ LOOPS = [
     ("Jackwalker B — march", "jack-march", 5),
     ("Mute Bloom B — sway", "bloom-sway", 3),
     ("Static Rush A — charge", "rush-charge", 10),
+    # Wave 2 (#220). Both pairs share a speed, so tempo comes from build.
+    ("Moss Cabinet B — trudge", "moss-trudge", 3),
+    ("Cracked Cabinet A — shuffle", "crack-shuffle", 5),
+    ("Signal Crown A — lope", "signal-lope", 6),
+    ("Silver Crown B — scuttle", "silver-scuttle", 9),
 ]
 
 # Game scale: the floor tile is 112.3 world units, so a sprite pixel is half a

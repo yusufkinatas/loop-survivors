@@ -37,6 +37,22 @@ LOOPS = {
     "jack-march": [f"animations/jack-march-{i}.png" for i in range(4)],
     "bloom-sway": [f"animations/bloom-sway-{i}.png" for i in range(4)],
     "rush-charge": [f"animations/rush-charge-{i}.png" for i in range(4)],
+    # Wave 2 of the whole-roster map (#220).
+    "moss-trudge": [f"animations/moss-trudge-{i}.png" for i in range(4)],
+    "crack-shuffle": [f"animations/crack-shuffle-{i}.png" for i in range(4)],
+    "signal-lope": [f"animations/signal-lope-{i}.png" for i in range(4)],
+    "silver-scuttle": [f"animations/silver-scuttle-{i}.png" for i in range(4)],
+    # Waves 3 and 4, merged into one pass (#234). Every body carries its own
+    # material colour rather than the shared bark navy -- the band-by-hue scheme
+    # is dead, so colour is free to be the roster's variety axis instead.
+    "bloom-chomp": [f"animations/bloom-chomp-{i}.png" for i in range(4)],
+    "shear-swing": [f"animations/shear-swing-{i}.png" for i in range(4)],
+    "woofer-wade": [f"animations/woofer-wade-{i}.png" for i in range(4)],
+    "howl-lope": [f"animations/howl-lope-{i}.png" for i in range(4)],
+    "shard-drift": [f"animations/shard-drift-{i}.png" for i in range(4)],
+    "echo-sweep": [f"animations/echo-sweep-{i}.png" for i in range(4)],
+    "flare-hover": [f"animations/flare-hover-{i}.png" for i in range(4)],
+    "static-hover": [f"animations/static-hover-{i}.png" for i in range(4)],
 }
 
 FLOOR = ("candidates/floor-earth.png", "floor-earth.png")
