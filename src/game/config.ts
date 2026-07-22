@@ -149,33 +149,59 @@ export const STAGE_LIGHT = {
   flashS: 0.08,
 } as const;
 
-/** Rare one-use arena pickup. This is deliberately separate from Magnet
- * Lanyard, the passive item that increases ordinary pickup reach. */
+/** One row of the Stage Light drop table. */
+interface StageLightDrop {
+  /** Which pickup the row pays out. */
+  readonly drop: 'note' | 'firstAid' | 'magnet';
+  /** Bundle size, read only for `drop: 'note'`. */
+  readonly notes?: number;
+  /** Share of the pool, relative to the other rows in it. */
+  readonly weight: number;
+  /** Player level below which the row is not in the pool AT ALL. It does not
+   * roll and lose; it is absent, and the rows that remain renormalize. */
+  readonly minLevel: number;
+}
+
+/** What a broken Stage Light pays (player-power-spec §6d). Exactly one row is
+ * rolled per break and there is no "nothing" row, so every light drops
+ * something — the table IS the guarantee, and no pity counter backs it up.
+ *
+ * The weights are fixed. The game has no Luck stat, so every VS weight formula
+ * collapses at `totalLuck ≡ 1.0`; these are the collapsed constants, with no
+ * formula left to feed.
+ *
+ * Because the two rare rows are gated out early, the pool changes shape twice
+ * across a run: at level 0 it is the three ungated rows renormalized over 72
+ * (~69% note, ~17% First Aid, ~14% bundle), the ×100 jackpot joins at level 5,
+ * and the Stage Magnet at level 12. */
+export const STAGE_LIGHT_DROPS: readonly StageLightDrop[] = [
+  { drop: 'note', notes: 1, weight: 50, minLevel: 0 },
+  { drop: 'firstAid', weight: 12, minLevel: 0 },
+  { drop: 'note', notes: 10, weight: 10, minLevel: 0 },
+  { drop: 'magnet', weight: 2, minLevel: 12 },
+  { drop: 'note', notes: 100, weight: 1, minLevel: 5 },
+];
+
+/** Rare one-use arena pickup, dropped by the Stage Light table above and by
+ * nothing else. This is deliberately separate from Magnet Lanyard, the passive
+ * item that increases ordinary pickup reach. */
 export const STAGE_MAGNET = {
-  /** Per eligible enemy kill: rare in a horde, but visible in a healthy run.
-   * A flat probability and nothing else — no cooldown, no cap on how many may
-   * wait on the floor, no expiry. A lucky streak is allowed to be lucky. */
-  dropChance: 0.0012,
-  /** Bad-luck protection. The next eligible kill drops one at this count. */
-  pityKills: 700,
   pickupRadius: 28,
   /** Marked gems and notes cross a full viewport in well under a second. */
   vacuumSpeed: 1800,
 } as const;
 
-/** Rare floor heal. Every other heal in the game is attached to a decision
+/** The First Aid: a floor heal, dropped by the Stage Light table above and
+ * offered by the Encore. Every other heal in the game is attached to a decision
  * moment (the level-up pick, the chest fallback, Padded Jacket's on-acquire
- * top-up); this one rewards clearing the arena instead, and costs the player
- * no upgrade.
+ * top-up); this one rewards breaking lights instead, and costs the player no
+ * upgrade.
  *
- * A flat probability per eligible kill and nothing else: no cooldown, no cap
- * on how many may sit on the floor, no expiry, and no suppression when the
- * player is already healthy. Getting three in a row is allowed — that is what
- * a fixed drop rate means. The player decides whether a heal is worth walking
- * to, including deciding to leave it for later. */
+ * Nothing else conditions it: no cap on how many may sit on the floor, no
+ * expiry, and no suppression when the player is already healthy. Three in a
+ * row is allowed. The player decides whether a heal is worth walking to,
+ * including deciding to leave it for later. */
 export const HEALTH_PICKUP = {
-  /** Per eligible enemy kill. Matches STAGE_MAGNET's rate. */
-  dropChance: 0.0012,
   /** Fraction of the player's MAXIMUM health restored, so the heal keeps pace
    * with Padded Jacket instead of shrinking against a raised ceiling.
    * Overheal is not the caller's problem — RunWorld.healPlayer clamps. */

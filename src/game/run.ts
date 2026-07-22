@@ -21,6 +21,7 @@ import {
   PICKUP_PULL,
   RUN,
   STAGE_LIGHT,
+  STAGE_LIGHT_DROPS,
   STAGE_MAGNET,
   VICTORY,
   SHOVE_S,
@@ -430,12 +431,22 @@ export interface MusicNotePickup {
   x: number;
   y: number;
   value: number;
-  tier: 'note' | 'phrase' | 'anthem';
+  /** Look, not payout: `value` is the money, this is only how big the drop
+   * reads on the floor. `jackpot` is the ×100 Stage Light bundle. */
+  tier: 'note' | 'phrase' | 'anthem' | 'jackpot';
   /** Set only by a collected Stage Magnet; later drops remain unaffected. */
   vacuumed?: boolean;
   /** Seconds since this note committed to flying at the player; undefined
    * until then. Drives the wind-back curve (`advancePickupPull`). */
   pullT?: number;
+}
+
+/** The ONE place a note's value becomes its look, so a merged overflow note
+ * and a fresh drop of the same size never read differently. */
+function musicNoteTier(value: number): MusicNotePickup['tier'] {
+  if (value >= 100) return 'jackpot';
+  if (value >= 10) return 'anthem';
+  return value >= 3 ? 'phrase' : 'note';
 }
 
 export interface StageMagnetPickup {
@@ -548,9 +559,6 @@ export interface RunWorldOpts {
   scripted?: boolean;
   /** Optional seeded randomness for deterministic development fixtures. */
   rng?: Rng;
-  /** Independent rare-drop stream; injectable only for deterministic checks. */
-  stageMagnetRng?: Rng;
-  healthPickupRng?: Rng;
   /** Movement axis provider (magnitude 0..1). */
   control?: () => { x: number; y: number };
   /** False for non-visual fixtures that do not consume effects. */
@@ -635,15 +643,15 @@ export class RunWorld {
   private enemyFrameCounters: Partial<Record<EnemyKind, number>> = {};
   private overflowGem: Gem | null = null;
   private overflowMusicNote: MusicNotePickup | null = null;
-  private noteDropPity = 0;
-  private readonly stageMagnetRng: Rng;
-  private stageMagnetDropPity = 0;
-  /** Its own stream, so this pickup cannot shift Stage Magnet luck. */
-  private readonly healthPickupRng: Rng;
-  /** Its own stream for the same reason: a light spawning is a once-a-second
-   *  roll for the whole run, and it must not shift enemy or drop luck by one
-   *  draw. Not injectable — nothing needs to pin it yet. */
+  /** Its own stream: a light spawning is a once-a-second roll for the whole
+   *  run, and it must not shift enemy or drop luck by one draw. Not
+   *  injectable — nothing needs to pin it yet. */
   private readonly stageLightRng: Rng;
+  /** And its own again for what a broken light pays, so the once-a-second
+   *  spawn roll and the far rarer drop roll cannot walk each other's
+   *  sequences. The only drop stream left — the kill-fed pickups it used to
+   *  share the world with are gone (spec §6e). */
+  private readonly stageLightDropRng: Rng;
   /** Seconds owed to the once-a-second spawn attempt. */
   private stageLightAttemptT = 0;
   private lastMinute = -1;
@@ -670,15 +678,17 @@ export class RunWorld {
     this.events = events;
     this.scripted = opts.scripted ?? true;
     this.rng = opts.rng ?? Math.random;
-    const magnetSeed = Math.floor(this.rng() * 0x7fffffff);
-    this.stageMagnetRng = opts.stageMagnetRng ?? mulberry32(magnetSeed ^ 0x4d41474e);
-    this.healthPickupRng = opts.healthPickupRng ?? mulberry32(magnetSeed ^ 0x48454154);
-    this.stageLightRng = mulberry32(magnetSeed ^ 0x4c494748);
+    // ONE draw off the main stream seeds every derived stream; each is then
+    // tagged apart. Adding or retiring a derived stream therefore costs the
+    // main stream nothing, and leaves the surviving streams' sequences intact.
+    const dropSeed = Math.floor(this.rng() * 0x7fffffff);
+    this.stageLightRng = mulberry32(dropSeed ^ 0x4c494748);
+    this.stageLightDropRng = mulberry32(dropSeed ^ 0x44524f50);
     this.control = opts.control ?? (() => ({ x: 0, y: 0 }));
     this.fx = (opts.fx ?? true) ? [] : null;
     this.secondWindReady = opts.secondWind ?? false;
-    // Built after the stageMagnetRng seed draw above: the context factory draws
-    // no rng, so no draw moves.
+    // Built after the drop seed draw above: the context factory draws no rng,
+    // so no draw moves.
     for (const m of WEAPON_MODULES) {
       this.weapons.set(m.role, m.create());
       this.weaponCtx.set(m.role, this.makeWeaponContext(m.role));
@@ -1652,8 +1662,6 @@ export class RunWorld {
     for (const inst of this.weapons.values()) inst.reset();
     this.overflowGem = null;
     this.overflowMusicNote = null;
-    this.noteDropPity = 0;
-    this.stageMagnetDropPity = 0;
     this.hash.clear();
     this.queryBuf.length = 0;
   }
@@ -1770,8 +1778,8 @@ export class RunWorld {
     }
     // The practice target absorbs everything, including killVisible's
     // Infinity: record the hit, refill, and leave before the death path so it
-    // never drops a gem, a note, a magnet, an Encore Case, a death fx, an
-    // upgrade roll, or a kill count.
+    // never drops a gem, a chest, an Encore Case, a death fx, an upgrade roll,
+    // or a kill count.
     if (e.dummy && e.readout) {
       const landed = Number.isFinite(amount) ? amount : 0;
       const r = e.readout;
@@ -1809,10 +1817,14 @@ export class RunWorld {
         color: e.color,
         elite: boss,
       });
+      // An ordinary kill pays a gem and NOTHING else (spec §6e): notes, First
+      // Aids and Stage Magnets all come off broken Stage Lights now.
       this.spawnGemAt(e.x, e.y, e.xp);
-      this.spawnMusicNoteForEnemy(e);
-      this.spawnStageMagnetForEnemy(e);
-      this.spawnHealthPickupForEnemy(e);
+      // Bosses are the one exception, and are unchanged (spec §6f). The
+      // guaranteed anthem note used to ride inside the kill-fed note roll as
+      // its single guaranteed case; with that roll deleted it lives here, on
+      // its own line, at the same value 10 (anthem tier) and the same offset.
+      if (boss) this.spawnMusicNoteAt(e.x + e.radius * 0.28, e.y - e.radius * 0.18, 10);
       // Boss spawns (Vampire-Survivors style) drop a chest on the ground.
       // Walk into it to open it: a ready weapon evolution, or health.
       if (e.dropsChest) {
@@ -2293,20 +2305,9 @@ export class RunWorld {
     this.overflowGem.tier = 'red';
   }
 
-  private spawnStageMagnetForEnemy(enemy: Enemy): void {
-    this.stageMagnetDropPity += 1;
-    const guaranteed = this.stageMagnetDropPity >= STAGE_MAGNET.pityKills;
-    if (!guaranteed && this.stageMagnetRng() >= STAGE_MAGNET.dropChance) return;
-    this.stageMagnetDropPity = 0;
-    this.spawnStageMagnetAt(
-      enemy.x - enemy.radius * 0.24,
-      enemy.y - enemy.radius * 0.32,
-    );
-  }
-
-  /** Public Sandbox fixture; normal runs receive Stage Magnets only from
-   * enemy deaths. Any number may wait on the floor, for as long as the player
-   * leaves them there. */
+  /** Public for the Sandbox; in a normal run the Stage Light drop table is the
+   * one and only caller. Any number may wait on the floor, for as long as the
+   * player leaves them there. */
   spawnStageMagnetAt(x: number, y: number): StageMagnetPickup {
     const magnet = { x, y };
     this.stageMagnets.push(magnet);
@@ -2314,19 +2315,10 @@ export class RunWorld {
     return magnet;
   }
 
-  /** One flat probability per eligible kill. No cooldown, no floor cap, no
-   *  full-health suppression: a lucky streak may drop three in a row, and a
-   *  heal that lands while the player is healthy is theirs to leave and come
-   *  back for. */
-  private spawnHealthPickupForEnemy(enemy: Enemy): void {
-    if (this.healthPickupRng() >= HEALTH_PICKUP.dropChance) return;
-    this.spawnHealthPickupAt(
-      enemy.x + enemy.radius * 0.22,
-      enemy.y - enemy.radius * 0.3,
-    );
-  }
-
-  /** Public Sandbox fixture; normal runs receive these only from enemy deaths. */
+  /** Public for the Sandbox; in a normal run the Stage Light drop table is the
+   * one and only caller. No floor cap and no full-health suppression: a heal
+   * that lands while the player is healthy is theirs to leave and come back
+   * for. */
   spawnHealthPickupAt(x: number, y: number): HealthPickup {
     const pickup: HealthPickup = { x, y };
     this.healthPickups.push(pickup);
@@ -2358,29 +2350,12 @@ export class RunWorld {
     return chest;
   }
 
-  private spawnMusicNoteForEnemy(enemy: Enemy): void {
-    this.noteDropPity += 1;
-    const boss = enemy.spawnClass === 'boss';
-    const chance = Math.min(0.3, 0.08 + Math.sqrt(Math.max(1, enemy.xp)) * 0.035);
-    const guaranteed = boss || this.noteDropPity >= 7;
-    if (!guaranteed && this.rng() >= chance) return;
-    this.noteDropPity = 0;
-    const value = boss
-      ? 10
-      : enemy.xp >= 10
-        ? 3
-        : enemy.xp >= 3
-          ? 2
-          : 1;
-    this.spawnMusicNoteAt(enemy.x + enemy.radius * 0.28, enemy.y - enemy.radius * 0.18, value);
-  }
-
-  /** Public for the sandbox's currency shower; normal runs use enemy drops. */
+  /** Public for the sandbox's currency shower; in a normal run the Stage Light
+   * drop table and the boss's guaranteed anthem note are the callers. */
   spawnMusicNoteAt(x: number, y: number, value = 1): void {
     const amount = Math.max(1, Math.floor(value));
-    const tier: MusicNotePickup['tier'] = amount >= 10 ? 'anthem' : amount >= 3 ? 'phrase' : 'note';
     if (this.musicNotes.length < RUN.maxMusicNotes) {
-      this.musicNotes.push({ x, y, value: amount, tier });
+      this.musicNotes.push({ x, y, value: amount, tier: musicNoteTier(amount) });
       return;
     }
     if (!this.overflowMusicNote || !this.musicNotes.includes(this.overflowMusicNote) || this.overflowMusicNote.vacuumed) {
@@ -2412,7 +2387,7 @@ export class RunWorld {
       this.overflowMusicNote = target;
     }
     this.overflowMusicNote.value += amount;
-    this.overflowMusicNote.tier = 'anthem';
+    this.overflowMusicNote.tier = musicNoteTier(this.overflowMusicNote.value);
   }
 
   // ---- Stage Lights (player-power-spec §6) ---------------------------------
@@ -2539,12 +2514,37 @@ export class RunWorld {
   /** THE DROP SEAM. Every broken Stage Light resolves its one guaranteed drop
    *  here and nowhere else — one call site, one light, one pickup.
    *
-   *  Today it is a placeholder single note. The weighted table of spec §6d
-   *  (note / First Aid / note bundle ×10 / Stage Magnet / bundle ×100, with the
-   *  two level gates) replaces the body of THIS function and nothing around
-   *  it: the break path above neither knows nor cares what comes out. */
+   *  A single weighted walk over STAGE_LIGHT_DROPS (spec §6d). Rows the player
+   *  has not reached the level for are skipped on BOTH passes, so they are
+   *  absent from the pool rather than rolled and discarded, and the rows that
+   *  remain renormalize against the smaller total. There is no "nothing" row
+   *  and no pity counter: the table alone guarantees the drop. */
   private dropForStageLight(light: StageLight): void {
-    this.spawnMusicNoteAt(light.x, light.y);
+    let total = 0;
+    for (const entry of STAGE_LIGHT_DROPS) {
+      if (this.level >= entry.minLevel) total += entry.weight;
+    }
+    let roll = this.stageLightDropRng() * total;
+    // Three rows gate at level 0, so the pool is never empty and the walk below
+    // always lands on one; the seed here is only what makes `picked` definite.
+    let picked = STAGE_LIGHT_DROPS[0];
+    for (const entry of STAGE_LIGHT_DROPS) {
+      if (this.level < entry.minLevel) continue;
+      picked = entry;
+      roll -= entry.weight;
+      if (roll < 0) break;
+    }
+    switch (picked.drop) {
+      case 'note':
+        this.spawnMusicNoteAt(light.x, light.y, picked.notes);
+        break;
+      case 'firstAid':
+        this.spawnHealthPickupAt(light.x, light.y);
+        break;
+      case 'magnet':
+        this.spawnStageMagnetAt(light.x, light.y);
+        break;
+    }
   }
 
   /** Damage routing for the weapon seam: a body goes to damageEnemy with full
