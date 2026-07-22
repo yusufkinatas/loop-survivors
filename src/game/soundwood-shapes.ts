@@ -834,7 +834,6 @@ export interface StageLightGfx extends Container {
  * does not look stamped. Everything is one cached context: at most ten exist. */
 export function makeStageLightGfx(): StageLightGfx {
   const root = new Container() as StageLightGfx;
-  const glow = makePixelGlow(34, SOUNDWOOD.amber, 0.3);
 
   // The spill on the floor, drawn under the housing so the fixture sits in it.
   const beam = pixelGraphics(cachedPixelShape('stage-light:beam', (g) => {
@@ -869,7 +868,7 @@ export function makeStageLightGfx(): StageLightGfx {
 
   root.__beam = beam;
   root.__lens = lens;
-  root.addChild(glow, beam, body, lens);
+  root.addChild(beam, body, lens);
   return root;
 }
 
