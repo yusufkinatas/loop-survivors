@@ -17,8 +17,8 @@ import { META_WEAPONS } from './meta';
 import type { MetaStore, RunSettlement } from './meta';
 
 import { WEAPON_MAX_LEVEL } from './weapons/levels';
-/** Tier numerals used by the band rack. */
-export const TIER_NUMERALS = ['I', 'II', 'III', 'IV'];
+/** Tier numerals used by the band rack. One per weapon level. */
+export const TIER_NUMERALS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
 
 export interface DebugAction {
   label: string;
@@ -209,7 +209,7 @@ export class Hud {
     into.replaceChildren();
     const owned = [...tiers.keys()];
     // A run can never exceed the cap, so this is always exactly weaponCap
-    // sockets there. The sandbox bypasses the cap on purpose (FULL BAND IV
+    // sockets there. The sandbox bypasses the cap on purpose (FULL BAND VIII
     // loads the whole catalog); growing rather than truncating keeps the rack
     // from hiding weapons that are audibly playing.
     const socketCount = Math.max(BUILD.weaponCap, owned.length);

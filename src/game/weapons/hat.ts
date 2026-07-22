@@ -42,7 +42,7 @@ interface HatStats extends WeaponStats {
    *  at the spawn site. */
   readonly laneDamageMul: number;
   /** Chip speed and lifetime relative to the tier block. Together they are the
-   *  lane's reach: at tier 4 that is 480 x 1.5 x 0.95 x 2.0 = 1368 units, well
+   *  lane's reach: at level 8 that is 480 x 1.5 x 0.95 x 2.0 = 1368 units, well
    *  past the arena rails, which the chips bounce off exactly like any other
    *  projectile (see the note on `laneStagger` about Mirrorball). */
   readonly laneSpeedMul: number;
@@ -93,17 +93,26 @@ const HAT_STATS: HatStats = {
   // scatter — the player aims by steering. Density IS the ladder; per-trigger
   // damage barely moves (the chart carries the growth). The pierce ladder pays
   // for losing auto-aim: a straight line has to be worth walking down.
+  // Radius stays 3 at every level: the chip is the chip.
   tiers: [
     { damage: 2, speed: 440, radius: 3, lifetimeS: 0.8, pierce: 2 },
-    { damage: 2, speed: 450, radius: 3, lifetimeS: 0.85, pierce: 2 },
-    { damage: 2, speed: 460, radius: 3, lifetimeS: 0.9, pierce: 3 },
+    { damage: 2, speed: 440, radius: 3, lifetimeS: 0.8, pierce: 3 },
+    { damage: 2.5, speed: 440, radius: 3, lifetimeS: 0.8, pierce: 3 },
+    { damage: 2.5, speed: 450, radius: 3, lifetimeS: 0.85, pierce: 3 },
+    { damage: 2.5, speed: 450, radius: 3, lifetimeS: 0.9, pierce: 3 },
+    { damage: 2.5, speed: 450, radius: 3, lifetimeS: 0.95, pierce: 4 },
+    { damage: 2.5, speed: 460, radius: 3, lifetimeS: 0.95, pierce: 4 },
     { damage: 3, speed: 480, radius: 3, lifetimeS: 0.95, pierce: 4 },
   ],
   tierLines: [
-    'fast chips along your path',
-    'twice the chips',
-    'denser stream',
-    'a wall of chips',
+    'chips down the walk heading',
+    'pierces 1 more',
+    'damage up',
+    'faster, flies longer',
+    'flies longer',
+    'pierces 1 more, flies longer',
+    'faster',
+    'maximum damage, fastest',
   ],
 
   laneDamageMul: 1.30,

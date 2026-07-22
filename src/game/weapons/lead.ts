@@ -84,7 +84,7 @@ interface LeadStats extends WeaponStats {
   readonly superchargeDamageMul: number;
   /** Its radius is `max(superchargeRadiusFloor, radius * superchargeRadiusMul)`
    *  and BOTH HALVES ARE LIVE — this is not an unreachable floor like the
-   *  snare's. At tier 4 with no area build the floor bites (7 * 1.7 = 11.9, so
+   *  snare's. At level 8 with no area build the floor bites (7 * 1.7 = 11.9, so
    *  12 wins); with Wide Lens it does not (9.1 * 1.7 = 15.47). Drop either half
    *  and one of the two real builds still looks correct. */
   readonly superchargeRadiusFloor: number;
@@ -97,15 +97,23 @@ const LEAD_STATS: LeadStats = {
   // the top rung.
   tiers: [
     { damage: 2, speed: 340, radius: 6, lifetimeS: 2.2, pierce: 1 },
+    { damage: 2.5, speed: 340, radius: 6, lifetimeS: 2.2, pierce: 1 },
     { damage: 3, speed: 350, radius: 6, lifetimeS: 2.2, pierce: 1 },
     { damage: 3, speed: 360, radius: 6, lifetimeS: 2.3, pierce: 1 },
+    { damage: 3, speed: 360, radius: 7, lifetimeS: 2.3, pierce: 1 },
+    { damage: 3, speed: 360, radius: 7, lifetimeS: 2.3, pierce: 2 },
+    { damage: 3.5, speed: 380, radius: 7, lifetimeS: 2.3, pierce: 2 },
     { damage: 4, speed: 380, radius: 7, lifetimeS: 2.4, pierce: 2 },
   ],
   tierLines: [
-    'a few homing seekers',
-    'more seekers',
-    'the full melody of seekers',
-    'denser seekers that pierce',
+    'a seeker that hunts',
+    'damage up',
+    'damage up, faster',
+    'faster, flies longer',
+    'bigger bolt',
+    'pierces 1 more',
+    'damage up, fastest',
+    'maximum damage',
   ],
 
   aimSpread: 0.08,

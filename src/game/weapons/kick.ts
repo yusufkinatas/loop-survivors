@@ -42,18 +42,27 @@ interface KickStats extends WeaponStats {
 
 const KICK_STATS: KickStats = {
   // The starting Kick uses Whip's horizontal pass-through strip instead of a
-  // radial aura. Damage/area/amount map to Whip levels 1, 3, 5 and 8.
+  // radial aura. Eight levels on Whip's shape: the second strip arrives early
+  // at level 2, then damage in flat chunks with two area steps between.
   tiers: [
     { damage: 3, area: 1, amount: 1 },
+    { damage: 3, area: 1, amount: 2 },
     { damage: 5, area: 1, amount: 2 },
+    { damage: 7, area: 1.1, amount: 2 },
     { damage: 9, area: 1.1, amount: 2 },
+    { damage: 9, area: 1.2, amount: 2 },
+    { damage: 12, area: 1.2, amount: 2 },
     { damage: 15, area: 1.2, amount: 2 },
   ],
   tierLines: [
     'a facing-side strip, on the beat',
     'adds an opposite-side follow-up',
-    'harder, wider double strike',
-    'maximum damage and reach',
+    'damage up',
+    'wider, damage up',
+    'damage up',
+    'wider',
+    'damage up',
+    'maximum damage',
   ],
 
   stripBaseWidth: 85 * WORLD_SCALE,

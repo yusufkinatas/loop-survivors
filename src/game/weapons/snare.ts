@@ -86,15 +86,23 @@ const SNARE_STATS: SnareStats = {
   // ladder is a PIERCE ladder as much as a damage one.
   tiers: [
     { damage: 5, speed: 650, radius: 7, lifetimeS: 1.4, pierce: 2 },
+    { damage: 5, speed: 650, radius: 7, lifetimeS: 1.4, pierce: 3 },
     { damage: 7, speed: 650, radius: 7, lifetimeS: 1.4, pierce: 3 },
+    { damage: 7, speed: 680, radius: 8, lifetimeS: 1.4, pierce: 4 },
     { damage: 9, speed: 680, radius: 8, lifetimeS: 1.5, pierce: 4 },
+    { damage: 9, speed: 680, radius: 8, lifetimeS: 1.5, pierce: 5 },
+    { damage: 11, speed: 720, radius: 8, lifetimeS: 1.5, pierce: 5 },
     { damage: 13, speed: 720, radius: 8, lifetimeS: 1.5, pierce: 6 },
   ],
   tierLines: [
-    'piercing shot on the backbeat',
-    'fires twice as often, pierces 1 more',
-    'adds weak ghost shots, pierces 1 more',
-    'burst of shots every 4th bar',
+    'a piercing shot at the nearest enemy',
+    'pierces 1 more enemy',
+    'damage up',
+    'pierces 1 more, faster shot',
+    'damage up, flies longer',
+    'pierces 1 more enemy',
+    'damage up, fastest shot',
+    'maximum damage, deepest pierce',
   ],
 
   aimSpread: 0.08,
