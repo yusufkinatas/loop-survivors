@@ -83,15 +83,23 @@ const ARP_STATS: ArpStats = {
   // Each trigger adds one orbiter; a melody makes a ring.
   tiers: [
     { damage: 2, radius: 8, lifetimeS: 2.0, orbitRadius: 80 },
+    { damage: 2, radius: 8, lifetimeS: 2.4, orbitRadius: 80 },
     { damage: 2, radius: 8, lifetimeS: 2.4, orbitRadius: 92 },
-    { damage: 2, radius: 9, lifetimeS: 2.8, orbitRadius: 106 },
+    { damage: 2.5, radius: 8, lifetimeS: 2.4, orbitRadius: 92 },
+    { damage: 2.5, radius: 9, lifetimeS: 2.8, orbitRadius: 92 },
+    { damage: 2.5, radius: 9, lifetimeS: 2.8, orbitRadius: 106 },
+    { damage: 2.5, radius: 9, lifetimeS: 3.2, orbitRadius: 122 },
     { damage: 3, radius: 10, lifetimeS: 3.2, orbitRadius: 122 },
   ],
   tierLines: [
-    'orbiting notes circle you',
-    'the orbit lasts longer',
-    'a wider, longer orbit',
-    'a dense ring of orbiters',
+    'orbiters sweep the ring',
+    'orbits last longer',
+    'wider ring',
+    'damage up',
+    'bigger orbiters, last longer',
+    'wider ring',
+    'widest ring, last longest',
+    'maximum damage, biggest orbiters',
   ],
 
   rehitS: 0.35,

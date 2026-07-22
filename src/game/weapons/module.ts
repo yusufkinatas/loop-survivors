@@ -6,6 +6,7 @@ import type { Role } from '../../audio/kits';
 import type { WeaponConf } from '../config';
 import type { Projectile } from '../run';
 import type { WeaponContext, WeaponTarget } from './context';
+import type { PerWeaponLevel } from './levels';
 
 /** The world's fixed damage-pass sequence, in frame order. This is the ordering
  *  vocabulary a module pins itself to; the actual sequence lives as explicit
@@ -19,16 +20,16 @@ export type TickPhase = (typeof TICK_PHASES)[number];
 
 /** The world-independent half of a weapon's identity: numbers only, no state. */
 export interface WeaponStats {
-  /** Per-trigger gameplay effect, indexed [tier - 1]. Exactly TIER_COUNT (4)
-   *  entries — a tuple, so a short ladder is a type error. Still shaped as
+  /** Per-trigger gameplay effect, indexed [level - 1]. One entry per weapon
+   *  level — a tuple, so a short ladder is a type error. Still shaped as
    *  WeaponConf because the world's single build transform reads it
    *  generically: the module owns the TABLE, the world owns the TRANSFORM. */
-  readonly tiers: readonly [WeaponConf, WeaponConf, WeaponConf, WeaponConf];
-  /** Pedestal copy, indexed [tier - 1]. Relocated verbatim from config's
+  readonly tiers: PerWeaponLevel<WeaponConf>;
+  /** Pedestal copy, indexed [level - 1]. Relocated verbatim from config's
    *  TIER_LINES (since deleted, along with the empty fallback it fed). Has NO
    *  reader anywhere in src/ — owning it here must not "helpfully" wire it
    *  into the pedestal. */
-  readonly tierLines: readonly [string, string, string, string];
+  readonly tierLines: PerWeaponLevel<string>;
 }
 
 export interface ProjectileBehavior {

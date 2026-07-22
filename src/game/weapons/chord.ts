@@ -115,15 +115,23 @@ const CHORD_STATS: ChordStats = {
   // one area teleporting around.
   tiers: [
     { damage: 1, radius: 48, lifetimeS: 2.0 },
+    { damage: 1, radius: 56, lifetimeS: 2.0 },
     { damage: 1, radius: 56, lifetimeS: 2.2 },
-    { damage: 1, radius: 64, lifetimeS: 2.5 },
+    { damage: 1.5, radius: 56, lifetimeS: 2.2 },
+    { damage: 1.5, radius: 64, lifetimeS: 2.5 },
+    { damage: 1.5, radius: 70, lifetimeS: 2.5 },
+    { damage: 1.5, radius: 70, lifetimeS: 2.8 },
     { damage: 2, radius: 76, lifetimeS: 2.8 },
   ],
   tierLines: [
-    'zone on a random nearby enemy: damage + slow',
-    'zones twice as often',
-    'bigger, longer zones',
-    'the biggest, longest, hardest zones',
+    'a zone thrown onto the pack',
+    'bigger zone',
+    'lingers longer',
+    'damage up',
+    'bigger zone, lingers longer',
+    'bigger zone',
+    'lingers longest',
+    'maximum damage, biggest zone',
   ],
 
   throwRange: 420,
@@ -160,7 +168,7 @@ class ChordInstance implements WeaponInstance {
     const evolved = ctx.evolved;
     const target = this.pickTarget(ctx);
     // Damage and lifetime stack ON TOP of the build pipeline: `conf` already
-    // carries powerMul/damageMul in `damage` and Encore's lifetime bonus in
+    // carries powerMul/damageMul in `damage` and the build's duration bonus in
     // `lifetimeS`. A module must not re-apply any of that.
     const damage = conf.damage * (evolved ? CHORD_STATS.afterhoursDamageMul : 1);
     // RADIUS IS THE ONE EXCEPTION, and the only place a module ignores what the

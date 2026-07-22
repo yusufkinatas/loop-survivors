@@ -23,6 +23,16 @@ export interface WeaponTarget {
    *  takes the fallback. */
   readonly lastMoveX: number;
   readonly lastMoveY: number;
+  /** Set only on a Stage Light — scenery a hitbox may damage but NO WEAPON MAY
+   *  TARGET (player-power-spec §6c). Absent on every enemy, which is what makes
+   *  `if (target.prop)` the whole discriminant.
+   *
+   *  A module has no reason to read it: props arrive through the same near()
+   *  as bodies, take the same ctx.damage(), and the world already declines the
+   *  effects that would move one. It is on this interface because the world's
+   *  side of the seam has to route on something, and a field a module CAN see
+   *  is honest where a hidden brand would not be. */
+  readonly prop?: true;
 }
 
 /** Read-only player state. Modules never move the player. */
@@ -58,7 +68,7 @@ export interface WeaponContext {
    *  size and aspect ratio. */
   readonly worldW: number;
   readonly worldH: number;
-  /** Derived passive + encore multipliers, for the numbers applyBuild does not
+  /** Derived passive multipliers, for the numbers applyBuild does not
    *  reach. Redline Stomp reads knockbackMul; the base strip's knock
    *  deliberately does not. ALLOCATES A NEW OBJECT PER ACCESS
    *  (deriveBuildMods) — read it once per fire, never per enemy. */
@@ -122,7 +132,15 @@ export interface WeaponContext {
    *  Returns a scratch buffer owned by THIS context, valid only until the next
    *  near() call on this context. Per-context buffers mean one weapon can never
    *  corrupt another's iteration; a module that calls near() twice with the
-   *  first result still live still corrupts itself. */
+   *  first result still live still corrupts itself.
+   *
+   *  INCLUDES STAGE LIGHTS, appended AFTER the bodies (player-power-spec §6c).
+   *  That is the whole of how incidental prop damage works: a hit pass that
+   *  already walks near() and runs its own shape test chips a light for free,
+   *  with no prop-specific code in the module and no risk of a weapon aiming at
+   *  one, because aiming happens through nearestEnemies and never through here.
+   *  Bodies keep hash order and props draw no rng, so nothing about a weapon's
+   *  kill order or draw count moves when a light is standing in the crowd. */
   near(x: number, y: number, radius: number): readonly WeaponTarget[];
 
   /** The `count` closest LIVE enemies inside `range` of the player, NEAREST
@@ -164,8 +182,26 @@ export interface WeaponContext {
    *  Live is load-bearing: pushEnemy appends, and a JS array iterator re-reads
    *  length, so Redline Stomp's `for..of` visits anything appended mid-pass. A
    *  defensive `[...this.enemies]` would delete those hits and every rng draw
-   *  behind them. */
+   *  behind them.
+   *
+   *  BODIES ONLY, and that is why props() exists next to it: widening this to
+   *  a concatenation would have to build a new array, which would cost exactly
+   *  the mid-pass liveness the paragraph above calls load-bearing. */
   all(): readonly WeaponTarget[];
+
+  /** Every live Stage Light, by reference — the world's array, at most ten
+   *  entries, oldest first. NOT A TARGET QUERY: it is unfiltered scenery, the
+   *  caller still runs its own shape test, and nothing here may be aimed at.
+   *
+   *  FOR SWEEPS THAT WALK all() ONLY — Railshot, Subquake, Redline Stomp. Every
+   *  other hit pass finds props through near(), which already appends them, so
+   *  a weapon that calls near() must NOT call this as well or it would chip
+   *  each light twice.
+   *
+   *  A broken light reports `dead` for the rest of the frame and leaves the
+   *  array on the next one, so this walks exactly like all() does: check
+   *  `dead`, never assume removal. */
+  props(): readonly WeaponTarget[];
 
   // ---------------- effects out ----------------
 
@@ -176,7 +212,12 @@ export interface WeaponContext {
    *  stood. The world sink keeps owning the 'dmg' fx, dummy absorb-and-refill,
    *  Math.min(hp, amount) effective-damage attribution,
    *  damageByRole/killsByRole, the 'death' fx, and gem/note/magnet/chest
-   *  drops. None of that moves. */
+   *  drops. None of that moves.
+   *
+   *  A STAGE LIGHT IS THE ONE THING THIS BEHAVES DIFFERENTLY FOR, and the
+   *  module still cannot tell: the world routes a prop to its own chip-and-
+   *  break path, which scores nothing, credits nothing and drops the light's
+   *  own pickup rather than an enemy's. Same call, same statement position. */
   damage(target: WeaponTarget, amount: number): void;
 
   /** Radial push away from a point (RunWorld.shove). Scales `dist` by the

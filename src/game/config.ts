@@ -74,10 +74,15 @@ export const NOTE_CUE = {
  * Weapon slots are numbered by ACQUISITION ORDER — the first weapon hired is
  * slot 1 — which is why RunWorld.tiers is a Map and is only ever appended to.
  * Reordering it would renumber the rack and the number-key toggles underneath
- * the player mid-run. */
+ * the player mid-run.
+ *
+ * The two counts are deliberately unequal and must stay independent: passives
+ * are pure stats, so a sixth one only lengthens the build, while a sixth weapon
+ * would be a sixth concurrent voice in the mix. Build-as-track outranks
+ * verbatim parity, so the passive cap moved to 6 and the weapon cap did not. */
 export const BUILD = {
   weaponCap: 5,
-  itemCap: 5,
+  itemCap: 6,
 } as const;
 
 /** How a gem or note travels once it has committed to flying at the player.
@@ -97,38 +102,120 @@ export const PICKUP_PULL = {
   rushRampTime: 0.09,
 } as const;
 
-/** Rare one-use arena pickup. This is deliberately separate from Magnet
- * Lanyard, the passive item that increases ordinary pickup reach. */
+/** The Stage Light: a destructible prop — a toppled follow-spot The Hush has
+ * not consumed, glowing warm amber (player-power-spec §6a-6c). The game has no
+ * Luck stat, so every number here is the spec's already collapsed at
+ * `totalLuck ≡ 1.0`; there is no formula left to feed. */
+export const STAGE_LIGHT = {
+  /** Seconds between spawn attempts. */
+  attemptS: 1,
+  /** Flat chance one attempt lands a light. */
+  chance: 0.1,
+  /** Most that may be alive at once. A successful attempt AT the cap still
+   * spawns — closest to the player — and retires the OLDEST light to make
+   * room. That retirement is a despawn, not a break: no spark, no drop. */
+  maxAlive: 10,
+  hp: 10,
+  /** Damage footprint. A light collides with nothing, so this is only what a
+   * weapon hitbox has to overlap to chip it. */
+  radius: 15,
+  /** Inner edge of the spawn oval, as a multiple of the view's half extents.
+   * √2 is the SMALLEST oval that clears the whole screen — it passes exactly
+   * through the four corners — so a hair above it is "barely off-screen" for
+   * an oval, the way a plain circle of half the larger dimension is not. */
+  spawnFrac: 1.45,
+  /** How much further out an ordinary spawn may land, same units, so the ring
+   * is a band rather than a line. A spawn at the cap skips this entirely and
+   * lands on the inner edge — the closest an off-screen spawn can be. */
+  spawnBandFrac: 0.2,
+  /** How many points around the oval count as possible spawn locations. Below
+   * the cap the angle is simply random and this is unused; AT the cap the
+   * source picks "a location closest to the player" out of its candidates, and
+   * this is that candidate set. An oval is nearest the player on its SHORT
+   * axis, so a finer ring means a tighter, less varied at-cap choice — 24
+   * leaves the pick wandering about ±7 degrees. */
+  spawnPoints: 24,
+  /** The locked color anchor: warm amber against the Hush's cold static
+   * palette. Spelled as a literal for the same reason VICTORY.sweepColor is —
+   * run.ts is pure simulation and cannot reach the renderer's palette — and it
+   * is `SOUNDWOOD.amber` to the digit, which the view relies on. */
+  color: 0xffd56a,
+  /** The break's ONLY feedback: a spark burst. Breaking a light is silent —
+   * pillar 1, only weapons make sounds. */
+  sparkCount: 16,
+  sparkSpread: 34,
+  /** Seconds of hit flash on a chip that does not break it. Matches the
+   * enemy flash so a light reads as taking the same hit. */
+  flashS: 0.08,
+} as const;
+
+/** One row of the Stage Light drop table. */
+interface StageLightDrop {
+  /** Which pickup the row pays out. */
+  readonly drop: 'note' | 'firstAid' | 'magnet';
+  /** Bundle size, read only for `drop: 'note'`. */
+  readonly notes?: number;
+  /** Share of the pool, relative to the other rows in it. */
+  readonly weight: number;
+  /** Player level below which the row is not in the pool AT ALL. It does not
+   * roll and lose; it is absent, and the rows that remain renormalize. */
+  readonly minLevel: number;
+}
+
+/** What a broken Stage Light pays (player-power-spec §6d). Exactly one row is
+ * rolled per break and there is no "nothing" row, so every light drops
+ * something — the table IS the guarantee, and no pity counter backs it up.
+ *
+ * The weights are fixed. The game has no Luck stat, so every VS weight formula
+ * collapses at `totalLuck ≡ 1.0`; these are the collapsed constants, with no
+ * formula left to feed.
+ *
+ * Because the two rare rows are gated out early, the pool changes shape twice
+ * across a run: at level 0 it is the three ungated rows renormalized over 72
+ * (~69% note, ~17% First Aid, ~14% bundle), the ×100 jackpot joins at level 5,
+ * and the Stage Magnet at level 12. */
+export const STAGE_LIGHT_DROPS: readonly StageLightDrop[] = [
+  { drop: 'note', notes: 1, weight: 50, minLevel: 0 },
+  { drop: 'firstAid', weight: 12, minLevel: 0 },
+  { drop: 'note', notes: 10, weight: 10, minLevel: 0 },
+  { drop: 'magnet', weight: 2, minLevel: 12 },
+  { drop: 'note', notes: 100, weight: 1, minLevel: 5 },
+];
+
+/** Rare one-use arena pickup, dropped by the Stage Light table above and by
+ * nothing else. This is deliberately separate from Magnet Lanyard, the passive
+ * item that increases ordinary pickup reach. */
 export const STAGE_MAGNET = {
-  /** Per eligible enemy kill: rare in a horde, but visible in a healthy run.
-   * A flat probability and nothing else — no cooldown, no cap on how many may
-   * wait on the floor, no expiry. A lucky streak is allowed to be lucky. */
-  dropChance: 0.0012,
-  /** Bad-luck protection. The next eligible kill drops one at this count. */
-  pityKills: 700,
   pickupRadius: 28,
   /** Marked gems and notes cross a full viewport in well under a second. */
   vacuumSpeed: 1800,
 } as const;
 
-/** Rare floor heal. Every other heal in the game is attached to a decision
+/** The First Aid: a floor heal, dropped by the Stage Light table above and
+ * offered by the Encore. Every other heal in the game is attached to a decision
  * moment (the level-up pick, the chest fallback, Padded Jacket's on-acquire
- * top-up); this one rewards clearing the arena instead, and costs the player
- * no upgrade.
+ * top-up); this one rewards breaking lights instead, and costs the player no
+ * upgrade.
  *
- * A flat probability per eligible kill and nothing else: no cooldown, no cap
- * on how many may sit on the floor, no expiry, and no suppression when the
- * player is already healthy. Getting three in a row is allowed — that is what
- * a fixed drop rate means. The player decides whether a heal is worth walking
- * to, including deciding to leave it for later. */
+ * Nothing else conditions it: no cap on how many may sit on the floor, no
+ * expiry, and no suppression when the player is already healthy. Three in a
+ * row is allowed. The player decides whether a heal is worth walking to,
+ * including deciding to leave it for later. */
 export const HEALTH_PICKUP = {
-  /** Per eligible enemy kill. Matches STAGE_MAGNET's rate. */
-  dropChance: 0.0012,
   /** Fraction of the player's MAXIMUM health restored, so the heal keeps pace
    * with Padded Jacket instead of shrinking against a raised ceiling.
    * Overheal is not the caller's problem — RunWorld.healPlayer clamps. */
   healFraction: 0.2,
   pickupRadius: 28,
+} as const;
+
+/** The Encore: what a maxed build's level-up pays. Only the Tip Jar needs a
+ * number of its own — the other card is a First Aid, HEALTH_PICKUP.healFraction
+ * and all, because it is deliberately the same heal the floor drop gives. */
+export const ENCORE = {
+  /** Granted instantly on pick, with no pickup to walk to and no multiplier.
+   * Also what one leftover chest hit on a maxed build converts to. */
+  tipJarNotes: 25,
 } as const;
 
 /** Player take-damage feedback, shared by every arena (normal run, sandbox,

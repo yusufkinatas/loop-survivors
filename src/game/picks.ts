@@ -1,8 +1,8 @@
 // The level-up economy's one source of truth. A configured roll mixes weapon
 // hires/upgrades with passive items until the build fills its two flat caps
 // (BUILD.weaponCap / BUILD.itemCap). Once that finite build is complete, the
-// same API rolls a small capped set of run-only Encore bonuses so a long run
-// keeps paying out.
+// same API returns the Encore: a fixed pair of offers that pay a long run out
+// without ever adding to the build.
 //
 // There are no weapon categories: any weapon may be offered alongside any
 // other, and hiring one never retires another from the pool. The only thing
@@ -12,7 +12,6 @@
 // catalog order and weighted draws use a stable index tie-break, so a seeded
 // run receives identical offers on every platform.
 
-import { TIER_COUNT } from '../audio/charts';
 import { soundsetSupports } from '../audio/soundset';
 import { ROLES, type Role } from '../audio/kits';
 import { BUILD } from './config';
@@ -22,6 +21,7 @@ import {
   itemLevel,
   type ItemId,
 } from './items';
+import { WEAPON_MAX_LEVEL } from './weapons/levels';
 import type { Rng } from './rng';
 
 const OFFER_COUNT = 3;
@@ -43,16 +43,13 @@ interface ItemPickOption {
   tier: number;
 }
 
-const ENCORE_IDS = ['heal', 'damage', 'move', 'area'] as const;
+/** The Encore's fixed pair, in screen order. Never rolled, never weighted. */
+const ENCORE_IDS = ['firstAid', 'tipJar'] as const;
 type EncoreId = (typeof ENCORE_IDS)[number];
 
 interface EncorePickOption {
   kind: 'encore';
   encore: EncoreId;
-  /** Heal amount or percentage-point increase to the run-only bonus. */
-  amount: number;
-  /** null for the repeatable heal; percentage-point ceiling otherwise. */
-  cap: number | null;
 }
 
 type PickKind = 'weapon' | 'item' | 'encore';
@@ -73,19 +70,6 @@ type PickOption<K extends PickKind = 'weapon'> =
 
 export type AnyPickOption = PickOption<PickKind>;
 
-/** Current run-only Encore bonuses, stored as percentage points. */
-interface EncoreProgress {
-  damagePct: number;
-  movePct: number;
-  areaPct: number;
-}
-
-const EMPTY_ENCORE_PROGRESS: Readonly<EncoreProgress> = {
-  damagePct: 0,
-  movePct: 0,
-  areaPct: 0,
-};
-
 export interface RollOffersInput {
   tiers: ReadonlyMap<Role, number>;
   items: ReadonlyMap<ItemId, number>;
@@ -94,7 +78,6 @@ export interface RollOffersInput {
   rng: Rng;
   timeS: number;
   level: number;
-  encore?: Readonly<EncoreProgress>;
 }
 
 type BuildPickOption = WeaponPickOption | ItemPickOption;
@@ -158,11 +141,11 @@ function buildFinitePool(input: RollOffersInput): WeightedOption<BuildPickOption
     // no longer lists it as unlocked. New hires require both meta unlock and
     // soundset support.
     if (!soundsetSupports(role)) continue;
-    const tier = Math.max(0, Math.min(TIER_COUNT, Math.floor(input.tiers.get(role) ?? 0)));
+    const tier = Math.max(0, Math.min(WEAPON_MAX_LEVEL, Math.floor(input.tiers.get(role) ?? 0)));
     if (tier === 0) {
       if (weaponSlotsFull || !input.unlockedRoles.has(role)) continue;
       pool.push({ option: { kind: 'weapon', role, tier: 1 }, weight: weaponWeight(role, input.timeS) });
-    } else if (tier < TIER_COUNT) {
+    } else if (tier < WEAPON_MAX_LEVEL) {
       pool.push({
         option: { kind: 'weapon', role, tier: tier + 1 },
         weight: weaponWeight(role, input.timeS),
@@ -234,65 +217,20 @@ function selectFiniteOffers(
   return selected.slice(0, OFFER_COUNT).map(({ option }) => option);
 }
 
-const ENCORE_STEPS = {
-  damage: { amount: 2, cap: 20 },
-  move: { amount: 2, cap: 10 },
-  area: { amount: 3, cap: 15 },
-} as const;
-
-function safeProgress(value: number): number {
-  return Number.isFinite(value) ? Math.max(0, value) : 0;
-}
-
-function buildEncorePool(progress: Readonly<EncoreProgress>): WeightedOption<EncorePickOption>[] {
-  const pool: WeightedOption<EncorePickOption>[] = [
-    { option: { kind: 'encore', encore: 'heal', amount: 15, cap: null }, weight: 1 },
-  ];
-  const values = {
-    damage: safeProgress(progress.damagePct),
-    move: safeProgress(progress.movePct),
-    area: safeProgress(progress.areaPct),
-  } as const;
-
-  for (const encore of ['damage', 'move', 'area'] as const) {
-    const { amount, cap } = ENCORE_STEPS[encore];
-    const remaining = cap - values[encore];
-    if (remaining <= 0) continue;
-    pool.push({
-      option: {
-        kind: 'encore',
-        encore,
-        amount: Math.min(amount, remaining),
-        cap,
-      },
-      weight: 1,
-    });
-  }
-  return pool;
-}
-
-function rollEncoreOffers(
-  progress: Readonly<EncoreProgress>,
-  rng: Rng,
-): EncorePickOption[] {
-  const ranked = rankOptions(buildEncorePool(progress), rng);
-  // Healing remains an option even after every bounded stat reaches its cap.
-  // Reserve it just like the early forced item, then retain weighted ordering.
-  const heal = ranked.find((candidate) => candidate.option.encore === 'heal')!;
-  const selected = [heal];
-  for (const candidate of ranked) {
-    if (selected.length >= OFFER_COUNT) break;
-    if (candidate !== heal) selected.push(candidate);
-  }
-  selected.sort((a, b) => b.key - a.key || a.index - b.index);
-  return selected.map(({ option }) => option);
+/**
+ * The Encore: with the finite pool empty there is nothing left to improve, so
+ * the screen is the same two cards every time — a First Aid or a Tip Jar. No
+ * weighting, no draw, and deliberately no RNG call: an Encore must not shift a
+ * seeded run's later rolls. Two cards, not OFFER_COUNT — heal-vs-notes is the
+ * whole decision a maxed build has left.
+ */
+function encoreOffers(): EncorePickOption[] {
+  return ENCORE_IDS.map((encore) => ({ kind: 'encore', encore }));
 }
 
 function rollConfiguredOffers(input: RollOffersInput): AnyPickOption[] {
   const pool = buildFinitePool(input);
-  if (pool.length === 0) {
-    return rollEncoreOffers(input.encore ?? EMPTY_ENCORE_PROGRESS, input.rng);
-  }
+  if (pool.length === 0) return encoreOffers();
   const forceItem =
     Math.floor(input.level) >= FORCED_ITEM_LEVEL &&
     ownedItemCount(input.items) < FORCED_ITEM_UNTIL_OWNED &&
@@ -326,7 +264,7 @@ export function rollStartingWeapons(input: RollStartingWeaponsInput): WeaponPick
   for (const role of ROLES) {
     if (!soundsetSupports(role)) continue;
     if (!input.unlockedRoles.has(role)) continue;
-    const tier = Math.max(0, Math.min(TIER_COUNT, Math.floor(input.tiers.get(role) ?? 0)));
+    const tier = Math.max(0, Math.min(WEAPON_MAX_LEVEL, Math.floor(input.tiers.get(role) ?? 0)));
     if (tier !== 0) continue;
     pool.push({
       option: { kind: 'weapon', role, tier: 1 },

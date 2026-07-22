@@ -86,15 +86,23 @@ const SNARE_STATS: SnareStats = {
   // ladder is a PIERCE ladder as much as a damage one.
   tiers: [
     { damage: 5, speed: 650, radius: 7, lifetimeS: 1.4, pierce: 2 },
+    { damage: 5, speed: 650, radius: 7, lifetimeS: 1.4, pierce: 3 },
     { damage: 7, speed: 650, radius: 7, lifetimeS: 1.4, pierce: 3 },
+    { damage: 7, speed: 680, radius: 8, lifetimeS: 1.4, pierce: 4 },
     { damage: 9, speed: 680, radius: 8, lifetimeS: 1.5, pierce: 4 },
+    { damage: 9, speed: 680, radius: 8, lifetimeS: 1.5, pierce: 5 },
+    { damage: 11, speed: 720, radius: 8, lifetimeS: 1.5, pierce: 5 },
     { damage: 13, speed: 720, radius: 8, lifetimeS: 1.5, pierce: 6 },
   ],
   tierLines: [
-    'piercing shot on the backbeat',
-    'fires twice as often, pierces 1 more',
-    'adds weak ghost shots, pierces 1 more',
-    'burst of shots every 4th bar',
+    'a piercing shot at the nearest enemy',
+    'pierces 1 more enemy',
+    'damage up',
+    'pierces 1 more, faster shot',
+    'damage up, flies longer',
+    'pierces 1 more enemy',
+    'damage up, fastest shot',
+    'maximum damage, deepest pierce',
   ],
 
   aimSpread: 0.08,
@@ -129,7 +137,11 @@ const SNARE_STATS: SnareStats = {
  *  substitute. This is why the snare needs `all()` at all, despite hitting a
  *  bounded corridor that a hash query would cover.
  *
- *  Note what is NOT here: any pierce budget. A rail stops for nothing. */
+ *  Note what is NOT here: any pierce budget. A rail stops for nothing — not for
+ *  a body, and not for a Stage Light either: the corridor is swept a second
+ *  time over `ctx.props()`, so a rail chips every light standing in it
+ *  incidentally and keeps going. Bodies first, always: they own the rng stream
+ *  and props draw nothing. */
 function damageLine(
   ctx: WeaponContext,
   x: number,
@@ -155,6 +167,22 @@ function damageLine(
     }
     ctx.damage(enemy, damage);
     if (shove > 0) ctx.shove(enemy, x, y, shove);
+  }
+  // The same corridor over the props. No shove: a light is not going anywhere.
+  for (const light of ctx.props()) {
+    if (light.dead) continue;
+    const px = light.x - x;
+    const py = light.y - y;
+    const along = px * dir.x + py * dir.y;
+    const across = Math.abs(px * -dir.y + py * dir.x);
+    if (
+      along < -light.radius ||
+      along > length + light.radius ||
+      across > halfWidth + light.radius
+    ) {
+      continue;
+    }
+    ctx.damage(light, damage);
   }
 }
 
