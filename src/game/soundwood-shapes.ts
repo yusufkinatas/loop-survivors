@@ -1,8 +1,10 @@
 // Cached pixel geometry for the Midnight Neon Soundwood world renderer.
 // High-count entities remain one Graphics each and share GraphicsContexts.
 
-import { Container, Graphics, GraphicsContext, Text, TextStyle } from 'pixi.js';
+import { Container, Graphics, GraphicsContext, Sprite, Text, TextStyle } from 'pixi.js';
 import { ROLE_COLORS, type Role } from '../audio/kits';
+import { ENEMIES, WORLD_SCALE } from './config';
+import { playerLoop, type SpriteLoop } from './pixelart';
 import type { Enemy, Gem, HealthPickup, MusicNotePickup, Projectile, StageMagnetPickup, Zone } from './run';
 import { SOUNDWOOD, hash2, regularPixelPoly, snap } from './soundwood-art';
 import { drawWeaponIcon } from './weaponicons';
@@ -382,6 +384,66 @@ export function makeEnemyGfx(e: Enemy, frame: number): EnemyGfx {
   return gfx;
 }
 
+/** A generated-art enemy body: the loop frame, plus a white silhouette of the
+ *  same frame held at zero alpha until the enemy is hit. */
+export interface SpriteEnemyGfx extends Container {
+  /** Discriminates the two enemy bodies without a kind lookup per frame. */
+  __sprite: true;
+  __body: Sprite;
+  __flash: Sprite;
+  __loop: SpriteLoop;
+  __frame: number;
+  /** Uniform draw scale. Held because the facing mirror negates it rather
+   *  than assuming 1, the way the drawn silhouettes can. */
+  __scale: number;
+  /** The radius this scale was derived from, so the enemy lab's live resize
+   *  rescales the sprite the way it re-draws a silhouette. */
+  __radius: number;
+}
+
+export function isSpriteEnemyGfx(gfx: EnemyGfx | SpriteEnemyGfx): gfx is SpriteEnemyGfx {
+  return (gfx as SpriteEnemyGfx).__sprite === true;
+}
+
+/** One art pixel is one source-frame pixel, and one source pixel is
+ *  `WORLD_SCALE` world units: the same conversion `legacyEnemyRadius` uses for
+ *  the hitbox, so art and numbers stay in the one scale (#212). `sizeMul` and
+ *  the enemy lab both move `radius`, so scale rides on the ratio. */
+function spriteEnemyScale(e: Enemy): number {
+  const base = ENEMIES[e.kind].radius;
+  return WORLD_SCALE * (base > 0 ? e.radius / base : 1);
+}
+
+export function makeSpriteEnemyGfx(e: Enemy, loop: SpriteLoop, frame: number): SpriteEnemyGfx {
+  const root = new Container() as SpriteEnemyGfx;
+  const body = new Sprite({ texture: loop.frames[frame], anchor: 0.5, roundPixels: true });
+  const flash = new Sprite({ texture: loop.flash[frame], anchor: 0.5, roundPixels: true, alpha: 0 });
+  root.__sprite = true;
+  root.__body = body;
+  root.__flash = flash;
+  root.__loop = loop;
+  root.__frame = frame;
+  root.__radius = e.radius;
+  root.__scale = spriteEnemyScale(e);
+  root.scale.set(root.__scale);
+  root.addChild(body, flash);
+  return root;
+}
+
+/** Swap in the loop frame and refresh the derived scale. Cheap enough to call
+ *  every rendered frame: both texture writes short-circuit when unchanged. */
+export function syncSpriteEnemyGfx(gfx: SpriteEnemyGfx, e: Enemy, frame: number): void {
+  if (gfx.__frame !== frame) {
+    gfx.__frame = frame;
+    gfx.__body.texture = gfx.__loop.frames[frame];
+    gfx.__flash.texture = gfx.__loop.flash[frame];
+  }
+  if (gfx.__radius !== e.radius) {
+    gfx.__radius = e.radius;
+    gfx.__scale = spriteEnemyScale(e);
+  }
+}
+
 function projectileContext(pr: Projectile, evolved: boolean): GraphicsContext {
   const r = Math.max(3, snap(pr.radius));
   return cachedPixelShape('shot:' + pr.role + ':' + r + ':' + (evolved ? 'e' : 'n'), (g) => {
@@ -674,7 +736,14 @@ export function makeHealthPickupGfx(pickup: HealthPickup): HealthPickupGfx {
 }
 
 export interface PlayerGfx extends Container {
-  __body: Graphics;
+  /** The drawn DJ, or the generated walk sprite once its art has loaded. */
+  __body: Container;
+  /** Non-null only when the generated art is in use; the renderer drives its
+   *  loop frame from whether the player is actually moving (#212). */
+  __walk: Sprite | null;
+  /** Draw scale of `__body`, which the facing mirror negates. The drawn body
+   *  is authored at world scale already, so it holds 1. */
+  __bodyScale: number;
   __halo: Graphics;
   __marker: Graphics;
 }
@@ -712,10 +781,20 @@ export function makePlayerGfx(radius: number): PlayerGfx {
   pixelDiamond(marker.context, 0, -r * 2.25, Math.max(5, r * 0.34), SOUNDWOOD.ink);
   pixelDiamond(marker.context, 0, -r * 2.32, Math.max(3, r * 0.23), SOUNDWOOD.cyanHot);
   box(marker.context, -1, -r * 1.88, 2, 5, SOUNDWOOD.cyanHot);
-  root.__body = body;
+
+  // The generated Midnight DJ replaces the drawn body and nothing else: the
+  // shadow, glow, halo and marker are findability, not art, so they stay.
+  const loop = playerLoop();
+  const walk = loop
+    ? new Sprite({ texture: loop.frames[0], anchor: 0.5, roundPixels: true })
+    : null;
+  root.__walk = walk;
+  root.__body = walk ?? body;
+  root.__bodyScale = walk ? WORLD_SCALE : 1;
+  root.__body.scale.set(root.__bodyScale);
   root.__halo = halo;
   root.__marker = marker;
-  root.addChild(shadow, glow, halo, body, marker);
+  root.addChild(shadow, glow, halo, root.__body, marker);
   return root;
 }
 
