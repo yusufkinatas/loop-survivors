@@ -1,5 +1,13 @@
 # Leveling-pace audit: why leveling runs faster than Vampire Survivors
 
+> **Read [`leveling-pace-recheck.md`](leveling-pace-recheck.md) next.** It is
+> the #213 post-rescale measurement, and it corrects two things here: the sim
+> harness had a chart-stage bug and a scripted build order that only held at 4
+> tiers (both fixed there, and the §2 baseline below re-derived with the fixed
+> harness — it reproduces), and the §6.6 "level-20 wall should land mid-run"
+> expectation turns out to be unreachable by any player-power lever. The
+> conclusions in §6 otherwise stand.
+
 Audit for issue #198 (part of #193). All measurements taken 2026-07-22 against
 commit `5adf261` (Mad Forest 30-minute parity) with the headless simulation
 harness in `leveling-pace-audit-sim.ts` (this directory) — the real
@@ -142,5 +150,8 @@ statement is "dramatically slower," not the specific final level.)
 ```
 npx tsx docs/research/leveling-pace-audit-sim.ts <damageScales> <seeds>
 # e.g.  npx tsx docs/research/leveling-pace-audit-sim.ts 1,0.5 1234,42,777
-# STRETCH=1 env var enables the VS-8-step-shape variant.
 ```
+
+The `STRETCH=1` variant of §5 is gone: it emulated the 8-level shape at 4-tier
+numbers, and the 8-level shape has since shipped (#226). The harness's build
+order is no longer a script either — see the re-check doc's §1.
