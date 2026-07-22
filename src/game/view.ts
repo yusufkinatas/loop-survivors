@@ -4,6 +4,7 @@
 import { Container, Graphics, Sprite, Text, TextStyle, type Texture } from 'pixi.js';
 import type { Role } from '../audio/kits';
 import { RUN, STAGE_LIGHT } from './config';
+import type { ItemId } from './items';
 import { KICK } from './weapons';
 import {
   PLAYER_FOOT_OFFSET,
@@ -78,22 +79,32 @@ export async function preloadRunArt(): Promise<void> {
   await preloadSoundwoodFloor();
 }
 
-interface GroundPickBase {
-  x: number;
-  y: number;
+interface GroundPickCopyBase {
   color: number;
   name: string;
-  level: string;
+  /** What this pedestal IS, not what level it makes: NEW / LEVEL UP / EVOLVE,
+   * or an Encore's payout (+N HP, +N ♫). Levels live in the toast the scoop
+   * prints and on the pause screen — a pedestal that named one could not stay
+   * truthful while its siblings are being scooped around it. */
+  badge: string;
   effect?: string;
-  /** Item picks only: the weapon this passive evolves, set on first pickup so
+  /** Item picks only: the weapon this passive evolves, set on the first copy so
    * the pedestal can show the recipe teaser. Passed straight to the pedestal. */
   evoRole?: Role;
+  /** The mirror, weapon picks only: the passive this weapon evolves with, set
+   * on the hire. Exactly one of evoRole / evoItem is ever present. */
+  evoItem?: ItemId;
 }
 
-export type GroundPickView = GroundPickBase & (
+/** Everything a pedestal says about itself, with no position: the shell
+ * recomputes this from live state after every scoop and pairs it back with the
+ * pedestal's fixed spot on the boards. */
+export type GroundPickCopy = GroundPickCopyBase & (
   | { role: Role; glyph?: never }
   | { role?: never; glyph: string }
 );
+
+export type GroundPickView = GroundPickCopy & { x: number; y: number };
 
 interface Pop {
   gfx: Graphics;
