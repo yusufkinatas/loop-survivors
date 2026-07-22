@@ -31,16 +31,18 @@ const OWNED_ITEM_WEIGHT = 2.8;
 const FORCED_ITEM_LEVEL = 5;
 const FORCED_ITEM_UNTIL_OWNED = 2;
 
+/** A pick is a +1 INCREMENT, never a target level: the option names the thing,
+ *  and the shell resolves what level that means against live state at the
+ *  moment it is scooped. Rolling a concrete level here is what made two
+ *  pedestals for the same weapon read "2 → 3" and "3 → 4" side by side. */
 export interface WeaponPickOption {
   kind: 'weapon';
   role: Role;
-  tier: number;
 }
 
 interface ItemPickOption {
   kind: 'item';
   item: ItemId;
-  tier: number;
 }
 
 /** The Encore's fixed pair, in screen order. Never rolled, never weighted. */
@@ -73,6 +75,14 @@ export type AnyPickOption = PickOption<PickKind>;
 export interface RollOffersInput {
   tiers: ReadonlyMap<Role, number>;
   items: ReadonlyMap<ItemId, number>;
+  /** Increments already promised to a weapon but not yet in `tiers`: scooped
+   *  pickups waiting for their bar, plus every un-scooped pedestal on the
+   *  ground (both surfaces — a triangle and a chest payout can be out at once).
+   *  Counted into the ladder tests so a pickup doomed to be wasted is never
+   *  offered. NOT counted into the build caps, which ask what is OWNED. */
+  pendingTiers: ReadonlyMap<Role, number>;
+  /** The passive twin of `pendingTiers`. */
+  pendingItems: ReadonlyMap<ItemId, number>;
   unlockedRoles: ReadonlySet<Role>;
   unlockedItems: ReadonlySet<ItemId>;
   rng: Rng;
@@ -130,6 +140,10 @@ function weaponWeight(role: Role, timeS: number): number {
   return weight;
 }
 
+function pending<K>(counts: ReadonlyMap<K, number>, key: K): number {
+  return Math.max(0, Math.floor(counts.get(key) ?? 0));
+}
+
 function buildFinitePool(input: RollOffersInput): WeightedOption<BuildPickOption>[] {
   const pool: WeightedOption<BuildPickOption>[] = [];
 
@@ -142,27 +156,30 @@ function buildFinitePool(input: RollOffersInput): WeightedOption<BuildPickOption
     // soundset support.
     if (!soundsetSupports(role)) continue;
     const tier = Math.max(0, Math.min(WEAPON_MAX_LEVEL, Math.floor(input.tiers.get(role) ?? 0)));
+    // Ownership (hire vs upgrade, and the cap) asks about the LIVE build; the
+    // ladder test asks where the weapon will stand once every promise lands.
+    const effective = Math.min(WEAPON_MAX_LEVEL, tier + pending(input.pendingTiers, role));
     if (tier === 0) {
       if (weaponSlotsFull || !input.unlockedRoles.has(role)) continue;
-      pool.push({ option: { kind: 'weapon', role, tier: 1 }, weight: weaponWeight(role, input.timeS) });
-    } else if (tier < WEAPON_MAX_LEVEL) {
-      pool.push({
-        option: { kind: 'weapon', role, tier: tier + 1 },
-        weight: weaponWeight(role, input.timeS),
-      });
+      if (effective >= WEAPON_MAX_LEVEL) continue;
+      pool.push({ option: { kind: 'weapon', role }, weight: weaponWeight(role, input.timeS) });
+    } else if (effective < WEAPON_MAX_LEVEL) {
+      pool.push({ option: { kind: 'weapon', role }, weight: weaponWeight(role, input.timeS) });
     }
   }
 
   const itemSlotsFull = ownedItemCount(input.items) >= BUILD.itemCap;
   for (const item of ITEM_IDS) {
     const tier = itemLevel(input.items, item);
+    const effective = Math.min(itemMaxLevel(item), tier + pending(input.pendingItems, item));
     if (tier === 0) {
       if (itemSlotsFull || !input.unlockedItems.has(item)) continue;
-      pool.push({ option: { kind: 'item', item, tier: 1 }, weight: NEW_ITEM_WEIGHT });
-    } else if (tier < itemMaxLevel(item)) {
+      if (effective >= itemMaxLevel(item)) continue;
+      pool.push({ option: { kind: 'item', item }, weight: NEW_ITEM_WEIGHT });
+    } else if (effective < itemMaxLevel(item)) {
       // As with an owned weapon, an item already in this run remains legal if
       // meta state is repaired underneath it.
-      pool.push({ option: { kind: 'item', item, tier: tier + 1 }, weight: OWNED_ITEM_WEIGHT });
+      pool.push({ option: { kind: 'item', item }, weight: OWNED_ITEM_WEIGHT });
     }
   }
 
@@ -267,7 +284,7 @@ export function rollStartingWeapons(input: RollStartingWeaponsInput): WeaponPick
     const tier = Math.max(0, Math.min(WEAPON_MAX_LEVEL, Math.floor(input.tiers.get(role) ?? 0)));
     if (tier !== 0) continue;
     pool.push({
-      option: { kind: 'weapon', role, tier: 1 },
+      option: { kind: 'weapon', role },
       weight: weaponWeight(role, input.timeS),
     });
   }

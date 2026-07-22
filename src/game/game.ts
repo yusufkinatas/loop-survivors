@@ -16,11 +16,10 @@ import { mountJoystick } from './joystick';
 import { rollOffers, rollStartingWeapons, type AnyPickOption } from './picks';
 import { RunWorld, type Chest, type VacuumResult } from './run';
 import { SIM_DT } from './timing';
-import { preloadRunArt, RunView, type ChestReelEntry, type GroundPickView } from './view';
+import { preloadRunArt, RunView, type ChestReelEntry, type GroundPickCopy } from './view';
 import { mountSandboxPanel, type SandboxPanel } from './sandbox';
-import { ITEMS, ITEM_NEUTRAL_COLOR, itemMaxLevel, type EvolutionDefinition, type ItemId } from './items';
-import { weaponTiers } from './weapons';
-import { chartStageForLevel } from './weapons/levels';
+import { EVOLUTION_BY_ROLE, ITEMS, ITEM_NEUTRAL_COLOR, itemMaxLevel, type EvolutionDefinition, type ItemId } from './items';
+import { chartStageForLevel, WEAPON_MAX_LEVEL } from './weapons/levels';
 import { MetaStore, type RunSettlement } from './meta';
 import { mulberry32 } from './rng';
 
@@ -226,21 +225,53 @@ export async function bootGame(
   // A landed chest's payout, physically on the ground: pre-rolled GRANTS (not
   // choices) waiting to be walked onto. Unlike the level-up triangle, a pickup
   // leaves its siblings in place — you scoop them one by one.
-  type ChestDropOption =
-    | { kind: 'chestWeapon'; role: Role; tier: number }
-    | { kind: 'chestItem'; item: ItemId; level: number }
-    | { kind: 'chestTipJar' };
+  //
+  // A drop names a THING, never a level: it is worth +1 to that weapon or
+  // passive, resolved against live state at the moment it is scooped. That is
+  // the same currency the level-up triangle deals in, so both surfaces carry
+  // the very same option type and resolve through the same `applyPickup`.
   interface ChestDropPlan {
-    option: ChestDropOption;
-    view: GroundPickView;
+    x: number;
+    y: number;
+    option: AnyPickOption;
   }
   const chestDrops: ChestDropPlan[] = [];
-  // Weapon tiers promised by a chest but not yet applied — tier changes enter
-  // on the next bar like every weapon pick, and un-scooped drops keep their
-  // reservation. Read when rolling later payouts so two chests can never
-  // promise the same tier twice. plannedItemLevels is the passive twin.
-  const scheduledWeaponTiers = new Map<Role, number>();
-  const plannedItemLevels = new Map<ItemId, number>();
+  /** The maxed-build payout, as an option: what a hit with nothing left to
+   *  level pays, and what the safety net converts a doomed scoop into. */
+  const TIP_JAR: AnyPickOption = { kind: 'encore', encore: 'tipJar' };
+  /** A weapon's scooped-but-not-yet-heard levels. Weapon changes enter on the
+   *  next bar, so between the scoop and the bar line the level lives here:
+   *
+   *  - `queued` — scooped, still waiting for a bar line.
+   *  - `entering` — taken by a bar line (the chart has already changed for the
+   *    bar's first note) but not yet heard, so `w.tiers` still holds the old
+   *    tier and old-tier damage is still truthful.
+   *
+   *  Both count as promised, so a roll during either window can never offer a
+   *  level that is already spoken for. There is deliberately NO "a flush is
+   *  scheduled" flag: every scoop arms its own bar callback and a callback that
+   *  finds the counter already drained simply does nothing. A flag would be a
+   *  latch, and `engine.clearBarQueue()` can drop the callback that clears it —
+   *  after which the weapon could never enter again. Draining from the counter
+   *  instead means a dropped callback self-heals on the next scoop, which even
+   *  recovers the levels the drop stranded. */
+  interface PendingWeapon {
+    queued: number;
+    entering: number;
+    /** Continuations a triangle scoop is owed once its levels actually land. */
+    onEntered: ((barAudioTime: number) => void)[];
+  }
+  const pendingWeapons = new Map<Role, PendingWeapon>();
+  /** Levels a weapon has been promised that `w.tiers` cannot see yet. */
+  function weaponInFlight(role: Role): number {
+    const pending = pendingWeapons.get(role);
+    return pending ? pending.queued + pending.entering : 0;
+  }
+  /** The level a weapon will stand at once everything already scooped lands.
+   *  What a scoop of it resolves against, and what its pedestal describes. */
+  function weaponLevelNow(w: RunWorld, role: Role): number {
+    return (w.tiers.get(role) ?? 0) + weaponInFlight(role);
+  }
   // The pickup chirp climbs while the player keeps scooping rewards (a chest
   // scatter reads as one rising run), and resets after a short gap.
   let pickupStep = 0;
@@ -288,6 +319,94 @@ export async function bootGame(
     return partner && w.tiers.has(partner) ? partner : undefined;
   }
 
+  /** The exact mirror, and the other half of ONE rule. A weapon's first copy —
+   *  the hire — names the passive it evolves with, and only when that passive
+   *  is already owned.
+   *
+   *  Read the two together and the rule is: the recipe is taught exactly once,
+   *  from whichever side arrives second. Neither side teaches on a level-up, so
+   *  a chest drop — which only ever levels something already owned — never
+   *  carries a hint at all. */
+  function evolutionItemHintFor(w: RunWorld, role: Role, firstCopy: boolean): ItemId | undefined {
+    if (!firstCopy) return undefined;
+    const partner = EVOLUTION_BY_ROLE[role]?.item;
+    return partner && (w.items.get(partner) ?? 0) > 0 ? partner : undefined;
+  }
+
+  /** Every +1 the run owes but has not yet paid into `w.tiers` / `w.items`:
+   *  scooped pickups riding to their bar line, plus every un-scooped pedestal
+   *  still on the ground. Both surfaces count — only the chest CEREMONY blocks
+   *  a triangle, not its drops, so a triangle and a chest payout can be lying
+   *  around at the same time.
+   *
+   *  This is what replaced reserving concrete levels. A roll drops a thing from
+   *  its pool once `live + promised` reaches the ceiling, so no pickup is ever
+   *  rolled that is doomed to be wasted — and because these are counts, not
+   *  target levels, two pedestals for the same weapon are simply worth +1 each.
+   *
+   *  Deliberately NOT consulted by pedestal copy: a pedestal is inside this
+   *  count itself, and describing what it will deliver must not include
+   *  promises nobody has taken yet. */
+  function outstandingPromises(): { weapons: Map<Role, number>; items: Map<ItemId, number> } {
+    const weapons = new Map<Role, number>();
+    const items = new Map<ItemId, number>();
+    for (const [role, pending] of pendingWeapons) weapons.set(role, pending.queued + pending.entering);
+    const count = (option: ShellPick): void => {
+      if (option.kind === 'weapon') weapons.set(option.role, (weapons.get(option.role) ?? 0) + 1);
+      else if (option.kind === 'item') items.set(option.item, (items.get(option.item) ?? 0) + 1);
+    };
+    for (const pick of groundPicks) count(pick.option);
+    for (const drop of chestDrops) count(drop.option);
+    return { weapons, items };
+  }
+
+  /** Everything a pedestal says about itself, answered from LIVE state at the
+   *  moment it is asked — which is why `refreshPedestals` can re-ask it after
+   *  every scoop. A pedestal must never describe a level its scoop won't
+   *  deliver, and a sibling scoop changes exactly that.
+   *
+   *  Numbers are gone from the badge on purpose: two drops of the same weapon
+   *  used to read "2 → 3" and "3 → 4" side by side, which leaked the old
+   *  reservation system and read as nonsense when you scooped the second one
+   *  first. A pedestal now says what it IS; the toast says what you got. */
+  function pedestalFor(w: RunWorld, option: ShellPick): GroundPickCopy {
+    if (option.kind === 'evolution') {
+      return { role: option.evolution.role, color: option.evolution.color,
+        name: option.evolution.name, badge: 'EVOLVE' };
+    }
+    if (option.kind === 'encore') return encorePickView(w, option.encore);
+    if (option.kind === 'weapon') {
+      const level = weaponLevelNow(w, option.role);
+      // Nothing left to level: the scoop pays a Tip Jar, so the pedestal is one.
+      if (level >= WEAPON_MAX_LEVEL) return encorePickView(w, 'tipJar');
+      return { role: option.role, color: ROLE_COLORS[option.role],
+        name: kits.get(option.role)!.name, badge: level === 0 ? 'NEW' : 'LEVEL UP',
+        // The hire is the ONE place a weapon teaches its recipe; see
+        // evolutionItemHintFor for when it earns the space.
+        evoItem: evolutionItemHintFor(w, option.role, level === 0) };
+    }
+    // Passives land the instant they are scooped, so there is nothing in flight
+    // to add: the level this pedestal delivers is simply the next one up.
+    const level = w.items.get(option.item) ?? 0;
+    if (level >= itemMaxLevel(option.item)) return encorePickView(w, 'tipJar');
+    const definition = ITEMS[option.item];
+    return { glyph: definition.glyph, color: ITEM_NEUTRAL_COLOR, name: definition.name,
+      badge: level === 0 ? 'NEW' : 'LEVEL UP',
+      effect: definition.levelLines[level],
+      evoRole: evolutionHintFor(w, option.item, level === 0) };
+  }
+
+  /** Re-read every pedestal on the ground. Called after every scoop and after
+   *  any weapon entry, because both change what the pedestals still lying there
+   *  will hand over — a second copy of the same passive is a different level
+   *  now, and its effect line has to say so. */
+  function refreshPedestals(): void {
+    const w = world;
+    if (!w) return;
+    view?.setGroundPicks(groundPicks.map((pick) => ({ x: pick.x, y: pick.y, ...pedestalFor(w, pick.option) })));
+    view?.setChestDrops(chestDrops.map((drop) => ({ x: drop.x, y: drop.y, ...pedestalFor(w, drop.option) })));
+  }
+
   function clearGroundPicks(): void {
     if (groundPicks.length > 0) groundPicks = [];
     view?.setGroundPicks([]);
@@ -299,8 +418,7 @@ export async function bootGame(
     pendingChests.length = 0;
     chestCeremony = null;
     chestDrops.length = 0;
-    scheduledWeaponTiers.clear();
-    plannedItemLevels.clear();
+    pendingWeapons.clear();
     view?.clearChestCeremony();
     view?.setChestDrops([]);
     pickAwaitingBar = false;
@@ -340,10 +458,15 @@ export async function bootGame(
     while (pendingUpgrades.length > 0 && groundPicks.length === 0) {
       pendingUpgrades.shift();
       // The real offer for this reward: three build cards, or — once the build
-      // is complete — the Encore's fixed pair.
+      // is complete — the Encore's fixed pair. The pool sees what the run has
+      // already promised (a chest payout can be lying on the ground right now),
+      // so it never offers a level that is already spoken for.
+      const promised = outstandingPromises();
       const options = rollOffers({
         tiers: w.tiers,
         items: w.items,
+        pendingTiers: promised.weapons,
+        pendingItems: promised.items,
         unlockedRoles: meta.unlockedRoles(),
         unlockedItems: meta.unlockedItemIds(),
         rng: Math.random,
@@ -378,12 +501,12 @@ export async function bootGame(
   function encorePickView(
     w: RunWorld,
     encore: 'firstAid' | 'tipJar',
-  ): { glyph: string; color: number; name: string; level: string } {
+  ): { glyph: string; color: number; name: string; badge: string } {
     if (encore === 'firstAid') {
       return { glyph: '✚', color: 0xff665a, name: 'First Aid',
-        level: `+${Math.round(w.playerMaxHp * HEALTH_PICKUP.healFraction)} HP` };
+        badge: `+${Math.round(w.playerMaxHp * HEALTH_PICKUP.healFraction)} HP` };
     }
-    return { glyph: '♫', color: 0xffd45c, name: 'Tip Jar', level: `+${ENCORE.tipJarNotes} ♫` };
+    return { glyph: '♫', color: 0xffd45c, name: 'Tip Jar', badge: `+${ENCORE.tipJarNotes} ♫` };
   }
 
   /** Drop the offered options as items in a ring around the player, shove the
@@ -392,7 +515,6 @@ export async function bootGame(
     const cx = w.player.x;
     const cy = w.player.y;
     const items: GroundItem[] = [];
-    const payload: GroundPickView[] = [];
     for (let i = 0; i < options.length; i++) {
       const option = options[i];
       const deg = pickAngleDeg(i, options.length);
@@ -405,28 +527,9 @@ export async function bootGame(
       const x = cx + Math.max(-horizontalRoom, Math.min(horizontalRoom, Math.cos(rad) * LEVELUP.itemRadius));
       const y = cy + Math.sin(rad) * LEVELUP.itemRadius;
       items.push({ x, y, option });
-      if (option.kind === 'weapon') {
-        const prevTier = w.tiers.get(option.role) ?? 0;
-        payload.push({ x, y, role: option.role, color: ROLE_COLORS[option.role],
-          name: kits.get(option.role)!.name, level: prevTier > 0 ? `${prevTier} → ${option.tier}` : '1' });
-      } else if (option.kind === 'item') {
-        const definition = ITEMS[option.item];
-        const previous = w.items.get(option.item) ?? 0;
-        payload.push({ x, y, glyph: definition.glyph, color: ITEM_NEUTRAL_COLOR,
-          name: definition.name, level: previous > 0 ? `${previous} → ${option.tier}` : '1',
-          effect: definition.levelLines[option.tier - 1],
-          // The pedestal is the ONE place the recipe is taught; see
-          // evolutionHintFor for when it earns the space.
-          evoRole: evolutionHintFor(w, option.item, previous === 0) });
-      } else if (option.kind === 'encore') {
-        payload.push({ x, y, ...encorePickView(w, option.encore) });
-      } else {
-        payload.push({ x, y, role: option.evolution.role, color: option.evolution.color,
-          name: option.evolution.name, level: 'EVOLVE' });
-      }
     }
     groundPicks = items;
-    view?.setGroundPicks(payload);
+    refreshPedestals();
     w.shoveEnemiesOut(cx, cy, LEVELUP.enemyPushRadius);
     if (celebrate === 'none') view?.levelBurst(cx, cy);
     else startLevelMoment(cx, cy, LEVELUP.momentS);
@@ -444,6 +547,107 @@ export async function bootGame(
     view?.levelBurst(cx, cy);
   }
 
+  /** Resolve ONE scooped pickup against live state — the single place a pickup
+   *  turns into build. Both surfaces come through here, because on both a
+   *  pickup means exactly the same thing: +1 level to the thing it names.
+   *
+   *  The safety net: a pickup that somehow lands on something already maxed
+   *  pays a Tip Jar rather than vanishing. Promise counting is supposed to make
+   *  that unreachable in a run; the sandbox's loadout editor can still move the
+   *  ground out from under a pedestal.
+   *
+   *  Returns where the level went: `'bar'` — a weapon, riding to the next bar
+   *  line — or `'now'` — a passive or an Encore, landed on the spot. */
+  function applyPickup(
+    w: RunWorld,
+    option: AnyPickOption,
+    onEntered?: (barAudioTime: number) => void,
+  ): 'bar' | 'now' {
+    if (option.kind === 'encore') {
+      // Both Encore options resolve here and now — nothing waits for a bar,
+      // because neither one changes what the band is playing.
+      const landed = w.applyEncoreChoice(option.encore);
+      hud.showToast(option.encore === 'firstAid'
+        ? `FIRST AID · +${Math.round(landed)} HP`
+        : `TIP JAR · +${landed} ♫`);
+      return 'now';
+    }
+    if (option.kind === 'item') {
+      const level = w.items.get(option.item) ?? 0;
+      if (level >= itemMaxLevel(option.item)) return applyPickup(w, TIP_JAR, onEntered);
+      // Resolved BEFORE addItem, so the toast and the pedestal the player just
+      // walked onto are answering the same question about the same state.
+      const partner = evolutionHintFor(w, option.item, level === 0);
+      // Passives never touch the music, so they land at once — and because they
+      // land at once, several in one bar simply stack.
+      w.addItem(option.item, level + 1);
+      const definition = ITEMS[option.item];
+      const evoCopy = partner ? ` · EVO ${kits.get(partner)?.name ?? partner}` : '';
+      hud.showToast(`${definition.name} ${level + 1} · ${definition.levelLines[level]}${evoCopy}`);
+      return 'now';
+    }
+    const level = weaponLevelNow(w, option.role);
+    if (level >= WEAPON_MAX_LEVEL) return applyPickup(w, TIP_JAR, onEntered);
+    const partner = evolutionItemHintFor(w, option.role, level === 0);
+    const evoCopy = partner ? ` · EVO ${ITEMS[partner].name}` : '';
+    // The toast is the one place in a run the player learns their real level,
+    // and at scoop time the outcome is already settled — live plus everything
+    // in flight — so the number is truthful even though the sound waits.
+    hud.showToast(`${kits.get(option.role)!.name} → tier ${level + 1}${evoCopy}`);
+    promoteWeapon(w, option.role, onEntered);
+    return 'bar';
+  }
+
+  /** Bank +1 for a weapon and make sure a bar line is coming to spend it.
+   *
+   *  Every scoop arms its own bar callback; the first callback of a bar takes
+   *  the whole banked total and the rest find it empty and do nothing. So five
+   *  pickups scooped inside one bar are five levels at that bar line, chart
+   *  stage and world tier moving together — not one level with four thrown
+   *  away, which is what taking `max(live, promised)` used to do.
+   *
+   *  Two phases, as everywhere else a weapon changes: the chart changes at the
+   *  bar's start so the bar's first note is the new one, and `w.tiers` waits
+   *  for the heard timestamp so any older trigger still in the air does
+   *  old-tier damage. */
+  function promoteWeapon(
+    w: RunWorld,
+    role: Role,
+    onEntered?: (barAudioTime: number) => void,
+  ): void {
+    const pending = pendingWeapons.get(role) ?? { queued: 0, entering: 0, onEntered: [] };
+    pending.queued += 1;
+    if (onEntered) pending.onEntered.push(onEntered);
+    pendingWeapons.set(role, pending);
+    engine.atNextBar((barAudioTime) => {
+      if (world !== w || (state !== 'run' && state !== 'sandbox')) return;
+      // Re-read: the entry may have been cleared and rebuilt under us.
+      const p = pendingWeapons.get(role);
+      if (!p || p.queued === 0) return; // a sibling scoop's callback took this bar
+      p.entering += p.queued;
+      p.queued = 0;
+      // Scoops landing between here and the heard timestamp below belong to the
+      // NEXT bar — they armed their own callback and are still in `queued`.
+      const owed = p.onEntered.splice(0);
+      const target = Math.min(WEAPON_MAX_LEVEL, (w.tiers.get(role) ?? 0) + p.entering);
+      engine.setVoiceTier(role, chartStageForLevel(target));
+      // Sticky deactivation: a tier-up applies the new tier but does not revive
+      // an instrument the developer deliberately turned off. It returns at the
+      // higher tier when reactivated.
+      if (!deactivatedRoles.has(role)) engine.setVoiceEnabled(role, true);
+      engine.atAudioTime(barAudioTime, () => {
+        if (world !== w || (state !== 'run' && state !== 'sandbox')) return;
+        p.entering = 0;
+        if (p.queued === 0 && p.onEntered.length === 0) pendingWeapons.delete(role);
+        w.addWeapon(role, target);
+        paintBand();
+        view?.flourish(w.player.x, w.player.y);
+        refreshPedestals(); // this weapon's other pedestals are worth a level more now
+        for (const entered of owed) entered(barAudioTime);
+      });
+    });
+  }
+
   /** Walk-onto collection: take one item, clear the rest, and enter the chosen
    *  weapon on the next bar (audio keeps playing — no transport hold). Mirrors
    *  the old pick's bar-accurate entry so old-tier damage is preserved. */
@@ -459,29 +663,20 @@ export async function bootGame(
     w.shoveEnemiesOut(item.x, item.y, LEVELUP.pickupPushRadius);
     const option = item.option;
     clearGroundPicks();
-    if (option.kind === 'item') {
-      // Resolved BEFORE addItem, so the toast and the pedestal the player just
-      // walked onto are answering the same question about the same state.
-      const partner = evolutionHintFor(w, option.item, (w.items.get(option.item) ?? 0) === 0);
-      w.addItem(option.item, option.tier);
-      const definition = ITEMS[option.item];
-      const evoCopy = partner ? ` · EVO ${kits.get(partner)?.name ?? partner}` : '';
-      hud.showToast(`${definition.name} ${option.tier} · ${definition.levelLines[option.tier - 1]}${evoCopy}`);
+    if (option.kind !== 'evolution') {
+      const outcome = applyPickup(w, option, (barAudioTime) => {
+        pickAwaitingBar = false;
+        // Wait until this bar's due gameplay triggers have been consumed by one
+        // fixed world step before dropping a stacked reward's triangle.
+        presentQueuedPickAtAudioT = barAudioTime;
+      });
       hud.levelPulse();
-      view?.flourish(w.player.x, w.player.y);
-      presentNextUpgrade();
-      return;
-    }
-    if (option.kind === 'encore') {
-      // Both Encore options resolve here and now — nothing waits for a bar,
-      // because neither one changes what the band is playing.
-      const landed = w.applyEncoreChoice(option.encore);
-      hud.showToast(option.encore === 'firstAid'
-        ? `FIRST AID · +${Math.round(landed)} HP`
-        : `TIP JAR · +${landed} ♫`);
-      hud.levelPulse();
-      view?.flourish(w.player.x, w.player.y);
-      presentNextUpgrade();
+      // One flourish per pickup, where it lands: a passive or an Encore lands
+      // here, a weapon lands at its bar line and flourishes there instead.
+      if (outcome === 'now') view?.flourish(w.player.x, w.player.y);
+      refreshPedestals(); // a chest payout may still be lying around
+      if (outcome === 'bar') pickAwaitingBar = true;
+      else presentNextUpgrade();
       return;
     }
     pickAwaitingBar = true;
@@ -490,30 +685,20 @@ export async function bootGame(
       // Audio is scheduled ahead, so its chart must change now for the first
       // note of the new bar. World state waits for the exact heard timestamp
       // below, preserving old-tier damage on any older trigger.
-      if (option.kind === 'weapon') engine.setVoiceTier(option.role, chartStageForLevel(option.tier));
-      else {
-        const stillEligible = w.eligibleEvolutions().some(({ role }) => role === option.evolution.role);
-        if (!stillEligible) {
-          pickAwaitingBar = false;
-          presentNextUpgrade();
-          return;
-        }
-        engine.setEvolutionGain(option.evolution.role, option.evolution.gainDb);
+      const stillEligible = w.eligibleEvolutions().some(({ role }) => role === option.evolution.role);
+      if (!stillEligible) {
+        pickAwaitingBar = false;
+        presentNextUpgrade();
+        return;
       }
-      // Sticky deactivation: a tier-up applies the new tier but does not revive
-      // an instrument the developer deliberately turned off. It returns at the
-      // higher tier when reactivated.
-      if (option.kind === 'weapon' && !deactivatedRoles.has(option.role)) engine.setVoiceEnabled(option.role, true);
+      engine.setEvolutionGain(option.evolution.role, option.evolution.gainDb);
       engine.atAudioTime(barAudioTime, () => {
         if (world !== w || state !== 'run') return;
-        if (option.kind === 'weapon') w.addWeapon(option.role, option.tier);
-        else w.evolve(option.evolution.role);
+        w.evolve(option.evolution.role);
         hud.renderBand(w.tiers, { deactivated: deactivatedRoles, pending: pendingRoles, evolved: w.evolved });
         refreshTrackOverlay();
         view?.flourish(w.player.x, w.player.y);
         pickAwaitingBar = false;
-        // Wait until this bar's due gameplay triggers have been consumed by one
-        // fixed world step before dropping a stacked reward's triangle.
         presentQueuedPickAtAudioT = barAudioTime;
       });
     });
@@ -618,7 +803,7 @@ export async function bootGame(
     const healed = w.healPlayer(CHEST.healBySize[ceremony.size]);
     ceremony.drops = rollChestDrops(w, ceremony.size);
     const banner = ceremony.size === 5 ? 'JACKPOT ×5' : ceremony.size === 3 ? 'BIG WIN ×3'
-      : (ceremony.drops[0]?.view.name ?? 'CHEST').toUpperCase();
+      : (ceremony.drops[0] ? pedestalFor(w, ceremony.drops[0].option).name : 'CHEST').toUpperCase();
     view?.landChestCeremony(banner, ceremony.size === 1 ? 0xffd45c : 0xffdf74,
       { big: ceremony.size >= 3, jackpot: ceremony.size === 5 });
     hud.showToast(healed > 0 ? `CHEST ×${ceremony.size} · +${Math.round(healed)} HP` : `CHEST ×${ceremony.size}`);
@@ -629,19 +814,21 @@ export async function bootGame(
   }
 
   /** Roll a chest's payout: `count` level-ups of things the player already
-   *  owns, as drop plans — NOTHING is applied here. Each plan becomes a
-   *  pedestal that thuds in after the reel stops and applies when scooped.
-   *  Weapon tiers and passive levels are reserved at roll time so a later
-   *  chest can never promise a level twice; the pool is rebuilt per drop so
-   *  a ×5 spends its hits across what can still level. A hit that finds that
-   *  pool empty — the last hits of a ×5 on a nearly maxed build, every hit on
-   *  a fully maxed one — converts to a Tip Jar instead.
+   *  owns, as drop plans — NOTHING is applied here, and no concrete level is
+   *  decided. Each plan becomes a pedestal that thuds in after the reel stops
+   *  and is worth +1 to its thing whenever it is scooped.
+   *
+   *  The pool is rebuilt per drop against `live + promised`, and this payout's
+   *  own hits are added to that count as they are rolled — so a ×5 spends its
+   *  hits across what can still level, and no chest, triangle or earlier drop
+   *  can be promised a level twice. A hit that finds the pool empty — the last
+   *  hits of a ×5 on a nearly maxed build, every hit on a fully maxed one —
+   *  pays a Tip Jar instead.
    *
    *  This "nothing left to level" test is deliberately NOT the level-up
-   *  screen's maxed-build test: this pool is owned-only and reservation-aware,
-   *  and it is asked once per hit, so a chest still pays a build that has open
-   *  cap slots the level-up screen would offer to fill. Both tests just agree
-   *  on what a leftover is worth. */
+   *  screen's maxed-build test: this pool is owned-only, so a chest still pays
+   *  a build that has open cap slots the level-up screen would offer to fill.
+   *  Both tests just agree on what a leftover is worth. */
   function rollChestDrops(w: RunWorld, count: 1 | 3 | 5): ChestDropPlan[] {
     const cx = w.player.x;
     const cy = w.player.y;
@@ -649,10 +836,7 @@ export async function bootGame(
     // fully readable inside the camera.
     const horizontalRoom = Math.max(LEVELUP.itemPickupRadius + 4, w.worldW / 2 - 92);
     const startDeg = Math.random() * 360;
-    const weaponTierNow = (role: Role): number =>
-      Math.max(w.tiers.get(role) ?? 0, scheduledWeaponTiers.get(role) ?? 0);
-    const itemLevelNow = (item: ItemId): number =>
-      Math.max(w.items.get(item) ?? 0, plannedItemLevels.get(item) ?? 0);
+    const promised = outstandingPromises();
     const drops: ChestDropPlan[] = [];
     for (let i = 0; i < count; i++) {
       const deg = startDeg + (360 / count) * i + (Math.random() - 0.5) * 24;
@@ -660,32 +844,24 @@ export async function bootGame(
       const radius = CHEST.dropRadius + (Math.random() - 0.5) * 30;
       const x = cx + Math.max(-horizontalRoom, Math.min(horizontalRoom, Math.cos(rad) * radius));
       const y = cy + Math.sin(rad) * radius;
-      const pool: ({ kind: 'weapon'; role: Role } | { kind: 'item'; item: ItemId })[] = [];
+      const pool: AnyPickOption[] = [];
       for (const role of w.tiers.keys()) {
-        if (weaponTierNow(role) < (weaponTiers(role)?.length ?? 0)) pool.push({ kind: 'weapon', role });
+        const level = (w.tiers.get(role) ?? 0) + (promised.weapons.get(role) ?? 0);
+        if (level < WEAPON_MAX_LEVEL) pool.push({ kind: 'weapon', role });
       }
       for (const item of w.items.keys()) {
-        if (itemLevelNow(item) < itemMaxLevel(item)) pool.push({ kind: 'item', item });
+        const level = (w.items.get(item) ?? 0) + (promised.items.get(item) ?? 0);
+        if (level < itemMaxLevel(item)) pool.push({ kind: 'item', item });
       }
       if (pool.length === 0) {
-        drops.push({ option: { kind: 'chestTipJar' }, view: { x, y, ...encorePickView(w, 'tipJar') } });
+        drops.push({ x, y, option: TIP_JAR });
         continue;
       }
       const target = pool[Math.floor(Math.random() * pool.length)];
-      if (target.kind === 'weapon') {
-        const tier = weaponTierNow(target.role) + 1;
-        scheduledWeaponTiers.set(target.role, tier); // reserved until scooped
-        drops.push({ option: { kind: 'chestWeapon', role: target.role, tier },
-          view: { x, y, role: target.role, color: ROLE_COLORS[target.role],
-            name: kits.get(target.role)!.name, level: `${tier - 1} → ${tier}` } });
-      } else {
-        const level = itemLevelNow(target.item) + 1;
-        plannedItemLevels.set(target.item, level); // reserved until scooped
-        const definition = ITEMS[target.item];
-        drops.push({ option: { kind: 'chestItem', item: target.item, level },
-          view: { x, y, glyph: definition.glyph, color: ITEM_NEUTRAL_COLOR, name: definition.name,
-            level: `${level - 1} → ${level}`, effect: definition.levelLines[level - 1] } });
-      }
+      // This hit is now a promise of its own, and the next hit must see it.
+      if (target.kind === 'weapon') promised.weapons.set(target.role, (promised.weapons.get(target.role) ?? 0) + 1);
+      else if (target.kind === 'item') promised.items.set(target.item, (promised.items.get(target.item) ?? 0) + 1);
+      drops.push({ x, y, option: target });
     }
     return drops;
   }
@@ -694,10 +870,10 @@ export async function bootGame(
    *  pitched bam. The staggered ticker calls this once per drop. */
   function spawnChestDrop(w: RunWorld, drop: ChestDropPlan, index: number): void {
     chestDrops.push(drop);
-    view?.setChestDrops(chestDrops.map((d) => d.view));
+    refreshPedestals();
     engine.playChestDropCue(index);
-    w.shoveEnemiesOut(drop.view.x, drop.view.y, 150);
-    w.fx?.push({ type: 'ring', x: drop.view.x, y: drop.view.y, radius: 120, color: drop.view.color, dur: 0.45, soft: true });
+    w.shoveEnemiesOut(drop.x, drop.y, 150);
+    w.fx?.push({ type: 'ring', x: drop.x, y: drop.y, radius: 120, color: pedestalFor(w, drop.option).color, dur: 0.45, soft: true });
     view?.pushShake(3, 0.22);
   }
 
@@ -707,51 +883,14 @@ export async function bootGame(
     const w = world;
     if (!w) return;
     chestDrops.splice(chestDrops.indexOf(drop), 1);
-    view?.setChestDrops(chestDrops.map((d) => d.view));
     engine.playPickupCue(nextPickupStep());
-    w.shoveEnemiesOut(drop.view.x, drop.view.y, LEVELUP.pickupPushRadius);
-    view?.flourish(drop.view.x, drop.view.y);
+    w.shoveEnemiesOut(drop.x, drop.y, LEVELUP.pickupPushRadius);
     hud.levelPulse();
-    const option = drop.option;
-    if (option.kind === 'chestWeapon') {
-      applyChestWeaponGrants(w, new Map([[option.role, option.tier]]));
-      hud.showToast(`${kits.get(option.role)!.name} → tier ${option.tier}`);
-    } else if (option.kind === 'chestItem') {
-      w.addItem(option.item, option.level);
-      if (plannedItemLevels.get(option.item) === option.level) plannedItemLevels.delete(option.item);
-      const definition = ITEMS[option.item];
-      hud.showToast(`${definition.name} ${option.level} · ${definition.levelLines[option.level - 1]}`);
-    } else {
-      hud.showToast(`TIP JAR · +${w.applyEncoreChoice('tipJar')} ♫`);
-    }
-  }
-
-  /** Chest-granted weapon tiers enter on the next bar, exactly like a picked
-   *  tier-up: the chart changes now for the bar's first note, the world's tier
-   *  waits for the heard timestamp so old-tier damage stays truthful. */
-  function applyChestWeaponGrants(w: RunWorld, grants: Map<Role, number>): void {
-    if (grants.size === 0) return;
-    // max, never overwrite: a role can carry a HIGHER un-scooped reservation
-    // (two drops of the same weapon — the second pedestal still owns tier+2).
-    for (const [role, tier] of grants) {
-      scheduledWeaponTiers.set(role, Math.max(scheduledWeaponTiers.get(role) ?? 0, tier));
-    }
-    engine.atNextBar((barAudioTime) => {
-      if (world !== w || (state !== 'run' && state !== 'sandbox')) return;
-      // max against the live tier: scooping a tier-4 drop before a tier-3 drop
-      // of the same role must never downgrade the chart.
-      for (const [role, tier] of grants) {
-        engine.setVoiceTier(role, chartStageForLevel(Math.max(w.tiers.get(role) ?? 0, tier)));
-      }
-      engine.atAudioTime(barAudioTime, () => {
-        if (world !== w || (state !== 'run' && state !== 'sandbox')) return;
-        for (const [role, tier] of grants) {
-          w.addWeapon(role, Math.max(w.tiers.get(role) ?? 0, tier));
-          if ((scheduledWeaponTiers.get(role) ?? 0) <= tier) scheduledWeaponTiers.delete(role);
-        }
-        paintBand();
-      });
-    });
+    // Same rule as the triangle: the flourish marks the landing, so a weapon's
+    // waits for its bar line rather than doubling up on the pedestal.
+    if (applyPickup(w, drop.option) === 'now') view?.flourish(drop.x, drop.y);
+    // The siblings left standing may be worth a different level now.
+    refreshPedestals();
   }
 
   const events = {
@@ -924,6 +1063,9 @@ export async function bootGame(
       onLoadout: () => {
         hud.renderBand(w.tiers, { deactivated: deactivatedRoles, pending: pendingRoles, evolved: w.evolved });
         refreshTrackOverlay();
+        // The editor can move the ground out from under a pedestal still lying
+        // there; pedestal copy is answered from live state, so re-ask it.
+        refreshPedestals();
       },
       onExit: () => {
         resetWorld();
@@ -1204,8 +1346,8 @@ export async function bootGame(
         const p = w.player;
         const rr = LEVELUP.itemPickupRadius * LEVELUP.itemPickupRadius;
         for (const drop of chestDrops) {
-          const dx = p.x - drop.view.x;
-          const dy = p.y - drop.view.y;
+          const dx = p.x - drop.x;
+          const dy = p.y - drop.y;
           if (dx * dx + dy * dy <= rr) {
             collectChestDrop(drop);
             break;
