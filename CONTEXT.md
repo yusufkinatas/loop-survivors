@@ -39,3 +39,11 @@ The narrow surface the world hands a weapon module: queries about the world
 in, effects (damage, spawns, fx) out. A weapon module never touches the
 world's entity arrays directly.
 _Avoid_: world reference, world access
+
+**Stage Light**:
+A destructible prop — a toppled follow-spot The Hush hasn't consumed, glowing
+warm amber. Spawns off-screen on a timer, takes only incidental weapon hits
+(never targeted), blocks nothing, and breaks silently into exactly one drop:
+notes, First Aid, or a Stage Magnet. The only source of those pickups —
+enemies drop only experience gems.
+_Avoid_: brazier, light source, destructible, lamp
