@@ -590,12 +590,17 @@ export function makeGemGfx(gem: Gem): GemGfx {
   // is carried by the same tint and size the drawn gem always used. That only
   // works because the art is pale: tint multiplies, so it can darken white into
   // blue/green/red but could never lift a baked colour into another one.
+  //
+  // No glow behind it. The drawn diamond needed one to separate a few flat
+  // pixels from the floor; the generated gem has its own shading and outline
+  // and reads without help, so `style.glow`/`style.alpha` are used only by the
+  // drawn fallback below.
   const sprite = objectSprite('gem', (style.size + 2) * 2);
   if (sprite) {
     sprite.tint = style.color;
     const result = new Container() as GemGfx;
     result.__tier = gem.tier;
-    result.addChild(makePixelGlow(style.glow, style.color, style.alpha), sprite);
+    result.addChild(sprite);
     result.position.set(snap(gem.x), snap(gem.y));
     return result;
   }
@@ -628,18 +633,15 @@ export function makeMusicNoteGfx(note: MusicNotePickup): MusicNoteGfx {
   const phrase = note.tier === 'phrase';
   const color = anthem ? SOUNDWOOD.amber : phrase ? 0xffdf78 : 0xffc857;
   // One generated near-white eighth note for all three tiers, separated by the
-  // gold tint and by size. The drawn anthem was a *beamed pair* rather than a
-  // bigger single note; that distinction is lost here, so anthem leans harder
-  // on size (36 against 26) and on its much wider glow.
+  // gold tint and by size, and drawn bare — no glow, same as the gems. The
+  // drawn anthem was a *beamed pair* rather than a bigger single note, so with
+  // the glow gone the top tier now rests on size alone (36 against 26).
   const sprite = objectSprite('note', anthem ? 36 : phrase ? 30 : 26);
   if (sprite) {
     sprite.tint = color;
     const result = new Container() as MusicNoteGfx;
     result.__tier = note.tier;
-    result.addChild(
-      makePixelGlow(anthem ? 24 : phrase ? 18 : 14, color, anthem ? 0.48 : 0.34),
-      sprite,
-    );
+    result.addChild(sprite);
     result.position.set(snap(note.x), snap(note.y));
     return result;
   }
@@ -1094,11 +1096,22 @@ function sceneryContext(variant: number): GraphicsContext {
   });
 }
 
-/** The generated prop for each variant, and how tall it stands in world units.
- *  Six props where the drawn scenery had five: the stage light is new with the
- *  art (#234), so `SCENERY_PROPS.length` rather than a literal 5 is what the
- *  variant wraps around. Heights are read off the drawn shapes they replace, so
- *  the arena keeps its existing sense of scale. */
+/** Scenery props draw at 4x the size the drawn shapes used. At a 256-unit cell
+ *  that makes each one roughly cell-sized: landmarks the arena is built around
+ *  rather than clutter scattered across it. */
+const SCENERY_SCALE = 4;
+
+/** How far the props sink into the floor. Blown up to landmark size they would
+ *  otherwise compete with the enemies for attention, and the enemies have to
+ *  win that fight — so the props lose most of their opacity and take a cool
+ *  dark tint that pulls them toward the floor's own value. */
+const SCENERY_ALPHA = 0.34;
+const SCENERY_TINT = 0x7d8db0;
+
+/** The generated prop for each variant, and how tall it stands in world units
+ *  before `SCENERY_SCALE`. Six props where the drawn scenery had five: the
+ *  stage light is new with the art (#234), so `SCENERY_PROPS.length` rather
+ *  than a literal 5 is what the variant wraps around. */
 const SCENERY_PROPS: readonly { name: ObjectName; height: number }[] = [
   { name: 'prop-stump', height: 68 },
   { name: 'prop-rune', height: 72 },
@@ -1130,9 +1143,10 @@ export function makeSceneryCell(ix: number, iy: number): SceneryCell {
   const variant = Math.floor(hash2(ix, iy, 1201) * 20);
   const root = new Container() as SceneryCell;
   const spec = SCENERY_PROPS[variant % SCENERY_PROPS.length];
-  const generated = objectSprite(spec.name, spec.height);
+  const generated = objectSprite(spec.name, spec.height * SCENERY_SCALE);
   const prop: Container = generated ?? pixelGraphics(sceneryContext(variant));
   if (generated) {
+    generated.tint = SCENERY_TINT;
     // The drawn props are authored around an offset centre; the sprites are
     // trimmed and centre-anchored, so they take that offset explicitly.
     generated.position.set(
@@ -1141,7 +1155,7 @@ export function makeSceneryCell(ix: number, iy: number): SceneryCell {
     );
     root.addChild(pixelGraphics(sceneryBedContext(variant)));
   }
-  prop.alpha = 0.78;
+  prop.alpha = SCENERY_ALPHA;
   prop.scale.x = ((ix + iy) % 2 === 0 ? 1 : -1) * Math.abs(prop.scale.x);
   const flies = new Graphics({ roundPixels: true });
   for (let i = 0; i < 3; i++) {
