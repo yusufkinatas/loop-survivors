@@ -14,9 +14,10 @@ spec and older prose disagree, this spec wins.
 the Vampire Survivors wiki — no assets, code, art, names, or UI. All names
 (Stage Light, Tip Jar, Encore) are this game's own.
 
-**Provenance.** Every mirrored number traces to one of five verified research
+**Provenance.** Every mirrored number traces to one of six verified research
 documents (all fetched 2026-07-22 from https://vampire.survivors.wiki raw
-wikitext / MediaWiki API, except the audit, which measured this codebase):
+wikitext / MediaWiki API, except the audit and the re-check, which measured
+this codebase):
 
 - [`research/vs-weapon-progressions.md`](research/vs-weapon-progressions.md) —
   the 8-level norm, per-level shapes, cooldown behavior, derived DPS scale,
@@ -30,6 +31,9 @@ wikitext / MediaWiki API, except the audit, which measured this codebase):
 - [`research/leveling-pace-audit.md`](research/leveling-pace-audit.md) — the
   measured leveling pace of this build, the cause, and the sim harness
   ([`leveling-pace-audit-sim.ts`](research/leveling-pace-audit-sim.ts)).
+- [`research/leveling-pace-recheck.md`](research/leveling-pace-recheck.md) —
+  the same pace re-measured once this spec shipped, on a rebuilt harness that
+  reproduces the audit's baseline (section 5a).
 
 Decisions were locked ticket by ticket on the map; each section links its
 ticket.
@@ -219,9 +223,10 @@ Uniform across all eight weapons, 2 levels per stage:
 Sound — and with it trigger density — steps at levels 3, 5, and 7; even
 levels are payload-only. A weapon reaches its full musical pattern at level
 7; level 8 is a payload capstone. The 4 authored chart stages are untouched.
-Per-weapon bands remain available as a targeted fix if the post-rebalance sim
-([#213](https://github.com/yusufkinatas/loop-survivors/issues/213)) shows a
-broken curve.
+Per-weapon bands were held in reserve as a targeted fix in case the
+post-rebalance sim showed a broken curve; it did not
+([#213](https://github.com/yusufkinatas/loop-survivors/issues/213), section
+5a), so the uniform banding stands and the reserve is unspent.
 
 ## 4. Passives ([#200](https://github.com/yusufkinatas/loop-survivors/issues/200))
 
@@ -288,12 +293,38 @@ levels) established:
   changed) drops the run to L7–8 by 10:00 and a final L15–25.
 
 **Therefore no XP change ships with this spec.** The 8-level rescale of
-section 2 is the whole fix. Verification is its own ticket
-([#213](https://github.com/yusufkinatas/loop-survivors/issues/213)): after
-the rebalance lands, rerun
-`npx tsx docs/research/leveling-pace-audit-sim.ts 1 1234,42,777` against the
-audit's baseline — expect the level-20 wall mid-run rather than minute 7 —
-with `itemCap` 6 (section 8), since the baseline was measured at 5/5.
+section 2 is the whole fix.
+
+### 5a. Verified after the rebalance shipped ([#213](https://github.com/yusufkinatas/loop-survivors/issues/213))
+
+Measured with a rebuilt harness that reproduces the audit's own baseline on
+the pre-rescale tree, so before and after are one measurement taken twice
+(`itemCap` 5 before, 6 after — the cap change is part of what shipped, not a
+confound held fixed). Full write-up:
+[`research/leveling-pace-recheck.md`](research/leveling-pace-recheck.md).
+
+| | m10 | m15 | 30:00 | level-20 wall | level-40 wall |
+|---|---|---|---|---|---|
+| Before (4 tiers) | 23–27 | 46–50 | 78–81 | 7:00–8:08 | 11:59–12:54 |
+| After (8 levels) | 20–24 | 26–34 | 53 / 55 / 78 | 7:16–9:31 | 17:19–24:55 |
+
+- **The 30:00 target passes.** A typical run finishes ~25 levels lower.
+- **The level-20-wall expectation is retired, not missed.** It was the
+  audit's own VS-expectation proxy, and the re-check showed it is not a
+  player-power number at all: reaching level 20 costs 1,805 XP ≈ 1,800 early
+  enemies, and at the section 2 endpoints the build is already over the wave
+  table's kill-everything ceiling for the whole early game. At minute 7 both
+  trees have killed the same number of enemies despite one being a full old
+  tier weaker, and **×2 damage moves that wall by two seconds**. Section 11's
+  allowed fixes all act on levels 2–8 — after the wall. Moving it would mean
+  reopening the Mad Forest early spawn budget or the VS XP curve, neither of
+  which is a player-power lever.
+- **Judged on what the rescale governs, it delivered**: m15 fell from 46–50 to
+  26–34 and the level-40 wall moved five to twelve minutes later.
+
+**Do not re-derive this as a bug.** A run that reaches level ~20 by minute 8
+is the locked wave table and the locked XP curve doing arithmetic, not a
+weapon that is too strong.
 
 ## 6. Stage Lights ([#201](https://github.com/yusufkinatas/loop-survivors/issues/201))
 
@@ -353,6 +384,22 @@ exactly one pickup. **No pity counters anywhere** in the new economy.
   walk-onto.
 - Presentation: the ×100 bundle gets a distinct jackpot visual; the ×10
   bundle sharing the anthem-tier look (value ≥ 10) is fine.
+
+**The Stage Magnet's rarity is load-bearing, and the spike it causes is the
+design.** The row's weight of 2 and its level-12 gate make magnets rare and
+late: [#213](https://github.com/yusufkinatas/loop-survivors/issues/213)
+measured 1–5 per run with the first at 17:40–24:50, against 34–39 (first at
+2:24) under the deleted enemy-drop path of section 6e. Gems drop faster than
+anyone collects them, so a bank of 7–9k uncollected XP now builds up on the
+floor untouched — and the first magnet cashes all of it at once, worth **+13
+to +14 levels inside one minute, on every seed measured**.
+
+That payoff is wanted: one enormous reward moment per run. Two costs are
+accepted with it — the run's biggest power spike turns on a 2.7% roll rather
+than on play, and the 30:00 level swings ~25 levels between seeds depending on
+when that roll lands. **Do not "fix" the one-minute level spike, and do not
+reweight or ungate this row to smooth it out.** Both were considered and
+declined while resolving #213.
 
 ### 6e. Enemies drop only XP gems
 
@@ -485,11 +532,10 @@ roll — section 6) and the Tip Jar grant.
 
 ## 11. Left open (deliberately)
 
-- **Pace verification** is
-  [#213](https://github.com/yusufkinatas/loop-survivors/issues/213): rerun
-  the audit sim after the rebalance lands, against the audit baseline, with
-  `itemCap` 6. If the curve misses, the fix is a targeted per-weapon retune
-  or per-weapon stage bands — not an economy change.
+- ~~**Pace verification**~~ — **done**, and no longer open: see section 5a.
+  The 30:00 target passed and the level-20-wall expectation was retired. The
+  per-weapon retune and per-weapon stage bands this section held in reserve
+  were **not** needed and were not spent.
 - **Prose edits** to `docs/plan.md` and the field guide (Encore paragraph,
   drop sources) are
   [#215](https://github.com/yusufkinatas/loop-survivors/issues/215).
