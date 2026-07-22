@@ -58,7 +58,7 @@ export interface WeaponContext {
    *  size and aspect ratio. */
   readonly worldW: number;
   readonly worldH: number;
-  /** Derived passive + encore multipliers, for the numbers applyBuild does not
+  /** Derived passive multipliers, for the numbers applyBuild does not
    *  reach. Redline Stomp reads knockbackMul; the base strip's knock
    *  deliberately does not. ALLOCATES A NEW OBJECT PER ACCESS
    *  (deriveBuildMods) — read it once per fire, never per enemy. */

@@ -6,7 +6,7 @@ import { Application } from 'pixi.js';
 import type { MusicEngine } from '../audio/engine';
 import { SOUNDSET } from '../audio/soundset';
 import { ROLE_COLORS, ROLES, type Kit, type Role } from '../audio/kits';
-import { CHEST, chestTickTimes, GEM_CUE, LEVELUP, NOTE_CUE, VICTORY } from './config';
+import { CHEST, chestTickTimes, ENCORE, GEM_CUE, HEALTH_PICKUP, LEVELUP, NOTE_CUE, VICTORY } from './config';
 import { mountTrackOverlay } from './trackoverlay';
 import { Hud } from './hud';
 import { pushDamageFeedback } from './damage-feedback';
@@ -229,7 +229,7 @@ export async function bootGame(
   type ChestDropOption =
     | { kind: 'chestWeapon'; role: Role; tier: number }
     | { kind: 'chestItem'; item: ItemId; level: number }
-    | { kind: 'chestEncore'; encore: 'damage' | 'area' | 'move' };
+    | { kind: 'chestTipJar' };
   interface ChestDropPlan {
     option: ChestDropOption;
     view: GroundPickView;
@@ -336,11 +336,11 @@ export async function bootGame(
       else presentNextUpgrade();
       return;
     }
-    // Build-complete rewards have no item to drop and resolve to the heal
-    // fallback immediately; the first real offer drops a triangle and stops.
+    // One reward drops its offer and stops; the rest wait their turn here.
     while (pendingUpgrades.length > 0 && groundPicks.length === 0) {
       pendingUpgrades.shift();
-      // Roll the real three-option offer for this reward.
+      // The real offer for this reward: three build cards, or — once the build
+      // is complete — the Encore's fixed pair.
       const options = rollOffers({
         tiers: w.tiers,
         items: w.items,
@@ -349,7 +349,6 @@ export async function bootGame(
         rng: Math.random,
         timeS: w.timeS,
         level: w.level,
-        encore: w.encoreProgress,
       });
       dropGroundPicks(w, options);
     }
@@ -363,8 +362,32 @@ export async function bootGame(
    *    already played the fanfare. */
   type Celebration = 'level' | 'none';
 
-  /** Drop the offered options as items in a triangle around the player, shove
-   *  the horde clear of them, and fire the cosmetic level-up moment. */
+  /** Where card `i` of `count` sits on the ring around the player. Three cards
+   *  are the authored triangle; any other count — the Encore's fixed pair, a
+   *  one- or two-recipe evolution offer — divides the circle evenly so the
+   *  drop still reads as balanced and the safe ring still centres on the
+   *  player. */
+  function pickAngleDeg(i: number, count: number): number {
+    return count === LEVELUP.angles.length ? LEVELUP.angles[i] : (360 / count) * i;
+  }
+
+  /** The Encore pedestals, and the Tip Jar a maxed build's leftover chest hit
+   *  pays: one place, so the level-up card and the chest pedestal are the same
+   *  object to the player. First Aid quotes what it will actually restore, the
+   *  way the floor drop's toast does. */
+  function encorePickView(
+    w: RunWorld,
+    encore: 'firstAid' | 'tipJar',
+  ): { glyph: string; color: number; name: string; level: string } {
+    if (encore === 'firstAid') {
+      return { glyph: '✚', color: 0xff665a, name: 'First Aid',
+        level: `+${Math.round(w.playerMaxHp * HEALTH_PICKUP.healFraction)} HP` };
+    }
+    return { glyph: '♫', color: 0xffd45c, name: 'Tip Jar', level: `+${ENCORE.tipJarNotes} ♫` };
+  }
+
+  /** Drop the offered options as items in a ring around the player, shove the
+   *  horde clear of them, and fire the cosmetic level-up moment. */
   function dropGroundPicks(w: RunWorld, options: ShellPick[], celebrate: Celebration = 'level'): void {
     const cx = w.player.x;
     const cy = w.player.y;
@@ -372,7 +395,7 @@ export async function bootGame(
     const payload: GroundPickView[] = [];
     for (let i = 0; i < options.length; i++) {
       const option = options[i];
-      const deg = LEVELUP.angles[i % LEVELUP.angles.length];
+      const deg = pickAngleDeg(i, options.length);
       const rad = (deg * Math.PI) / 180;
       // Portrait screens have less visible world width than the authored
       // triangle. Clamp the horizontal offset far enough inside the camera for
@@ -396,10 +419,7 @@ export async function bootGame(
           // evolutionHintFor for when it earns the space.
           evoRole: evolutionHintFor(w, option.item, previous === 0) });
       } else if (option.kind === 'encore') {
-        const role: Role = option.encore === 'heal' ? 'clap' : option.encore === 'damage' ? 'bass' : option.encore === 'move' ? 'kick' : 'chord';
-        const label = option.encore === 'heal' ? 'Emergency Water' : option.encore === 'damage' ? 'Hotter Signal' : option.encore === 'move' ? 'Quick Change' : 'Wider Stage';
-        payload.push({ x, y, role, color: ROLE_COLORS[role], name: label,
-          level: option.encore === 'heal' ? '+15 HP' : `+${option.amount}%` });
+        payload.push({ x, y, ...encorePickView(w, option.encore) });
       } else {
         payload.push({ x, y, role: option.evolution.role, color: option.evolution.color,
           name: option.evolution.name, level: 'EVOLVE' });
@@ -453,8 +473,12 @@ export async function bootGame(
       return;
     }
     if (option.kind === 'encore') {
-      w.applyEncoreChoice(option.encore);
-      hud.showToast(option.encore === 'heal' ? '+15 HP' : `Encore ${option.encore} +${option.amount}%`);
+      // Both Encore options resolve here and now — nothing waits for a bar,
+      // because neither one changes what the band is playing.
+      const landed = w.applyEncoreChoice(option.encore);
+      hud.showToast(option.encore === 'firstAid'
+        ? `FIRST AID · +${Math.round(landed)} HP`
+        : `TIP JAR · +${landed} ♫`);
       hud.levelPulse();
       view?.flourish(w.player.x, w.player.y);
       presentNextUpgrade();
@@ -609,8 +633,15 @@ export async function bootGame(
    *  pedestal that thuds in after the reel stops and applies when scooped.
    *  Weapon tiers and passive levels are reserved at roll time so a later
    *  chest can never promise a level twice; the pool is rebuilt per drop so
-   *  a ×5 spends its hits across what can still level. A fully maxed build
-   *  converts leftover hits into encore bonuses. */
+   *  a ×5 spends its hits across what can still level. A hit that finds that
+   *  pool empty — the last hits of a ×5 on a nearly maxed build, every hit on
+   *  a fully maxed one — converts to a Tip Jar instead.
+   *
+   *  This "nothing left to level" test is deliberately NOT the level-up
+   *  screen's maxed-build test: this pool is owned-only and reservation-aware,
+   *  and it is asked once per hit, so a chest still pays a build that has open
+   *  cap slots the level-up screen would offer to fill. Both tests just agree
+   *  on what a leftover is worth. */
   function rollChestDrops(w: RunWorld, count: 1 | 3 | 5): ChestDropPlan[] {
     const cx = w.player.x;
     const cy = w.player.y;
@@ -622,7 +653,6 @@ export async function bootGame(
       Math.max(w.tiers.get(role) ?? 0, scheduledWeaponTiers.get(role) ?? 0);
     const itemLevelNow = (item: ItemId): number =>
       Math.max(w.items.get(item) ?? 0, plannedItemLevels.get(item) ?? 0);
-    const encoreKinds = ['damage', 'area', 'move'] as const;
     const drops: ChestDropPlan[] = [];
     for (let i = 0; i < count; i++) {
       const deg = startDeg + (360 / count) * i + (Math.random() - 0.5) * 24;
@@ -638,11 +668,7 @@ export async function bootGame(
         if (itemLevelNow(item) < itemMaxLevel(item)) pool.push({ kind: 'item', item });
       }
       if (pool.length === 0) {
-        const encore = encoreKinds[i % encoreKinds.length];
-        const role: Role = encore === 'damage' ? 'bass' : encore === 'move' ? 'kick' : 'chord';
-        const label = encore === 'damage' ? 'Hotter Signal' : encore === 'move' ? 'Quick Change' : 'Wider Stage';
-        drops.push({ option: { kind: 'chestEncore', encore },
-          view: { x, y, role, color: ROLE_COLORS[role], name: label, level: 'ENCORE' } });
+        drops.push({ option: { kind: 'chestTipJar' }, view: { x, y, ...encorePickView(w, 'tipJar') } });
         continue;
       }
       const target = pool[Math.floor(Math.random() * pool.length)];
@@ -696,8 +722,7 @@ export async function bootGame(
       const definition = ITEMS[option.item];
       hud.showToast(`${definition.name} ${option.level} · ${definition.levelLines[option.level - 1]}`);
     } else {
-      w.applyEncoreChoice(option.encore);
-      hud.showToast(`Encore ${option.encore}`);
+      hud.showToast(`TIP JAR · +${w.applyEncoreChoice('tipJar')} ♫`);
     }
   }
 

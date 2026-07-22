@@ -136,6 +136,15 @@ export const HEALTH_PICKUP = {
   pickupRadius: 28,
 } as const;
 
+/** The Encore: what a maxed build's level-up pays. Only the Tip Jar needs a
+ * number of its own — the other card is a First Aid, HEALTH_PICKUP.healFraction
+ * and all, because it is deliberately the same heal the floor drop gives. */
+export const ENCORE = {
+  /** Granted instantly on pick, with no pickup to walk to and no multiplier.
+   * Also what one leftover chest hit on a maxed build converts to. */
+  tipJarNotes: 25,
+} as const;
+
 /** Player take-damage feedback, shared by every arena (normal run, sandbox,
  *  and boss) through damage-feedback.ts. One place for the whole feel: the
  *  recovery window, the red edge tint, the hit screenshake, and the audio cue.
