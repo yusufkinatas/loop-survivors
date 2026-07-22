@@ -9,6 +9,11 @@
     "preview": "vite preview",
     "check": "tsc --noEmit && knip"
   },
+  "knip": {
+    "ignore": [
+      "docs/**"
+    ]
+  },
   "devDependencies": {
     "@types/node": "^26.1.0",
     "knip": "^6.27.0",
