@@ -84,10 +84,10 @@ combat verbs—movement speed, projectile speed, piercing, wall bounces, size,
 damage, duration, pickup reach, protection, and slow regeneration—so
 combinations are useful even with the sound muted. Utility passives may stand
 alone when the tradeoff is interesting; a passive is not required to be an
-evolution ingredient. Once a weapon and its paired passive are both maxed, the
-next chest offers an evolution. The evolved weapon receives a new name,
-visuals, audio processing, damage profile, and attack pattern; evolution is a
-qualitative transformation rather than another percentage level.
+evolution ingredient. Once a weapon is maxed and its paired passive is owned at
+any level, the next chest offers an evolution. The evolved weapon receives a
+new name, visuals, audio processing, damage profile, and attack pattern;
+evolution is a qualitative transformation rather than another percentage level.
 
 After all normal build slots and levels are complete, level-ups become Encore
 picks. Encore bonuses are small, diminishing run-only improvements, preventing

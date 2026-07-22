@@ -280,8 +280,8 @@ export async function bootGame(
    *  describe the same item at the same instant and must never disagree. Call it
    *  BEFORE the item is added, so `firstCopy` still means what it says.
    *
-   *  No "already evolved" check is needed: evolving requires the partner item at
-   *  max level, so an evolved weapon's item can never be on its first copy. */
+   *  No "already evolved" check is needed: evolving requires the partner item to
+   *  be owned, so an evolved weapon's item can never be on its first copy. */
   function evolutionHintFor(w: RunWorld, item: ItemId, firstCopy: boolean): Role | undefined {
     if (!firstCopy) return undefined;
     const partner = ITEMS[item].evolutionPartner;

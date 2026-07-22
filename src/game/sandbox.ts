@@ -381,8 +381,8 @@ export function mountSandboxPanel(
   // meant scrolling past the entire tab and back for each weapon in turn.
   //
   // ★ IS PRESENTED AS ONE RUNG PAST THE TOP LEVEL, which the real game does not
-  // have — evolving is a recipe (max level plus a maxed partner passive), not
-  // the top of the level ladder. The panel deliberately does not model that.
+  // have — evolving is a recipe (max weapon level plus the partner passive
+  // owned), not the top of the level ladder. The panel does not model that.
   // Here the question is only ever "show me this weapon in this state", and one
   // row of mutually exclusive states answers it in one click. The recipe still
   // governs real runs; see RunWorld.evolve, which this path does not go through.
@@ -423,7 +423,7 @@ export function mountSandboxPanel(
     star.title =
       `${evolution.name} — ${evolution.description}\n` +
       `In a run: ${ROLE_META[role].name} ${TIER_NUMERALS[WEAPON_MAX_LEVEL - 1]} + ` +
-      `${ITEMS[evolution.item].name} V. ` +
+      `${ITEMS[evolution.item].name} at any level. ` +
       `In the sandbox neither is needed.`;
     choices.options.push({ value: EVOLVED_RUNG, button: star });
     weaponButtons.set(role, choices);
@@ -671,9 +671,9 @@ export function mountSandboxPanel(
    *
    *  Sets the top level underneath because every evolved weapon reads its built
    *  tier damage — but it does NOT touch the partner passive. Going through
-   *  world.evolve would have meant maxing that passive to satisfy the recipe,
-   *  which buys its whole build effect as a side effect and quietly changes the
-   *  thing being measured. See RunWorld.evolveForSandbox. */
+   *  world.evolve would have meant granting that passive to satisfy the recipe,
+   *  which buys a build effect as a side effect and quietly changes the thing
+   *  being measured. See RunWorld.evolveForSandbox. */
   function setWeaponEvolved(role: Role, evolution: EvolutionDefinition): void {
     if (world.evolved.has(role)) return;
     setWeaponTier(role, WEAPON_MAX_LEVEL);
