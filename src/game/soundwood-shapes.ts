@@ -1,9 +1,11 @@
 // Cached pixel geometry for the Midnight Neon Soundwood world renderer.
 // High-count entities remain one Graphics each and share GraphicsContexts.
 
-import { Container, Graphics, GraphicsContext, Text, TextStyle } from 'pixi.js';
+import { Container, Graphics, GraphicsContext, Sprite, Text, TextStyle } from 'pixi.js';
 import { ROLE_COLORS, type Role } from '../audio/kits';
+import { ENEMIES, WORLD_SCALE } from './config';
 import { ITEMS, ITEM_NEUTRAL_COLOR, type ItemId } from './items';
+import { objectTexture, playerLoop, type ObjectName, type SpriteLoop } from './pixelart';
 import type { Enemy, Gem, HealthPickup, MusicNotePickup, Projectile, StageMagnetPickup, Zone } from './run';
 import { SOUNDWOOD, hash2, regularPixelPoly, snap } from './soundwood-art';
 import { drawWeaponIcon } from './weaponicons';
@@ -383,6 +385,66 @@ export function makeEnemyGfx(e: Enemy, frame: number): EnemyGfx {
   return gfx;
 }
 
+/** A generated-art enemy body: the loop frame, plus a white silhouette of the
+ *  same frame held at zero alpha until the enemy is hit. */
+export interface SpriteEnemyGfx extends Container {
+  /** Discriminates the two enemy bodies without a kind lookup per frame. */
+  __sprite: true;
+  __body: Sprite;
+  __flash: Sprite;
+  __loop: SpriteLoop;
+  __frame: number;
+  /** Uniform draw scale. Held because the facing mirror negates it rather
+   *  than assuming 1, the way the drawn silhouettes can. */
+  __scale: number;
+  /** The radius this scale was derived from, so the enemy lab's live resize
+   *  rescales the sprite the way it re-draws a silhouette. */
+  __radius: number;
+}
+
+export function isSpriteEnemyGfx(gfx: EnemyGfx | SpriteEnemyGfx): gfx is SpriteEnemyGfx {
+  return (gfx as SpriteEnemyGfx).__sprite === true;
+}
+
+/** One art pixel is one source-frame pixel, and one source pixel is
+ *  `WORLD_SCALE` world units: the same conversion `legacyEnemyRadius` uses for
+ *  the hitbox, so art and numbers stay in the one scale (#212). `sizeMul` and
+ *  the enemy lab both move `radius`, so scale rides on the ratio. */
+function spriteEnemyScale(e: Enemy): number {
+  const base = ENEMIES[e.kind].radius;
+  return WORLD_SCALE * (base > 0 ? e.radius / base : 1);
+}
+
+export function makeSpriteEnemyGfx(e: Enemy, loop: SpriteLoop, frame: number): SpriteEnemyGfx {
+  const root = new Container() as SpriteEnemyGfx;
+  const body = new Sprite({ texture: loop.frames[frame], anchor: 0.5, roundPixels: true });
+  const flash = new Sprite({ texture: loop.flash[frame], anchor: 0.5, roundPixels: true, alpha: 0 });
+  root.__sprite = true;
+  root.__body = body;
+  root.__flash = flash;
+  root.__loop = loop;
+  root.__frame = frame;
+  root.__radius = e.radius;
+  root.__scale = spriteEnemyScale(e);
+  root.scale.set(root.__scale);
+  root.addChild(body, flash);
+  return root;
+}
+
+/** Swap in the loop frame and refresh the derived scale. Cheap enough to call
+ *  every rendered frame: both texture writes short-circuit when unchanged. */
+export function syncSpriteEnemyGfx(gfx: SpriteEnemyGfx, e: Enemy, frame: number): void {
+  if (gfx.__frame !== frame) {
+    gfx.__frame = frame;
+    gfx.__body.texture = gfx.__loop.frames[frame];
+    gfx.__flash.texture = gfx.__loop.flash[frame];
+  }
+  if (gfx.__radius !== e.radius) {
+    gfx.__radius = e.radius;
+    gfx.__scale = spriteEnemyScale(e);
+  }
+}
+
 function projectileContext(pr: Projectile, evolved: boolean): GraphicsContext {
   const r = Math.max(3, snap(pr.radius));
   return cachedPixelShape('shot:' + pr.role + ':' + r + ':' + (evolved ? 'e' : 'n'), (g) => {
@@ -507,12 +569,42 @@ export interface GemGfx extends Container {
   __tier: Gem['tier'];
 }
 
+/** Scale a generated object texture so it stands `height` world units tall.
+ *  The textures are trimmed to their alpha bounds by make-strips.py, so this is
+ *  the whole sizing story: the art is the art, with no canvas padding to
+ *  discount. */
+function objectSprite(name: ObjectName, height: number): Sprite | null {
+  const texture = objectTexture(name);
+  if (!texture) return null;
+  const sprite = new Sprite({ texture, anchor: 0.5, roundPixels: true });
+  sprite.scale.set(height / texture.height);
+  return sprite;
+}
+
 export function makeGemGfx(gem: Gem): GemGfx {
   const style = gem.tier === 'red'
     ? { size: 9, color: SOUNDWOOD.coral, glow: 17, alpha: 0.45 }
     : gem.tier === 'green'
       ? { size: 7, color: 0x6dff8d, glow: 13, alpha: 0.34 }
       : { size: 5, color: SOUNDWOOD.blue, glow: 10, alpha: 0.28 };
+  // The generated gem is one near-white diamond for all three tiers; the tier
+  // is carried by the same tint and size the drawn gem always used. That only
+  // works because the art is pale: tint multiplies, so it can darken white into
+  // blue/green/red but could never lift a baked colour into another one.
+  //
+  // No glow behind it. The drawn diamond needed one to separate a few flat
+  // pixels from the floor; the generated gem has its own shading and outline
+  // and reads without help, so `style.glow`/`style.alpha` are used only by the
+  // drawn fallback below.
+  const sprite = objectSprite('gem', (style.size + 2) * 2);
+  if (sprite) {
+    sprite.tint = style.color;
+    const result = new Container() as GemGfx;
+    result.__tier = gem.tier;
+    result.addChild(sprite);
+    result.position.set(snap(gem.x), snap(gem.y));
+    return result;
+  }
   const body = pixelGraphics(cachedPixelShape('gem:' + gem.tier, (g) => {
     pixelDiamond(g, 0, 1, style.size + 2, SOUNDWOOD.ink);
     pixelDiamond(g, 0, 0, style.size, 0xffffff);
@@ -547,6 +639,36 @@ export function makeMusicNoteGfx(note: MusicNotePickup): MusicNoteGfx {
   const anthem = jackpot || note.tier === 'anthem';
   const phrase = note.tier === 'phrase';
   const color = jackpot ? 0xfff3c0 : anthem ? SOUNDWOOD.amber : phrase ? 0xffdf78 : 0xffc857;
+  // One generated near-white eighth note for every tier, separated by the gold
+  // tint and by size, and drawn bare — no glow, same as the gems. The drawn
+  // anthem was a *beamed pair* rather than a bigger single note, so the upper
+  // tiers rest on size alone.
+  //
+  // The jackpot keeps the starburst it was given with the tier. The sprite is a
+  // single note and cannot supply one, and the starburst is what makes a
+  // jackpot read as a jackpot from across the arena rather than as one more big
+  // note — with the glow gone it is the only thing still doing that job.
+  const sprite = objectSprite('note', jackpot ? 42 : anthem ? 36 : phrase ? 30 : 26);
+  if (sprite) {
+    sprite.tint = color;
+    const result = new Container() as MusicNoteGfx;
+    result.__tier = note.tier;
+    if (jackpot) {
+      const burst = pixelGraphics(cachedPixelShape('music-note:jackpot-burst', (g) => {
+        g.poly(regularPixelPoly(8, 25, Math.PI / 8)).stroke({ width: 2, color: 0xffffff, alpha: 0.5 });
+        g.poly(regularPixelPoly(8, 19, 0)).stroke({ width: 1, color: 0xffffff, alpha: 0.32 });
+        for (let i = 0; i < 8; i++) {
+          const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
+          pixelDiamond(g, Math.cos(a) * 25, Math.sin(a) * 25 - 4, 3, 0xffffff);
+        }
+      }));
+      burst.tint = color;
+      result.addChild(burst);
+    }
+    result.addChild(sprite);
+    result.position.set(snap(note.x), snap(note.y));
+    return result;
+  }
   const body = pixelGraphics(cachedPixelShape(`music-note:${note.tier}`, (g) => {
     if (jackpot) {
       // Behind the note: two offset rings and a spoke of sparks. Stroke-only,
@@ -752,7 +874,14 @@ export function makeStageLightGfx(): StageLightGfx {
 }
 
 export interface PlayerGfx extends Container {
-  __body: Graphics;
+  /** The drawn DJ, or the generated walk sprite once its art has loaded. */
+  __body: Container;
+  /** Non-null only when the generated art is in use; the renderer drives its
+   *  loop frame from whether the player is actually moving (#212). */
+  __walk: Sprite | null;
+  /** Draw scale of `__body`, which the facing mirror negates. The drawn body
+   *  is authored at world scale already, so it holds 1. */
+  __bodyScale: number;
   __halo: Graphics;
   __marker: Graphics;
 }
@@ -790,10 +919,20 @@ export function makePlayerGfx(radius: number): PlayerGfx {
   pixelDiamond(marker.context, 0, -r * 2.25, Math.max(5, r * 0.34), SOUNDWOOD.ink);
   pixelDiamond(marker.context, 0, -r * 2.32, Math.max(3, r * 0.23), SOUNDWOOD.cyanHot);
   box(marker.context, -1, -r * 1.88, 2, 5, SOUNDWOOD.cyanHot);
-  root.__body = body;
+
+  // The generated Midnight DJ replaces the drawn body and nothing else: the
+  // shadow, glow, halo and marker are findability, not art, so they stay.
+  const loop = playerLoop();
+  const walk = loop
+    ? new Sprite({ texture: loop.frames[0], anchor: 0.5, roundPixels: true })
+    : null;
+  root.__walk = walk;
+  root.__body = walk ?? body;
+  root.__bodyScale = walk ? WORLD_SCALE : 1;
+  root.__body.scale.set(root.__bodyScale);
   root.__halo = halo;
   root.__marker = marker;
-  root.addChild(shadow, glow, halo, body, marker);
+  root.addChild(shadow, glow, halo, root.__body, marker);
   return root;
 }
 
@@ -1076,12 +1215,68 @@ function sceneryContext(variant: number): GraphicsContext {
   });
 }
 
+/** Scenery props draw at 2x the size the drawn shapes used: big enough to
+ *  furnish the arena, small enough that a 256-unit cell holds one with room
+ *  around it rather than being filled by it. */
+const SCENERY_SCALE = 2;
+
+/** How far the props sink into the floor. They are set dressing, and the
+ *  enemies have to win the fight for attention outright — so the props keep
+ *  half their opacity and take a cool dark tint that pulls them toward the
+ *  floor's own value. The tint does most of the blending, which is what lets
+ *  the alpha stay high enough for the props to still read as shapes. */
+const SCENERY_ALPHA = 0.5;
+const SCENERY_TINT = 0x66748f;
+
+/** The generated prop for each variant, and how tall it stands in world units
+ *  before `SCENERY_SCALE`. Six props where the drawn scenery had five: the
+ *  stage light is new with the art (#234), so `SCENERY_PROPS.length` rather
+ *  than a literal 5 is what the variant wraps around. */
+const SCENERY_PROPS: readonly { name: ObjectName; height: number }[] = [
+  { name: 'prop-stump', height: 68 },
+  { name: 'prop-rune', height: 72 },
+  { name: 'prop-mushrooms', height: 34 },
+  { name: 'prop-cableroot', height: 44 },
+  { name: 'prop-fern', height: 58 },
+  { name: 'prop-stagelight', height: 64 },
+];
+
+/** The fog pad and ground litter that sit under every prop, drawn or generated.
+ *  Splitting them out of `sceneryContext` lets the generated props reuse them,
+ *  so a cell keeps its soft footing instead of a sprite sitting on bare floor. */
+function sceneryBedContext(variant: number): GraphicsContext {
+  return cachedPixelShape('scenery-bed:' + variant, (g) => {
+    const rx = (hash2(variant, 1, 31) - 0.5) * 150;
+    const ry = (hash2(variant, 2, 53) - 0.5) * 150;
+    box(g, rx - 72, ry - 20, 144, 32, 0x8ba7a2, 0.025);
+    box(g, rx - 48, ry - 28, 96, 48, 0x8ba7a2, 0.022);
+    for (let i = 0; i < 3; i++) {
+      const x = (hash2(variant, i, 91) - 0.5) * 210;
+      const y = (hash2(variant, i, 117) - 0.5) * 210;
+      box(g, x - 7, y - 3, 14, 6, SOUNDWOOD.barkLight, 0.32);
+      box(g, x - 3, y - 5, 7, 3, SOUNDWOOD.pineLight, 0.26);
+    }
+  });
+}
+
 export function makeSceneryCell(ix: number, iy: number): SceneryCell {
   const variant = Math.floor(hash2(ix, iy, 1201) * 20);
   const root = new Container() as SceneryCell;
-  const prop = pixelGraphics(sceneryContext(variant));
-  prop.alpha = 0.78;
-  prop.scale.x = (ix + iy) % 2 === 0 ? 1 : -1;
+  const spec = SCENERY_PROPS[variant % SCENERY_PROPS.length];
+  const generated = objectSprite(spec.name, spec.height * SCENERY_SCALE);
+  const prop: Container = generated ?? pixelGraphics(sceneryContext(variant));
+  if (generated) {
+    generated.tint = SCENERY_TINT;
+    // The drawn props are authored around an offset centre; the sprites are
+    // trimmed and centre-anchored, so they take that offset explicitly.
+    generated.position.set(
+      snap((hash2(variant, 1, 31) - 0.5) * 150),
+      snap((hash2(variant, 2, 53) - 0.5) * 150),
+    );
+    root.addChild(pixelGraphics(sceneryBedContext(variant)));
+  }
+  prop.alpha = SCENERY_ALPHA;
+  prop.scale.x = ((ix + iy) % 2 === 0 ? 1 : -1) * Math.abs(prop.scale.x);
   const flies = new Graphics({ roundPixels: true });
   for (let i = 0; i < 3; i++) {
     const x = snap((hash2(ix, iy, 300 + i) - 0.5) * 190);

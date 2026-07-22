@@ -1,10 +1,11 @@
 // Midnight Neon Soundwood run renderer. The simulation stays in run.ts; this
 // file diffs its state into explicit visual layers with cached pixel geometry.
 
-import { Container, Graphics, Sprite, Text, TextStyle, type Texture } from 'pixi.js';
+import { Container, Graphics, Text, TextStyle, TilingSprite, type Texture } from 'pixi.js';
 import type { Role } from '../audio/kits';
-import { RUN, STAGE_LIGHT } from './config';
+import { RUN, STAGE_LIGHT, WORLD_SCALE } from './config';
 import type { ItemId } from './items';
+import { enemyLoop, loopFrame, playerLoop, preloadPixelArt } from './pixelart';
 import { KICK } from './weapons';
 import {
   PLAYER_FOOT_OFFSET,
@@ -32,7 +33,10 @@ import {
   animateSceneryCell,
   BOSS_RING_SCALE,
   enemyContext,
+  isSpriteEnemyGfx,
   makeEnemyGfx,
+  makeSpriteEnemyGfx,
+  syncSpriteEnemyGfx,
   makeGemGfx,
   makeMusicNoteGfx,
   makePlayerGfx,
@@ -46,6 +50,7 @@ import {
   makeZoneGfx,
   refreshProjectileContext,
   type EnemyGfx,
+  type SpriteEnemyGfx,
   type GemGfx,
   type MusicNoteGfx,
   type PlayerGfx,
@@ -58,8 +63,11 @@ import {
   type ChestGfx,
 } from './soundwood-shapes';
 
-const FLOOR_SCALE = 0.5;
-const FLOOR_TILE_SIZE = 1254 * FLOOR_SCALE;
+/** One floor pixel is two sprite pixels, so the ground reads coarser than the
+ *  bodies standing on it and sits visually behind them (#209). The 32px tile
+ *  therefore covers 112.3 world units. */
+const FLOOR_SCALE = 2 * WORLD_SCALE;
+const FLOOR_TILE_SIZE = 32 * FLOOR_SCALE;
 const SCENERY_CELL_SIZE = 256;
 const TRAIL_ROLES = new Set<Role>(['snare', 'lead']);
 const TRAIL_POINTS = 7;
@@ -70,13 +78,20 @@ const DMG_DUR = 0.62;
 const DMG_RISE = 38;
 const CHAPTER_TINTS = [0xffffff, 0xe6f5ff, 0xe9fff0, 0xf1e8ff, 0xfff0d7, 0xffdedb];
 
+/** The generated tile came back warm red-brown rather than the blue-black
+ *  #209 specified (measured in #211). Multiply only ever darkens, so a cool
+ *  tint cannot add blue that was never there -- it pulls the tile's red down
+ *  until the blue-black already in it leads. Applied to the floor alone, under
+ *  the chapter tint, so chapters still colour the ground the way they did. */
+const FLOOR_TONE = 0xa8d4ff;
+
 /** The single arena color palette. */
 const ARENA_PALETTE = { tint: 0xf1ffff, accent: SOUNDWOOD.cyan, secondary: SOUNDWOOD.magenta } as const;
 
 /** Optional integration hook: callers may await this before constructing a
  * run, while RunView also starts the preload itself for backward compatibility. */
 export async function preloadRunArt(): Promise<void> {
-  await preloadSoundwoodFloor();
+  await Promise.all([preloadSoundwoodFloor(), preloadPixelArt()]);
 }
 
 interface GroundPickCopyBase {
@@ -145,12 +160,6 @@ interface Floater {
 
 interface ZoneGfx extends Graphics {
   __evolved: boolean;
-}
-
-interface FloorTile {
-  sprite: Sprite;
-  ix: number;
-  iy: number;
 }
 
 const DMG_STYLE = new TextStyle({
@@ -399,9 +408,12 @@ export class RunView {
   private floorShade = new Graphics({ roundPixels: true });
   private environmentFloorGfx = new Graphics({ roundPixels: true });
   private floorTexture: Texture | null = null;
-  private floorTiles: FloorTile[] = [];
-  private floorColumns = 0;
-  private floorRows = 0;
+  /** The whole ground in one draw. Viable only because #209 dropped the
+   *  alternate-row/column mirror flip: at 112 units the flip printed a 4-way
+   *  symmetric butterfly every 224 units, and the eye finds symmetry faster
+   *  than it finds a repeat. The wrap check in #211 passed, so plain repeat
+   *  stands on its own. */
+  private floorTiling: TilingSprite | null = null;
 
   private telegraphGfx = new Graphics({ roundPixels: true });
   private bossGlowGfx = new Graphics({ roundPixels: true });
@@ -416,7 +428,7 @@ export class RunView {
   private flashGfx = new Graphics({ roundPixels: true });
   private playerGfx: PlayerGfx;
 
-  private enemyGfx = new Map<Enemy, EnemyGfx>();
+  private enemyGfx = new Map<Enemy, EnemyGfx | SpriteEnemyGfx>();
   private dummyLabels = new Map<Enemy, Text>();
   private projectileGfx = new Map<Projectile, ProjectileGfx>();
   private zoneGfx = new Map<Zone, ZoneGfx>();
@@ -457,6 +469,11 @@ export class RunView {
   private flashes: { start: number; dur: number; color: number; alpha: number }[] = [];
   private trails = new Map<Projectile, number[]>();
   private chapter = -1;
+  /** Walk-loop clock and the position it measures movement against. */
+  private walkT = 0;
+  private walkLastX = 0;
+  private walkLastY = 0;
+  private walkLastTimeS = 0;
   private readonly reducedMotion: boolean;
 
   constructor(world: RunWorld, view: { width: number; height: number }) {
@@ -730,7 +747,7 @@ export class RunView {
     this.destroyed = true;
     this.chestCeremony = null; // its root dies with the stage below
     this.stage.destroy({ children: true });
-    this.floorTiles.length = 0;
+    this.floorTiling = null; // destroyed with the stage above
     this.enemyGfx.clear();
     this.dummyLabels.clear();
     this.projectileGfx.clear();
@@ -753,9 +770,13 @@ export class RunView {
   private installFloorTexture(texture: Texture): void {
     this.floorTexture = texture;
     texture.source.scaleMode = 'nearest';
+    texture.source.addressMode = 'repeat';
     this.floorFallback.alpha = 0;
-    this.floorColumns = 0;
-    this.floorRows = 0;
+    this.floorTiling?.destroy();
+    const tiling = new TilingSprite({ texture, width: 1, height: 1, roundPixels: true });
+    tiling.tileScale.set(FLOOR_SCALE);
+    this.floorTileLayer.addChild(tiling);
+    this.floorTiling = tiling;
   }
 
   private updateFloor(cameraX: number, cameraY: number): void {
@@ -781,49 +802,33 @@ export class RunView {
           }
         }
       }
-    } else {
-      const columns = Math.ceil(width / FLOOR_TILE_SIZE) + 3;
-      const rows = Math.ceil(height / FLOOR_TILE_SIZE) + 3;
-      if (columns !== this.floorColumns || rows !== this.floorRows) {
-        for (const tile of this.floorTiles) tile.sprite.destroy();
-        this.floorTiles.length = 0;
-        this.floorTileLayer.removeChildren();
-        this.floorColumns = columns;
-        this.floorRows = rows;
-        for (let i = 0; i < columns * rows; i++) {
-          const sprite = new Sprite({ texture, anchor: 0.5, roundPixels: true });
-          this.floorTileLayer.addChild(sprite);
-          this.floorTiles.push({ sprite, ix: 0, iy: 0 });
-        }
-      }
-      const centerIx = Math.floor(cameraX / FLOOR_TILE_SIZE);
-      const centerIy = Math.floor(cameraY / FLOOR_TILE_SIZE);
-      const firstIx = centerIx - Math.floor(columns / 2);
-      const firstIy = centerIy - Math.floor(rows / 2);
+    } else if (this.floorTiling) {
+      const tiling = this.floorTiling;
+      const x = snap(left - 80);
+      const y = snap(top - 80);
+      tiling.position.set(x, y);
+      tiling.width = snap(width + 160);
+      tiling.height = snap(height + 160);
+      // The covering rectangle chases the camera, so the texture has to be
+      // pushed back by however far it moved or the ground would swim along
+      // with it. Modulo one tile keeps the offset small over a long run.
+      tiling.tilePosition.set(-x % FLOOR_TILE_SIZE, -y % FLOOR_TILE_SIZE);
       const palette = ARENA_PALETTE;
-      const tint = multiplyTint(CHAPTER_TINTS[this.chapter % CHAPTER_TINTS.length], palette.tint);
-      let index = 0;
-      for (let row = 0; row < rows; row++) {
-        for (let column = 0; column < columns; column++) {
-          const tile = this.floorTiles[index++];
-          const ix = firstIx + column;
-          const iy = firstIy + row;
-          tile.ix = ix;
-          tile.iy = iy;
-          tile.sprite.position.set(
-            ix * FLOOR_TILE_SIZE + FLOOR_TILE_SIZE / 2,
-            iy * FLOOR_TILE_SIZE + FLOOR_TILE_SIZE / 2,
-          );
-          tile.sprite.scale.set((ix & 1) ? -FLOOR_SCALE : FLOOR_SCALE, (iy & 1) ? -FLOOR_SCALE : FLOOR_SCALE);
-          tile.sprite.tint = tint;
-        }
-      }
+      tiling.tint = multiplyTint(
+        multiplyTint(CHAPTER_TINTS[this.chapter % CHAPTER_TINTS.length], palette.tint),
+        FLOOR_TONE,
+      );
     }
 
     // A translucent night wash keeps generated detail rich but below enemies.
+    // #209 set the wash to ~0.12 on the assumption the tile would bake its own
+    // darkness. It came back brighter and warmer than that, so the dial it left
+    // for exactly this gets turned the other way: 0.5, chosen against
+    // art/pixellab/tune-floor.py, is where the sprites separate from the ground
+    // without the texture going to mud.
     this.floorShade.clear();
     this.floorShade.rect(snap(left - 80), snap(top - 80), snap(width + 160), snap(height + 160))
-      .fill({ color: SOUNDWOOD.ink, alpha: texture ? 0.39 : 0.08 });
+      .fill({ color: SOUNDWOOD.ink, alpha: texture ? 0.5 : 0.08 });
     const palette = ARENA_PALETTE;
     const chapterColor = this.chapter % 2 === 0 ? palette.accent : palette.secondary;
     this.floorShade.rect(snap(left - 80), snap(top - 80), snap(width + 160), snap(height + 160))
@@ -1130,10 +1135,16 @@ export class RunView {
     const halfH = this.world.worldH / 2 + 100;
     this.live.clear();
     for (const enemy of this.world.enemies) {
-      const frame = enemyFrame(enemy, this.world.timeS);
+      const loop = enemyLoop(enemy.kind);
       let gfx = this.enemyGfx.get(enemy);
+      // The generated kinds run their own four-frame loop at the tempo their
+      // concept ticket locked; every other kind keeps the two-frame drawn
+      // cycle, so the 2:00+ swarm shows both side by side (#207).
+      const frame = loop
+        ? loopFrame(loop, this.world.timeS, enemy.id * 0.41)
+        : enemyFrame(enemy, this.world.timeS);
       if (!gfx) {
-        gfx = makeEnemyGfx(enemy, frame);
+        gfx = loop ? makeSpriteEnemyGfx(enemy, loop, frame) : makeEnemyGfx(enemy, frame);
         this.enemyGfx.set(enemy, gfx);
         this.enemyLayer.addChild(gfx);
       }
@@ -1142,12 +1153,36 @@ export class RunView {
       gfx.renderable = visible;
       if (!visible) continue;
 
+      gfx.position.set(snap(enemy.x), snap(enemy.y));
+
+      if (isSpriteEnemyGfx(gfx)) {
+        syncSpriteEnemyGfx(gfx, enemy, frame);
+        // Baked colour, not runtime tint (#207): the sprite ships its own
+        // SOUNDWOOD tones, so the hit flash is a white silhouette laid over
+        // it rather than a tint the art has nothing to give back.
+        gfx.__flash.alpha = enemy.flashT > 0 ? 1 : 0;
+        // The generated kinds sway with everything else: the tilt is what makes
+        // the crowd feel alive, and a sprite body is no reason to opt out of it.
+        // Same mirror rule as the drawn silhouettes -- negating the lean along
+        // with the flip keeps it pointing the same way in world space, so an
+        // enemy crossing the player never snaps to the opposite lean.
+        const flipped = enemy.lastMoveX < -0.01;
+        const tilt = enemyTilt(enemy, this.world.timeS * TILT_SPEED);
+        // The drawn swarm bodies turn to face their sweep, but a generated
+        // sprite is an upright figure and the same rotation lays it on its
+        // side at any heading that is not due east (#219). Sprites keep the
+        // mirror instead, so the Static Rush runs at you rather than past you.
+        gfx.rotation = flipped ? -tilt : tilt;
+        gfx.scale.set(flipped ? -gfx.__scale : gfx.__scale, gfx.__scale);
+        gfx.alpha = 1;
+        continue;
+      }
+
       if (gfx.__frame !== frame || gfx.__radius !== enemy.radius) {
         gfx.context = enemyContext(enemy, frame);
         gfx.__frame = frame;
         gfx.__radius = enemy.radius;
       }
-      gfx.position.set(snap(enemy.x), snap(enemy.y));
       gfx.tint = enemy.flashT > 0 ? 0xffffff : enemy.color;
       const tilt = enemyTilt(enemy, this.world.timeS * TILT_SPEED);
       gfx.rotation = tilt;
@@ -1308,7 +1343,8 @@ export class RunView {
   private updatePlayer(): void {
     const player = this.world.player;
     this.playerGfx.position.set(snap(player.x), snap(player.y));
-    this.playerGfx.__body.scale.x = player.facingX;
+    this.updateWalkLoop(player.x, player.y);
+    this.playerGfx.__body.scale.x = player.facingX * this.playerGfx.__bodyScale;
     const pulse = 1 + Math.sin(this.world.timeS * 3.8) * 0.035;
     this.playerGfx.__halo.scale.set(pulse);
     this.playerGfx.__halo.alpha = evolvedCount(this.world) > 0 ? 1 : 0.78;
@@ -1317,6 +1353,29 @@ export class RunView {
     this.playerGfx.__body.alpha = player.iframesT > 0 && Math.floor(this.world.timeS * 18) % 2 === 0 ? 0.42 : 1;
     // Marker and halo never flicker: even during damage the player stays findable.
     this.playerGfx.__marker.alpha = 1;
+  }
+
+  /** The walk plays only while the player is actually moving; standing still
+   *  holds frame 0. The generation plan bought one four-frame loop and no idle
+   *  animation (#210), and frames 1-3 rotate off south, so frame 0 is the one
+   *  clean standing pose the set contains (#212).
+   *
+   *  Movement is read from the position delta rather than the input axis: the
+   *  view has no business reaching into the controls, and a delta also holds
+   *  still through pauses and menus, which is what it should do. */
+  private updateWalkLoop(x: number, y: number): void {
+    const walk = this.playerGfx.__walk;
+    const loop = playerLoop();
+    if (!walk || !loop) return;
+    const moved = Math.abs(x - this.walkLastX) > 0.01 || Math.abs(y - this.walkLastY) > 0.01;
+    const elapsed = Math.max(0, this.world.timeS - this.walkLastTimeS);
+    this.walkLastX = x;
+    this.walkLastY = y;
+    this.walkLastTimeS = this.world.timeS;
+    // The loop clock only runs while walking, so every departure steps off
+    // from frame 0 rather than resuming wherever the last one stopped.
+    this.walkT = moved ? this.walkT + elapsed : 0;
+    walk.texture = loop.frames[moved ? loopFrame(loop, this.walkT) : 0];
   }
 
   private updateGroundPicks(): void {

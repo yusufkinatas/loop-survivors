@@ -1,0 +1,389 @@
+{
+  "wave": "3+4 (merged)",
+  "map": 217,
+  "ticket": 234,
+  "supersedes_language": 218,
+  "process": "Human directive (this session): generate all 8 remaining enemies x 2 variants in one pass, no gate between them; human picks winners; then one animation loop per winner. Band-by-hue is dead. Body colour varies per enemy for visual variety.",
+  "rules_applied": [
+    "Band gradient killed: colour no longer encodes contact damage. Size already does it, and the four free giants break any body-level band claim (Giant Howlback deals 19 on a band-B body; Giant Snare Bloom deals 29, off the scale).",
+    "Body material colour is the variety axis, read off each kind's existing drawn colour in ENEMIES (config.ts). Wave 2 proved material colour on a body is the strongest separator in a 300-alive crowd.",
+    "Grafts go on the HEAD or shoulders, never the chest (wave 2: 0 for 4 on chest).",
+    "No 'remove anatomy', no 'the <object> is the torso' (documented failure modes, #218).",
+    "Emissive hue only on eyes or a large flat surface; hardware takes a material colour, not a glow (#219, #220).",
+    "Generation size = max(width, height) of the kind's MAD_FOREST_FRAMES entry, because spriteEnemyScale draws every sprite at one world scale."
+  ],
+  "fixed": {
+    "mode": "standard",
+    "body_type": "humanoid",
+    "view": "low top-down",
+    "outline": "single color black outline",
+    "shading": "basic shading",
+    "detail": "low detail",
+    "n_directions": 8
+  },
+  "enemies": [
+    {
+      "label": "Snare Bloom",
+      "kind": "venus",
+      "size": 51,
+      "drawn_color": "0x62c452",
+      "body": "bog green",
+      "accent": "acid green throat",
+      "proportions": {
+        "type": "custom",
+        "head_size": 1.8,
+        "arms_length": 0.7
+      },
+      "prompt": "big-headed short-armed humanoid figure made of wet dark bog-green rotted wood, a huge flower head with a wide open jaw lined with pale bone teeth and a ring of drooping dark petals around it, glowing acid green light down its open throat, dark green body, black outline",
+      "separates_from": "Mute Bloom (26px, navy body, magenta cross) by 2x size, green body and open jaws",
+      "finding": "A landed the brief outright: petal-hooded head, wide jaw, acid-green lit teeth and throat, bog-green body. The non-humanoid graft works on the head, as wave 1 found.",
+      "variations": [
+        {
+          "name": "Snare Bloom A",
+          "id": "b4233531-c0ca-4d11-a7be-9dfcc850ed36",
+          "file": "snare-A.png"
+        },
+        {
+          "name": "Snare Bloom B",
+          "id": "ba58ff55-56cd-4e85-a80a-ea37d7d3ea05",
+          "file": "snare-B.png"
+        }
+      ],
+      "animation_plan": {
+        "loop": "bloom-chomp",
+        "fps": 3,
+        "action": "slow heavy lumbering walk on short legs, huge flower head swaying side to side, jaws held open",
+        "why": "80 speed, 500 HP, the largest body in the game. Shares its speed with The Shear, so cadence separates them by build (#220). Jaws stay OPEN across the loop: the acid-green throat is its only accent and #220 found the generator animates a lit mark away if given the chance."
+      },
+      "winner": {
+        "name": "Snare Bloom A",
+        "id": "b4233531-c0ca-4d11-a7be-9dfcc850ed36",
+        "file": "snare-A.png",
+        "loop": "bloom-chomp",
+        "fps": 3,
+        "action": "slow heavy lumbering walk on short legs, huge flower head swaying side to side, jaws held open",
+        "why": "80 speed, 500 HP, the largest body in the game. Shares its speed with The Shear, so cadence separates them by build (#220). Jaws stay OPEN across the loop: the acid-green throat is its only accent and #220 found the generator animates a lit mark away if given the chance."
+      }
+    },
+    {
+      "label": "The Shear",
+      "kind": "mantis",
+      "size": 48,
+      "drawn_color": "0xbf64ff",
+      "body": "gunmetal purple-grey",
+      "accent": "violet blade edges",
+      "proportions": {
+        "type": "custom",
+        "arms_length": 2.0,
+        "shoulder_width": 1.5
+      },
+      "prompt": "broad-shouldered humanoid figure with very long arms made of wet dark rotted wood, a long lighting-truss blade of dark gunmetal scaffolding grafted onto each forearm, glowing violet light along the blade edges, dark purple-grey body, black outline",
+      "separates_from": "everything, by a 48px double-blade silhouette",
+      "finding": "A came back with NO blades at all - a plain purple-grey humanoid. B landed small violet blade tips on both forearms plus magenta eyes. Arms are a weak graft site (~50%); the head remains the only reliable one. The arms_length 2.0 proportion landed on both.",
+      "variations": [
+        {
+          "name": "The Shear A",
+          "id": "ba3619f0-e10e-4495-a614-464521d258bb",
+          "file": "shear-A.png"
+        },
+        {
+          "name": "The Shear B",
+          "id": "f103205f-111f-4557-b63b-ace32675c159",
+          "file": "shear-B.png"
+        }
+      ],
+      "animation_plan": {
+        "loop": "shear-swing",
+        "fps": 4,
+        "action": "slow deliberate walk, very long bladed arms swinging wide",
+        "why": "same 80 speed as Snare Bloom; a step quicker because the long arms carry the motion."
+      },
+      "winner": {
+        "name": "The Shear B",
+        "id": "f103205f-111f-4557-b63b-ace32675c159",
+        "file": "shear-B.png",
+        "loop": "shear-swing",
+        "fps": 4,
+        "action": "slow deliberate walk, very long bladed arms swinging wide",
+        "why": "same 80 speed as Snare Bloom; a step quicker because the long arms carry the motion."
+      }
+    },
+    {
+      "label": "Woofer",
+      "kind": "giantBat",
+      "size": 50,
+      "drawn_color": "0xa32f4d",
+      "body": "oxblood red-brown",
+      "accent": "hot crimson dust cap",
+      "proportions": {
+        "type": "custom",
+        "shoulder_width": 1.8,
+        "arms_length": 1.4
+      },
+      "prompt": "very broad-shouldered long-armed humanoid figure made of wet dark oxblood-red rotted wood, a large round speaker driver mounted as its head with a domed dust cap in the centre, broad speaker-cone plates on both shoulders, glowing hot crimson light in the round dust cap, dark red-brown body, black outline",
+      "separates_from": "Moss Cabinet (brown, box head) by being red, wider and round-headed",
+      "note": "Driver moved from chest (#218) to head: wave 2 was 0 for 4 on chest grafts and the cabinets landed as cabinet HEADS.",
+      "variations": [
+        {
+          "name": "Woofer A",
+          "id": "2bcd8236-d85e-49d4-860a-65cf565464e9",
+          "file": "woofer-A.png"
+        },
+        {
+          "name": "Woofer B",
+          "id": "e503a5af-75a5-46ab-a9f1-a396cb297cef",
+          "file": "woofer-B.png"
+        }
+      ],
+      "animation_plan": {
+        "loop": "woofer-wade",
+        "fps": 4,
+        "action": "heavy wide walk, broad shoulders rocking, arms hanging",
+        "why": "140 speed but knockback 0.1 - it wades through a build rather than being pushed. Heavy cadence on a fast mover."
+      },
+      "winner": {
+        "name": "Woofer A",
+        "id": "2bcd8236-d85e-49d4-860a-65cf565464e9",
+        "file": "woofer-A.png",
+        "loop": "woofer-wade",
+        "fps": 4,
+        "action": "heavy wide walk, broad shoulders rocking, arms hanging",
+        "why": "140 speed but knockback 0.1 - it wades through a build rather than being pushed. Heavy cadence on a fast mover."
+      }
+    },
+    {
+      "label": "Howlback",
+      "kind": "werewolf",
+      "size": 34,
+      "drawn_color": "0xff8c2b",
+      "body": "ochre brown",
+      "accent": "hot orange eyes",
+      "body_type": "quadruped",
+      "template": "dog",
+      "proportions": null,
+      "prompt": "four-legged wolf made of wet dark ochre-brown rotted wood, a thick coiled cable for a tail and two flat blade-shaped metal ears, glowing hot orange eyes, dark ochre-brown body, black outline",
+      "separates_from": "the whole roster, by being the only four-legged body",
+      "variations": [
+        {
+          "name": "Howlback A",
+          "id": "0a203e3f-2c4f-47f8-929d-28796cfe898f",
+          "file": "howl-A.png"
+        },
+        {
+          "name": "Howlback B",
+          "id": "1a162171-b29a-40d5-89cf-afc2f6c51805",
+          "file": "howl-B.png"
+        }
+      ],
+      "animation_plan": {
+        "loop": "howl-lope",
+        "fps": 8,
+        "action": "loping four-legged run",
+        "why": "130-speed lunging chaser, the roster's only quadruped.",
+        "template_fallback": "running-4-frames"
+      },
+      "winner": {
+        "name": "Howlback A",
+        "id": "0a203e3f-2c4f-47f8-929d-28796cfe898f",
+        "file": "howl-A.png",
+        "loop": "howl-lope",
+        "fps": 8,
+        "action": "loping four-legged run",
+        "why": "130-speed lunging chaser, the roster's only quadruped.",
+        "template_fallback": "running-4-frames"
+      }
+    },
+    {
+      "label": "Echo Shard",
+      "kind": "ghost",
+      "size": 32,
+      "drawn_color": "0xa979e8",
+      "body": "dark smoky violet glass",
+      "accent": "white-hot cracks",
+      "proportions": {
+        "type": "custom",
+        "arms_length": 1.3,
+        "head_size": 0.9
+      },
+      "prompt": "long-armed small-headed humanoid figure made of dark smoky violet glass, its head a cracked pane of dark violet glass with broken glass shards on both shoulders, glowing white-hot light along the cracks, dark violet glass body, black outline",
+      "separates_from": "Echo Rush by value: dark violet against Echo Rush's near-white",
+      "variations": [
+        {
+          "name": "Echo Shard A",
+          "id": "4f8455e7-a077-402b-a60b-21cc41291db1",
+          "file": "shard-A.png"
+        },
+        {
+          "name": "Echo Shard B",
+          "id": "d800d597-39dc-4b81-81c7-d274cd018865",
+          "file": "shard-B.png"
+        }
+      ],
+      "animation_plan": {
+        "loop": "shard-drift",
+        "fps": 6,
+        "action": "slow drifting float, arms trailing",
+        "why": "200 speed, knockback 0 - it drifts through the field rather than walking."
+      },
+      "winner": {
+        "name": "Echo Shard B",
+        "id": "d800d597-39dc-4b81-81c7-d274cd018865",
+        "file": "shard-B.png",
+        "loop": "shard-drift",
+        "fps": 6,
+        "action": "slow drifting float, arms trailing",
+        "why": "200 speed, knockback 0 - it drifts through the field rather than walking."
+      }
+    },
+    {
+      "label": "Echo Rush",
+      "kind": "ghostSwarm",
+      "size": 32,
+      "drawn_color": "0x9b7bf0",
+      "body": "pale ice-white glass",
+      "accent": "pale blue cracks",
+      "proportions": {
+        "type": "custom",
+        "arms_length": 1.5,
+        "legs_length": 1.3
+      },
+      "prompt": "tall long-limbed humanoid figure made of pale ice-white cracked glass, swept-back glass shards trailing from its head and shoulders, glowing pale blue light along the cracks, pale white-blue glass body, black outline",
+      "separates_from": "Echo Shard by value and by a lankier swept build; it is a 700-speed fixed-direction sweep so it arrives as a bright wall",
+      "variations": [
+        {
+          "name": "Echo Rush A",
+          "id": "73bf1a4c-bace-46bd-a014-8caf4124b3f5",
+          "file": "rush-A.png"
+        },
+        {
+          "name": "Echo Rush B",
+          "id": "c69404d1-7b09-43ad-ae39-3214baaa32e5",
+          "file": "rush-B.png"
+        }
+      ],
+      "animation_plan": {
+        "loop": "echo-sweep",
+        "fps": 10,
+        "action": "fast forward charge, limbs swept back",
+        "why": "700-speed fixed-direction sweep; matches Static Rush's 10 fps, the fastest body in the game."
+      },
+      "winner": {
+        "name": "Echo Rush A",
+        "id": "73bf1a4c-bace-46bd-a014-8caf4124b3f5",
+        "file": "rush-A.png",
+        "loop": "echo-sweep",
+        "fps": 10,
+        "action": "fast forward charge, limbs swept back",
+        "why": "700-speed fixed-direction sweep; matches Static Rush's 10 fps, the fastest body in the game."
+      }
+    },
+    {
+      "label": "Flare Mite",
+      "kind": "redBat",
+      "size": 25,
+      "drawn_color": "0xff6b63",
+      "body": "rust red",
+      "accent": "hot orange eyes",
+      "proportions": {
+        "type": "custom",
+        "head_size": 1.5,
+        "legs_length": 0.5
+      },
+      "prompt": "big-headed short-legged small humanoid figure made of wet rust-red rotted wood, ragged frayed edges, glowing hot orange eyes, rust-red body, black outline",
+      "separates_from": "Static Mite (21px charcoal) and Night Mite (30px navy) by size and body colour",
+      "note": "#219: at this size there is no canvas for a graft. Design is silhouette, proportion, body colour and eyes only.",
+      "variations": [
+        {
+          "name": "Flare Mite A",
+          "id": "0c3cd5a8-fda7-42e3-b3ef-860b4e8002be",
+          "file": "flare-A.png"
+        },
+        {
+          "name": "Flare Mite B",
+          "id": "517a1257-3f6b-4a85-a099-6356e9f98ef3",
+          "file": "flare-B.png"
+        }
+      ],
+      "animation_plan": {
+        "loop": "flare-hover",
+        "fps": 9,
+        "action": "quick twitching hover, short legs kicking",
+        "why": "mites share 140 speed, so cadence ramps by size: Static 21/10fps, Flare 25/9fps, Night 30/8fps (shipped)."
+      },
+      "winner": {
+        "name": "Flare Mite A",
+        "id": "0c3cd5a8-fda7-42e3-b3ef-860b4e8002be",
+        "file": "flare-A.png",
+        "loop": "flare-hover",
+        "fps": 9,
+        "action": "quick twitching hover, short legs kicking",
+        "why": "mites share 140 speed, so cadence ramps by size: Static 21/10fps, Flare 25/9fps, Night 30/8fps (shipped)."
+      }
+    },
+    {
+      "label": "Static Mite",
+      "kind": "bat",
+      "size": 21,
+      "drawn_color": "0xf07aa6",
+      "body": "charcoal black",
+      "accent": "pale white-blue eyes",
+      "proportions": {
+        "type": "custom",
+        "head_size": 1.5,
+        "legs_length": 0.5
+      },
+      "prompt": "big-headed short-legged small humanoid figure made of wet charcoal-black rotted wood, ragged frayed edges, glowing pale white-blue eyes, charcoal black body, black outline",
+      "separates_from": "Flare Mite (25px rust) and Night Mite (30px navy) by size and body colour",
+      "note": "#219: no graft survives at 21px.",
+      "variations": [
+        {
+          "name": "Static Mite A",
+          "id": "d4a90c12-b704-4736-ba57-680bf6ae9159",
+          "file": "static-A.png"
+        },
+        {
+          "name": "Static Mite B",
+          "id": "dfc22b6b-0e51-4a33-a787-17272ea4a370",
+          "file": "static-B.png"
+        }
+      ],
+      "animation_plan": {
+        "loop": "static-hover",
+        "fps": 10,
+        "action": "quick twitching hover, short legs kicking",
+        "why": "smallest body in the game, so the fastest cadence of the three mites."
+      },
+      "winner": {
+        "name": "Static Mite A",
+        "id": "d4a90c12-b704-4736-ba57-680bf6ae9159",
+        "file": "static-A.png",
+        "loop": "static-hover",
+        "fps": 10,
+        "action": "quick twitching hover, short legs kicking",
+        "why": "smallest body in the game, so the fastest cadence of the three mites."
+      }
+    }
+  ],
+  "gate_sheet": "art/pixellab/wave34-gate.png",
+  "budget": {
+    "variants_spent": 16,
+    "failures_not_charged": 8,
+    "remaining_after_variants": 24
+  },
+  "service_findings": [
+    "8 of 24 create_character calls failed with 'Generation failed due to heavy load'; none were charged. 16 completed = 16 generations spent.",
+    "Failures cluster when more than ~4 jobs are in flight. Two to three concurrent is safe; six produced four failures in a row.",
+    "Refines #219's stall rule: a job pinned at a NON-95% percentage with a maxed ETA is also dead. Howlback B sat at 19%/~900s for 25 minutes while jobs fired after it completed, then had to be re-fired.",
+    "A dropped MCP transport can lose the call entirely - Echo Shard B never appeared in list_characters, so retrying was correct."
+  ],
+  "animation_fixed": {
+    "mode": "v3",
+    "directions": [
+      "south"
+    ],
+    "frame_count": 4,
+    "keep_first_frame": false,
+    "warning": "template mode animates ALL directions by default (1 gen each = 8 generations). If Howlback falls back to template, directions:['south'] is mandatory.",
+    "fallback_rule": "#220: switch to mode template after two v3 stalls on the same character."
+  }
+}

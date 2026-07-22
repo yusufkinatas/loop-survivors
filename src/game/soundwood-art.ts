@@ -22,7 +22,10 @@ export const SOUNDWOOD = {
   blue: 0x5ea7ff,
 } as const;
 
-const FLOOR_URL = '/art/soundwood-floor.png';
+// The generated 32x32 Soundwood tile (#209, accepted in #211). The old
+// 1254x1254 hand-made floor stays on disk at /art/soundwood-floor.png so the
+// A/B is one line, which is worth keeping while the art is still being judged.
+const FLOOR_URL = '/art/pixellab/floor-earth.png';
 let floorTexture: Texture | null = null;
 let floorPromise: Promise<Texture | null> | null = null;
 

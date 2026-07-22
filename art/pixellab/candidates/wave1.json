@@ -1,0 +1,121 @@
+{
+  "wave": 1,
+  "map": 217,
+  "ticket": 219,
+  "language": 218,
+  "fixed": {
+    "mode": "standard",
+    "body_type": "humanoid",
+    "view": "low top-down",
+    "outline": "single color black outline",
+    "shading": "basic shading",
+    "detail": "low detail",
+    "n_directions": 8
+  },
+  "enemies": [
+    {
+      "label": "Gaffer Husk",
+      "kind": "bigMummy",
+      "size": 50,
+      "band": "C",
+      "proportions": {
+        "type": "custom",
+        "shoulder_width": 1.6,
+        "legs_length": 0.6
+      },
+      "prompt": "broad-shouldered short-legged humanoid figure made of wet dark rotted wood, wide peeling gaffer tape bands wrapped tight around its whole body, glowing violet light flooding out of every seam and gap between the tape bands so most of it is lit, dark navy body, black outline",
+      "variations": [
+        {
+          "name": "Gaffer Husk A",
+          "id": "4e9d275b-662a-4af0-bdd3-ea74e7a094a2",
+          "file": "gaffer-A.png",
+          "south_url": "https://backblaze.pixellab.ai/file/pixellab-characters/af1a4b48-ab8b-410b-897b-eebd027c432d/4e9d275b-662a-4af0-bdd3-ea74e7a094a2/rotations/south.png?t=1784718621"
+        },
+        {
+          "name": "Gaffer Husk B",
+          "id": "aa5d7de5-4199-4198-a9cc-d695575b6b1a",
+          "file": "gaffer-B.png",
+          "south_url": "https://backblaze.pixellab.ai/file/pixellab-characters/af1a4b48-ab8b-410b-897b-eebd027c432d/aa5d7de5-4199-4198-a9cc-d695575b6b1a/rotations/south.png?t=1784719101"
+        }
+      ]
+    },
+    {
+      "label": "Jackwalker",
+      "kind": "skeleton",
+      "size": 33,
+      "band": "B",
+      "proportions": {
+        "type": "custom",
+        "shoulder_width": 1.6,
+        "legs_length": 0.6
+      },
+      "prompt": "broad-shouldered short-legged humanoid figure made of wet dark rotted wood, thick metal jack plug connectors strapped over both forearms, glowing violet eyes and violet light running down its arms and legs, dark navy body, black outline",
+      "variations": [
+        {
+          "name": "Jackwalker A",
+          "id": "73fd4201-5c1c-446c-b7b0-60beeb16f559",
+          "file": "jack-A.png",
+          "south_url": "https://backblaze.pixellab.ai/file/pixellab-characters/af1a4b48-ab8b-410b-897b-eebd027c432d/73fd4201-5c1c-446c-b7b0-60beeb16f559/rotations/south.png?t=1784719349"
+        },
+        {
+          "name": "Jackwalker B",
+          "id": "219597dd-9cd9-446c-a114-0d8ce24f97cf",
+          "file": "jack-B.png",
+          "south_url": "https://backblaze.pixellab.ai/file/pixellab-characters/af1a4b48-ab8b-410b-897b-eebd027c432d/219597dd-9cd9-446c-a114-0d8ce24f97cf/rotations/south.png?t=1784718981"
+        }
+      ]
+    },
+    {
+      "label": "Mute Bloom",
+      "kind": "flower",
+      "size": 26,
+      "band": "A",
+      "proportions": {
+        "type": "custom",
+        "head_size": 1.8,
+        "arms_length": 0.7
+      },
+      "prompt": "big-headed short-armed humanoid figure made of wet dark rotted wood, a ring of dark drooping petals fanning out all around its head, a glowing magenta cross mark struck over the centre of its face, dark navy body, black outline",
+      "variations": [
+        {
+          "name": "Mute Bloom A",
+          "id": "68ab3c12-8ef6-4056-9c19-e8c55902dcec",
+          "file": "bloom-A.png",
+          "south_url": "https://backblaze.pixellab.ai/file/pixellab-characters/af1a4b48-ab8b-410b-897b-eebd027c432d/68ab3c12-8ef6-4056-9c19-e8c55902dcec/rotations/south.png?t=1784718806"
+        },
+        {
+          "name": "Mute Bloom B",
+          "id": "e9881dac-25df-46a9-b835-4220e9e76ce0",
+          "file": "bloom-B.png",
+          "south_url": "https://backblaze.pixellab.ai/file/pixellab-characters/af1a4b48-ab8b-410b-897b-eebd027c432d/e9881dac-25df-46a9-b835-4220e9e76ce0/rotations/south.png?t=1784719473"
+        }
+      ]
+    },
+    {
+      "label": "Static Rush",
+      "kind": "batSwarm",
+      "size": 21,
+      "band": "A",
+      "proportions": {
+        "type": "custom",
+        "head_size": 1.5,
+        "legs_length": 0.5
+      },
+      "prompt": "big-headed short-legged humanoid figure made of wet dark rotted wood, its edges fraying into loose static specks with streaks trailing behind it, glowing magenta eyes and a thin magenta scanline slash across its body, dark navy body, black outline",
+      "variations": [
+        {
+          "name": "Static Rush A",
+          "id": "cb597355-52f1-46f9-8682-bb657418ea9e",
+          "file": "rush-A.png",
+          "south_url": "https://backblaze.pixellab.ai/file/pixellab-characters/af1a4b48-ab8b-410b-897b-eebd027c432d/cb597355-52f1-46f9-8682-bb657418ea9e/rotations/south.png?t=1784719624"
+        },
+        {
+          "name": "Static Rush B",
+          "id": "dbe2720d-3e21-49a4-90a1-a6e6f8da13f8",
+          "file": "rush-B.png",
+          "south_url": "https://backblaze.pixellab.ai/file/pixellab-characters/af1a4b48-ab8b-410b-897b-eebd027c432d/dbe2720d-3e21-49a4-90a1-a6e6f8da13f8/rotations/south.png?t=1784718918"
+        }
+      ]
+    }
+  ]
+}
