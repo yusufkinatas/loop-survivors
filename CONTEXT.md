@@ -40,6 +40,20 @@ in, effects (damage, spawns, fx) out. A weapon module never touches the
 world's entity arrays directly.
 _Avoid_: world reference, world access
 
+**Encore**:
+A maxed-build level-up. Once every weapon and passive is at max level, each
+level-up shows a fixed two-option screen — a First Aid (20%-of-max-HP heal)
+or a Tip Jar — both always offered, even at full health. An Encore never
+improves the build; its power is final.
+_Avoid_: encore bonus, stat encore, Emergency Water, Hotter Signal, Quick
+Change, Wider Stage
+
+**Tip Jar**:
+A bundle of 25 notes, granted instantly on pick. One of the two Encore
+offers, and what each leftover chest hit converts to on a maxed build. Never
+drops in the world and has no multiplier.
+_Avoid_: coin bag, note bag, note bundle
+
 **Stage Light**:
 A destructible prop — a toppled follow-spot The Hush hasn't consumed, glowing
 warm amber. Spawns off-screen on a timer, takes only incidental weapon hits
