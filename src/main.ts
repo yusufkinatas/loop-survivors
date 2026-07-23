@@ -11,6 +11,7 @@ import { mountRehearsalRoom } from './experiments/rehearsal/room';
 import { mountTrackLab } from './experiments/tracklab/lab';
 import { mountBossFight } from './experiments/boss/page';
 import { bootGame } from './game/game';
+import { maybeShowRotateHint } from './game/rotate-hint';
 import './style.css';
 
 inject();
@@ -56,6 +57,8 @@ async function boot(): Promise<void> {
     await mountBossFight(root, ctx);
   } else {
     await bootGame(root, engine, kits);
+    // First time on a portrait phone: nudge them to turn it sideways.
+    maybeShowRotateHint(root);
   }
   // switching modes reloads: both mount into the same root
   window.addEventListener('hashchange', () => location.reload());

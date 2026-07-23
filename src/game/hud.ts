@@ -482,9 +482,17 @@ export class Hud {
     };
     el('p', 'start-hint', s,
       'WASD / arrow keys / touch to move · collect blue XP and gold music notes · walk onto coral crosses to heal · rare Stage Magnets vacuum the whole map · walk onto reward pedestals');
+    // Boss Fights gets its own menu item right under the primary CTA rather than
+    // hiding inside the faint `experiments` disclosure — it's a headline mode,
+    // so it earns real visibility. Still beta while it lives on a separate
+    // playtest surface (#boss).
+    const bossFightsBtn = el('button', 'boss-fights-btn', s, 'Boss Fights (beta)');
+    bossFightsBtn.onclick = () => {
+      location.hash = '#boss';
+    };
     // Below the primary CTA, two menu buttons: sandbox launches directly,
-    // experiments is a disclosure for the standalone playtest surfaces (boss
-    // fights, full tracks, rehearsal room — mirrors src/experiments/).
+    // experiments is a disclosure for the standalone playtest surfaces (full
+    // tracks, rehearsal room — mirrors src/experiments/).
     const dev = el('div', 'start-dev', s);
     const menuRow = el('div', 'start-dev-row', dev);
     const sandboxBtn = el('button', 'small start-dev-toggle', menuRow, 'sandbox');
@@ -492,7 +500,6 @@ export class Hud {
 
     const experimentsRow = el('div', 'start-dev-row', dev);
     experimentsRow.style.display = 'none';
-    const bossBtn = el('button', 'small', experimentsRow, 'boss fights');
     const tracksBtn = el('button', 'small', experimentsRow, 'full tracks');
     const roomBtn = el('button', 'small', experimentsRow, 'rehearsal room');
 
@@ -505,9 +512,6 @@ export class Hud {
     sandboxBtn.onclick = () => {
       this.closeScreen();
       onSandbox();
-    };
-    bossBtn.onclick = () => {
-      location.hash = '#boss';
     };
     tracksBtn.onclick = () => {
       location.hash = '#tracklab';
