@@ -1,8 +1,8 @@
 // The Boss Fight page (#boss). Pick a boss, then fight it. The boss makes the
 // music and the whole track is the fight: you have no weapons, only movement
 // and a dodge dash, and you win by surviving until the song ends (the boss's
-// "health" bar is really the song draining away). Three bosses, three
-// completely different survival problems — see bosses.ts.
+// "health" bar is really the song draining away). Each boss is a completely
+// different survival problem — see bosses.ts.
 
 import { Application } from 'pixi.js';
 import { LabEngine } from '../tracklab/labengine';

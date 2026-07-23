@@ -2377,9 +2377,71 @@ button.big {
   font-size: 10px;
 }
 
+/* Boss Fights: a real menu item, one rung below the primary CTA. Outlined in
+   the boss-fight pink so it stands apart from the cyan start button and from
+   the faint sandbox/experiments row, without stealing the eye from ENTER. */
+.boss-fights-btn {
+  padding: 10px 30px;
+  font-size: var(--fs-body);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  border: 2px solid #ff6bd6;
+  border-radius: 2px;
+  color: #ff9be3;
+  background: rgba(255, 107, 214, 0.08);
+  box-shadow: 4px 4px 0 #3a1730, 0 0 18px -8px #ff6bd6;
+}
+
+.boss-fights-btn:hover {
+  color: #07120f;
+  background: #ff9be3;
+  border-color: #fff;
+}
+
 .end-screen h1 {
   color: #ff91ad;
   text-shadow: 3px 3px #391420;
+}
+
+/* First-open "turn your phone sideways" nudge. Sits above every screen (which
+   top out at z-index 6), a plain modal card centered on a dimmed backdrop. */
+.rotate-hint {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-5);
+  background: rgba(6, 7, 11, 0.86);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  text-align: center;
+}
+
+.rotate-hint-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-4);
+  max-width: 360px;
+  padding: var(--sp-5);
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-lg);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.55);
+}
+
+.rotate-hint-icon {
+  font-size: 48px;
+  line-height: 1;
+  transform: rotate(90deg);
+  animation: rotate-hint-tip 1.8s var(--ease) infinite;
+}
+
+@keyframes rotate-hint-tip {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(90deg); }
 }
 
 /* The demo end (#190): the same screen, won instead of lost. Gold where the
