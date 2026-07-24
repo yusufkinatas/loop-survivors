@@ -115,20 +115,24 @@ export const SOUNDSET_LADDERS: Partial<Record<Role, Chart[]>> = {
       [3 * B + 6, 0.7, 10], [3 * B + 8, 0.7, 7], [3 * B + 12, 0.6, 10],
     ]),
   ],
-  // Motion: driving pentatonic climb. Grows from a quarter-note outline of the
-  // figure to full running 16ths across two bars.
+  // Motion: driving pentatonic climb that FILLS IN as the weapon levels. Starts
+  // as a bare half-note outline (two notes a bar) so a level-1 arp is a thin,
+  // slow-turning ring, and grows to full running 16ths only at the top — the
+  // density arrives late, not up front. Each orbiter is one note, so this ramp
+  // IS the arp's early-vs-late orbiter count.
   arp: [
+    // Stage 1 (levels 1-2): half-note outline, root then fifth. Two notes a bar.
+    m('arp', 1, [[0, 0.55, 0], [8, 0.5, 7]]),
+    // Stage 2 (levels 3-4): quarter-note climb — one note per beat.
     m('arp', 1, [[0, 0.55, 0], [4, 0.5, 3], [8, 0.55, 7], [12, 0.5, 12]]),
+    // Stage 3 (levels 5-6): running 8ths, the figure up and back down.
     m('arp', 1, [
       [0, 0.55, 0], [2, 0.45, 3], [4, 0.5, 7], [6, 0.45, 10], [8, 0.55, 12], [10, 0.45, 10], [12, 0.5, 7], [14, 0.45, 3],
     ]),
-    m('arp', 2, [
-      [0, 0.55, 0], [1, 0.4, 3], [2, 0.45, 7], [4, 0.5, 12], [6, 0.45, 10], [8, 0.55, 7], [10, 0.45, 10], [12, 0.5, 12], [14, 0.45, 7],
-      [B, 0.55, 3], [B + 2, 0.45, 7], [B + 4, 0.5, 10], [B + 6, 0.45, 12], [B + 8, 0.55, 15], [B + 10, 0.45, 12], [B + 12, 0.5, 10], [B + 14, 0.45, 7],
-    ]),
-    // Near-running 16ths but with rests punched on 5/9/13 in each bar so the
-    // line breathes and its trigger rate stays comparable to the other
-    // melodic roles at max tier (a solid 16th wall is the hats' privilege).
+    // Stage 4 (levels 7-8): near-running 16ths but with rests punched on 5/9/13
+    // in each bar so the line breathes and its trigger rate stays comparable to
+    // the other melodic roles at max tier (a solid 16th wall is the hats'
+    // privilege).
     m('arp', 2, [
       [0, 0.55, 0], [1, 0.4, 3], [2, 0.5, 7], [3, 0.4, 12], [4, 0.55, 7], [6, 0.5, 7], [7, 0.4, 12],
       [8, 0.55, 15], [10, 0.5, 10], [11, 0.4, 7], [12, 0.55, 12], [14, 0.5, 7], [15, 0.4, 3],
