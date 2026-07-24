@@ -817,12 +817,15 @@ export function makeHealthPickupGfx(pickup: HealthPickup): HealthPickupGfx {
 }
 
 export interface StageLightGfx extends Container {
-  /** The lens and the floor spill it throws: the two parts that breathe, and
-   *  the two that surge when a weapon hitbox chips the prop. Both are ADDITIVE,
-   *  which is what makes a hit readable at all — Pixi's tint multiplies, so a
-   *  silhouette cut from ink has no way to flash brighter. */
+  /** The lens and the floor spill it throws: the two parts that breathe as the
+   *  fixture idles. Both are ADDITIVE, so the warm parts read against an ink
+   *  silhouette Pixi's multiply tint could never brighten. */
   __lens: Graphics;
   __beam: Graphics;
+  /** A white silhouette of the whole fixture, held at zero alpha until a weapon
+   *  chips the prop — the SAME bright-white hit flash the enemies get, so a
+   *  Stage Light reads as taking a hit exactly the way a body does. */
+  __flash: Graphics;
 }
 
 /** The Stage Light: a toppled follow-spot lying on the floor, throwing a warm
@@ -866,9 +869,22 @@ export function makeStageLightGfx(): StageLightGfx {
   }));
   lens.blendMode = 'add';
 
+  // The hit flash: the same solid boxes the housing is cut from, refilled in
+  // flat white and laid over everything. Held at zero alpha, punched to 1 for
+  // `flashT` on a chip — the fixture goes pure white for a beat, matching the
+  // enemy silhouette flash instead of a dim lens surge the player can miss.
+  const flash = pixelGraphics(cachedPixelShape('stage-light:flash', (g) => {
+    box(g, -16, -10, 26, 20);
+    box(g, 9, -12, 6, 24);
+    box(g, -20, -4, 5, 12);
+    box(g, -13, 8, 20, 5);
+  }));
+  flash.alpha = 0;
+
   root.__beam = beam;
   root.__lens = lens;
-  root.addChild(beam, body, lens);
+  root.__flash = flash;
+  root.addChild(beam, body, lens, flash);
   return root;
 }
 
