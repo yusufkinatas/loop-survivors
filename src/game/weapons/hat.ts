@@ -1,7 +1,8 @@
 // The Hi-hat weapon module: a dense stream of fast chips that AUTO-AIM the
-// nearest enemy, and its evolution, Strobe Lane, where those chips gain a small
-// on-hit blast — each one pops where it lands. Base and evolved live in the
-// same module; evolving flips an internal mode (ctx.evolved).
+// nearest enemy, and its evolution, Strobe Lane, where those chips gain
+// INFINITE PIERCE — each one drills straight through the whole line of enemies.
+// Base and evolved live in the same module; evolving flips an internal mode
+// (ctx.evolved).
 //
 // THE HAT AUTO-AIMS, base and evolved alike. It resolves its direction through
 // the world's auto-aim (ctx.aimFan), which finds the nearest body inside
@@ -48,10 +49,10 @@ interface HatStats extends WeaponStats {
 
   // ---------------- Strobe Lane --------------------------------------------
   //
-  // The chips stop being a spread and become a fast lane of SMALL BOMBS toward
-  // the nearest enemy — the lane auto-aims exactly like the base stream. Each
-  // chip still hits just one body (it keeps the base's no-pierce), but now POPS
-  // on impact, splashing a small blast into everything around the body it hit.
+  // The chips stop being a spread and become a fast lane of DRILLS toward the
+  // nearest enemy — the lane auto-aims exactly like the base stream. Each chip
+  // gains INFINITE PIERCE (onHit refuses to spend pierce when evolved), so it
+  // punches through every body it touches instead of stopping on the first.
   // Reach is speed x life; a chip that finds no body rides that reach, bouncing
   // off the arena rails, until it does.
 
@@ -64,21 +65,6 @@ interface HatStats extends WeaponStats {
    *  projectile (see the note on `laneStagger` about Mirrorball). */
   readonly laneSpeedMul: number;
   readonly laneLifetimeMul: number;
-
-  /** THE LANE'S SMALL AoE, the evolution's whole payoff and what REPLACES the
-   *  old infinite pierce. A lane chip keeps the base's single-hit pierce (1), so
-   *  it hits one body and dies — but on that hit it pops, dealing splash damage
-   *  to every OTHER body within this radius of the one it struck.
-   *
-   *  The struck body already took the chip's full damage through the shared
-   *  loop; the blast never re-hits it (it is in the shot's hit set), so the
-   *  splash is a bonus to its NEIGHBOURS, not a double hit. The evolution trades
-   *  the drilling rail for a stream of little bombs. */
-  readonly laneBlastRadius: number;
-  /** Splash damage as a fraction of the chip's own (already lane-multiplied)
-   *  damage. Below 1: a neighbour catching the blast takes less than the body
-   *  the chip actually hit. */
-  readonly laneBlastDamageMul: number;
 
   /** How far each successive chip is pushed forward along the lane at spawn,
    *  cycled on this weapon's trigger count. A 16th-note wall would otherwise
@@ -134,43 +120,21 @@ const HAT_STATS: HatStats = {
   laneDamageMul: 1.30,
   laneSpeedMul: 1.5,
   laneLifetimeMul: 2.0,
-  laneBlastRadius: 44,
-  laneBlastDamageMul: 0.6,
   laneStagger: [0, 26, 52, 78],
 };
 
-/** What a lane chip lends the SHARED projectile loop: a small on-hit blast, and
- *  nothing else. A BASE hat chip has no blast — onHit reads ctx.evolved (a live
- *  view of the world's mode) and only the lane pops — so the base stream stays
- *  the clean single-hit chip it was, and the same module hook serves both. */
+/** What a lane chip lends the SHARED projectile loop: infinite pierce, and
+ *  nothing else. A BASE hat chip stops on its one body; the evolved lane chip
+ *  drills straight through the whole line and only dies when its (doubled)
+ *  lifetime runs out. onHit reads ctx.evolved (a live view of the world's mode)
+ *  and returns whether the hit SPENDS pierce — false for the lane, so the same
+ *  module hook serves both forms without a pierce override at spawn. pr.hit
+ *  still bars a second hit on the same body, so the rail never re-hits. */
 const CHIP_BEHAVIOR: ProjectileBehavior = {
-  onHit(ctx: WeaponContext, pr: Projectile, target: WeaponTarget): boolean {
-    if (ctx.evolved) {
-      // The pop: splash every neighbour of the struck body. The body itself is
-      // already in pr.hit (the loop added it before this hook), so it is never
-      // caught twice. near() already widens its query by the largest inserted
-      // radius, so the exact reach test below is the only gate that matters.
-      const splash = pr.damage * HAT_STATS.laneBlastDamageMul;
-      for (const e of ctx.near(target.x, target.y, HAT_STATS.laneBlastRadius)) {
-        if (e.dead || pr.hit.has(e)) continue;
-        const dx = e.x - target.x;
-        const dy = e.y - target.y;
-        if (Math.hypot(dx, dy) > HAT_STATS.laneBlastRadius + e.radius) continue;
-        ctx.damage(e, splash);
-      }
-      ctx.fx({
-        type: 'ring',
-        x: target.x,
-        y: target.y,
-        radius: HAT_STATS.laneBlastRadius,
-        color: pr.color,
-        dur: 0.18,
-        soft: true,
-      });
-    }
-    // Spend pierce like every other chip: a lane chip pops and dies on its one
-    // hit, and a base chip stops on its one hit. Returning true is that rule.
-    return true;
+  onHit(ctx: WeaponContext, _pr: Projectile, _target: WeaponTarget): boolean {
+    // Base chip spends pierce (stops on its one body); lane chip does not, so
+    // it keeps going through every enemy it touches — the evolution's rail.
+    return !ctx.evolved;
   },
 };
 
@@ -203,8 +167,8 @@ class HatInstance implements WeaponInstance {
         pr.damage *= HAT_STATS.laneDamageMul;
         pr.speed *= HAT_STATS.laneSpeedMul;
         pr.lifeS *= HAT_STATS.laneLifetimeMul;
-        // No pierce override: the chip keeps its tier value (1), so it hits one
-        // body and pops. The splash, not a drilling rail, is now the spread.
+        // No pierce override here: onHit refuses to spend pierce when evolved,
+        // so the chip drills through the whole line — a rail, not a single hit.
       }
       // Derive velocity from pr.speed — which already carries the lane
       // multiplier — so the `speed` FIELD stays equal to |v|. The bounce path
