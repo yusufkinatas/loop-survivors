@@ -73,10 +73,11 @@ interface ChordStats extends WeaponStats {
 
   // ---------------- Afterhours ---------------------------------------------
   //
-  // Big slow zones of ONE FIXED SIZE that each hunt the nearest body they do
-  // not already cover. They never merge and never change size once thrown, so
-  // what you see is exactly what damages. The evolution reads as two things at
-  // once: they got bigger, and they started moving.
+  // Big zones of ONE FIXED SIZE that each hunt the nearest body they do not
+  // already cover. They DO NOT SLOW — the evolution trades the base zone's
+  // control for reach and movement. They never merge and never change size once
+  // thrown, so what you see is exactly what damages. The evolution reads as two
+  // things at once: they got bigger, and they started moving.
 
   /** An evolved zone's radius in units, FLAT — not a multiplier on the tier
    *  block. Every Afterhours zone is this size whatever tier the chord reached,
@@ -91,10 +92,6 @@ interface ChordStats extends WeaponStats {
   readonly afterhoursRadius: number;
   readonly afterhoursLifetimeMul: number;
   readonly afterhoursDamageMul: number;
-  /** Enemy speed multiplier under an Afterhours zone: harsher than the base
-   *  `slowMul`, and the only place two different slows can meet, because the
-   *  two modes' zones coexist across an evolution. */
-  readonly afterhoursSlowMul: number;
 
   /** Units per second an Afterhours zone crawls toward the nearest body it does
    *  not already cover. A base zone's drift speed is ZERO — a base zone never
@@ -145,7 +142,6 @@ const CHORD_STATS: ChordStats = {
   afterhoursRadius: 120,
   afterhoursLifetimeMul: 1.35,
   afterhoursDamageMul: 1.25,
-  afterhoursSlowMul: 0.42,
 
   driftSpeed: 65,
 };
@@ -186,13 +182,17 @@ class ChordInstance implements WeaponInstance {
       radius,
       damage,
       lifeS: conf.lifetimeS! * (evolved ? CHORD_STATS.afterhoursLifetimeMul : 1),
-      slow: true,
+      // BASE ZONES SLOW, AFTERHOURS ZONES DO NOT. The evolution trades control
+      // for reach and movement: it got bigger and started hunting, and gave up
+      // the slow to do it. gated on the frozen `evolved` flag, so a base zone
+      // thrown just before the evolution lands keeps its slow to the end.
+      slow: !evolved,
       // FROZEN AT SPAWN, not re-read in tick(). A base zone thrown just before
-      // the evolution lands keeps zero drift and the base slow until it
-      // expires, while Afterhours zones drift over the top of it.
+      // the evolution lands keeps zero drift until it expires, while Afterhours
+      // zones drift over the top of it.
       evolved,
       driftSpeed: evolved ? CHORD_STATS.driftSpeed : 0,
-      slowMul: evolved ? CHORD_STATS.afterhoursSlowMul : CHORD_STATS.slowMul,
+      slowMul: CHORD_STATS.slowMul,
     });
   }
 
