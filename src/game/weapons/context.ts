@@ -148,11 +148,11 @@ export interface WeaponContext {
    *  `<`, so a body sitting exactly on the boundary is out of range, not in it.
    *
    *  THE ONLY TARGET QUERY MODULES GET, and it serves two different appetites:
-   *  Two Hands takes the first few and snaps a pincer shut on each, while the
-   *  chord takes a wide slice as the candidate pool for a weighted random
-   *  throw. A single-target `nearestEnemy` used to sit beside this; it went
-   *  when the chord stopped picking the nearest body, since `count` 1 is
-   *  exactly it.
+   *  the lead takes the first few to spread a Double Take volley across separate
+   *  bodies, while the chord takes a wide slice as the candidate pool for a
+   *  weighted random throw. A single-target `nearestEnemy` used to sit beside
+   *  this; it went when the chord stopped picking the nearest body, since
+   *  `count` 1 is exactly it.
    *
    *  DRAWS NO RNG — which is what lets the chord own its randomness rather than
    *  inherit it, at a draw count it decides. Fewer than `count` come back when

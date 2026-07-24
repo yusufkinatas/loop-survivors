@@ -1478,6 +1478,22 @@ export class RunView {
         });
         break;
       }
+      case 'flash': {
+        // A zone that pulses in place: a filled disc at full radius from frame
+        // one, fading out. fromScale ~= toScale means NO outward travel, so it
+        // reads as a flash around the player, not a wave leaving them.
+        const gfx = new Graphics({ roundPixels: true });
+        gfx.poly(regularPixelPoly(24, fx.radius, Math.PI / 24)).fill({ color: 0xffffff, alpha: 0.26 });
+        gfx.poly(regularPixelPoly(24, fx.radius * 0.66, Math.PI / 24)).fill({ color: 0xffffff, alpha: 0.18 });
+        gfx.poly(regularPixelPoly(24, fx.radius, Math.PI / 24)).stroke({ width: 4, color: 0xffffff, alpha: 0.95 });
+        gfx.tint = fx.color;
+        gfx.position.set(snap(fx.x), snap(fx.y));
+        gfx.scale.set(1);
+        gfx.blendMode = 'add';
+        this.fxLayer.addChild(gfx);
+        this.pops.push({ gfx, t: 0, dur: fx.dur, fromScale: 1, toScale: 1.08 });
+        break;
+      }
       case 'vacuum': {
         const colors = [SOUNDWOOD.cyanHot, SOUNDWOOD.magenta];
         for (let i = 0; i < colors.length; i++) {

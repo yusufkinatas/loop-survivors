@@ -40,11 +40,6 @@ import {
 } from './items';
 import { MetaStore, SHOP_OFFERS, type ShopOfferId } from './meta';
 import type { RunWorld } from './run';
-import {
-  getClapEvolutionPrototype,
-  setClapEvolutionPrototype,
-  type ClapEvolutionPrototype,
-} from './weapons/clap';
 import { WEAPON_MAX_LEVEL, chartStageForLevel } from './weapons/levels';
 
 /** Exported coverage catalogs keep the no-test-framework verification script
@@ -434,24 +429,6 @@ export function mountSandboxPanel(
     weaponButtons.set(role, choices);
   }
 
-  // Clap evolution A/B: two live prototypes of the evolved clap (see
-  // weapons/clap.ts). This picks which one every evolved clap fires, so the ★
-  // clap above can be flipped between them with no rebuild.
-  section(build, 'clap evolution prototype');
-  const clapEvoControls = el('div', 'sb-btns sb-controls', build);
-  clapEvoControls.style.marginLeft = '0';
-  const clapEvoChoice: ChoiceButtons<ClapEvolutionPrototype> = {
-    value: () => getClapEvolutionPrototype(),
-    options: (['detonation', 'crescendo'] as const).map((mode) => ({
-      value: mode,
-      button: button(clapEvoControls, mode.toUpperCase(), () => setClapEvolutionPrototype(mode)),
-    })),
-  };
-  el('div', 'sb-hint', build,
-    'DETONATION: the blast is bigger and its kills pop again, chaining through a crowd. ' +
-    'CRESCENDO: per-hit damage scales with how many enemies the blast catches. ' +
-    'Evolve the Clap (★) above, then toggle to feel each.');
-
   section(build, 'passive items');
   const itemButtons = new Map<ItemId, ChoiceButtons<number>>();
   const itemControls = el('div', 'sb-btns sb-controls', build);
@@ -772,7 +749,6 @@ export function mountSandboxPanel(
     syncChoice(levelChoice);
     for (const choice of weaponButtons.values()) syncChoice(choice);
     for (const choice of itemButtons.values()) syncChoice(choice);
-    syncChoice(clapEvoChoice);
     invulnButton.classList.toggle('on', world.invincible);
     invulnButton.textContent = `INVULN ${world.invincible ? 'ON' : 'OFF'}`;
     threatStatus.textContent =

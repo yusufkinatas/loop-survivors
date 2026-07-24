@@ -9,76 +9,56 @@ import type { WeaponInstance, WeaponModule, WeaponStats } from './module';
  *  real reach test below. Nothing about the clap's footprint is decided here. */
 const HASH_QUERY_PAD = 24;
 
-/** Which evolved-clap prototype is live. A GLOBAL DEV TOGGLE, not per-run
- *  state: the two evolutions below are being A/B'd in the sandbox, and this
- *  selects between them for every clap in every world at once. The sandbox
- *  panel flips it through setClapEvolutionPrototype; nothing in a real run
- *  reads or writes it, so both prototypes ship until one is chosen. */
-export type ClapEvolutionPrototype = 'detonation' | 'crescendo';
-let clapEvolutionPrototype: ClapEvolutionPrototype = 'detonation';
-export function setClapEvolutionPrototype(mode: ClapEvolutionPrototype): void {
-  clapEvolutionPrototype = mode;
-}
-export function getClapEvolutionPrototype(): ClapEvolutionPrototype {
-  return clapEvolutionPrototype;
-}
-
 /** The clap's tuning. Nothing in the behavior code below may be a bare
  *  literal. */
 interface ClapStats extends WeaponStats {
   // ---------------- the base thunderclap -----------------------------------
   //
-  // A clap is a percussive SLAM: an instant burst all around the player, no
-  // aim and no blind spot. Everything inside `radius` is hit at once and shoved
+  // A clap is a percussive SLAM: an instant flash all around the player, no aim
+  // and no blind spot. Everything inside `radius` is hit at once and shoved
   // off, whichever direction it stood — the panic button that clears the ring
   // pressing in on you. There is no cone and no angle test; coverage is the
-  // whole circle, which is what fixes the old forward wedge's reach.
+  // whole circle. The visual is a flash IN PLACE, not a travelling ring (that
+  // is the bass's Subquake).
 
   /** Knock distance pushed on every body the BASE clap catches, away from the
    *  player. Strong — shoving the whole ring off you is the base identity.
    *  RAW: no buildMods.knockbackMul, applied through ctx.shove. */
   readonly shove: number;
-  /** Seconds a drawn shock ring lives. View-only, shared by base and evolved. */
+  /** Seconds a drawn flash lives. View-only, shared by base and Nova. */
   readonly ringDurS: number;
 
-  // ---------------- The Drop (evolved) — TWO PROTOTYPES --------------------
+  // ---------------- Nova (evolved) -----------------------------------------
   //
-  // The base thunderclap shoves the crowd off to keep you alive. The evolution
-  // stops babysitting and starts KILLING — and deliberately drops most of the
-  // knockback (evolvedShove), because shoving enemies to safety is the opposite
-  // of killing them and is what would turn the evolution into an AFK defence.
-  // Two variants are live behind clapEvolutionPrototype:
-  //   'detonation' — a bigger, harder blast whose KILLS pop again, one level
-  //                  deep, chaining through a packed crowd.
-  //   'crescendo'  — a blast whose per-hit damage SCALES with how many bodies
-  //                  it catches, so a wall takes far more than a stray does.
-  // Both reward standing IN the crowd rather than pushing it away.
+  // The evolved clap SHATTERS. The base is a close panic-clap; Nova keeps that
+  // close burst (a little harder) and then flings a full circle of fast shards
+  // outward, so the weapon gains REACH — it clears the ring around you AND
+  // streaks shrapnel into whatever is pressing in from range. The evolution is
+  // offensive, and legible: you see the shards fly and connect. Little
+  // knockback (evolvedShove), so bodies stay in the burst to die rather than
+  // being flung to safety.
 
-  /** Evolved blast radius as a multiple of the tier's (already area-built)
-   *  radius — the drop reaches further than the base clap. */
+  /** Nova blast radius as a multiple of the tier's (already area-built) radius:
+   *  the close burst reaches a little further than the base clap. */
   readonly evolvedRadiusMul: number;
-  /** Knock distance the evolved blast applies. Small: enemies stay in the
-   *  blast to die rather than being flung clear. */
+  /** Knock distance the Nova close burst applies. Small: enemies stay in it. */
   readonly evolvedShove: number;
-
-  /** detonation: primary-blast damage as a multiple of tier damage. */
-  readonly detonateDamageMul: number;
-  /** detonation: radius of the secondary pop at each body the primary KILLS.
-   *  A standalone constant (not conf-derived), so it takes areaMul by hand. */
-  readonly popRadius: number;
-  /** detonation: secondary-pop damage as a fraction of the primary damage. */
-  readonly popDamageMul: number;
-
-  /** crescendo: per-hit multiplier at ONE body caught — the floor of the ramp. */
-  readonly crescendoBaseMul: number;
-  /** crescendo: extra multiplier per ADDITIONAL body beyond the first. */
-  readonly crescendoStepMul: number;
-  /** crescendo: ceiling on the multiplier, however big the crowd. */
-  readonly crescendoMaxMul: number;
+  /** Nova close-burst damage as a multiple of tier damage. */
+  readonly novaDamageMul: number;
+  /** How many shards the nova flings, evenly spaced around the full circle. */
+  readonly novaShards: number;
+  /** Shard damage as a multiple of tier damage. */
+  readonly novaShardDamageMul: number;
+  /** Shard speed, radius, life and pierce. Life x speed is the shards' reach;
+   *  pierce lets one shard cut through a short line of bodies. */
+  readonly novaShardSpeed: number;
+  readonly novaShardRadius: number;
+  readonly novaShardLifeS: number;
+  readonly novaShardPierce: number;
 }
 
 const CLAP_STATS: ClapStats = {
-  // Thunderclap: an instant burst all around the player that hits everything
+  // Thunderclap: an instant flash all around the player that hits everything
   // close and shoves it off. Melee crowd control — no travel, no aim, safest
   // when the wall is on top of you because it clears every side at once.
   tiers: [
@@ -105,29 +85,27 @@ const CLAP_STATS: ClapStats = {
   shove: 32,
   ringDurS: 0.25,
 
-  evolvedRadiusMul: 1.6,
+  evolvedRadiusMul: 1.4,
   evolvedShove: 6,
-
-  detonateDamageMul: 1.9,
-  popRadius: 70,
-  popDamageMul: 0.7,
-
-  crescendoBaseMul: 1.3,
-  crescendoStepMul: 0.2,
-  crescendoMaxMul: 3.5,
+  novaDamageMul: 1.6,
+  novaShards: 12,
+  novaShardDamageMul: 0.8,
+  novaShardSpeed: 520,
+  novaShardRadius: 6,
+  novaShardLifeS: 0.55,
+  novaShardPierce: 3,
 };
 
 class ClapInstance implements WeaponInstance {
   fire(ctx: WeaponContext, conf: WeaponConf): void {
     if (ctx.evolved) {
-      if (clapEvolutionPrototype === 'crescendo') this.fireCrescendo(ctx, conf);
-      else this.fireDetonation(ctx, conf);
+      this.fireNova(ctx, conf);
       return;
     }
     const p = ctx.player;
     const reach = conf.radius!;
     // DAMAGE FIRST, FX SECOND. Every kill this slam makes — and every rng draw
-    // behind the drops those kills roll — lands before the ring is queued. NO
+    // behind the drops those kills roll — lands before the flash is queued. NO
     // aim: aimDir would draw the rng the old cone spent centring itself, and a
     // full-circle burst has nothing to centre.
     this.eachInReach(ctx, p.x, p.y, reach, (e) => {
@@ -135,74 +113,45 @@ class ClapInstance implements WeaponInstance {
       // RAW shove, away from the SLAM ORIGIN (the player), not from the body.
       if (CLAP_STATS.shove) ctx.shove(e, p.x, p.y, CLAP_STATS.shove);
     });
-    ctx.fx({ type: 'ring', x: p.x, y: p.y, radius: reach, color: ctx.color, dur: CLAP_STATS.ringDurS });
+    // A flash IN PLACE, not an expanding wave — the clap is instant, and a
+    // travelling ring reads as the bass's Subquake.
+    ctx.fx({ type: 'flash', x: p.x, y: p.y, radius: reach, color: ctx.color, dur: CLAP_STATS.ringDurS });
   }
 
-  /** The Drop, detonation prototype: a big blast whose KILLS pop again.
+  /** Nova: the evolved clap SHATTERS. A bigger close burst clears the ring, and
+   *  then a full circle of fast shards is flung outward — the close panic-clap
+   *  gains reach, streaking shrapnel into the enemies pressing in from range.
    *
-   *  The primary sweep damages everything in reach and remembers which bodies
-   *  it killed; each of those pops a smaller blast into its neighbours. The
-   *  secondary pops do NOT collect their own kills, so the cascade is bounded
-   *  to one round — a packed crowd chain-reacts, but a single trigger can never
-   *  run away. Little knockback, so bodies stay in the blast to die. */
-  private fireDetonation(ctx: WeaponContext, conf: WeaponConf): void {
+   *  The shards are ordinary projectiles on the shared loop (this weapon lends
+   *  it no behavior), so they travel, pierce a few bodies and expire on their
+   *  own — nothing to schedule and nothing to reset. */
+  private fireNova(ctx: WeaponContext, conf: WeaponConf): void {
     const p = ctx.player;
     const reach = conf.radius! * CLAP_STATS.evolvedRadiusMul;
-    const damage = conf.damage * CLAP_STATS.detonateDamageMul;
-    const killed: WeaponTarget[] = [];
+    const burst = conf.damage * CLAP_STATS.novaDamageMul;
     this.eachInReach(ctx, p.x, p.y, reach, (e) => {
-      ctx.damage(e, damage);
+      ctx.damage(e, burst);
       if (CLAP_STATS.evolvedShove) ctx.shove(e, p.x, p.y, CLAP_STATS.evolvedShove);
-      // A body the blast just killed becomes a pop. A Stage Light (prop) never
-      // chains — only bodies do.
-      if (e.dead && !e.prop) killed.push(e);
     });
-    ctx.fx({ type: 'ring', x: p.x, y: p.y, radius: reach, color: ctx.color, dur: CLAP_STATS.ringDurS });
+    ctx.fx({ type: 'flash', x: p.x, y: p.y, radius: reach, color: ctx.color, dur: CLAP_STATS.ringDurS });
 
-    const popDamage = damage * CLAP_STATS.popDamageMul;
-    const popRadius = CLAP_STATS.popRadius * ctx.buildMods.areaMul;
-    for (const dead of killed) {
-      this.eachInReach(ctx, dead.x, dead.y, popRadius, (e) => ctx.damage(e, popDamage));
-      ctx.fx({
-        type: 'ring',
-        x: dead.x,
-        y: dead.y,
-        radius: popRadius,
-        color: ctx.color,
-        dur: CLAP_STATS.ringDurS,
-        soft: true,
-      });
+    // The shatter: a ring of shards, evenly spaced, flung outward. A hand-built
+    // conf carries the shard's own speed/radius/life/pierce; the shard damage
+    // rides conf.damage's already-built power.
+    const shardConf: WeaponConf = {
+      damage: conf.damage,
+      speed: CLAP_STATS.novaShardSpeed,
+      radius: CLAP_STATS.novaShardRadius,
+      lifetimeS: CLAP_STATS.novaShardLifeS,
+      pierce: CLAP_STATS.novaShardPierce,
+    };
+    const shardDamage = conf.damage * CLAP_STATS.novaShardDamageMul;
+    for (let i = 0; i < CLAP_STATS.novaShards; i++) {
+      const angle = (i / CLAP_STATS.novaShards) * Math.PI * 2;
+      const pr = ctx.spawnProjectile(shardConf, shardDamage);
+      pr.vx = Math.cos(angle) * pr.speed;
+      pr.vy = Math.sin(angle) * pr.speed;
     }
-  }
-
-  /** The Drop, crescendo prototype: one blast whose per-hit damage scales with
-   *  how big a crowd it caught.
-   *
-   *  Two passes over the same reach: the first counts the live BODIES it will
-   *  hit (props ride along but do not swell the count), the second deals the
-   *  scaled damage. A lone body takes the floor multiplier; a wall takes up to
-   *  the ceiling. Rewards diving into the thick of it — the density you stand in
-   *  is the damage. */
-  private fireCrescendo(ctx: WeaponContext, conf: WeaponConf): void {
-    const p = ctx.player;
-    const reach = conf.radius! * CLAP_STATS.evolvedRadiusMul;
-    const caught: WeaponTarget[] = [];
-    let bodies = 0;
-    this.eachInReach(ctx, p.x, p.y, reach, (e) => {
-      caught.push(e);
-      if (!e.prop) bodies++;
-    });
-    const mult = Math.min(
-      CLAP_STATS.crescendoMaxMul,
-      CLAP_STATS.crescendoBaseMul + CLAP_STATS.crescendoStepMul * Math.max(0, bodies - 1),
-    );
-    const damage = conf.damage * mult;
-    for (const e of caught) {
-      if (e.dead) continue;
-      ctx.damage(e, damage);
-      if (CLAP_STATS.evolvedShove) ctx.shove(e, p.x, p.y, CLAP_STATS.evolvedShove);
-    }
-    ctx.fx({ type: 'ring', x: p.x, y: p.y, radius: reach, color: ctx.color, dur: CLAP_STATS.ringDurS });
   }
 
   /** Visit every live body whose EDGE is inside `reach` of (x, y), in the
@@ -225,19 +174,22 @@ class ClapInstance implements WeaponInstance {
     }
   }
 
-  /** Nothing to drop: every clap resolves synchronously inside fire(), holding
-   *  no scheduled strike, counter or pointer between triggers. */
+  /** Nothing to drop: the base clap resolves synchronously inside fire(), and
+   *  Nova's shards live in the world's projectile array, which
+   *  clearSandboxEntities empties itself. The module holds no schedule,
+   *  counter or pointer of its own. */
   reset(): void {}
 
-  // No `projectile` behavior, deliberately: this weapon is a melee burst and
-  // nothing it makes ever enters the shared projectile loop.
+  // No `projectile` behavior, deliberately: the base burst is a melee flash and
+  // Nova's shards ride the shared projectile loop completely unchanged — travel,
+  // arena rails and the shared pierce rule, landing damage and nothing else.
 }
 
 export const CLAP = {
   role: 'clap',
   stats: CLAP_STATS,
-  // No tickAt: every clap — base burst and either evolved drop — resolves the
-  // whole of its damage inside fire(), so the weapon owns no damage pass of its
-  // own the way the scheduled pincers once did.
+  // No tickAt: the base clap resolves the whole of its damage inside fire(), and
+  // Nova's shards are owned by the shared projectile loop — the weapon owns no
+  // damage pass of its own the way the scheduled pincers once did.
   create: () => new ClapInstance(),
 } satisfies WeaponModule;
