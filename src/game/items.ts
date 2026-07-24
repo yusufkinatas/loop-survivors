@@ -181,6 +181,38 @@ export function paddedJacketHeal(previousLevel: number, nextLevel: number): numb
   return Math.max(0, Math.min(ITEM_MAX_LEVEL, nextLevel) - Math.max(0, previousLevel)) * 8;
 }
 
+/** Permanent career bonuses from the Afterhours Shop's power-ups, folded into
+ * the same BuildMods channels the passives use so weapon code never learns a
+ * second stat source. Derived from shop ranks in meta.ts; a world built
+ * without a career (sandbox, fixtures) runs on the neutral values. */
+export interface PowerUpMods {
+  maxHpMul: number;
+  hpRegenPerSecond: number;
+  areaMul: number;
+  orbitDistanceMul: number;
+  projectileSpeedMul: number;
+  durationMul: number;
+  extraProjectiles: number;
+  moveMul: number;
+  magnetMul: number;
+  xpGainMul: number;
+}
+
+export function neutralPowerUpMods(): PowerUpMods {
+  return {
+    maxHpMul: 1,
+    hpRegenPerSecond: 0,
+    areaMul: 1,
+    orbitDistanceMul: 1,
+    projectileSpeedMul: 1,
+    durationMul: 1,
+    extraProjectiles: 0,
+    moveMul: 1,
+    magnetMul: 1,
+    xpGainMul: 1,
+  };
+}
+
 const EVOLUTION_IDS = [
   'redlineStomp',
   'railshot',

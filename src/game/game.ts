@@ -467,8 +467,6 @@ export async function bootGame(
         items: w.items,
         pendingTiers: promised.weapons,
         pendingItems: promised.items,
-        unlockedRoles: meta.unlockedRoles(),
-        unlockedItems: meta.unlockedItemIds(),
         rng: Math.random,
         timeS: w.timeS,
         level: w.level,
@@ -1016,7 +1014,7 @@ export async function bootGame(
     setAutoMode(mode);
     const w: RunWorld = new RunWorld(app.screen, events, {
       control: () => playerControl(w),
-      secondWind: meta.state.secondWind,
+      powerUps: meta.powerUpMods(),
     });
     world = w;
     w.player.hp = w.playerMaxHp;
@@ -1039,7 +1037,6 @@ export async function bootGame(
       w,
       rollStartingWeapons({
         tiers: w.tiers,
-        unlockedRoles: meta.unlockedRoles(),
         rng: Math.random,
         timeS: 0,
       }),
