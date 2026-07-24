@@ -1,28 +1,29 @@
-// The Hi-hat weapon module: a dense stream of weak fast chips fired straight
-// down the walk heading, and its evolution, Strobe Lane, where those chips stop
-// being a spread and become a rail. Base and evolved live in the same module;
-// evolving flips an internal mode (ctx.evolved).
+// The Hi-hat weapon module: a dense stream of fast chips that AUTO-AIM the
+// nearest enemy, and its evolution, Strobe Lane, where those chips stop being a
+// spread and become a rail. Base and evolved live in the same module; evolving
+// flips an internal mode (ctx.evolved).
 //
-// THE HAT IS THE FIRST WEAPON THAT DOES NOT AIM. Every weapon migrated before
-// it resolves its direction through the world's auto-aim (ctx.aimDir /
-// ctx.aimFan), which finds the nearest body inside AIM_RANGE and jitters the
-// heading. The hat never consults a target at all: it fires down
-// `player.moveDirX/Y`, the persisted walk heading, with zero scatter, so the
-// player aims by STEERING. That is the whole reason `moveDir()` and
-// `fanAround()` are on the weapon context — the two members the context file
-// reserved for this weapon.
+// THE HAT AUTO-AIMS, base and evolved alike. It resolves its direction through
+// the world's auto-aim (ctx.aimFan), which finds the nearest body inside
+// AIM_RANGE and jitters the heading by aimSpread, exactly the way the snare's
+// base shot used to before the two weapons swapped roles: the snare is now the
+// directional one, and the hat is the automatic one. The trade the hat makes
+// for that convenience is PIERCE — the base chip has none (pierce 1: it hits
+// one body and stops), where the directional snare keeps its whole pierce
+// ladder. The hat pays for auto-aim and its fast, frequent chart with a chip
+// that only ever touches one enemy.
 //
-// THE DIFFERENCE IS VISIBLE IN THE RNG STREAM, and it is not cosmetic.
-// `fanAround(moveDir())` draws NOTHING: no target pick, no jitter. `aimFan(0)`
-// would draw once with a target on screen and TWICE with an empty one. A hat
-// trigger costs zero draws whatever the tier, whatever the Double Take count,
-// and a run's rng identity depends on that staying true — writing the aim the
-// "tidier" way desynchronises every later draw in the run.
+// AUTO-AIM DRAWS FROM THE RNG STREAM, and it is not cosmetic. `aimFan(spread)`
+// draws once with a target on screen and TWICE with an empty one (a random
+// heading, then the jitter). That draw count is part of a run's rng identity,
+// which is why aiming is a world query and not something this module
+// reimplements over all(). The snare's directional `fanAround(moveDir())` is
+// the mirror image — it draws nothing at all.
 //
-// The hat lends the shared projectile loop NOTHING: no steer, no onHit. It is
-// in neither of the two role-keyed tables the loop still reads — a chip lands
-// damage and nothing else, no knock and no spark — so nothing shrank when this
-// weapon left, and adding either while tidying up is a behavior change.
+// The base hat lends the shared projectile loop NOTHING: no steer, no onHit. It
+// is in neither of the two role-keyed tables the loop still reads — a chip
+// lands damage and nothing else, no knock and no spark — so nothing shrank when
+// this weapon left, and adding either while tidying up is a behavior change.
 
 import type { WeaponConf } from '../config';
 import type { WeaponContext } from './context';
@@ -32,11 +33,20 @@ import type { WeaponInstance, WeaponModule, WeaponStats } from './module';
  *  an entry of config.HAT_LANE, or a bare literal in run.ts's spawnProjectile;
  *  values are unchanged. Nothing in the behavior code may be a bare literal. */
 interface HatStats extends WeaponStats {
+  // ---------------- the base stream ----------------------------------------
+
+  /** Aim jitter, radians, for the auto-aimed chips. Small — a dense stream at
+   *  the nearest body wants nearly no scatter, the same value the snare used
+   *  for its base volley before the two weapons swapped aiming roles. */
+  readonly aimSpread: number;
+
   // ---------------- Strobe Lane --------------------------------------------
   //
-  // The chips stop being a spread and become a rail down the walk heading.
-  // Reach is speed x life; the pierce below is what lets one chip spend that
-  // reach on the whole file instead of stopping at the second body.
+  // The chips stop being a spread and become a rail toward the nearest enemy —
+  // the lane auto-aims exactly like the base stream, just as a piercing rail
+  // instead of single-hit chips. Reach is speed x life; the pierce below is what
+  // lets one chip spend that reach on the whole file instead of stopping at the
+  // first body.
 
   /** Chip damage relative to the already-built tier damage. Was a bare `1.30`
    *  at the spawn site. */
@@ -52,11 +62,14 @@ interface HatStats extends WeaponStats {
    *  changing it — it is the exact shape of the bug #146 fixed one weapon over,
    *  and here it is correct.
    *
-   *  On the BASE hat, pierce is a real ladder (2/2/3/4) and Needle Tips is a
-   *  real stacking build on it: a tier-4 chip pierces 9 bodies with the item
-   *  maxed. On the LANE it is a total no-op, because the value below REPLACES
-   *  whatever `applyBuild` computed rather than being an input the pipeline
-   *  builds on. Evolved lead used to do exactly this with a hardcoded 6 and it
+   *  On the BASE hat, pierce is GONE (every tier is 1: a chip hits one body and
+   *  stops), the price the hat pays for auto-aim. Needle Tips still stacks onto
+   *  that base the way applyBuild computes it, so the item remains a real build
+   *  on the base chip. On the LANE, though, pierce is a total no-op, because the
+   *  value below REPLACES whatever `applyBuild` computed rather than being an
+   *  input the pipeline builds on: the evolution buys back the pierce the base
+   *  gave up, and buys back ALL of it — a lane chip drills the whole file.
+   *  Evolved lead used to do exactly this with a hardcoded 6 and it
    *  WAS a bug (LEAD_STATS.serpentBasePierce, #146) — but an infinity is not a floor
    *  to add to. There is no larger budget for the item to reach, so routing it
    *  through the pipeline the way lead's 6 now is would change nothing except
@@ -89,32 +102,35 @@ interface HatStats extends WeaponStats {
 }
 
 const HAT_STATS: HatStats = {
-  // Dense stream of weak fast chips fired straight down the walk heading, no
-  // scatter — the player aims by steering. Density IS the ladder; per-trigger
-  // damage barely moves (the chart carries the growth). The pierce ladder pays
-  // for losing auto-aim: a straight line has to be worth walking down.
-  // Radius stays 3 at every level: the chip is the chip.
+  // Dense stream of fast chips that auto-aim the nearest enemy. Damage matches
+  // the snare's ladder rung for rung (5/5/7/7/9/9/11/13); the chart carries the
+  // rest of the growth, so density (fire rate) is still the hat's real ladder
+  // and several tiers move only speed and lifetime. NO PIERCE at any base tier
+  // (pierce 1: a chip hits one body and stops) — that, with the fast frequent
+  // chart, is the price of auto-aim, where the directional snare keeps its whole
+  // pierce ladder. Radius stays 3 at every level: the chip is the chip.
   tiers: [
-    { damage: 2, speed: 440, radius: 3, lifetimeS: 0.8, pierce: 2 },
-    { damage: 2, speed: 440, radius: 3, lifetimeS: 0.8, pierce: 3 },
-    { damage: 2.5, speed: 440, radius: 3, lifetimeS: 0.8, pierce: 3 },
-    { damage: 2.5, speed: 450, radius: 3, lifetimeS: 0.85, pierce: 3 },
-    { damage: 2.5, speed: 450, radius: 3, lifetimeS: 0.9, pierce: 3 },
-    { damage: 2.5, speed: 450, radius: 3, lifetimeS: 0.95, pierce: 4 },
-    { damage: 2.5, speed: 460, radius: 3, lifetimeS: 0.95, pierce: 4 },
-    { damage: 3, speed: 480, radius: 3, lifetimeS: 0.95, pierce: 4 },
+    { damage: 5, speed: 440, radius: 3, lifetimeS: 0.8, pierce: 1 },
+    { damage: 5, speed: 440, radius: 3, lifetimeS: 0.8, pierce: 1 },
+    { damage: 7, speed: 440, radius: 3, lifetimeS: 0.8, pierce: 1 },
+    { damage: 7, speed: 450, radius: 3, lifetimeS: 0.85, pierce: 1 },
+    { damage: 9, speed: 450, radius: 3, lifetimeS: 0.9, pierce: 1 },
+    { damage: 9, speed: 450, radius: 3, lifetimeS: 0.95, pierce: 1 },
+    { damage: 11, speed: 460, radius: 3, lifetimeS: 0.95, pierce: 1 },
+    { damage: 13, speed: 480, radius: 3, lifetimeS: 0.95, pierce: 1 },
   ],
   tierLines: [
-    'chips down the walk heading',
-    'pierces 1 more',
+    'auto-aimed chips at the nearest enemy',
+    'the stream thickens',
     'damage up',
     'faster, flies longer',
+    'damage up, flies longer',
     'flies longer',
-    'pierces 1 more, flies longer',
-    'faster',
+    'damage up, faster',
     'maximum damage, fastest',
   ],
 
+  aimSpread: 0.08,
   laneDamageMul: 1.30,
   laneSpeedMul: 1.5,
   laneLifetimeMul: 2.0,
@@ -123,17 +139,19 @@ const HAT_STATS: HatStats = {
 };
 
 class HatInstance implements WeaponInstance {
-  /** Chips down the walk heading. Double Take's extra chips fan around that
-   *  heading, never off it — `fanAround` takes the direction it is given, where
-   *  `aimFan` would go and find its own.
+  /** Auto-aimed chips at the nearest enemy, base and lane alike. aimFan finds
+   *  the nearest body inside AIM_RANGE, jitters by aimSpread, and hands back one
+   *  direction per shot this trigger owes — Double Take's extra chips fan around
+   *  that same aim line.
    *
-   *  ZERO RNG DRAWS, at every tier and every Double Take count. See the file
-   *  header: this is the one weapon whose direction costs nothing from the run
-   *  stream, and it is checked as an executable assertion, not a comment.
+   *  ONE aimFan PER TRIGGER, so the draw count is per trigger, not per shot: one
+   *  draw with a target on screen, two with an empty one. That is the hat's
+   *  share of the run's rng stream, and it is the mirror of the snare's
+   *  directional fire, which draws nothing.
    *
-   *  Standing still fires down the LAST heading rather than nowhere: the world
-   *  only overwrites moveDirX/Y when the stick actually moves, and the player
-   *  starts the run pointing at (1, 0). A hat that never walked still fires. */
+   *  With no enemy in range aimFan still returns a heading (a random one), so a
+   *  hat facing an empty screen still fires — the chips just scatter until a
+   *  body comes back into range. */
   fire(ctx: WeaponContext, conf: WeaponConf): void {
     const lane = ctx.evolved;
     // One offset for the whole trigger, so a fanned volley stays a volley
@@ -141,7 +159,7 @@ class HatInstance implements WeaponInstance {
     const stagger = lane
       ? HAT_STATS.laneStagger[ctx.triggerCount % HAT_STATS.laneStagger.length]
       : 0;
-    for (const dir of ctx.fanAround(ctx.moveDir())) {
+    for (const dir of ctx.aimFan(HAT_STATS.aimSpread)) {
       const pr = ctx.spawnProjectile(conf, conf.damage);
       if (lane) {
         pr.damage *= HAT_STATS.laneDamageMul;

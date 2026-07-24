@@ -107,8 +107,8 @@ export interface WeaponContext {
 
   /** The player's persisted WALK HEADING as a unit vector. No targeting, no
    *  jitter, and NO RNG DRAW AT ALL — two triggers while holding one direction
-   *  produce the exact same angle. The hat is the only weapon that aims by
-   *  steering, and this is the whole of how.
+   *  produce the exact same angle. The snare is the directional weapon that aims
+   *  by steering — base shot and Railshot both — and this is the whole of how.
    *
    *  Standing still keeps the LAST heading rather than zeroing it (movePlayer
    *  only writes it when the stick clears its deadzone), and the player starts
@@ -117,7 +117,7 @@ export interface WeaponContext {
 
   /** Spread this trigger's shots around an ALREADY-CHOSEN direction — the same
    *  Double Take fan aimFan applies, minus the aiming. Split out of aimFan for
-   *  the hat, which fans around its walk heading and must never consult a
+   *  the snare, which fans around its walk heading and must never consult a
    *  target: `fanAround(moveDir())` is not a spelling of `aimFan(0)`, it is the
    *  version that draws no rng. */
   fanAround(base: { x: number; y: number }): Array<{ x: number; y: number }>;

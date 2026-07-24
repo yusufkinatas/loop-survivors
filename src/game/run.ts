@@ -1193,7 +1193,7 @@ export class RunWorld {
     const a = this.control();
     if (a.x > 0.001) this.player.facingX = 1;
     else if (a.x < -0.001) this.player.facingX = -1;
-    // Persist the walk heading for directional weapons (hi-hat). Standing
+    // Persist the walk heading for directional weapons (snare). Standing
     // still keeps the last heading rather than zeroing it.
     const mag = Math.hypot(a.x, a.y);
     if (mag > 0.001) {
@@ -2008,7 +2008,7 @@ export class RunWorld {
   }
 
   /** Spread this trigger's shots around an already-chosen direction. Split out
-   *  of aimFan so the hat can fan around its walk heading without ever
+   *  of aimFan so the snare can fan around its walk heading without ever
    *  consulting nearestEnemy; reached from a module through
    *  WeaponContext.fanAround. */
   private fanAround(base: { x: number; y: number }): Array<{ x: number; y: number }> {
@@ -2026,7 +2026,7 @@ export class RunWorld {
 
   /** The player's walk heading as a unit vector. No targeting, no jitter, no
    *  rng draw: two triggers while holding one direction produce the exact same
-   *  angle. The hat's whole aim, reached through WeaponContext.moveDir. */
+   *  angle. The snare's whole aim, reached through WeaponContext.moveDir. */
   private moveDir(): { x: number; y: number } {
     return { x: this.player.moveDirX, y: this.player.moveDirY };
   }
