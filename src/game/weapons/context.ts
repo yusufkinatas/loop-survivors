@@ -233,22 +233,6 @@ export interface WeaponContext {
    *  asymmetry stays visible instead of being unified away. */
   setKnock(target: WeaponTarget, vx: number, vy: number, durationS: number): void;
 
-  /** Write the shared SLOW channel on a body: `mul` is FOLDED IN WITH min()
-   *  against whatever is already there, `durationS` is ASSIGNED outright.
-   *
-   *  The asymmetry is the point and it is not tidy-able. Two chord zones
-   *  overlapping one enemy must leave it moving at the HARSHER of the two
-   *  multipliers, which is what min() gives; the timer is a plain refresh, so
-   *  the last zone to tick decides how long the slow outlasts it. A weapon
-   *  cannot read the channel back — only fold into it — so there is no route by
-   *  which a module could observe, and then undo, another weapon's slow.
-   *
-   *  The channel is consumed in moveEnemies (`speed *= e.zoneSlowMul` while
-   *  `slowT > 0`, and zoneSlowMul resets to 1 the frame the timer runs out), so
-   *  a zone that stops renewing releases the body one frame later, not
-   *  instantly. Chord is the only weapon that writes here today. */
-  slow(target: WeaponTarget, mul: number, durationS: number): void;
-
   /** Queue a visual. A no-op when the world was built with fx:false, so a
    *  module never branches on whether effects are enabled. */
   fx(event: FxEvent): void;
@@ -371,19 +355,15 @@ interface ZoneSpec {
    *  life — not once per zone. */
   readonly damage: number;
   readonly lifeS: number;
-  /** Whether a tick also slows what it covers. */
-  readonly slow: boolean;
   /** Frozen at spawn, and NOT a live read of ctx.evolved: a zone thrown before
-   *  the weapon evolved keeps base behavior — no drift, the base slow, and
-   *  immunity from the merge pass — for the rest of its life, while Afterhours
-   *  zones spawned after it drift straight over the top of it. */
+   *  the weapon evolved keeps base behavior — no drift, and immunity from the
+   *  merge pass — for the rest of its life, while Afterhours zones spawned after
+   *  it drift straight over the top of it. */
   readonly evolved: boolean;
   /** Units per second the zone crawls toward the nearest body it does not
    *  already cover, measured from its OWN centre — so zones hunt locally and
    *  stay spread out rather than converging. 0 pins it. */
   readonly driftSpeed: number;
-  /** Speed multiplier written onto everything a tick covers. */
-  readonly slowMul: number;
 }
 
 /** Everything a module chooses about a new shockwave. Deliberately NOT the

@@ -192,14 +192,6 @@ export interface Enemy {
   color: number;
   flashT: number;
   dead: boolean;
-  /** The shared SLOW channel: time left slowed, and the speed multiplier while
-   *  it lasts. Written only through WeaponContext.slow — which folds the
-   *  multiplier in with min() and assigns the timer — and consumed in
-   *  moveEnemies, which resets the multiplier to 1 the frame the timer runs
-   *  out. Chord zones are the only writer today; the channel itself is shared
-   *  physics and is not any one weapon's. */
-  slowT: number;
-  zoneSlowMul: number;
   /** Weapon knockback: velocity (px/s) and time left being pushed. While
    *  knockT > 0 the enemy rides this vector instead of chasing. */
   knockX: number;
@@ -248,8 +240,8 @@ export interface Enemy {
  *  light back through the SAME `ctx.near()` a weapon already uses to find
  *  bodies, so every existing hit pass chips one for free and no module has to
  *  learn a second shape. `prop` is the single field that separates it from an
- *  enemy: the world reads it to route damage, and the two raw movement channels
- *  (setKnock, slow) read it and decline.
+ *  enemy: the world reads it to route damage, and the raw movement channel
+ *  (setKnock) reads it and declines.
  *
  *  The three "how does this body move" fields are FIXED AT ZERO, and
  *  `knockbackMul: 0` in particular is load-bearing rather than decorative:
@@ -379,11 +371,8 @@ export interface Zone {
   color: number;
   /** Weapon that spawned this zone: its damage is attributed here (D8). */
   source: Role;
-  /** Whether enemies inside are slowed on each tick. */
-  slow: boolean;
   evolved: boolean;
   driftSpeed: number;
-  slowMul: number;
 }
 
 export interface Shockwave {
@@ -748,14 +737,6 @@ export class RunWorld {
       },
       lockSeeker: (pr, target) => { pr.homingTarget = (target as Enemy | null) ?? null; },
       withExtraPierce: (basePierce) => world.withExtraPierce(basePierce),
-      slow: (t, mul, durationS) => {
-        // Scenery has no walk to wade through. A chord zone covering a Stage
-        // Light still damages it every tick; the slow half is simply absent.
-        if (t.prop) return;
-        const e = t as Enemy;
-        e.slowT = durationS;
-        e.zoneSlowMul = Math.min(e.zoneSlowMul, mul);
-      },
       fx: (event) => { world.fx?.push(event); },
       // Storage stays world-side: view.ts iterates world.projectiles and
       // pushProjectile's live-shot ceiling has to hold across every weapon at
@@ -812,10 +793,8 @@ export class RunWorld {
           tickT: 0,
           color,
           source: role,
-          slow: spec.slow,
           evolved: spec.evolved,
           driftSpeed: spec.driftSpeed,
-          slowMul: spec.slowMul,
         };
         world.zones.push(zone);
         return zone;
@@ -1547,8 +1526,6 @@ export class RunWorld {
       color: stats.color,
       flashT: 0,
       dead: false,
-      slowT: 0,
-      zoneSlowMul: 1,
       knockX: 0,
       knockY: 0,
       knockT: 0,
@@ -1674,13 +1651,7 @@ export class RunWorld {
       e.prevY = e.y;
       e.lastMoveX = 0;
       e.lastMoveY = 0;
-      let speed = e.speed;
-      if (e.slowT > 0) {
-        e.slowT -= dt;
-        speed *= e.zoneSlowMul;
-      } else {
-        e.zoneSlowMul = 1;
-      }
+      const speed = e.speed;
       if (e.flashT > 0) e.flashT -= dt;
       // After the flash decay, never before it: the view tints on flashT, so
       // an early skip would leave a hit dummy permanently solid white.

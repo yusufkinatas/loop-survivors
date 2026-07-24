@@ -53,31 +53,15 @@ interface ChordStats extends WeaponStats {
    *  Dropping this to 1 does not make the weapon slightly less biased; it
    *  removes the bias altogether. */
   readonly pickFalloffPower: number;
-  /** Seconds between damage ticks. WAS config.ZONE_TICK_S.
-   *
-   *  READ BEFORE SPLITTING THIS. It is used TWICE — as the interval a tick
-   *  resets to, and as the base of the slow's duration below — and both uses
-   *  have to be this one stat. The zone's slow lasts `tickS + slowGraceS`
-   *  against a renewal every `tickS`, so the fact that the slow outlives the
-   *  gap to the next tick is a RELATIONSHIP between two of these numbers. Give
-   *  the slow its own copy of 0.9 and that relationship can be broken by
-   *  editing one of them, with nothing failing until a player notices enemies
-   *  flickering back to full speed between ticks. */
+  /** Seconds between damage ticks. WAS config.ZONE_TICK_S. */
   readonly tickS: number;
-  /** Extra seconds the slow outlives the tick that applied it. WAS the bare
-   *  `+ 0.15` in `slowT = ZONE_TICK_S + 0.15`. This is the whole margin that
-   *  makes a standing zone a continuous slow instead of a strobe. */
-  readonly slowGraceS: number;
-  /** Enemy speed multiplier under a BASE zone. WAS config.ZONE_SLOW_MUL. */
-  readonly slowMul: number;
 
   // ---------------- Afterhours ---------------------------------------------
   //
   // Big zones of ONE FIXED SIZE that each hunt the nearest body they do not
-  // already cover. They DO NOT SLOW — the evolution trades the base zone's
-  // control for reach and movement. They never merge and never change size once
-  // thrown, so what you see is exactly what damages. The evolution reads as two
-  // things at once: they got bigger, and they started moving.
+  // already cover. They never merge and never change size once thrown, so what
+  // you see is exactly what damages. The evolution reads as two things at once:
+  // they got bigger, and they started moving.
 
   /** An evolved zone's radius in units, FLAT — not a multiplier on the tier
    *  block. Every Afterhours zone is this size whatever tier the chord reached,
@@ -104,12 +88,11 @@ interface ChordStats extends WeaponStats {
 }
 
 const CHORD_STATS: ChordStats = {
-  // Zone thrown onto a random nearby enemy: ticks damage and slows enemies
-  // inside.
-  // Chip damage plus control; the slow is the identity. `damage` here is PER
-  // TICK, so the ladder is deceptively flat — real output is damage x ticks,
-  // and lifetimes are set so zones overlap into a carpet rather than reading as
-  // one area teleporting around.
+  // Zone thrown onto a random nearby enemy: ticks damage to everything inside.
+  // Chip damage that carpets the field. `damage` here is PER TICK, so the
+  // ladder is deceptively flat — real output is damage x ticks, and lifetimes
+  // are set so zones overlap into a carpet rather than reading as one area
+  // teleporting around.
   tiers: [
     { damage: 1, radius: 48, lifetimeS: 2.0 },
     { damage: 1, radius: 56, lifetimeS: 2.0 },
@@ -136,8 +119,6 @@ const CHORD_STATS: ChordStats = {
   pickFalloffUnits: 60,
   pickFalloffPower: 2,
   tickS: 0.9,
-  slowGraceS: 0.15,
-  slowMul: 0.55,
 
   afterhoursRadius: 120,
   afterhoursLifetimeMul: 1.35,
@@ -182,17 +163,11 @@ class ChordInstance implements WeaponInstance {
       radius,
       damage,
       lifeS: conf.lifetimeS! * (evolved ? CHORD_STATS.afterhoursLifetimeMul : 1),
-      // BASE ZONES SLOW, AFTERHOURS ZONES DO NOT. The evolution trades control
-      // for reach and movement: it got bigger and started hunting, and gave up
-      // the slow to do it. gated on the frozen `evolved` flag, so a base zone
-      // thrown just before the evolution lands keeps its slow to the end.
-      slow: !evolved,
       // FROZEN AT SPAWN, not re-read in tick(). A base zone thrown just before
       // the evolution lands keeps zero drift until it expires, while Afterhours
       // zones drift over the top of it.
       evolved,
       driftSpeed: evolved ? CHORD_STATS.driftSpeed : 0,
-      slowMul: CHORD_STATS.slowMul,
     });
   }
 
@@ -256,7 +231,7 @@ class ChordInstance implements WeaponInstance {
    *  before anything reintroduces a radius change: view.ts bakes a zone's
    *  radius into a cached sprite the first frame it appears and never rebuilds
    *  it for a size change. Merging grew `radius` after that point, so a
-   *  supercell damaged and slowed over more than twice the area it drew.
+   *  supercell damaged over more than twice the area it drew.
    *  NOTHING MUTATES A ZONE'S RADIUS NOW, which is the only reason what you see
    *  is what hits.
    *
@@ -285,25 +260,12 @@ class ChordInstance implements WeaponInstance {
       z.tickT -= dt;
       if (z.tickT <= 0) {
         z.tickT = CHORD_STATS.tickS;
-        // The damage half. WAS `this.damageArea(z.x, z.y, z.radius, z.damage,
-        // z.source)` — an approved GENERIC_ROLE_USE entry in the shared-physics
-        // guard, which went with this loop. Attribution is now bound to the
-        // context and cannot be forged.
+        // WAS `this.damageArea(z.x, z.y, z.radius, z.damage, z.source)` — an
+        // approved GENERIC_ROLE_USE entry in the shared-physics guard, which
+        // went with this loop. Attribution is now bound to the context and
+        // cannot be forged.
         for (const e of ctx.near(z.x, z.y, z.radius + HASH_QUERY_PAD)) {
           if (!e.dead && circlesOverlap(z, e)) ctx.damage(e, z.damage);
-        }
-        // The zone's other half: everything inside wades, it doesn't walk. A
-        // SECOND query rather than a reuse of the first — ctx.near hands back a
-        // scratch buffer that the call above already consumed, and the two
-        // loops are sequential in the original too. The set can genuinely
-        // differ: the damage loop above may have killed bodies, and a dead one
-        // is skipped here.
-        if (z.slow) {
-          for (const e of ctx.near(z.x, z.y, z.radius + HASH_QUERY_PAD)) {
-            if (!e.dead && circlesOverlap(z, e)) {
-              ctx.slow(e, z.slowMul, CHORD_STATS.tickS + CHORD_STATS.slowGraceS);
-            }
-          }
         }
       }
       if (z.lifeS <= 0) ctx.retireZone(z);
