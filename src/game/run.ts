@@ -72,7 +72,7 @@ export const PLAYER_FOOT_OFFSET = {
 /** Seconds of no incoming damage that end a burst. The readout hard-resets to
  * zero rather than decaying, so the number on screen is only ever the burst you
  * are doing right now — never a fading ghost of one that already ended. */
-const DUMMY_DPS_IDLE_RESET = 5;
+const DUMMY_DPS_IDLE_RESET = 2.5;
 /** Seconds of airtime credited to a burst's FIRST hit, so one landed trigger
  * reads as a rate instead of a divide-by-zero spike. Weapons fire on the beat
  * grid, and a beat at 122 BPM is ~0.49s, so a hit is credited the beat it
