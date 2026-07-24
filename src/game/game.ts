@@ -1499,6 +1499,15 @@ export async function bootGame(
       }
       return;
     }
+    // Digit0 resets timeScale straight back to 1x (issue #21): a quick escape
+    // from whatever the [ / ] nudges or slider left it at. Live in run + sandbox.
+    if (e.code === 'Digit0' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (timeScaleLive()) {
+        setTimeScale(1);
+        hud.showToast(`speed ${timeScale.toFixed(2)}x`);
+      }
+      return;
+    }
     // Number-key instrument toggles are live only in a run or sandbox.
     if (/^Digit[1-5]$/.test(e.code) && !e.ctrlKey && !e.metaKey && !e.altKey) {
       if ((state === 'run' || state === 'sandbox') && world) {
