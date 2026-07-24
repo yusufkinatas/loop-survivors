@@ -69,7 +69,7 @@ export const SHOP_OFFERS: readonly ShopOffer[] = [
     description: 'Piercing projectiles and the Lead evolution recipe.' },
 
   { id: 'lead', kind: 'weapon', contentId: 'lead', name: 'Lead', cost: 260, minOwned: 5,
-    description: 'A bright homing melody weapon.' },
+    description: 'A bright melody weapon whose bolts leap between enemies.' },
   { id: 'extensionCable', kind: 'item', contentId: 'extensionCable', name: 'Extension Cable', cost: 150, minOwned: 5,
     description: 'Longer attacks and the Arp evolution recipe.' },
   { id: 'paddedJacket', kind: 'item', contentId: 'paddedJacket', name: 'Padded Jacket', cost: 170, minOwned: 5,

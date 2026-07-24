@@ -228,7 +228,7 @@ const EVOLUTIONS: Record<EvolutionId, EvolutionDefinition> = {
   },
   neonSerpent: {
     id: 'neonSerpent', role: 'lead', item: 'needleTips', name: 'Neon Serpent', color: 0xff70d4, gainDb: -1.5,
-    description: 'A sharp homing serpent pierces deep through the file and grows a giant head every fifth trigger.', signature: 'retargeting serpent',
+    description: 'A sharp serpent leaps deep through a file of enemies and grows a giant head every fifth trigger.', signature: 'retargeting serpent',
   },
   twoHands: {
     id: 'twoHands', role: 'clap', item: 'paddedJacket', name: 'Two Hands', color: 0xff719f, gainDb: 0,

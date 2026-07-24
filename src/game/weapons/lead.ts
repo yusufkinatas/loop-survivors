@@ -8,125 +8,133 @@ import type {
   WeaponStats,
 } from './module';
 
-/** The lead's tuning. Every number below was either a rung of
- *  config.WEAPONS.lead, the whole of config.LEAD_SERPENT, a default inside
- *  RunWorld.baseProjectile that only a lead shot could observe, or a bare
- *  literal at the spawn site / inside the shared loop's spark push; values are
- *  unchanged. Nothing in the behavior code may be a bare literal. */
+/** The lead's tuning. The lead is CHAIN LIGHTNING: a bolt that zaps one enemy,
+ *  then leaps to the nearest one it has not touched, arcing through a whole
+ *  cluster before it dies. Nothing here is a bare literal at the spawn site or
+ *  in the shared loop's spark push. */
 interface LeadStats extends WeaponStats {
-  // ---------------- the base seeker ----------------------------------------
+  // ---------------- the chaining bolt --------------------------------------
 
   /** Aim jitter, radians. One aim per TRIGGER — Double Take fans the extra
-   *  seekers off that single aim, so the draw count is per trigger, not per
+   *  bolts off that single aim, so the draw count is per trigger, not per
    *  shot. */
   readonly aimSpread: number;
-  /** TRUE, and it is the whole reason this weapon exists: a lead shot steers
-   *  toward what it can see instead of flying straight. WAS
-   *  `homing: role === 'lead'` inside RunWorld.baseProjectile — a per-weapon
-   *  test in the world's shared defaulting. It is a field on the shot now, set
-   *  here, and the shared loop just reads a boolean. */
+  /** TRUE, and it is what makes the chain a chain: the shared loop's homing
+   *  path re-picks the nearest enemy NOT already in the shot's hit set every
+   *  frame, so once a bolt hits a body and adds it to that set, it curves
+   *  toward the next one on its own. WAS `homing: role === 'lead'` inside
+   *  RunWorld.baseProjectile; it is a field on the shot now and the loop just
+   *  reads a boolean. */
   readonly homing: boolean;
-  /** How fast a base seeker may turn, radians per second, clamped per step by
-   *  the shared loop. WAS the unnamed `turnRate: 10` default in
-   *  baseProjectile, observable only through this weapon. */
+  /** How fast a bolt may turn, radians per second, clamped per step by the
+   *  shared loop. Hard enough that the bolt SNAPS to the next link instead of
+   *  arcing lazily around it — the whip-crack of a chain jump. */
   readonly turnRate: number;
-  /** How far a base seeker will look for a target. INFINITY means the whole
-   *  screen: the base lead's search is unrestricted, and that is a stated
-   *  value, not an absent one — Neon Serpent's whole change of character is
-   *  replacing it with a finite gate. */
-  readonly homingRange: number;
+  /** THE CHAIN RANGE: how far a bolt will leap to its next link, world units.
+   *  Assigned to the shot's `homingRange`, which is both the search radius the
+   *  homing loop steers by and the radius onHit hunts the next link in. Finite
+   *  and deliberately local — chain lightning arcs through the crowd around it,
+   *  it does not snipe a lone body across the arena (that is the snare's job).
+   *  The initial bolt still reaches a distant first target because fire() aims
+   *  its velocity there; homing/chaining takes over once a body is in range. */
+  readonly chainRange: number;
+  /** Drawn width of the arc between two links. */
+  readonly chainBeamWidth: number;
   /** The per-hit spark, view-only. WAS this weapon's membership of run.ts's
    *  SPARK_HIT_ROLES plus the `n: 4, spread: 12` literals at the push site
-   *  inside the shared projectile loop. Lead was the LAST member, so the Set
-   *  itself is gone. */
+   *  inside the shared projectile loop. */
   readonly sparkCount: number;
   readonly sparkSpread: number;
 
   // ---------------- Neon Serpent -------------------------------------------
+  //
+  // The evolution is the chain taken to its extreme: a long-lived serpent that
+  // threads a deep file of bodies, leaping harder and further and growing a
+  // giant head every fifth trigger. Same onHit chain, bigger budget.
 
   /** Serpent damage relative to the already-built tier damage. */
   readonly serpentDamageMul: number;
   /** ONE TERM OF A CONSTANT SUM, NOT A FLOOR (#146). It goes THROUGH the
-   *  build's +pierce rule rather than over the top of it, so evolved pierce is
-   *  `serpentBasePierce + extraPierce`.
+   *  build's +pierce rule rather than over the top of it, so the serpent's
+   *  chain length is `serpentBasePierce + extraPierce`.
    *
-   *  That sum used to be INVARIANTLY 11: the old gate demanded a MAXED partner
-   *  item, so a Neon Serpent could only exist alongside `extraPierce: 5`. Since
-   *  #227 the gate is the partner item merely OWNED, so the serpent's pierce is
-   *  a real 7-to-11 ladder the player climbs with Needle Tips 1 through 5 —
-   *  which is the point of routing the 6 through the pipeline rather than over
-   *  it. Change the 6 and you move that whole range.
+   *  Since #227 the gate is the partner item merely OWNED, so the serpent's
+   *  chain is a real 6-to-11 ladder the player climbs with Needle Tips 1
+   *  through 5 — which is the point of routing the 6 through the pipeline
+   *  rather than over it. Change the 6 and you move that whole range.
    *
-   *  It used to be written straight onto the shot AFTER the pipeline had run,
-   *  which made Needle Tips a no-op on the very evolution it unlocks. That is
-   *  the shape to never restore: a signature number is an INPUT to the build
-   *  pipeline, never a write over its output. */
+   *  It must never be written straight onto the shot AFTER the pipeline has
+   *  run: that made Needle Tips a no-op on the very evolution it unlocks. A
+   *  signature number is an INPUT to the build pipeline, never a write over its
+   *  output. */
   readonly serpentBasePierce: number;
-  /** How fast a serpent may turn. Harder than base: it snaps onto the next
-   *  body in the file instead of arcing around it. */
+  /** How fast the serpent may turn. Harder than the base bolt: it snaps onto
+   *  the next body in the file the instant it lands. */
   readonly serpentTurnRate: number;
-  /** The serpent's finite search gate, world units. This is the character
-   *  change: it snaps to what is CLOSE instead of crossing the screen. A FIELD
-   *  on the shot, never a role test in the shared loop — that is how it left
-   *  the loop in #140 and it must stay a field. */
-  readonly serpentHomingRange: number;
+  /** The serpent's chain range, world units. Longer than the base bolt's — it
+   *  threads a wider file. A FIELD on the shot (homingRange), never a role test
+   *  in the shared loop. */
+  readonly serpentChainRange: number;
 
-  // ---------------- the supercharged shot ----------------------------------
+  // ---------------- the giant head -----------------------------------------
 
-  /** Every Nth trigger the serpent fires one oversized, double-damage seeker.
+  /** Every Nth trigger the serpent fires one oversized, double-damage bolt.
    *  RunWorld.fireTrigger increments the role's trigger count BEFORE fire(),
    *  and the counter is WORLD-OWNED and never resets — it keeps ticking while
    *  the weapon is still unevolved — so `ctx.triggerCount % 5 === 0` is true on
    *  the FIFTH trigger of the RUN, not the fifth after evolving. A module-local
-   *  tally would put the doubled shot on a different beat. */
+   *  tally would put the giant head on a different beat. */
   readonly superchargeCadence: number;
-  /** Damage multiplier on a supercharged shot, on top of serpentDamageMul. */
+  /** Damage multiplier on a supercharged bolt, on top of serpentDamageMul. */
   readonly superchargeDamageMul: number;
   /** Its radius is `max(superchargeRadiusFloor, radius * superchargeRadiusMul)`
-   *  and BOTH HALVES ARE LIVE — this is not an unreachable floor like the
-   *  snare's. At level 8 with no area build the floor bites (7 * 1.7 = 11.9, so
-   *  12 wins); with Wide Lens it does not (9.1 * 1.7 = 15.47). Drop either half
-   *  and one of the two real builds still looks correct. */
+   *  and BOTH HALVES ARE LIVE. At level 8 with no area build the floor bites
+   *  (7 * 1.7 = 11.9, so 12 wins); with Wide Lens it does not (9.1 * 1.7 =
+   *  15.47). Drop either half and one of the two real builds still looks
+   *  correct. */
   readonly superchargeRadiusFloor: number;
   readonly superchargeRadiusMul: number;
 }
 
 const LEAD_STATS: LeadStats = {
-  // Homing seeker per melody note: mid damage, never misses. The ladder is a
-  // density ladder first — the chart thickens — with pierce arriving only at
-  // the top rung.
+  // Chain lightning: a bolt that leaps between enemies, arcing through a cluster
+  // one link at a time. Mid damage per link, but the chain LENGTH (pierce) is
+  // the ladder — a maxed bolt threads six bodies a trigger, more with Needle
+  // Tips. Faster and snappier than the old lazy seeker so each jump reads as a
+  // whip-crack.
   tiers: [
-    { damage: 2, speed: 340, radius: 6, lifetimeS: 2.2, pierce: 1 },
-    { damage: 2.5, speed: 340, radius: 6, lifetimeS: 2.2, pierce: 1 },
-    { damage: 3, speed: 350, radius: 6, lifetimeS: 2.2, pierce: 1 },
-    { damage: 3, speed: 360, radius: 6, lifetimeS: 2.3, pierce: 1 },
-    { damage: 3, speed: 360, radius: 7, lifetimeS: 2.3, pierce: 1 },
-    { damage: 3, speed: 360, radius: 7, lifetimeS: 2.3, pierce: 2 },
-    { damage: 3.5, speed: 380, radius: 7, lifetimeS: 2.3, pierce: 2 },
-    { damage: 4, speed: 380, radius: 7, lifetimeS: 2.4, pierce: 2 },
+    { damage: 4, speed: 420, radius: 6, lifetimeS: 2.2, pierce: 3 },
+    { damage: 4, speed: 440, radius: 6, lifetimeS: 2.2, pierce: 3 },
+    { damage: 5, speed: 440, radius: 6, lifetimeS: 2.2, pierce: 4 },
+    { damage: 5, speed: 460, radius: 6, lifetimeS: 2.3, pierce: 4 },
+    { damage: 6, speed: 460, radius: 7, lifetimeS: 2.3, pierce: 5 },
+    { damage: 6, speed: 480, radius: 7, lifetimeS: 2.3, pierce: 5 },
+    { damage: 7, speed: 480, radius: 7, lifetimeS: 2.3, pierce: 6 },
+    { damage: 8, speed: 500, radius: 7, lifetimeS: 2.4, pierce: 6 },
   ],
   tierLines: [
-    'a seeker that hunts',
-    'damage up',
-    'damage up, faster',
-    'faster, flies longer',
-    'bigger bolt',
-    'pierces 1 more',
-    'damage up, fastest',
-    'maximum damage',
+    'a bolt that leaps between enemies',
+    'faster bolt',
+    'damage up, chains 1 more',
+    'faster bolt',
+    'damage up, bigger, chains 1 more',
+    'faster bolt',
+    'damage up, chains 1 more',
+    'maximum damage, fastest',
   ],
 
   aimSpread: 0.08,
   homing: true,
-  turnRate: 10,
-  homingRange: Infinity,
+  turnRate: 16,
+  chainRange: 260,
+  chainBeamWidth: 3,
   sparkCount: 4,
   sparkSpread: 12,
 
   serpentDamageMul: 1.40,
   serpentBasePierce: 6,
-  serpentTurnRate: 14,
-  serpentHomingRange: 320,
+  serpentTurnRate: 18,
+  serpentChainRange: 320,
 
   superchargeCadence: 5,
   superchargeDamageMul: 2,
@@ -134,23 +142,19 @@ const LEAD_STATS: LeadStats = {
   superchargeRadiusMul: 1.7,
 };
 
-/** What a seeker lends the SHARED projectile loop.
+/** What a chaining bolt lends the SHARED projectile loop.
  *
- *  NO steer(). A lead shot rides shared travel and the arena rails: its homing
- *  is the loop's own `pr.homing` path, fed by the three fields armSeeker() sets
- *  below. Implementing steer() — even one that returns false — is not the same
- *  thing as omitting it only in the sense that the return value is what matters;
- *  returning TRUE would skip shared travel AND reflectProjectileFromArena
- *  together, which without Mirrorball is invisible in almost every scenario
- *  because `bounces` is 0 and the rail path returns immediately.
+ *  NO steer(). A bolt rides shared travel and the shared homing path: its
+ *  chasing is the loop's own `pr.homing` branch, fed by the fields armSeeker()
+ *  sets below. Returning TRUE from a steer() would skip shared travel AND the
+ *  homing search together, which is exactly the search the chain relies on.
  *
- *  onHit is the whole of it, and it is where this weapon's share of
- *  SPARK_HIT_ROLES landed. It runs after the loop deals pr.damage and before
- *  the shared pierce rule — the exact slot the Set lookup occupied, with
- *  nothing observable in between for a lead shot. */
+ *  onHit is where the leap lives. It runs after the loop deals pr.damage and
+ *  BEFORE the shared pierce rule spends a hop, so the search below sees the
+ *  just-hit body already in pr.hit and never re-picks it. */
 const SEEKER_BEHAVIOR: ProjectileBehavior = {
   onHit(ctx: WeaponContext, pr: Projectile, target: WeaponTarget): boolean {
-    // Per-hit spark (view-only).
+    // Per-hit spark at the struck body (view-only).
     ctx.fx({
       type: 'spark',
       x: target.x,
@@ -159,65 +163,95 @@ const SEEKER_BEHAVIOR: ProjectileBehavior = {
       n: LEAD_STATS.sparkCount,
       spread: LEAD_STATS.sparkSpread,
     });
-    // A seeker spends pierce like every other projectile; only the arp is
-    // exempt (ADR-0002). Returning true is today's shared rule, stated aloud.
+    // The leap: find the nearest body this bolt has NOT touched, inside its own
+    // chain range, lock onto it so the bolt curves there, and draw the arc so
+    // the drawn jump matches where the bolt actually goes. BODIES ONLY — a
+    // Stage Light is never a chain link (it has `prop`), so the crowd's shape
+    // decides the chain, not the scenery in it. The homing loop finds the same
+    // body on its own next frame; the lock only pins the visual to the truth.
+    let next: WeaponTarget | null = null;
+    let bestD = pr.homingRange * pr.homingRange;
+    for (const body of ctx.near(target.x, target.y, pr.homingRange)) {
+      if (body.dead || body.prop || pr.hit.has(body)) continue;
+      const dx = body.x - target.x;
+      const dy = body.y - target.y;
+      const d = dx * dx + dy * dy;
+      if (d < bestD) {
+        bestD = d;
+        next = body;
+      }
+    }
+    if (next) {
+      ctx.lockSeeker(pr, next);
+      ctx.fx({
+        type: 'beam',
+        x: target.x,
+        y: target.y,
+        x2: next.x,
+        y2: next.y,
+        width: LEAD_STATS.chainBeamWidth,
+        color: pr.color,
+      });
+    }
+    // Each link spends one hop of the pierce budget — the chain LENGTH is the
+    // pierce ladder. Returning true is today's shared pierce rule, stated aloud.
     return true;
   },
 };
 
-/** Arm one freshly spawned shot as a seeker. THREE FIELDS, not a branch: the
- *  shared loop asks the SHOT whether it homes, how hard it may turn and how far
- *  it may look, and never asks which weapon fired it.
+/** Arm one freshly spawned shot as a chaining bolt. THREE FIELDS, not a branch:
+ *  the shared loop asks the SHOT whether it homes, how hard it may turn and how
+ *  far it may leap, and never asks which weapon fired it.
  *
  *  All three are set unconditionally in base form first and then overwritten by
  *  the evolved block, rather than being left to RunWorld.baseProjectile's
- *  defaults. The defaults happened to carry two of these numbers (10 and
- *  Infinity) and a role test carried the third; a weapon module's own tuning
- *  must not arrive as somebody else's default. */
+ *  defaults — a weapon module's own tuning must not arrive as somebody else's
+ *  default. */
 function armSeeker(pr: Projectile): void {
   pr.homing = LEAD_STATS.homing;
   pr.turnRate = LEAD_STATS.turnRate;
-  pr.homingRange = LEAD_STATS.homingRange;
+  pr.homingRange = LEAD_STATS.chainRange;
 }
 
 class LeadInstance implements WeaponInstance {
   readonly projectile = SEEKER_BEHAVIOR;
 
   fire(ctx: WeaponContext, conf: WeaponConf): void {
-    // One seeker per trigger; Double Take fans extra seekers around the same
-    // aim line, from a SINGLE aim — one rng draw per trigger however many
-    // shots come out of it.
+    // One bolt per trigger; Double Take fans extra bolts around the same aim
+    // line, from a SINGLE aim — one rng draw per trigger however many shots
+    // come out of it.
     const supercharged =
       ctx.evolved && ctx.triggerCount % LEAD_STATS.superchargeCadence === 0;
     const dirs = ctx.aimFan(LEAD_STATS.aimSpread);
-    // A fanned volley spawns from one point a few degrees apart, so every
-    // seeker would otherwise pick the same nearest body and converge into one
+    // A fanned volley spawns from one point a few degrees apart, so every bolt
+    // would otherwise pick the same nearest body and converge into one
     // overlapping blob — Double Take became damage you could not see or aim
-    // (#131). Give each seeker its own body instead, so extra shots spread
-    // across the crowd. nearestEnemies draws no rng, so the per-trigger draw
-    // count is still exactly the one aimFan spends.
+    // (#131). Give each bolt its own FIRST link instead, so the volley opens
+    // across the crowd before each bolt chains from there. nearestEnemies draws
+    // no rng, so the per-trigger draw count is still exactly the one aimFan
+    // spends.
     //
-    // A one-seeker volley is deliberately left unlocked: with nothing to
-    // spread it keeps the original chase-the-closest behaviour exactly.
+    // A one-bolt volley is deliberately left unlocked: with nothing to spread
+    // it keeps chasing the closest body exactly as before.
     const locks: readonly (WeaponTarget | undefined)[] =
       dirs.length > 1 ? ctx.nearestEnemies(AIM_RANGE, dirs.length) : [];
     for (let i = 0; i < dirs.length; i++) {
       const dir = dirs[i];
       const pr = ctx.spawnProjectile(conf, conf.damage);
       armSeeker(pr);
-      // Fewer bodies than seekers: the surplus falls back to nearest-chasing.
+      // Fewer bodies than bolts: the surplus falls back to nearest-chasing.
       ctx.lockSeeker(pr, locks[i] ?? null);
       if (ctx.evolved) {
         pr.damage *= LEAD_STATS.serpentDamageMul;
-        // The serpent threads a line of bodies: its own base pierce replaces
-        // lead's tier value, and the build's +pierce stacks on top of it
-        // exactly as it would for any other finite pierce (#146). This is the
-        // same arithmetic RunWorld.applyBuild runs on a tier's pierce, applied
-        // to the evolution's signature number instead.
+        // The serpent threads a deep file: its own base chain length replaces
+        // the tier's pierce value, and the build's +pierce stacks on top of it
+        // exactly as it would for any other finite pierce (#146). Same
+        // arithmetic RunWorld.applyBuild runs on a tier's pierce, applied to
+        // the evolution's signature number instead.
         pr.maxPierce = LEAD_STATS.serpentBasePierce + ctx.buildMods.extraPierce;
         pr.pierce = pr.maxPierce;
         pr.turnRate = LEAD_STATS.serpentTurnRate;
-        pr.homingRange = LEAD_STATS.serpentHomingRange;
+        pr.homingRange = LEAD_STATS.serpentChainRange;
         if (supercharged) {
           pr.damage *= LEAD_STATS.superchargeDamageMul;
           pr.radius = Math.max(
@@ -233,17 +267,18 @@ class LeadInstance implements WeaponInstance {
     }
   }
 
-  /** Nothing to drop: every seeker this module makes lives in the world's
+  /** Nothing to drop: every bolt this module makes lives in the world's
    *  projectile array, which clearSandboxEntities empties itself. The module
-   *  holds no schedule, no counter and no pointer of its own — the
-   *  supercharge cadence reads the WORLD's trigger counter through ctx. */
+   *  holds no schedule, no counter and no pointer of its own — the supercharge
+   *  cadence reads the WORLD's trigger counter through ctx. */
   reset(): void {}
 }
 
 export const LEAD = {
   role: 'lead',
   stats: LEAD_STATS,
-  // No tickAt: the lead owns no damage pass of its own. Its seekers ride the
-  // world's shared projectile loop, including the homing search itself.
+  // No tickAt: the lead owns no damage pass of its own. Its bolts ride the
+  // world's shared projectile loop, including the homing search the chain
+  // steers by.
   create: () => new LeadInstance(),
 } satisfies WeaponModule;
