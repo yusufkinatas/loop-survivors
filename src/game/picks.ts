@@ -83,8 +83,6 @@ export interface RollOffersInput {
   pendingTiers: ReadonlyMap<Role, number>;
   /** The passive twin of `pendingTiers`. */
   pendingItems: ReadonlyMap<ItemId, number>;
-  unlockedRoles: ReadonlySet<Role>;
-  unlockedItems: ReadonlySet<ItemId>;
   rng: Rng;
   timeS: number;
   level: number;
@@ -151,16 +149,15 @@ function buildFinitePool(input: RollOffersInput): WeightedOption<BuildPickOption
   // being offered tier-ups of the weapons it already owns.
   const weaponSlotsFull = ownedWeaponCount(input.tiers) >= BUILD.weaponCap;
   for (const role of ROLES) {
-    // A previously owned role remains upgradeable if a repaired/migrated save
-    // no longer lists it as unlocked. New hires require both meta unlock and
-    // soundset support.
+    // Every weapon is career-unlocked from the start; the only gate left on a
+    // new hire is soundset support.
     if (!soundsetSupports(role)) continue;
     const tier = Math.max(0, Math.min(WEAPON_MAX_LEVEL, Math.floor(input.tiers.get(role) ?? 0)));
     // Ownership (hire vs upgrade, and the cap) asks about the LIVE build; the
     // ladder test asks where the weapon will stand once every promise lands.
     const effective = Math.min(WEAPON_MAX_LEVEL, tier + pending(input.pendingTiers, role));
     if (tier === 0) {
-      if (weaponSlotsFull || !input.unlockedRoles.has(role)) continue;
+      if (weaponSlotsFull) continue;
       if (effective >= WEAPON_MAX_LEVEL) continue;
       pool.push({ option: { kind: 'weapon', role }, weight: weaponWeight(role, input.timeS) });
     } else if (effective < WEAPON_MAX_LEVEL) {
@@ -173,12 +170,10 @@ function buildFinitePool(input: RollOffersInput): WeightedOption<BuildPickOption
     const tier = itemLevel(input.items, item);
     const effective = Math.min(itemMaxLevel(item), tier + pending(input.pendingItems, item));
     if (tier === 0) {
-      if (itemSlotsFull || !input.unlockedItems.has(item)) continue;
+      if (itemSlotsFull) continue;
       if (effective >= itemMaxLevel(item)) continue;
       pool.push({ option: { kind: 'item', item }, weight: NEW_ITEM_WEIGHT });
     } else if (effective < itemMaxLevel(item)) {
-      // As with an owned weapon, an item already in this run remains legal if
-      // meta state is repaired underneath it.
       pool.push({ option: { kind: 'item', item }, weight: OWNED_ITEM_WEIGHT });
     }
   }
@@ -262,7 +257,6 @@ export function rollOffers(input: RollOffersInput): AnyPickOption[] {
 
 export interface RollStartingWeaponsInput {
   tiers: ReadonlyMap<Role, number>;
-  unlockedRoles: ReadonlySet<Role>;
   rng: Rng;
   timeS: number;
 }
@@ -271,16 +265,14 @@ export interface RollStartingWeaponsInput {
  * The opening hire: the three weapons a run starts by choosing between. This
  * is not a level-up offer, so the pool holds only tier-0 hires — never an
  * item, never an Encore, never an upgrade of something already owned. The
- * usual gates still apply (soundset support, meta unlock) and the draw goes
- * through the same weighted rank, so a seeded run opens identically
- * everywhere. Returns fewer than OFFER_COUNT only if fewer weapons are
- * available to hire at all.
+ * soundset-support gate still applies and the draw goes through the same
+ * weighted rank, so a seeded run opens identically everywhere. Returns fewer
+ * than OFFER_COUNT only if fewer weapons are available to hire at all.
  */
 export function rollStartingWeapons(input: RollStartingWeaponsInput): WeaponPickOption[] {
   const pool: WeightedOption<WeaponPickOption>[] = [];
   for (const role of ROLES) {
     if (!soundsetSupports(role)) continue;
-    if (!input.unlockedRoles.has(role)) continue;
     const tier = Math.max(0, Math.min(WEAPON_MAX_LEVEL, Math.floor(input.tiers.get(role) ?? 0)));
     if (tier !== 0) continue;
     pool.push({

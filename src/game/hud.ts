@@ -7,13 +7,11 @@ import { type Kit, type Role } from '../audio/kits';
 import { BUILD } from './config';
 import {
   EVOLUTION_BY_ROLE,
-  ITEM_IDS,
   ITEMS,
   ITEM_NEUTRAL_CSS,
   type BuildMods,
   type ItemId,
 } from './items';
-import { META_WEAPONS } from './meta';
 import type { MetaStore, RunSettlement } from './meta';
 
 import { WEAPON_MAX_LEVEL } from './weapons/levels';
@@ -335,25 +333,21 @@ export class Hud {
       const profile = el('div', 'career-panel', s);
       const collectionProgress = meta.collection();
       const head = el('div', 'career-head', profile);
-      el('strong', 'career-rank', head, 'AFTERHOURS COLLECTION');
+      el('strong', 'career-rank', head, 'AFTERHOURS POWER-UPS');
       el('span', 'career-rep', head, `♫ ${meta.state.notes} MUSIC NOTES`);
       const bar = el('div', 'rank-meter', profile);
       const fill = el('div', 'rank-meter-fill', bar);
       fill.style.width = `${collectionProgress.ratio * 100}%`;
       el('span', 'rank-meter-copy', bar, collectionProgress.complete
-        ? 'COLLECTION COMPLETE'
-        : `${collectionProgress.owned} / ${collectionProgress.total} SHOP UNLOCKS`);
+        ? 'EVERY POWER-UP MAXED'
+        : `${collectionProgress.owned} / ${collectionProgress.total} POWER-UP RANKS`);
       const rewards = el('div', 'next-reward', profile);
       el('span', 'eyebrow', rewards, 'PLAYER-DIRECTED PROGRESSION');
       el('strong', '', rewards, collectionProgress.complete
-        ? 'Every shelf of the Afterhours Shop is yours.'
-        : 'Defeat The Hush, collect its music notes, then choose what unlocks next.');
+        ? 'Every power-up in the Afterhours Shop is maxed.'
+        : 'Defeat The Hush, collect its music notes, then rank up the power-ups you want.');
       el('span', 'reward-copy', rewards,
-        'Collected notes bank when the set ends. Shop purchases unlock new instruments, passives, and perks.');
-
-      const collection = el('div', 'collection-strip', profile);
-      el('span', '', collection, `${meta.state.unlockedWeapons.length}/${META_WEAPONS.length} WEAPONS`);
-      el('span', '', collection, `${meta.state.unlockedItems.length}/${ITEM_IDS.length} PASSIVES`);
+        'Every instrument and passive is unlocked from the start. Collected notes bank when the set ends and buy permanent power-up ranks.');
 
       const mastery = Object.entries(meta.state.mastery) as [Role, { damage: number; kills: number; evolutions: number }][];
       const revealed = mastery.filter(([, value]) => value.damage >= 100_000);
@@ -379,32 +373,24 @@ export class Hud {
       const shopClose = el('button', 'shop-close', shopHeadActions, 'CLOSE SHOP') as HTMLButtonElement;
       const shopGrid = el('div', 'shop-grid', shop);
       for (const status of meta.shop()) {
-        const { offer } = status;
-        const stateClass = status.purchased
-          ? 'purchased'
-          : status.shelfLocked
-            ? 'locked'
-            : status.affordable
-              ? 'available'
-              : 'short';
+        const { def } = status;
+        const stateClass = status.maxed ? 'purchased' : status.affordable ? 'available' : 'short';
         const card = el('article', `shop-card ${stateClass}`, shopGrid);
         const cardTop = el('div', 'shop-card-top', card);
-        el('span', 'shop-kind', cardTop, offer.kind.toUpperCase());
-        el('span', 'shop-cost', cardTop, status.purchased ? 'OWNED' : `♫ ${offer.cost}`);
-        el('strong', 'shop-name', card, offer.name);
-        el('span', 'shop-copy', card, offer.description);
-        const buy = el('button', 'shop-buy', card, status.purchased
-          ? 'PURCHASED'
-          : status.shelfLocked
-            ? `BUY ${status.purchasesNeeded} MORE TO REVEAL`
-            : status.affordable
-              ? `UNLOCK FOR ♫ ${offer.cost}`
-              : `NEED ♫ ${offer.cost - meta.state.notes} MORE`) as HTMLButtonElement;
-        buy.disabled = status.purchased || status.shelfLocked || !status.affordable;
+        el('span', 'shop-kind', cardTop, `RANK ${status.rank}/${def.maxRank}`);
+        el('span', 'shop-cost', cardTop, status.maxed ? 'MAX' : `♫ ${status.price}`);
+        el('strong', 'shop-name', card, def.name);
+        el('span', 'shop-copy', card, def.description);
+        const buy = el('button', 'shop-buy', card, status.maxed
+          ? 'MAX RANK'
+          : status.affordable
+            ? `RANK UP FOR ♫ ${status.price}`
+            : `NEED ♫ ${status.price - meta.state.notes} MORE`) as HTMLButtonElement;
+        buy.disabled = status.maxed || !status.affordable;
         buy.onclick = () => {
-          if (!meta.purchase(offer.id)) return;
+          if (!meta.purchase(def.id)) return;
           const scrollTop = s.scrollTop;
-          this.showToast(`SHOP UNLOCK · ${offer.name.toUpperCase()}`);
+          this.showToast(`POWER-UP · ${def.name.toUpperCase()} RANK ${meta.rank(def.id)}`);
           this.showStart(onStart, onSandbox, meta, true, scrollTop);
         };
       }
@@ -588,7 +574,7 @@ export class Hud {
       el('strong', '', earned, `+♫ ${settlement.notesEarned}`);
       const breakdown = el('div', 'rep-breakdown', rep);
       for (const [label, value] of [
-        ['COLLECTION', `${settlement.collection.owned} / ${settlement.collection.total}`],
+        ['POWER-UP RANKS', `${settlement.collection.owned} / ${settlement.collection.total}`],
         ['NEW MILESTONES', String(settlement.newMilestones.length)],
       ] as const) {
         const row = el('div', 'rep-row', breakdown);
@@ -596,24 +582,24 @@ export class Hud {
         el('strong', '', row, value);
       }
       const rank = el('div', 'end-rank', rep);
-      el('strong', '', rank, 'AFTERHOURS COLLECTION');
+      el('strong', '', rank, 'AFTERHOURS POWER-UPS');
       const meter = el('div', 'rank-meter', rank);
       const fill = el('div', 'rank-meter-fill', meter);
       fill.style.width = `${settlement.collection.ratio * 100}%`;
       el('span', 'rank-meter-copy', meter, settlement.collection.complete
-        ? 'COLLECTION COMPLETE'
-        : `${settlement.collection.owned} / ${settlement.collection.total} UNLOCKS`);
+        ? 'EVERY POWER-UP MAXED'
+        : `${settlement.collection.owned} / ${settlement.collection.total} RANKS`);
       if (settlement.newMilestones.length > 0) {
         el('p', 'milestone-line', rep,
           `MILESTONES · ${settlement.newMilestones.map((id) => id.replace(/([A-Z])/g, ' $1')).join(' · ')}`);
       }
       const next = el('div', 'next-reward end-next', rep);
       el('span', 'eyebrow', next, settlement.collection.complete
-        ? 'FULL COLLECTION'
-        : 'YOUR NEXT UNLOCK IS YOUR CHOICE');
+        ? 'FULL POWER'
+        : 'YOUR NEXT RANK IS YOUR CHOICE');
       el('strong', '', next, settlement.collection.complete
         ? 'The Afterhours Shop is sold out.'
-        : 'Return to the Afterhours Shop and spend your music notes.');
+        : 'Return to the Afterhours Shop and spend your music notes on power-ups.');
     }
     const byDamage = (Object.entries(stats.damageByRole) as [Role, number][]).sort(
       (a, b) => b[1] - a[1],

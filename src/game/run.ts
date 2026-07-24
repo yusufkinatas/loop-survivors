@@ -46,11 +46,13 @@ import {
   deriveBuildMods,
   eligibleEvolutions,
   itemMaxLevel,
+  neutralPowerUpMods,
   EVOLUTION_BY_ROLE,
   paddedJacketHeal,
   type BuildMods,
   type EvolutionDefinition,
   type ItemId,
+  type PowerUpMods,
 } from './items';
 import {
   WEAPON_MODULES,
@@ -563,7 +565,8 @@ export interface RunWorldOpts {
   control?: () => { x: number; y: number };
   /** False for non-visual fixtures that do not consume effects. */
   fx?: boolean;
-  secondWind?: boolean;
+  /** Career power-up bonuses; omitted (sandbox, fixtures) means neutral. */
+  powerUps?: PowerUpMods;
 }
 
 export class RunWorld {
@@ -620,7 +623,7 @@ export class RunWorld {
    *  a successful attempt at the cap retires `stageLights[0]`. */
   readonly stageLights: StageLight[] = [];
 
-  secondWindReady = false;
+  private readonly powerUps: PowerUpMods;
 
   private rng: Rng;
   private control: () => { x: number; y: number };
@@ -686,7 +689,7 @@ export class RunWorld {
     this.stageLightDropRng = mulberry32(dropSeed ^ 0x44524f50);
     this.control = opts.control ?? (() => ({ x: 0, y: 0 }));
     this.fx = (opts.fx ?? true) ? [] : null;
-    this.secondWindReady = opts.secondWind ?? false;
+    this.powerUps = opts.powerUps ?? neutralPowerUpMods();
     // Built after the drop seed draw above: the context factory draws no rng,
     // so no draw moves.
     for (const m of WEAPON_MODULES) {
@@ -853,11 +856,26 @@ export class RunWorld {
   }
 
   get buildMods(): BuildMods {
-    return deriveBuildMods(this.items);
+    // Career power-ups ride the passives' own channels: multipliers compound
+    // with the items', additive bonuses stack. Weapon code reads one struct
+    // and never learns the bonus's origin.
+    const mods = deriveBuildMods(this.items);
+    const p = this.powerUps;
+    mods.moveMul *= p.moveMul;
+    mods.projectileSpeedMul *= p.projectileSpeedMul;
+    mods.areaMul *= p.areaMul;
+    mods.orbitDistanceMul *= p.orbitDistanceMul;
+    mods.durationMul *= p.durationMul;
+    mods.magnetMul *= p.magnetMul;
+    mods.hpRegenPerSecond += p.hpRegenPerSecond;
+    mods.extraProjectiles += p.extraProjectiles;
+    return mods;
   }
 
   get playerMaxHp(): number {
-    return RUN.playerHp + this.buildMods.maxHpBonus;
+    // The power-up scales the base pool; Padded Jacket's flat health lands on
+    // top unscaled, so its level copy stays literally true.
+    return Math.round(RUN.playerHp * this.powerUps.maxHpMul) + this.buildMods.maxHpBonus;
   }
 
   get playerArmor(): number {
@@ -1091,15 +1109,7 @@ export class RunWorld {
     this.player.iframesT = DAMAGE_FEEDBACK.iframesS;
     this.events.onHit();
     if (this.player.hp > 0) return;
-    if (this.secondWindReady) {
-      this.secondWindReady = false;
-      this.player.hp = Math.max(1, Math.ceil(this.playerMaxHp * 0.30));
-      this.player.iframesT = 2;
-      this.spawnRing(this.player.x, this.player.y, 300, 0xffd875, 1);
-      this.fx?.push({ type: 'pressure', x: this.player.x, y: this.player.y, color: 0xffd875, label: 'SECOND WIND' });
-    } else {
-      this.events.onDeath();
-    }
+    this.events.onDeath();
   }
 
   /** Push an enemy away from a point, sharing the weapon knock channel. */
@@ -2637,7 +2647,7 @@ export class RunWorld {
       const speed = g.vacuumed ? STAGE_MAGNET.vacuumSpeed : RUN.gemPullSpeed * this.buildMods.pullMul;
       const remaining = inRange ? advancePickupPull(g, p.x, p.y, speed, dt) : d;
       if (remaining < RUN.pickupRadius) {
-        this.xp += g.xp * xpPickupMultiplier(this.level);
+        this.xp += g.xp * xpPickupMultiplier(this.level) * this.powerUps.xpGainMul;
         this.gems.splice(i, 1);
         if (g === this.overflowGem) this.overflowGem = null;
         // Before checkLevel, so the pickup is heard under the level-up chime
