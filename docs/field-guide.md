@@ -1,7 +1,7 @@
 # Loop Survivors: Infinite Night Field Guide
 
 This is the concise player-facing reference for the current game. It explains
-what happens during a run, what every build choice does, how career unlocks
+what happens during a run, what every build choice does, how career power-ups
 work, and what the Sandbox can test. `docs/plan.md` remains the design intent;
 this guide describes the playable systems.
 
@@ -62,22 +62,31 @@ bosses drop 10. Notes are physical pickups, so the player must collect them
 before the run ends. Pickup-range bonuses also help pull them in.
 
 Collected notes bank into the career wallet when the run ends. Spend them in
-the **Afterhours Shop** on the title screen. Unlocks are never granted
+the **Afterhours Shop** on the title screen. Every weapon and passive item is
+unlocked from the very first run; the shop sells permanent **power-ups**
+instead — nine stat boosters cloned from Vampire Survivors' PowerUp screen,
+with the same base prices, rank caps, and effects. Ranks are never granted
 automatically for surviving, leveling, or reaching a rank: **the player always
-chooses what to buy**. Buying enough items reveals later shelves.
+chooses what to buy**.
 
-The starting collection contains Kick, Snare, Hi-hat, Bass, and Chord, plus
-four passives (High-Tops, Fast Forward, Mirrorball, and Wide Lens).
+| Power-up | Base price | Max rank | Effect per rank | At max rank |
+| --- | --- | --- | --- | --- |
+| Max Health | 200 | 3 | +10% maximum health | +33.1% (compounds) |
+| Recovery | 200 | 5 | +0.1 health per second | +0.5 HP/s |
+| Area | 300 | 2 | +5% attack area | +10% |
+| Speed | 300 | 2 | +10% projectile speed | +20% |
+| Duration | 300 | 2 | +15% effect duration | +30% |
+| Amount | 5,000 | 1 | +1 projectile | +1 projectile |
+| Move Speed | 600 | 2 | +5% move speed | +10% |
+| Magnet | 300 | 2 | +25% pickup range | +56.25% (compounds) |
+| Growth | 900 | 5 | +3% experience | +15% |
 
-| Shelf opens after | Purchases available |
-| --- | --- |
-| 0 owned | Heavy Amp (90), Recovery Tape (100), Clap (110) |
-| 2 owned | Arp (180), Needle Tips (130) |
-| 5 owned | Lead (260), Extension Cable (150), Padded Jacket (170), Double Take (280) |
-| 8 owned | Magnet (220), Second Wind (320) |
+Prices scale exactly as in Vampire Survivors: the next rank of a power-up
+costs its base price times (1 + ranks of it already owned), plus a fee of
+⌊20 × 1.1^total ranks owned across every power-up⌋ once anything has been
+bought. Only the very first purchase escapes the fee.
 
-Second Wind revives the player once per run at 30% health. There are no
-repeatable permanent damage, health, or speed purchases.
+There is no revival mechanic: when health reaches zero, the set ends.
 
 ## Rare floor pickup: Stage Magnet
 
@@ -236,5 +245,5 @@ altering the player's career.
   inspect the live combined modifiers.
 - **Career:** use a disposable in-memory note wallet; create physical notes,
   XP pickup fields, Stage Magnets, and chests; trigger the map-wide vacuum;
-  grant testing currency; exercise the real gated Afterhours Shop. Nothing in
-  this tab touches the player save.
+  grant testing currency; exercise the real Afterhours power-up shop. Nothing
+  in this tab touches the player save.

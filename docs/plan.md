@@ -111,14 +111,16 @@ chests convert their leftover level-up hits into Tip Jars the same way.
 ## Meta Progression
 
 Broken Stage Lights shed collectible music notes during a run, and every boss
-drops one. Notes only enter the career wallet when the run ends, then the player spends them in the Afterhours Shop.
-Purchases unlock new choice-space: instruments, passive items, and one
-30%-health Second Wind. Later shelves open
-after enough earlier purchases, but no survival result, kill total, or hidden
-rank grants an unlock automatically.
-The save is versioned, validated at load, and stored locally. Purchases are
-finite and authored; there are no repeatable permanent damage, health, or
-speed upgrades.
+drops one. Notes only enter the career wallet when the run ends, then the
+player spends them in the Afterhours Shop. Every instrument and passive item
+is unlocked from the first run; the shop sells permanent power-up ranks
+instead, cloned from Vampire Survivors' PowerUp screen — the same nine-stat
+catalog (Max Health, Recovery, Area, Speed, Duration, Amount, Move Speed,
+Magnet, Growth), base prices, rank caps, effects, and escalating price
+formula. Ranks are finite and authored, and no survival result, kill total,
+or hidden rank grants one automatically: the player always chooses what to
+buy. There is no revival mechanic — a run ends when health reaches zero.
+The save is versioned, validated at load, and stored locally.
 
 ## Core Architecture
 

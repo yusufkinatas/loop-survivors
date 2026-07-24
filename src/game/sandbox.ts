@@ -38,7 +38,7 @@ import {
   type EvolutionDefinition,
   type ItemId,
 } from './items';
-import { MetaStore, SHOP_OFFERS, type ShopOfferId } from './meta';
+import { MetaStore, POWER_UPS, POWER_UP_IDS, type PowerUpId } from './meta';
 import type { RunWorld } from './run';
 import { WEAPON_MAX_LEVEL, chartStageForLevel } from './weapons/levels';
 
@@ -546,18 +546,20 @@ export function mountSandboxPanel(
   const pickupReadout = el('div', 'sb-hint', careerPage);
 
   section(careerPage, 'afterhours shop');
-  const shopButtons = new Map<ShopOfferId, HTMLButtonElement>();
-  for (const offer of SHOP_OFFERS) {
+  const shopButtons = new Map<PowerUpId, HTMLButtonElement>();
+  const shopStats = new Map<PowerUpId, HTMLElement>();
+  for (const id of POWER_UP_IDS) {
+    const def = POWER_UPS[id];
     const row = el('div', 'sb-loadout', careerPage);
     const info = el('div', 'sb-enemy-info', row);
-    const name = el('span', 'sb-enemy-name', info, offer.name);
-    name.title = offer.description;
-    el('span', 'sb-enemy-stats', info, `${offer.kind} · ♫ ${offer.cost} · shelf ${offer.minOwned}`);
+    const name = el('span', 'sb-enemy-name', info, def.name);
+    name.title = def.description;
+    shopStats.set(id, el('span', 'sb-enemy-stats', info, ''));
     const controls = el('div', 'sb-btns', row);
     const buy = button(controls, 'BUY', () => {
-      career.purchase(offer.id);
+      career.purchase(id);
     });
-    shopButtons.set(offer.id, buy);
+    shopButtons.set(id, buy);
   }
 
   /** One edit: store it, bring the live horde in line, redraw the readouts. */
@@ -722,24 +724,22 @@ export function mountSandboxPanel(
       creditedRunNotes = world.notesCollected;
     }
     const collection = career.collection();
-    walletReadout.textContent = `♫ ${career.state.notes} · ${collection.owned}/${collection.total} shop unlocks`;
+    walletReadout.textContent = `♫ ${career.state.notes} · ${collection.owned}/${collection.total} power-up ranks`;
     pickupReadout.textContent =
       `${world.gems.length} XP gems · ${world.musicNotes.length} notes · ` +
       `${world.stageMagnets.length} Stage Magnet${world.stageMagnets.length === 1 ? '' : 's'} on floor · ` +
       `${world.notesCollected} notes collected`;
-    const states = new Map(career.shop().map((state) => [state.offer.id, state]));
-    for (const offer of SHOP_OFFERS) {
-      const state = states.get(offer.id)!;
-      const buy = shopButtons.get(offer.id)!;
-      buy.disabled = state.purchased || state.shelfLocked || !state.affordable;
-      buy.classList.toggle('on', state.purchased);
-      buy.textContent = state.purchased
-        ? 'OWNED'
-        : state.shelfLocked
-          ? `LOCK ${state.purchasesNeeded}`
-          : state.affordable
-            ? `BUY ♫${offer.cost}`
-            : `NEED ♫${offer.cost}`;
+    for (const status of career.shop()) {
+      const id = status.def.id;
+      shopStats.get(id)!.textContent = `rank ${status.rank}/${status.def.maxRank} · base ♫ ${status.def.baseCost}`;
+      const buy = shopButtons.get(id)!;
+      buy.disabled = status.maxed || !status.affordable;
+      buy.classList.toggle('on', status.maxed);
+      buy.textContent = status.maxed
+        ? 'MAXED'
+        : status.affordable
+          ? `BUY ♫${status.price}`
+          : `NEED ♫${status.price}`;
     }
   }
 

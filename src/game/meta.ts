@@ -1,12 +1,15 @@
-// Persistent career progression is a player-directed shop. Enemies shed
-// collectible music notes during a run; notes bank at death and buy permanent
-// content unlocks. Nothing here grants repeatable raw damage, health, or speed.
+// Persistent career progression is a player-directed shop of permanent
+// power-ups, cloned from Vampire Survivors' PowerUp screen: the same names,
+// base prices, rank caps, effects, and price scaling. Every instrument and
+// passive item is unlocked from the first run; music notes collected during a
+// run bank at the end and buy power-up ranks.
 
 import type { Role } from '../audio/kits';
-import { ITEM_IDS, type ItemId } from './items';
+import { neutralPowerUpMods, type PowerUpMods } from './items';
 
-const META_SAVE_KEY = 'loop-survivors.meta.v2';
-const LEGACY_META_SAVE_KEY = 'loop-survivors.meta.v1';
+const META_SAVE_KEY = 'loop-survivors.meta.v3';
+/** Older schemas, newest first; read for migration, removed on reset. */
+const LEGACY_META_SAVE_KEYS = ['loop-survivors.meta.v2', 'loop-survivors.meta.v1'] as const;
 
 const MILESTONE_IDS = [
   'first5m',
@@ -22,71 +25,78 @@ interface MasteryProgress {
   evolutions: number;
 }
 
-const CORE_WEAPONS: readonly Role[] = ['kick', 'snare', 'hat', 'bass', 'chord'];
-const CORE_ITEMS: readonly ItemId[] = ['highTops', 'fastForward', 'mirrorball', 'wideLens'];
+const META_WEAPONS: readonly Role[] = ['kick', 'snare', 'hat', 'bass', 'chord', 'clap', 'arp', 'lead'];
 
-export const META_WEAPONS: readonly Role[] = ['kick', 'snare', 'hat', 'bass', 'chord', 'clap', 'arp', 'lead'];
-
-const SHOP_OFFER_IDS = [
-  'heavyAmp',
-  'clap',
-  'arp',
-  'needleTips',
-  'recoveryTape',
-  'lead',
-  'extensionCable',
-  'paddedJacket',
-  'doubleTake',
-  'magnetLanyard',
-  'secondWind',
+export const POWER_UP_IDS = [
+  'maxHealth',
+  'recovery',
+  'area',
+  'speed',
+  'duration',
+  'amount',
+  'moveSpeed',
+  'magnet',
+  'growth',
 ] as const;
 
-export type ShopOfferId = (typeof SHOP_OFFER_IDS)[number];
-type ShopOfferKind = 'weapon' | 'item' | 'perk';
+export type PowerUpId = (typeof POWER_UP_IDS)[number];
 
-export interface ShopOffer {
-  id: ShopOfferId;
-  kind: ShopOfferKind;
-  contentId: string;
+export interface PowerUpDefinition {
+  id: PowerUpId;
   name: string;
   description: string;
-  cost: number;
-  /** Collection purchases required before this shelf opens. */
-  minOwned: number;
+  /** Price of the first rank; later ranks scale (see nextRankPrice). */
+  baseCost: number;
+  maxRank: number;
 }
 
-export const SHOP_OFFERS: readonly ShopOffer[] = [
-  { id: 'heavyAmp', kind: 'item', contentId: 'heavyAmp', name: 'Heavy Amp', cost: 90, minOwned: 0,
-    description: 'More damage and shove; completes the Bass evolution recipe.' },
-  { id: 'recoveryTape', kind: 'item', contentId: 'recoveryTape', name: 'Recovery Tape', cost: 100, minOwned: 0,
-    description: 'Slow health regeneration; a standalone passive with no evolution.' },
-  { id: 'clap', kind: 'weapon', contentId: 'clap', name: 'Clap', cost: 110, minOwned: 0,
-    description: 'A close circular blast that controls the crowd.' },
+/** Vampire Survivors' numbers, verbatim (vampire.survivors.wiki/w/PowerUps):
+ *  base price, rank cap, and per-rank effect all match the source game. The
+ *  effects themselves are applied in derivePowerUpMods below. */
+export const POWER_UPS: Record<PowerUpId, PowerUpDefinition> = {
+  maxHealth: {
+    id: 'maxHealth', name: 'Max Health', baseCost: 200, maxRank: 3,
+    description: 'Raises maximum health by 10% per rank.',
+  },
+  recovery: {
+    id: 'recovery', name: 'Recovery', baseCost: 200, maxRank: 5,
+    description: 'Regenerates 0.1 health per second per rank.',
+  },
+  area: {
+    id: 'area', name: 'Area', baseCost: 300, maxRank: 2,
+    description: 'Attacks cover 5% more ground per rank.',
+  },
+  speed: {
+    id: 'speed', name: 'Speed', baseCost: 300, maxRank: 2,
+    description: 'Projectiles travel 10% faster per rank.',
+  },
+  duration: {
+    id: 'duration', name: 'Duration', baseCost: 300, maxRank: 2,
+    description: 'Weapon effects last 15% longer per rank.',
+  },
+  amount: {
+    id: 'amount', name: 'Amount', baseCost: 5000, maxRank: 1,
+    description: 'Every weapon that throws something throws one more.',
+  },
+  moveSpeed: {
+    id: 'moveSpeed', name: 'Move Speed', baseCost: 600, maxRank: 2,
+    description: 'You move 5% faster per rank.',
+  },
+  magnet: {
+    id: 'magnet', name: 'Magnet', baseCost: 300, maxRank: 2,
+    description: 'Pickups reach you from 25% farther per rank.',
+  },
+  growth: {
+    id: 'growth', name: 'Growth', baseCost: 900, maxRank: 5,
+    description: 'Gain 3% more experience per rank.',
+  },
+};
 
-  { id: 'arp', kind: 'weapon', contentId: 'arp', name: 'Arp', cost: 180, minOwned: 2,
-    description: 'A rapid run of separate notes orbiting the player.' },
-  { id: 'needleTips', kind: 'item', contentId: 'needleTips', name: 'Needle Tips', cost: 130, minOwned: 2,
-    description: 'Piercing projectiles and the Lead evolution recipe.' },
+/** Every rank the shop can ever sell, the denominator of career progress. */
+const TOTAL_POWER_UP_RANKS = POWER_UP_IDS.reduce((sum, id) => sum + POWER_UPS[id].maxRank, 0);
 
-  { id: 'lead', kind: 'weapon', contentId: 'lead', name: 'Lead', cost: 260, minOwned: 5,
-    description: 'A bright melody weapon whose bolts leap between enemies.' },
-  { id: 'extensionCable', kind: 'item', contentId: 'extensionCable', name: 'Extension Cable', cost: 150, minOwned: 5,
-    description: 'Longer attacks and the Arp evolution recipe.' },
-  { id: 'paddedJacket', kind: 'item', contentId: 'paddedJacket', name: 'Padded Jacket', cost: 170, minOwned: 5,
-    description: 'Health, armor, and the Clap evolution recipe.' },
-  { id: 'doubleTake', kind: 'item', contentId: 'doubleTake', name: 'Double Take', cost: 280, minOwned: 5,
-    description: 'Two levels only: every projectile weapon fires one, then two extra shots.' },
-
-  { id: 'magnetLanyard', kind: 'item', contentId: 'magnetLanyard', name: 'Magnet', cost: 220, minOwned: 8,
-    description: 'Long-range pickup pull: gems reach farther and fly faster.' },
-  { id: 'secondWind', kind: 'perk', contentId: 'secondWind', name: 'Second Wind', cost: 320, minOwned: 8,
-    description: 'Revive once per run at 30% health.' },
-] as const;
-
-const SHOP_BY_ID = new Map<ShopOfferId, ShopOffer>(SHOP_OFFERS.map((offer) => [offer.id, offer]));
-
-export interface MetaV2 {
-  version: 2;
+export interface MetaV3 {
+  version: 3;
   runs: number;
   /** Spendable music notes. */
   notes: number;
@@ -95,20 +105,19 @@ export interface MetaV2 {
   bestTimeS: number;
   lifetimeKills: number;
   lifetimeChests: number;
-  purchases: ShopOfferId[];
-  unlockedWeapons: Role[];
-  unlockedItems: ItemId[];
-  secondWind: boolean;
+  /** Owned rank per power-up; absent means rank 0. */
+  powerUps: Partial<Record<PowerUpId, number>>;
   milestones: string[];
   mastery: Partial<Record<Role, MasteryProgress>>;
   seen: string[];
 }
 
-export interface ShopOfferState {
-  offer: ShopOffer;
-  purchased: boolean;
-  shelfLocked: boolean;
-  purchasesNeeded: number;
+export interface PowerUpShopState {
+  def: PowerUpDefinition;
+  rank: number;
+  maxed: boolean;
+  /** Price of the next rank; 0 once maxed. */
+  price: number;
   affordable: boolean;
 }
 
@@ -119,19 +128,16 @@ export interface CollectionProgress {
   complete: boolean;
 }
 
-function defaultMetaState(): MetaV2 {
+function defaultMetaState(): MetaV3 {
   return {
-    version: 2,
+    version: 3,
     runs: 0,
     notes: 0,
     lifetimeNotes: 0,
     bestTimeS: 0,
     lifetimeKills: 0,
     lifetimeChests: 0,
-    purchases: [],
-    unlockedWeapons: [...CORE_WEAPONS],
-    unlockedItems: [...CORE_ITEMS],
-    secondWind: false,
+    powerUps: {},
     milestones: [],
     mastery: {},
     seen: [],
@@ -152,32 +158,36 @@ function addUnique<T>(array: T[], value: T): void {
   if (!array.includes(value)) array.push(value);
 }
 
-function rebuildUnlocks(state: MetaV2): void {
-  state.unlockedWeapons = [...CORE_WEAPONS];
-  state.unlockedItems = [...CORE_ITEMS];
-  state.secondWind = false;
-  for (const id of state.purchases) {
-    const offer = SHOP_BY_ID.get(id);
-    if (!offer) continue;
-    if (offer.kind === 'weapon') addUnique(state.unlockedWeapons, offer.contentId as Role);
-    if (offer.kind === 'item') addUnique(state.unlockedItems, offer.contentId as ItemId);
-    if (id === 'secondWind') state.secondWind = true;
+/** What the retired content shop charged, kept only so a migrated save can be
+ *  made whole: those unlocks are free now, so the notes spent on them come
+ *  back as spendable notes. Weapon and item ids double as offer ids here,
+ *  exactly as they did in the v2 schema. */
+const LEGACY_SHOP_COSTS: Record<string, number> = {
+  heavyAmp: 90, recoveryTape: 100, clap: 110, needleTips: 130, extensionCable: 150,
+  paddedJacket: 170, arp: 180, magnetLanyard: 220, lead: 260, doubleTake: 280, secondWind: 320,
+};
+
+function legacyRefund(parsed: Record<string, unknown>): number {
+  const ids = new Set<string>();
+  if (parsed.version === 2) {
+    if (Array.isArray(parsed.purchases)) {
+      for (const id of parsed.purchases) if (typeof id === 'string') ids.add(id);
+    }
+  } else {
+    // v1 stored no purchase list; its unlock arrays imply one. Core content
+    // (never sold) simply misses the cost table and refunds nothing.
+    for (const value of [parsed.unlockedWeapons, parsed.unlockedItems]) {
+      if (!Array.isArray(value)) continue;
+      for (const id of value) if (typeof id === 'string') ids.add(id);
+    }
+    if (parsed.secondWind === true) ids.add('secondWind');
   }
+  let refund = 0;
+  for (const id of ids) refund += LEGACY_SHOP_COSTS[id] ?? 0;
+  return refund;
 }
 
-function inferLegacyPurchases(raw: Record<string, unknown>): ShopOfferId[] {
-  const weapons = filterIds(raw.unlockedWeapons, META_WEAPONS);
-  const items = filterIds(raw.unlockedItems, ITEM_IDS);
-  const purchases: ShopOfferId[] = [];
-  for (const offer of SHOP_OFFERS) {
-    if (offer.kind === 'weapon' && weapons.includes(offer.contentId as Role)) addUnique(purchases, offer.id);
-    if (offer.kind === 'item' && items.includes(offer.contentId as ItemId)) addUnique(purchases, offer.id);
-  }
-  if (raw.secondWind === true) addUnique(purchases, 'secondWind');
-  return purchases;
-}
-
-function sanitize(raw: unknown): MetaV2 {
+function sanitize(raw: unknown): MetaV3 {
   const state = defaultMetaState();
   if (!raw || typeof raw !== 'object') return state;
   const parsed = raw as Record<string, unknown>;
@@ -190,13 +200,22 @@ function sanitize(raw: unknown): MetaV2 {
     ? [...new Set(parsed.seen.filter((id): id is string => typeof id === 'string').slice(0, 256))]
     : [];
 
-  const isV2 = parsed.version === 2;
-  state.purchases = isV2
-    ? filterIds(parsed.purchases, SHOP_OFFER_IDS)
-    : inferLegacyPurchases(parsed);
-  // Migration converts one quarter of old reputation to spendable notes while
-  // preserving every already-earned unlock. Existing players never lose work.
-  state.notes = Math.floor(isV2 ? safeNumber(parsed.notes) : safeNumber(parsed.reputation) / 4);
+  if (parsed.version === 3) {
+    state.notes = Math.floor(safeNumber(parsed.notes));
+    const ranks = parsed.powerUps && typeof parsed.powerUps === 'object'
+      ? (parsed.powerUps as Record<string, unknown>)
+      : {};
+    for (const id of POWER_UP_IDS) {
+      const rank = Math.min(POWER_UPS[id].maxRank, Math.floor(safeNumber(ranks[id])));
+      if (rank > 0) state.powerUps[id] = rank;
+    }
+  } else {
+    // v2 spent notes on content unlocks that are free now; v1 banked
+    // reputation, converted at the historical quarter rate. Either way the
+    // old shop's spending is refunded so no earned note is ever lost.
+    const banked = parsed.version === 2 ? safeNumber(parsed.notes) : safeNumber(parsed.reputation) / 4;
+    state.notes = Math.floor(banked + legacyRefund(parsed));
+  }
   state.lifetimeNotes = Math.max(state.notes, Math.floor(safeNumber(parsed.lifetimeNotes, state.notes)));
 
   if (parsed.mastery && typeof parsed.mastery === 'object') {
@@ -211,7 +230,6 @@ function sanitize(raw: unknown): MetaV2 {
       };
     }
   }
-  rebuildUnlocks(state);
   return state;
 }
 
@@ -237,7 +255,7 @@ export interface RunProgressInput {
 }
 
 export interface RunSettlement {
-  state: MetaV2;
+  state: MetaV3;
   notesEarned: number;
   walletBefore: number;
   walletAfter: number;
@@ -246,20 +264,22 @@ export interface RunSettlement {
 }
 
 export class MetaStore {
-  readonly state: MetaV2;
+  readonly state: MetaV3;
   private readonly storage: Storage | null;
 
   constructor(storage: Storage | null = browserStorage()) {
     this.storage = storage;
     let raw: unknown = null;
     try {
-      const saved = storage?.getItem(META_SAVE_KEY) ?? storage?.getItem(LEGACY_META_SAVE_KEY);
+      const saved = storage?.getItem(META_SAVE_KEY)
+        ?? storage?.getItem(LEGACY_META_SAVE_KEYS[0])
+        ?? storage?.getItem(LEGACY_META_SAVE_KEYS[1]);
       if (saved) raw = JSON.parse(saved);
     } catch {
       raw = null;
     }
     this.state = sanitize(raw);
-    if (raw && (raw as { version?: unknown }).version !== 2) this.save();
+    if (raw && (raw as { version?: unknown }).version !== 3) this.save();
   }
 
   save(): void {
@@ -270,53 +290,97 @@ export class MetaStore {
     }
   }
 
+  rank(id: PowerUpId): number {
+    return Math.max(0, Math.min(POWER_UPS[id].maxRank, Math.floor(this.state.powerUps[id] ?? 0)));
+  }
+
+  private totalRanks(): number {
+    return POWER_UP_IDS.reduce((sum, id) => sum + this.rank(id), 0);
+  }
+
+  /** Vampire Survivors' exact pricing: the next rank of a power-up costs its
+   *  base price times (1 + ranks of it already owned), plus a fee of
+   *  floor(20 * 1.1^total ranks owned across every power-up) once anything at
+   *  all has been bought. Only the very first purchase escapes the fee. */
+  nextRankPrice(id: PowerUpId): number {
+    const owned = this.rank(id);
+    if (owned >= POWER_UPS[id].maxRank) return 0;
+    const totalBought = this.totalRanks();
+    const base = POWER_UPS[id].baseCost * (1 + owned);
+    const fees = totalBought >= 1 ? Math.floor(20 * Math.pow(1.1, totalBought)) : 0;
+    return base + fees;
+  }
+
   collection(): CollectionProgress {
-    const owned = this.state.purchases.length;
-    const total = SHOP_OFFERS.length;
+    const owned = this.totalRanks();
+    const total = TOTAL_POWER_UP_RANKS;
     return { owned, total, ratio: total > 0 ? owned / total : 1, complete: owned >= total };
   }
 
-  shop(): ShopOfferState[] {
-    const owned = this.state.purchases.length;
-    return SHOP_OFFERS.map((offer) => ({
-      offer,
-      purchased: this.state.purchases.includes(offer.id),
-      shelfLocked: owned < offer.minOwned,
-      purchasesNeeded: Math.max(0, offer.minOwned - owned),
-      affordable: this.state.notes >= offer.cost,
-    }));
+  shop(): PowerUpShopState[] {
+    return POWER_UP_IDS.map((id) => {
+      const rank = this.rank(id);
+      const maxed = rank >= POWER_UPS[id].maxRank;
+      const price = this.nextRankPrice(id);
+      return {
+        def: POWER_UPS[id],
+        rank,
+        maxed,
+        price,
+        affordable: !maxed && this.state.notes >= price,
+      };
+    });
   }
 
-  purchase(id: ShopOfferId): boolean {
-    const offer = SHOP_BY_ID.get(id);
-    if (!offer || this.state.purchases.includes(id)) return false;
-    if (this.state.purchases.length < offer.minOwned || this.state.notes < offer.cost) return false;
-    this.state.notes -= offer.cost;
-    this.state.purchases.push(id);
-    rebuildUnlocks(this.state);
+  purchase(id: PowerUpId): boolean {
+    const rank = this.rank(id);
+    if (rank >= POWER_UPS[id].maxRank) return false;
+    const price = this.nextRankPrice(id);
+    if (this.state.notes < price) return false;
+    this.state.notes -= price;
+    this.state.powerUps[id] = rank + 1;
     this.save();
     return true;
+  }
+
+  /** The owned ranks as run bonuses. Effects are Vampire Survivors' own:
+   *  Max Health and Magnet compound per rank (the wiki's +33.1% and +56.25%
+   *  max effects); everything else adds. Area widens orbits at half rate,
+   *  matching the Wide Lens passive it stacks with. */
+  powerUpMods(): PowerUpMods {
+    const mods = neutralPowerUpMods();
+    mods.maxHpMul = Math.pow(1.1, this.rank('maxHealth'));
+    mods.hpRegenPerSecond = this.rank('recovery') * 0.1;
+    mods.areaMul = 1 + this.rank('area') * 0.05;
+    mods.orbitDistanceMul = 1 + this.rank('area') * 0.025;
+    mods.projectileSpeedMul = 1 + this.rank('speed') * 0.10;
+    mods.durationMul = 1 + this.rank('duration') * 0.15;
+    mods.extraProjectiles = this.rank('amount');
+    mods.moveMul = 1 + this.rank('moveSpeed') * 0.05;
+    mods.magnetMul = Math.pow(1.25, this.rank('magnet'));
+    mods.xpGainMul = 1 + this.rank('growth') * 0.03;
+    return mods;
   }
 
   /** Developer-only: put the career back to a genuine first-boot state.
    *
    *  "Just clear localStorage" fails this, twice over:
    *
-   *  1. THERE IS A SECOND KEY. The constructor falls back to
-   *     LEGACY_META_SAVE_KEY and migrates it, so clearing only the v2 key lets
-   *     the v1 save resurrect the whole career on the next boot. Both go.
+   *  1. THERE ARE LEGACY KEYS. The constructor falls back to the v2 and v1
+   *     keys and migrates them, so clearing only the v3 key lets an old save
+   *     resurrect the whole career on the next boot. All of them go.
    *  2. THE LIVE OBJECT OUTLIVES THE STORAGE. `state` is built once at startup
    *     and held for the session, so clearing storage leaves the wallet, the
    *     rank meter and the shop cards showing stale values until a reload. The
    *     reset is therefore applied IN PLACE — `state` is readonly by reference
    *     and every holder must see the same change.
    *
-   *  Writing the fresh defaults back out is deliberate: it leaves a v2 save on
-   *  disk, so the next boot reads that and never consults the legacy key again. */
+   *  Writing the fresh defaults back out is deliberate: it leaves a v3 save on
+   *  disk, so the next boot reads that and never consults a legacy key again. */
   resetProgress(): void {
     try {
       this.storage?.removeItem(META_SAVE_KEY);
-      this.storage?.removeItem(LEGACY_META_SAVE_KEY);
+      for (const key of LEGACY_META_SAVE_KEYS) this.storage?.removeItem(key);
     } catch {
       // Same reasoning as save(): storage can be unavailable, and the in-memory
       // reset below still has to happen.
@@ -331,18 +395,6 @@ export class MetaStore {
     this.state.notes += granted;
     this.state.lifetimeNotes += granted;
     this.save();
-  }
-
-  hasPurchase(id: ShopOfferId): boolean {
-    return this.state.purchases.includes(id);
-  }
-
-  unlockedRoles(): Set<Role> {
-    return new Set(this.state.unlockedWeapons);
-  }
-
-  unlockedItemIds(): Set<ItemId> {
-    return new Set(this.state.unlockedItems);
   }
 
   settleRun(run: RunProgressInput): RunSettlement {

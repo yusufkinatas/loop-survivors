@@ -1362,13 +1362,25 @@ export class RunView {
    *
    *  Movement is read from the position delta rather than the input axis: the
    *  view has no business reaching into the controls, and a delta also holds
-   *  still through pauses and menus, which is what it should do. */
+   *  still through pauses and menus, which is what it should do.
+   *
+   *  Crucially the delta is measured against SIM time, not render time. The sim
+   *  steps at a fixed 60Hz while this runs once per rendered frame, so a display
+   *  faster than 60Hz (120Hz ProMotion phones, high-refresh monitors) renders
+   *  frames in which no step happened and the position has not changed. Such a
+   *  frame is NOT the player standing still -- treating it as such would reset
+   *  the walk clock every other frame and pin the loop to frame 0, which is why
+   *  the walk went dead on mobile. Skip any frame that advanced no sim time so
+   *  the clock only ever moves on real steps. */
   private updateWalkLoop(x: number, y: number): void {
     const walk = this.playerGfx.__walk;
     const loop = playerLoop();
     if (!walk || !loop) return;
+    const elapsed = this.world.timeS - this.walkLastTimeS;
+    // No sim step since the last call (or the clock reset for a new run): hold
+    // the frame already showing rather than re-reading a stale position delta.
+    if (elapsed <= 0) return;
     const moved = Math.abs(x - this.walkLastX) > 0.01 || Math.abs(y - this.walkLastY) > 0.01;
-    const elapsed = Math.max(0, this.world.timeS - this.walkLastTimeS);
     this.walkLastX = x;
     this.walkLastY = y;
     this.walkLastTimeS = this.world.timeS;
