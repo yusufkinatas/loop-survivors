@@ -761,8 +761,6 @@ export interface WeaponConf {
   radius?: number;
   lifetimeS?: number;
   pierce?: number;
-  /** clap: half-angle of the forward damage cone (radians). */
-  arc?: number;
   /** arp: radius of the orbit around the player. Read by the arp module, and
    *  by applyBuild for Wide Lens' orbitDistanceMul. */
   orbitRadius?: number;

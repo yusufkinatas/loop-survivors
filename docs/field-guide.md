@@ -155,11 +155,11 @@ damage behavior; it is not merely another percentage upgrade.
 | --- | --- | --- |
 | Kick + High-Tops | **Redline Stomp** | Four floor strips cross the complete arena in one colossal stomp. |
 | Snare + Fast Forward | **Railshot** | An instant 900-range beam with unlimited pierce; every fourth hit fires twin rails. |
-| Hi-hat + Mirrorball | **Strobe Lane** | A barrage of chips rails down the way you walk, piercing everything in the lane. |
+| Hi-hat + Mirrorball | **Strobe Lane** | A barrage of chips rails toward the nearest enemy, each popping in a small blast where it lands. |
 | Bass + Heavy Amp | **Subquake** | The directional wave becomes an expanding ring with unlimited pierce. |
 | Chord + Wide Lens | **Afterhours** | Huge drifting slow zones seek dense crowds and merge into larger supercells. |
 | Lead + Needle Tips | **Neon Serpent** | A homing serpent pierces seven targets — eleven with Needle Tips maxed — and grows a giant head every fifth trigger. |
-| Clap + Padded Jacket | **Two Hands** | Paired slabs snap shut on the nearest few enemies and crush whatever they close on. |
+| Clap + Padded Jacket | **Nova** | A bigger flash clears the ring, then a full circle of shards is flung outward across the arena. |
 | Arp + Extension Cable | **Event Horizon** | Counter-rotating pairs form a dense, breathing crown around the player. |
 
 Once every ordinary weapon and passive reward is exhausted, level-ups become

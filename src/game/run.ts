@@ -502,6 +502,9 @@ function advancePickupPull(
 /** Fire-and-forget visuals the world requests and the view renders. */
 export type FxEvent =
   | { type: 'ring'; x: number; y: number; radius: number; color: number; dur: number; soft?: boolean }
+  /** An INSTANT filled disc that flashes at full size and fades — no outward
+   *  travel, unlike 'ring'. For a zone that pulses in place (the clap). */
+  | { type: 'flash'; x: number; y: number; radius: number; color: number; dur: number }
   | { type: 'vacuum'; x: number; y: number; radius: number }
   | { type: 'death'; x: number; y: number; radius: number; color: number; elite: boolean }
   | { type: 'whip'; x: number; y: number; side: 1 | -1; area: number; color: number }
@@ -1182,7 +1185,7 @@ export class RunWorld {
     const a = this.control();
     if (a.x > 0.001) this.player.facingX = 1;
     else if (a.x < -0.001) this.player.facingX = -1;
-    // Persist the walk heading for directional weapons (hi-hat). Standing
+    // Persist the walk heading for directional weapons (snare). Standing
     // still keeps the last heading rather than zeroing it.
     const mag = Math.hypot(a.x, a.y);
     if (mag > 0.001) {
@@ -1921,11 +1924,11 @@ export class RunWorld {
   // ---- weapons ----
 
   // The clap left this file with the clap module (#141), and it took more than
-  // its own tuning: the pincer type, the pincer array, the queue's reset, and
-  // the world's damageCone and damageArea helpers all went with it, since Two
-  // Hands and the base cone were their last callers. What remains is the
-  // GENERIC query nearestEnemies, below with the world's other aiming queries,
-  // which the module reaches through ctx.nearestEnemies.
+  // its own tuning: the world's damageCone and damageArea helpers went with it,
+  // since the clap's cone and its old pincers were their last callers. What
+  // remains is the GENERIC query nearestEnemies, below with the world's other
+  // aiming queries, which the lead and chord modules reach through
+  // ctx.nearestEnemies.
 
   // Shockwaves left this file with the bass module (#141). The world still
   // STORES them — view.ts draws world.shockwaves and clearSandboxEntities
@@ -1989,7 +1992,7 @@ export class RunWorld {
   }
 
   /** Spread this trigger's shots around an already-chosen direction. Split out
-   *  of aimFan so the hat can fan around its walk heading without ever
+   *  of aimFan so the snare can fan around its walk heading without ever
    *  consulting nearestEnemy; reached from a module through
    *  WeaponContext.fanAround. */
   private fanAround(base: { x: number; y: number }): Array<{ x: number; y: number }> {
@@ -2007,7 +2010,7 @@ export class RunWorld {
 
   /** The player's walk heading as a unit vector. No targeting, no jitter, no
    *  rng draw: two triggers while holding one direction produce the exact same
-   *  angle. The hat's whole aim, reached through WeaponContext.moveDir. */
+   *  angle. The snare's whole aim, reached through WeaponContext.moveDir. */
   private moveDir(): { x: number; y: number } {
     return { x: this.player.moveDirX, y: this.player.moveDirY };
   }

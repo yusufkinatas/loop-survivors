@@ -14,10 +14,13 @@ import type {
  *  Nothing in the behavior code may be a bare literal. */
 interface SnareStats extends WeaponStats {
   // ---------------- the base shot ------------------------------------------
+  //
+  // THE SNARE IS DIRECTIONAL. It does not auto-aim: a shot flies straight down
+  // the player's walk heading (ctx.moveDir), with zero scatter, so the player
+  // aims by STEERING. There is no aimSpread stat because there is no jitter to
+  // feed — the snare goes exactly where it is pointed, and that is the whole of
+  // its aim, base shot and Railshot alike.
 
-  /** Aim jitter, radians, for the base volley. The snare is the backbeat
-   *  sniper: nearly no scatter, so a shot goes where it is pointed. */
-  readonly aimSpread: number;
   /** Knock distance on a base-shot hit, before buildMods.knockbackMul. WAS
    *  `WEAPON_SHOVE.snare` in config.ts, read by role inside the shared
    *  projectile loop; it is this weapon's own tuning and it lives here now. */
@@ -35,9 +38,6 @@ interface SnareStats extends WeaponStats {
   // file is. There is no `railPierce` stat below because there is no pierce
   // arithmetic to feed — see the file header.
 
-  /** Aim jitter for the rail. Tighter than the base volley: a beam that misses
-   *  is a whole trigger wasted, where a shot at least travels. */
-  readonly railAimSpread: number;
   /** Reach of a rail, world units. Instant — the rail is resolved inside the
    *  trigger, not travelled. */
   readonly railRange: number;
@@ -95,7 +95,7 @@ const SNARE_STATS: SnareStats = {
     { damage: 13, speed: 720, radius: 8, lifetimeS: 1.5, pierce: 6 },
   ],
   tierLines: [
-    'a piercing shot at the nearest enemy',
+    'a piercing shot down the way you steer',
     'pierces 1 more enemy',
     'damage up',
     'pierces 1 more, faster shot',
@@ -105,12 +105,10 @@ const SNARE_STATS: SnareStats = {
     'maximum damage, deepest pierce',
   ],
 
-  aimSpread: 0.08,
   shove: 8,
   sparkCount: 4,
   sparkSpread: 12,
 
-  railAimSpread: 0.02,
   railRange: 900,
   railDamageMul: 1.5,
   railWidthMul: 1.25,
@@ -223,9 +221,11 @@ class SnareInstance implements WeaponInstance {
       this.fireRailshot(ctx, conf);
       return;
     }
-    // One fast piercing shot per trigger; Double Take fans extra shots around
-    // the same aim line, from a single aim.
-    for (const dir of ctx.aimFan(SNARE_STATS.aimSpread)) {
+    // One fast piercing shot per trigger, straight down the walk heading;
+    // Double Take fans extra shots around that same heading. fanAround(moveDir)
+    // draws no rng and never consults a target — the snare fires where you
+    // steer, not at the nearest body.
+    for (const dir of ctx.fanAround(ctx.moveDir())) {
       const pr = ctx.spawnProjectile(conf, conf.damage);
       // Derive velocity from pr.speed, not conf.speed, so the `speed` field
       // stays equal to |v| — the bounce path reads that field.
@@ -242,13 +242,14 @@ class SnareInstance implements WeaponInstance {
   /** Railshot: an instant rail that drills the whole corridor, and every fourth
    *  trigger a pair of twins either side of it.
    *
-   *  Double Take adds whole rails, fanned around the aim line by fanAround —
-   *  the same spread every other weapon uses, so the extra lasers are visibly
-   *  separate corridors rather than one brighter beam. Aim is still drawn ONCE
-   *  via a single aimDir, and fanAround makes no rng draw of its own, so the
-   *  number of draws per trigger is identical at every Double Take level. That
-   *  invariant is load-bearing: the run shares one rng stream, so an extra draw
-   *  here would desynchronise every later roll in the run.
+   *  Directional like the base shot: every rail runs down the walk heading, so
+   *  the lasers fire where you steer, not at the nearest body. Double Take adds
+   *  whole rails, fanned around that heading by fanAround — the same spread
+   *  every other weapon uses, so the extra lasers are visibly separate corridors
+   *  rather than one brighter beam. fanAround(moveDir) makes NO rng draw at all,
+   *  at every Double Take level; that invariant is load-bearing, since the run
+   *  shares one rng stream and an extra draw here would desynchronise every
+   *  later roll in the run.
    *
    *  ORDER IS LOAD-BEARING and easy to lose. `ctx.shove` ASSIGNS the knock
    *  vector rather than max()ing it, so on a twin trigger the LAST rail to
@@ -259,7 +260,7 @@ class SnareInstance implements WeaponInstance {
    *  change it. Each fanned rail resolves fully, twins included, before the
    *  next begins, so a single-rail build fires in exactly the old order. */
   private fireRailshot(ctx: WeaponContext, conf: WeaponConf): void {
-    for (const dir of ctx.fanAround(ctx.aimDir(SNARE_STATS.railAimSpread))) {
+    for (const dir of ctx.fanAround(ctx.moveDir())) {
       this.fireRail(ctx, conf, dir);
     }
   }

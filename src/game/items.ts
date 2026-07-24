@@ -126,10 +126,10 @@ export interface BuildMods {
   hpRegenPerSecond: number;
   /** Extra emissions per trigger on every weapon that emits a countable thing
    * (Double Take). Read by RunWorld.fanAround for the fanned weapons, and
-   * directly by the two modules that emit something other than a world
-   * projectile: Railshot's rails and Two Hands' pincers. Weapons that emit one
-   * continuous shape — the Kick's strike, the Chord's zone, the Clap's base
-   * cone, Subquake's ring — deliberately ignore it. */
+   * directly by Railshot, which emits rails rather than world projectiles.
+   * Weapons that emit one continuous shape — the Kick's strike, the Chord's
+   * zone, the Clap's flash (and Nova's fixed ring of shards), Subquake's ring —
+   * deliberately ignore it. */
   extraProjectiles: number;
 }
 
@@ -220,7 +220,7 @@ const EVOLUTION_IDS = [
   'subquake',
   'afterhours',
   'neonSerpent',
-  'twoHands',
+  'nova',
   'eventHorizon',
 ] as const;
 
@@ -248,7 +248,7 @@ const EVOLUTIONS: Record<EvolutionId, EvolutionDefinition> = {
   },
   prismRain: {
     id: 'prismRain', role: 'hat', item: 'mirrorball', name: 'Strobe Lane', color: 0x6febff, gainDb: -3,
-    description: 'A barrage of chips rails down the way you walk, piercing everything in the lane.', signature: 'forward damage lane',
+    description: 'A barrage of chips rails toward the nearest enemy, each popping in a small blast where it lands.', signature: 'auto-aimed blast lane',
   },
   subquake: {
     id: 'subquake', role: 'bass', item: 'heavyAmp', name: 'Subquake', color: 0xbb91ff, gainDb: 0,
@@ -260,11 +260,11 @@ const EVOLUTIONS: Record<EvolutionId, EvolutionDefinition> = {
   },
   neonSerpent: {
     id: 'neonSerpent', role: 'lead', item: 'needleTips', name: 'Neon Serpent', color: 0xff70d4, gainDb: -1.5,
-    description: 'A sharp homing serpent pierces deep through the file and grows a giant head every fifth trigger.', signature: 'retargeting serpent',
+    description: 'A sharp serpent leaps deep through a file of enemies and grows a giant head every fifth trigger.', signature: 'retargeting serpent',
   },
-  twoHands: {
-    id: 'twoHands', role: 'clap', item: 'paddedJacket', name: 'Two Hands', color: 0xff719f, gainDb: 0,
-    description: 'Paired slabs snap shut on the nearest few enemies and crush whatever they close on.', signature: 'target-picked pincer',
+  nova: {
+    id: 'nova', role: 'clap', item: 'paddedJacket', name: 'Nova', color: 0xff719f, gainDb: 0,
+    description: 'A bigger flash clears the ring, then a full circle of shards is flung outward across the arena.', signature: 'shatter nova',
   },
   eventHorizon: {
     id: 'eventHorizon', role: 'arp', item: 'extensionCable', name: 'Event Horizon', color: 0x5effd8, gainDb: 0,
