@@ -1,7 +1,7 @@
 // The Hi-hat weapon module: a dense stream of fast chips that AUTO-AIM the
-// nearest enemy, and its evolution, Strobe Lane, where those chips stop being a
-// spread and become a rail. Base and evolved live in the same module; evolving
-// flips an internal mode (ctx.evolved).
+// nearest enemy, and its evolution, Strobe Lane, where those chips gain a small
+// on-hit blast — each one pops where it lands. Base and evolved live in the
+// same module; evolving flips an internal mode (ctx.evolved).
 //
 // THE HAT AUTO-AIMS, base and evolved alike. It resolves its direction through
 // the world's auto-aim (ctx.aimFan), which finds the nearest body inside
@@ -26,8 +26,14 @@
 // this weapon left, and adding either while tidying up is a behavior change.
 
 import type { WeaponConf } from '../config';
-import type { WeaponContext } from './context';
-import type { WeaponInstance, WeaponModule, WeaponStats } from './module';
+import type { Projectile } from '../run';
+import type { WeaponContext, WeaponTarget } from './context';
+import type {
+  ProjectileBehavior,
+  WeaponInstance,
+  WeaponModule,
+  WeaponStats,
+} from './module';
 
 /** The hat's tuning. Every number below was either a rung of config.WEAPONS.hat,
  *  an entry of config.HAT_LANE, or a bare literal in run.ts's spawnProjectile;
@@ -42,11 +48,12 @@ interface HatStats extends WeaponStats {
 
   // ---------------- Strobe Lane --------------------------------------------
   //
-  // The chips stop being a spread and become a rail toward the nearest enemy —
-  // the lane auto-aims exactly like the base stream, just as a piercing rail
-  // instead of single-hit chips. Reach is speed x life; the pierce below is what
-  // lets one chip spend that reach on the whole file instead of stopping at the
-  // first body.
+  // The chips stop being a spread and become a fast lane of SMALL BOMBS toward
+  // the nearest enemy — the lane auto-aims exactly like the base stream. Each
+  // chip still hits just one body (it keeps the base's no-pierce), but now POPS
+  // on impact, splashing a small blast into everything around the body it hit.
+  // Reach is speed x life; a chip that finds no body rides that reach, bouncing
+  // off the arena rails, until it does.
 
   /** Chip damage relative to the already-built tier damage. Was a bare `1.30`
    *  at the spawn site. */
@@ -58,27 +65,20 @@ interface HatStats extends WeaponStats {
   readonly laneSpeedMul: number;
   readonly laneLifetimeMul: number;
 
-  /** THE LANE'S PIERCE, WRITTEN OVER THE PIPELINE'S ANSWER. Read this before
-   *  changing it — it is the exact shape of the bug #146 fixed one weapon over,
-   *  and here it is correct.
+  /** THE LANE'S SMALL AoE, the evolution's whole payoff and what REPLACES the
+   *  old infinite pierce. A lane chip keeps the base's single-hit pierce (1), so
+   *  it hits one body and dies — but on that hit it pops, dealing splash damage
+   *  to every OTHER body within this radius of the one it struck.
    *
-   *  On the BASE hat, pierce is GONE (every tier is 1: a chip hits one body and
-   *  stops), the price the hat pays for auto-aim. Needle Tips still stacks onto
-   *  that base the way applyBuild computes it, so the item remains a real build
-   *  on the base chip. On the LANE, though, pierce is a total no-op, because the
-   *  value below REPLACES whatever `applyBuild` computed rather than being an
-   *  input the pipeline builds on: the evolution buys back the pierce the base
-   *  gave up, and buys back ALL of it — a lane chip drills the whole file.
-   *  Evolved lead used to do exactly this with a hardcoded 6 and it
-   *  WAS a bug (LEAD_STATS.serpentBasePierce, #146) — but an infinity is not a floor
-   *  to add to. There is no larger budget for the item to reach, so routing it
-   *  through the pipeline the way lead's 6 now is would change nothing except
-   *  make the code look like it did something.
-   *
-   *  Stated as a stat rather than left as a bare `Infinity` at the spawn site
-   *  so the no-op is a property of the weapon a reader can find, not a surprise
-   *  discovered by testing an item that does nothing. */
-  readonly lanePierce: number;
+   *  The struck body already took the chip's full damage through the shared
+   *  loop; the blast never re-hits it (it is in the shot's hit set), so the
+   *  splash is a bonus to its NEIGHBOURS, not a double hit. The evolution trades
+   *  the drilling rail for a stream of little bombs. */
+  readonly laneBlastRadius: number;
+  /** Splash damage as a fraction of the chip's own (already lane-multiplied)
+   *  damage. Below 1: a neighbour catching the blast takes less than the body
+   *  the chip actually hit. */
+  readonly laneBlastDamageMul: number;
 
   /** How far each successive chip is pushed forward along the lane at spawn,
    *  cycled on this weapon's trigger count. A 16th-note wall would otherwise
@@ -134,11 +134,49 @@ const HAT_STATS: HatStats = {
   laneDamageMul: 1.30,
   laneSpeedMul: 1.5,
   laneLifetimeMul: 2.0,
-  lanePierce: Infinity,
+  laneBlastRadius: 44,
+  laneBlastDamageMul: 0.6,
   laneStagger: [0, 26, 52, 78],
 };
 
+/** What a lane chip lends the SHARED projectile loop: a small on-hit blast, and
+ *  nothing else. A BASE hat chip has no blast — onHit reads ctx.evolved (a live
+ *  view of the world's mode) and only the lane pops — so the base stream stays
+ *  the clean single-hit chip it was, and the same module hook serves both. */
+const CHIP_BEHAVIOR: ProjectileBehavior = {
+  onHit(ctx: WeaponContext, pr: Projectile, target: WeaponTarget): boolean {
+    if (ctx.evolved) {
+      // The pop: splash every neighbour of the struck body. The body itself is
+      // already in pr.hit (the loop added it before this hook), so it is never
+      // caught twice. near() already widens its query by the largest inserted
+      // radius, so the exact reach test below is the only gate that matters.
+      const splash = pr.damage * HAT_STATS.laneBlastDamageMul;
+      for (const e of ctx.near(target.x, target.y, HAT_STATS.laneBlastRadius)) {
+        if (e.dead || pr.hit.has(e)) continue;
+        const dx = e.x - target.x;
+        const dy = e.y - target.y;
+        if (Math.hypot(dx, dy) > HAT_STATS.laneBlastRadius + e.radius) continue;
+        ctx.damage(e, splash);
+      }
+      ctx.fx({
+        type: 'ring',
+        x: target.x,
+        y: target.y,
+        radius: HAT_STATS.laneBlastRadius,
+        color: pr.color,
+        dur: 0.18,
+        soft: true,
+      });
+    }
+    // Spend pierce like every other chip: a lane chip pops and dies on its one
+    // hit, and a base chip stops on its one hit. Returning true is that rule.
+    return true;
+  },
+};
+
 class HatInstance implements WeaponInstance {
+  readonly projectile = CHIP_BEHAVIOR;
+
   /** Auto-aimed chips at the nearest enemy, base and lane alike. aimFan finds
    *  the nearest body inside AIM_RANGE, jitters by aimSpread, and hands back one
    *  direction per shot this trigger owes — Double Take's extra chips fan around
@@ -164,9 +202,9 @@ class HatInstance implements WeaponInstance {
       if (lane) {
         pr.damage *= HAT_STATS.laneDamageMul;
         pr.speed *= HAT_STATS.laneSpeedMul;
-        pr.maxPierce = HAT_STATS.lanePierce;
-        pr.pierce = HAT_STATS.lanePierce;
         pr.lifeS *= HAT_STATS.laneLifetimeMul;
+        // No pierce override: the chip keeps its tier value (1), so it hits one
+        // body and pops. The splash, not a drilling rail, is now the spread.
       }
       // Derive velocity from pr.speed — which already carries the lane
       // multiplier — so the `speed` FIELD stays equal to |v|. The bounce path
@@ -184,11 +222,6 @@ class HatInstance implements WeaponInstance {
   /** Nothing to drop: every chip lives in the world's projectile array, which
    *  clearSandboxEntities empties itself. */
   reset(): void {}
-
-  // No `projectile` behavior, deliberately. A hat chip rides shared travel, the
-  // arena rails and the shared pierce rule completely unchanged, and lands
-  // damage and nothing else on a hit — no shove, no spark. Both halves of
-  // ProjectileBehavior are the halves this weapon must NOT have.
 }
 
 export const HAT = {

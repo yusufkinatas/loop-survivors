@@ -216,7 +216,7 @@ const EVOLUTIONS: Record<EvolutionId, EvolutionDefinition> = {
   },
   prismRain: {
     id: 'prismRain', role: 'hat', item: 'mirrorball', name: 'Strobe Lane', color: 0x6febff, gainDb: -3,
-    description: 'A barrage of chips rails toward the nearest enemy, piercing everything in the lane.', signature: 'auto-aimed damage lane',
+    description: 'A barrage of chips rails toward the nearest enemy, each popping in a small blast where it lands.', signature: 'auto-aimed blast lane',
   },
   subquake: {
     id: 'subquake', role: 'bass', item: 'heavyAmp', name: 'Subquake', color: 0xbb91ff, gainDb: 0,
