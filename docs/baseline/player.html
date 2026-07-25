@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Loop Survivors — baseline captures</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; padding: 28px 20px 60px;
+    background: #0c0f12; color: #d8e0e6;
+    font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  main { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 6px; color: #7ef2c4; letter-spacing: .5px; }
+  p.lede { margin: 0 0 26px; color: #8b9aa5; max-width: 62ch; }
+  .take {
+    border: 1px solid #1e262d; border-left: 3px solid #2f8f6b;
+    border-radius: 6px; padding: 12px 14px; margin-bottom: 10px; background: #10151a;
+  }
+  .take.off-curve { border-left-style: dashed; opacity: .85; }
+  .row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .name { color: #7ef2c4; font-weight: 700; }
+  .density { margin-left: auto; color: #ffd45c; font-weight: 700; white-space: nowrap; }
+  .build { color: #8b9aa5; font-size: 13px; margin: 4px 0 8px; }
+  .bar { height: 6px; background: #1a2229; border-radius: 3px; overflow: hidden; margin: 8px 0; }
+  .bar span { display: block; height: 100%; background: linear-gradient(90deg,#2f8f6b,#ffd45c); }
+  audio { width: 100%; height: 34px; }
+  .note { color: #6c7c88; font-size: 12.5px; margin-top: 4px; }
+  h2 { font-size: 14px; color: #8b9aa5; margin: 28px 0 10px; text-transform: uppercase; letter-spacing: 1px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Baseline captures</h1>
+  <p class="lede">
+    The arrangement at nine points along the power curve, recorded from the
+    master bus with no combat on the field. 16 bars each, phrase-aligned.
+    Numbers are triggers per bar. Set a comfortable volume once and leave it —
+    denser and louder are easy to confuse.
+  </p>
+  <div id="curve"></div>
+  <h2>Bounds — not points on a run</h2>
+  <div id="bounds"></div>
+</main>
+<script>
+const TAKES = [
+  { f: '01-opening-one-weapon',  build: 'kick 1',                                    d: 4.00,  steps: 4 },
+  { f: '02-early-two',           build: 'kick 2, bass 1',                            d: 6.00,  steps: 6 },
+  { f: '03-building-three',      build: 'kick 3, bass 3, hat 1',                     d: 12.00, steps: 8 },
+  { f: '04-mid-four',            build: 'kick 4, bass 4, hat 3, chord 2',            d: 14.00, steps: 8 },
+  { f: '05-band-full-five',      build: 'kick 5, bass 5, hat 4, chord 4, lead 3',    d: 18.25, steps: 11 },
+  { f: '06-late-five',           build: 'kick 7, bass 7, hat 6, chord 6, lead 6',    d: 23.50, steps: 13 },
+  { f: '07-maxed-five',          build: 'kick 8, bass 8, hat 8, chord 8, lead 8',    d: 34.00, steps: 16 },
+];
+const BOUNDS = [
+  { f: '08-thinnest-maxed-five', build: 'kick 8, clap 8, snare 8, bass 8, lead 8',   d: 22.00, steps: 13,
+    note: 'The sparsest five-weapon maxed build the catalog allows. There is no thinner late build to ask for.' },
+  { f: '09-all-eight-maxed',     build: 'all eight roles at 8',                      d: 54.00, steps: 16,
+    note: 'All eight roles at once — unreachable in a run (the weapon cap is 5). The engine ceiling.' },
+];
+const MAX = 54;
+
+function render(list, host, offCurve) {
+  host.innerHTML = list.map((t) => `
+    <div class="take${offCurve ? ' off-curve' : ''}">
+      <div class="row">
+        <span class="name">${t.f.replace(/^\d+-/, '')}</span>
+        <span class="density">${t.d.toFixed(2)} trig/bar · ${t.steps}/16 steps</span>
+      </div>
+      <div class="build">${t.build}</div>
+      <div class="bar"><span style="width:${(t.d / MAX) * 100}%"></span></div>
+      <audio controls preload="none" src="audio/${t.f}.webm"></audio>
+      ${t.note ? `<div class="note">${t.note}</div>` : ''}
+    </div>`).join('');
+}
+render(TAKES, document.getElementById('curve'), false);
+render(BOUNDS, document.getElementById('bounds'), true);
+
+// One at a time: comparing two takes is only meaningful if only one is playing.
+document.addEventListener('play', (e) => {
+  for (const a of document.querySelectorAll('audio')) if (a !== e.target) a.pause();
+}, true);
+</script>
+</body>
+</html>

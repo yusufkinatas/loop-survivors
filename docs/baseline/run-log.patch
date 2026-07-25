@@ -1,0 +1,305 @@
+diff --git a/src/game/game.ts b/src/game/game.ts
+index c2c3b1d..899ab42 100644
+--- a/src/game/game.ts
++++ b/src/game/game.ts
+@@ -22,6 +22,7 @@ import { EVOLUTION_BY_ROLE, ITEMS, ITEM_NEUTRAL_COLOR, itemMaxLevel, type Evolut
+ import { chartStageForLevel, WEAPON_MAX_LEVEL } from './weapons/levels';
+ import { MetaStore, type RunSettlement } from './meta';
+ import { mulberry32 } from './rng';
++import { runLog, type BuildSnapshot, type OfferSource } from './run-log';
+ 
+ type State = 'start' | 'run' | 'end' | 'sandbox';
+ 
+@@ -450,8 +451,10 @@ export async function bootGame(
+         .slice(0, 3)
+         .map((evolution): EvolutionPick => ({ kind: 'evolution', evolution }));
+       // 'none': the chest ceremony that queued these already played the fanfare.
+-      if (evolutionOptions.length > 0) dropGroundPicks(w, evolutionOptions, 'none');
+-      else presentNextUpgrade();
++      if (evolutionOptions.length > 0) {
++        logOffer(w, 'evolution', evolutionOptions);
++        dropGroundPicks(w, evolutionOptions, 'none');
++      } else presentNextUpgrade();
+       return;
+     }
+     // One reward drops its offer and stops; the rest wait their turn here.
+@@ -471,10 +474,78 @@ export async function bootGame(
+         timeS: w.timeS,
+         level: w.level,
+       });
++      logOffer(w, 'level-up', options);
+       dropGroundPicks(w, options);
+     }
+   }
+ 
++  /** What the run recorder writes down for one option. Names the thing, never
++   *  the level it will land on: the level is resolved against live state at
++   *  scoop time, so quoting one here would be a guess. */
++  function pickLabel(option: ShellPick): string {
++    if (option.kind === 'weapon') return kits.get(option.role)?.name ?? option.role;
++    if (option.kind === 'item') return ITEMS[option.item].name;
++    if (option.kind === 'evolution') return `${option.evolution.name} (evolution)`;
++    return option.encore === 'firstAid' ? 'First Aid' : 'Tip Jar';
++  }
++
++  /** The build as the player understands it, which is not quite `w.tiers`.
++   *
++   *  A scooped weapon level rides to the next bar line before it lands, so a
++   *  raw read of `w.tiers` reports a weapon a level short for up to one bar —
++   *  and since takes cluster (a five-hit chest payout scoops inside a couple of
++   *  seconds), a straight snapshot makes levels appear to go backwards between
++   *  consecutive rows. `pendingWeapons` is exactly the scooped-but-not-landed
++   *  set, so folding it in reports what the player has actually bought.
++   *  Passives are not in it: `applyPickup` lands those on the spot. */
++  function buildSnapshot(w: RunWorld): BuildSnapshot {
++    const weapons = new Map(w.tiers);
++    for (const [role, pending] of pendingWeapons) {
++      const owed = pending.queued + pending.entering;
++      if (owed > 0) weapons.set(role, Math.min(WEAPON_MAX_LEVEL, (weapons.get(role) ?? 0) + owed));
++    }
++    return {
++      weapons: [...weapons],
++      items: [...w.items.entries()],
++      evolved: [...w.evolved],
++    };
++  }
++
++  /** The build this take produces, resolved arithmetically rather than by
++   *  waiting for it. A weapon level rides to the next bar line before it lands
++   *  in `w.tiers`, so a snapshot taken at scoop time would credit the level to
++   *  the NEXT decision instead of the one that bought it. Every pick is +1 to
++   *  the thing it names, so the outcome is known the moment it is scooped. */
++  function buildAfterTake(w: RunWorld, option: ShellPick): BuildSnapshot {
++    const build = buildSnapshot(w);
++    if (option.kind === 'weapon') {
++      const weapons = new Map(build.weapons);
++      weapons.set(option.role, Math.min(WEAPON_MAX_LEVEL, (weapons.get(option.role) ?? 0) + 1));
++      return { ...build, weapons: [...weapons] };
++    }
++    if (option.kind === 'item') {
++      const items = new Map(build.items);
++      items.set(option.item, Math.min(itemMaxLevel(option.item), (items.get(option.item) ?? 0) + 1));
++      return { ...build, items: [...items] };
++    }
++    if (option.kind === 'evolution') {
++      return { ...build, evolved: [...new Set([...build.evolved, option.evolution.role])] };
++    }
++    return build; // an Encore never adds to the build
++  }
++
++  /** One offer, as the recorder sees it. Called by each surface that drops a
++   *  triangle, because only the caller knows which surface it is. */
++  function logOffer(w: RunWorld, source: OfferSource, options: ShellPick[]): void {
++    runLog.record({
++      kind: 'offer',
++      t: w.timeS,
++      level: w.level,
++      source,
++      options: options.map(pickLabel),
++    });
++  }
++
+   /** How loudly a ground-pick drop is celebrated.
+    *  - `'level'`: the full LEVELUP.momentS slow-mo — a real level-up.
+    *  - `'none'`: no slow-mo, no mix duck, no level cue and no HUD pulse — only
+@@ -660,6 +731,13 @@ export async function bootGame(
+     engine.playPickupCue(nextPickupStep());
+     w.shoveEnemiesOut(item.x, item.y, LEVELUP.pickupPushRadius);
+     const option = item.option;
++    runLog.record({
++      kind: 'take',
++      t: w.timeS,
++      level: w.level,
++      option: pickLabel(option),
++      build: buildAfterTake(w, option),
++    });
+     clearGroundPicks();
+     if (option.kind !== 'evolution') {
+       const outcome = applyPickup(w, option, (barAudioTime) => {
+@@ -760,6 +838,7 @@ export async function bootGame(
+     const evolutions = unpromisedEvolutions(w);
+     const evolution = evolutions.length > 0;
+     chestCeremony = { x: chest.x, y: chest.y, size: evolution ? 5 : chest.forceSize ?? rollChestSize(chest.index), evolution, t: 0, landed: false, dropped: 0 };
++    runLog.record({ kind: 'chest', t: w.timeS, level: w.level, size: chestCeremony.size, evolution });
+     // Rides the level-moment slow-mo machinery: deeper and longer than a
+     // level-up (this is the game's biggest reward beat), released just after
+     // the landing burst.
+@@ -881,6 +960,13 @@ export async function bootGame(
+     const w = world;
+     if (!w) return;
+     chestDrops.splice(chestDrops.indexOf(drop), 1);
++    runLog.record({
++      kind: 'take',
++      t: w.timeS,
++      level: w.level,
++      option: `${pickLabel(drop.option)} (chest payout)`,
++      build: buildAfterTake(w, drop.option),
++    });
+     engine.playPickupCue(nextPickupStep());
+     w.shoveEnemiesOut(drop.x, drop.y, LEVELUP.pickupPushRadius);
+     hud.levelPulse();
+@@ -893,6 +979,7 @@ export async function bootGame(
+ 
+   const events = {
+     onLevelUp(level: number): void {
++      if (world) runLog.record({ kind: 'levelUp', t: world.timeS, level });
+       enqueueUpgrade(level);
+     },
+     onDeath(): void {
+@@ -1033,15 +1120,10 @@ export async function bootGame(
+     // the chosen one on the next bar. This is deliberately NOT a level-up: no
+     // upgrade is enqueued and world level/XP are untouched, so the HUD still
+     // reads level 1 after the pick.
+-    dropGroundPicks(
+-      w,
+-      rollStartingWeapons({
+-        tiers: w.tiers,
+-        rng: Math.random,
+-        timeS: 0,
+-      }),
+-      'none',
+-    );
++    runLog.begin();
++    const opening = rollStartingWeapons({ tiers: w.tiers, rng: Math.random, timeS: 0 });
++    logOffer(w, 'opening', opening);
++    dropGroundPicks(w, opening, 'none');
+   }
+ 
+   function startSandbox(): void {
+@@ -1109,6 +1191,13 @@ export async function bootGame(
+ 
+   function endRun(victory = false): void {
+     if (!world || state === 'end') return;
++    runLog.record({
++      kind: 'end',
++      t: world.timeS,
++      level: world.level,
++      outcome: victory ? 'won' : 'died',
++      build: buildSnapshot(world),
++    });
+     state = 'end';
+     victoryScreenAtAudioT = null;
+     syncTimeScaleControl(); // no live world to scale on the end screen
+diff --git a/src/game/run-log.ts b/src/game/run-log.ts
+new file mode 100644
+index 0000000..2f7278e
+--- /dev/null
++++ b/src/game/run-log.ts
+@@ -0,0 +1,95 @@
++// The run recorder: what decisions a run actually contained, and when.
++//
++// A baseline that prototypes get A/B'd against cannot rest on memory — "the
++// build was full by about minute twenty" is not something you can hold a
++// redesign up against. This writes the run's decisions down as data: every
++// offer the run made, which one was taken, what the build was immediately
++// after, and the run second each of those happened at.
++//
++// It only ever receives. It never reads the world, never writes to it, and
++// nothing in the run branches on whether it is listening — so a recorded run
++// and an unrecorded one are the same run. Reading it back is a developer act,
++// done from the browser console via `loop.runLog`.
++
++import type { Role } from '../audio/kits';
++import type { ItemId } from './items';
++
++/** Which surface made an offer. The run has four, and they are not
++ *  interchangeable: the opening hire is not a level-up, and a chest's payout
++ *  is not a choice at all — every drop is yours, you just walk to them. */
++export type OfferSource = 'opening' | 'level-up' | 'evolution' | 'chest';
++
++/** A build at one instant: weapon levels, passive levels, evolved weapons. */
++export interface BuildSnapshot {
++  weapons: Array<[Role, number]>;
++  items: Array<[ItemId, number]>;
++  evolved: Role[];
++}
++
++type RunLogEntry =
++  | { kind: 'start'; t: number }
++  | { kind: 'offer'; t: number; level: number; source: OfferSource; options: string[] }
++  | { kind: 'take'; t: number; level: number; option: string; build: BuildSnapshot }
++  | { kind: 'chest'; t: number; level: number; size: number; evolution: boolean }
++  | { kind: 'levelUp'; t: number; level: number }
++  | { kind: 'end'; t: number; level: number; outcome: 'won' | 'died'; build: BuildSnapshot };
++
++function mmss(t: number): string {
++  const m = Math.floor(t / 60);
++  const s = Math.floor(t % 60);
++  return `${m}:${String(s).padStart(2, '0')}`;
++}
++
++function describeBuild(b: BuildSnapshot): string {
++  const weapons = b.weapons
++    .filter(([, level]) => level > 0)
++    .map(([role, level]) => `${role} ${level}${b.evolved.includes(role) ? '★' : ''}`);
++  const items = b.items.filter(([, level]) => level > 0).map(([id, level]) => `${id} ${level}`);
++  return `${weapons.join(', ') || '—'} | ${items.join(', ') || 'no passives'}`;
++}
++
++class RunLog {
++  private entries: RunLogEntry[] = [];
++
++  /** A new run wipes the last one: only the run you just played is interesting,
++   *  and an append-only log across runs would silently splice two of them. */
++  begin(): void {
++    this.entries = [{ kind: 'start', t: 0 }];
++  }
++
++  record(entry: RunLogEntry): void {
++    this.entries.push(entry);
++  }
++
++  get length(): number {
++    return this.entries.length;
++  }
++
++  json(): string {
++    return JSON.stringify(this.entries, null, 2);
++  }
++
++  /** The readable form: one line per decision, in run order, each carrying the
++   *  build it produced. Paste straight into the baseline doc. */
++  markdown(): string {
++    const lines: string[] = ['| time | lvl | what happened | build after |', '|---|---|---|---|'];
++    for (const e of this.entries) {
++      if (e.kind === 'start') continue;
++      if (e.kind === 'offer') {
++        lines.push(`| ${mmss(e.t)} | ${e.level} | **offered** (${e.source}): ${e.options.join(' / ')} | |`);
++      } else if (e.kind === 'take') {
++        lines.push(`| ${mmss(e.t)} | ${e.level} | **took** ${e.option} | ${describeBuild(e.build)} |`);
++      } else if (e.kind === 'chest') {
++        lines.push(`| ${mmss(e.t)} | ${e.level} | **chest** ×${e.size}${e.evolution ? ' (evolution)' : ''} | |`);
++      } else if (e.kind === 'levelUp') {
++        lines.push(`| ${mmss(e.t)} | ${e.level} | reached level ${e.level} | |`);
++      } else {
++        lines.push(`| ${mmss(e.t)} | ${e.level} | **run ${e.outcome}** | ${describeBuild(e.build)} |`);
++      }
++    }
++    return lines.join('\n');
++  }
++}
++
++/** The one recorder. A run has one decision history, so it has one home. */
++export const runLog = new RunLog();
+diff --git a/src/main.ts b/src/main.ts
+index 405ad01..b6ecdf7 100644
+--- a/src/main.ts
++++ b/src/main.ts
+@@ -11,6 +11,7 @@ import { mountRehearsalRoom } from './experiments/rehearsal/room';
+ import { mountTrackLab } from './experiments/tracklab/lab';
+ import { mountBossFight } from './experiments/boss/page';
+ import { bootGame } from './game/game';
++import { runLog } from './game/run-log';
+ import { maybeShowRotateHint } from './game/rotate-hint';
+ import './style.css';
+ 
+@@ -42,7 +43,8 @@ async function boot(): Promise<void> {
+   // Developer console handle (developer tools):
+   // poke the engine from the browser console, e.g. loop.engine.outputLevel(),
+   // or dump playground edits: copy(loop.charts.exportEdits()).
+-  (window as unknown as { loop: object }).loop = { engine, kits, charts };
++  // After a run: copy(loop.runLog.markdown()) gives every decision it contained.
++  (window as unknown as { loop: object }).loop = { engine, kits, charts, runLog };
+ 
+   root.textContent = '';
+   if (location.hash === '#rehearsal') {
