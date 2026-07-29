@@ -135,6 +135,9 @@ class SubInstance implements WeaponInstance {
         y2: cy + py * front.halfWidth,
         width: FRONT_DEPTH * 0.5,
         color: ctx.color,
+        // Steady: the wall moves, so it is redrawn every frame, and an additive
+        // redraw would stack into a white slab within a few frames.
+        steady: true,
       });
 
       for (const e of ctx.near(cx, cy, front.halfWidth + FRONT_DEPTH + QUERY_PAD)) {

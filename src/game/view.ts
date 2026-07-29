@@ -1645,9 +1645,13 @@ export class RunView {
         gfx.tint = fx.color;
         gfx.position.set(snap(fx.x), snap(fx.y));
         gfx.rotation = Math.atan2(dy, dx);
-        gfx.blendMode = 'add';
+        // Additive only for a one-shot. A steady beam is redrawn every frame, so
+        // adding it to itself would blow out to white within a few frames.
+        gfx.blendMode = fx.steady ? 'normal' : 'add';
         this.fxLayer.addChild(gfx);
-        this.pops.push({ gfx, t: 0, dur: 0.24, fromScale: 1, toScale: 1.04 });
+        this.pops.push(fx.steady
+          ? { gfx, t: 0, dur: 0.1, fromScale: 1, toScale: 1, steady: true }
+          : { gfx, t: 0, dur: 0.24, fromScale: 1, toScale: 1.04 });
         break;
       }
       case 'pressure': {

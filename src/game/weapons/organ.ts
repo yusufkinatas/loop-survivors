@@ -78,6 +78,7 @@ class OrganInstance implements WeaponInstance {
     const p = ctx.player;
     const dir = ctx.aimDir(0);
     const area = conf.area ?? 1;
+    const hold = ORGAN_STATS.holdS * ctx.buildMods.durationMul;
     this.beams.push({
       x: p.x,
       y: p.y,
@@ -86,9 +87,23 @@ class OrganInstance implements WeaponInstance {
       reach: ORGAN_STATS.reach * area,
       halfWidth: ORGAN_STATS.halfWidth * area,
       damage: conf.damage,
-      expiresAt: ctx.timeS + ORGAN_STATS.holdS * ctx.buildMods.durationMul,
+      expiresAt: ctx.timeS + hold,
       // First pass immediately, so the beam bites the instant it lights.
       nextTickAt: ctx.timeS,
+    });
+    // DRAWN ONCE, FOR ITS WHOLE LIFE. The beam is anchored at fire time and
+    // never moves, so one emission is the honest one — and re-emitting an
+    // additive effect every frame is what turned the first version into a solid
+    // white bar across the screen.
+    ctx.fx({
+      type: 'beam',
+      x: p.x,
+      y: p.y,
+      x2: p.x + dir.x * ORGAN_STATS.reach * area,
+      y2: p.y + dir.y * ORGAN_STATS.reach * area,
+      width: ORGAN_STATS.halfWidth * area,
+      color: ctx.color,
+      steady: true,
     });
   }
 
@@ -104,22 +119,12 @@ class OrganInstance implements WeaponInstance {
         this.beams.splice(i, 1);
         continue;
       }
-      // The beam is drawn every frame it is alive; damage runs on its own
-      // slower cadence so a body in it takes a readable series of hits rather
-      // than sixty a second.
+      // Damage runs on its own slower cadence so a body standing in the beam
+      // takes a readable series of hits rather than sixty a second. The drawing
+      // is not here at all: it was emitted once, in fire(), for the beam's whole
+      // life.
       const midX = beam.x + beam.dx * beam.reach * 0.5;
       const midY = beam.y + beam.dy * beam.reach * 0.5;
-      ctx.fx({
-        type: 'beam',
-        x: beam.x,
-        y: beam.y,
-        x2: beam.x + beam.dx * beam.reach,
-        y2: beam.y + beam.dy * beam.reach,
-        // The view multiplies this for its shell, so it is handed the beam's
-        // true half-width rather than its full width.
-        width: beam.halfWidth,
-        color: ctx.color,
-      });
       if (now < beam.nextTickAt) continue;
       beam.nextTickAt = now + ORGAN_STATS.tickS;
       const query = beam.reach * 0.5 + beam.halfWidth + QUERY_PAD;

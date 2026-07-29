@@ -548,7 +548,16 @@ export type FxEvent =
   | { type: 'dmg'; x: number; y: number; amount: number; color: number }
   | { type: 'spark'; x: number; y: number; color: number; n: number; spread: number }
   | { type: 'slam'; x: number; y: number; radius: number; color: number }
-  | { type: 'beam'; x: number; y: number; x2: number; y2: number; width: number; color: number }
+  | {
+      type: 'beam';
+      x: number; y: number; x2: number; y2: number; width: number; color: number;
+      /** Drawn FLAT and once-per-frame rather than as an additive one-shot.
+       *  A beam re-emitted every frame while it is alive stacks its additive
+       *  copies — fourteen of them at a 0.24 s life — and saturates to solid
+       *  white, which is exactly what the organ's beam did. A weapon that draws
+       *  itself continuously must say so. */
+      steady?: boolean;
+    }
   | { type: 'pressure'; x: number; y: number; color: number; label: string }
   | { type: 'evolution'; x: number; y: number; color: number; label: string };
 
