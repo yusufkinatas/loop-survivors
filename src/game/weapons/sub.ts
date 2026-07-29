@@ -49,15 +49,25 @@ interface SubStats extends WeaponStats {
 const SUB_STATS: SubStats = {
   // `radius` is unused by this weapon's geometry: the wave's width is angular
   // (SUB_STATS.halfAngle) and its depth is fixed, so growth is all in damage.
+  // SEATED WITH THE OTHER AREA WEAPONS. The first pass ran 14 to 36 per hit,
+  // reasoning that a voice firing once every two bars has to land hard. That
+  // was wrong twice over: it is three and a half times the clap's per-hit
+  // damage, and this wave sweeps a far bigger area than any other shape in the
+  // game — an arc reaching 520 units against the clap's 120-radius circle — so
+  // it was collecting that inflated number off many more bodies per trigger.
+  // Against a single body it was doing 108 damage a bar at max where the clap
+  // does 35.
+  //
+  // For reference, per hit: kick 3-15, clap 4-10, chank 5-13, organ 3-8.
   tiers: [
-    { damage: 14, radius: 78 },
-    { damage: 17, radius: 78 },
-    { damage: 20, radius: 88 },
-    { damage: 23, radius: 88 },
-    { damage: 26, radius: 98 },
-    { damage: 29, radius: 98 },
-    { damage: 32, radius: 108 },
-    { damage: 36, radius: 120 },
+    { damage: 6, radius: 78 },
+    { damage: 7, radius: 78 },
+    { damage: 9, radius: 88 },
+    { damage: 10, radius: 88 },
+    { damage: 12, radius: 98 },
+    { damage: 14, radius: 98 },
+    { damage: 16, radius: 108 },
+    { damage: 18, radius: 120 },
   ],
   tierLines: [
     'a wall of pressure that clears a lane',
