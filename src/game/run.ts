@@ -955,9 +955,21 @@ export class RunWorld {
   fireTrigger(t: ScheduledTrigger): void {
     const tier = this.tiers.get(t.role);
     if (!tier) return;
-    // The roster is keyed on the supported catalog; a trigger only ever fires
-    // for an owned (hence supported) role, so the entry is always present.
-    let conf: WeaponConf = weaponTiers(t.role)![tier - 1];
+    // A VOICED ROLE IS NOT NECESSARILY A PLAYABLE ONE, and this lookup used to
+    // assume it was. The palette (#266) lands its twelve new voices' sound and
+    // rhythm ahead of their weapon modules, so a role can sit in `tiers` while
+    // owning no gameplay whatsoever — the Sandbox puts it there, which is
+    // exactly where the palette is meant to be judged by ear. `rollOffers`
+    // already refuses to offer such a role in a run; the Sandbox deliberately
+    // does not, and this is the path that made it crash.
+    //
+    // Before the palette, supported and playable were the same set, so a
+    // non-null assertion here was true by construction. It is not any more:
+    // the weapon sounds, and it does nothing — which is precisely what the
+    // note below has always said the world should do with a moduleless role.
+    const tiers = weaponTiers(t.role);
+    if (!tiers) return;
+    let conf: WeaponConf = tiers[tier - 1];
 
     // Single build-transform pipeline (D1): tempo compensation, folded in one
     // place — balance code multiplies here.

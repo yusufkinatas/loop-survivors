@@ -16,6 +16,7 @@ import {
   ENEMY_LABELS,
   type EnemyKind,
 } from './config';
+import { hasWeaponModule } from './weapons';
 import {
   TUNABLE_FIELDS,
   enemyStats,
@@ -353,8 +354,18 @@ export function mountSandboxPanel(
   // Build: all supported weapons, all passives, every complete evolution.
 
   section(build, 'band controls');
-  const instrumentNames = SANDBOX_WEAPON_CATALOG.map((role) => ROLE_META[role].name);
+  // A voice with no weapon module is SOUND ONLY: it plays its part and deals no
+  // damage. The palette (#266) lands sound and rhythm ahead of gameplay, and
+  // this panel is where the band is judged by ear, so those voices belong here
+  // — but silently doing nothing in the world reads as a bug rather than as a
+  // stage of the work. Marked with a degree sign and named below.
+  const soundOnly = SANDBOX_WEAPON_CATALOG.filter((role) => !hasWeaponModule(role));
+  const label = (role: Role) => ROLE_META[role].name + (hasWeaponModule(role) ? '' : '°');
+  const instrumentNames = SANDBOX_WEAPON_CATALOG.map(label);
   el('div', 'sb-hint', build, `${instrumentNames.length} live weapons: ${instrumentNames.join(', ')}`);
+  if (soundOnly.length > 0) {
+    el('div', 'sb-hint', build, `° ${soundOnly.length} voiced but not yet playable: they sound and deal no damage.`);
+  }
   const bandControls = el('div', 'sb-btns sb-controls', build);
   bandControls.style.marginLeft = '0';
   button(bandControls, `FULL BAND ${TIER_NUMERALS[WEAPON_MAX_LEVEL - 1]}`, () => {
