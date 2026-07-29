@@ -140,7 +140,7 @@ export const PALETTE_SAMPLES: Readonly<Partial<Record<Role, PaletteVoice>>> = {
     ],
   },
   air: {
-    what: "Vinyl hiss and crackle — room tone, no notes",
+    what: "Vinyl crackle, rolled off — lo-fi room tone, no notes",
     bed: true,
     tune: 0,
     samples: [

@@ -71,7 +71,15 @@ const VOICES = {
   upright: {
     what: 'Double bass, pizzicato (plucked) — the palette\'s acoustic low voice',
     zeroAt: 'A1',
-    trimMs: 900,
+    // SHORTER, AND FADED ACROSS THE BACK HALF. The head noise was fixed last
+    // pass; the listening pass then found the rest of it: "on its tier 1, the
+    // first note has some white-noise in it ... closer to its end." A plucked
+    // bass note is over well inside 900 ms, so the back of that window was
+    // holding nothing but the room — audible, and enough to muddy the mix
+    // whenever this voice is in the build. 650 ms with a long fade lands on the
+    // note and leaves the room behind.
+    trimMs: 650,
+    fadeFrac: 0.45,
     // -42 dB, not the default -60. The listening pass caught "a kinda
     // whitenoise on the first note ... I can almost hear the rawness of the
     // recording", and it measured: the A1 file's first 25 ms held -28 dB of
@@ -155,6 +163,18 @@ const VOICES = {
     // would all have crowded onto the top sample and shifted up to seven
     // semitones. An octave down they land across G4/B4/F5 with two semitones of
     // shift at worst.
+    //
+    // THE "LASER" ON THE THIRD NOTE WAS THIS TOOL'S FAULT, NOT THE TAKE'S.
+    // "the 3rd of them has a weird noise in it, sounds like a weird laser-audio
+    // on the background." That note plays F5, and the raw library levels are:
+    //
+    //     C4 -48.2   G4 -52.3   B4 -48.6   F5 -64.5   C6 -61.4  (mean dB)
+    //
+    // F5 is sixteen decibels under C4. Seating every file to the same target
+    // individually therefore handed F5 sixteen decibels more gain than its
+    // neighbours and lifted its room noise with it. Fixed in `seatVoice` below,
+    // which now gains a voice as a WHOLE. (The soft dynamic was tried first and
+    // is unusable: it peaks at -68 dB.)
     zeroAt: 'A3',
     trimMs: 900,
     pitches: ['C4', 'G4', 'B4', 'F5', 'C6'],
@@ -215,11 +235,24 @@ const VOICES = {
     single: `${VCSL}/Aerophones/Edge-blown Aerophones/Pipe Organ/Quiet/NT5_Man3Quiet_A3_rr1.wav`,
   },
   air: {
-    what: 'Vinyl hiss and crackle — room tone, no notes',
+    what: 'Vinyl crackle, rolled off — lo-fi room tone, no notes',
+    // ROLLED OFF HARD AND DROPPED SIX MORE DECIBELS. "air is too strong, and it
+    // does not sound like the lo-fi ambient sound some lo-fi tracks have. it's
+    // too noisy / annoying."
+    //
+    // Both halves of that are one cause. Raw vinyl hiss is broadband, and
+    // broadband noise sitting on top of a mix reads as a fault in the equipment.
+    // What lo-fi records actually carry is that same noise heard through a dull
+    // playback chain — the top end gone, mostly crackle and warmth left. Two
+    // cascaded low-passes at 2.8 kHz is that chain, and it is the difference
+    // between "an old record" and "a bad signal".
     unpitched: true,
     bed: true,
-    loopSec: 6,
-    crossfadeSec: 1.2,
+    // 5 s of loop plus two 1 s crossfade margins fits the 8 s source. The loop
+    // needs the pre-roll AND the tail, so the window costs loopSec + 2x.
+    loopSec: 5,
+    crossfadeSec: 1,
+    lowpassHz: 2800,
     single: `${SPI}/vinyl/vinyl_hiss.flac`,
   },
 };
@@ -299,7 +332,7 @@ async function download(url, dest) {
  *  VOICE_MIX_GAIN is deliberate — the arp's comment in engine.ts records mix
  *  gain once being used to paper over a broken render, and hid it for months. */
 const SEATING = {
-  sub: -17, upright: -18, drone: -28,
+  sub: -17, upright: -18, drone: -24,
   rhodes: -20, organ: -22, chank: -20,
   bell: -21, flute: -20,
   shaker: -26,
@@ -310,67 +343,208 @@ const SEATING = {
   // A bed plays for the entire run without stopping, so it has to sit under the
   // point where you notice it — a good bed is only audible when it is switched
   // off. -40 is roughly a tenth the loudness of the kick.
-  pad: -38, air: -40,
+  pad: -38, air: -46,
 };
 
-/** Mean volume of a rendered file, in dBFS. */
+/** Mean volume of a rendered file, in dBFS. Returns null for digital silence,
+ *  which `volumedetect` reports as `-inf` and no arithmetic should swallow. */
 async function meanVolume(file) {
   const { stderr } = await run('ffmpeg', ['-v', 'info', '-i', file, '-af', 'volumedetect', '-f', 'null', '-'])
     .catch((e) => ({ stderr: e.stderr ?? '' }));
-  const m = /mean_volume:\s*(-?[\d.]+) dB/.exec(stderr);
+  const m = /mean_volume:\s*(-?[\d.]+|-inf) dB/.exec(stderr);
   if (!m) throw new Error(`could not measure ${file}`);
-  return Number(m[1]);
+  return m[1] === '-inf' ? null : Number(m[1]);
 }
 
-/** Decode, strip leading silence, cap the length, fade the tail, normalise, and
- *  write mono 44.1 kHz 16-bit WAV. Same recipe docs/audio-sources.md documents
- *  for the drum palette, so every sample in the game is seated the same way,
- *  plus the measured seating pass above.
+/** How far a single recording may be pushed away from its voice's own gain, in
+ *  dB. Some balancing between pitches is wanted — libraries are not perfectly
+ *  even — but past a few decibels it stops being balance and starts being noise
+ *  amplification. */
+const TRIM_LIMIT_DB = 5;
+
+/** Seat a whole voice at once.
  *
- *  LOOPED beds skip the tail fade and the silence strip: a fade would dip the
- *  bed every time it wrapped, and a bed has no attack to trim to. */
-/** Build a genuinely seamless loop, so a bed has no audible wrap point.
+ *  ONE GAIN PER INSTRUMENT, NOT PER FILE, and that distinction is the entire
+ *  point. The first version normalised every recording to the same target on its
+ *  own, which sounds tidy and is actively harmful: a library's quiet notes get
+ *  the most gain, so their ROOM NOISE gets the most gain too. The marimba's F5
+ *  sits sixteen decibels under its C4, was handed sixteen decibels more gain,
+ *  and arrived with an audible artefact on exactly that one note — which is what
+ *  the listening pass heard and what band analysis could not find, because a
+ *  uniform boost cancels out of every ratio you might measure.
  *
- *  THE FIRST PASS DID NOT DO THIS AND IT WAS THE HEADLINE COMPLAINT: "looping
- *  the pad sounds terrible, because I can hear the end/start of the pad. it
- *  should somehow feel seamless while being played." Trimming a chunk and
- *  fading its front leaves the end and the start at completely unrelated points
- *  in the waveform, so every wrap is a discontinuity — a click or a lurch, on a
- *  timer, forever.
+ *  So the voice is gained as a whole, referenced to its MEDIAN recording, and
+ *  each file may then be trimmed by at most TRIM_LIMIT_DB to even out the worst
+ *  library inconsistency. Natural level differences across an instrument's range
+ *  survive; noise floors are never lifted above their neighbours'. */
+async function seatVoice(role, staged) {
+  const measured = [];
+  for (const file of staged) measured.push(await meanVolume(file));
+  const usable = measured.filter((v) => v !== null).sort((a, b) => a - b);
+  if (!usable.length) throw new Error(`${role}: every file is silent`);
+  const median = usable[Math.floor(usable.length / 2)];
+  const voiceGain = SEATING[role] - median;
+  const spread = usable[usable.length - 1] - usable[0];
+  for (let i = 0; i < staged.length; i++) {
+    const own = measured[i];
+    const trim = own === null
+      ? 0
+      : Math.max(-TRIM_LIMIT_DB, Math.min(TRIM_LIMIT_DB, median - own));
+    const dest = staged[i].replace(/\.stage\.wav$/, '');
+    await run('ffmpeg', [
+      '-v', 'error', '-y', '-i', staged[i],
+      '-af', `volume=${(voiceGain + trim).toFixed(2)}dB,alimiter=limit=0.891`,
+      '-ac', '1', '-ar', '44100', '-c:a', 'pcm_s16le',
+      dest,
+    ]);
+    await rm(staged[i], { force: true });
+  }
+  return { voiceGain, spread };
+}
+
+/** Decode a file to mono 44.1 kHz float samples. */
+async function pcm(file) {
+  const { stdout } = await run(
+    'ffmpeg',
+    ['-v', 'error', '-i', file, '-f', 'f32le', '-ac', '1', '-ar', '44100', '-'],
+    { encoding: 'buffer', maxBuffer: 1 << 28 },
+  );
+  return new Float32Array(stdout.buffer, stdout.byteOffset, Math.floor(stdout.length / 4));
+}
+
+/** Write mono 44.1 kHz 16-bit PCM WAV. */
+async function writeWav(file, samples) {
+  const sr = 44100;
+  const data = Buffer.alloc(samples.length * 2);
+  for (let i = 0; i < samples.length; i++) {
+    const v = Math.max(-1, Math.min(1, samples[i]));
+    data.writeInt16LE(Math.round(v * 32767), i * 2);
+  }
+  const header = Buffer.alloc(44);
+  header.write('RIFF', 0);
+  header.writeUInt32LE(36 + data.length, 4);
+  header.write('WAVEfmt ', 8);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(1, 22);
+  header.writeUInt32LE(sr, 24);
+  header.writeUInt32LE(sr * 2, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write('data', 36);
+  header.writeUInt32LE(data.length, 40);
+  await writeFile(file, Buffer.concat([header, data]));
+}
+
+const BLOCK = 2205; // 50 ms
+
+/** Per-block RMS, used to find the steady part of a recording. */
+function envelope(a) {
+  const out = [];
+  for (let i = 0; i + BLOCK <= a.length; i += BLOCK) {
+    let sum = 0;
+    for (let j = 0; j < BLOCK; j++) sum += a[i + j] * a[i + j];
+    out.push(Math.sqrt(sum / BLOCK));
+  }
+  return out;
+}
+
+/** Build a genuinely seamless loop.
  *
- *  The fix is to make the end BE the start. Take a segment, then crossfade its
- *  tail into a copy of its own head; the file now ends playing the same
- *  material it begins with, so the wrap has nothing to expose.
+ *  THE FIRST ATTEMPT AT THIS WAS NOT SEAMLESS AND THE MEASUREMENT SAID SO. It
+ *  trimmed from a fixed 0.4 s offset and crossfaded the tail against the head,
+ *  which sounds right and is not: a pipe organ pipe is still SPEAKING at 0.4 s,
+ *  so the window captured the attack. The produced pad measured -61 dB across
+ *  its first 5 ms and -37 dB across its last, with a wrap discontinuity sixteen
+ *  times a typical sample step. Every loop slammed from full level back to
+ *  near-silence — which is exactly the "crunch / noise during the looping" the
+ *  listening pass reported.
  *
- *      body: [=========================]        source T .. T+L-X
- *      tail:                          [===]     source T+L-X .. T+L
- *      head: [===]                              source T .. T+X
- *      out:  [=========================][xfade] tail dissolving into head
- *                                        ^ ends on head, so looping back to
- *                                          the start is continuous
- */
+ *  Two things fix it, and both need real sample access rather than a filter
+ *  string, which is why this is JavaScript now.
+ *
+ *  1. FIND THE STEADY PART. Scan the block envelope for the window whose level
+ *     varies least, so the loop is cut from where the recording is holding
+ *     rather than from where it is starting or dying.
+ *
+ *  2. CROSSFADE AGAINST THE PRE-ROLL, not against the head. The last X samples
+ *     dissolve into the X samples immediately BEFORE the loop point, so the
+ *     final sample is adjacent to the first one in the original recording. The
+ *     wrap is then continuous by construction rather than by hope.
+ *
+ *         source  ..[pre][= = = = = the loop = = = = =].....
+ *                    \____ dissolved into the loop's tail
+ *
+ *  Equal-power curves, because the two sides are uncorrelated for a noise bed
+ *  and a linear fade would dip through the join. */
 async function makeSeamless(src, dest, { loopSec, crossfadeSec }) {
-  const L = loopSec;
-  const X = crossfadeSec;
-  const start = 0.4; // skip whatever attack the recording opens with
-  const graph = [
-    `[0:a]atrim=start=${start}:duration=${L},asetpts=N/SR/TB,asplit=3[s1][s2][s3]`,
-    `[s1]atrim=0:${L - X},asetpts=N/SR/TB[body]`,
-    `[s2]atrim=${L - X}:${L},asetpts=N/SR/TB[tail]`,
-    `[s3]atrim=0:${X},asetpts=N/SR/TB[head]`,
-    `[tail][head]acrossfade=d=${X}:c1=tri:c2=tri[join]`,
-    `[body][join]concat=n=2:v=0:a=1[out]`,
-  ].join(';');
-  await run('ffmpeg', [
-    '-v', 'error', '-y', '-i', src,
-    '-filter_complex', graph, '-map', '[out]',
-    '-ac', '1', '-ar', '44100', '-c:a', 'pcm_s16le',
-    dest,
-  ]);
+  const a = await pcm(src);
+  const sr = 44100;
+  const len = Math.floor(loopSec * sr);
+  const x = Math.floor(crossfadeSec * sr);
+  if (a.length < len + 2 * x) {
+    throw new Error(`${src}: ${(a.length / sr).toFixed(1)}s is too short for a ${loopSec}s loop`);
+  }
+
+  // 1. Steadiest window, searched on the envelope. The candidate start must
+  // leave room for the pre-roll, and must be loud enough that we do not settle
+  // on a stable patch of silence.
+  const env = envelope(a);
+  const peak = Math.max(...env);
+  const needBlocks = Math.ceil((len + x) / BLOCK);
+  const firstBlock = Math.ceil(x / BLOCK);
+  let bestBlock = firstBlock;
+  let bestScore = Infinity;
+  for (let b = firstBlock; b + needBlocks < env.length; b++) {
+    const win = env.slice(b, b + needBlocks);
+    const mean = win.reduce((s, v) => s + v, 0) / win.length;
+    if (mean < peak * 0.35) continue; // not the sustaining part
+    const varr = win.reduce((s, v) => s + (v - mean) ** 2, 0) / win.length;
+    const score = Math.sqrt(varr) / mean; // coefficient of variation
+    if (score < bestScore) { bestScore = score; bestBlock = b; }
+  }
+  const start = bestBlock * BLOCK;
+
+  // 2. Copy the loop, then dissolve its tail into the pre-roll.
+  const out = new Float32Array(len);
+  for (let i = 0; i < len; i++) out[i] = a[start + i];
+  for (let j = 0; j < x; j++) {
+    const t = (j + 1) / x;
+    const wOut = Math.cos((t * Math.PI) / 2);
+    const wIn = Math.sin((t * Math.PI) / 2);
+    out[len - x + j] = out[len - x + j] * wOut + a[start - x + j] * wIn;
+  }
+
+  // 3. Verify, loudly. A bed that fails this is worse than no bed at all, and
+  // the last one shipped because nothing checked it.
+  const rms = (from, n) => {
+    let s = 0;
+    for (let i = 0; i < n; i++) s += out[from + i] ** 2;
+    return 20 * Math.log10(Math.sqrt(s / n) + 1e-12);
+  };
+  const headDb = rms(0, sr / 10);
+  const tailDb = rms(len - sr / 10, sr / 10);
+  let step = 0;
+  for (let i = 1; i < Math.min(len, sr); i++) step += Math.abs(out[i] - out[i - 1]);
+  step /= Math.min(len, sr) - 1;
+  const jump = Math.abs(out[len - 1] - out[0]);
+  const drift = Math.abs(headDb - tailDb);
+  if (drift > 3 || jump > step * 4) {
+    console.warn(
+      `  ! ${dest}: seam looks wrong — head ${headDb.toFixed(1)} dB, tail ${tailDb.toFixed(1)} dB, ` +
+      `jump ${jump.toFixed(5)} vs step ${step.toFixed(5)}`,
+    );
+  } else {
+    console.log(
+      `  loop ok: head/tail within ${drift.toFixed(1)} dB, ` +
+      `seam jump ${(jump / step).toFixed(2)}x a sample step, cut at ${(start / sr).toFixed(1)}s`,
+    );
+  }
+  await writeWav(dest, out);
 }
 
 async function process(src, dest, spec) {
-  const { trimMs, bed, role, silenceDb = -60, fadeFrac } = spec;
+  const { trimMs, bed, role, silenceDb = -60, fadeFrac, lowpassHz } = spec;
   const seconds = trimMs / 1000;
   const stage = `${dest}.stage.wav`;
   if (bed) {
@@ -393,17 +567,18 @@ async function process(src, dest, spec) {
       stage,
     ]);
   }
-  // Measure, then seat. A ceiling of -1 dBFS true peak keeps the loudest voices
-  // off the limiter, which docs/baseline/ measured as already eating most of
-  // this game's dynamic range.
-  const gain = SEATING[role] - (await meanVolume(stage));
-  await run('ffmpeg', [
-    '-v', 'error', '-y', '-i', stage,
-    '-af', `volume=${gain.toFixed(2)}dB,alimiter=limit=0.891`,
-    '-ac', '1', '-ar', '44100', '-c:a', 'pcm_s16le',
-    dest,
-  ]);
-  await rm(stage, { force: true });
+  if (lowpassHz) {
+    const rolled = `${dest}.lp.wav`;
+    await run('ffmpeg', ['-v', 'error', '-y', '-i', stage,
+      '-af', `lowpass=f=${lowpassHz}:poles=2,lowpass=f=${lowpassHz}:poles=2`,
+      '-ac', '1', '-ar', '44100', '-c:a', 'pcm_s16le', rolled]);
+    await rm(stage, { force: true });
+    await run('ffmpeg', ['-v', 'error', '-y', '-i', rolled, '-c:a', 'pcm_s16le', stage]);
+    await rm(rolled, { force: true });
+  }
+  // Seating is deliberately NOT done here: it happens once per voice, over all
+  // that voice's recordings together. See seatVoice.
+  return stage;
 }
 
 const manifest = {};
@@ -415,6 +590,7 @@ for (const [role, spec] of Object.entries(VOICES)) {
   const dir = path.join(OUT, role);
   await mkdir(dir, { recursive: true });
   const entry = { what: spec.what, bed: !!spec.bed, tune: spec.tune ?? 0, samples: [] };
+  const staged = [];
 
   if (spec.single) {
     const source = spec.local ?? spec.single;
@@ -423,7 +599,7 @@ for (const [role, spec] of Object.entries(VOICES)) {
       raw = path.join(TMP, `${role}-raw`);
       await download(spec.single, raw);
     }
-    await process(raw, path.join(dir, `${role}.wav`), { ...spec, role });
+    staged.push(await process(raw, path.join(dir, `${role}.wav`), { ...spec, role }));
     entry.samples.push({ variant: role, rootSemitone: 0, source });
     console.log(`${role.padEnd(9)} 1 sample${spec.local ? ' (from repo)' : ''}`);
   } else {
@@ -433,7 +609,7 @@ for (const [role, spec] of Object.entries(VOICES)) {
       const raw = path.join(TMP, `${role}-${variant}-raw`);
       const url = spec.phil ? await resolvePhil(spec.phil, note) : spec.url(note);
       await download(url, raw);
-      await process(raw, path.join(dir, `${variant}.wav`), { ...spec, role });
+      staged.push(await process(raw, path.join(dir, `${variant}.wav`), { ...spec, role }));
       entry.samples.push({
         variant,
         rootSemitone: midi(note) - zero,
@@ -445,6 +621,11 @@ for (const [role, spec] of Object.entries(VOICES)) {
       `(${entry.samples.map((s) => s.rootSemitone).join(', ')})`,
     );
   }
+  const { voiceGain, spread } = await seatVoice(role, staged);
+  if (spread > 8) {
+    console.log(`  ${role}: library spread ${spread.toFixed(0)} dB across pitches, gained as one voice`);
+  }
+  void voiceGain;
   manifest[role] = entry;
 }
 
