@@ -153,6 +153,17 @@ export interface Kit {
    *  Its file is built to loop seamlessly (makeSeamless in the fetch tool), so
    *  there is no wrap to hear. */
   bed?: boolean;
+  /** A COMPOSED bed's length in bars. Set only where the bed carries actual
+   *  music — the pad's four-bar chord cycle — and 0/undefined for a bed with no
+   *  musical length, like a noise floor.
+   *
+   *  It means two things must hold. The file has to be exactly this many bars at
+   *  the soundset's tempo (soundset.ts asserts it), and the source has to START
+   *  ON A BAR LINE: a chord cycle begun at an arbitrary instant keeps its tempo
+   *  but not its phase, so every chord change would land at some fixed offset
+   *  into the bar. MusicEngine.syncBed schedules it on the next phrase boundary
+   *  for exactly that reason. */
+  bedBars?: number;
 }
 
 /** One recording in a multi-sampled kit: which variant it is, and the semitone
@@ -900,7 +911,7 @@ export function makeKit(
   role: Role,
   samples: Map<string, AudioBuffer>,
   tune = 0,
-  extra: { zones?: readonly PitchZone[]; bed?: boolean } = {},
+  extra: { zones?: readonly PitchZone[]; bed?: boolean; bedBars?: number } = {},
 ): Kit {
   const meta = ROLE_META[role];
   const defaultVariant = meta.variants.find((v) => samples.has(v)) ?? samples.keys().next().value!;
@@ -922,6 +933,7 @@ export function makeKit(
     tune,
     zones: extra.zones,
     bed: extra.bed,
+    bedBars: extra.bedBars,
   };
 }
 

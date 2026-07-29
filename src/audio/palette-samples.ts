@@ -25,6 +25,9 @@ export interface PaletteVoice {
    *  Started when the weapon is owned, stopped when it is not, and looped
    *  seamlessly in between. Texture seat only. */
   bed: boolean;
+  /** A composed bed is this many bars long and must start on a bar line.
+   *  0 for beds with no musical length (noise). */
+  bedBars: number;
   /** Semitones the whole voice is transposed by. */
   tune: number;
   samples: readonly PaletteSample[];
@@ -33,10 +36,17 @@ export interface PaletteVoice {
 /** Where the processed files live, under public/. */
 export const PALETTE_SAMPLE_ROOT = '/samples/palette';
 
+/** The tempo any COMPOSED bed was rendered at. A composed bed is cut to a
+ *  whole number of bars, so it is only in time at this tempo — soundset.ts
+ *  asserts SOUNDSET.bpm against it rather than letting the pad's chords drift
+ *  off the beat the first time someone changes the tempo. */
+export const PALETTE_COMPOSED_BPM = 122;
+
 export const PALETTE_SAMPLES: Readonly<Partial<Record<Role, PaletteVoice>>> = {
   sub: {
     what: "TR-808 sub bass, an octave up — the round bottom",
     bed: false,
+    bedBars: 0,
     tune: 12,
     samples: [
       { variant: "sub", rootSemitone: 0, source: "public/samples/covers/misc/808-bass-sub.wav" },
@@ -45,6 +55,7 @@ export const PALETTE_SAMPLES: Readonly<Partial<Record<Role, PaletteVoice>>> = {
   upright: {
     what: "Double bass, pizzicato (plucked) — the palette's acoustic low voice",
     bed: false,
+    bedBars: 0,
     tune: 0,
     samples: [
       { variant: "A1", rootSemitone: 0, source: "https://raw.githubusercontent.com/skratchdot/philharmonia-samples/gh-pages/audio/double bass/double-bass_A1_025_piano_pizz-normal.mp3" },
@@ -56,6 +67,7 @@ export const PALETTE_SAMPLES: Readonly<Partial<Record<Role, PaletteVoice>>> = {
   drone: {
     what: "Double bass, bowed as quietly as the player can — the floor under everything",
     bed: false,
+    bedBars: 0,
     tune: 0,
     samples: [
       { variant: "A1", rootSemitone: 0, source: "https://raw.githubusercontent.com/skratchdot/philharmonia-samples/gh-pages/audio/double bass/double-bass_A1_1_pianissimo_arco-normal.mp3" },
@@ -66,6 +78,7 @@ export const PALETTE_SAMPLES: Readonly<Partial<Record<Role, PaletteVoice>>> = {
   rhodes: {
     what: "FM electric piano (Yamaha TX81Z) — the bell-like keys seat",
     bed: false,
+    bedBars: 0,
     tune: 0,
     samples: [
       { variant: "C3", rootSemitone: -9, source: "https://raw.githubusercontent.com/sgossner/VCSL/master/Electrophones/TX81Z/FM Piano/FMPiano_C3_vl2.wav" },
@@ -76,6 +89,7 @@ export const PALETTE_SAMPLES: Readonly<Partial<Record<Role, PaletteVoice>>> = {
   organ: {
     what: "Pipe organ, quiet manual — held and breathing",
     bed: false,
+    bedBars: 0,
     tune: 0,
     samples: [
       { variant: "C3", rootSemitone: -9, source: "https://raw.githubusercontent.com/sgossner/VCSL/master/Aerophones/Edge-blown Aerophones/Pipe Organ/Loud/Rode_Man3Open_C3.wav" },
@@ -91,6 +105,7 @@ export const PALETTE_SAMPLES: Readonly<Partial<Record<Role, PaletteVoice>>> = {
   chank: {
     what: "Acoustic guitar, chopped short — the dry percussive scratch",
     bed: false,
+    bedBars: 0,
     tune: 0,
     samples: [
       { variant: "A3", rootSemitone: 0, source: "https://raw.githubusercontent.com/skratchdot/philharmonia-samples/gh-pages/audio/guitar/guitar_A3_very-long_piano_normal.mp3" },
@@ -102,6 +117,7 @@ export const PALETTE_SAMPLES: Readonly<Partial<Record<Role, PaletteVoice>>> = {
   bell: {
     what: "Marimba — warm wooden mallet, short and round",
     bed: false,
+    bedBars: 0,
     tune: 0,
     samples: [
       { variant: "C4", rootSemitone: 3, source: "https://raw.githubusercontent.com/sgossner/VCSL/master/Idiophones/Struck Idiophones/Marimba/Marimba_hit_Outrigger_C4_med_01.wav" },
@@ -114,6 +130,7 @@ export const PALETTE_SAMPLES: Readonly<Partial<Record<Role, PaletteVoice>>> = {
   flute: {
     what: "Concert flute, short notes — breathy but not held",
     bed: false,
+    bedBars: 0,
     tune: 0,
     samples: [
       { variant: "A4", rootSemitone: 0, source: "https://raw.githubusercontent.com/skratchdot/philharmonia-samples/gh-pages/audio/flute/flute_A4_15_mezzo-forte_normal.mp3" },
@@ -126,22 +143,25 @@ export const PALETTE_SAMPLES: Readonly<Partial<Record<Role, PaletteVoice>>> = {
   shaker: {
     what: "Small shaker, one hand stroke — the least machine-like voice here",
     bed: false,
+    bedBars: 0,
     tune: 0,
     samples: [
       { variant: "shaker", rootSemitone: 0, source: "https://raw.githubusercontent.com/sgossner/VCSL/master/Idiophones/Struck Idiophones/Shaker, Small/Mid_ShakerHighFaster_Down_rr1.wav" },
     ],
   },
   pad: {
-    what: "Pipe organ, quiet manual, held — the warm cushion underneath",
+    what: "Pipe organ, quiet manual — a four-bar chord cycle",
     bed: true,
+    bedBars: 4,
     tune: 0,
     samples: [
-      { variant: "pad", rootSemitone: 0, source: "https://raw.githubusercontent.com/sgossner/VCSL/master/Aerophones/Edge-blown Aerophones/Pipe Organ/Quiet/NT5_Man3Quiet_A3_rr1.wav" },
+      { variant: "pad", rootSemitone: 0, source: "composed from VCSL Pipe Organ" },
     ],
   },
   air: {
     what: "Vinyl crackle, rolled off — lo-fi room tone, no notes",
     bed: true,
+    bedBars: 0,
     tune: 0,
     samples: [
       { variant: "air", rootSemitone: 0, source: "https://raw.githubusercontent.com/alex-esc/sample-pi/f14596be37abf227bf77d198c9b0b60d9eb4dca9/vinyl/vinyl_hiss.flac" },

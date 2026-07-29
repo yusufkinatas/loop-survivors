@@ -74,7 +74,7 @@ async function loadVoice(role: Role): Promise<Kit | null> {
       voice.samples.length > 1
         ? voice.samples.map((s) => ({ variant: s.variant, rootSemitone: s.rootSemitone }))
         : undefined;
-    return makeKit(role, samples, voice.tune, { zones, bed: voice.bed });
+    return makeKit(role, samples, voice.tune, { zones, bed: voice.bed, bedBars: voice.bedBars });
   } catch (e) {
     console.warn(`[palette] ${role} samples failed to load; voice will be silent:`, e);
     return null;

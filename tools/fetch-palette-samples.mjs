@@ -213,7 +213,7 @@ const VOICES = {
   // Both survivors are BEDS: continuous, seamless, and never triggered by the
   // sequencer. See makeSeamless below and Kit.bed in src/audio/kits.ts.
   pad: {
-    what: 'Pipe organ, quiet manual, held — the warm cushion underneath',
+    what: 'Pipe organ, quiet manual — a four-bar chord cycle',
     // WAS a "glass hum": "the current pad is almost creepy, I don't like how it
     // sounds at all." Glass and metal textures read as unsettling because their
     // partials do not line up; warmth comes from instruments whose overtones do.
@@ -228,11 +228,35 @@ const VOICES = {
     // long crossfade leaves nothing for the ear to catch. Same instrument as the
     // `organ` voice above but its softest registration, and it sits sixteen
     // decibels below it, so the two never read as the same thing.
+    //
+    // COMPOSED, NOT HELD. The listening pass asked the right question — "is that
+    // how a pad stays in a track?" — and the answer is no. A pad's job IS the
+    // harmony: it sustains the chords and MOVES when the progression moves,
+    // usually every bar or two. A single unchanging pitch is a drone, which made
+    // the old pad a second copy of the `drone` voice an octave up rather than a
+    // different thing.
+    //
+    // So this bed is rendered as a four-bar cycle, Am - Am - D - E, voiced three
+    // notes at a time from organ recordings pitched to each note. Every note is
+    // inside the run's A minor pentatonic, so it cannot clash with anything a
+    // player builds. Four bars at the soundset's tempo, which the engine asserts
+    // against so a tempo change cannot silently drift the chords off the bar.
     zeroAt: 'A3',
     bed: true,
-    loopSec: 8,
-    crossfadeSec: 1.5,
-    single: `${VCSL}/Aerophones/Edge-blown Aerophones/Pipe Organ/Quiet/NT5_Man3Quiet_A3_rr1.wav`,
+    bedBars: 4,
+    crossfadeSec: 1,
+    compose: {
+      // [startBar, lengthBars, semitones from A3]. Roots move 0 -> 5 -> 7, the
+      // same movement house.ts already uses for the chord voice.
+      progression: [
+        [0, 2, [0, 3, 7]],    // Am  — A  C  E
+        [2, 1, [5, 10, 12]],  // D   — D  G  A
+        [3, 1, [7, 10, 15]],  // E   — E  G  C
+      ],
+      // Organ recordings to voice it from; the nearest is pitched to each note.
+      sources: { 'A3': 0, 'C4': 3, 'D#4': 6, 'F#4': 9, 'A4': 12, 'C5': 15 },
+      url: (n) => `${VCSL}/Aerophones/Edge-blown Aerophones/Pipe Organ/Quiet/NT5_Man3Quiet_${n}_rr1.wav`,
+    },
   },
   air: {
     what: 'Vinyl crackle, rolled off — lo-fi room tone, no notes',
@@ -543,11 +567,108 @@ async function makeSeamless(src, dest, { loopSec, crossfadeSec }) {
   await writeWav(dest, out);
 }
 
+/** The soundset's tempo. Duplicated here because this tool is standalone, and
+ *  asserted against SOUNDSET.bpm in soundset.ts — a composed bed is cut to an
+ *  exact number of bars, so a tempo change would drift its chords off the beat.
+ */
+const COMPOSE_BPM = 122;
+const BEATS_PER_BAR = 4;
+
+/** Resample a buffer by a pitch ratio, reading with linear interpolation. */
+function pitched(src, semitones, outLength) {
+  const rate = 2 ** (semitones / 12);
+  const out = new Float32Array(outLength);
+  for (let i = 0; i < outLength; i++) {
+    const pos = i * rate;
+    const j = Math.floor(pos);
+    if (j + 1 >= src.length) break;
+    const f = pos - j;
+    out[i] = src[j] * (1 - f) + src[j + 1] * f;
+  }
+  return out;
+}
+
+/** Render a pad bed as a repeating chord cycle.
+ *
+ *  WHY THIS IS COMPOSED RATHER THAN SAMPLED. A pad is the harmony of a track: it
+ *  holds chords and changes with the progression. Looping one held note is a
+ *  drone, and a drone is a different instrument that this palette already has.
+ *  There is no single recording of "a four-bar Am-Am-D-E pad in A minor at 122",
+ *  so it is built from organ notes here.
+ *
+ *  The cycle is rendered THREE TIMES and the middle one taken, so the extracted
+ *  loop already has real material either side of it: chords ring across the wrap
+ *  exactly as they do across every other bar line, and the pre-roll crossfade has
+ *  something true to fade into. */
+async function composeBed(dest, spec, tmpDir) {
+  const sr = 44100;
+  const { progression, sources, url } = spec.compose;
+  const barSec = (BEATS_PER_BAR * 60) / COMPOSE_BPM;
+  const cycle = barSec * spec.bedBars;
+  const x = Math.floor(spec.crossfadeSec * sr);
+
+  const loaded = {};
+  for (const [name, semis] of Object.entries(sources)) {
+    const file = path.join(tmpDir, `pad-${name.replace('#', 's')}`);
+    await download(url(name), file);
+    loaded[semis] = await pcm(file);
+  }
+  const available = Object.keys(loaded).map(Number);
+
+  const cycles = 3;
+  const total = Math.ceil(cycle * cycles * sr) + sr;
+  const buf = new Float32Array(total);
+
+  for (let c = 0; c < cycles; c++) {
+    for (const [startBar, lenBars, notes] of progression) {
+      const at = Math.floor((c * cycle + startBar * barSec) * sr);
+      // Chords overlap into the next one: an organ does not stop dead, and the
+      // overlap is what makes a change sound like a change of harmony rather
+      // than like one sound ending and another starting.
+      const hold = Math.floor((lenBars * barSec + 0.7) * sr);
+      const attack = Math.floor(0.18 * sr);
+      const release = Math.floor(0.55 * sr);
+      for (const note of notes) {
+        const nearest = available.reduce((best, s) =>
+          Math.abs(s - note) < Math.abs(best - note) ? s : best, available[0]);
+        const voice = pitched(loaded[nearest], note - nearest, hold);
+        for (let i = 0; i < hold; i++) {
+          const idx = at + i;
+          if (idx >= total) break;
+          let env = 1;
+          if (i < attack) env = i / attack;
+          else if (i > hold - release) env = Math.max(0, (hold - i) / release);
+          buf[idx] += voice[i] * env * 0.33;
+        }
+      }
+    }
+  }
+
+  // Take the middle cycle, and dissolve its tail into the pre-roll so the wrap
+  // is continuous by construction — the same rule as makeSeamless.
+  const len = Math.floor(cycle * sr);
+  const start = len;
+  const out = new Float32Array(len);
+  for (let i = 0; i < len; i++) out[i] = buf[start + i];
+  for (let j = 0; j < x; j++) {
+    const t = (j + 1) / x;
+    out[len - x + j] = out[len - x + j] * Math.cos((t * Math.PI) / 2)
+      + buf[start - x + j] * Math.sin((t * Math.PI) / 2);
+  }
+  console.log(
+    `  composed ${spec.bedBars} bars at ${COMPOSE_BPM} bpm ` +
+    `(${(cycle).toFixed(2)}s), ${progression.length} chords`,
+  );
+  await writeWav(dest, out);
+}
+
 async function process(src, dest, spec) {
   const { trimMs, bed, role, silenceDb = -60, fadeFrac, lowpassHz } = spec;
   const seconds = trimMs / 1000;
   const stage = `${dest}.stage.wav`;
-  if (bed) {
+  if (spec.compose) {
+    await composeBed(stage, spec, TMP);
+  } else if (bed) {
     await makeSeamless(src, stage, spec);
   } else {
     // `fadeFrac` fades over a fraction of the whole sample rather than a fixed
@@ -589,10 +710,15 @@ await mkdir(TMP, { recursive: true });
 for (const [role, spec] of Object.entries(VOICES)) {
   const dir = path.join(OUT, role);
   await mkdir(dir, { recursive: true });
-  const entry = { what: spec.what, bed: !!spec.bed, tune: spec.tune ?? 0, samples: [] };
+  const entry = { what: spec.what, bed: !!spec.bed, bedBars: 0, tune: spec.tune ?? 0, samples: [] };
   const staged = [];
 
-  if (spec.single) {
+  if (spec.compose) {
+    staged.push(await process(null, path.join(dir, `${role}.wav`), { ...spec, role }));
+    entry.samples.push({ variant: role, rootSemitone: 0, source: 'composed from VCSL Pipe Organ' });
+    entry.bedBars = spec.bedBars;
+    console.log(`${role.padEnd(9)} composed bed`);
+  } else if (spec.single) {
     const source = spec.local ?? spec.single;
     let raw = source;
     if (!spec.local) {
@@ -662,6 +788,9 @@ const lines = [
   '   *  Started when the weapon is owned, stopped when it is not, and looped',
   '   *  seamlessly in between. Texture seat only. */',
   '  bed: boolean;',
+  '  /** A composed bed is this many bars long and must start on a bar line.',
+  '   *  0 for beds with no musical length (noise). */',
+  '  bedBars: number;',
   '  /** Semitones the whole voice is transposed by. */',
   '  tune: number;',
   '  samples: readonly PaletteSample[];',
@@ -670,12 +799,19 @@ const lines = [
   '/** Where the processed files live, under public/. */',
   "export const PALETTE_SAMPLE_ROOT = '/samples/palette';",
   '',
+  '/** The tempo any COMPOSED bed was rendered at. A composed bed is cut to a',
+  ' *  whole number of bars, so it is only in time at this tempo — soundset.ts',
+  " *  asserts SOUNDSET.bpm against it rather than letting the pad's chords drift",
+  ' *  off the beat the first time someone changes the tempo. */',
+  `export const PALETTE_COMPOSED_BPM = ${COMPOSE_BPM};`,
+  '',
   'export const PALETTE_SAMPLES: Readonly<Partial<Record<Role, PaletteVoice>>> = {',
 ];
 for (const [role, entry] of Object.entries(manifest)) {
   lines.push(`  ${role}: {`);
   lines.push(`    what: ${JSON.stringify(entry.what)},`);
   lines.push(`    bed: ${entry.bed},`);
+  lines.push(`    bedBars: ${entry.bedBars ?? 0},`);
   lines.push(`    tune: ${entry.tune},`);
   lines.push('    samples: [');
   for (const s of entry.samples) {

@@ -14,6 +14,7 @@
 
 import { TIER_COUNT, validateChart } from './charts';
 import { PALETTE_ROLES, PALETTE_SEATS, ROLES, type Role } from './kits';
+import { PALETTE_COMPOSED_BPM, PALETTE_SAMPLES } from './palette-samples';
 import { SOUNDSET_LADDERS } from './ladders/house';
 import type { Chart } from './charts';
 
@@ -106,6 +107,20 @@ const FLOOR_GROUPS: { label: string; anyOf: Role[] }[] = [
   const seated = new Set<Role>(PALETTE_ROLES);
   for (const role of supported) {
     if (!seated.has(role)) throw new Error(`palette: ${role} has a ladder but no seat`);
+  }
+
+  // A COMPOSED bed is a whole number of bars of real music baked into a file,
+  // so it is only in time at the tempo it was rendered at. Nothing else in the
+  // game would notice a tempo change; the pad's chord cycle would silently
+  // drift off the bar and there would be no error to follow, only a track that
+  // had stopped lining up.
+  const composed = Object.values(PALETTE_SAMPLES).filter((v) => v.bedBars > 0);
+  if (composed.length > 0 && SOUNDSET.bpm !== PALETTE_COMPOSED_BPM) {
+    throw new Error(
+      `palette: ${composed.length} composed bed(s) were rendered at ` +
+      `${PALETTE_COMPOSED_BPM} bpm but the soundset plays at ${SOUNDSET.bpm} — ` +
+      're-run tools/fetch-palette-samples.mjs with the new tempo',
+    );
   }
 
   // Every seat needs real depth inside it — #266's own complaint about the

@@ -548,6 +548,15 @@ export class MusicEngine {
     this.syncBed(voice);
   }
 
+  /** The audio time of the next phrase boundary, or null if the transport has
+   *  not scheduled one yet (nothing is playing, or the clock just started). */
+  private nextPhraseTime(): number | null {
+    const now = this.ctx.currentTime;
+    return this.stepMarkers.find(
+      (marker) => marker.time > now && marker.step % STEPS_PER_PHRASE === 0,
+    )?.time ?? null;
+  }
+
   /** Start, level or stop a bed to match its voice's state.
    *
    *  Idempotent and safe to call from anywhere that changes `enabled`, `tier` or
@@ -582,10 +591,19 @@ export class MusicEngine {
       const g = this.ctx.createGain();
       g.gain.value = 0;
       src.connect(g).connect(voice.gain);
-      // Start at a random offset so two runs do not open on the same instant of
-      // the same loop, and so a bed and its file's own character are never
-      // phase-locked to the bar.
-      src.start(now, Math.random() * buffer.duration);
+      // A COMPOSED bed starts on a bar line, from its own beginning. Its file is
+      // a whole number of bars of actual music, so phase matters: begun at an
+      // arbitrary instant it would keep the tempo and lose the downbeat, and
+      // every chord change would land at some fixed offset into the bar.
+      //
+      // A bed with no musical length (a noise floor) does the opposite and
+      // starts at a RANDOM offset, so two runs never open on the same instant of
+      // the same recording.
+      if (voice.kit.bedBars) {
+        src.start(this.nextPhraseTime() ?? now);
+      } else {
+        src.start(now, Math.random() * buffer.duration);
+      }
       voice.bedSource = src;
       voice.bedGain = g;
     }
