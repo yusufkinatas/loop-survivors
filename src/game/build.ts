@@ -79,6 +79,23 @@ const EVOLUTION_IDS = [
   'neonSerpent',
   'nova',
   'eventHorizon',
+  // The palette's eleven (#273). Eight of nineteen weapons could transform and
+  // eleven dead-ended, which made "push an evolvable weapon" the right play for
+  // a reason that had nothing to do with the weapon — and quietly steered every
+  // round-1 build back onto the original eight voices, under-testing the eleven
+  // #266 had just built. Symmetry was the fix; the designer chose to reach it by
+  // BUILDING rather than by cutting the eight.
+  'standingWave',
+  'walkingLine',
+  'feedbackLoop',
+  'nightbloom',
+  'wallOfSound',
+  'windmill',
+  'peal',
+  'vortex',
+  'rattlebox',
+  'tide',
+  'slipstream',
 ] as const;
 
 type EvolutionId = (typeof EVOLUTION_IDS)[number];
@@ -125,6 +142,69 @@ const EVOLUTIONS: Record<EvolutionId, EvolutionDefinition> = {
   eventHorizon: {
     id: 'eventHorizon', role: 'arp', name: 'Event Horizon', color: 0x5effd8, gainDb: 0,
     description: 'Counter-rotating pairs breathe around you as a dense orbiting crown.', signature: 'counter-orbiting crown',
+  },
+
+  // ---- The palette's eleven (#273) ----------------------------------------
+  //
+  // EACH ONE CLAIMS A SHAPE FAMILY NOTHING ELSE OWNS. With eight evolutions and
+  // nineteen base weapons already on the field, "a bigger version of itself" was
+  // never going to clear #255's floor rule — you can always tell which one just
+  // fired. So every entry below is a different KIND of thing rather than a
+  // different size of one: a wave that comes back, a shot that hits on the beat,
+  // fields that wire themselves together, an arrival that splits, ground you
+  // hold, a blade that turns, strikes that arrive in sequence, a spiral, a
+  // ricochet, a field that breathes, and a wake you leave behind.
+  //
+  // AND EACH IS LED BY THE SOUND, per #266's rule: the transformation is the
+  // instrument's own gesture taken further, not a gameplay idea handed a voice.
+  //
+  // `gainDb` trims the four whose evolved timbre lands on a voice that is either
+  // continuous or very dense (see the role tables in audio/engine.ts). The other
+  // seven need no trim: an evolution adds GEOMETRY, and geometry makes no sound
+  // — the chart is untouched, so none of these adds a single trigger.
+  standingWave: {
+    id: 'standingWave', role: 'sub', name: 'Standing Wave', color: 0xb79eff, gainDb: -1.5,
+    description: 'The pressure front reaches its limit, turns, and sweeps back through the same ground — the return pass drags bodies inward.', signature: 'reflected front',
+  },
+  walkingLine: {
+    id: 'walkingLine', role: 'upright', name: 'Walking Line', color: 0xe8a878, gainDb: 0,
+    description: 'The snaking shot lands a hit every time it crosses its own aim line, so it stamps the beat down the whole of its path.', signature: 'a hit per beat',
+  },
+  feedbackLoop: {
+    id: 'feedbackLoop', role: 'drone', name: 'Feedback Loop', color: 0x7a6bd0, gainDb: -1.5,
+    description: 'Planted fields wire themselves together, and the cables between them cut anything that crosses.', signature: 'wired fields',
+  },
+  nightbloom: {
+    id: 'nightbloom', role: 'rhodes', name: 'Nightbloom', color: 0x8ee2ff, gainDb: 0,
+    description: 'An orb that arrives opens into three smaller ones that drift on and bloom again where they land.', signature: 'splitting bloom',
+  },
+  wallOfSound: {
+    id: 'wallOfSound', role: 'organ', name: 'Wall of Sound', color: 0xffcb7a, gainDb: 0,
+    description: 'The beam turns ninety degrees and stands: a long bar across the ground ahead of you, holding for seconds.', signature: 'standing barrier',
+  },
+  windmill: {
+    id: 'windmill', role: 'chank', name: 'Windmill', color: 0xbde06f, gainDb: 0,
+    description: 'A double blade through you instead of a chop beside you, stepping around a full turn as you play.', signature: 'turning double blade',
+  },
+  peal: {
+    id: 'peal', role: 'bell', name: 'Peal', color: 0xfff2b0, gainDb: 0,
+    description: 'One trigger marks a run of strikes marching away from you, landing one after another, the last the heaviest.', signature: 'marching strikes',
+  },
+  vortex: {
+    id: 'vortex', role: 'flute', name: 'Vortex', color: 0xc4d3ff, gainDb: 0,
+    description: 'The curve keeps tightening, so the shot flies out wide and then winds inward, closing a spiral through the crowd.', signature: 'inward spiral',
+  },
+  rattlebox: {
+    id: 'rattlebox', role: 'shaker', name: 'Rattlebox', color: 0xa6f0e4, gainDb: -1.5,
+    description: 'The grains stop expiring and start ricocheting, rattling off the walls of the arena until they are spent.', signature: 'ricocheting grains',
+  },
+  tide: {
+    id: 'tide', role: 'pad', name: 'Tide', color: 0xded2ff, gainDb: 0,
+    description: 'The field breathes on the pulse, at its widest and fiercest on the crest of every swell.', signature: 'breathing field',
+  },
+  slipstream: {
+    id: 'slipstream', role: 'air', name: 'Slipstream', color: 0xe6ecf5, gainDb: -1.5,
+    description: 'The field sheds a fading wake, so everywhere you have just walked keeps hissing behind you.', signature: 'a wake you leave',
   },
 };
 

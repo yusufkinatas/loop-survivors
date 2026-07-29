@@ -146,6 +146,38 @@ const DUCK_RELEASE = 0.14;
 const SUB_BASS_ROLES: readonly Role[] = ['bass'];
 const EVOLUTION_SATURATION = softClipCurve(2.4);
 
+// ---- What an evolution does to a voice (#273) -------------------------------
+//
+// An evolved weapon keeps its lane and its chart and receives a newly processed
+// TIMBRE — see the filter block in playHit. Which processing depends on where the
+// voice sits, and with nineteen weapons able to evolve rather than eight, that
+// mapping is a table instead of a chain of role comparisons.
+//
+// THE ORIGINAL EIGHT ARE UNCHANGED, deliberately and checkably: kick and bass
+// take the low shelf and the saturation, the hat takes the air band, clap and
+// snare take the presence peak plus saturation, and chord, lead and arp take the
+// presence peak alone. Nothing about `docs/palette-control/` moves.
+
+/** Voices lifted with a LOW SHELF rather than a presence peak: the ones whose
+ *  whole job is weight, where a 2.4 kHz lift would find nothing to brighten. */
+const EVOLUTION_LOW_ROLES: ReadonlySet<Role> = new Set<Role>([
+  'kick', 'bass', 'sub', 'upright', 'drone',
+]);
+
+/** Voices lifted up in the AIR band instead. These live at the top of the
+ *  spectrum, and a mid presence peak on a shaker or a noise bed lands under the
+ *  part of the sound anyone is actually hearing. */
+const EVOLUTION_BRIGHT_ROLES: ReadonlySet<Role> = new Set<Role>([
+  'hat', 'shaker', 'air',
+]);
+
+/** Voices that also get controlled saturation — grit, which reads as weight on a
+ *  low voice and as bite on a transient one. Not applied to sustained harmonic or
+ *  bright voices, where it reads as distortion instead. */
+const EVOLUTION_SATURATED_ROLES: ReadonlySet<Role> = new Set<Role>([
+  'kick', 'bass', 'clap', 'snare', 'sub', 'upright', 'drone',
+]);
+
 /** Per-voice mix calibration, applied after both procedural and downloaded
  * palette samples. The hat's dense chart made its bright transients dominate,
  * while the chord and arpeggio (the fast sequence of separate notes) were
@@ -923,12 +955,12 @@ export class MusicEngine {
       // no doubled instrument. Bright roles get a sharper presence band while
       // low roles gain controlled saturation and weight.
       const filter = this.ctx.createBiquadFilter();
-      const lowRole = voice.role === 'kick' || voice.role === 'bass';
+      const lowRole = EVOLUTION_LOW_ROLES.has(voice.role);
       filter.type = lowRole ? 'lowshelf' : 'peaking';
-      filter.frequency.value = lowRole ? 120 : voice.role === 'hat' ? 8_200 : 2_400;
+      filter.frequency.value = lowRole ? 120 : EVOLUTION_BRIGHT_ROLES.has(voice.role) ? 8_200 : 2_400;
       filter.gain.value = lowRole ? 4 : 3;
       filter.Q.value = lowRole ? 0.55 : 1.15;
-      if (voice.role === 'kick' || voice.role === 'bass' || voice.role === 'clap' || voice.role === 'snare') {
+      if (EVOLUTION_SATURATED_ROLES.has(voice.role)) {
         const saturation = this.ctx.createWaveShaper();
         saturation.curve = EVOLUTION_SATURATION;
         saturation.oversample = '2x';
