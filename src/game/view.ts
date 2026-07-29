@@ -114,6 +114,11 @@ export type GroundPickCopy = GroundPickCopyBase & (
 
 export type GroundPickView = GroundPickCopy & { x: number; y: number };
 
+/** How long a field may go unreported before its graphic is removed. Comfortably
+ *  longer than a frame at any refresh rate, and far shorter than a player would
+ *  notice a stale outline for. */
+const AURA_GRACE_S = 0.25;
+
 interface Pop {
   gfx: Graphics;
   t: number;
@@ -460,10 +465,9 @@ export class RunView {
   /** Persistent aura graphics, one per field key. Never routed through `pops`:
    *  a pop has a lifetime, and anything with a lifetime leaves a trail when the
    *  thing it is drawing moves. */
-  private auras = new Map<string, { gfx: Graphics; radius: number }>();
-  /** Keys refreshed this frame. Anything missing has stopped emitting and its
-   *  graphic is destroyed at the end of the frame. */
-  private auraSeen = new Set<string>();
+  private auras = new Map<string, { gfx: Graphics; radius: number; lastSeen: number }>();
+  /** Monotonic view clock, used only to age auras out. */
+  private auraClock = 0;
   private pops: Pop[] = [];
   private floaters: Floater[] = [];
   private live = new Set<object>();
@@ -693,13 +697,17 @@ export class RunView {
   }
 
   update(dt: number, realDt = dt): void {
-    this.auraSeen.clear();
+    this.auraClock += realDt;
     for (const fx of this.world.fx ?? []) this.spawnFx(fx);
     if (this.world.fx) this.world.fx.length = 0;
-    // Any field that did not report in this frame is gone: the weapon was
-    // dropped, the field expired, or the run ended.
+    // AGED OUT, NOT DROPPED ON THE FIRST QUIET FRAME. The world runs on a fixed
+    // timestep behind a variable frame rate, so on a fast display plenty of
+    // rendered frames take ZERO sim steps and therefore report no fields at all.
+    // Destroying an aura the moment it misses one frame meant recreating it the
+    // next — a one-frame hole, every other frame, which reads as the field
+    // flickering. Only a field that has genuinely stopped reporting goes.
     for (const [key, aura] of this.auras) {
-      if (this.auraSeen.has(key)) continue;
+      if (this.auraClock - aura.lastSeen < AURA_GRACE_S) continue;
       aura.gfx.destroy();
       this.auras.delete(key);
     }
@@ -1527,15 +1535,15 @@ export class RunView {
         // where they were emitted, which reads as the aura being dragged along
         // a step behind. Only the geometry is rebuilt, and only when the radius
         // actually changes, so following the player costs a position write.
-        this.auraSeen.add(fx.key);
         let aura = this.auras.get(fx.key);
         if (!aura) {
           const gfx = new Graphics({ roundPixels: true });
           gfx.tint = fx.color;
           this.fxLayer.addChild(gfx);
-          aura = { gfx, radius: -1 };
+          aura = { gfx, radius: -1, lastSeen: this.auraClock };
           this.auras.set(fx.key, aura);
         }
+        aura.lastSeen = this.auraClock;
         if (aura.radius !== fx.radius) {
           aura.radius = fx.radius;
           aura.gfx.clear();

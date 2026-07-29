@@ -33,10 +33,9 @@ interface SubStats extends WeaponStats {
   /** Units per second the front travels. Slow enough to watch cross the field —
    *  the travel is what makes it read as pressure rather than as a hit. */
   readonly speed: number;
-  /** How far it goes before dissipating. */
-  readonly travel: number;
   /** Half the angular width of the wave, in radians. This is what keeps it a
-   *  directional front rather than Subquake's full ring. */
+   *  directional front rather than Subquake's full ring, and half of what sets
+   *  how much ground one wave sweeps. */
   readonly halfAngle: number;
   /** Segments the curve is drawn with. Enough that it reads as curved. */
   readonly segments: number;
@@ -47,8 +46,18 @@ interface SubStats extends WeaponStats {
 }
 
 const SUB_STATS: SubStats = {
-  // `radius` is unused by this weapon's geometry: the wave's width is angular
-  // (SUB_STATS.halfAngle) and its depth is fixed, so growth is all in damage.
+  // `radius` IS THE WAVE'S REACH — how far the front travels before it
+  // dissipates. It was briefly dead: rebuilding this weapon from a straight
+  // wall into an arc left the geometry on a flat 520-unit constant, so the tier
+  // table's radius column did nothing and levelling grew the damage but not the
+  // ground covered. Reading it here also puts the wave back under the build's
+  // area modifier, which every other area weapon already obeys.
+  //
+  // The whole shape is smaller than the first pass as well. At 520 reach and
+  // 0.62 half-angle it swept more ground than anything else in the game at
+  // every level, including level one; it now starts at 340 and grows to 460
+  // against a narrower 0.5 half-angle, which is roughly a third of the old area
+  // at the bottom and two thirds at the top.
   // SEATED WITH THE OTHER AREA WEAPONS. The first pass ran 14 to 36 per hit,
   // reasoning that a voice firing once every two bars has to land hard. That
   // was wrong twice over: it is three and a half times the clap's per-hit
@@ -60,28 +69,27 @@ const SUB_STATS: SubStats = {
   //
   // For reference, per hit: kick 3-15, clap 4-10, chank 5-13, organ 3-8.
   tiers: [
-    { damage: 6, radius: 78 },
-    { damage: 7, radius: 78 },
-    { damage: 9, radius: 88 },
-    { damage: 10, radius: 88 },
-    { damage: 12, radius: 98 },
-    { damage: 14, radius: 98 },
-    { damage: 16, radius: 108 },
-    { damage: 18, radius: 120 },
+    { damage: 6, radius: 340 },
+    { damage: 7, radius: 340 },
+    { damage: 9, radius: 370 },
+    { damage: 10, radius: 370 },
+    { damage: 12, radius: 400 },
+    { damage: 14, radius: 400 },
+    { damage: 16, radius: 430 },
+    { damage: 18, radius: 460 },
   ],
   tierLines: [
-    'a wall of pressure that clears a lane',
+    'a wave of pressure that clears a lane',
     'heavier',
-    'wider lane',
+    'travels further',
     'heavier',
-    'wider lane',
+    'travels further',
     'heavier',
-    'wider lane',
+    'travels further',
     'maximum weight',
   ],
   speed: 340,
-  travel: 520,
-  halfAngle: 0.62,
+  halfAngle: 0.5,
   segments: 7,
   shove: 54,
 };
@@ -96,6 +104,8 @@ interface Front {
   angle: number;
   /** How far the front has travelled from the origin: the arc's radius. */
   radius: number;
+  /** Where it stops. */
+  reach: number;
   damage: number;
   shove: number;
   /** Bodies the front has already passed through. It hits each once, as it
@@ -121,6 +131,7 @@ class SubInstance implements WeaponInstance {
       // Starts out from the player rather than at zero: a wave born at radius 0
       // is a point, and its first frames would be a dot rather than a curve.
       radius: 40,
+      reach: conf.radius!,
       damage: conf.damage,
       shove: SUB_STATS.shove * ctx.buildMods.knockbackMul,
       hit: new Set(),
@@ -138,7 +149,7 @@ class SubInstance implements WeaponInstance {
     for (let i = this.fronts.length - 1; i >= 0; i--) {
       const front = this.fronts[i];
       front.radius += SUB_STATS.speed * dt;
-      if (front.radius >= SUB_STATS.travel) {
+      if (front.radius >= front.reach) {
         this.fronts.splice(i, 1);
         continue;
       }
