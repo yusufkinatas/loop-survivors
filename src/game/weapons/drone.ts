@@ -51,6 +51,10 @@ const DRONE_STATS: DroneStats = {
 };
 
 interface Field {
+  /** Identity for the view, so each field keeps its own graphic. Fields do not
+   *  move, but they overlap and expire independently — sharing one key would
+   *  make them fight over a single graphic. */
+  key: string;
   x: number;
   y: number;
   radius: number;
@@ -63,10 +67,12 @@ const QUERY_PAD = 24;
 
 class DroneInstance implements WeaponInstance {
   private fields: Field[] = [];
+  private nextKey = 0;
 
   fire(ctx: WeaponContext, conf: WeaponConf): void {
     const p = ctx.player;
     this.fields.push({
+      key: `drone:${this.nextKey++}`,
       x: p.x,
       y: p.y,
       radius: conf.radius!,
@@ -100,7 +106,7 @@ class DroneInstance implements WeaponInstance {
       // as the texture auras, because it is the same kind of object. A field
       // that pulsed would look like it was firing; this one is just there, and
       // "just there" is the whole point of a weapon that marks a place.
-      ctx.fx({ type: 'aura', x: field.x, y: field.y, radius: field.radius, color: ctx.color, dur: 0.1 });
+      ctx.fx({ type: 'aura', x: field.x, y: field.y, radius: field.radius, color: ctx.color, key: field.key });
       field.tickT -= dt;
       if (field.tickT > 0) continue;
       field.tickT = DRONE_STATS.tickS;
@@ -114,6 +120,7 @@ class DroneInstance implements WeaponInstance {
 
   reset(): void {
     this.fields.length = 0;
+    this.nextKey = 0;
   }
 }
 

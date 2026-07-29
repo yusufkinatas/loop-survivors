@@ -457,6 +457,13 @@ export class RunView {
    *  semantics differ: these are grants scooped one by one, not a choice that
    *  clears its siblings — and they skip the safe-zone ring. */
   private chestDropGfx: RewardGfx[] = [];
+  /** Persistent aura graphics, one per field key. Never routed through `pops`:
+   *  a pop has a lifetime, and anything with a lifetime leaves a trail when the
+   *  thing it is drawing moves. */
+  private auras = new Map<string, { gfx: Graphics; radius: number }>();
+  /** Keys refreshed this frame. Anything missing has stopped emitting and its
+   *  graphic is destroyed at the end of the frame. */
+  private auraSeen = new Set<string>();
   private pops: Pop[] = [];
   private floaters: Floater[] = [];
   private live = new Set<object>();
@@ -686,8 +693,16 @@ export class RunView {
   }
 
   update(dt: number, realDt = dt): void {
+    this.auraSeen.clear();
     for (const fx of this.world.fx ?? []) this.spawnFx(fx);
     if (this.world.fx) this.world.fx.length = 0;
+    // Any field that did not report in this frame is gone: the weapon was
+    // dropped, the field expired, or the run ended.
+    for (const [key, aura] of this.auras) {
+      if (this.auraSeen.has(key)) continue;
+      aura.gfx.destroy();
+      this.auras.delete(key);
+    }
 
     const player = this.world.player;
     const cameraX = player.x + PLAYER_FOOT_OFFSET.x;
@@ -748,6 +763,8 @@ export class RunView {
     this.enemyGfx.clear();
     this.dummyLabels.clear();
     this.projectileGfx.clear();
+    for (const aura of this.auras.values()) aura.gfx.destroy();
+    this.auras.clear();
     this.zoneGfx.clear();
     this.gemGfx.clear();
     this.musicNoteGfx.clear();
@@ -1504,26 +1521,46 @@ export class RunView {
         break;
       }
       case 'aura': {
-        // A shape that IS there, not an effect that keeps happening: a solid
-        // outline at the exact damage radius plus a faint fill, drawn flat with
-        // no blend so overlapping frames cannot brighten it.
-        const gfx = new Graphics({ roundPixels: true });
-        // FAINT. A field that is on for the whole run has to sit under the
-        // action rather than over it — at the first pass's opacity two of them
-        // washed the floor out completely. The outline still reads because it is
-        // a hard edge at an exact radius, which is what makes a hitbox legible;
-        // the fill is barely a tint.
-        gfx.poly(regularPixelPoly(20, fx.radius, Math.PI / 20)).fill({ color: 0xffffff, alpha: 0.035 });
-        gfx.poly(regularPixelPoly(20, fx.radius, Math.PI / 20))
-          .stroke({ width: 2, color: 0xffffff, alpha: 0.3 });
-        for (let i = 0; i < 8; i++) {
-          const angle = i * Math.PI / 4;
-          pixelDiamond(gfx, Math.cos(angle) * fx.radius, Math.sin(angle) * fx.radius, 2, 0xffffff, 0.45);
+        // ONE GRAPHIC PER FIELD, MOVED — never a new one per frame. A field
+        // attached to the player has to BE one object that travels with them;
+        // spawning a fresh effect each frame leaves the older copies standing
+        // where they were emitted, which reads as the aura being dragged along
+        // a step behind. Only the geometry is rebuilt, and only when the radius
+        // actually changes, so following the player costs a position write.
+        this.auraSeen.add(fx.key);
+        let aura = this.auras.get(fx.key);
+        if (!aura) {
+          const gfx = new Graphics({ roundPixels: true });
+          gfx.tint = fx.color;
+          this.fxLayer.addChild(gfx);
+          aura = { gfx, radius: -1 };
+          this.auras.set(fx.key, aura);
         }
-        gfx.tint = fx.color;
-        gfx.position.set(snap(fx.x), snap(fx.y));
-        this.fxLayer.addChild(gfx);
-        this.pops.push({ gfx, t: 0, dur: fx.dur, fromScale: 1, toScale: 1, steady: true });
+        if (aura.radius !== fx.radius) {
+          aura.radius = fx.radius;
+          aura.gfx.clear();
+          // THESE ALPHAS ARE FOR A SINGLE DRAW, and that is the whole story of
+          // how they got here. The per-frame version stacked about six copies of
+          // itself, so its published alphas (0.035 fill, 0.30 stroke) were only
+          // a sixth of what actually reached the screen — the composite was
+          // roughly 0.19 and 0.88, and that composite is the look that was
+          // approved. Now that there is exactly one graphic, the numbers have to
+          // be the composite rather than the ingredient, or the field all but
+          // disappears.
+          //
+          // A field that is on for the whole run still has to sit under the
+          // action: the outline carries it, because what makes a hitbox legible
+          // is a hard edge at an exact radius, and the fill stays a tint.
+          aura.gfx.poly(regularPixelPoly(20, fx.radius, Math.PI / 20))
+            .fill({ color: 0xffffff, alpha: 0.15 });
+          aura.gfx.poly(regularPixelPoly(20, fx.radius, Math.PI / 20))
+            .stroke({ width: 2, color: 0xffffff, alpha: 0.8 });
+          for (let i = 0; i < 8; i++) {
+            const angle = i * Math.PI / 4;
+            pixelDiamond(aura.gfx, Math.cos(angle) * fx.radius, Math.sin(angle) * fx.radius, 2, 0xffffff, 0.9);
+          }
+        }
+        aura.gfx.position.set(snap(fx.x), snap(fx.y));
         break;
       }
       case 'vacuum': {

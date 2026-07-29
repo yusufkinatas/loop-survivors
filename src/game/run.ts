@@ -532,7 +532,17 @@ export type FxEvent =
    *  shape that is there, not as an effect that keeps happening. Anything that
    *  animates would say "this just fired", which for a continuous weapon is a
    *  lie sixty times a second. */
-  | { type: 'aura'; x: number; y: number; radius: number; color: number; dur: number }
+  | {
+      type: 'aura';
+      x: number; y: number; radius: number; color: number;
+      /** Which field this is. The view keeps ONE graphic per key and moves it,
+       *  rather than spawning a new one per frame — a per-frame effect with any
+       *  lifetime at all leaves its older copies behind at the positions they
+       *  were emitted, which on a moving player reads as the field being dragged
+       *  along behind them. A field that is attached to something must be one
+       *  object that moves, not a stream of stamps. */
+      key: string;
+    }
   | { type: 'vacuum'; x: number; y: number; radius: number }
   | { type: 'death'; x: number; y: number; radius: number; color: number; elite: boolean }
   | {

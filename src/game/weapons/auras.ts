@@ -61,13 +61,16 @@ class AuraInstance implements WeaponInstance {
     const p = ctx.player;
     const reach = conf.radius!;
 
-    // THE SHAPE IS DRAWN EVERY FRAME, THE DAMAGE IS NOT. Those are two different
-    // clocks and conflating them was the bug: drawing only on the damage tick
-    // made the field flash two or three times a second, so it read as a repeated
-    // effect rather than as a thing that is simply on. A steady outline at the
-    // exact damage radius is the Garlic read — you can see where the weapon
-    // reaches and it never moves.
-    ctx.fx({ type: 'aura', x: p.x, y: p.y, radius: reach, color: ctx.color, dur: 0.1 });
+    // THE SHAPE IS REPORTED EVERY FRAME, THE DAMAGE IS NOT. Two different
+    // clocks, and conflating them was the first bug here: drawing only on the
+    // damage tick made the field flash two or three times a second, so it read
+    // as a repeated effect rather than as a thing that is simply on.
+    //
+    // Reported by KEY, so the view keeps one graphic and moves it. That is the
+    // second bug: an effect re-spawned every frame leaves its older copies at
+    // the positions they were emitted, and on a moving player that reads as the
+    // field being dragged along behind rather than worn.
+    ctx.fx({ type: 'aura', x: p.x, y: p.y, radius: reach, color: ctx.color, key: ctx.role });
 
     if (ctx.timeS < this.nextTickAt) return;
     this.nextTickAt = ctx.timeS + this.stats.tickS;
