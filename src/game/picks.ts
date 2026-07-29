@@ -23,6 +23,7 @@
 import { soundsetSupports } from '../audio/soundset';
 import { ROLES, type Role } from '../audio/kits';
 import { BUILD } from './config';
+import { hasWeaponModule } from './weapons';
 import { WEAPON_MAX_LEVEL } from './weapons/levels';
 import type { Rng } from './rng';
 
@@ -121,9 +122,18 @@ function buildFinitePool(input: RollOffersInput): WeightedOption<BuildPickOption
   // being offered tier-ups of the weapons it already owns.
   const weaponSlotsFull = ownedWeaponCount(input.tiers) >= BUILD.weaponCap;
   for (const role of ROLES) {
-    // Every weapon is career-unlocked from the start; the only gate left on a
-    // new hire is soundset support.
-    if (!soundsetSupports(role)) continue;
+    // Every weapon is career-unlocked from the start; the gates left on a new
+    // hire are soundset support and gameplay.
+    //
+    // THE GAMEPLAY GATE IS NOT DECORATION. The palette (#266) lands in two
+    // steps — the twelve new voices get their sound and their rhythm first, and
+    // their weapon modules after — so between those steps a role has a ladder
+    // (which is what soundsetSupports asks) while having no behaviour at all.
+    // `RunWorld.fireTrigger` optional-chains into the module, so such a role
+    // would be offered, hired, levelled, and silently deal no damage for a
+    // whole run. It stays audible in the Sandbox, which is where the palette is
+    // judged by ear; it is simply never offered until it can fight.
+    if (!soundsetSupports(role) || !hasWeaponModule(role)) continue;
     const tier = Math.max(0, Math.min(WEAPON_MAX_LEVEL, Math.floor(input.tiers.get(role) ?? 0)));
     // Ownership (hire vs upgrade, and the cap) asks about the LIVE build; the
     // ladder test asks where the weapon will stand once every promise lands.

@@ -8,6 +8,14 @@
 // The catalog of instrument types. Six drums/fx (unpitched) and six pitched
 // voices, plus the later hires; the soundset chooses how each is played
 // (tempo, swing, patterns).
+//
+// THE PALETTE (#266) added ten roles to widen the live band from eight voices
+// to twenty. They are grouped by SEAT — which chair the voice takes in the band
+// — because the palette was designed on two crossing axes, seat and attack. The
+// seat grouping lives in PALETTE_SEATS below; it is documentation and a
+// validator, NOT a gameplay rule, and nothing in the game reads a voice's seat
+// to decide what it does. #266 ruled the grid a mixing taxonomy: no strict
+// mapping from a cell to a behaviour, because that would fence off good ideas.
 export type Role =
   | 'kick'
   | 'snare'
@@ -25,7 +33,23 @@ export type Role =
   | 'pluck'
   | 'rhodes'
   // The last hires + the auto-dash utility weapon (riser).
-  | 'riser';
+  | 'riser'
+  // ---- The palette (#266) --------------------------------------------------
+  // Low anchor: the bottom of the sound.
+  | 'sub'
+  | 'upright'
+  | 'drone'
+  // Harmonic body: the middle. (`rhodes` above is this seat's fourth voice.)
+  | 'organ'
+  | 'chank'
+  // Bright line: the top.
+  | 'bell'
+  | 'flute'
+  // Texture: the only seat that is not a hit. Held sounds that never stop, and
+  // the one seat where `attack` is constant by definition — #266 amended the
+  // grid rule to name texture as its exception rather than pretend otherwise.
+  | 'pad'
+  | 'air';
 
 export const ROLES: readonly Role[] = [
   'kick',
@@ -43,7 +67,42 @@ export const ROLES: readonly Role[] = [
   'pluck',
   'rhodes',
   'riser',
+  'sub',
+  'upright',
+  'drone',
+  'organ',
+  'chank',
+  'bell',
+  'flute',
+  'pad',
+  'air',
 ];
+
+/** The five seats of the palette (#266), and which live voices sit in each.
+ *
+ *  DOCUMENTATION AND A BUILD-TIME CHECK, NOT A RULE THE GAME READS. #266 ruled
+ *  the seat/attack grid a mixing taxonomy: a voice's seat never decides its
+ *  behaviour, its damage, or which slot it may occupy. It exists so the
+ *  arrangement stays legible — voices in one seat are the ones that can smear
+ *  into each other, so they are the ones whose rhythms must differ.
+ *
+ *  Retired catalog voices (tom, crash, acid, pluck, riser) are deliberately
+ *  absent: they have no ladder, so they are not in the band. */
+export const PALETTE_SEATS = {
+  lowAnchor: ['bass', 'sub', 'upright', 'drone'],
+  harmonicBody: ['chord', 'rhodes', 'organ', 'chank'],
+  brightLine: ['lead', 'arp', 'bell', 'flute'],
+  percussion: ['kick', 'snare', 'clap', 'hat', 'shaker'],
+  // TWO, not three. `wind` was cut on the designer's ruling after the first
+  // listening pass: asked what kind of track carries a constant wind sound, the
+  // honest answer is none — wind is a TRANSITION device, the same category as
+  // the riser this palette already banned. Only two things here genuinely work
+  // as always-on background, so the seat is a pair and that is accepted.
+  texture: ['pad', 'air'],
+} as const satisfies Readonly<Record<string, readonly Role[]>>;
+
+/** Every voice in the band, in seat order. Twenty, per #266. */
+export const PALETTE_ROLES: readonly Role[] = Object.values(PALETTE_SEATS).flat();
 
 export interface Kit {
   role: Role;
@@ -61,6 +120,75 @@ export interface Kit {
    *  lines up with the engine's A reference (note 0). 0 for synth kits (they
    *  render at the reference already) and for unpitched drums. */
   tune?: number;
+  /** MULTI-SAMPLING: several recordings of the same instrument at different
+   *  pitches, so a melody is played by the nearest one rather than by speeding a
+   *  single recording up and down across its whole range.
+   *
+   *  This is what makes a RECORDED melodic instrument viable at all. One
+   *  recording stretched over an octave and a half turns chipmunky at the top
+   *  and sludgy at the bottom — it is why the palette (#266) was synthesized on
+   *  the first pass, and it is the thing that had to be fixed rather than
+   *  restated when that pass was rejected by ear.
+   *
+   *  Each zone names a variant in `samples` and the semitone (relative to the
+   *  engine's note 0) that recording actually sounds. `trigger` picks the zone
+   *  whose root is nearest the wanted note and shifts only the small remainder.
+   *  Absent for synth kits and unpitched drums: they need no zones. */
+  zones?: readonly PitchZone[];
+  /** A BED: a continuous background sound the SEQUENCER NEVER TRIGGERS.
+   *
+   *  Texture seat only, and the fix for the loudest complaint of the first
+   *  listening pass: "I think we need to fundamentally change how we are
+   *  approaching those looping sounds ... it should be like a seamlessly playing
+   *  continuous ambient sound, but instead it feels like a shortcut of an actual
+   *  ambient sound looping weirdly."
+   *
+   *  That was exactly right, and it was two faults stacked. The bed was started
+   *  by a chart event, so the ear heard it BEGIN on a grid step — a background
+   *  sound with a beginning is not a background sound. And the loop point itself
+   *  was not seamless, so it also lurched inside a single trigger.
+   *
+   *  A bed now has no notes at all. One looping source starts when the weapon is
+   *  owned and stops when it is not; the weapon's level sets how present it is.
+   *  Its file is built to loop seamlessly (makeSeamless in the fetch tool), so
+   *  there is no wrap to hear. */
+  bed?: boolean;
+  /** A COMPOSED bed's length in bars. Set only where the bed carries actual
+   *  music — the pad's four-bar chord cycle — and 0/undefined for a bed with no
+   *  musical length, like a noise floor.
+   *
+   *  It means two things must hold. The file has to be exactly this many bars at
+   *  the soundset's tempo (soundset.ts asserts it), and the source has to START
+   *  ON A BAR LINE: a chord cycle begun at an arbitrary instant keeps its tempo
+   *  but not its phase, so every chord change would land at some fixed offset
+   *  into the bar. MusicEngine.syncBed schedules it on the next phrase boundary
+   *  for exactly that reason. */
+  bedBars?: number;
+}
+
+/** One recording in a multi-sampled kit: which variant it is, and the semitone
+ *  it actually sounds at, relative to the engine's note 0. */
+export interface PitchZone {
+  variant: string;
+  rootSemitone: number;
+}
+
+/** The zone whose recording is nearest the wanted note. Ties go to the LOWER
+ *  root, so a note exactly between two recordings is shifted up rather than
+ *  down — stretching a recording upward keeps its transient crisp, where
+ *  stretching down smears it, and a smeared transient is the more audible
+ *  artefact of the two. */
+export function nearestZone(zones: readonly PitchZone[], note: number): PitchZone {
+  let best = zones[0];
+  let bestDistance = Math.abs(note - best.rootSemitone);
+  for (const zone of zones) {
+    const distance = Math.abs(note - zone.rootSemitone);
+    if (distance < bestDistance || (distance === bestDistance && zone.rootSemitone < best.rootSemitone)) {
+      best = zone;
+      bestDistance = distance;
+    }
+  }
+  return best;
 }
 
 const RENDER_RATE = 44100;
@@ -710,9 +838,52 @@ export const ROLE_META: Record<Role, RoleMeta> = {
   shaker: { name: 'Shaker', color: '#7be0d0', pitched: false, choke: false, variants: ['shaker'] },
   acid: { name: 'Acid', color: '#b6ff5a', pitched: true, choke: false, variants: ['acid'] },
   pluck: { name: 'Pluck Bass', color: '#8f7bff', pitched: true, choke: true, variants: ['pluck'] },
-  rhodes: { name: 'Rhodes', color: '#5ad1ff', pitched: true, choke: false, variants: ['rhodes'] },
+  // CHOKES. At its top rung the Rhodes fires four times a bar; with a long
+  // decay and no choke, six copies of the note rang at once and the listening
+  // pass called it "overwhelming when maxxed out". A keys part playing one note
+  // at a time is normal; six of itself is not.
+  rhodes: { name: 'Rhodes', color: '#5ad1ff', pitched: true, choke: true, variants: ['rhodes'] },
   riser: { name: 'Riser', color: '#cbb4ff', pitched: false, choke: true, variants: ['riser'] },
+
+  // ---- The palette (#266) --------------------------------------------------
+  // Low anchor. All three choke: two low notes ringing together is the one
+  // overlap that reliably turns into mud rather than into two instruments.
+  // Bright violet, not the near-navy it started as. Its weapon draws a thin
+  // curved front on a dark floor, and #6247c9 had almost no contrast against
+  // the arena — the wave was there and could barely be seen.
+  sub: { name: 'Sub', color: '#9b7cff', pitched: true, choke: true, variants: ['sub'] },
+  upright: { name: 'Upright', color: '#c98a5a', pitched: true, choke: true, variants: ['upright'] },
+  drone: { name: 'Drone', color: '#4b3f8f', pitched: true, choke: true, variants: ['drone'] },
+
+  // Harmonic body.
+  organ: { name: 'Organ', color: '#ffb347', pitched: true, choke: true, variants: ['organ'] },
+  chank: { name: 'Chank', color: '#9ecb4a', pitched: true, choke: false, variants: ['chank'] },
+
+  // Bright line.
+  bell: { name: 'Bell', color: '#ffe680', pitched: true, choke: false, variants: ['bell'] },
+  flute: { name: 'Flute', color: '#9fb8ff', pitched: true, choke: true, variants: ['flute'] },
+
+  // Texture. Every one chokes: a held sound re-articulating on top of itself
+  // stacks tails forever, which is the exact mud the seat is most prone to.
+  //
+  // NOTE `pad` the ROLE is not `chord`'s `pad` VARIANT. The variant is a softer
+  // sustained voicing of the chord weapon; this is a weapon of its own, in a
+  // different seat, that never plays a rhythm.
+  pad: { name: 'Pad', color: '#c9b6ff', pitched: true, choke: true, variants: ['pad'] },
+  air: { name: 'Air', color: '#cfd6e0', pitched: false, choke: true, variants: ['air'] },
 };
+
+// The palette's seats must name only voices the catalog knows, and must not
+// name one voice twice. A typo here would otherwise surface as a missing kit
+// halfway through a run.
+{
+  const seen = new Set<Role>();
+  for (const role of PALETTE_ROLES) {
+    if (!(role in ROLE_META)) throw new Error(`palette: ${role} has no role identity`);
+    if (seen.has(role)) throw new Error(`palette: ${role} sits in two seats`);
+    seen.add(role);
+  }
+}
 
 /** Each role's hue as a packed 0xRRGGBB number, which is the form PixiJS and
  *  the world want; ROLE_META above carries the same value as a CSS string for
@@ -739,9 +910,21 @@ export async function loadSample(url: string): Promise<AudioBuffer> {
  *  buffers. The soundset kit and buildKits both assemble their kits through
  *  this, so a "kick" is always a kick (name/color/choke/defaultVariant)
  *  whatever buffers it was given. `samples` must include the defaultVariant. */
-export function makeKit(role: Role, samples: Map<string, AudioBuffer>, tune = 0): Kit {
+export function makeKit(
+  role: Role,
+  samples: Map<string, AudioBuffer>,
+  tune = 0,
+  extra: { zones?: readonly PitchZone[]; bed?: boolean; bedBars?: number } = {},
+): Kit {
   const meta = ROLE_META[role];
   const defaultVariant = meta.variants.find((v) => samples.has(v)) ?? samples.keys().next().value!;
+  if (extra.zones) {
+    for (const zone of extra.zones) {
+      if (!samples.has(zone.variant)) {
+        throw new Error(`${role}: pitch zone ${zone.variant} has no sample`);
+      }
+    }
+  }
   return {
     role,
     name: meta.name,
@@ -751,6 +934,9 @@ export function makeKit(role: Role, samples: Map<string, AudioBuffer>, tune = 0)
     samples,
     defaultVariant,
     tune,
+    zones: extra.zones,
+    bed: extra.bed,
+    bedBars: extra.bedBars,
   };
 }
 

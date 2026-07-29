@@ -526,9 +526,34 @@ export type FxEvent =
   /** An INSTANT filled disc that flashes at full size and fades — no outward
    *  travel, unlike 'ring'. For a zone that pulses in place (the clap). */
   | { type: 'flash'; x: number; y: number; radius: number; color: number; dur: number }
+  /** A STATIC field at a fixed radius: no growth, no fade, no pulse. Emitted
+   *  every frame by a weapon that is simply ON — the texture auras and the
+   *  drone's field. Vampire Survivors' Garlic is the reference: you read it as a
+   *  shape that is there, not as an effect that keeps happening. Anything that
+   *  animates would say "this just fired", which for a continuous weapon is a
+   *  lie sixty times a second. */
+  | {
+      type: 'aura';
+      x: number; y: number; radius: number; color: number;
+      /** Which field this is. The view keeps ONE graphic per key and moves it,
+       *  rather than spawning a new one per frame — a per-frame effect with any
+       *  lifetime at all leaves its older copies behind at the positions they
+       *  were emitted, which on a moving player reads as the field being dragged
+       *  along behind them. A field that is attached to something must be one
+       *  object that moves, not a stream of stamps. */
+      key: string;
+    }
   | { type: 'vacuum'; x: number; y: number; radius: number }
   | { type: 'death'; x: number; y: number; radius: number; color: number; elite: boolean }
-  | { type: 'whip'; x: number; y: number; side: 1 | -1; area: number; color: number }
+  | {
+      type: 'whip';
+      x: number; y: number; side: 1 | -1; area: number; color: number;
+      /** Turn the sweep ninety degrees, so `side` means down/up rather than
+       *  right/left. The artwork is identical — only the axis changes. The kick
+       *  sweeps horizontally and the chank needed the other axis so the two
+       *  would stop covering the same ground. */
+      vertical?: boolean;
+    }
   | {
       type: 'arc';
       x: number;
@@ -541,7 +566,20 @@ export type FxEvent =
   | { type: 'dmg'; x: number; y: number; amount: number; color: number }
   | { type: 'spark'; x: number; y: number; color: number; n: number; spread: number }
   | { type: 'slam'; x: number; y: number; radius: number; color: number }
-  | { type: 'beam'; x: number; y: number; x2: number; y2: number; width: number; color: number }
+  | {
+      type: 'beam';
+      x: number; y: number; x2: number; y2: number; width: number; color: number;
+      /** Drawn FLAT and once-per-frame rather than as an additive one-shot.
+       *  A beam re-emitted every frame while it is alive stacks its additive
+       *  copies — fourteen of them at a 0.24 s life — and saturates to solid
+       *  white, which is exactly what the organ's beam did. A weapon that draws
+       *  itself continuously must say so. */
+      steady?: boolean;
+      /** How long the drawn beam lasts. A steady beam that outlives its emitter
+       *  flickers; one that dies first leaves the weapon damaging an area
+       *  nothing is drawn on. Defaults are for one-shots. */
+      dur?: number;
+    }
   | { type: 'pressure'; x: number; y: number; color: number; label: string }
   | { type: 'evolution'; x: number; y: number; color: number; label: string };
 
@@ -758,6 +796,7 @@ export class RunWorld {
       get buildMods() { return world.buildMods; },
       rng: () => world.rng(),
       get triggerCount() { return world.triggerCounts[role] ?? 0; },
+      conf: () => world.builtConf(role),
       aimDir: (spread) => world.aimDir(spread),
       aimFan: (spread) => world.aimFan(spread),
       moveDir: () => world.moveDir(),
@@ -955,13 +994,20 @@ export class RunWorld {
   fireTrigger(t: ScheduledTrigger): void {
     const tier = this.tiers.get(t.role);
     if (!tier) return;
-    // The roster is keyed on the supported catalog; a trigger only ever fires
-    // for an owned (hence supported) role, so the entry is always present.
-    let conf: WeaponConf = weaponTiers(t.role)![tier - 1];
-
-    // Single build-transform pipeline (D1): tempo compensation, folded in one
-    // place — balance code multiplies here.
-    conf = this.applyBuild(conf);
+    // A VOICED ROLE IS NOT NECESSARILY A PLAYABLE ONE, and this lookup used to
+    // assume it was. The palette (#266) lands its twelve new voices' sound and
+    // rhythm ahead of their weapon modules, so a role can sit in `tiers` while
+    // owning no gameplay whatsoever — the Sandbox puts it there, which is
+    // exactly where the palette is meant to be judged by ear. `rollOffers`
+    // already refuses to offer such a role in a run; the Sandbox deliberately
+    // does not, and this is the path that made it crash.
+    //
+    // Before the palette, supported and playable were the same set, so a
+    // non-null assertion here was true by construction. It is not any more:
+    // the weapon sounds, and it does nothing — which is precisely what the
+    // note below has always said the world should do with a moduleless role.
+    const conf = this.builtConf(t.role);
+    if (!conf) return;
     this.triggerCounts[t.role] = (this.triggerCounts[t.role] ?? 0) + 1;
 
     // A weapon owns its whole identity behind the weapon context. THE SWITCH
@@ -970,6 +1016,26 @@ export class RunWorld {
     // nothing, which is the honest answer — there is no half-owned weapon left
     // for the world to finish off.
     this.weapons.get(t.role)?.fire(this.weaponCtx.get(t.role)!, conf);
+  }
+
+  /** This weapon's per-trigger numbers at its current level, with the single
+   *  build transform already applied — or null if the role is not owned or has
+   *  no gameplay.
+   *
+   *  SHARED WITH THE TICK PATH, which is why it exists. Nearly every weapon
+   *  receives its tuning as the `conf` argument to fire(), because nearly every
+   *  weapon is driven by a chart trigger. The texture auras are not: a bed has
+   *  no trigger at all (Kit.bed), so a weapon driven by the clock instead has to
+   *  be able to ask. fireTrigger and WeaponContext.conf now read the same
+   *  lookup rather than two copies of it. */
+  private builtConf(role: Role): WeaponConf | null {
+    const tier = this.tiers.get(role);
+    if (!tier) return null;
+    const tiers = weaponTiers(role);
+    if (!tiers) return null;
+    // Single build-transform pipeline (D1): tempo compensation, folded in one
+    // place — balance code multiplies here.
+    return this.applyBuild(tiers[tier - 1]);
   }
 
   /** Add a weapon or raise its tier. The pulse fires when the change lands

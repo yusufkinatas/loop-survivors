@@ -14,10 +14,21 @@
 window.__capture = (() => {
   const e = window.loop.engine;
   const ctx = e.ctx;
-  // The soundset's eight roles. Everything else in e.voices is a retired
-  // rehearsal instrument with no ladder, and is explicitly silenced so a take
-  // can never contain a voice the game does not ship.
-  const SUPPORTED = ['kick', 'clap', 'snare', 'hat', 'bass', 'chord', 'lead', 'arp'];
+  // The roles the soundset actually ships, DERIVED rather than listed. This was
+  // a hardcoded array of the original eight, which silently made the rig
+  // incapable of capturing anything added later: every other voice was force-
+  // disabled, so a palette weapon simply never appeared in a take and the take
+  // looked fine. The palette (#266) took the band to nineteen and the list did
+  // not move.
+  //
+  // A voice is shipped if the soundset gave it a ladder. `getChart` hands back
+  // an EMPTY stand-in for a role with none rather than throwing, so the test is
+  // whether the chart has anything in it. Roles left over from the rehearsal
+  // experiments have no ladder, so they still get silenced exactly as before.
+  const SUPPORTED = [...e.voices.keys()].filter((role) => {
+    const chart = window.loop.charts.getChart(role, 1);
+    return !!chart && chart.events.length > 0;
+  });
 
   // The tap: analyser sits after the master limiter and immediately before
   // ctx.destination, so this is the signal the speakers get, not a re-render.

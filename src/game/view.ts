@@ -114,6 +114,11 @@ export type GroundPickCopy = GroundPickCopyBase & (
 
 export type GroundPickView = GroundPickCopy & { x: number; y: number };
 
+/** How long a field may go unreported before its graphic is removed. Comfortably
+ *  longer than a frame at any refresh rate, and far shorter than a player would
+ *  notice a stale outline for. */
+const AURA_GRACE_S = 0.25;
+
 interface Pop {
   gfx: Graphics;
   t: number;
@@ -123,6 +128,10 @@ interface Pop {
   death?: DeathBurst;
   holdHalf?: boolean;
   expandHalf?: boolean;
+  /** Neither scales nor fades for its whole (short) life. A weapon that is
+   *  continuously on re-emits every frame, so any animation at all would read
+   *  as a pulse — see FxEvent 'aura'. */
+  steady?: boolean;
 }
 
 interface DeathFragment {
@@ -453,6 +462,12 @@ export class RunView {
    *  semantics differ: these are grants scooped one by one, not a choice that
    *  clears its siblings — and they skip the safe-zone ring. */
   private chestDropGfx: RewardGfx[] = [];
+  /** Persistent aura graphics, one per field key. Never routed through `pops`:
+   *  a pop has a lifetime, and anything with a lifetime leaves a trail when the
+   *  thing it is drawing moves. */
+  private auras = new Map<string, { gfx: Graphics; radius: number; lastSeen: number }>();
+  /** Monotonic view clock, used only to age auras out. */
+  private auraClock = 0;
   private pops: Pop[] = [];
   private floaters: Floater[] = [];
   private live = new Set<object>();
@@ -682,8 +697,20 @@ export class RunView {
   }
 
   update(dt: number, realDt = dt): void {
+    this.auraClock += realDt;
     for (const fx of this.world.fx ?? []) this.spawnFx(fx);
     if (this.world.fx) this.world.fx.length = 0;
+    // AGED OUT, NOT DROPPED ON THE FIRST QUIET FRAME. The world runs on a fixed
+    // timestep behind a variable frame rate, so on a fast display plenty of
+    // rendered frames take ZERO sim steps and therefore report no fields at all.
+    // Destroying an aura the moment it misses one frame meant recreating it the
+    // next — a one-frame hole, every other frame, which reads as the field
+    // flickering. Only a field that has genuinely stopped reporting goes.
+    for (const [key, aura] of this.auras) {
+      if (this.auraClock - aura.lastSeen < AURA_GRACE_S) continue;
+      aura.gfx.destroy();
+      this.auras.delete(key);
+    }
 
     const player = this.world.player;
     const cameraX = player.x + PLAYER_FOOT_OFFSET.x;
@@ -744,6 +771,8 @@ export class RunView {
     this.enemyGfx.clear();
     this.dummyLabels.clear();
     this.projectileGfx.clear();
+    for (const aura of this.auras.values()) aura.gfx.destroy();
+    this.auras.clear();
     this.zoneGfx.clear();
     this.gemGfx.clear();
     this.musicNoteGfx.clear();
@@ -1499,6 +1528,49 @@ export class RunView {
         this.pops.push({ gfx, t: 0, dur: fx.dur, fromScale: 1, toScale: 1.08 });
         break;
       }
+      case 'aura': {
+        // ONE GRAPHIC PER FIELD, MOVED — never a new one per frame. A field
+        // attached to the player has to BE one object that travels with them;
+        // spawning a fresh effect each frame leaves the older copies standing
+        // where they were emitted, which reads as the aura being dragged along
+        // a step behind. Only the geometry is rebuilt, and only when the radius
+        // actually changes, so following the player costs a position write.
+        let aura = this.auras.get(fx.key);
+        if (!aura) {
+          const gfx = new Graphics({ roundPixels: true });
+          gfx.tint = fx.color;
+          this.fxLayer.addChild(gfx);
+          aura = { gfx, radius: -1, lastSeen: this.auraClock };
+          this.auras.set(fx.key, aura);
+        }
+        aura.lastSeen = this.auraClock;
+        if (aura.radius !== fx.radius) {
+          aura.radius = fx.radius;
+          aura.gfx.clear();
+          // THESE ALPHAS ARE FOR A SINGLE DRAW, and that is the whole story of
+          // how they got here. The per-frame version stacked about six copies of
+          // itself, so its published alphas (0.035 fill, 0.30 stroke) were only
+          // a sixth of what actually reached the screen — the composite was
+          // roughly 0.19 and 0.88, and that composite is the look that was
+          // approved. Now that there is exactly one graphic, the numbers have to
+          // be the composite rather than the ingredient, or the field all but
+          // disappears.
+          //
+          // A field that is on for the whole run still has to sit under the
+          // action: the outline carries it, because what makes a hitbox legible
+          // is a hard edge at an exact radius, and the fill stays a tint.
+          aura.gfx.poly(regularPixelPoly(20, fx.radius, Math.PI / 20))
+            .fill({ color: 0xffffff, alpha: 0.15 });
+          aura.gfx.poly(regularPixelPoly(20, fx.radius, Math.PI / 20))
+            .stroke({ width: 2, color: 0xffffff, alpha: 0.8 });
+          for (let i = 0; i < 8; i++) {
+            const angle = i * Math.PI / 4;
+            pixelDiamond(aura.gfx, Math.cos(angle) * fx.radius, Math.sin(angle) * fx.radius, 2, 0xffffff, 0.9);
+          }
+        }
+        aura.gfx.position.set(snap(fx.x), snap(fx.y));
+        break;
+      }
       case 'vacuum': {
         const colors = [SOUNDWOOD.cyanHot, SOUNDWOOD.magenta];
         for (let i = 0; i < colors.length; i++) {
@@ -1559,6 +1631,11 @@ export class RunView {
         gfx.tint = fx.color;
         gfx.blendMode = 'add';
         gfx.position.set(snap(fx.x), snap(fx.y));
+        // The whole sweep turned on its side. Rotating the finished graphic
+        // keeps every detail of the horizontal one — the taper, the streak
+        // ticks, the head diamond — rather than reimplementing it on the other
+        // axis and drifting from it.
+        gfx.rotation = fx.vertical ? Math.PI / 2 : 0;
         gfx.scale.set(0);
         this.fxLayer.addChild(gfx);
         this.pops.push({
@@ -1623,9 +1700,13 @@ export class RunView {
         gfx.tint = fx.color;
         gfx.position.set(snap(fx.x), snap(fx.y));
         gfx.rotation = Math.atan2(dy, dx);
-        gfx.blendMode = 'add';
+        // Additive only for a one-shot. A steady beam is redrawn every frame, so
+        // adding it to itself would blow out to white within a few frames.
+        gfx.blendMode = fx.steady ? 'normal' : 'add';
         this.fxLayer.addChild(gfx);
-        this.pops.push({ gfx, t: 0, dur: 0.24, fromScale: 1, toScale: 1.04 });
+        this.pops.push(fx.steady
+          ? { gfx, t: 0, dur: fx.dur ?? 0.1, fromScale: 1, toScale: 1, steady: true }
+          : { gfx, t: 0, dur: fx.dur ?? 0.24, fromScale: 1, toScale: 1.04 });
         break;
       }
       case 'pressure': {
@@ -1697,6 +1778,9 @@ export class RunView {
       if (pop.death) {
         redrawDeathBurst(pop.gfx, pop.death, progress);
         pop.gfx.alpha = Math.pow(1 - progress, 0.7);
+      } else if (pop.steady) {
+        // Deliberately untouched: a steady field is replaced every frame, so
+        // fading or scaling it would show up as flicker rather than as motion.
       } else {
         pop.gfx.alpha = pop.holdHalf
           ? progress < 0.5 ? 1 : (1 - progress) * 2

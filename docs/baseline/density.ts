@@ -6,12 +6,18 @@
 // reports that branch's numbers and the two sets stay comparable.
 
 import { SOUNDSET_LADDERS } from '../../src/audio/ladders/house';
+import { PALETTE_ROLES } from '../../src/audio/kits';
 import { chartStageForLevel, WEAPON_MAX_LEVEL } from '../../src/game/weapons/levels';
 import { xpForNextLevel } from '../../src/game/config';
 import { BUILD } from '../../src/game/config';
+import type { Role } from '../../src/audio/kits';
 
-const ROLES = ['kick', 'clap', 'snare', 'hat', 'bass', 'chord', 'lead', 'arp'] as const;
-type R = (typeof ROLES)[number];
+// DERIVED, not listed. This was a hardcoded array of the original eight, which
+// meant a branch that widened the band reported the old numbers and looked
+// unchanged — the palette (#266) took it to nineteen and this table would have
+// quietly ignored eleven of them. Seat order, so the table reads as the band.
+const ROLES = PALETTE_ROLES.filter((role) => SOUNDSET_LADDERS[role] !== undefined);
+type R = Role;
 
 const chartFor = (role: R, stage: number) => SOUNDSET_LADDERS[role]![stage - 1];
 const perBar = (role: R, stage: number) => {

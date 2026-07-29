@@ -3,14 +3,24 @@
 
 import type { Role } from '../../audio/kits';
 import { WEAPONS, type WeaponConf } from '../config';
+import { AIR, PAD } from './auras';
 import { ARP } from './arp';
+import { BELL } from './bell';
 import { BASS } from './bass';
+import { CHANK } from './chank';
 import { CHORD } from './chord';
+import { DRONE } from './drone';
+import { FLUTE } from './flute';
 import { CLAP } from './clap';
 import { HAT } from './hat';
 import { KICK } from './kick';
 import { LEAD } from './lead';
+import { ORGAN } from './organ';
+import { RHODES } from './rhodes';
+import { SHAKER } from './shaker';
 import { SNARE } from './snare';
+import { SUB } from './sub';
+import { UPRIGHT } from './upright';
 import type { WeaponModule } from './module';
 
 export type { WeaponContext, WeaponTarget } from './context';
@@ -27,6 +37,11 @@ export { KICK } from './kick';
  *  TickPhase decides; array order never overrides it. */
 export const WEAPON_MODULES: readonly WeaponModule[] = [
   KICK, ARP, SNARE, HAT, BASS, CHORD, LEAD, CLAP,
+  // The palette (#266). APPENDED, never interleaved: array order is the tick
+  // order within a phase and is behavioral, so inserting one of these among the
+  // original eight would reorder their damage and with it the run's rng stream.
+  // The control's eight must keep resolving in exactly the order they did.
+  SUB, UPRIGHT, DRONE, RHODES, ORGAN, CHANK, BELL, FLUTE, SHAKER, PAD, AIR,
 ];
 
 const BY_ROLE = new Map<Role, WeaponModule>(WEAPON_MODULES.map((m) => [m.role, m]));
@@ -36,4 +51,12 @@ const BY_ROLE = new Map<Role, WeaponModule>(WEAPON_MODULES.map((m) => [m.role, m
  *  module owns. */
 export function weaponTiers(role: Role): readonly WeaponConf[] | undefined {
   return BY_ROLE.get(role)?.stats.tiers ?? WEAPONS[role];
+}
+
+/** Whether a role has any gameplay at all. A role can be VOICED without being
+ *  playable: the palette (#266) lands its twelve new sounds and rhythms ahead
+ *  of their weapon modules, and in between, such a role would otherwise be
+ *  offered as a hire that deals no damage. `rollOffers` gates on this. */
+export function hasWeaponModule(role: Role): boolean {
+  return BY_ROLE.has(role);
 }

@@ -2,6 +2,11 @@
 // in docs/baseline/audio/, skipping the Downloads folder and its save prompts.
 //
 //   node docs/baseline/receiver.mjs
+//   node docs/baseline/receiver.mjs --out docs/palette-control
+//
+// `--out` is a repo-relative directory to write into; it defaults to this one.
+// A prototype branch takes its own comparable set and must not overwrite the
+// reference the comparison is against.
 //
 // Developer tooling, run by hand. Nothing in the game talks to it.
 
@@ -10,7 +15,11 @@ import { writeFile, mkdir } from 'node:fs/promises';
 import { dirname, join, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const ROOT = dirname(fileURLToPath(import.meta.url));
+const HERE = dirname(fileURLToPath(import.meta.url));
+const outArg = process.argv.indexOf('--out');
+const ROOT = outArg >= 0 && process.argv[outArg + 1]
+  ? join(HERE, '..', '..', process.argv[outArg + 1])
+  : HERE;
 const AUDIO = join(ROOT, 'audio');
 await mkdir(AUDIO, { recursive: true });
 

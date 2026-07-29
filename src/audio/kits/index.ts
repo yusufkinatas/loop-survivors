@@ -14,6 +14,7 @@ import {
   type AudioSetSample,
 } from '../audio-sets';
 import { buildAfterhoursKit } from './afterhours';
+import { buildPaletteKit } from './palette';
 
 /** The roles that are sample-backed (their own real voicing). The dev-only
  *  ★ custom badge marks these on offers so they are easy to focus on. */
@@ -111,8 +112,13 @@ export function buildSoundsetKit(
   const key = `${set.id}:${rootHz}`;
   let pending = cache.get(key);
   if (!pending) {
-    pending = buildAfterhoursKit(rootHz)
-      .then(async (kit) => {
+    pending = Promise.all([buildAfterhoursKit(rootHz), buildPaletteKit()])
+      .then(async ([kit, palette]) => {
+        // The palette's twelve voices (#266) are merged in BEFORE the drum
+        // overlay, in that order deliberately: the overlay only ever touches
+        // roles the selected sample set names, and it must be able to replace a
+        // palette voice too if a set ever ships one.
+        for (const [role, voice] of palette) kit.set(role, voice);
         await overlaySamples(kit, set.id);
         return kit;
       })

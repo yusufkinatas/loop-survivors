@@ -8,7 +8,7 @@ import { TIER_COUNT, type Chart, type ChartEvent } from './charts';
 import { getChart } from './chartstore';
 import { SOUNDSET } from './soundset';
 import { SKELETON, STEPS_PER_BAR, STEPS_PER_PHRASE, semitonesToRate } from './scale';
-import { softClipCurve, type Kit, type Role } from './kits';
+import { nearestZone, softClipCurve, type Kit, type Role } from './kits';
 import { buildSoundsetKit } from './kits/index';
 import {
   DEFAULT_AUDIO_SET_ID,
@@ -60,6 +60,11 @@ export interface Voice {
   /** The most recent trigger's nodes, so choked kits can cut it. */
   lastHit: VoiceHit | null;
   evolved: boolean;
+  /** A BED's one continuous looping source, and the gain its level rides on.
+   *  Null while the bed is off. Only texture voices ever have these; every
+   *  other voice makes sound only through `trigger`. */
+  bedSource: AudioBufferSourceNode | null;
+  bedGain: GainNode | null;
 }
 
 /** A trigger that has been scheduled. Dispatched to listeners by update()
@@ -119,6 +124,16 @@ function canDispatchPhraseBoundary(
 // Free per-hit engine nudges: the first of the three variation layers.
 const HUMANIZE_GAIN = 0.12; // +/- proportional
 const HUMANIZE_CENTS = 8; // +/- pitch, applied only to unpitched kits
+
+/** Seconds a bed takes to fade in or out. Long enough that switching a
+ *  background sound on or off is never an event you notice happening. */
+const BED_FADE_S = 0.6;
+
+/** How present a bed is at each ladder rung. A bed buys PRESENCE with levels
+ *  where every other voice buys notes — see Kit.bed. The top rung is still only
+ *  unity on an already very quiet file (the fetch tool seats the beds around
+ *  -38 dB), because a background that competes with the band is not one. */
+const BED_LEVEL_BY_TIER = [0.45, 0.62, 0.8, 1] as const;
 
 // Kick-ducks-bass sidechain (the band, design rule 1): on each kick the bass
 // voice dips to DUCK_DEPTH (~-6 dB) over DUCK_ATTACK and recovers by
@@ -260,6 +275,8 @@ export class MusicEngine {
         override: null,
         lastHit: null,
         evolved: false,
+        bedSource: null,
+        bedGain: null,
       });
     }
 
@@ -288,6 +305,15 @@ export class MusicEngine {
       // A sampled pitched voice carries a tune to align its recorded root to
       // the A reference; synth kits and drums are 0.
       voice.tune = k?.tune ?? 0;
+      // A bed already running on the builtin buffer must be restarted on the
+      // real one; the kit loads after the voices are constructed.
+      if (voice.kit.bed && voice.bedSource) {
+        const running = voice.bedSource;
+        voice.bedSource = null;
+        voice.bedGain = null;
+        running.stop();
+        this.syncBed(voice);
+      }
     }
   }
 
@@ -517,7 +543,75 @@ export class MusicEngine {
 
   setVoiceEnabled(role: Role, on: boolean): void {
     const voice = this.voices.get(role);
-    if (voice) voice.enabled = on;
+    if (!voice) return;
+    voice.enabled = on;
+    this.syncBed(voice);
+  }
+
+  /** The audio time of the next phrase boundary, or null if the transport has
+   *  not scheduled one yet (nothing is playing, or the clock just started). */
+  private nextPhraseTime(): number | null {
+    const now = this.ctx.currentTime;
+    return this.stepMarkers.find(
+      (marker) => marker.time > now && marker.step % STEPS_PER_PHRASE === 0,
+    )?.time ?? null;
+  }
+
+  /** Start, level or stop a bed to match its voice's state.
+   *
+   *  Idempotent and safe to call from anywhere that changes `enabled`, `tier` or
+   *  the active buffers. Switching a bed OFF fades before stopping: a background
+   *  sound that vanishes on a frame boundary clicks, and the first pass had
+   *  exactly that bug in a worse form — disabling a texture voice left its
+   *  chart-started source looping forever, which is why the drone "keeps looping
+   *  weirdly" when it was switched off in the Sandbox. */
+  private syncBed(voice: Voice): void {
+    if (!voice.kit.bed) return;
+    const now = this.ctx.currentTime;
+    const wantOn = voice.enabled;
+
+    if (!wantOn) {
+      const { bedSource, bedGain } = voice;
+      voice.bedSource = null;
+      voice.bedGain = null;
+      if (!bedSource || !bedGain) return;
+      bedGain.gain.cancelScheduledValues(now);
+      bedGain.gain.setTargetAtTime(0, now, BED_FADE_S / 3);
+      bedSource.stop(now + BED_FADE_S);
+      return;
+    }
+
+    if (!voice.bedSource) {
+      const buffer = voice.activeSamples.get(voice.kit.defaultVariant)
+        ?? voice.activeSamples.values().next().value;
+      if (!buffer) return;
+      const src = this.ctx.createBufferSource();
+      src.buffer = buffer;
+      src.loop = true;
+      const g = this.ctx.createGain();
+      g.gain.value = 0;
+      src.connect(g).connect(voice.gain);
+      // A COMPOSED bed starts on a bar line, from its own beginning. Its file is
+      // a whole number of bars of actual music, so phase matters: begun at an
+      // arbitrary instant it would keep the tempo and lose the downbeat, and
+      // every chord change would land at some fixed offset into the bar.
+      //
+      // A bed with no musical length (a noise floor) does the opposite and
+      // starts at a RANDOM offset, so two runs never open on the same instant of
+      // the same recording.
+      if (voice.kit.bedBars) {
+        src.start(this.nextPhraseTime() ?? now);
+      } else {
+        src.start(now, Math.random() * buffer.duration);
+      }
+      voice.bedSource = src;
+      voice.bedGain = g;
+    }
+    // Level rides the ladder: a bed gets MORE PRESENT as the weapon levels
+    // rather than busier, which is the texture seat's whole departure from
+    // every other voice in the game.
+    const level = BED_LEVEL_BY_TIER[Math.max(1, Math.min(TIER_COUNT, voice.tier)) - 1];
+    voice.bedGain!.gain.setTargetAtTime(level, now, BED_FADE_S / 3);
   }
 
   /** Put a voice on a ladder tier: swaps its chart for the tier's working
@@ -527,6 +621,7 @@ export class MusicEngine {
     if (!voice) return;
     voice.tier = Math.max(1, Math.min(TIER_COUNT, tier));
     voice.chart = getChart(role, voice.tier);
+    this.syncBed(voice);
   }
 
   setVoiceGain(role: Role, value: number): void {
@@ -785,7 +880,20 @@ export class MusicEngine {
     dispatchGameplay = true,
     gainMul = 1,
   ): void {
-    const variant = ev.variant ?? voice.kit.defaultVariant;
+    // A BED IS NOT PLAYED BY THE SEQUENCER. It has no notes: `syncBed` runs one
+    // continuous looping source for as long as the weapon is owned. Returning
+    // here is what stops the ear hearing a background sound BEGIN on a grid
+    // step, which was the whole complaint about the first pass.
+    if (voice.kit.bed) return;
+
+    // MULTI-SAMPLED voices pick their recording by pitch, not by chart variant:
+    // the zone nearest the wanted note plays, and only the small remainder is
+    // shifted. Everything else keeps the original path exactly — one buffer per
+    // variant, the whole note shifted — so the control's eight voices are
+    // untouched by this branch.
+    const zones = voice.kit.zones;
+    const zone = zones?.length ? nearestZone(zones, ev.note ?? 0) : undefined;
+    const variant = zone?.variant ?? ev.variant ?? voice.kit.defaultVariant;
     const buffer =
       voice.override ??
       voice.activeSamples.get(variant) ??
@@ -797,7 +905,11 @@ export class MusicEngine {
     this.activeSources.add(src);
     src.addEventListener('ended', () => this.activeSources.delete(src), { once: true });
 
-    let rate = semitonesToRate((ev.note ?? 0) + voice.tune);
+    // A zone has already covered the distance to its own root, so only what is
+    // left over gets shifted. Playing the full note here would double-count it
+    // and put every multi-sampled voice wildly out of tune.
+    const wanted = (ev.note ?? 0) - (zone?.rootSemitone ?? 0);
+    let rate = semitonesToRate(wanted + voice.tune);
     if (!voice.kit.pitched) {
       rate *= semitonesToRate(((Math.random() * 2 - 1) * HUMANIZE_CENTS) / 100);
     }

@@ -16,6 +16,7 @@ import {
   ENEMY_LABELS,
   type EnemyKind,
 } from './config';
+import { hasWeaponModule } from './weapons';
 import {
   TUNABLE_FIELDS,
   enemyStats,
@@ -353,8 +354,18 @@ export function mountSandboxPanel(
   // Build: all supported weapons, all passives, every complete evolution.
 
   section(build, 'band controls');
-  const instrumentNames = SANDBOX_WEAPON_CATALOG.map((role) => ROLE_META[role].name);
+  // A voice with no weapon module is SOUND ONLY: it plays its part and deals no
+  // damage. The palette (#266) lands sound and rhythm ahead of gameplay, and
+  // this panel is where the band is judged by ear, so those voices belong here
+  // — but silently doing nothing in the world reads as a bug rather than as a
+  // stage of the work. Marked with a degree sign and named below.
+  const soundOnly = SANDBOX_WEAPON_CATALOG.filter((role) => !hasWeaponModule(role));
+  const label = (role: Role) => ROLE_META[role].name + (hasWeaponModule(role) ? '' : '°');
+  const instrumentNames = SANDBOX_WEAPON_CATALOG.map(label);
   el('div', 'sb-hint', build, `${instrumentNames.length} live weapons: ${instrumentNames.join(', ')}`);
+  if (soundOnly.length > 0) {
+    el('div', 'sb-hint', build, `° ${soundOnly.length} voiced but not yet playable: they sound and deal no damage.`);
+  }
   const bandControls = el('div', 'sb-btns sb-controls', build);
   bandControls.style.marginLeft = '0';
   button(bandControls, `FULL BAND ${TIER_NUMERALS[WEAPON_MAX_LEVEL - 1]}`, () => {
@@ -405,9 +416,20 @@ export function mountSandboxPanel(
         button: button(controls, TIER_NUMERALS[tier - 1], () => setWeaponTier(role, tier)),
       });
     }
+    // REGISTERED BEFORE THE EVOLUTION RUNG, and that ordering is the whole bug
+    // this line once caused. `weaponButtons.set` used to sit at the bottom of
+    // this block, below an early `continue` for weapons with no evolution — so
+    // such a weapon was never added to the map, `refresh` never synced its row,
+    // and its ladder highlighted nothing however many times it was clicked. The
+    // comment below happily explained that every weapon had an evolution
+    // "today", which stopped being true the moment the palette added eleven
+    // that do not (#266). A row's highlight must not depend on whether the
+    // weapon can evolve.
+    weaponButtons.set(role, choices);
+
     // The lookup is Partial by design, so a weapon may legitimately have no
-    // evolution. Every supported weapon has one today; if that ever changes the
-    // row simply ends after VIII rather than growing a dead button.
+    // evolution — eleven of the nineteen do not. The row then simply ends after
+    // VIII rather than growing a dead button.
     const evolution = EVOLUTION_BY_ROLE[role];
     if (!evolution) continue;
     const star = button(controls, '★', () => setWeaponEvolved(role, evolution));
@@ -419,7 +441,6 @@ export function mountSandboxPanel(
       `In a run: ${ROLE_META[role].name} at ${TIER_NUMERALS[WEAPON_MAX_LEVEL - 1]}, ` +
       `offered by the next chest. In the sandbox neither is needed.`;
     choices.options.push({ value: EVOLVED_RUNG, button: star });
-    weaponButtons.set(role, choices);
   }
 
   const buildReadout = el('div', 'sb-hint', build);

@@ -510,6 +510,34 @@ function projectileContext(pr: Projectile, evolved: boolean): GraphicsContext {
           box(g, Math.cos(a) * r * 1.8 - r * 0.2, Math.sin(a) * r * 1.8 - r * 0.2, r * 0.4, r * 0.4, 0xffffff);
         }
         break;
+      case 'upright': {
+        // A PLUCKED STRING, not a ball. The first version was a plain octagon
+        // with a bar through it and read as placeholder art. This is the shape
+        // of the gesture instead: a teardrop head with a slack string trailing
+        // behind it, still vibrating — which is also what makes the weave
+        // legible, because a shape with a back end shows you which way it is
+        // pointing as it snakes.
+        darkSilhouette(g, [
+          r * 1.9, 0, r * 0.5, r * 0.95, -r * 1.15, r * 0.34,
+          -r * 1.9, 0, -r * 1.15, -r * 0.34, r * 0.5, -r * 0.95,
+        ]);
+        g.poly([
+          r * 1.45, 0, r * 0.35, r * 0.62, -r * 0.85, r * 0.2,
+          -r * 1.4, 0, -r * 0.85, -r * 0.2, r * 0.35, -r * 0.62,
+        ].map(snap)).fill(0xffffff);
+        // The string still ringing: two short offset ticks off the tail.
+        box(g, -r * 1.55, -r * 0.5, Math.max(2, r * 0.22), r * 0.34, 0xffffff, 0.6);
+        box(g, -r * 1.05, r * 0.28, Math.max(2, r * 0.22), r * 0.34, 0xffffff, 0.6);
+        pixelDiamond(g, r * 0.75, 0, r * 0.3, SOUNDWOOD.ink);
+        break;
+      }
+      case 'flute':
+        // A long tapered dart: it curves, so its heading has to be readable at
+        // a glance or the arc looks like a glitch.
+        darkSilhouette(g, [r * 2.4, 0, -r * 0.6, r * 0.85, -r * 1.5, 0, -r * 0.6, -r * 0.85]);
+        g.poly([r * 1.95, 0, -r * 0.4, r * 0.5, -r * 1.1, 0, -r * 0.4, -r * 0.5].map(snap)).fill(0xffffff);
+        pixelDiamond(g, r * 0.5, 0, r * 0.3, SOUNDWOOD.ink);
+        break;
       case 'riser':
         g.poly([r * 1.8, 0, r * 0.35, -r, r * 0.35, -r * 0.42, -r * 1.7, -r * 0.42, -r * 1.7, r * 0.42, r * 0.35, r * 0.42, r * 0.35, r].map(snap)).fill(0xffffff);
         break;
