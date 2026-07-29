@@ -104,6 +104,10 @@ class OrganInstance implements WeaponInstance {
       width: ORGAN_STATS.halfWidth * area,
       color: ctx.color,
       steady: true,
+      // EXACTLY the beam's own life. Without this the view's default put the
+      // drawing at 0.1 s against a 0.9 s beam, so it vanished almost at once
+      // while the area kept damaging — a weapon hitting things through thin air.
+      dur: hold,
     });
   }
 

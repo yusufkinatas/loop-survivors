@@ -52,11 +52,17 @@ const CHANK_STATS: ChankStats = {
 const QUERY_PAD = 24;
 
 class ChankInstance implements WeaponInstance {
-  /** Which side the next slash lands on. Alternating is what turns a stream of
-   *  identical hits into a rhythm you can see — and it means a player standing
-   *  still is covered on both sides rather than only the one they face. */
+  /** Which way the next slash goes: up, then down. Alternating turns a stream of
+   *  identical hits into a rhythm you can see, and covers both sides of the
+   *  player rather than only the one they face. */
   private side: 1 | -1 = 1;
 
+  /** ABOVE AND BELOW, NOT LEFT AND RIGHT. Horizontally this was a kick clone —
+   *  same rectangle, same alternating sides, close in — and two weapons that
+   *  sweep the same ground are one weapon with two sounds. Turning the axis
+   *  ninety degrees is the cheapest way to make them read as different tools
+   *  and to make holding both cover more of the field than holding either
+   *  twice. */
   fire(ctx: WeaponContext, conf: WeaponConf): void {
     const p = ctx.player;
     const area = conf.area ?? 1;
@@ -65,16 +71,33 @@ class ChankInstance implements WeaponInstance {
     const dir = this.side;
     this.side = dir === 1 ? -1 : 1;
 
-    // Centred half a reach out to the chosen side, level with the player.
-    const midX = p.x + dir * reach * 0.5;
-    const midY = p.y;
+    // Centred half a reach above or below the player. The rectangle is the same
+    // shape as before with its axes swapped: long vertically, narrow across.
+    const midX = p.x;
+    const midY = p.y + dir * reach * 0.5;
     for (const e of ctx.near(midX, midY, reach * 0.5 + halfWidth + QUERY_PAD)) {
       if (e.dead) continue;
-      if (!circleIntersectsRect(e.x, e.y, e.radius, midX, midY, reach * 0.5, halfWidth)) continue;
+      if (!circleIntersectsRect(e.x, e.y, e.radius, midX, midY, halfWidth, reach * 0.5)) continue;
       ctx.damage(e, conf.damage);
       ctx.shove(e, p.x, p.y, CHANK_STATS.shove);
     }
-    ctx.fx({ type: 'whip', x: p.x, y: p.y, side: dir, area: area * (CHANK_STATS.reach / 258), color: ctx.color });
+    // Drawn as a short thick bar running the length of the cut. The whip fx is
+    // horizontal-only, which is precisely the shape this weapon is moving away
+    // from.
+    ctx.fx({
+      type: 'beam',
+      x: p.x,
+      y: p.y,
+      x2: p.x,
+      y2: p.y + dir * reach,
+      width: halfWidth * 0.8,
+      color: ctx.color,
+      steady: true,
+      // Longer than the slash needs, deliberately: at seven cuts a bar the
+      // individual swings blur together anyway, and a flicker that short reads
+      // as noise rather than as an attack.
+      dur: 0.2,
+    });
   }
 
   /** Resolves entirely inside fire(); nothing is scheduled. The side flag is

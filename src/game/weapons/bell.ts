@@ -20,6 +20,13 @@ interface BellStats extends WeaponStats {
   readonly windUpS: number;
   /** How far out it will look for something to hit. */
   readonly range: number;
+  /** How many bodies the pick even considers, nearest first. Past this many the
+   *  ones cut are always the farthest. */
+  readonly pickCandidates: number;
+  /** Bias of the weighted pick. Above 1 favours the near candidates, so the
+   *  strike is usually close and occasionally long — the same shape of choice
+   *  the chord's throw makes. */
+  readonly pickFalloffPower: number;
   readonly shove: number;
 }
 
@@ -46,6 +53,8 @@ const BELL_STATS: BellStats = {
   ],
   windUpS: 0.32,
   range: AIM_RANGE,
+  pickCandidates: 16,
+  pickFalloffPower: 2,
   shove: 26,
 };
 
@@ -61,9 +70,20 @@ class BellInstance implements WeaponInstance {
   private pending: PendingStrike[] = [];
 
   fire(ctx: WeaponContext, conf: WeaponConf): void {
-    // Nearest body, not a random one: a sparse weapon that misses is a weapon
-    // that does nothing for two bars.
-    const [target] = ctx.nearestEnemies(BELL_STATS.range, 1);
+    // A WEIGHTED RANDOM PICK, not always the nearest. Always striking the
+    // closest body made this weapon predictable and redundant — everything else
+    // in a build is already hitting whatever is nearest, so a sparse heavy hit
+    // spent itself on a target that was about to die anyway. Picking among the
+    // near candidates, biased toward the close ones, is how the chord chooses
+    // where to throw, and it gives this weapon the same useful property: it
+    // reaches past the front rank often enough to matter.
+    const candidates = ctx.nearestEnemies(BELL_STATS.range, BELL_STATS.pickCandidates);
+    const target = candidates.length
+      ? candidates[Math.min(
+          candidates.length - 1,
+          Math.floor(Math.pow(ctx.rng(), BELL_STATS.pickFalloffPower) * candidates.length),
+        )]
+      : undefined;
     const p = ctx.player;
     const x = target?.x ?? p.x;
     const y = target?.y ?? p.y;

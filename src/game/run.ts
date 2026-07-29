@@ -557,6 +557,10 @@ export type FxEvent =
        *  white, which is exactly what the organ's beam did. A weapon that draws
        *  itself continuously must say so. */
       steady?: boolean;
+      /** How long the drawn beam lasts. A steady beam that outlives its emitter
+       *  flickers; one that dies first leaves the weapon damaging an area
+       *  nothing is drawn on. Defaults are for one-shots. */
+      dur?: number;
     }
   | { type: 'pressure'; x: number; y: number; color: number; label: string }
   | { type: 'evolution'; x: number; y: number; color: number; label: string };

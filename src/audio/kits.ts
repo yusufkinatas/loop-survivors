@@ -848,7 +848,10 @@ export const ROLE_META: Record<Role, RoleMeta> = {
   // ---- The palette (#266) --------------------------------------------------
   // Low anchor. All three choke: two low notes ringing together is the one
   // overlap that reliably turns into mud rather than into two instruments.
-  sub: { name: 'Sub', color: '#6247c9', pitched: true, choke: true, variants: ['sub'] },
+  // Bright violet, not the near-navy it started as. Its weapon draws a thin
+  // curved front on a dark floor, and #6247c9 had almost no contrast against
+  // the arena — the wave was there and could barely be seen.
+  sub: { name: 'Sub', color: '#9b7cff', pitched: true, choke: true, variants: ['sub'] },
   upright: { name: 'Upright', color: '#c98a5a', pitched: true, choke: true, variants: ['upright'] },
   drone: { name: 'Drone', color: '#4b3f8f', pitched: true, choke: true, variants: ['drone'] },
 

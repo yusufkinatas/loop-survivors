@@ -1,11 +1,11 @@
-// The Upright weapon module: a shot that BOUNCES along the ground, hopping
-// through the crowd.
+// The Upright weapon module: a shot that SNAKES, weaving across its aim line.
 //
 // LED BY THE SOUND (#266). The upright is a plucked acoustic bass playing
-// walking quarters — one note per beat, stepping. The gameplay is that walk
-// made visible: a shot that hops rather than flies, landing between bodies and
-// picking up whatever it touches on the way. Nothing else in the game moves
-// like this, which is the floor rule satisfied by motion rather than by shape.
+// walking quarters — one note per beat, and a thick string that keeps moving
+// after it is let go. The gameplay is that sway made visible: a shot that
+// weaves rather than flies, sweeping a wider band than it was pointed at and
+// catching bodies either side of the line. Nothing else in the game moves like
+// this, which is the floor rule satisfied by motion rather than by shape.
 //
 // It steers itself but keeps the shared loop's travel: `steer` returns false,
 // so the world still moves it and still runs the arena rails. All this module
@@ -19,12 +19,12 @@ import type { ProjectileBehavior, WeaponInstance, WeaponModule, WeaponStats } fr
 interface UprightStats extends WeaponStats {
   /** Aim jitter, radians. Small — this is a walking line, not a spray. */
   readonly aimSpread: number;
-  /** Hops per second. Tuned against the soundset's 122 bpm so the bounce reads
-   *  as roughly one hop per beat: it looks like it is walking in time. */
-  readonly hopHz: number;
-  /** Slowest point of the gait, as a fraction of the tier's speed. Never zero:
-   *  a shot that fully stops reads as stuck rather than as stepping. */
-  readonly hopFloor: number;
+  /** Weaves per second. Tuned against the soundset's 122 bpm so the shot sways
+   *  roughly once per beat — it snakes in time with what you are hearing. */
+  readonly weaveHz: number;
+  /** How far the weave pushes the shot off its aim line, in radians of heading
+   *  swing. Big enough to be obviously not a straight line. */
+  readonly weaveRad: number;
   /** Knock distance on a hit. Modest: this weapon wants bodies to stay put so
    *  the next hop lands on them too. */
   readonly shove: number;
@@ -52,8 +52,8 @@ const UPRIGHT_STATS: UprightStats = {
     'maximum reach',
   ],
   aimSpread: 0.05,
-  hopHz: 122 / 60,
-  hopFloor: 0.35,
+  weaveHz: 122 / 60,
+  weaveRad: 0.85,
   shove: 10,
 };
 
@@ -69,29 +69,33 @@ class UprightInstance implements WeaponInstance {
   reset(): void {}
 
   readonly projectile: ProjectileBehavior = {
-    /** Adds the hop and lets the shared loop do the travelling.
+    /** THE SHOT SNAKES. Every other projectile in the game travels in a straight
+     *  line or homes; this one weaves side to side across its aim line, so it
+     *  sweeps a wider band than it is pointed at and reads as a different object
+     *  the moment it leaves the player.
      *
-     *  THE HOP IS IN THE SPEED, NOT IN A DRAW OFFSET. A top-down field has no
-     *  "up" to bounce into, and faking one would mean the view learning a new
-     *  per-weapon offset. Modulating how fast the shot travels does the same job
-     *  honestly: it surges, lands, surges again, so it visibly steps through the
-     *  crowd instead of sliding. It also changes where the shot IS at any moment,
-     *  which means the hop affects what it hits rather than only how it looks.
+     *  The first version modulated SPEED instead, to suggest a walking gait —
+     *  which was almost invisible in play, because a shot that speeds up and
+     *  slows down still draws a straight line.
      *
-     *  Returns false: the shared loop still moves it and still runs the arena
-     *  rails, exactly as for the snare. Only the velocity was adjusted. */
-    steer(ctx: WeaponContext, pr: Projectile): boolean {
+     *  Implemented as a swing of the HEADING rather than a drawn offset, so the
+     *  weave changes where the shot actually is and therefore what it hits.
+     *  Returns false: the shared loop still travels it and still runs the arena
+     *  rails, exactly as for the snare. */
+    steer(ctx: WeaponContext, pr: Projectile, dt: number): boolean {
       const speed = Math.hypot(pr.vx, pr.vy);
       if (speed <= 0) return false;
-      const phase = pr.age * UPRIGHT_STATS.hopHz * Math.PI * 2;
-      // Absolute sine: a walk touches down and pushes off again; it never
-      // reverses. Scaled around the shot's own base speed so the average pace
-      // stays the tier's `speed` and only the gait changes.
-      const gait = UPRIGHT_STATS.hopFloor
-        + (1 - UPRIGHT_STATS.hopFloor) * Math.abs(Math.sin(phase));
-      const scale = (pr.speed * gait) / speed;
-      pr.vx *= scale;
-      pr.vy *= scale;
+      const w = UPRIGHT_STATS.weaveHz * Math.PI * 2;
+      // The derivative of a sine sway: turn hardest at the crossings and not at
+      // all at the extremes, which is what makes the path a smooth S rather
+      // than a zigzag.
+      const turn = UPRIGHT_STATS.weaveRad * w * Math.cos(pr.age * w) * dt;
+      const cos = Math.cos(turn);
+      const sin = Math.sin(turn);
+      const vx = pr.vx * cos - pr.vy * sin;
+      const vy = pr.vx * sin + pr.vy * cos;
+      pr.vx = vx;
+      pr.vy = vy;
       void ctx;
       return false;
     },

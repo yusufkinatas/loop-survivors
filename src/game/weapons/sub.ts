@@ -13,11 +13,17 @@
 // same as the evolved version of the base right now ... I don't think sub makes
 // a unique gameplay."
 //
-// A wall is the fix, and it is truer to the sound anyway. A sub is not a pulse
+// A wave is the fix, and it is truer to the sound anyway. A sub is not a pulse
 // around a point, it is a pressure front moving THROUGH a room — you feel it
 // arrive and pass. So this one leaves the player, travels in the direction they
 // are facing, and clears a lane. It is directional where Subquake is
 // omnidirectional, which makes aiming it the decision Subquake never asks for.
+//
+// AND IT IS A CURVED FRONT, NOT A STRAIGHT BAR. The first version drew a rigid
+// rectangle sliding across the floor, which read as a girder rather than as
+// pressure — "make it look like a wave going, instead of a wall going". A real
+// front bows: it expands away from where it started, so it is an ARC whose
+// radius grows, drawn as a run of short segments laid tangent to that curve.
 
 import type { WeaponConf } from '../config';
 import type { WeaponContext, WeaponTarget } from './context';
@@ -29,6 +35,11 @@ interface SubStats extends WeaponStats {
   readonly speed: number;
   /** How far it goes before dissipating. */
   readonly travel: number;
+  /** Half the angular width of the wave, in radians. This is what keeps it a
+   *  directional front rather than Subquake's full ring. */
+  readonly halfAngle: number;
+  /** Segments the curve is drawn with. Enough that it reads as curved. */
+  readonly segments: number;
   /** Knock distance on the bodies the front passes through. The heaviest in the
    *  game: a voice this sparse earns a big physical result per trigger, and
    *  being shoved ALONG the wall's travel is what makes the lane clear. */
@@ -36,7 +47,8 @@ interface SubStats extends WeaponStats {
 }
 
 const SUB_STATS: SubStats = {
-  // `radius` is the wall's half-width — how wide a lane it clears.
+  // `radius` is unused by this weapon's geometry: the wave's width is angular
+  // (SUB_STATS.halfAngle) and its depth is fixed, so growth is all in damage.
   tiers: [
     { damage: 14, radius: 78 },
     { damage: 17, radius: 78 },
@@ -59,19 +71,21 @@ const SUB_STATS: SubStats = {
   ],
   speed: 340,
   travel: 520,
+  halfAngle: 0.62,
+  segments: 7,
   shove: 54,
 };
 
 /** One pressure front in flight. */
 interface Front {
-  /** Where it started, and the direction it is going. */
+  /** Where it started. The wave expands away from this point, so the origin is
+   *  the centre of its curve and never moves. */
   x: number;
   y: number;
-  dx: number;
-  dy: number;
-  /** How far it has travelled from the origin. */
-  distance: number;
-  halfWidth: number;
+  /** Heading, as an angle — the middle of the arc. */
+  angle: number;
+  /** How far the front has travelled from the origin: the arc's radius. */
+  radius: number;
   damage: number;
   shove: number;
   /** Bodies the front has already passed through. It hits each once, as it
@@ -79,10 +93,9 @@ interface Front {
   hit: Set<WeaponTarget>;
 }
 
-/** Half-thickness of the moving front, in world units. Thin: the wall is wide
- *  across its travel and shallow along it, which is what makes it a front
- *  rather than a box. */
-const FRONT_DEPTH = 26;
+/** Half-thickness of the front, in world units. Thin: the wave is wide across
+ *  and shallow through, which is what makes it a front rather than a blob. */
+const FRONT_DEPTH = 30;
 const QUERY_PAD = 24;
 
 class SubInstance implements WeaponInstance {
@@ -94,10 +107,10 @@ class SubInstance implements WeaponInstance {
     this.fronts.push({
       x: p.x,
       y: p.y,
-      dx: dir.x,
-      dy: dir.y,
-      distance: 0,
-      halfWidth: conf.radius!,
+      angle: Math.atan2(dir.y, dir.x),
+      // Starts out from the player rather than at zero: a wave born at radius 0
+      // is a point, and its first frames would be a dot rather than a curve.
+      radius: 40,
       damage: conf.damage,
       shove: SUB_STATS.shove * ctx.buildMods.knockbackMul,
       hit: new Set(),
@@ -114,47 +127,55 @@ class SubInstance implements WeaponInstance {
   tick(ctx: WeaponContext, dt: number): void {
     for (let i = this.fronts.length - 1; i >= 0; i--) {
       const front = this.fronts[i];
-      front.distance += SUB_STATS.speed * dt;
-      if (front.distance >= SUB_STATS.travel) {
+      front.radius += SUB_STATS.speed * dt;
+      if (front.radius >= SUB_STATS.travel) {
         this.fronts.splice(i, 1);
         continue;
       }
-      const cx = front.x + front.dx * front.distance;
-      const cy = front.y + front.dy * front.distance;
 
-      // Drawn as a bar ACROSS the direction of travel — the shape of the thing,
-      // redrawn every frame as it moves. The view's beam takes two endpoints,
-      // so the wall is a beam laid perpendicular to its own heading.
-      const px = -front.dy;
-      const py = front.dx;
-      ctx.fx({
-        type: 'beam',
-        x: cx - px * front.halfWidth,
-        y: cy - py * front.halfWidth,
-        x2: cx + px * front.halfWidth,
-        y2: cy + py * front.halfWidth,
-        width: FRONT_DEPTH * 0.5,
-        color: ctx.color,
-        // Steady: the wall moves, so it is redrawn every frame, and an additive
-        // redraw would stack into a white slab within a few frames.
-        steady: true,
-      });
+      // Drawn as short segments laid END TO END along the arc, each tangent to
+      // it. That is what makes the front read as curved and moving rather than
+      // as a rigid bar being pushed.
+      const steps = SUB_STATS.segments;
+      for (let n = 0; n < steps; n++) {
+        const a0 = front.angle - SUB_STATS.halfAngle + (n / steps) * SUB_STATS.halfAngle * 2;
+        const a1 = front.angle - SUB_STATS.halfAngle + ((n + 1) / steps) * SUB_STATS.halfAngle * 2;
+        ctx.fx({
+          type: 'beam',
+          x: front.x + Math.cos(a0) * front.radius,
+          y: front.y + Math.sin(a0) * front.radius,
+          x2: front.x + Math.cos(a1) * front.radius,
+          y2: front.y + Math.sin(a1) * front.radius,
+          width: FRONT_DEPTH * 0.32,
+          color: ctx.color,
+          // Steady: the wave moves, so it is redrawn every frame, and an
+          // additive redraw would stack into a solid slab within a few frames.
+          steady: true,
+          dur: 0.06,
+        });
+      }
 
-      for (const e of ctx.near(cx, cy, front.halfWidth + FRONT_DEPTH + QUERY_PAD)) {
+      const reach = front.radius + FRONT_DEPTH;
+      for (const e of ctx.near(front.x, front.y, reach + QUERY_PAD)) {
         if (e.dead || front.hit.has(e)) continue;
-        const relX = e.x - cx;
-        const relY = e.y - cy;
-        // Across the wall, and along its travel: inside the lane and inside the
-        // front's own thickness.
-        const across = Math.abs(relX * px + relY * py);
-        const along = Math.abs(relX * front.dx + relY * front.dy);
-        if (across > front.halfWidth + e.radius) continue;
-        if (along > FRONT_DEPTH + e.radius) continue;
+        const relX = e.x - front.x;
+        const relY = e.y - front.y;
+        const dist = Math.hypot(relX, relY);
+        // Inside the front's own thickness, measured from the origin...
+        if (Math.abs(dist - front.radius) > FRONT_DEPTH + e.radius) continue;
+        // ...and inside its angular span, which is what makes it directional.
+        let off = Math.atan2(relY, relX) - front.angle;
+        while (off > Math.PI) off -= Math.PI * 2;
+        while (off < -Math.PI) off += Math.PI * 2;
+        // Widen the span by the body's own size at this distance, so a big
+        // enemy clipped by the edge is still caught.
+        const slack = dist > 1 ? e.radius / dist : Math.PI;
+        if (Math.abs(off) > SUB_STATS.halfAngle + slack) continue;
         front.hit.add(e);
         ctx.damage(e, front.damage);
-        // Shoved ALONG the travel, not away from a centre: the wall pushes what
-        // it meets ahead of itself, which is what clears the lane.
-        ctx.shove(e, cx - front.dx * 40, cy - front.dy * 40, front.shove);
+        // Shoved outward from the origin: the wave pushes what it meets ahead of
+        // itself, which is what clears the ground behind it.
+        ctx.shove(e, front.x, front.y, front.shove);
       }
     }
   }

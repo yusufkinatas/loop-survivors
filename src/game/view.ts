@@ -1508,12 +1508,17 @@ export class RunView {
         // outline at the exact damage radius plus a faint fill, drawn flat with
         // no blend so overlapping frames cannot brighten it.
         const gfx = new Graphics({ roundPixels: true });
-        gfx.poly(regularPixelPoly(20, fx.radius, Math.PI / 20)).fill({ color: 0xffffff, alpha: 0.1 });
+        // FAINT. A field that is on for the whole run has to sit under the
+        // action rather than over it — at the first pass's opacity two of them
+        // washed the floor out completely. The outline still reads because it is
+        // a hard edge at an exact radius, which is what makes a hitbox legible;
+        // the fill is barely a tint.
+        gfx.poly(regularPixelPoly(20, fx.radius, Math.PI / 20)).fill({ color: 0xffffff, alpha: 0.035 });
         gfx.poly(regularPixelPoly(20, fx.radius, Math.PI / 20))
-          .stroke({ width: 3, color: 0xffffff, alpha: 0.66 });
+          .stroke({ width: 2, color: 0xffffff, alpha: 0.3 });
         for (let i = 0; i < 8; i++) {
           const angle = i * Math.PI / 4;
-          pixelDiamond(gfx, Math.cos(angle) * fx.radius, Math.sin(angle) * fx.radius, 3, 0xffffff, 0.85);
+          pixelDiamond(gfx, Math.cos(angle) * fx.radius, Math.sin(angle) * fx.radius, 2, 0xffffff, 0.45);
         }
         gfx.tint = fx.color;
         gfx.position.set(snap(fx.x), snap(fx.y));
@@ -1650,8 +1655,8 @@ export class RunView {
         gfx.blendMode = fx.steady ? 'normal' : 'add';
         this.fxLayer.addChild(gfx);
         this.pops.push(fx.steady
-          ? { gfx, t: 0, dur: 0.1, fromScale: 1, toScale: 1, steady: true }
-          : { gfx, t: 0, dur: 0.24, fromScale: 1, toScale: 1.04 });
+          ? { gfx, t: 0, dur: fx.dur ?? 0.1, fromScale: 1, toScale: 1, steady: true }
+          : { gfx, t: 0, dur: fx.dur ?? 0.24, fromScale: 1, toScale: 1.04 });
         break;
       }
       case 'pressure': {
