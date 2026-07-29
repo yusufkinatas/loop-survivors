@@ -37,3 +37,11 @@ const BY_ROLE = new Map<Role, WeaponModule>(WEAPON_MODULES.map((m) => [m.role, m
 export function weaponTiers(role: Role): readonly WeaponConf[] | undefined {
   return BY_ROLE.get(role)?.stats.tiers ?? WEAPONS[role];
 }
+
+/** Whether a role has any gameplay at all. A role can be VOICED without being
+ *  playable: the palette (#266) lands its twelve new sounds and rhythms ahead
+ *  of their weapon modules, and in between, such a role would otherwise be
+ *  offered as a hire that deals no damage. `rollOffers` gates on this. */
+export function hasWeaponModule(role: Role): boolean {
+  return BY_ROLE.has(role);
+}

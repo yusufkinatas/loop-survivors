@@ -13,7 +13,7 @@
 // chord roots 0/5/7) owns the theory so nothing can clash.
 
 import { TIER_COUNT, validateChart } from './charts';
-import { ROLES, type Role } from './kits';
+import { PALETTE_ROLES, PALETTE_SEATS, ROLES, type Role } from './kits';
 import { SOUNDSET_LADDERS } from './ladders/house';
 import type { Chart } from './charts';
 
@@ -92,5 +92,27 @@ const FLOOR_GROUPS: { label: string; anyOf: Role[] }[] = [
     if (!group.anyOf.some((r) => supported.has(r))) {
       throw new Error(`soundset: playability floor unmet — needs ${group.label}`);
     }
+  }
+
+  // The band is the palette (#266), and it is exactly the palette. A voice with
+  // a seat but no ladder is a weapon the pick pool would never offer and the
+  // Sandbox would list as silent; a voice with a ladder but no seat is one the
+  // arrangement was never checked against its neighbours. Both are the kind of
+  // mistake that only shows up as "something sounds wrong" three sessions
+  // later, so both are build errors here.
+  for (const role of PALETTE_ROLES) {
+    if (!supported.has(role)) throw new Error(`palette: ${role} has a seat but no ladder`);
+  }
+  const seated = new Set<Role>(PALETTE_ROLES);
+  for (const role of supported) {
+    if (!seated.has(role)) throw new Error(`palette: ${role} has a ladder but no seat`);
+  }
+
+  // Every seat needs real depth inside it — #266's own complaint about the
+  // eight-voice band was that "two options is not a role, it is a pair", so a
+  // seat that thins out to two voices has quietly reintroduced the problem the
+  // palette exists to fix.
+  for (const [seat, voices] of Object.entries(PALETTE_SEATS)) {
+    if (voices.length < 3) throw new Error(`palette: seat ${seat} has only ${voices.length} voices`);
   }
 }

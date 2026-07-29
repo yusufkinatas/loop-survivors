@@ -8,6 +8,14 @@
 // The catalog of instrument types. Six drums/fx (unpitched) and six pitched
 // voices, plus the later hires; the soundset chooses how each is played
 // (tempo, swing, patterns).
+//
+// THE PALETTE (#266) added ten roles to widen the live band from eight voices
+// to twenty. They are grouped by SEAT — which chair the voice takes in the band
+// — because the palette was designed on two crossing axes, seat and attack. The
+// seat grouping lives in PALETTE_SEATS below; it is documentation and a
+// validator, NOT a gameplay rule, and nothing in the game reads a voice's seat
+// to decide what it does. #266 ruled the grid a mixing taxonomy: no strict
+// mapping from a cell to a behaviour, because that would fence off good ideas.
 export type Role =
   | 'kick'
   | 'snare'
@@ -25,7 +33,24 @@ export type Role =
   | 'pluck'
   | 'rhodes'
   // The last hires + the auto-dash utility weapon (riser).
-  | 'riser';
+  | 'riser'
+  // ---- The palette (#266) --------------------------------------------------
+  // Low anchor: the bottom of the sound.
+  | 'sub'
+  | 'upright'
+  | 'drone'
+  // Harmonic body: the middle. (`rhodes` above is this seat's fourth voice.)
+  | 'organ'
+  | 'chank'
+  // Bright line: the top.
+  | 'bell'
+  | 'flute'
+  // Texture: the only seat that is not a hit. Held sounds that never stop, and
+  // the one seat where `attack` is constant by definition — #266 amended the
+  // grid rule to name texture as its exception rather than pretend otherwise.
+  | 'pad'
+  | 'air'
+  | 'wind';
 
 export const ROLES: readonly Role[] = [
   'kick',
@@ -43,7 +68,38 @@ export const ROLES: readonly Role[] = [
   'pluck',
   'rhodes',
   'riser',
+  'sub',
+  'upright',
+  'drone',
+  'organ',
+  'chank',
+  'bell',
+  'flute',
+  'pad',
+  'air',
+  'wind',
 ];
+
+/** The five seats of the palette (#266), and which live voices sit in each.
+ *
+ *  DOCUMENTATION AND A BUILD-TIME CHECK, NOT A RULE THE GAME READS. #266 ruled
+ *  the seat/attack grid a mixing taxonomy: a voice's seat never decides its
+ *  behaviour, its damage, or which slot it may occupy. It exists so the
+ *  arrangement stays legible — voices in one seat are the ones that can smear
+ *  into each other, so they are the ones whose rhythms must differ.
+ *
+ *  Retired catalog voices (tom, crash, acid, pluck, riser) are deliberately
+ *  absent: they have no ladder, so they are not in the band. */
+export const PALETTE_SEATS = {
+  lowAnchor: ['bass', 'sub', 'upright', 'drone'],
+  harmonicBody: ['chord', 'rhodes', 'organ', 'chank'],
+  brightLine: ['lead', 'arp', 'bell', 'flute'],
+  percussion: ['kick', 'snare', 'clap', 'hat', 'shaker'],
+  texture: ['pad', 'air', 'wind'],
+} as const satisfies Readonly<Record<string, readonly Role[]>>;
+
+/** Every voice in the band, in seat order. Twenty, per #266. */
+export const PALETTE_ROLES: readonly Role[] = Object.values(PALETTE_SEATS).flat();
 
 export interface Kit {
   role: Role;
@@ -712,7 +768,44 @@ export const ROLE_META: Record<Role, RoleMeta> = {
   pluck: { name: 'Pluck Bass', color: '#8f7bff', pitched: true, choke: true, variants: ['pluck'] },
   rhodes: { name: 'Rhodes', color: '#5ad1ff', pitched: true, choke: false, variants: ['rhodes'] },
   riser: { name: 'Riser', color: '#cbb4ff', pitched: false, choke: true, variants: ['riser'] },
+
+  // ---- The palette (#266) --------------------------------------------------
+  // Low anchor. All three choke: two low notes ringing together is the one
+  // overlap that reliably turns into mud rather than into two instruments.
+  sub: { name: 'Sub', color: '#6247c9', pitched: true, choke: true, variants: ['sub'] },
+  upright: { name: 'Upright', color: '#c98a5a', pitched: true, choke: true, variants: ['upright'] },
+  drone: { name: 'Drone', color: '#4b3f8f', pitched: true, choke: true, variants: ['drone'] },
+
+  // Harmonic body.
+  organ: { name: 'Organ', color: '#ffb347', pitched: true, choke: true, variants: ['organ'] },
+  chank: { name: 'Chank', color: '#9ecb4a', pitched: true, choke: false, variants: ['chank'] },
+
+  // Bright line.
+  bell: { name: 'Bell', color: '#ffe680', pitched: true, choke: false, variants: ['bell'] },
+  flute: { name: 'Flute', color: '#9fb8ff', pitched: true, choke: true, variants: ['flute'] },
+
+  // Texture. Every one chokes: a held sound re-articulating on top of itself
+  // stacks tails forever, which is the exact mud the seat is most prone to.
+  //
+  // NOTE `pad` the ROLE is not `chord`'s `pad` VARIANT. The variant is a softer
+  // sustained voicing of the chord weapon; this is a weapon of its own, in a
+  // different seat, that never plays a rhythm.
+  pad: { name: 'Pad', color: '#c9b6ff', pitched: true, choke: true, variants: ['pad'] },
+  air: { name: 'Air', color: '#cfd6e0', pitched: false, choke: true, variants: ['air'] },
+  wind: { name: 'Wind', color: '#8fd6c4', pitched: false, choke: true, variants: ['wind'] },
 };
+
+// The palette's seats must name only voices the catalog knows, and must not
+// name one voice twice. A typo here would otherwise surface as a missing kit
+// halfway through a run.
+{
+  const seen = new Set<Role>();
+  for (const role of PALETTE_ROLES) {
+    if (!(role in ROLE_META)) throw new Error(`palette: ${role} has no role identity`);
+    if (seen.has(role)) throw new Error(`palette: ${role} sits in two seats`);
+    seen.add(role);
+  }
+}
 
 /** Each role's hue as a packed 0xRRGGBB number, which is the form PixiJS and
  *  the world want; ROLE_META above carries the same value as a CSS string for
