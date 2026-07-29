@@ -97,6 +97,15 @@ export interface WeaponContext {
    *  with an empty screen it draws TWICE (a random heading, then the jitter).
    *  That asymmetry is part of a run's rng identity, which is why aiming is a
    *  world query and not something a module reimplements over all(). */
+  /** This weapon's per-trigger numbers at its current level, build transform
+   *  already applied, or null if it is not owned.
+   *
+   *  ONLY A CLOCK-DRIVEN WEAPON NEEDS THIS. Every trigger-driven weapon is
+   *  handed the same object as fire()'s `conf` argument and must use that one.
+   *  The texture auras have no trigger to be handed anything by — a bed is
+   *  never sequenced — so they ask here instead. */
+  conf(): WeaponConf | null;
+
   aimDir(spread: number): { x: number; y: number };
 
   /** Aim ONCE, then hand back one direction per shot this trigger owes —

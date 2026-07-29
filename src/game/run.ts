@@ -758,6 +758,7 @@ export class RunWorld {
       get buildMods() { return world.buildMods; },
       rng: () => world.rng(),
       get triggerCount() { return world.triggerCounts[role] ?? 0; },
+      conf: () => world.builtConf(role),
       aimDir: (spread) => world.aimDir(spread),
       aimFan: (spread) => world.aimFan(spread),
       moveDir: () => world.moveDir(),
@@ -967,13 +968,8 @@ export class RunWorld {
     // non-null assertion here was true by construction. It is not any more:
     // the weapon sounds, and it does nothing — which is precisely what the
     // note below has always said the world should do with a moduleless role.
-    const tiers = weaponTiers(t.role);
-    if (!tiers) return;
-    let conf: WeaponConf = tiers[tier - 1];
-
-    // Single build-transform pipeline (D1): tempo compensation, folded in one
-    // place — balance code multiplies here.
-    conf = this.applyBuild(conf);
+    const conf = this.builtConf(t.role);
+    if (!conf) return;
     this.triggerCounts[t.role] = (this.triggerCounts[t.role] ?? 0) + 1;
 
     // A weapon owns its whole identity behind the weapon context. THE SWITCH
@@ -982,6 +978,26 @@ export class RunWorld {
     // nothing, which is the honest answer — there is no half-owned weapon left
     // for the world to finish off.
     this.weapons.get(t.role)?.fire(this.weaponCtx.get(t.role)!, conf);
+  }
+
+  /** This weapon's per-trigger numbers at its current level, with the single
+   *  build transform already applied — or null if the role is not owned or has
+   *  no gameplay.
+   *
+   *  SHARED WITH THE TICK PATH, which is why it exists. Nearly every weapon
+   *  receives its tuning as the `conf` argument to fire(), because nearly every
+   *  weapon is driven by a chart trigger. The texture auras are not: a bed has
+   *  no trigger at all (Kit.bed), so a weapon driven by the clock instead has to
+   *  be able to ask. fireTrigger and WeaponContext.conf now read the same
+   *  lookup rather than two copies of it. */
+  private builtConf(role: Role): WeaponConf | null {
+    const tier = this.tiers.get(role);
+    if (!tier) return null;
+    const tiers = weaponTiers(role);
+    if (!tiers) return null;
+    // Single build-transform pipeline (D1): tempo compensation, folded in one
+    // place — balance code multiplies here.
+    return this.applyBuild(tiers[tier - 1]);
   }
 
   /** Add a weapon or raise its tier. The pulse fires when the change lands
