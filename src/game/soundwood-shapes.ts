@@ -2,9 +2,8 @@
 // High-count entities remain one Graphics each and share GraphicsContexts.
 
 import { Container, Graphics, GraphicsContext, Sprite, Text, TextStyle } from 'pixi.js';
-import { ROLE_COLORS, type Role } from '../audio/kits';
+import { type Role } from '../audio/kits';
 import { ENEMIES, WORLD_SCALE } from './config';
-import { ITEMS, ITEM_NEUTRAL_COLOR, type ItemId } from './items';
 import { objectTexture, playerLoop, type ObjectName, type SpriteLoop } from './pixelart';
 import type { Enemy, Gem, HealthPickup, MusicNotePickup, Projectile, StageMagnetPickup, Zone } from './run';
 import { SOUNDWOOD, hash2, regularPixelPoly, snap } from './soundwood-art';
@@ -944,12 +943,6 @@ interface RewardBase {
    * Printed verbatim — a pedestal states what it is, never what level it makes. */
   badge: string;
   effect?: string;
-  /** Item pedestals only: the weapon this passive evolves, shown once on the
-   * player's first pickup. Independent of the `role` xor `glyph` union. */
-  evoRole?: Role;
-  /** Weapon pedestals only: the passive this weapon evolves with, shown once on
-   * the hire. The mirror of `evoRole`; the two are mutually exclusive. */
-  evoItem?: ItemId;
 }
 
 export type RewardSpec = RewardBase & (
@@ -983,23 +976,6 @@ const REWARD_EFFECT = new TextStyle({
   fontWeight: '800',
   fill: 0xffffff,
   letterSpacing: 0.25,
-  stroke: { color: SOUNDWOOD.ink, width: 3, join: 'round' },
-});
-const REWARD_EVO = new TextStyle({
-  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-  fontSize: 11,
-  fontWeight: '900',
-  fill: 0xffd45c,
-  letterSpacing: 1,
-  stroke: { color: SOUNDWOOD.ink, width: 3, join: 'round' },
-});
-/** The passive glyph in the recipe teaser, sized to sit in the same 16-unit
- *  slot the weapon icon occupies on the mirrored item pedestal. */
-const REWARD_EVO_GLYPH = new TextStyle({
-  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-  fontSize: 15,
-  fontWeight: '900',
-  fill: 0xffffff,
   stroke: { color: SOUNDWOOD.ink, width: 3, join: 'round' },
 });
 const REWARD_GLYPH = new TextStyle({
@@ -1038,9 +1014,7 @@ export function makeRewardGfx(spec: RewardSpec): RewardGfx {
   if (icon instanceof Text) icon.anchor.set(0.5);
   icon.tint = spec.color;
   const labelPlate = new Graphics({ roundPixels: true });
-  const evoRole = spec.evoRole;
-  const evoItem = spec.evoItem;
-  const plateHeight = (spec.effect ? 66 : 45) + (evoRole || evoItem ? 20 : 0);
+  const plateHeight = spec.effect ? 66 : 45;
   labelPlate.roundRect(-84, 42, 168, plateHeight, 6).fill({ color: SOUNDWOOD.ink, alpha: 0.92 });
   labelPlate.rect(-78, 42, 156, 2).fill({ color: spec.color, alpha: 0.8 });
   const name = new Text({ text: spec.name.toUpperCase(), style: REWARD_NAME, roundPixels: true });
@@ -1059,34 +1033,14 @@ export function makeRewardGfx(spec: RewardSpec): RewardGfx {
     effect.position.set(0, 96);
     if (effect.width > 154) effect.scale.x = 154 / effect.width;
   }
-  // The recipe teaser: the OTHER half of this pedestal's recipe. On a passive
-  // that is the weapon it transforms, in that weapon's own hue; on a weapon
-  // hire it is the passive, in the passives' shared off-white. Glyph only —
-  // the mastery screen still owns the full recipe. Both sides land in the same
-  // 16-unit slot, so the two teasers read as one thing seen from either end.
-  let evoTag: Text | null = null;
-  let evoGlyph: Graphics | Text | null = null;
-  if (evoRole) {
-    evoGlyph = pixelGraphics(cachedPixelShape('reward-evo-icon:' + evoRole, (g) => drawWeaponIcon(g, evoRole, 9)));
-    evoGlyph.tint = ROLE_COLORS[evoRole];
-  } else if (evoItem) {
-    evoGlyph = new Text({ text: ITEMS[evoItem].glyph, style: REWARD_EVO_GLYPH, roundPixels: true });
-    evoGlyph.anchor.set(0.5);
-    evoGlyph.tint = ITEM_NEUTRAL_COLOR;
-  }
-  if (evoGlyph) {
-    const y = (spec.effect ? 96 : 75) + 20;
-    evoTag = new Text({ text: 'EVO', style: REWARD_EVO, roundPixels: true });
-    evoTag.anchor.set(1, 0.5);
-    const span = evoTag.width + 8 + 16;
-    evoTag.position.set(snap(-span / 2 + evoTag.width), y);
-    evoGlyph.position.set(snap(span / 2 - 8), y);
-  }
+  // The recipe teaser is gone with the passives (#265). It named the OTHER half
+  // of an evolution recipe, and an evolution no longer has another half: the
+  // gate is the weapon's own eighth level. The rack on the pause screen carries
+  // "this one is ready to evolve" instead.
   root.__beam = beam;
   root.__platform = platform;
   root.addChild(beam, glow, platform, icon, labelPlate, name, badge);
   if (effect) root.addChild(effect);
-  if (evoTag && evoGlyph) root.addChild(evoTag, evoGlyph);
   return root;
 }
 

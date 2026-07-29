@@ -5,14 +5,7 @@
 
 import { type Kit, type Role } from '../audio/kits';
 import { BUILD } from './config';
-import {
-  EVOLUTION_BY_ROLE,
-  ITEMS,
-  ITEM_NEUTRAL_CSS,
-  type BuildMods,
-  type ItemId,
-} from './items';
-import type { MetaStore, RunSettlement } from './meta';
+import type { BuildMods } from './build';
 
 import { WEAPON_MAX_LEVEL } from './weapons/levels';
 /** Tier numerals used by the band rack. One per weapon level. */
@@ -41,7 +34,6 @@ export class Hud {
   private pulse: HTMLElement;
   private toastStack: HTMLElement;
   private rack: HTMLElement;
-  private itemRack: HTMLElement;
   private runInfoKey = '';
   private screen: HTMLElement | null = null;
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
@@ -73,85 +65,20 @@ export class Hud {
     // The band rack: one numbered socket per weapon slot, empty until hired.
     this.rack = el('div', 'band-rack', root);
     this.rack.style.display = 'none';
-    this.itemRack = el('div', 'item-rack', root);
-    this.itemRack.style.display = 'none';
   }
 
-  showHud(show: boolean, sandbox = false): void {
+  showHud(show: boolean): void {
     this.bar.style.display = show ? '' : 'none';
     this.rack.style.display = show ? '' : 'none';
-    // The sandbox owns a complete Build/Career inspector. Hiding the live-run
-    // item rack prevents two overlapping control surfaces.
-    this.itemRack.style.display = show && !sandbox ? '' : 'none';
   }
 
-  setRunInfo(
-    items: ReadonlyMap<ItemId, number>,
-    evolved: ReadonlySet<Role>,
-    notesCollected: number,
-  ): void {
-    const itemPart = [...items].map(([id, level]) => `${id}:${level}`).join('|');
-    const evolvedPart = [...evolved].join('|');
-    const key = `${itemPart}/${evolvedPart}/${notesCollected}`;
+  /** The passive rack that used to live here went with the passives (#265).
+   *  What is left is the note counter — a run stat now, banked nowhere. */
+  setRunInfo(evolved: ReadonlySet<Role>, notesCollected: number): void {
+    const key = `${[...evolved].join('|')}/${notesCollected}`;
     if (key === this.runInfoKey) return;
     this.runInfoKey = key;
     this.noteEl.textContent = `♫ ${notesCollected}`;
-    this.itemRack.replaceChildren();
-    for (let slot = 0; slot < BUILD.itemCap; slot++) {
-      const entry = [...items][slot];
-      const socket = el('div', `item-socket ${entry ? 'filled' : 'empty'}`, this.itemRack);
-      if (!entry) {
-        el('span', 'item-glyph', socket, '·');
-        continue;
-      }
-      // Deliberately level-free: the live rack answers "what am I carrying?".
-      // "How far up is it?" is a question you ask between decisions, and the
-      // pause screen is where that whole readout lives (renderStats below).
-      const [id] = entry;
-      const item = ITEMS[id];
-      socket.style.setProperty('--item-color', ITEM_NEUTRAL_CSS);
-      el('span', 'item-glyph', socket, item.glyph);
-      el('span', 'item-name', socket, item.shortName);
-      const itemSummary = `${item.name}: ${item.description}`;
-      socket.title = itemSummary;
-      socket.setAttribute('aria-label', itemSummary);
-    }
-  }
-
-  /** Plain-language passive details for the pause screen. The compact live
-   * rack cannot carry readable copy on phones, so pausing is the reliable
-   * in-run reference for both the current total and the item's core purpose. */
-  renderItemDetails(items: ReadonlyMap<ItemId, number>, into: HTMLElement): void {
-    into.replaceChildren();
-    const head = el('div', 'pause-items-head', into);
-    // Read from the cap, never a literal: the sandbox loads the whole catalog
-    // and legitimately sits above it, and a run's cap has moved before.
-    const countCopy = items.size > BUILD.itemCap
-      ? `${items.size} ACTIVE · RUN CAP ${BUILD.itemCap}`
-      : `${items.size}/${BUILD.itemCap}`;
-    el('strong', '', head, `PASSIVE ITEMS · ${countCopy}`);
-    el('span', '', head, 'CURRENT TOTALS');
-    if (items.size === 0) {
-      el('p', 'pause-items-empty', into, 'No passive items yet. Walk into an item reward pedestal to take one.');
-      return;
-    }
-    const grid = el('div', 'pause-items-grid', into);
-    for (const [id, level] of items) {
-      const item = ITEMS[id];
-      const row = el('div', 'pause-item', grid);
-      row.style.setProperty('--item-color', ITEM_NEUTRAL_CSS);
-      el('span', 'pause-item-glyph', row, item.glyph);
-      const copy = el('div', 'pause-item-copy', row);
-      el('strong', '', copy, `${item.name} · LV ${level}`);
-      el('span', '', copy, item.levelLines[level - 1]);
-      // NO EVOLUTION HINT HERE, deliberately. The pause menu is a build
-      // inspector — what you have and what it is doing — not a cookbook. The
-      // recipe is taught once, on the ground pick, and only when it is
-      // actionable; see teachesEvolution in game.ts. That includes the
-      // aria-label: a screen reader must inspect the same build, not a
-      // permanent recipe list the sighted player cannot see.
-      row.setAttribute('aria-label', `${item.name}, level ${level}: ${item.levelLines[level - 1]}`);
-    }
   }
 
   /** Everything the build currently adds up to, as one flat list — the pause
@@ -317,9 +244,6 @@ export class Hud {
   showStart(
     onStart: () => void,
     onSandbox: () => void,
-    meta?: MetaStore,
-    shopOpen = false,
-    shopScrollTop = 0,
   ): void {
     const s = this.newScreen();
     s.classList.add('start-screen');
@@ -329,137 +253,9 @@ export class Hud {
     el('h1', '', title, 'LOOP SURVIVORS');
     el('p', 'sub', title, 'Build the track. Draw the arena. Survive until the crowd wins.');
 
-    if (meta) {
-      const profile = el('div', 'career-panel', s);
-      const collectionProgress = meta.collection();
-      const head = el('div', 'career-head', profile);
-      el('strong', 'career-rank', head, 'AFTERHOURS POWER-UPS');
-      el('span', 'career-rep', head, `♫ ${meta.state.notes} MUSIC NOTES`);
-      const bar = el('div', 'rank-meter', profile);
-      const fill = el('div', 'rank-meter-fill', bar);
-      fill.style.width = `${collectionProgress.ratio * 100}%`;
-      el('span', 'rank-meter-copy', bar, collectionProgress.complete
-        ? 'EVERY POWER-UP MAXED'
-        : `${collectionProgress.owned} / ${collectionProgress.total} POWER-UP RANKS`);
-      const rewards = el('div', 'next-reward', profile);
-      el('span', 'eyebrow', rewards, 'PLAYER-DIRECTED PROGRESSION');
-      el('strong', '', rewards, collectionProgress.complete
-        ? 'Every power-up in the Afterhours Shop is maxed.'
-        : 'Defeat The Hush, collect its music notes, then rank up the power-ups you want.');
-      el('span', 'reward-copy', rewards,
-        'Every instrument and passive is unlocked from the start. Collected notes bank when the set ends and buy permanent power-up ranks.');
-
-      const mastery = Object.entries(meta.state.mastery) as [Role, { damage: number; kills: number; evolutions: number }][];
-      const revealed = mastery.filter(([, value]) => value.damage >= 100_000);
-      if (revealed.length > 0) {
-        const hints = el('div', 'recipe-hints', profile);
-        el('span', 'eyebrow', hints, 'MASTERY REVEALED');
-        for (const [role] of revealed.slice(0, 3)) {
-          const recipe = EVOLUTION_BY_ROLE[role];
-          if (recipe) el('span', 'recipe-chip', hints, `${this.kits.get(role)?.name ?? role} + ${ITEMS[recipe.item].name} → ${recipe.name}`);
-        }
-      }
-
-      const shopToggle = el('button', 'shop-toggle', profile,
-        shopOpen ? 'CLOSE AFTERHOURS SHOP' : 'OPEN AFTERHOURS SHOP') as HTMLButtonElement;
-      const shop = el('section', 'shop-panel', profile);
-      shop.style.display = shopOpen ? '' : 'none';
-      const shopHead = el('div', 'shop-head', shop);
-      const shopTitle = el('div', '', shopHead);
-      el('span', 'eyebrow', shopTitle, 'SPEND MUSIC NOTES');
-      el('strong', '', shopTitle, 'AFTERHOURS SHOP');
-      const shopHeadActions = el('div', 'shop-head-actions', shopHead);
-      el('span', 'shop-wallet', shopHeadActions, `♫ ${meta.state.notes}`);
-      const shopClose = el('button', 'shop-close', shopHeadActions, 'CLOSE SHOP') as HTMLButtonElement;
-      const shopGrid = el('div', 'shop-grid', shop);
-      for (const status of meta.shop()) {
-        const { def } = status;
-        const stateClass = status.maxed ? 'purchased' : status.affordable ? 'available' : 'short';
-        const card = el('article', `shop-card ${stateClass}`, shopGrid);
-        const cardTop = el('div', 'shop-card-top', card);
-        el('span', 'shop-kind', cardTop, `RANK ${status.rank}/${def.maxRank}`);
-        el('span', 'shop-cost', cardTop, status.maxed ? 'MAX' : `♫ ${status.price}`);
-        el('strong', 'shop-name', card, def.name);
-        el('span', 'shop-copy', card, def.description);
-        const buy = el('button', 'shop-buy', card, status.maxed
-          ? 'MAX RANK'
-          : status.affordable
-            ? `RANK UP FOR ♫ ${status.price}`
-            : `NEED ♫ ${status.price - meta.state.notes} MORE`) as HTMLButtonElement;
-        buy.disabled = status.maxed || !status.affordable;
-        buy.onclick = () => {
-          if (!meta.purchase(def.id)) return;
-          const scrollTop = s.scrollTop;
-          this.showToast(`POWER-UP · ${def.name.toUpperCase()} RANK ${meta.rank(def.id)}`);
-          this.showStart(onStart, onSandbox, meta, true, scrollTop);
-        };
-      }
-      // Dev affordances, at the bottom of the shop panel. They ride the panel's
-      // own display toggle, so they are visible exactly when the shop is open
-      // and need no visibility state of their own.
-      //
-      // Deliberately quiet: .start-dev-toggle is the same transparent, faint
-      // treatment the `sandbox` and `experiments` buttons use, so browsing the
-      // shop you do not notice them and looking for them you find them. No gold,
-      // no fill, and no danger red on the reset — red is eye-catching, which is
-      // the opposite of what these want to be.
-      //
-      // These ship. The project has no dev-gating mechanism at all — no
-      // import.meta.env, no NODE_ENV, no query-param or hostname check — and
-      // every existing dev affordance (the ⚙ row, the sandbox button, the
-      // hash-routed experiment rooms) already ships to production. Stripping
-      // them from a public build is one ticket covering all of them, not a
-      // bespoke gate invented here.
-      const shopDev = el('div', 'shop-dev', shop);
-      const rerenderShop = () => this.showStart(onStart, onSandbox, meta, true, s.scrollTop);
-      const grantBtn = el('button', 'small start-dev-toggle', shopDev, 'gain 1000');
-      grantBtn.onclick = () => {
-        // The REAL store, unlike the sandbox's +NOTES buttons, which run against
-        // a deliberately non-persistent MetaStore(null). Testing the shop means
-        // banking notes for real, so this one persists.
-        meta.grantNotes(1000);
-        rerenderShop();
-      };
-      const resetBtn = el('button', 'small start-dev-toggle', shopDev, 'reset progress');
-      resetBtn.onclick = () => {
-        // Two-step, because one stray click must not nuke a real save. The
-        // button becomes its own confirmation rather than opening a dialog: a
-        // window.confirm would be a modal in a screen that has none.
-        if (resetBtn.dataset.armed !== 'true') {
-          resetBtn.dataset.armed = 'true';
-          resetBtn.textContent = 'reset progress · click again';
-          resetBtn.classList.add('armed');
-          // Disarm on the next click anywhere else, so an armed button left
-          // alone cannot be triggered later by accident.
-          setTimeout(() => {
-            document.addEventListener('pointerdown', function disarm(ev: Event) {
-              if (ev.target === resetBtn) return;
-              document.removeEventListener('pointerdown', disarm);
-              delete resetBtn.dataset.armed;
-              resetBtn.textContent = 'reset progress';
-              resetBtn.classList.remove('armed');
-            });
-          }, 0);
-          return;
-        }
-        meta.resetProgress();
-        this.showToast('PROGRESS RESET');
-        rerenderShop();
-      };
-      shopToggle.onclick = () => {
-        const opening = shop.style.display === 'none';
-        shop.style.display = opening ? '' : 'none';
-        shopToggle.textContent = opening ? 'CLOSE AFTERHOURS SHOP' : 'OPEN AFTERHOURS SHOP';
-        shopToggle.classList.toggle('on', opening);
-      };
-      shopToggle.classList.toggle('on', shopOpen);
-      shopClose.onclick = () => {
-        shop.style.display = 'none';
-        shopToggle.textContent = 'OPEN AFTERHOURS SHOP';
-        shopToggle.classList.remove('on');
-        shopToggle.focus();
-      };
-    }
+    // The career panel, the Afterhours Shop and the mastery recipe chips all
+    // stood here. They went with the meta layer (#265): there is no wallet, no
+    // power-up rank and no save, so the start screen is a title and a button.
 
     const startBtn = el('button', 'start-btn', s, 'ENTER THE SOUNDWOOD');
     startBtn.onclick = () => {
@@ -505,11 +301,6 @@ export class Hud {
     roomBtn.onclick = () => {
       location.hash = '#rehearsal';
     };
-    if (shopScrollTop > 0) {
-      requestAnimationFrame(() => {
-        if (this.screen === s) s.scrollTop = Math.min(shopScrollTop, s.scrollHeight - s.clientHeight);
-      });
-    }
   }
 
   /** Transient notices stack instead of overlapping, animate in and out,
@@ -539,12 +330,11 @@ export class Hud {
       killsByRole: Partial<Record<Role, number>>;
     },
     onRetry: () => void,
-    settlement?: RunSettlement,
   ): void {
     const s = this.newScreen();
     s.classList.add('end-screen');
     // One screen, two endings. Only the headline and the demo-end block differ;
-    // stats, settlement and ONE MORE SET are the same run report either way.
+    // the stats and ONE MORE SET are the same run report either way.
     if (victory) s.classList.add('win-screen');
     el('span', 'eyebrow', s, victory ? "THE HUSH COULDN'T STOP YOU" : 'THE CROWD FINALLY WON');
     el('h1', '', s, victory ? 'SET COMPLETE' : 'SET ENDED');
@@ -564,43 +354,8 @@ export class Hud {
       link.rel = 'noopener noreferrer';
     }
 
-    if (settlement) {
-      const rep = el('section', 'settlement-panel', s);
-      const earned = el('div', 'rep-earned', rep);
-      const earnedCopy = el('div', '', earned);
-      el('span', 'eyebrow', earnedCopy, 'MUSIC NOTES BANKED');
-      el('span', 'reward-copy', earnedCopy,
-        `${settlement.walletBefore} before this set · ${settlement.walletAfter} now available`);
-      el('strong', '', earned, `+♫ ${settlement.notesEarned}`);
-      const breakdown = el('div', 'rep-breakdown', rep);
-      for (const [label, value] of [
-        ['POWER-UP RANKS', `${settlement.collection.owned} / ${settlement.collection.total}`],
-        ['NEW MILESTONES', String(settlement.newMilestones.length)],
-      ] as const) {
-        const row = el('div', 'rep-row', breakdown);
-        el('span', '', row, label);
-        el('strong', '', row, value);
-      }
-      const rank = el('div', 'end-rank', rep);
-      el('strong', '', rank, 'AFTERHOURS POWER-UPS');
-      const meter = el('div', 'rank-meter', rank);
-      const fill = el('div', 'rank-meter-fill', meter);
-      fill.style.width = `${settlement.collection.ratio * 100}%`;
-      el('span', 'rank-meter-copy', meter, settlement.collection.complete
-        ? 'EVERY POWER-UP MAXED'
-        : `${settlement.collection.owned} / ${settlement.collection.total} RANKS`);
-      if (settlement.newMilestones.length > 0) {
-        el('p', 'milestone-line', rep,
-          `MILESTONES · ${settlement.newMilestones.map((id) => id.replace(/([A-Z])/g, ' $1')).join(' · ')}`);
-      }
-      const next = el('div', 'next-reward end-next', rep);
-      el('span', 'eyebrow', next, settlement.collection.complete
-        ? 'FULL POWER'
-        : 'YOUR NEXT RANK IS YOUR CHOICE');
-      el('strong', '', next, settlement.collection.complete
-        ? 'The Afterhours Shop is sold out.'
-        : 'Return to the Afterhours Shop and spend your music notes on power-ups.');
-    }
+    // The settlement panel — notes banked, ranks owned, milestones — went with
+    // the career layer (#265). A run now ends and reports itself, nothing more.
     const byDamage = (Object.entries(stats.damageByRole) as [Role, number][]).sort(
       (a, b) => b[1] - a[1],
     );

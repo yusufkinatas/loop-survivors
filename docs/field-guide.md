@@ -1,5 +1,14 @@
 # Loop Survivors: Infinite Night Field Guide
 
+> **STALE — do not trust this document.** It describes the endless game, which
+> the Mad Forest work replaced with an authored 30-minute wave table, and on
+> this branch it also describes passives, evolution recipes, the Afterhours
+> Shop and a Career sandbox tab that no longer exist. Read
+> [`prototype-base.md`](prototype-base.md) for what this branch actually is,
+> `docs/mad-forest-spec.md` for the run schedule, and the code for everything
+> else. Rewriting this guide waits until a core loop is locked (#247) — there is
+> no point describing systems that are being replaced.
+
 This is the concise player-facing reference for the current game. It explains
 what happens during a run, what every build choice does, how career power-ups
 work, and what the Sandbox can test. `docs/plan.md` remains the design intent;

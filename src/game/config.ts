@@ -66,7 +66,7 @@ export const NOTE_CUE = {
   minGapS: 0.06,
 } as const;
 
-/** How large a build may grow. Two flat counts and nothing else: no typed
+/** How large a build may grow. One flat count and nothing else: no typed
  * positions, no rosters, no rule that owning one weapon retires another. Every
  * weapon in the catalog stays offerable until the cap is reached, at which
  * point offers become tier-ups of what is already owned.
@@ -76,13 +76,16 @@ export const NOTE_CUE = {
  * Reordering it would renumber the rack and the number-key toggles underneath
  * the player mid-run.
  *
- * The two counts are deliberately unequal and must stay independent: passives
- * are pure stats, so a sixth one only lengthens the build, while a sixth weapon
- * would be a sixth concurrent voice in the mix. Build-as-track outranks
- * verbatim parity, so the passive cap moved to 6 and the weapon cap did not. */
+ * The passive cap of 6 that used to sit beside this went with the passives
+ * themselves (#265). The weapon cap is untouched and stays the mix's cap: a
+ * sixth weapon would be a sixth concurrent voice.
+ *
+ * NOTE FOR PROTOTYPES: `docs/plan.md`'s "no categories, no typed positions" is
+ * UNLOCKED for round 1 (#256). A stack that wants role-exclusive slots — one
+ * bass, one lead, one chord — replaces this flat count with its own rule and is
+ * expected to. */
 export const BUILD = {
   weaponCap: 5,
-  itemCap: 6,
 } as const;
 
 /** How a gem or note travels once it has committed to flying at the player.

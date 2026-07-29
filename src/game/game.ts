@@ -18,9 +18,8 @@ import { RunWorld, type Chest, type VacuumResult } from './run';
 import { SIM_DT } from './timing';
 import { preloadRunArt, RunView, type ChestReelEntry, type GroundPickCopy } from './view';
 import { mountSandboxPanel, type SandboxPanel } from './sandbox';
-import { EVOLUTION_BY_ROLE, ITEMS, ITEM_NEUTRAL_COLOR, itemMaxLevel, type EvolutionDefinition, type ItemId } from './items';
+import { EVOLUTION_BY_ROLE, type EvolutionDefinition } from './build';
 import { chartStageForLevel, WEAPON_MAX_LEVEL } from './weapons/levels';
-import { MetaStore, type RunSettlement } from './meta';
 import { mulberry32 } from './rng';
 
 type State = 'start' | 'run' | 'end' | 'sandbox';
@@ -52,7 +51,6 @@ export async function bootGame(
   root.addEventListener('contextmenu', (e) => e.preventDefault());
 
   const hud = new Hud(root, kits);
-  const meta = new MetaStore();
   const input = new Input();
   let state: State = 'start';
   let world: RunWorld | null = null;
@@ -145,10 +143,20 @@ export async function bootGame(
   pauseOverlay.className = 'screen pause-overlay';
   pauseOverlay.style.display = 'none';
   pauseOverlay.innerHTML =
-    '<h1>Paused</h1><div class="pause-rack"></div><div class="pause-items"></div><div class="pause-items pause-stats"></div><button class="pause-resume">RESUME SET</button><p class="hint">Escape also resumes.</p>';
+    '<h1>Paused</h1><div class="pause-rack"></div><div class="pause-arrange"></div><div class="pause-items pause-stats"></div><button class="pause-resume">RESUME SET</button><p class="hint">Escape also resumes.</p>';
   root.appendChild(pauseOverlay);
   const pauseRack = pauseOverlay.querySelector('.pause-rack') as HTMLElement;
-  const pauseItems = pauseOverlay.querySelector('.pause-items') as HTMLElement;
+  /** THE ARRANGE SURFACE (#265). Empty in the base — the passives panel that
+   *  used to sit here is gone with the passives, and nothing replaces it yet.
+   *
+   *  It is kept as a named, always-mounted slot because three of the five
+   *  round-1 stacks need somewhere to arrange or record OFF the clock (#255
+   *  named "somewhere to arrange or record" as a dependency two candidates
+   *  share), and the pause screen is the one surface in the game that already
+   *  stops the world without ending the run. A prototype fills this node and
+   *  paints it from `paintPausePanels`; the base leaves it empty, and an empty
+   *  div renders as nothing. */
+  const pauseArrange = pauseOverlay.querySelector('.pause-arrange') as HTMLElement;
   const pauseStats = pauseOverlay.querySelector('.pause-stats') as HTMLElement;
   /** Everything the pause screen shows about the build, in one place so ESC and
    * a mid-pause level-up paint the same panels. */
@@ -160,7 +168,7 @@ export async function bootGame(
       evolved: w.evolved,
       showTiers: true,
     });
-    hud.renderItemDetails(w.items, pauseItems);
+    void pauseArrange;
     hud.renderStats({ maxHp: w.playerMaxHp, armor: w.playerArmor, mods: w.buildMods }, pauseStats);
   }
   const resumeButton = pauseOverlay.querySelector('.pause-resume') as HTMLButtonElement;
@@ -296,48 +304,11 @@ export async function bootGame(
   }
   let groundPicks: GroundItem[] = [];
 
-  /** THE evolution-hint rule, in one place. A passive's recipe is taught on the
-   *  ground pick and nowhere else, and only when it is both NEW and ACTIONABLE:
-   *
-   *  - `firstCopy` — later levels of the same item would repeat a hint already
-   *    read. Teach once.
-   *  - the partner weapon is in the band — a recipe for an instrument the player
-   *    has not hired, and may never hire, is noise about a run that isn't
-   *    happening.
-   *
-   *  Returns the partner role to name, or undefined for no hint at all.
-   *
-   *  Both the pedestal and the pickup toast call this, which is the point: they
-   *  describe the same item at the same instant and must never disagree. Call it
-   *  BEFORE the item is added, so `firstCopy` still means what it says.
-   *
-   *  No "already evolved" check is needed: evolving requires the partner item to
-   *  be owned, so an evolved weapon's item can never be on its first copy. */
-  function evolutionHintFor(w: RunWorld, item: ItemId, firstCopy: boolean): Role | undefined {
-    if (!firstCopy) return undefined;
-    const partner = ITEMS[item].evolutionPartner;
-    return partner && w.tiers.has(partner) ? partner : undefined;
-  }
-
-  /** The exact mirror, and the other half of ONE rule. A weapon's first copy —
-   *  the hire — names the passive it evolves with, and only when that passive
-   *  is already owned.
-   *
-   *  Read the two together and the rule is: the recipe is taught exactly once,
-   *  from whichever side arrives second. Neither side teaches on a level-up, so
-   *  a chest drop — which only ever levels something already owned — never
-   *  carries a hint at all. */
-  function evolutionItemHintFor(w: RunWorld, role: Role, firstCopy: boolean): ItemId | undefined {
-    if (!firstCopy) return undefined;
-    const partner = EVOLUTION_BY_ROLE[role]?.item;
-    return partner && (w.items.get(partner) ?? 0) > 0 ? partner : undefined;
-  }
-
-  /** Every +1 the run owes but has not yet paid into `w.tiers` / `w.items`:
-   *  scooped pickups riding to their bar line, plus every un-scooped pedestal
-   *  still on the ground. Both surfaces count — only the chest CEREMONY blocks
-   *  a triangle, not its drops, so a triangle and a chest payout can be lying
-   *  around at the same time.
+  /** Every +1 the run owes but has not yet paid into `w.tiers`: scooped pickups
+   *  riding to their bar line, plus every un-scooped pedestal still on the
+   *  ground. Both surfaces count — only the chest CEREMONY blocks a triangle,
+   *  not its drops, so a triangle and a chest payout can be lying around at the
+   *  same time.
    *
    *  This is what replaced reserving concrete levels. A roll drops a thing from
    *  its pool once `live + promised` reaches the ceiling, so no pickup is ever
@@ -347,17 +318,15 @@ export async function bootGame(
    *  Deliberately NOT consulted by pedestal copy: a pedestal is inside this
    *  count itself, and describing what it will deliver must not include
    *  promises nobody has taken yet. */
-  function outstandingPromises(): { weapons: Map<Role, number>; items: Map<ItemId, number> } {
+  function outstandingPromises(): Map<Role, number> {
     const weapons = new Map<Role, number>();
-    const items = new Map<ItemId, number>();
     for (const [role, pending] of pendingWeapons) weapons.set(role, pending.queued + pending.entering);
     const count = (option: ShellPick): void => {
       if (option.kind === 'weapon') weapons.set(option.role, (weapons.get(option.role) ?? 0) + 1);
-      else if (option.kind === 'item') items.set(option.item, (items.get(option.item) ?? 0) + 1);
     };
     for (const pick of groundPicks) count(pick.option);
     for (const drop of chestDrops) count(drop.option);
-    return { weapons, items };
+    return weapons;
   }
 
   /** Everything a pedestal says about itself, answered from LIVE state at the
@@ -375,25 +344,11 @@ export async function bootGame(
         name: option.evolution.name, badge: 'EVOLVE' };
     }
     if (option.kind === 'encore') return encorePickView(w, option.encore);
-    if (option.kind === 'weapon') {
-      const level = weaponLevelNow(w, option.role);
-      // Nothing left to level: the scoop pays a Tip Jar, so the pedestal is one.
-      if (level >= WEAPON_MAX_LEVEL) return encorePickView(w, 'tipJar');
-      return { role: option.role, color: ROLE_COLORS[option.role],
-        name: kits.get(option.role)!.name, badge: level === 0 ? 'NEW' : 'LEVEL UP',
-        // The hire is the ONE place a weapon teaches its recipe; see
-        // evolutionItemHintFor for when it earns the space.
-        evoItem: evolutionItemHintFor(w, option.role, level === 0) };
-    }
-    // Passives land the instant they are scooped, so there is nothing in flight
-    // to add: the level this pedestal delivers is simply the next one up.
-    const level = w.items.get(option.item) ?? 0;
-    if (level >= itemMaxLevel(option.item)) return encorePickView(w, 'tipJar');
-    const definition = ITEMS[option.item];
-    return { glyph: definition.glyph, color: ITEM_NEUTRAL_COLOR, name: definition.name,
-      badge: level === 0 ? 'NEW' : 'LEVEL UP',
-      effect: definition.levelLines[level],
-      evoRole: evolutionHintFor(w, option.item, level === 0) };
+    const level = weaponLevelNow(w, option.role);
+    // Nothing left to level: the scoop pays a Tip Jar, so the pedestal is one.
+    if (level >= WEAPON_MAX_LEVEL) return encorePickView(w, 'tipJar');
+    return { role: option.role, color: ROLE_COLORS[option.role],
+      name: kits.get(option.role)!.name, badge: level === 0 ? 'NEW' : 'LEVEL UP' };
   }
 
   /** Re-read every pedestal on the ground. Called after every scoop and after
@@ -461,15 +416,11 @@ export async function bootGame(
       // is complete — the Encore's fixed pair. The pool sees what the run has
       // already promised (a chest payout can be lying on the ground right now),
       // so it never offers a level that is already spoken for.
-      const promised = outstandingPromises();
       const options = rollOffers({
         tiers: w.tiers,
-        items: w.items,
-        pendingTiers: promised.weapons,
-        pendingItems: promised.items,
+        pendingTiers: outstandingPromises(),
         rng: Math.random,
         timeS: w.timeS,
-        level: w.level,
       });
       dropGroundPicks(w, options);
     }
@@ -555,7 +506,7 @@ export async function bootGame(
    *  ground out from under a pedestal.
    *
    *  Returns where the level went: `'bar'` — a weapon, riding to the next bar
-   *  line — or `'now'` — a passive or an Encore, landed on the spot. */
+   *  line — or `'now'` — an Encore, landed on the spot. */
   function applyPickup(
     w: RunWorld,
     option: AnyPickOption,
@@ -570,24 +521,14 @@ export async function bootGame(
         : `TIP JAR · +${landed} ♫`);
       return 'now';
     }
-    if (option.kind === 'item') {
-      const level = w.items.get(option.item) ?? 0;
-      if (level >= itemMaxLevel(option.item)) return applyPickup(w, TIP_JAR, onEntered);
-      // Resolved BEFORE addItem, so the toast and the pedestal the player just
-      // walked onto are answering the same question about the same state.
-      const partner = evolutionHintFor(w, option.item, level === 0);
-      // Passives never touch the music, so they land at once — and because they
-      // land at once, several in one bar simply stack.
-      w.addItem(option.item, level + 1);
-      const definition = ITEMS[option.item];
-      const evoCopy = partner ? ` · EVO ${kits.get(partner)?.name ?? partner}` : '';
-      hud.showToast(`${definition.name} ${level + 1} · ${definition.levelLines[level]}${evoCopy}`);
-      return 'now';
-    }
     const level = weaponLevelNow(w, option.role);
     if (level >= WEAPON_MAX_LEVEL) return applyPickup(w, TIP_JAR, onEntered);
-    const partner = evolutionItemHintFor(w, option.role, level === 0);
-    const evoCopy = partner ? ` · EVO ${ITEMS[partner].name}` : '';
+    // One level short of the top is the only warning the player gets that an
+    // evolution is coming: with passives gone the recipe is the ladder itself
+    // (#265), so there is no second ingredient to teach on a pedestal.
+    const evoCopy = level + 1 >= WEAPON_MAX_LEVEL && EVOLUTION_BY_ROLE[option.role] && !w.evolved.has(option.role)
+      ? ` · EVO READY · ${EVOLUTION_BY_ROLE[option.role]!.name}`
+      : '';
     // The toast is the one place in a run the player learns their real level,
     // and at scoop time the outcome is already settled — live plus everything
     // in flight — so the number is truthful even though the sound waits.
@@ -734,14 +675,13 @@ export async function bootGame(
     return w.eligibleEvolutions().filter(({ role }) => !promised.has(role));
   }
 
-  /** Everything the reel can visibly land on, shuffled: owned weapons and
-   *  passives by name and color, the health garnish, and — when a recipe is
-   *  ready — the evolutions, so the spin teases the real prize. */
+  /** Everything the reel can visibly land on, shuffled: owned weapons by name
+   *  and color, the health garnish, and — when a weapon is maxed — the
+   *  evolutions, so the spin teases the real prize. */
   function chestReelEntries(w: RunWorld, evolutions: EvolutionDefinition[]): ChestReelEntry[] {
     const entries: ChestReelEntry[] = [];
     for (const evolution of evolutions) entries.push({ label: evolution.name, color: evolution.color });
     for (const role of w.tiers.keys()) entries.push({ label: kits.get(role)!.name, color: ROLE_COLORS[role] });
-    for (const item of w.items.keys()) entries.push({ label: ITEMS[item].name, color: ITEM_NEUTRAL_COLOR });
     entries.push({ label: '+HP', color: 0xff665a });
     for (let i = entries.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -844,12 +784,8 @@ export async function bootGame(
       const y = cy + Math.sin(rad) * radius;
       const pool: AnyPickOption[] = [];
       for (const role of w.tiers.keys()) {
-        const level = (w.tiers.get(role) ?? 0) + (promised.weapons.get(role) ?? 0);
+        const level = (w.tiers.get(role) ?? 0) + (promised.get(role) ?? 0);
         if (level < WEAPON_MAX_LEVEL) pool.push({ kind: 'weapon', role });
-      }
-      for (const item of w.items.keys()) {
-        const level = (w.items.get(item) ?? 0) + (promised.items.get(item) ?? 0);
-        if (level < itemMaxLevel(item)) pool.push({ kind: 'item', item });
       }
       if (pool.length === 0) {
         drops.push({ x, y, option: TIP_JAR });
@@ -857,8 +793,7 @@ export async function bootGame(
       }
       const target = pool[Math.floor(Math.random() * pool.length)];
       // This hit is now a promise of its own, and the next hit must see it.
-      if (target.kind === 'weapon') promised.weapons.set(target.role, (promised.weapons.get(target.role) ?? 0) + 1);
-      else if (target.kind === 'item') promised.items.set(target.item, (promised.items.get(target.item) ?? 0) + 1);
+      if (target.kind === 'weapon') promised.set(target.role, (promised.get(target.role) ?? 0) + 1);
       drops.push({ x, y, option: target });
     }
     return drops;
@@ -906,7 +841,12 @@ export async function bootGame(
     },
     onChest(chest: Chest): void {
       if (!world || state !== 'run') return;
-      pendingChests.push({ x: chest.x, y: chest.y, index: meta.state.lifetimeChests + world.chestsOpened - 1 });
+      // The scripted 1-1-3-1-1-5 opening is now indexed PER RUN, not per save
+      // (#265: the save's career layer is gone). That is deliberately the
+      // fresh-save experience, repeated: every prototype run gets the same
+      // early jackpot, which is also what makes two branches' captures
+      // comparable instead of depending on how much the tester had played.
+      pendingChests.push({ x: chest.x, y: chest.y, index: world.chestsOpened - 1 });
       tryStartChestCeremony();
     },
     onGemCollected(_xp: number, levelProgress: number): void {
@@ -925,9 +865,6 @@ export async function bootGame(
     onHealthPickup(healed: number): void {
       engine.playHealthPickupCue();
       hud.showToast(`FIRST AID · +${Math.round(healed)} HP`);
-    },
-    onMilestone(id: string): void {
-      hud.showToast(`MILESTONE · ${id.replace(/([A-Z])/g, ' $1').toUpperCase()}`);
     },
   };
 
@@ -967,9 +904,6 @@ export async function bootGame(
     onHealthPickup(healed: number): void {
       engine.playHealthPickupCue();
       hud.showToast(`FIRST AID · +${Math.round(healed)} HP`);
-    },
-    onMilestone(id: string): void {
-      hud.showToast(`MILESTONE · ${id.replace(/([A-Z])/g, ' $1').toUpperCase()}`);
     },
   };
   let sandboxPanel: SandboxPanel | null = null;
@@ -1014,7 +948,6 @@ export async function bootGame(
     setAutoMode(mode);
     const w: RunWorld = new RunWorld(app.screen, events, {
       control: () => playerControl(w),
-      powerUps: meta.powerUpMods(),
     });
     world = w;
     w.player.hp = w.playerMaxHp;
@@ -1068,12 +1001,12 @@ export async function bootGame(
         resetWorld();
         engine.clock.stop();
         hud.showHud(false);
-        hud.showStart(startRun, startSandbox, meta);
+        hud.showStart(startRun, startSandbox);
         state = 'start';
         syncTimeScaleControl(); // resetWorld ran while still 'sandbox'; re-grey now
       },
     });
-    hud.showHud(true, true);
+    hud.showHud(true);
     pauseButton.style.display = '';
     hud.renderBand(w.tiers, { evolved: w.evolved });
     state = 'sandbox';
@@ -1124,18 +1057,8 @@ export async function bootGame(
     engine.clearBarQueue();
     hud.showHud(false);
     pauseButton.style.display = 'none';
-    const settlement: RunSettlement = meta.settleRun({
-      timeS: world.timeS,
-      level: world.level,
-      kills: world.kills,
-      notesCollected: world.notesCollected,
-      chestsOpened: world.chestsOpened,
-      evolutionsMade: world.evolutionsMade,
-      milestones: [...world.milestones],
-      damageByRole: world.damageByRole,
-      killsByRole: world.killsByRole,
-      evolutionsByRole: world.evolutionsByRole,
-    });
+    // Nothing is settled any more: the run ends where it ends (#265). The end
+    // screen reports the run and offers another one.
     hud.showEnd(
       victory,
       {
@@ -1148,10 +1071,9 @@ export async function bootGame(
       },
       () => {
         hud.showHud(false);
-        hud.showStart(startRun, startSandbox, meta);
+        hud.showStart(startRun, startSandbox);
         state = 'start';
       },
-      settlement,
     );
   }
 
@@ -1371,11 +1293,7 @@ export async function bootGame(
         w.level,
         w.timeS,
       );
-      hud.setRunInfo(
-        w.items,
-        w.evolved,
-        w.notesCollected,
-      );
+      hud.setRunInfo(w.evolved, w.notesCollected);
       sandboxPanel?.update();
     }
     if (trackOverlayEl.style.display !== 'none') trackOverlay.tick();
@@ -1532,7 +1450,7 @@ export async function bootGame(
     }
   });
 
-  hud.showStart(startRun, startSandbox, meta);
+  hud.showStart(startRun, startSandbox);
 
   // extend the dev console handle
   Object.assign((window as unknown as { loop: object }).loop, {

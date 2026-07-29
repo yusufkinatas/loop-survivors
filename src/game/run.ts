@@ -14,7 +14,6 @@ import {
   DAMAGE_FEEDBACK,
   ENCORE,
   ENEMIES,
-  BUILD,
   HEALTH_PICKUP,
   MAD_FOREST_FRAMES,
   MAX_ALIVE_HARD,
@@ -43,17 +42,12 @@ import {
 import { mulberry32, type Rng } from './rng';
 import { SpatialHash, circlesOverlap } from './spatial';
 import {
-  deriveBuildMods,
   eligibleEvolutions,
-  itemMaxLevel,
-  neutralPowerUpMods,
+  neutralBuildMods,
   EVOLUTION_BY_ROLE,
-  paddedJacketHeal,
   type BuildMods,
   type EvolutionDefinition,
-  type ItemId,
-  type PowerUpMods,
-} from './items';
+} from './build';
 import {
   WEAPON_MODULES,
   weaponTiers,
@@ -172,7 +166,34 @@ function unrollStageEvents(rows: readonly StageEvent[]): readonly StageOccurrenc
   return out.map((entry) => entry.occ);
 }
 
-const STAGE_OCCURRENCES = unrollStageEvents(STAGE_EVENTS);
+/** THE RUN-SHAPE SEAM (#265). Everything the director reads, in one value.
+ *
+ *  Four of the five round-1 stacks replace the run shape (#256) — rooms, a
+ *  three-song set, a handcrafted venue crawl, a stage plot — and the fifth
+ *  keeps Mad Forest intact. So the tables the director walks are an argument
+ *  rather than a module-level constant: a prototype builds its own
+ *  `StageScript` and hands it to `RunWorld`, and `runDirector` below is the
+ *  only code that has to keep working.
+ *
+ *  What this does NOT abstract is the ARRIVAL of pressure — spawn positions,
+ *  boss bodies, sweeps, flower walls. A stack that needs a different arrival
+ *  rule edits the director itself, and should. */
+export interface StageScript {
+  waves: readonly StageWave[];
+  events: readonly StageEvent[];
+  startingKind: EnemyKind;
+  startingSpawns: number;
+}
+
+/** Not exported: today nothing outside this file needs it, and knip guards
+ *  that. A prototype that wants to derive its script from Mad Forest's rows
+ *  exports this line and imports the constant. */
+const MAD_FOREST: StageScript = {
+  waves: STAGE_WAVES,
+  events: STAGE_EVENTS,
+  startingKind: STAGE_STARTING_KIND,
+  startingSpawns: STAGE_STARTING_SPAWNS,
+};
 
 export interface Enemy {
   id: number;
@@ -539,7 +560,6 @@ export interface RunEvents {
   onGemCollected?(xp: number, levelProgress: number): void;
   onStageMagnet?(result: VacuumResult): void;
   onHealthPickup?(healed: number): void;
-  onMilestone?(id: 'first5m' | 'fullBand' | 'firstEvolution'): void;
 }
 
 // KIT_COLORS IS GONE (#141). It was a sixteen-entry table of weapon hues living
@@ -557,15 +577,28 @@ export interface RunWorldOpts {
   control?: () => { x: number; y: number };
   /** False for non-visual fixtures that do not consume effects. */
   fx?: boolean;
-  /** Career power-up bonuses; omitted (sandbox, fixtures) means neutral. */
-  powerUps?: PowerUpMods;
+  /** The stage script the director walks; Mad Forest when omitted. See
+   *  `StageScript` — this is the seam a new run shape replaces. */
+  stage?: StageScript;
 }
 
 export class RunWorld {
   /** Owned weapons and their ladder tier (1-4). */
   readonly tiers = new Map<Role, number>();
-  readonly items = new Map<ItemId, number>();
   readonly evolved = new Set<Role>();
+
+  /** THE STAT SEAM (#265). Every weapon module reads these and none of them
+   *  knows where a number came from. In the base nothing writes to it, so a
+   *  run plays at the weapons' authored tier numbers and nothing else — that is
+   *  the control the prototypes are measured against.
+   *
+   *  A prototype whose power currency is upkeep, stage geometry, tape or
+   *  patterns mutates this object and every weapon picks the change up on the
+   *  next frame. Deliberately a plain mutable field rather than a derived
+   *  getter: the old getter recomputed the whole struct from the passive map
+   *  every time it was read, which is exactly the shape a new currency cannot
+   *  reuse. */
+  readonly mods: BuildMods = neutralBuildMods();
 
   player = {
     x: 0,
@@ -590,9 +623,13 @@ export class RunWorld {
   evolutionsByRole: Partial<Record<Role, number>> = {};
   evolutionsMade = 0;
   chestsOpened = 0;
-  /** Shop currency physically collected during this run. */
+  /** Music notes physically collected during this run. A RUN STAT ONLY: the
+   *  career wallet they used to bank into went with the Afterhours Shop
+   *  (#265). The pickup, its cue and its place in the Stage Light drop table
+   *  all stay — that table is floor economy, and gutting 69% of its weight
+   *  would have changed what a run is, which this ticket is not allowed to
+   *  do. */
   notesCollected = 0;
-  readonly milestones = new Set<'first5m' | 'fullBand' | 'firstEvolution'>();
   invincible = false;
   /** Tempo damage compensation (docs/plan.md, tempo and damage): more triggers
    *  per second means each hits softer, so per-trigger damage is scaled by this
@@ -614,8 +651,6 @@ export class RunWorld {
   /** Live Stage Lights, OLDEST FIRST. The order is the whole of the cap rule:
    *  a successful attempt at the cap retires `stageLights[0]`. */
   readonly stageLights: StageLight[] = [];
-
-  private readonly powerUps: PowerUpMods;
 
   private rng: Rng;
   private control: () => { x: number; y: number };
@@ -649,7 +684,6 @@ export class RunWorld {
   private readonly stageLightDropRng: Rng;
   /** Seconds owed to the once-a-second spawn attempt. */
   private stageLightAttemptT = 0;
-  private lastMinute = -1;
   private triggerCounts: Partial<Record<Role, number>> = {};
   /** Per-run weapon-module state, one instance per migrated role. */
   private readonly weapons = new Map<Role, WeaponInstance>();
@@ -658,6 +692,9 @@ export class RunWorld {
    *  snapshotted. */
   private readonly weaponCtx = new Map<Role, WeaponContext>();
   private scripted: boolean;
+  private readonly stage: StageScript;
+  /** The stage's event rows unrolled into individual firings, once per world. */
+  private readonly occurrences: readonly StageOccurrence[];
   /** The run has been won (mad-forest-spec §8). Set once, never cleared: a
    *  world that reached 30:00 only ever plays out its clear wave. */
   won = false;
@@ -681,7 +718,8 @@ export class RunWorld {
     this.stageLightDropRng = mulberry32(dropSeed ^ 0x44524f50);
     this.control = opts.control ?? (() => ({ x: 0, y: 0 }));
     this.fx = (opts.fx ?? true) ? [] : null;
-    this.powerUps = opts.powerUps ?? neutralPowerUpMods();
+    this.stage = opts.stage ?? MAD_FOREST;
+    this.occurrences = unrollStageEvents(this.stage.events);
     // Built after the drop seed draw above: the context factory draws no rng,
     // so no draw moves.
     for (const m of WEAPON_MODULES) {
@@ -837,54 +875,17 @@ export class RunWorld {
     return this.projectiles.length;
   }
 
+  /** The stat seam, read-only for weapon code. Prototypes write to `mods`. */
   get buildMods(): BuildMods {
-    // Career power-ups ride the passives' own channels: multipliers compound
-    // with the items', additive bonuses stack. Weapon code reads one struct
-    // and never learns the bonus's origin.
-    const mods = deriveBuildMods(this.items);
-    const p = this.powerUps;
-    mods.moveMul *= p.moveMul;
-    mods.projectileSpeedMul *= p.projectileSpeedMul;
-    mods.areaMul *= p.areaMul;
-    mods.orbitDistanceMul *= p.orbitDistanceMul;
-    mods.durationMul *= p.durationMul;
-    mods.magnetMul *= p.magnetMul;
-    mods.hpRegenPerSecond += p.hpRegenPerSecond;
-    mods.extraProjectiles += p.extraProjectiles;
-    return mods;
+    return this.mods;
   }
 
   get playerMaxHp(): number {
-    // The power-up scales the base pool; Padded Jacket's flat health lands on
-    // top unscaled, so its level copy stays literally true.
-    return Math.round(RUN.playerHp * this.powerUps.maxHpMul) + this.buildMods.maxHpBonus;
+    return RUN.playerHp + this.mods.maxHpBonus;
   }
 
   get playerArmor(): number {
-    return RUN.playerArmor + this.buildMods.armorBonus;
-  }
-
-  addItem(id: ItemId, level = (this.items.get(id) ?? 0) + 1): void {
-    const previous = this.items.get(id) ?? 0;
-    const next = Math.max(previous, Math.min(itemMaxLevel(id), level));
-    this.items.set(id, next);
-    if (id === 'paddedJacket') {
-      this.healPlayer(paddedJacketHeal(previous, next));
-    }
-    this.spawnRing(this.player.x, this.player.y, 190, 0xffd875, 0.5, true);
-  }
-
-  /** Exact passive-level setter for the sandbox. Normal rewards stay
-   * monotonic through addItem(); this developer surface supports removal. */
-  setItemLevelForSandbox(id: ItemId, level: number): void {
-    const previousMax = this.playerMaxHp;
-    const next = Math.max(0, Math.min(itemMaxLevel(id), Math.floor(level)));
-    if (next === 0) this.items.delete(id);
-    else this.items.set(id, next);
-    if (id === 'paddedJacket') {
-      const hpRatio = previousMax > 0 ? this.player.hp / previousMax : 1;
-      this.player.hp = Math.min(this.playerMaxHp, Math.max(1, this.playerMaxHp * hpRatio));
-    }
+    return RUN.playerArmor + this.mods.armorBonus;
   }
 
   /** The one place player health goes up. Callers pass how much they want to
@@ -898,7 +899,7 @@ export class RunWorld {
 
   /** Notes paid straight into the run total, with no pickup to walk to: the
    *  Tip Jar. Routes through the same total and the same event as a collected
-   *  note, so the HUD counter and the career credit see one kind of income. */
+   *  note, so the HUD counter sees one kind of income. */
   grantNotes(value: number): void {
     const amount = Math.max(0, Math.floor(value));
     if (amount <= 0) return;
@@ -917,7 +918,7 @@ export class RunWorld {
   }
 
   eligibleEvolutions(): EvolutionDefinition[] {
-    return eligibleEvolutions(this.tiers, this.items, this.evolved);
+    return eligibleEvolutions(this.tiers, this.evolved);
   }
 
   evolve(role: Role): EvolutionDefinition | null {
@@ -926,7 +927,6 @@ export class RunWorld {
     this.evolved.add(role);
     this.evolutionsMade += 1;
     this.evolutionsByRole[role] = (this.evolutionsByRole[role] ?? 0) + 1;
-    this.markMilestone('firstEvolution');
     this.fx?.push({ type: 'evolution', x: this.player.x, y: this.player.y, color: evolution.color, label: evolution.name });
     this.spawnRing(this.player.x, this.player.y, 320, 0xffdf74, 1);
     return evolution;
@@ -981,7 +981,6 @@ export class RunWorld {
   addWeapon(role: Role, tier = 1): void {
     this.tiers.set(role, tier);
     this.spawnRing(this.player.x, this.player.y, 220, ROLE_COLORS[role], 0.6);
-    if (this.tiers.size >= BUILD.weaponCap) this.markMilestone('fullBand');
   }
 
   /** Sandbox loadout editor: drop a weapon entirely. */
@@ -1001,9 +1000,8 @@ export class RunWorld {
    *  the ring a player would get. Testing an evolution should cost nothing but
    *  the evolution.
    *
-   *  Deliberately does NOT count toward evolutionsMade / evolutionsByRole or
-   *  mark the firstEvolution milestone. Those feed career progression, and a
-   *  dev button must not write to it. */
+   *  Deliberately does NOT count toward evolutionsMade / evolutionsByRole: a
+   *  dev button must not write to the run's own report. */
   evolveForSandbox(role: Role): EvolutionDefinition | null {
     const evolution = EVOLUTION_BY_ROLE[role];
     if (!evolution || this.evolved.has(role)) return null;
@@ -1023,9 +1021,7 @@ export class RunWorld {
    *  (mad-forest-spec §5) — what the minute selects is which wave row the
    *  MINUTE WAVE fixture reads and how the arena reads on screen. */
   setSandboxThreatMinute(minute: number): void {
-    const next = Math.max(0, Math.floor(minute));
-    this.timeS = next * 60 + 0.01;
-    this.lastMinute = next - 1;
+    this.timeS = Math.max(0, Math.floor(minute)) * 60 + 0.01;
   }
 
   /** Drop the authored roster for a minute of the 30-minute table as rings, so
@@ -1033,8 +1029,8 @@ export class RunWorld {
    *  past the table's end reuse its last row, exactly as a live run does. */
   spawnSandboxWave(minute = Math.floor(this.timeS / 60)): void {
     const atS = Math.max(0, Math.floor(minute)) * 60;
-    let wave = STAGE_WAVES[0];
-    for (const row of STAGE_WAVES) if (row.atS <= atS) wave = row;
+    let wave = this.stage.waves[0];
+    for (const row of this.stage.waves) if (row.atS <= atS) wave = row;
     for (const kind of wave.pattern) {
       this.spawnRingOf(kind, Math.max(6, Math.floor(36 / wave.pattern.length)));
     }
@@ -1068,20 +1064,6 @@ export class RunWorld {
    *  that granted the evolution (#146). */
   private withExtraPierce(basePierce: number): number {
     return Number.isFinite(basePierce) ? basePierce + this.buildMods.extraPierce : basePierce;
-  }
-
-  private markMilestone(id: 'first5m' | 'fullBand' | 'firstEvolution'): void {
-    if (this.milestones.has(id)) return;
-    this.milestones.add(id);
-    this.events.onMilestone?.(id);
-  }
-
-  private updateMinuteSystems(_dt: number): void {
-    const minute = Math.floor(this.timeS / 60);
-    if (minute !== this.lastMinute) {
-      this.lastMinute = minute;
-      if (minute >= 5) this.markMilestone('first5m');
-    }
   }
 
   private damagePlayer(amount: number, armorApplies: boolean): void {
@@ -1138,7 +1120,6 @@ export class RunWorld {
       this.timeS += dt;
       if (this.scripted && this.timeS >= VICTORY.atS) this.beginVictory();
     }
-    if (!this.won) this.updateMinuteSystems(dt);
     this.updatePassiveRecovery(dt);
     this.movePlayer(dt);
     // AFTER movePlayer, BEFORE the weapon phases: the spawn oval is measured
@@ -1246,11 +1227,11 @@ export class RunWorld {
   private runDirector(_dt: number): void {
     if (!this.stageStarted) {
       this.stageStarted = true;
-      for (let i = 0; i < STAGE_STARTING_SPAWNS; i++) this.spawnEnemy(STAGE_STARTING_KIND);
+      for (let i = 0; i < this.stage.startingSpawns; i++) this.spawnEnemy(this.stage.startingKind);
     }
 
-    while (this.waveIdx + 1 < STAGE_WAVES.length && this.timeS >= STAGE_WAVES[this.waveIdx + 1].atS) {
-      this.currentWave = STAGE_WAVES[++this.waveIdx];
+    while (this.waveIdx + 1 < this.stage.waves.length && this.timeS >= this.stage.waves[this.waveIdx + 1].atS) {
+      this.currentWave = this.stage.waves[++this.waveIdx];
       // Source timers wait one full interval before their first callback. The
       // ten starting bats therefore remain ten until 0:01, and each new
       // minute's regular roster begins after that row's stated interval.
@@ -1258,10 +1239,10 @@ export class RunWorld {
     }
 
     while (
-      this.eventIdx < STAGE_OCCURRENCES.length &&
-      this.timeS >= STAGE_OCCURRENCES[this.eventIdx].atS
+      this.eventIdx < this.occurrences.length &&
+      this.timeS >= this.occurrences[this.eventIdx].atS
     ) {
-      const occ = STAGE_OCCURRENCES[this.eventIdx++];
+      const occ = this.occurrences[this.eventIdx++];
       if (occ.type === 'boss') {
         const before = this.enemies.length;
         this.spawnEnemy(occ.kind, undefined, 1, true, 'boss');
@@ -2621,7 +2602,7 @@ export class RunWorld {
       const speed = g.vacuumed ? STAGE_MAGNET.vacuumSpeed : RUN.gemPullSpeed * this.buildMods.pullMul;
       const remaining = inRange ? advancePickupPull(g, p.x, p.y, speed, dt) : d;
       if (remaining < RUN.pickupRadius) {
-        this.xp += g.xp * xpPickupMultiplier(this.level) * this.powerUps.xpGainMul;
+        this.xp += g.xp * xpPickupMultiplier(this.level) * this.mods.xpGainMul;
         this.gems.splice(i, 1);
         if (g === this.overflowGem) this.overflowGem = null;
         // Before checkLevel, so the pickup is heard under the level-up chime

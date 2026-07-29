@@ -1647,28 +1647,6 @@ button.big {
   justify-content: center;
 }
 
-/* Dev row at the foot of the shop panel. Borrows .start-dev-toggle wholesale so
-   it reads as the same quiet class of control as `sandbox` / `experiments`;
-   only the placement is new. */
-.shop-dev {
-  display: flex;
-  gap: var(--sp-2);
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  margin-top: var(--sp-3);
-  padding-top: var(--sp-2);
-  border-top: 1px solid var(--line);
-}
-
-/* Armed reset: still no red. It gains the ordinary hover treatment so it looks
-   pressed rather than dangerous — the confirmation is the second click, and the
-   label says so. */
-.start-dev-toggle.armed {
-  color: var(--ink-dim);
-  border-color: var(--line-2);
-  background: var(--bg-3);
-}
-
 /* The same rack, shown roomier while paused. */
 .pause-rack {
   display: flex;
@@ -1694,8 +1672,9 @@ button.big {
   letter-spacing: 0.1em;
 }
 
-/* The stat list: what the whole build adds up to, in the same panel skin as
-   the passive readout above it (it carries .pause-items too). */
+/* The stat list: what the whole build adds up to. It carries .pause-items for
+   the panel skin — the passive readout that class was named for is gone
+   (#265), and .pause-items is now just that skin. */
 .pause-stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
@@ -1717,7 +1696,6 @@ button.big {
 }
 
 .pause-stat-glyph {
-  /* The passives' shared neutral; keep in sync with ITEM_NEUTRAL_COLOR. */
   color: #cfd8e3;
   font: 900 16px/1 var(--font-mono);
   text-align: center;
@@ -1770,53 +1748,6 @@ button.big {
   font-size: var(--fs-xs);
 }
 
-.pause-items-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.pause-item {
-  /* Passives are neutral by design; keep in sync with ITEM_NEUTRAL_COLOR. */
-  --item-color: #cfd8e3;
-  display: grid;
-  grid-template-columns: 30px minmax(0, 1fr);
-  gap: 8px;
-  align-items: center;
-  min-height: 54px;
-  padding: 7px 9px;
-  background: #0b111a;
-  border: 1px solid color-mix(in srgb, var(--item-color) 46%, #24303a);
-  border-left: 4px solid var(--item-color);
-}
-
-.pause-item-glyph {
-  color: var(--item-color);
-  font: 900 22px/1 var(--font-mono);
-  text-align: center;
-}
-
-.pause-item-copy {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-
-.pause-item-copy strong {
-  overflow: hidden;
-  color: #f1fff8;
-  font: 800 13px/1.15 var(--font-mono);
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.pause-item-copy span,
-.pause-items-empty {
-  margin: 0;
-  color: #b5c9bf;
-  font: 700 var(--fs-sm)/1.25 var(--font-mono);
-}
-
 .sb-enemy-stats.passive-copy {
   white-space: normal;
   overflow: visible;
@@ -1833,11 +1764,6 @@ button.big {
   .pause-overlay h1 { font-size: 28px; }
   .pause-rack { margin-block: 0 4px; }
   .pause-items { width: 96vw; padding: 8px; }
-  .pause-items-grid { gap: 5px; grid-template-columns: minmax(0, 1fr); }
-  .pause-item { grid-template-columns: 24px minmax(0, 1fr); gap: 7px; min-height: 46px; padding: 6px; }
-  .pause-item-glyph { font-size: 18px; }
-  .pause-item-copy strong { font-size: var(--fs-sm); }
-  .pause-item-copy span { font-size: var(--fs-xs); }
   .pause-stats-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 2px 10px; }
   .pause-stat { grid-template-columns: 18px minmax(0, 1fr) auto; gap: 7px; padding: 2px; }
   .pause-stat-glyph { font-size: 14px; }
@@ -1937,8 +1863,7 @@ button.big {
   border-radius: 1px;
 }
 
-.band-socket,
-.item-socket {
+.band-socket {
   border-radius: 2px;
   box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.52);
 }
@@ -1954,56 +1879,6 @@ button.big {
   font-size: 7px;
   font-weight: 900;
   letter-spacing: 0.08em;
-}
-
-.item-rack {
-  position: absolute;
-  top: max(12px, env(safe-area-inset-top));
-  right: max(12px, env(safe-area-inset-right));
-  display: grid;
-  grid-template-columns: repeat(3, 66px);
-  gap: 4px;
-  z-index: 3;
-  pointer-events: none;
-}
-
-.item-socket {
-  --item-color: #58606f;
-  position: relative;
-  display: grid;
-  grid-template-columns: 20px 1fr;
-  grid-template-rows: 1fr 1fr;
-  width: 66px;
-  height: 43px;
-  padding: 3px 4px;
-  overflow: hidden;
-  background: var(--panel-ink);
-  border: 1px solid color-mix(in srgb, var(--item-color) 64%, #24303a);
-  border-left: 3px solid var(--item-color);
-}
-
-.item-socket.empty {
-  opacity: 0.32;
-  border-style: dashed;
-}
-
-.item-glyph {
-  grid-row: 1 / -1;
-  align-self: center;
-  color: var(--item-color);
-  font-size: 19px;
-  font-weight: 900;
-}
-
-.item-name {
-  grid-row: 1 / -1;
-  align-self: center;
-  overflow: hidden;
-  color: #e7f3ed;
-  font-size: 8px;
-  font-weight: 800;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
 .screen.start-screen,
@@ -2060,32 +1935,6 @@ button.big {
   text-transform: uppercase;
 }
 
-.career-panel,
-.settlement-panel {
-  width: min(760px, 94vw);
-  padding: 14px;
-  text-align: left;
-  background: rgba(13, 19, 28, 0.96);
-  border: 2px solid #29483e;
-  box-shadow: 5px 5px 0 #020305;
-}
-
-.career-head,
-.collection-strip,
-.rep-row,
-.end-rank {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.end-rank .rank-meter {
-  flex: 1 1 240px;
-  min-width: 180px;
-}
-
 .pause-live {
   position: absolute;
   right: max(7px, env(safe-area-inset-right));
@@ -2111,245 +1960,6 @@ button.big {
   background: var(--signal);
   border-color: var(--signal);
   font-weight: 900;
-}
-
-.career-rank,
-.career-rep {
-  color: #f0fff7;
-  letter-spacing: 0.08em;
-}
-
-.career-rep {
-  color: var(--gold);
-  font-size: 11px;
-}
-
-.rank-meter {
-  position: relative;
-  height: 18px;
-  margin: 8px 0 12px;
-  overflow: hidden;
-  background: #06090e;
-  border: 1px solid #315a45;
-}
-
-.rank-meter-fill {
-  height: 100%;
-  background: repeating-linear-gradient(90deg, #2c8f79 0 18px, #59ffd1 18px 36px);
-}
-
-.rank-meter-copy {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  color: #fff;
-  font-size: 9px;
-  font-weight: 900;
-  text-shadow: 1px 1px #000;
-}
-
-.next-reward {
-  display: grid;
-  gap: 4px;
-  padding: 10px 12px;
-  background: #0a1018;
-  border-left: 4px solid var(--gold);
-}
-
-.next-reward strong {
-  color: var(--gold);
-  font-size: 16px;
-}
-
-.shop-toggle {
-  width: 100%;
-  margin-top: 12px;
-  padding: 9px 12px;
-  color: var(--gold);
-  background: #151107;
-  border: 1px solid rgba(255, 212, 92, 0.62);
-  border-radius: 2px;
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: 0.12em;
-}
-
-.shop-toggle.on {
-  color: #171006;
-  background: var(--gold);
-}
-
-.shop-panel {
-  display: grid;
-  gap: 10px;
-  margin-top: 10px;
-  padding-top: 12px;
-  border-top: 2px solid #59461d;
-}
-
-.shop-head,
-.shop-card-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.shop-head {
-  position: sticky;
-  top: -1px;
-  z-index: 3;
-  padding: 7px 5px;
-  width: 100%;
-  align-self: start;
-  background: rgba(8, 12, 19, 0.98);
-  border-bottom: 1px solid #59461d;
-  box-shadow: 0 7px 14px rgba(0, 0, 0, 0.38);
-}
-
-.shop-head-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.shop-close {
-  min-height: 34px;
-  padding: 6px 8px;
-  color: #fff1b1;
-  background: #17120a;
-  border: 1px solid #6a5422;
-  border-radius: 2px;
-  font-size: 9px;
-  font-weight: 900;
-}
-
-.shop-head strong {
-  display: block;
-  margin-top: 3px;
-  color: #fff1b1;
-  font-size: 18px;
-}
-
-.shop-wallet {
-  flex: 0 0 auto;
-  padding: 7px 10px;
-  color: #171006;
-  background: var(--gold);
-  border: 2px solid #fff0a7;
-  box-shadow: 3px 3px 0 #50380a;
-  font-size: 12px;
-  font-weight: 900;
-}
-
-.shop-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 7px;
-}
-
-.shop-card {
-  display: grid;
-  grid-template-rows: auto auto 1fr auto;
-  gap: 6px;
-  min-height: 148px;
-  padding: 10px;
-  background: #0b1118;
-  border: 1px solid #38564d;
-  border-left: 4px solid var(--signal);
-}
-
-.shop-card.available {
-  background: #111b18;
-  box-shadow: inset 0 0 20px rgba(89, 255, 209, 0.06);
-}
-
-.shop-card.short {
-  border-left-color: var(--gold);
-}
-
-.shop-card.locked {
-  background: #0a0d12;
-  border-color: #353541;
-  border-left-color: #6c6475;
-}
-
-.shop-card.purchased {
-  background: #11100b;
-  border-color: #604e1e;
-  border-left-color: var(--gold);
-}
-
-.shop-card.locked .shop-name,
-.shop-card.locked .shop-copy,
-.shop-card.purchased .shop-copy {
-  color: #79857f;
-}
-
-.shop-kind,
-.shop-cost {
-  color: #80978e;
-  font-size: 9px;
-  font-weight: 900;
-  letter-spacing: 0.09em;
-}
-
-.shop-cost { color: var(--gold); }
-.shop-name { color: #effff7; font-size: 13px; }
-.shop-copy { color: #96aaa2; font-size: 10px; line-height: 1.35; }
-
-.shop-buy {
-  min-height: 32px;
-  padding: 6px;
-  border-radius: 2px;
-  color: var(--signal);
-  background: #101c19;
-  border-color: #315a45;
-  font-size: 9px;
-  font-weight: 900;
-  letter-spacing: 0.04em;
-}
-
-.shop-buy:disabled {
-  cursor: default;
-  color: #707b76;
-  background: #101217;
-  border-color: #252c30;
-}
-
-.reward-copy {
-  color: #9fb4aa;
-  font-size: 11px;
-}
-
-.collection-strip {
-  justify-content: flex-start;
-  flex-wrap: wrap;
-  margin-top: 10px;
-  color: #91aaa0;
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-}
-
-.recipe-hints {
-  display: grid;
-  gap: 7px;
-  margin-top: 12px;
-}
-
-.recipe-hints {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-
-.recipe-chip {
-  padding: 5px 8px;
-  border-radius: 2px;
-  color: #b6c8bf;
-  font-size: 10px;
 }
 
 .start-btn,
@@ -2480,62 +2090,6 @@ button.big {
   color: #fff3c4;
 }
 
-.rep-earned {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  padding-bottom: 10px;
-  border-bottom: 1px solid #29483e;
-}
-
-.rep-earned strong {
-  color: var(--gold);
-  font-size: 34px;
-}
-
-.rep-breakdown {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px 18px;
-  padding: 10px 0;
-  color: #9fb4aa;
-  font-size: 10px;
-}
-
-.rep-row strong {
-  color: #e7f3ed;
-}
-
-.rank-up-banner {
-  margin: 10px 0;
-  padding: 9px;
-  color: #151006;
-  background: var(--gold);
-  text-align: center;
-  font-weight: 900;
-  letter-spacing: 0.15em;
-}
-
-.unlock-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 7px;
-  margin: 10px 0;
-}
-
-.unlock-card {
-  display: grid;
-  gap: 4px;
-  padding: 10px;
-  background: #161125;
-  border: 1px solid var(--violet);
-}
-
-.unlock-card strong { color: #d9c7ff; }
-.unlock-card > span:last-child { color: #9d94ad; font-size: 10px; }
-.milestone-line { color: var(--gold); font-size: 10px; text-transform: uppercase; }
-.end-next { margin-top: 10px; }
-
 .kill-row {
   max-width: min(760px, 94vw);
 }
@@ -2570,40 +2124,12 @@ button.big {
   }
   .hud-timer { font-size: 18px; }
   .hud-level { padding: 1px 5px; font-size: 8px; }
-  .item-rack {
-    top: calc(max(6px, env(safe-area-inset-top)) + 48px);
-    right: 7px;
-    grid-template-columns: repeat(2, 48px);
-    gap: 2px;
-  }
-  .item-socket {
-    width: 48px;
-    height: 33px;
-    grid-template-columns: 16px 1fr;
-    padding: 2px;
-  }
-  .item-glyph { font-size: 14px; }
-  .item-name { display: none; }
   .toast-stack { top: calc(env(safe-area-inset-top) + 204px); }
   .pause-live { display: flex; align-items: center; justify-content: center; }
   .start-hero { min-height: 220px; }
   .title-lockup { max-width: 88%; }
   .title-lockup .sub { font-size: 11px; }
-  .career-panel,
-  .settlement-panel { padding: 10px; }
-  .shop-grid { grid-template-columns: 1fr; }
-  .shop-card { min-height: 0; }
-  .shop-kind,
-  .shop-cost,
-  .shop-buy { font-size: 10px; }
-  .shop-copy { font-size: 11px; }
-  .shop-name { font-size: 14px; }
-  .shop-toggle,
-  .shop-buy,
-  .shop-close,
   .start-dev .small { min-height: 44px; }
-  .shop-head { top: -1px; }
-  .rep-breakdown { grid-template-columns: 1fr; }
   .screen.start-screen,
   .screen.end-screen { padding-inline: 9px; }
 }

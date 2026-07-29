@@ -1,6 +1,10 @@
 // The sandbox is the real arena with automatic waves disabled and a compact,
-// deterministic control surface over every live run system. The UI owns no
-// persistent progression: its shop always uses MetaStore(null).
+// deterministic control surface over every live run system.
+//
+// It is also the capture surface: `docs/baseline/`'s rig wants the real arena
+// with an empty field, which is exactly what "waves off" gives it. Keep the
+// Sandbox entry link on the title screen working on every prototype branch —
+// without it a branch cannot produce a comparable arrangement capture.
 
 import type { MusicEngine } from '../audio/engine';
 import { type Role, ROLE_META } from '../audio/kits';
@@ -31,14 +35,8 @@ import {
 import { TIER_NUMERALS } from './hud';
 import {
   EVOLUTION_BY_ROLE,
-  ITEMS,
-  ITEM_IDS,
-  ITEM_NEUTRAL_CSS,
-  itemMaxLevel,
   type EvolutionDefinition,
-  type ItemId,
-} from './items';
-import { MetaStore, POWER_UPS, POWER_UP_IDS, type PowerUpId } from './meta';
+} from './build';
 import type { RunWorld } from './run';
 import { WEAPON_MAX_LEVEL, chartStageForLevel } from './weapons/levels';
 
@@ -46,14 +44,13 @@ import { WEAPON_MAX_LEVEL, chartStageForLevel } from './weapons/levels';
  * able to prove that future content cannot silently disappear from the panel. */
 const SANDBOX_ENEMY_CATALOG: readonly EnemyKind[] = ALL_ENEMY_KINDS;
 const SANDBOX_WEAPON_CATALOG: readonly Role[] = Object.freeze(supportedRoles());
-const SANDBOX_ITEM_CATALOG: readonly ItemId[] = ITEM_IDS;
 
 /** The ★ rung's value in a weapon row's ChoiceButtons. One past the top weapon
  *  level so it sorts and reads as the end of the ladder; it is NOT a tier the
  *  game has, and nothing outside this panel should treat it as one. */
 const EVOLVED_RUNG = WEAPON_MAX_LEVEL + 1;
 
-type TabId = 'combat' | 'enemies' | 'build' | 'career';
+type TabId = 'combat' | 'enemies' | 'build' | 'pickups';
 
 export interface SandboxPanel {
   /** Refresh readouts after the world has taken its fixed steps for this frame. */
@@ -83,9 +80,6 @@ export function mountSandboxPanel(
   world: RunWorld,
   opts: SandboxOpts,
 ): SandboxPanel {
-  // Explicitly null: career experiments must never read or write localStorage.
-  const career = new MetaStore(null);
-  let creditedRunNotes = world.notesCollected;
   let activeTab: TabId = 'combat';
   let collapsed = false;
   let lastStatsKey = '';
@@ -152,7 +146,7 @@ export function mountSandboxPanel(
     ['combat', 'Combat'],
     ['enemies', 'Lab'],
     ['build', 'Build'],
-    ['career', 'Career'],
+    ['pickups', 'Pickups'],
   ];
   for (const [id, label] of tabLabels) {
     const tab = button(tabBar, label, () => setTab(id));
@@ -167,7 +161,7 @@ export function mountSandboxPanel(
   const combat = pages.get('combat')!;
   const lab = pages.get('enemies')!;
   const build = pages.get('build')!;
-  const careerPage = pages.get('career')!;
+  const pickupsPage = pages.get('pickups')!;
 
   // -----------------------------------------------------------------------
   // Combat: exact stage minute, complete enemy catalog, repeatable fixtures.
@@ -422,69 +416,21 @@ export function mountSandboxPanel(
     // anyway — so it moves into the tooltip as context rather than as a gate.
     star.title =
       `${evolution.name} — ${evolution.description}\n` +
-      `In a run: ${ROLE_META[role].name} ${TIER_NUMERALS[WEAPON_MAX_LEVEL - 1]} + ` +
-      `${ITEMS[evolution.item].name} at any level. ` +
-      `In the sandbox neither is needed.`;
+      `In a run: ${ROLE_META[role].name} at ${TIER_NUMERALS[WEAPON_MAX_LEVEL - 1]}, ` +
+      `offered by the next chest. In the sandbox neither is needed.`;
     choices.options.push({ value: EVOLVED_RUNG, button: star });
     weaponButtons.set(role, choices);
-  }
-
-  section(build, 'passive items');
-  const itemButtons = new Map<ItemId, ChoiceButtons<number>>();
-  const itemControls = el('div', 'sb-btns sb-controls', build);
-  itemControls.style.marginLeft = '0';
-  button(itemControls, 'ALL V', () => {
-    for (const id of SANDBOX_ITEM_CATALOG) setItemLevel(id, itemMaxLevel(id));
-  });
-  button(itemControls, 'CLEAR ITEMS', () => {
-    for (const id of SANDBOX_ITEM_CATALOG) setItemLevel(id, 0);
-  });
-  for (const id of SANDBOX_ITEM_CATALOG) {
-    const item = ITEMS[id];
-    const row = el('div', 'sb-loadout', build);
-    row.style.setProperty('--voice-color', ITEM_NEUTRAL_CSS);
-    const info = el('div', 'sb-enemy-info', row);
-    const name = el('span', 'sb-loadout-label', info, `${item.glyph} ${item.name}`);
-    name.title = item.description;
-    const partner = item.evolutionPartner;
-    el(
-      'span',
-      'sb-enemy-stats passive-copy',
-      info,
-      `${item.description} · ${partner ? `evolves ${ROLE_META[partner].name}` : 'standalone · no evolution'}`,
-    );
-    const controls = el('div', 'sb-btns', row);
-    const choices: ChoiceButtons<number> = { value: () => world.items.get(id) ?? 0, options: [] };
-    for (let level = 0; level <= itemMaxLevel(id); level++) {
-      choices.options.push({
-        value: level,
-        button: button(controls, level === 0 ? '⏻' : String(level), () => setItemLevel(id, level)),
-      });
-    }
-    itemButtons.set(id, choices);
   }
 
   const buildReadout = el('div', 'sb-hint', build);
 
   // -----------------------------------------------------------------------
-  // Career: disposable wallet + real shop rules + physical pickup tests.
+  // Pickups: physical drop and vacuum tests. The disposable career wallet and
+  // the Afterhours shop rules that shared this tab went with the meta layer
+  // (#265); what is left is run-system testing, which is why the tab renamed.
 
-  section(careerPage, 'isolated career profile');
-  el(
-    'div',
-    'sb-hint',
-    careerPage,
-    'IN-MEMORY ONLY · purchases and note grants here never touch your real collection.',
-  );
-  const walletReadout = el('div', 'sb-enemy-name', careerPage);
-  const careerControls = el('div', 'sb-btns sb-controls', careerPage);
-  careerControls.style.marginLeft = '0';
-  button(careerControls, '+100 NOTES', () => career.grantNotes(100));
-  button(careerControls, '+1000 NOTES', () => career.grantNotes(1000));
-  button(careerControls, '+5000 NOTES', () => career.grantNotes(5000));
-
-  section(careerPage, 'physical pickups');
-  const noteControls = el('div', 'sb-btns sb-controls sb-pickup-controls', careerPage);
+  section(pickupsPage, 'physical pickups');
+  const noteControls = el('div', 'sb-btns sb-controls sb-pickup-controls', pickupsPage);
   noteControls.style.marginLeft = '0';
   button(noteControls, 'DROP ♫1', () => dropNote(1, 100));
   button(noteControls, 'DROP ♫3', () => dropNote(3, 125));
@@ -543,24 +489,7 @@ export function mountSandboxPanel(
       world.spawnMusicNoteAt(world.player.x + 70 + i * 58, world.player.y, 1);
     }
   });
-  const pickupReadout = el('div', 'sb-hint', careerPage);
-
-  section(careerPage, 'afterhours shop');
-  const shopButtons = new Map<PowerUpId, HTMLButtonElement>();
-  const shopStats = new Map<PowerUpId, HTMLElement>();
-  for (const id of POWER_UP_IDS) {
-    const def = POWER_UPS[id];
-    const row = el('div', 'sb-loadout', careerPage);
-    const info = el('div', 'sb-enemy-info', row);
-    const name = el('span', 'sb-enemy-name', info, def.name);
-    name.title = def.description;
-    shopStats.set(id, el('span', 'sb-enemy-stats', info, ''));
-    const controls = el('div', 'sb-btns', row);
-    const buy = button(controls, 'BUY', () => {
-      career.purchase(id);
-    });
-    shopButtons.set(id, buy);
-  }
+  const pickupReadout = el('div', 'sb-hint', pickupsPage);
 
   /** One edit: store it, bring the live horde in line, redraw the readouts. */
   function applyTuning(key: TunableKey, value: number): void {
@@ -683,16 +612,6 @@ export function mountSandboxPanel(
     opts.onLoadout?.();
   }
 
-  function setItemLevel(id: ItemId, level: number): void {
-    const next = Math.max(0, Math.min(itemMaxLevel(id), Math.floor(level)));
-    world.setItemLevelForSandbox(id, next);
-    // Dropping a passive no longer un-evolves its partner. That coupling only
-    // existed because the panel evolved THROUGH the recipe; now that ★ ignores
-    // the recipe, an evolved weapon has no claim on any passive, and pulling a
-    // passive out from under it to isolate a variable must not undo it.
-    opts.onLoadout?.();
-  }
-
   function dropNote(value: number, radius: number): void {
     world.spawnMusicNoteAt(world.player.x + radius, world.player.y, value);
   }
@@ -717,30 +636,11 @@ export function mountSandboxPanel(
     }
   }
 
-  function refreshCareer(): void {
-    if (world.notesCollected < creditedRunNotes) creditedRunNotes = world.notesCollected;
-    if (world.notesCollected > creditedRunNotes) {
-      career.grantNotes(world.notesCollected - creditedRunNotes);
-      creditedRunNotes = world.notesCollected;
-    }
-    const collection = career.collection();
-    walletReadout.textContent = `♫ ${career.state.notes} · ${collection.owned}/${collection.total} power-up ranks`;
+  function refreshPickups(): void {
     pickupReadout.textContent =
       `${world.gems.length} XP gems · ${world.musicNotes.length} notes · ` +
       `${world.stageMagnets.length} Stage Magnet${world.stageMagnets.length === 1 ? '' : 's'} on floor · ` +
       `${world.notesCollected} notes collected`;
-    for (const status of career.shop()) {
-      const id = status.def.id;
-      shopStats.get(id)!.textContent = `rank ${status.rank}/${status.def.maxRank} · base ♫ ${status.def.baseCost}`;
-      const buy = shopButtons.get(id)!;
-      buy.disabled = status.maxed || !status.affordable;
-      buy.classList.toggle('on', status.maxed);
-      buy.textContent = status.maxed
-        ? 'MAXED'
-        : status.affordable
-          ? `BUY ♫${status.price}`
-          : `NEED ♫${status.price}`;
-    }
   }
 
   function refresh(): void {
@@ -748,7 +648,6 @@ export function mountSandboxPanel(
     syncChoice(threatChoice);
     syncChoice(levelChoice);
     for (const choice of weaponButtons.values()) syncChoice(choice);
-    for (const choice of itemButtons.values()) syncChoice(choice);
     invulnButton.classList.toggle('on', world.invincible);
     invulnButton.textContent = `INVULN ${world.invincible ? 'ON' : 'OFF'}`;
     threatStatus.textContent =
@@ -764,7 +663,7 @@ export function mountSandboxPanel(
       ` · regen ${mods.hpRegenPerSecond.toFixed(1)} HP/s`;
     refreshStats();
     refreshLab();
-    refreshCareer();
+    refreshPickups();
   }
 
   refresh();

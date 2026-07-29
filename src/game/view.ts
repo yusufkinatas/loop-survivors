@@ -4,7 +4,6 @@
 import { Container, Graphics, Text, TextStyle, TilingSprite, type Texture } from 'pixi.js';
 import type { Role } from '../audio/kits';
 import { RUN, STAGE_LIGHT, WORLD_SCALE } from './config';
-import type { ItemId } from './items';
 import { enemyLoop, loopFrame, playerLoop, preloadPixelArt } from './pixelart';
 import { KICK } from './weapons';
 import {
@@ -103,12 +102,6 @@ interface GroundPickCopyBase {
    * truthful while its siblings are being scooped around it. */
   badge: string;
   effect?: string;
-  /** Item picks only: the weapon this passive evolves, set on the first copy so
-   * the pedestal can show the recipe teaser. Passed straight to the pedestal. */
-  evoRole?: Role;
-  /** The mirror, weapon picks only: the passive this weapon evolves with, set
-   * on the hire. Exactly one of evoRole / evoItem is ever present. */
-  evoItem?: ItemId;
 }
 
 /** Everything a pedestal says about itself, with no position: the shell

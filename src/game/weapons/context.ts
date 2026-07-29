@@ -1,6 +1,6 @@
 import type { Role } from '../../audio/kits';
 import type { WeaponConf } from '../config';
-import type { BuildMods } from '../items';
+import type { BuildMods } from '../build';
 import type { FxEvent, Projectile, Shockwave, Zone } from '../run';
 
 export interface WeaponTarget {

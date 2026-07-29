@@ -1,8 +1,16 @@
-// The level-up economy's one source of truth. A configured roll mixes weapon
-// hires/upgrades with passive items until the build fills its two flat caps
-// (BUILD.weaponCap / BUILD.itemCap). Once that finite build is complete, the
-// same API returns the Encore: a fixed pair of offers that pay a long run out
-// without ever adding to the build.
+// The level-up economy's one source of truth. A configured roll offers weapon
+// hires and upgrades until the build fills its flat cap (BUILD.weaponCap) and
+// every hired weapon is maxed. Once that finite build is complete, the same API
+// returns the Encore: a fixed pair of offers that pay a long run out without
+// ever adding to the build.
+//
+// PROTOTYPE BASE (#265): the passive half of this pool is gone with the items
+// themselves, so a level-up is now weapons or nothing. That makes this file the
+// smallest and most obvious seam in the base — a prototype whose power currency
+// is patterns, tape, stage positions or upkeep widens `AnyPickOption` and
+// rewrites `rollOffers`. Its one caller is `presentNextUpgrade` in game.ts, and
+// the pedestal copy and the scoop both switch exhaustively on `kind`, so the
+// typechecker names every site that has to learn about a new pick.
 //
 // There are no weapon categories: any weapon may be offered alongside any
 // other, and hiring one never retires another from the pool. The only thing
@@ -15,21 +23,11 @@
 import { soundsetSupports } from '../audio/soundset';
 import { ROLES, type Role } from '../audio/kits';
 import { BUILD } from './config';
-import {
-  ITEM_IDS,
-  itemMaxLevel,
-  itemLevel,
-  type ItemId,
-} from './items';
 import { WEAPON_MAX_LEVEL } from './weapons/levels';
 import type { Rng } from './rng';
 
 const OFFER_COUNT = 3;
 const WEAPON_WEIGHT = 3;
-const NEW_ITEM_WEIGHT = 2.4;
-const OWNED_ITEM_WEIGHT = 2.8;
-const FORCED_ITEM_LEVEL = 5;
-const FORCED_ITEM_UNTIL_OWNED = 2;
 
 /** A pick is a +1 INCREMENT, never a target level: the option names the thing,
  *  and the shell resolves what level that means against live state at the
@@ -38,11 +36,6 @@ const FORCED_ITEM_UNTIL_OWNED = 2;
 export interface WeaponPickOption {
   kind: 'weapon';
   role: Role;
-}
-
-interface ItemPickOption {
-  kind: 'item';
-  item: ItemId;
 }
 
 /** The Encore's fixed pair, in screen order. Never rolled, never weighted. */
@@ -54,41 +47,28 @@ interface EncorePickOption {
   encore: EncoreId;
 }
 
-type PickKind = 'weapon' | 'item' | 'encore';
-
-/**
- * A pick discriminated by `kind`. The default remains the weapon shape while
- * the existing shell migrates to configured offers; use `AnyPickOption` (or
- * `PickOption<PickKind>`) anywhere that handles the complete economy.
- */
-type PickOption<K extends PickKind = 'weapon'> =
-  K extends 'weapon'
-    ? WeaponPickOption
-    : K extends 'item'
-      ? ItemPickOption
-      : K extends 'encore'
-        ? EncorePickOption
-        : never;
-
-export type AnyPickOption = PickOption<PickKind>;
+/** Everything a level-up can offer. Kept as a discriminated union of more than
+ *  one member on purpose: a prototype that adds its own pick kind (a pattern, a
+ *  reel of tape, a stage position) widens this type and the shell's exhaustive
+ *  switches then point at every site that has to learn about it. */
+export type AnyPickOption = WeaponPickOption | EncorePickOption;
 
 export interface RollOffersInput {
   tiers: ReadonlyMap<Role, number>;
-  items: ReadonlyMap<ItemId, number>;
   /** Increments already promised to a weapon but not yet in `tiers`: scooped
    *  pickups waiting for their bar, plus every un-scooped pedestal on the
    *  ground (both surfaces — a triangle and a chest payout can be out at once).
    *  Counted into the ladder tests so a pickup doomed to be wasted is never
-   *  offered. NOT counted into the build caps, which ask what is OWNED. */
+   *  offered. NOT counted into the build cap, which asks what is OWNED. */
   pendingTiers: ReadonlyMap<Role, number>;
-  /** The passive twin of `pendingTiers`. */
-  pendingItems: ReadonlyMap<ItemId, number>;
   rng: Rng;
   timeS: number;
-  level: number;
 }
 
-type BuildPickOption = WeaponPickOption | ItemPickOption;
+/** The finite half of the economy — everything that is still an addition to the
+ *  build, as opposed to the Encore that pays out once there is nothing left to
+ *  add. One member today; a prototype's own pick kind joins it here. */
+type BuildPickOption = WeaponPickOption;
 
 interface WeightedOption<T> {
   option: T;
@@ -99,14 +79,6 @@ interface RankedOption<T> extends WeightedOption<T> {
   /** Fixed pool position, used to settle the vanishingly rare equal RNG key. */
   index: number;
   key: number;
-}
-
-function ownedItemCount(items: ReadonlyMap<ItemId, number>): number {
-  let count = 0;
-  for (const id of ITEM_IDS) {
-    if (itemLevel(items, id) > 0) count += 1;
-  }
-  return count;
 }
 
 function ownedWeaponCount(tiers: ReadonlyMap<Role, number>): number {
@@ -165,19 +137,6 @@ function buildFinitePool(input: RollOffersInput): WeightedOption<BuildPickOption
     }
   }
 
-  const itemSlotsFull = ownedItemCount(input.items) >= BUILD.itemCap;
-  for (const item of ITEM_IDS) {
-    const tier = itemLevel(input.items, item);
-    const effective = Math.min(itemMaxLevel(item), tier + pending(input.pendingItems, item));
-    if (tier === 0) {
-      if (itemSlotsFull) continue;
-      if (effective >= itemMaxLevel(item)) continue;
-      pool.push({ option: { kind: 'item', item }, weight: NEW_ITEM_WEIGHT });
-    } else if (effective < itemMaxLevel(item)) {
-      pool.push({ option: { kind: 'item', item }, weight: OWNED_ITEM_WEIGHT });
-    }
-  }
-
   return pool;
 }
 
@@ -201,32 +160,18 @@ function rankOptions<T>(pool: readonly WeightedOption<T>[], rng: Rng): RankedOpt
   return ranked;
 }
 
+/** The forced-passive rule that used to live here — guarantee an item card by
+ *  level 5 until two are owned — went with the passives (#265). Nothing
+ *  replaces it: with one kind of card left there is nothing to guarantee. */
 function selectFiniteOffers(
   pool: readonly WeightedOption<BuildPickOption>[],
   rng: Rng,
-  forceItem: boolean,
 ): BuildPickOption[] {
-  const ranked = rankOptions(pool, rng);
-  const requiredItem = forceItem
-    ? ranked.find((candidate) => candidate.option.kind === 'item')
-    : undefined;
-  const selected: RankedOption<BuildPickOption>[] = [];
-
-  // Reserve the best-ranked item before filling the remaining cards. Sorting
-  // selected cards back by rank below means a forced item has no fixed screen
-  // position.
-  if (requiredItem) selected.push(requiredItem);
-
-  // No cross-card exclusion rule survives: each role appears in the pool at
+  // No cross-card exclusion rule is needed: each role appears in the pool at
   // most once, so taking the ranked order in order cannot repeat a weapon.
-  for (const candidate of ranked) {
-    if (selected.length >= OFFER_COUNT) break;
-    if (candidate === requiredItem) continue;
-    selected.push(candidate);
-  }
-
-  selected.sort((a, b) => b.key - a.key || a.index - b.index);
-  return selected.slice(0, OFFER_COUNT).map(({ option }) => option);
+  return rankOptions(pool, rng)
+    .slice(0, OFFER_COUNT)
+    .map(({ option }) => option);
 }
 
 /**
@@ -240,19 +185,11 @@ function encoreOffers(): EncorePickOption[] {
   return ENCORE_IDS.map((encore) => ({ kind: 'encore', encore }));
 }
 
-function rollConfiguredOffers(input: RollOffersInput): AnyPickOption[] {
-  const pool = buildFinitePool(input);
-  if (pool.length === 0) return encoreOffers();
-  const forceItem =
-    Math.floor(input.level) >= FORCED_ITEM_LEVEL &&
-    ownedItemCount(input.items) < FORCED_ITEM_UNTIL_OWNED &&
-    pool.some(({ option }) => option.kind === 'item');
-  return selectFiniteOffers(pool, input.rng, forceItem);
-}
-
 /** Full configured economy used by normal runs. */
 export function rollOffers(input: RollOffersInput): AnyPickOption[] {
-  return rollConfiguredOffers(input);
+  const pool = buildFinitePool(input);
+  if (pool.length === 0) return encoreOffers();
+  return selectFiniteOffers(pool, input.rng);
 }
 
 export interface RollStartingWeaponsInput {
