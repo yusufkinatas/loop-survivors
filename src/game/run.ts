@@ -535,7 +535,15 @@ export type FxEvent =
   | { type: 'aura'; x: number; y: number; radius: number; color: number; dur: number }
   | { type: 'vacuum'; x: number; y: number; radius: number }
   | { type: 'death'; x: number; y: number; radius: number; color: number; elite: boolean }
-  | { type: 'whip'; x: number; y: number; side: 1 | -1; area: number; color: number }
+  | {
+      type: 'whip';
+      x: number; y: number; side: 1 | -1; area: number; color: number;
+      /** Turn the sweep ninety degrees, so `side` means down/up rather than
+       *  right/left. The artwork is identical — only the axis changes. The kick
+       *  sweeps horizontally and the chank needed the other axis so the two
+       *  would stop covering the same ground. */
+      vertical?: boolean;
+    }
   | {
       type: 'arc';
       x: number;

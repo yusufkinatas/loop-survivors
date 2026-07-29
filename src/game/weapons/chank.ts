@@ -81,22 +81,17 @@ class ChankInstance implements WeaponInstance {
       ctx.damage(e, conf.damage);
       ctx.shove(e, p.x, p.y, CHANK_STATS.shove);
     }
-    // Drawn as a short thick bar running the length of the cut. The whip fx is
-    // horizontal-only, which is precisely the shape this weapon is moving away
-    // from.
+    // The sweep, turned on its side. This is the same artwork the kick's strip
+    // uses — a bar that was briefly swapped for a plain beam and read worse for
+    // it. Only the axis differs, which was the whole point of the change.
     ctx.fx({
-      type: 'beam',
+      type: 'whip',
       x: p.x,
       y: p.y,
-      x2: p.x,
-      y2: p.y + dir * reach,
-      width: halfWidth * 0.8,
+      side: dir,
+      area: area * (CHANK_STATS.reach / 258),
       color: ctx.color,
-      steady: true,
-      // Longer than the slash needs, deliberately: at seven cuts a bar the
-      // individual swings blur together anyway, and a flicker that short reads
-      // as noise rather than as an attack.
-      dur: 0.2,
+      vertical: true,
     });
   }
 

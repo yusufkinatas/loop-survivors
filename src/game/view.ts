@@ -1586,6 +1586,11 @@ export class RunView {
         gfx.tint = fx.color;
         gfx.blendMode = 'add';
         gfx.position.set(snap(fx.x), snap(fx.y));
+        // The whole sweep turned on its side. Rotating the finished graphic
+        // keeps every detail of the horizontal one — the taper, the streak
+        // ticks, the head diamond — rather than reimplementing it on the other
+        // axis and drifting from it.
+        gfx.rotation = fx.vertical ? Math.PI / 2 : 0;
         gfx.scale.set(0);
         this.fxLayer.addChild(gfx);
         this.pops.push({
