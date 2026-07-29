@@ -101,8 +101,80 @@ export const PALETTE_SEATS = {
   texture: ['pad', 'air'],
 } as const satisfies Readonly<Record<string, readonly Role[]>>;
 
-/** Every voice in the band, in seat order. Twenty, per #266. */
+/** Every voice in the band, in seat order. Nineteen, per #266. */
 export const PALETTE_ROLES: readonly Role[] = Object.values(PALETTE_SEATS).flat();
+
+/** How a sound ARRIVES — the palette's second axis (#266).
+ *
+ *  `impact` short and hard, there and gone. `sustained` held, it rings on.
+ *  `bright-transient` short, high and cutting, all spike and no body. */
+type Attack = 'impact' | 'sustained' | 'bright-transient';
+
+/** THE SECOND AXIS, AND IT IS A MIXING TAXONOMY ONLY.
+ *
+ *  #266 ruled this explicitly: there is no mapping from an attack column to a
+ *  behaviour, because a strict one would fence off good ideas. What the axis
+ *  governs is which voices compete for the same space in the MIX. A build can
+ *  hold a full band and still have nothing that cuts, because it happened to
+ *  take the sustained voice in every seat — and that is a real thing to notice
+ *  about a mix, not a rule the game enforces.
+ *
+ *  Nothing in the game reads this, so it is deliberately NOT exported — it
+ *  exists so the palette's shape is legible and so the grid rules below can be
+ *  checked rather than asserted. Export it when something needs it; a stack
+ *  building a Coverage rule is the obvious first caller. */
+const PALETTE_ATTACK: Readonly<Record<string, Attack>> = {
+  // Low anchor.
+  bass: 'impact', sub: 'impact', upright: 'impact', drone: 'sustained',
+  // Harmonic body.
+  chord: 'impact', rhodes: 'impact', organ: 'sustained', chank: 'bright-transient',
+  // Bright line.
+  lead: 'impact', arp: 'bright-transient', bell: 'impact', flute: 'sustained',
+  // Percussion.
+  kick: 'impact', snare: 'impact', clap: 'impact',
+  hat: 'bright-transient', shaker: 'bright-transient',
+  // Texture — held is what the seat IS.
+  pad: 'sustained', air: 'sustained',
+};
+
+/** Seats exempt from the two-attack rule, with the reason.
+ *
+ *  Texture is the only one, and it is the designer's ruling rather than a
+ *  loophole: the seat is DEFINED by its attack, so asking it to span two is
+ *  asking it to stop being itself. It is the same exemption that lets the seat
+ *  be a pair rather than a trio. */
+const ATTACK_RULE_EXEMPT: ReadonlySet<string> = new Set(['texture']);
+
+// The grid rules from #266, checked rather than asserted. The point of two
+// crossing axes is that they genuinely cross: if seat and attack turned out
+// collinear, the second axis would be the first one wearing a hat and Coverage
+// would stop being a distinct idea from role-exclusivity.
+{
+  for (const role of PALETTE_ROLES) {
+    if (!(role in PALETTE_ATTACK)) throw new Error(`palette: ${role} has no attack`);
+  }
+  // Every seat spans at least two attacks — except the one defined by its own.
+  for (const [seat, voices] of Object.entries(PALETTE_SEATS)) {
+    if (ATTACK_RULE_EXEMPT.has(seat)) continue;
+    const attacks = new Set(voices.map((role) => PALETTE_ATTACK[role]));
+    if (attacks.size < 2) {
+      throw new Error(`palette: seat ${seat} is collinear — every voice is ${[...attacks][0]}`);
+    }
+  }
+  // Every attack column draws from at least three seats.
+  const seatsPerAttack = new Map<Attack, Set<string>>();
+  for (const [seat, voices] of Object.entries(PALETTE_SEATS)) {
+    for (const role of voices) {
+      const attack = PALETTE_ATTACK[role];
+      if (!seatsPerAttack.has(attack)) seatsPerAttack.set(attack, new Set());
+      seatsPerAttack.get(attack)!.add(seat);
+    }
+  }
+  for (const attack of ['impact', 'sustained', 'bright-transient'] as const) {
+    const seats = seatsPerAttack.get(attack)?.size ?? 0;
+    if (seats < 3) throw new Error(`palette: ${attack} draws from only ${seats} seat(s)`);
+  }
+}
 
 export interface Kit {
   role: Role;
