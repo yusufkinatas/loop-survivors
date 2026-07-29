@@ -112,7 +112,19 @@ const FLOOR_GROUPS: { label: string; anyOf: Role[] }[] = [
   // eight-voice band was that "two options is not a role, it is a pair", so a
   // seat that thins out to two voices has quietly reintroduced the problem the
   // palette exists to fix.
+  //
+  // TEXTURE IS THE EXCEPTION, and it is the designer's ruling rather than a
+  // loophole. It was already the exception to the two-attack rule (held IS its
+  // attack); after the first listening pass it became the exception here too.
+  // `wind` was cut because a constant wind sound has no musical precedent — it
+  // is a transition device, the same category as the banned riser — and the
+  // designer chose two real background sounds over three with one invented. A
+  // pair is the honest size of this seat, not a shortfall to be padded.
+  const SEAT_MINIMUM: Readonly<Record<string, number>> = { texture: 2 };
   for (const [seat, voices] of Object.entries(PALETTE_SEATS)) {
-    if (voices.length < 3) throw new Error(`palette: seat ${seat} has only ${voices.length} voices`);
+    const min = SEAT_MINIMUM[seat] ?? 3;
+    if (voices.length < min) {
+      throw new Error(`palette: seat ${seat} has ${voices.length} voices, needs ${min}`);
+    }
   }
 }

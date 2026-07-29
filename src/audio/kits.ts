@@ -49,8 +49,7 @@ export type Role =
   // the one seat where `attack` is constant by definition — #266 amended the
   // grid rule to name texture as its exception rather than pretend otherwise.
   | 'pad'
-  | 'air'
-  | 'wind';
+  | 'air';
 
 export const ROLES: readonly Role[] = [
   'kick',
@@ -77,7 +76,6 @@ export const ROLES: readonly Role[] = [
   'flute',
   'pad',
   'air',
-  'wind',
 ];
 
 /** The five seats of the palette (#266), and which live voices sit in each.
@@ -95,7 +93,12 @@ export const PALETTE_SEATS = {
   harmonicBody: ['chord', 'rhodes', 'organ', 'chank'],
   brightLine: ['lead', 'arp', 'bell', 'flute'],
   percussion: ['kick', 'snare', 'clap', 'hat', 'shaker'],
-  texture: ['pad', 'air', 'wind'],
+  // TWO, not three. `wind` was cut on the designer's ruling after the first
+  // listening pass: asked what kind of track carries a constant wind sound, the
+  // honest answer is none — wind is a TRANSITION device, the same category as
+  // the riser this palette already banned. Only two things here genuinely work
+  // as always-on background, so the seat is a pair and that is accepted.
+  texture: ['pad', 'air'],
 } as const satisfies Readonly<Record<string, readonly Role[]>>;
 
 /** Every voice in the band, in seat order. Twenty, per #266. */
@@ -132,15 +135,24 @@ export interface Kit {
    *  whose root is nearest the wanted note and shifts only the small remainder.
    *  Absent for synth kits and unpitched drums: they need no zones. */
   zones?: readonly PitchZone[];
-  /** A HELD voice: its source loops until the next trigger chokes it, instead
-   *  of playing once and stopping.
+  /** A BED: a continuous background sound the SEQUENCER NEVER TRIGGERS.
    *
-   *  The texture seat only. A pad or a drone has no firing moment — it is on or
-   *  it is off — so a one-shot leaves a gap whenever the recording is shorter
-   *  than the phrase. Looping is also what lets a texture weapon damage
-   *  continuously while it sounds, which is how #266 defined the seat.
-   *  Meaningless without `choke`, since nothing else would ever stop it. */
-  loop?: boolean;
+   *  Texture seat only, and the fix for the loudest complaint of the first
+   *  listening pass: "I think we need to fundamentally change how we are
+   *  approaching those looping sounds ... it should be like a seamlessly playing
+   *  continuous ambient sound, but instead it feels like a shortcut of an actual
+   *  ambient sound looping weirdly."
+   *
+   *  That was exactly right, and it was two faults stacked. The bed was started
+   *  by a chart event, so the ear heard it BEGIN on a grid step — a background
+   *  sound with a beginning is not a background sound. And the loop point itself
+   *  was not seamless, so it also lurched inside a single trigger.
+   *
+   *  A bed now has no notes at all. One looping source starts when the weapon is
+   *  owned and stops when it is not; the weapon's level sets how present it is.
+   *  Its file is built to loop seamlessly (makeSeamless in the fetch tool), so
+   *  there is no wrap to hear. */
+  bed?: boolean;
 }
 
 /** One recording in a multi-sampled kit: which variant it is, and the semitone
@@ -815,7 +827,11 @@ export const ROLE_META: Record<Role, RoleMeta> = {
   shaker: { name: 'Shaker', color: '#7be0d0', pitched: false, choke: false, variants: ['shaker'] },
   acid: { name: 'Acid', color: '#b6ff5a', pitched: true, choke: false, variants: ['acid'] },
   pluck: { name: 'Pluck Bass', color: '#8f7bff', pitched: true, choke: true, variants: ['pluck'] },
-  rhodes: { name: 'Rhodes', color: '#5ad1ff', pitched: true, choke: false, variants: ['rhodes'] },
+  // CHOKES. At its top rung the Rhodes fires four times a bar; with a long
+  // decay and no choke, six copies of the note rang at once and the listening
+  // pass called it "overwhelming when maxxed out". A keys part playing one note
+  // at a time is normal; six of itself is not.
+  rhodes: { name: 'Rhodes', color: '#5ad1ff', pitched: true, choke: true, variants: ['rhodes'] },
   riser: { name: 'Riser', color: '#cbb4ff', pitched: false, choke: true, variants: ['riser'] },
 
   // ---- The palette (#266) --------------------------------------------------
@@ -841,7 +857,6 @@ export const ROLE_META: Record<Role, RoleMeta> = {
   // different seat, that never plays a rhythm.
   pad: { name: 'Pad', color: '#c9b6ff', pitched: true, choke: true, variants: ['pad'] },
   air: { name: 'Air', color: '#cfd6e0', pitched: false, choke: true, variants: ['air'] },
-  wind: { name: 'Wind', color: '#8fd6c4', pitched: false, choke: true, variants: ['wind'] },
 };
 
 // The palette's seats must name only voices the catalog knows, and must not
@@ -885,7 +900,7 @@ export function makeKit(
   role: Role,
   samples: Map<string, AudioBuffer>,
   tune = 0,
-  extra: { zones?: readonly PitchZone[]; loop?: boolean } = {},
+  extra: { zones?: readonly PitchZone[]; bed?: boolean } = {},
 ): Kit {
   const meta = ROLE_META[role];
   const defaultVariant = meta.variants.find((v) => samples.has(v)) ?? samples.keys().next().value!;
@@ -906,7 +921,7 @@ export function makeKit(
     defaultVariant,
     tune,
     zones: extra.zones,
-    loop: extra.loop,
+    bed: extra.bed,
   };
 }
 

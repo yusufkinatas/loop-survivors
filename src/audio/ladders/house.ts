@@ -260,20 +260,34 @@ export const SOUNDSET_LADDERS: Partial<Record<Role, Chart[]>> = {
       [B, 0.6, 5], [B + 8, 0.55, 3], [B + 12, 0.45, 0],
     ]),
   ],
-  // Chank: the dry 16th scratch, on the "e" of each beat (1/5/9/13). Nothing
-  // else in the harmonic seat is there, and it is the most genre-portable voice
-  // in the palette — a muted chank sits in disco, funk, house and rock without
-  // changing. Growth fills the scratch in toward a continuous chop.
+  // Chank: the dry 16th scratch, sitting on the "e" of the beat.
+  //
+  // REWRITTEN after the first listening pass: "I like the timbre of the chank,
+  // but the notes need more dynamism ... needs to sound more interesting at
+  // least." The old rungs put an identical chop on 1/5/9/13 at one velocity —
+  // mechanically even, which is the one thing a funk guitar part must never be.
+  //
+  // What makes a chank part groove is not more notes, it is GHOSTS AND ACCENTS:
+  // a hard chop, a barely-there scrape after it, a hole where you expect one.
+  // Velocity is sound-only here (CONTEXT.md), so this costs no damage and
+  // changes no balance — the same trigger count, played like a person.
   chank: [
-    m('chank', 2, [[5, 0.7, 0], [13, 0.65, 0]]),
-    m('chank', 2, [[1, 0.55, 0], [5, 0.75, 0], [9, 0.6, 0], [13, 0.7, 0]]),
+    // Two chops a bar, late in the beat. Sparse and behind.
+    m('chank', 2, [[5, 0.75, 0], [13, 0.6, 0]]),
+    // The classic pairing: an accent with a ghost falling off the back of it.
     m('chank', 2, [
-      [1, 0.55, 0], [5, 0.75, 0], [9, 0.6, 0], [13, 0.7, 0],
-      [B + 1, 0.55, 5], [B + 5, 0.75, 5], [B + 9, 0.6, 5], [B + 13, 0.7, 5],
+      [5, 0.8, 0], [7, 0.35, 0], [13, 0.7, 0], [15, 0.4, 5],
     ]),
+    // Two-bar phrase, and the chord moves under it (0 -> 5 -> 7).
     m('chank', 2, [
-      [1, 0.6, 0], [3, 0.45, 0], [5, 0.8, 0], [9, 0.65, 0], [11, 0.45, 0], [13, 0.75, 0],
-      [B + 1, 0.6, 5], [B + 3, 0.45, 5], [B + 5, 0.8, 5], [B + 9, 0.65, 7], [B + 11, 0.45, 7], [B + 13, 0.75, 7],
+      [1, 0.4, 0], [5, 0.85, 0], [7, 0.35, 0], [11, 0.5, 0], [13, 0.7, 0],
+      [B + 1, 0.4, 5], [B + 5, 0.85, 5], [B + 9, 0.45, 7], [B + 13, 0.7, 5], [B + 15, 0.4, 0],
+    ]),
+    // Full sixteenth funk: accents on the "e", ghosts between, and a hole on
+    // beat three so the bar still breathes.
+    m('chank', 2, [
+      [1, 0.45, 0], [3, 0.3, 0], [5, 0.9, 0], [7, 0.35, 0], [11, 0.55, 0], [13, 0.75, 0], [14, 0.3, 0],
+      [B + 1, 0.45, 5], [B + 3, 0.3, 5], [B + 5, 0.9, 5], [B + 9, 0.5, 7], [B + 11, 0.35, 7], [B + 13, 0.75, 5], [B + 15, 0.4, 0],
     ]),
   ],
 
@@ -330,8 +344,8 @@ export const SOUNDSET_LADDERS: Partial<Record<Role, Chart[]>> = {
   // continuously while the sound rings, so the rungs buy WIDTH (more harmonic
   // movement across the phrase) rather than density. See the header.
 
-  // Pad: the warm cushion. Quiet, slow, and the most audible thing a player can
-  // choose to drop.
+  // Pad: the warm cushion. A BED — see the note on `air` below; these events are
+  // never played. Quiet, slow, and the most audible thing a player can drop.
   pad: [
     m('pad', 4, [[0, 0.45, 0]]),
     m('pad', 4, [[0, 0.5, 0], [2 * B, 0.45, 7]]),
@@ -340,28 +354,21 @@ export const SOUNDSET_LADDERS: Partial<Record<Role, Chart[]>> = {
       [0, 0.55, 0], [B, 0.45, 5], [2 * B, 0.55, 7], [2 * B + 8, 0.4, 10], [3 * B, 0.45, 5],
     ]),
   ],
-  // Air: vinyl hiss and crackle. Unpitched, so it is written as a drum string.
+  // Air: vinyl hiss and crackle.
   //
-  // ENTERS ON BAR 2, not bar 1. All three texture voices naturally want the top
-  // of the phrase, and writing them that way made them arrive together and fuse
-  // into one composite wash — the exact same-seat smear the floor rule exists to
-  // stop, just built out of held sounds instead of hits. Staggering the three
-  // entries is also plainly better arrangement: a cushion and a swell should not
-  // land on the same beat.
+  // NOTHING PLAYS THIS LADDER. `air` and `pad` are BEDS now (Kit.bed): one
+  // continuous source, started when the weapon is owned, never triggered by the
+  // sequencer — because a background sound the ear can hear BEGIN on a grid step
+  // is not a background sound, which is what the first listening pass caught.
+  //
+  // The rungs survive only because a ladder is what marks a role as part of the
+  // band (soundsetSupports) and what carries its level, and the level is what
+  // sets how present the bed is. Deleting them would drop both voices out of the
+  // roster entirely. They are a level carrier, not an arrangement.
   air: [
     d('air', '................', 'o...............', '................', '................'),
     d('air', '................', 'o...............', '................', 'o...............'),
     d('air', '................', 'x...............', '........o.......', 'o...............'),
     d('air', '................', 'x...............', 'o.......o.......', 'x...............'),
-  ],
-  // Wind: the moving wash, entering on bar 3 — last of the three, lifting into
-  // the top of the next phrase. Its weapon lays a trail behind the player rather
-  // than a field around them, so it does nothing standing still — but its SOUND
-  // still has to breathe on the phrase, and its 2.4 s sweep is most of two bars.
-  wind: [
-    d('wind', '................', '................', 'o...............', '................'),
-    d('wind', '................', '................', 'o...............', '........o.......'),
-    d('wind', '........o.......', '................', 'x...............', '........o.......'),
-    d('wind', '........x.......', '................', 'x.......o.......', '........o.......'),
   ],
 };

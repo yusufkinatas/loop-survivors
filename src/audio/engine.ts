@@ -60,6 +60,11 @@ export interface Voice {
   /** The most recent trigger's nodes, so choked kits can cut it. */
   lastHit: VoiceHit | null;
   evolved: boolean;
+  /** A BED's one continuous looping source, and the gain its level rides on.
+   *  Null while the bed is off. Only texture voices ever have these; every
+   *  other voice makes sound only through `trigger`. */
+  bedSource: AudioBufferSourceNode | null;
+  bedGain: GainNode | null;
 }
 
 /** A trigger that has been scheduled. Dispatched to listeners by update()
@@ -119,6 +124,16 @@ function canDispatchPhraseBoundary(
 // Free per-hit engine nudges: the first of the three variation layers.
 const HUMANIZE_GAIN = 0.12; // +/- proportional
 const HUMANIZE_CENTS = 8; // +/- pitch, applied only to unpitched kits
+
+/** Seconds a bed takes to fade in or out. Long enough that switching a
+ *  background sound on or off is never an event you notice happening. */
+const BED_FADE_S = 0.6;
+
+/** How present a bed is at each ladder rung. A bed buys PRESENCE with levels
+ *  where every other voice buys notes — see Kit.bed. The top rung is still only
+ *  unity on an already very quiet file (the fetch tool seats the beds around
+ *  -38 dB), because a background that competes with the band is not one. */
+const BED_LEVEL_BY_TIER = [0.45, 0.62, 0.8, 1] as const;
 
 // Kick-ducks-bass sidechain (the band, design rule 1): on each kick the bass
 // voice dips to DUCK_DEPTH (~-6 dB) over DUCK_ATTACK and recovers by
@@ -260,6 +275,8 @@ export class MusicEngine {
         override: null,
         lastHit: null,
         evolved: false,
+        bedSource: null,
+        bedGain: null,
       });
     }
 
@@ -288,6 +305,15 @@ export class MusicEngine {
       // A sampled pitched voice carries a tune to align its recorded root to
       // the A reference; synth kits and drums are 0.
       voice.tune = k?.tune ?? 0;
+      // A bed already running on the builtin buffer must be restarted on the
+      // real one; the kit loads after the voices are constructed.
+      if (voice.kit.bed && voice.bedSource) {
+        const running = voice.bedSource;
+        voice.bedSource = null;
+        voice.bedGain = null;
+        running.stop();
+        this.syncBed(voice);
+      }
     }
   }
 
@@ -517,7 +543,57 @@ export class MusicEngine {
 
   setVoiceEnabled(role: Role, on: boolean): void {
     const voice = this.voices.get(role);
-    if (voice) voice.enabled = on;
+    if (!voice) return;
+    voice.enabled = on;
+    this.syncBed(voice);
+  }
+
+  /** Start, level or stop a bed to match its voice's state.
+   *
+   *  Idempotent and safe to call from anywhere that changes `enabled`, `tier` or
+   *  the active buffers. Switching a bed OFF fades before stopping: a background
+   *  sound that vanishes on a frame boundary clicks, and the first pass had
+   *  exactly that bug in a worse form — disabling a texture voice left its
+   *  chart-started source looping forever, which is why the drone "keeps looping
+   *  weirdly" when it was switched off in the Sandbox. */
+  private syncBed(voice: Voice): void {
+    if (!voice.kit.bed) return;
+    const now = this.ctx.currentTime;
+    const wantOn = voice.enabled;
+
+    if (!wantOn) {
+      const { bedSource, bedGain } = voice;
+      voice.bedSource = null;
+      voice.bedGain = null;
+      if (!bedSource || !bedGain) return;
+      bedGain.gain.cancelScheduledValues(now);
+      bedGain.gain.setTargetAtTime(0, now, BED_FADE_S / 3);
+      bedSource.stop(now + BED_FADE_S);
+      return;
+    }
+
+    if (!voice.bedSource) {
+      const buffer = voice.activeSamples.get(voice.kit.defaultVariant)
+        ?? voice.activeSamples.values().next().value;
+      if (!buffer) return;
+      const src = this.ctx.createBufferSource();
+      src.buffer = buffer;
+      src.loop = true;
+      const g = this.ctx.createGain();
+      g.gain.value = 0;
+      src.connect(g).connect(voice.gain);
+      // Start at a random offset so two runs do not open on the same instant of
+      // the same loop, and so a bed and its file's own character are never
+      // phase-locked to the bar.
+      src.start(now, Math.random() * buffer.duration);
+      voice.bedSource = src;
+      voice.bedGain = g;
+    }
+    // Level rides the ladder: a bed gets MORE PRESENT as the weapon levels
+    // rather than busier, which is the texture seat's whole departure from
+    // every other voice in the game.
+    const level = BED_LEVEL_BY_TIER[Math.max(1, Math.min(TIER_COUNT, voice.tier)) - 1];
+    voice.bedGain!.gain.setTargetAtTime(level, now, BED_FADE_S / 3);
   }
 
   /** Put a voice on a ladder tier: swaps its chart for the tier's working
@@ -527,6 +603,7 @@ export class MusicEngine {
     if (!voice) return;
     voice.tier = Math.max(1, Math.min(TIER_COUNT, tier));
     voice.chart = getChart(role, voice.tier);
+    this.syncBed(voice);
   }
 
   setVoiceGain(role: Role, value: number): void {
@@ -785,6 +862,12 @@ export class MusicEngine {
     dispatchGameplay = true,
     gainMul = 1,
   ): void {
+    // A BED IS NOT PLAYED BY THE SEQUENCER. It has no notes: `syncBed` runs one
+    // continuous looping source for as long as the weapon is owned. Returning
+    // here is what stops the ear hearing a background sound BEGIN on a grid
+    // step, which was the whole complaint about the first pass.
+    if (voice.kit.bed) return;
+
     // MULTI-SAMPLED voices pick their recording by pitch, not by chart variant:
     // the zone nearest the wanted note plays, and only the small remainder is
     // shifted. Everything else keeps the original path exactly — one buffer per
@@ -801,11 +884,6 @@ export class MusicEngine {
 
     const src = this.ctx.createBufferSource();
     src.buffer = buffer;
-    // A held voice rings until the next trigger chokes it. Without this a pad
-    // whose recording is shorter than the phrase leaves a hole in the middle of
-    // its own weapon, which for the texture seat is the sound going silent
-    // while the aura is still supposed to be damaging.
-    if (voice.kit.loop) src.loop = true;
     this.activeSources.add(src);
     src.addEventListener('ended', () => this.activeSources.delete(src), { once: true });
 

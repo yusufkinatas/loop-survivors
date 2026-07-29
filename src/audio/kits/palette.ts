@@ -1,5 +1,5 @@
-// The palette (#266): the twelve voices that widen the live band from eight to
-// twenty. Afterhours (./afterhours.ts) still renders the original eight exactly
+// The palette (#266): the eleven voices that widen the live band from eight to
+// nineteen. Afterhours (./afterhours.ts) still renders the original eight exactly
 // as it did — untouched, so the base stays readable as the control that all
 // five round-1 prototypes are measured against. This file is everything added
 // on top.
@@ -33,11 +33,17 @@
 // recordings; `rhodes` the worst at three, because the source library only
 // sampled it every octave.
 //
-// TEXTURE VOICES LOOP. The designer's own suggestion, and it is right: a held
-// sound has no firing moment, so a one-shot leaves a hole whenever the
-// recording is shorter than the phrase. `pad`, `air` and `wind` set `loop` and
-// ring until the next trigger chokes them, which is also what lets a texture
-// weapon damage continuously while it sounds.
+// TEXTURE VOICES ARE BEDS, NOT NOTES. The designer's own diagnosis after the
+// first listening pass, and it was right: "we need to fundamentally change how
+// we are approaching those looping sounds." A bed started by a chart event is
+// heard to BEGIN on a grid step, which is precisely what a background sound
+// must never do. `pad` and `air` now set `bed` and are never triggered by the
+// sequencer at all — see Kit.bed and MusicEngine.syncBed.
+//
+// `wind` was CUT. Asked which tracks carry a constant wind sound, the honest
+// answer is none: wind is a transition device, the same category as the riser
+// this palette already banned. It had been justified by its weapon rather than
+// by its sound, which is backwards from the rule the palette runs on.
 //
 // The files are fetched and processed by tools/fetch-palette-samples.mjs, which
 // records where every one came from. Nothing here is generated at runtime.
@@ -68,14 +74,14 @@ async function loadVoice(role: Role): Promise<Kit | null> {
       voice.samples.length > 1
         ? voice.samples.map((s) => ({ variant: s.variant, rootSemitone: s.rootSemitone }))
         : undefined;
-    return makeKit(role, samples, 0, { zones, loop: voice.loop });
+    return makeKit(role, samples, voice.tune, { zones, bed: voice.bed });
   } catch (e) {
     console.warn(`[palette] ${role} samples failed to load; voice will be silent:`, e);
     return null;
   }
 }
 
-/** Load the palette's twelve voices. Merged over the Afterhours eight by
+/** Load the palette's eleven voices. Merged over the Afterhours eight by
  *  buildSoundsetKit; the two never overlap, so a change here cannot move the
  *  control's eight voices. */
 export async function buildPaletteKit(): Promise<Map<Role, Kit>> {

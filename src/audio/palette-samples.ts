@@ -21,8 +21,12 @@ interface PaletteSample {
 export interface PaletteVoice {
   /** What the recording is, in plain words. */
   what: string;
-  /** Held voices loop until the next trigger chokes them. Texture only. */
-  loop: boolean;
+  /** A BED: a continuous background sound the sequencer never triggers.
+   *  Started when the weapon is owned, stopped when it is not, and looped
+   *  seamlessly in between. Texture seat only. */
+  bed: boolean;
+  /** Semitones the whole voice is transposed by. */
+  tune: number;
   samples: readonly PaletteSample[];
 }
 
@@ -31,15 +35,17 @@ export const PALETTE_SAMPLE_ROOT = '/samples/palette';
 
 export const PALETTE_SAMPLES: Readonly<Partial<Record<Role, PaletteVoice>>> = {
   sub: {
-    what: "TR-808 sub bass — the round bottom, felt more than heard",
-    loop: false,
+    what: "TR-808 sub bass, an octave up — the round bottom",
+    bed: false,
+    tune: 12,
     samples: [
       { variant: "sub", rootSemitone: 0, source: "public/samples/covers/misc/808-bass-sub.wav" },
     ],
   },
   upright: {
     what: "Double bass, pizzicato (plucked) — the palette's acoustic low voice",
-    loop: false,
+    bed: false,
+    tune: 0,
     samples: [
       { variant: "A1", rootSemitone: 0, source: "https://raw.githubusercontent.com/skratchdot/philharmonia-samples/gh-pages/audio/double bass/double-bass_A1_025_piano_pizz-normal.mp3" },
       { variant: "D2", rootSemitone: 5, source: "https://raw.githubusercontent.com/skratchdot/philharmonia-samples/gh-pages/audio/double bass/double-bass_D2_025_piano_pizz-normal.mp3" },
@@ -48,17 +54,19 @@ export const PALETTE_SAMPLES: Readonly<Partial<Record<Role, PaletteVoice>>> = {
     ],
   },
   drone: {
-    what: "Cello, bowed and sustained — held, looped under everything",
-    loop: true,
+    what: "Double bass, bowed as quietly as the player can — the floor under everything",
+    bed: false,
+    tune: 0,
     samples: [
-      { variant: "A2", rootSemitone: 0, source: "https://raw.githubusercontent.com/skratchdot/philharmonia-samples/gh-pages/audio/cello/cello_A2_15_forte_arco-normal.mp3" },
-      { variant: "D3", rootSemitone: 5, source: "https://raw.githubusercontent.com/skratchdot/philharmonia-samples/gh-pages/audio/cello/cello_D3_15_forte_arco-normal.mp3" },
-      { variant: "G3", rootSemitone: 10, source: "https://raw.githubusercontent.com/skratchdot/philharmonia-samples/gh-pages/audio/cello/cello_G3_15_forte_arco-normal.mp3" },
+      { variant: "A1", rootSemitone: 0, source: "https://raw.githubusercontent.com/skratchdot/philharmonia-samples/gh-pages/audio/double bass/double-bass_A1_1_pianissimo_arco-normal.mp3" },
+      { variant: "D2", rootSemitone: 5, source: "https://raw.githubusercontent.com/skratchdot/philharmonia-samples/gh-pages/audio/double bass/double-bass_D2_1_pianissimo_arco-normal.mp3" },
+      { variant: "G2", rootSemitone: 10, source: "https://raw.githubusercontent.com/skratchdot/philharmonia-samples/gh-pages/audio/double bass/double-bass_G2_1_pianissimo_arco-normal.mp3" },
     ],
   },
   rhodes: {
     what: "FM electric piano (Yamaha TX81Z) — the bell-like keys seat",
-    loop: false,
+    bed: false,
+    tune: 0,
     samples: [
       { variant: "C3", rootSemitone: -9, source: "https://raw.githubusercontent.com/sgossner/VCSL/master/Electrophones/TX81Z/FM Piano/FMPiano_C3_vl2.wav" },
       { variant: "C4", rootSemitone: 3, source: "https://raw.githubusercontent.com/sgossner/VCSL/master/Electrophones/TX81Z/FM Piano/FMPiano_C4_vl2.wav" },
@@ -66,20 +74,24 @@ export const PALETTE_SAMPLES: Readonly<Partial<Record<Role, PaletteVoice>>> = {
     ],
   },
   organ: {
-    what: "Renaissance pipe organ, 8-foot stop — held and breathing",
-    loop: false,
+    what: "Pipe organ, quiet manual — held and breathing",
+    bed: false,
+    tune: 0,
     samples: [
-      { variant: "C3", rootSemitone: -9, source: "https://raw.githubusercontent.com/sgossner/VCSL/master/Aerophones/Edge-blown Aerophones/Renaissance Organ/8'/RenOrgan_8foot_Room_C3_rr1.wav" },
-      { variant: "E3", rootSemitone: -5, source: "https://raw.githubusercontent.com/sgossner/VCSL/master/Aerophones/Edge-blown Aerophones/Renaissance Organ/8'/RenOrgan_8foot_Room_E3_rr1.wav" },
-      { variant: "Gs3", rootSemitone: -1, source: "https://raw.githubusercontent.com/sgossner/VCSL/master/Aerophones/Edge-blown Aerophones/Renaissance Organ/8'/RenOrgan_8foot_Room_G#3_rr1.wav" },
-      { variant: "C4", rootSemitone: 3, source: "https://raw.githubusercontent.com/sgossner/VCSL/master/Aerophones/Edge-blown Aerophones/Renaissance Organ/8'/RenOrgan_8foot_Room_C4_rr1.wav" },
-      { variant: "E4", rootSemitone: 7, source: "https://raw.githubusercontent.com/sgossner/VCSL/master/Aerophones/Edge-blown Aerophones/Renaissance Organ/8'/RenOrgan_8foot_Room_E4_rr1.wav" },
-      { variant: "Gs4", rootSemitone: 11, source: "https://raw.githubusercontent.com/sgossner/VCSL/master/Aerophones/Edge-blown Aerophones/Renaissance Organ/8'/RenOrgan_8foot_Room_G#4_rr1.wav" },
+      { variant: "C3", rootSemitone: -9, source: "https://raw.githubusercontent.com/sgossner/VCSL/master/Aerophones/Edge-blown Aerophones/Pipe Organ/Loud/Rode_Man3Open_C3.wav" },
+      { variant: "Ds3", rootSemitone: -6, source: "https://raw.githubusercontent.com/sgossner/VCSL/master/Aerophones/Edge-blown Aerophones/Pipe Organ/Loud/Rode_Man3Open_D#3.wav" },
+      { variant: "Fs3", rootSemitone: -3, source: "https://raw.githubusercontent.com/sgossner/VCSL/master/Aerophones/Edge-blown Aerophones/Pipe Organ/Loud/Rode_Man3Open_F#3.wav" },
+      { variant: "A3", rootSemitone: 0, source: "https://raw.githubusercontent.com/sgossner/VCSL/master/Aerophones/Edge-blown Aerophones/Pipe Organ/Loud/Rode_Man3Open_A3.wav" },
+      { variant: "C4", rootSemitone: 3, source: "https://raw.githubusercontent.com/sgossner/VCSL/master/Aerophones/Edge-blown Aerophones/Pipe Organ/Loud/Rode_Man3Open_C4.wav" },
+      { variant: "Ds4", rootSemitone: 6, source: "https://raw.githubusercontent.com/sgossner/VCSL/master/Aerophones/Edge-blown Aerophones/Pipe Organ/Loud/Rode_Man3Open_D#4.wav" },
+      { variant: "Fs4", rootSemitone: 9, source: "https://raw.githubusercontent.com/sgossner/VCSL/master/Aerophones/Edge-blown Aerophones/Pipe Organ/Loud/Rode_Man3Open_F#4.wav" },
+      { variant: "A4", rootSemitone: 12, source: "https://raw.githubusercontent.com/sgossner/VCSL/master/Aerophones/Edge-blown Aerophones/Pipe Organ/Loud/Rode_Man3Open_A4.wav" },
     ],
   },
   chank: {
     what: "Acoustic guitar, chopped short — the dry percussive scratch",
-    loop: false,
+    bed: false,
+    tune: 0,
     samples: [
       { variant: "A3", rootSemitone: 0, source: "https://raw.githubusercontent.com/skratchdot/philharmonia-samples/gh-pages/audio/guitar/guitar_A3_very-long_piano_normal.mp3" },
       { variant: "D4", rootSemitone: 5, source: "https://raw.githubusercontent.com/skratchdot/philharmonia-samples/gh-pages/audio/guitar/guitar_D4_very-long_piano_normal.mp3" },
@@ -88,52 +100,51 @@ export const PALETTE_SAMPLES: Readonly<Partial<Record<Role, PaletteVoice>>> = {
     ],
   },
   bell: {
-    what: "Glockenspiel — bright metallic ping",
-    loop: false,
+    what: "Marimba — warm wooden mallet, short and round",
+    bed: false,
+    tune: 0,
     samples: [
-      { variant: "C5", rootSemitone: 3, source: "https://raw.githubusercontent.com/sgossner/VCSL/master/Idiophones/Struck Idiophones/Glockenspiel/glock_medium_C5_01.wav" },
-      { variant: "G5", rootSemitone: 10, source: "https://raw.githubusercontent.com/sgossner/VCSL/master/Idiophones/Struck Idiophones/Glockenspiel/glock_medium_G5_01.wav" },
-      { variant: "C6", rootSemitone: 15, source: "https://raw.githubusercontent.com/sgossner/VCSL/master/Idiophones/Struck Idiophones/Glockenspiel/glock_medium_C6_01.wav" },
-      { variant: "G6", rootSemitone: 22, source: "https://raw.githubusercontent.com/sgossner/VCSL/master/Idiophones/Struck Idiophones/Glockenspiel/glock_medium_G6_01.wav" },
+      { variant: "C4", rootSemitone: 3, source: "https://raw.githubusercontent.com/sgossner/VCSL/master/Idiophones/Struck Idiophones/Marimba/Marimba_hit_Outrigger_C4_med_01.wav" },
+      { variant: "G4", rootSemitone: 10, source: "https://raw.githubusercontent.com/sgossner/VCSL/master/Idiophones/Struck Idiophones/Marimba/Marimba_hit_Outrigger_G4_med_01.wav" },
+      { variant: "B4", rootSemitone: 14, source: "https://raw.githubusercontent.com/sgossner/VCSL/master/Idiophones/Struck Idiophones/Marimba/Marimba_hit_Outrigger_B4_med_01.wav" },
+      { variant: "F5", rootSemitone: 20, source: "https://raw.githubusercontent.com/sgossner/VCSL/master/Idiophones/Struck Idiophones/Marimba/Marimba_hit_Outrigger_F5_med_01.wav" },
+      { variant: "C6", rootSemitone: 27, source: "https://raw.githubusercontent.com/sgossner/VCSL/master/Idiophones/Struck Idiophones/Marimba/Marimba_hit_Outrigger_C6_med_01.wav" },
     ],
   },
   flute: {
-    what: "Concert flute, sustained — breathy held notes",
-    loop: false,
+    what: "Concert flute, short notes — breathy but not held",
+    bed: false,
+    tune: 0,
     samples: [
-      { variant: "A4", rootSemitone: 0, source: "https://raw.githubusercontent.com/skratchdot/philharmonia-samples/gh-pages/audio/flute/flute_A4_1_mezzo-forte_normal.mp3" },
-      { variant: "C5", rootSemitone: 3, source: "https://raw.githubusercontent.com/skratchdot/philharmonia-samples/gh-pages/audio/flute/flute_C5_1_mezzo-forte_normal.mp3" },
-      { variant: "E5", rootSemitone: 7, source: "https://raw.githubusercontent.com/skratchdot/philharmonia-samples/gh-pages/audio/flute/flute_E5_1_mezzo-forte_normal.mp3" },
-      { variant: "G5", rootSemitone: 10, source: "https://raw.githubusercontent.com/skratchdot/philharmonia-samples/gh-pages/audio/flute/flute_G5_1_mezzo-forte_normal.mp3" },
-      { variant: "C6", rootSemitone: 15, source: "https://raw.githubusercontent.com/skratchdot/philharmonia-samples/gh-pages/audio/flute/flute_C6_1_mezzo-forte_normal.mp3" },
+      { variant: "A4", rootSemitone: 0, source: "https://raw.githubusercontent.com/skratchdot/philharmonia-samples/gh-pages/audio/flute/flute_A4_15_mezzo-forte_normal.mp3" },
+      { variant: "C5", rootSemitone: 3, source: "https://raw.githubusercontent.com/skratchdot/philharmonia-samples/gh-pages/audio/flute/flute_C5_15_mezzo-forte_normal.mp3" },
+      { variant: "E5", rootSemitone: 7, source: "https://raw.githubusercontent.com/skratchdot/philharmonia-samples/gh-pages/audio/flute/flute_E5_15_mezzo-forte_normal.mp3" },
+      { variant: "G5", rootSemitone: 10, source: "https://raw.githubusercontent.com/skratchdot/philharmonia-samples/gh-pages/audio/flute/flute_G5_15_mezzo-forte_normal.mp3" },
+      { variant: "C6", rootSemitone: 15, source: "https://raw.githubusercontent.com/skratchdot/philharmonia-samples/gh-pages/audio/flute/flute_C6_15_mezzo-forte_normal.mp3" },
     ],
   },
   shaker: {
     what: "Small shaker, one hand stroke — the least machine-like voice here",
-    loop: false,
+    bed: false,
+    tune: 0,
     samples: [
       { variant: "shaker", rootSemitone: 0, source: "https://raw.githubusercontent.com/sgossner/VCSL/master/Idiophones/Struck Idiophones/Shaker, Small/Mid_ShakerHighFaster_Down_rr1.wav" },
     ],
   },
   pad: {
-    what: "Glass hum — the soft held cushion",
-    loop: true,
+    what: "Pipe organ, quiet manual, held — the warm cushion underneath",
+    bed: true,
+    tune: 0,
     samples: [
-      { variant: "pad", rootSemitone: 0, source: "https://raw.githubusercontent.com/alex-esc/sample-pi/f14596be37abf227bf77d198c9b0b60d9eb4dca9/ambient/ambi_glass_hum.flac" },
+      { variant: "pad", rootSemitone: 0, source: "https://raw.githubusercontent.com/sgossner/VCSL/master/Aerophones/Edge-blown Aerophones/Pipe Organ/Quiet/NT5_Man3Quiet_A3_rr1.wav" },
     ],
   },
   air: {
     what: "Vinyl hiss and crackle — room tone, no notes",
-    loop: true,
+    bed: true,
+    tune: 0,
     samples: [
       { variant: "air", rootSemitone: 0, source: "https://raw.githubusercontent.com/alex-esc/sample-pi/f14596be37abf227bf77d198c9b0b60d9eb4dca9/vinyl/vinyl_hiss.flac" },
-    ],
-  },
-  wind: {
-    what: "Pink-noise stream — the moving wash, already a seamless loop",
-    loop: true,
-    samples: [
-      { variant: "wind", rootSemitone: 0, source: "https://raw.githubusercontent.com/alex-esc/sample-pi/f14596be37abf227bf77d198c9b0b60d9eb4dca9/noise loops/rand-stream-pink.wav" },
     ],
   },
 };
