@@ -11,7 +11,8 @@
   },
   "knip": {
     "ignore": [
-      "docs/**"
+      "docs/**",
+      "tools/**"
     ]
   },
   "devDependencies": {

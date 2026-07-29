@@ -112,7 +112,7 @@ export function buildSoundsetKit(
   const key = `${set.id}:${rootHz}`;
   let pending = cache.get(key);
   if (!pending) {
-    pending = Promise.all([buildAfterhoursKit(rootHz), buildPaletteKit(rootHz)])
+    pending = Promise.all([buildAfterhoursKit(rootHz), buildPaletteKit()])
       .then(async ([kit, palette]) => {
         // The palette's twelve voices (#266) are merged in BEFORE the drum
         // overlay, in that order deliberately: the overlay only ever touches

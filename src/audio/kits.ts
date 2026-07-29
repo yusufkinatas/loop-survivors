@@ -117,6 +117,55 @@ export interface Kit {
    *  lines up with the engine's A reference (note 0). 0 for synth kits (they
    *  render at the reference already) and for unpitched drums. */
   tune?: number;
+  /** MULTI-SAMPLING: several recordings of the same instrument at different
+   *  pitches, so a melody is played by the nearest one rather than by speeding a
+   *  single recording up and down across its whole range.
+   *
+   *  This is what makes a RECORDED melodic instrument viable at all. One
+   *  recording stretched over an octave and a half turns chipmunky at the top
+   *  and sludgy at the bottom — it is why the palette (#266) was synthesized on
+   *  the first pass, and it is the thing that had to be fixed rather than
+   *  restated when that pass was rejected by ear.
+   *
+   *  Each zone names a variant in `samples` and the semitone (relative to the
+   *  engine's note 0) that recording actually sounds. `trigger` picks the zone
+   *  whose root is nearest the wanted note and shifts only the small remainder.
+   *  Absent for synth kits and unpitched drums: they need no zones. */
+  zones?: readonly PitchZone[];
+  /** A HELD voice: its source loops until the next trigger chokes it, instead
+   *  of playing once and stopping.
+   *
+   *  The texture seat only. A pad or a drone has no firing moment — it is on or
+   *  it is off — so a one-shot leaves a gap whenever the recording is shorter
+   *  than the phrase. Looping is also what lets a texture weapon damage
+   *  continuously while it sounds, which is how #266 defined the seat.
+   *  Meaningless without `choke`, since nothing else would ever stop it. */
+  loop?: boolean;
+}
+
+/** One recording in a multi-sampled kit: which variant it is, and the semitone
+ *  it actually sounds at, relative to the engine's note 0. */
+export interface PitchZone {
+  variant: string;
+  rootSemitone: number;
+}
+
+/** The zone whose recording is nearest the wanted note. Ties go to the LOWER
+ *  root, so a note exactly between two recordings is shifted up rather than
+ *  down — stretching a recording upward keeps its transient crisp, where
+ *  stretching down smears it, and a smeared transient is the more audible
+ *  artefact of the two. */
+export function nearestZone(zones: readonly PitchZone[], note: number): PitchZone {
+  let best = zones[0];
+  let bestDistance = Math.abs(note - best.rootSemitone);
+  for (const zone of zones) {
+    const distance = Math.abs(note - zone.rootSemitone);
+    if (distance < bestDistance || (distance === bestDistance && zone.rootSemitone < best.rootSemitone)) {
+      best = zone;
+      bestDistance = distance;
+    }
+  }
+  return best;
 }
 
 const RENDER_RATE = 44100;
@@ -832,9 +881,21 @@ export async function loadSample(url: string): Promise<AudioBuffer> {
  *  buffers. The soundset kit and buildKits both assemble their kits through
  *  this, so a "kick" is always a kick (name/color/choke/defaultVariant)
  *  whatever buffers it was given. `samples` must include the defaultVariant. */
-export function makeKit(role: Role, samples: Map<string, AudioBuffer>, tune = 0): Kit {
+export function makeKit(
+  role: Role,
+  samples: Map<string, AudioBuffer>,
+  tune = 0,
+  extra: { zones?: readonly PitchZone[]; loop?: boolean } = {},
+): Kit {
   const meta = ROLE_META[role];
   const defaultVariant = meta.variants.find((v) => samples.has(v)) ?? samples.keys().next().value!;
+  if (extra.zones) {
+    for (const zone of extra.zones) {
+      if (!samples.has(zone.variant)) {
+        throw new Error(`${role}: pitch zone ${zone.variant} has no sample`);
+      }
+    }
+  }
   return {
     role,
     name: meta.name,
@@ -844,6 +905,8 @@ export function makeKit(role: Role, samples: Map<string, AudioBuffer>, tune = 0)
     samples,
     defaultVariant,
     tune,
+    zones: extra.zones,
+    loop: extra.loop,
   };
 }
 

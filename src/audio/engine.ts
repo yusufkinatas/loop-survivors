@@ -8,7 +8,7 @@ import { TIER_COUNT, type Chart, type ChartEvent } from './charts';
 import { getChart } from './chartstore';
 import { SOUNDSET } from './soundset';
 import { SKELETON, STEPS_PER_BAR, STEPS_PER_PHRASE, semitonesToRate } from './scale';
-import { softClipCurve, type Kit, type Role } from './kits';
+import { nearestZone, softClipCurve, type Kit, type Role } from './kits';
 import { buildSoundsetKit } from './kits/index';
 import {
   DEFAULT_AUDIO_SET_ID,
@@ -785,7 +785,14 @@ export class MusicEngine {
     dispatchGameplay = true,
     gainMul = 1,
   ): void {
-    const variant = ev.variant ?? voice.kit.defaultVariant;
+    // MULTI-SAMPLED voices pick their recording by pitch, not by chart variant:
+    // the zone nearest the wanted note plays, and only the small remainder is
+    // shifted. Everything else keeps the original path exactly — one buffer per
+    // variant, the whole note shifted — so the control's eight voices are
+    // untouched by this branch.
+    const zones = voice.kit.zones;
+    const zone = zones?.length ? nearestZone(zones, ev.note ?? 0) : undefined;
+    const variant = zone?.variant ?? ev.variant ?? voice.kit.defaultVariant;
     const buffer =
       voice.override ??
       voice.activeSamples.get(variant) ??
@@ -794,10 +801,19 @@ export class MusicEngine {
 
     const src = this.ctx.createBufferSource();
     src.buffer = buffer;
+    // A held voice rings until the next trigger chokes it. Without this a pad
+    // whose recording is shorter than the phrase leaves a hole in the middle of
+    // its own weapon, which for the texture seat is the sound going silent
+    // while the aura is still supposed to be damaging.
+    if (voice.kit.loop) src.loop = true;
     this.activeSources.add(src);
     src.addEventListener('ended', () => this.activeSources.delete(src), { once: true });
 
-    let rate = semitonesToRate((ev.note ?? 0) + voice.tune);
+    // A zone has already covered the distance to its own root, so only what is
+    // left over gets shifted. Playing the full note here would double-count it
+    // and put every multi-sampled voice wildly out of tune.
+    const wanted = (ev.note ?? 0) - (zone?.rootSemitone ?? 0);
+    let rate = semitonesToRate(wanted + voice.tune);
     if (!voice.kit.pitched) {
       rate *= semitonesToRate(((Math.random() * 2 - 1) * HUMANIZE_CENTS) / 100);
     }
