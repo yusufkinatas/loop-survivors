@@ -49,8 +49,12 @@ const ORGAN_STATS: OrganStats = {
     'longer, wider',
     'maximum reach',
   ],
-  reach: 420,
-  halfWidth: 26,
+  // A THIRD OF THE FIRST PASS. At 420 x 26 the drawn beam came out 130 units
+  // thick — the view draws its dark shell at 2.5x the width it is handed and a
+  // solid white core inside that — which read as a wall of light across the
+  // screen rather than as one instrument's attack.
+  reach: 300,
+  halfWidth: 9,
   holdS: 0.9,
   tickS: 0.12,
 };
@@ -111,7 +115,9 @@ class OrganInstance implements WeaponInstance {
         y: beam.y,
         x2: beam.x + beam.dx * beam.reach,
         y2: beam.y + beam.dy * beam.reach,
-        width: beam.halfWidth * 2,
+        // The view multiplies this for its shell, so it is handed the beam's
+        // true half-width rather than its full width.
+        width: beam.halfWidth,
         color: ctx.color,
       });
       if (now < beam.nextTickAt) continue;

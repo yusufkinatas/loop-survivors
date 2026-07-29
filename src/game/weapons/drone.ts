@@ -74,7 +74,8 @@ class DroneInstance implements WeaponInstance {
       lifeS: DRONE_STATS.lifeS * ctx.buildMods.durationMul,
       tickT: 0,
     });
-    ctx.fx({ type: 'ring', x: p.x, y: p.y, radius: conf.radius!, color: ctx.color, dur: 0.45, soft: true });
+    // A hard ring on the way in, so the moment it is planted is legible.
+    ctx.fx({ type: 'ring', x: p.x, y: p.y, radius: conf.radius!, color: ctx.color, dur: 0.4 });
   }
 
   /** THE FIELD IS THIS MODULE'S OWN, not one of the world's zones.
@@ -95,7 +96,11 @@ class DroneInstance implements WeaponInstance {
         this.fields.splice(i, 1);
         continue;
       }
-      ctx.fx({ type: 'ring', x: field.x, y: field.y, radius: field.radius, color: ctx.color, dur: 0.12, soft: true });
+      // Steady, at the exact damage radius, redrawn every frame — the same read
+      // as the texture auras, because it is the same kind of object. A field
+      // that pulsed would look like it was firing; this one is just there, and
+      // "just there" is the whole point of a weapon that marks a place.
+      ctx.fx({ type: 'aura', x: field.x, y: field.y, radius: field.radius, color: ctx.color, dur: 0.1 });
       field.tickT -= dt;
       if (field.tickT > 0) continue;
       field.tickT = DRONE_STATS.tickS;

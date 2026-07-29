@@ -510,6 +510,20 @@ function projectileContext(pr: Projectile, evolved: boolean): GraphicsContext {
           box(g, Math.cos(a) * r * 1.8 - r * 0.2, Math.sin(a) * r * 1.8 - r * 0.2, r * 0.4, r * 0.4, 0xffffff);
         }
         break;
+      case 'upright':
+        // A round plucked body with a bright core — reads as something solid
+        // rolling through the crowd rather than as a bolt.
+        g.poly(regularPixelPoly(8, r * 1.5, Math.PI / 8)).fill(SOUNDWOOD.ink);
+        g.poly(regularPixelPoly(8, r * 1.05, Math.PI / 8)).fill(0xffffff);
+        box(g, -r * 1.7, -r * 0.14, r * 3.4, Math.max(2, r * 0.28), 0xffffff, 0.7);
+        break;
+      case 'flute':
+        // A long tapered dart: it curves, so its heading has to be readable at
+        // a glance or the arc looks like a glitch.
+        darkSilhouette(g, [r * 2.4, 0, -r * 0.6, r * 0.85, -r * 1.5, 0, -r * 0.6, -r * 0.85]);
+        g.poly([r * 1.95, 0, -r * 0.4, r * 0.5, -r * 1.1, 0, -r * 0.4, -r * 0.5].map(snap)).fill(0xffffff);
+        pixelDiamond(g, r * 0.5, 0, r * 0.3, SOUNDWOOD.ink);
+        break;
       case 'riser':
         g.poly([r * 1.8, 0, r * 0.35, -r, r * 0.35, -r * 0.42, -r * 1.7, -r * 0.42, -r * 1.7, r * 0.42, r * 0.35, r * 0.42, r * 0.35, r].map(snap)).fill(0xffffff);
         break;

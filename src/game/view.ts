@@ -123,6 +123,10 @@ interface Pop {
   death?: DeathBurst;
   holdHalf?: boolean;
   expandHalf?: boolean;
+  /** Neither scales nor fades for its whole (short) life. A weapon that is
+   *  continuously on re-emits every frame, so any animation at all would read
+   *  as a pulse — see FxEvent 'aura'. */
+  steady?: boolean;
 }
 
 interface DeathFragment {
@@ -1499,6 +1503,24 @@ export class RunView {
         this.pops.push({ gfx, t: 0, dur: fx.dur, fromScale: 1, toScale: 1.08 });
         break;
       }
+      case 'aura': {
+        // A shape that IS there, not an effect that keeps happening: a solid
+        // outline at the exact damage radius plus a faint fill, drawn flat with
+        // no blend so overlapping frames cannot brighten it.
+        const gfx = new Graphics({ roundPixels: true });
+        gfx.poly(regularPixelPoly(20, fx.radius, Math.PI / 20)).fill({ color: 0xffffff, alpha: 0.1 });
+        gfx.poly(regularPixelPoly(20, fx.radius, Math.PI / 20))
+          .stroke({ width: 3, color: 0xffffff, alpha: 0.66 });
+        for (let i = 0; i < 8; i++) {
+          const angle = i * Math.PI / 4;
+          pixelDiamond(gfx, Math.cos(angle) * fx.radius, Math.sin(angle) * fx.radius, 3, 0xffffff, 0.85);
+        }
+        gfx.tint = fx.color;
+        gfx.position.set(snap(fx.x), snap(fx.y));
+        this.fxLayer.addChild(gfx);
+        this.pops.push({ gfx, t: 0, dur: fx.dur, fromScale: 1, toScale: 1, steady: true });
+        break;
+      }
       case 'vacuum': {
         const colors = [SOUNDWOOD.cyanHot, SOUNDWOOD.magenta];
         for (let i = 0; i < colors.length; i++) {
@@ -1697,6 +1719,9 @@ export class RunView {
       if (pop.death) {
         redrawDeathBurst(pop.gfx, pop.death, progress);
         pop.gfx.alpha = Math.pow(1 - progress, 0.7);
+      } else if (pop.steady) {
+        // Deliberately untouched: a steady field is replaced every frame, so
+        // fading or scaling it would show up as flicker rather than as motion.
       } else {
         pop.gfx.alpha = pop.holdHalf
           ? progress < 0.5 ? 1 : (1 - progress) * 2

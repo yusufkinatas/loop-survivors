@@ -526,6 +526,13 @@ export type FxEvent =
   /** An INSTANT filled disc that flashes at full size and fades — no outward
    *  travel, unlike 'ring'. For a zone that pulses in place (the clap). */
   | { type: 'flash'; x: number; y: number; radius: number; color: number; dur: number }
+  /** A STATIC field at a fixed radius: no growth, no fade, no pulse. Emitted
+   *  every frame by a weapon that is simply ON — the texture auras and the
+   *  drone's field. Vampire Survivors' Garlic is the reference: you read it as a
+   *  shape that is there, not as an effect that keeps happening. Anything that
+   *  animates would say "this just fired", which for a continuous weapon is a
+   *  lie sixty times a second. */
+  | { type: 'aura'; x: number; y: number; radius: number; color: number; dur: number }
   | { type: 'vacuum'; x: number; y: number; radius: number }
   | { type: 'death'; x: number; y: number; radius: number; color: number; elite: boolean }
   | { type: 'whip'; x: number; y: number; side: 1 | -1; area: number; color: number }

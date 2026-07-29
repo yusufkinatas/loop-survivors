@@ -74,8 +74,11 @@ class BellInstance implements WeaponInstance {
       damage: conf.damage,
       landsAt: ctx.timeS + BELL_STATS.windUpS,
     });
-    // The mark. Soft and small — it is a warning, not the hit.
-    ctx.fx({ type: 'ring', x, y, radius: conf.radius! * 0.5, color: ctx.color, dur: BELL_STATS.windUpS, soft: true });
+    // The mark, at the strike's FULL radius so it tells the truth about what is
+    // about to be hit. A soft half-size ring was invisible in a crowded field,
+    // which made the whole weapon look like it did nothing until bodies fell
+    // over for no reason.
+    ctx.fx({ type: 'ring', x, y, radius: conf.radius!, color: ctx.color, dur: BELL_STATS.windUpS });
   }
 
   tick(ctx: WeaponContext): void {
