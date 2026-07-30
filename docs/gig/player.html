@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Loop Survivors — The Gig captures</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; padding: 28px 20px 60px;
+    background: #0c0f12; color: #d8e0e6;
+    font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  main { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 6px; color: #7ef2c4; letter-spacing: .5px; }
+  p.lede { margin: 0 0 26px; color: #8b9aa5; max-width: 62ch; }
+  .take {
+    border: 1px solid #1e262d; border-left: 3px solid #2f8f6b;
+    border-radius: 6px; padding: 12px 14px; margin-bottom: 10px; background: #10151a;
+  }
+  .take.off-curve { border-left-style: dashed; opacity: .85; }
+  .row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .name { color: #7ef2c4; font-weight: 700; }
+  .density { margin-left: auto; color: #ffd45c; font-weight: 700; white-space: nowrap; }
+  .build { color: #8b9aa5; font-size: 13px; margin: 4px 0 8px; }
+  .bar { height: 6px; background: #1a2229; border-radius: 3px; overflow: hidden; margin: 8px 0; }
+  .bar span { display: block; height: 100%; background: linear-gradient(90deg,#2f8f6b,#ffd45c); }
+  audio { width: 100%; height: 34px; }
+  .note { color: #6c7c88; font-size: 12.5px; margin-top: 4px; }
+  .lra { color: #ff9f6b; font-weight: 700; }
+  h2 { font-size: 14px; color: #8b9aa5; margin: 28px 0 10px; text-transform: uppercase; letter-spacing: 1px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>The Gig captures</h1>
+  <p class="lede">
+    Nine points, 16 bars each, phrase-aligned, recorded off the master bus with
+    no combat on the field. Same rig and same tap as
+    <code>docs/baseline/</code> and <code>docs/palette-control/</code>. Numbers
+    are triggers per bar. Set a comfortable volume once and leave it — denser and
+    louder are very easy to confuse.
+  </p>
+  <p class="lede">
+    <strong>Nobody authored these patterns.</strong> Every one is a set of
+    performances, installed by step list so a capture is reproducible — see
+    <code>capture-rig.js</code> for how the lists are built and why.
+  </p>
+  <div id="curve"></div>
+  <h2>What the control cannot do</h2>
+  <div id="bounds"></div>
+</main>
+<script>
+const TAKES = [
+  {
+    "f": "g01-first-take-95",
+    "bpm": 95,
+    "d": 2.0,
+    "lra": "2.4",
+    "build": "kick, rung 1 — one bar, two hits",
+    "note": "The whole build after one recording pass. LRA 2.4 against the control opening’s 0.7."
+  },
+  {
+    "f": "g02-three-tracks-95",
+    "bpm": 95,
+    "d": 10.0,
+    "lra": "1.6",
+    "build": "kick 3, bass 3, chord 2 — two-bar loops"
+  },
+  {
+    "f": "g03-band-of-five-124",
+    "bpm": 124,
+    "d": 23.5,
+    "lra": "0.7",
+    "build": "kick 5, bass 5, hat 4, chord 4, lead 3"
+  },
+  {
+    "f": "g04-maxed-five-even-124",
+    "bpm": 124,
+    "d": 35.0,
+    "lra": "0.5",
+    "build": "five tracks at rung 8, hits spread across all four bars",
+    "note": "As flat as the game has ever been. The Gig does not fix flatness by existing."
+  },
+  {
+    "f": "g05-maxed-five-front-loaded-124",
+    "bpm": 124,
+    "d": 18.5,
+    "lra": "8.7",
+    "build": "the same tape, hits crowded into the first half of the phrase",
+    "note": "THE FINDING. Two silent bars in every phrase, at HALF g04’s density, and the loudness range goes from 0.5 to 8.7 LU — fourteen times the hard floor."
+  },
+  {
+    "f": "g06-maxed-five-even-140",
+    "bpm": 140,
+    "d": 35.0,
+    "lra": "0.5",
+    "build": "g04’s takes at song three’s tempo",
+    "note": "The same tape fires 47% more often per second. Listen for what that does to the choking voices."
+  }
+];
+const BOUNDS = [
+  {
+    "f": "g07-thin-by-choice-140",
+    "bpm": 140,
+    "d": 5.0,
+    "lra": "2.9",
+    "build": "the same five tracks at the same rung, re-cut to four hits each",
+    "note": "THE DENSITY FALL, and the player chose it: nothing was given up. 35.00 → 5.00 triggers a bar and 4.6 dB of headroom handed back."
+  },
+  {
+    "f": "g08-recording-hole-124",
+    "bpm": 124,
+    "d": 35.0,
+    "lra": "0.5",
+    "build": "g04 with one instrument down being recorded",
+    "note": "-10.5 LUFS, identical to g04. The valley reads as a HOLE IN THE ARRANGEMENT, never as quieter — the limiter simply stops working as hard."
+  },
+  {
+    "f": "g09-auto-takes-124",
+    "bpm": 124,
+    "d": 29.0,
+    "lra": "0.5",
+    "build": "the SYSTEM’s takes: the authored ladder, same instruments, same budget",
+    "note": "THE CONTROL ARM, and #268’s actual question. Finding the pattern lands 1 dB quieter and exactly as flat as making it. Whether it sounds BETTER is not a thing a meter can answer."
+  }
+];
+const MAX = 35;
+
+function render(list, host, offCurve) {
+  host.innerHTML = list.map((t) => `
+    <div class="take${offCurve ? ' off-curve' : ''}">
+      <div class="row">
+        <span class="name">${t.f.replace(/^g\d+-/, '')}</span>
+        <span class="density">${t.d.toFixed(2)} trig/bar · ${t.bpm} BPM · LRA <span class="lra">${t.lra}</span></span>
+      </div>
+      <div class="build">${t.build}</div>
+      <div class="bar"><span style="width:${Math.min(100, (t.d / MAX) * 100)}%"></span></div>
+      <audio controls preload="none" src="audio/${t.f}.webm"></audio>
+      ${t.note ? `<div class="note">${t.note}</div>` : ''}
+    </div>`).join('');
+}
+render(TAKES, document.getElementById('curve'), false);
+render(BOUNDS, document.getElementById('bounds'), true);
+
+// One at a time: comparing two takes is only meaningful if only one is playing.
+document.addEventListener('play', (e) => {
+  for (const a of document.querySelectorAll('audio')) if (a !== e.target) a.pause();
+}, true);
+</script>
+</body>
+</html>

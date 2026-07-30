@@ -21,6 +21,8 @@ import { mountSandboxPanel, type SandboxPanel } from './sandbox';
 import { EVOLUTION_BY_ROLE, type EvolutionDefinition } from './build';
 import { chartStageForLevel, WEAPON_MAX_LEVEL } from './weapons/levels';
 import { mulberry32 } from './rng';
+import { Gig } from './gig/gig';
+import { GIG_LAYERS, gigLayerSummary, gigLayers, gigOn, setGigLayer } from './gig/toggles';
 
 type State = 'start' | 'run' | 'end' | 'sandbox';
 
@@ -49,6 +51,12 @@ export async function bootGame(
   // touch play: floating joystick on the arena; kill the long-press menu
   mountJoystick(root);
   root.addEventListener('contextmenu', (e) => e.preventDefault());
+  // A TAP ON THE ARENA IS A HIT (#268), so the recording verb works on a phone
+  // with no keyboard. Bound to the canvas rather than the root so the joystick,
+  // the HUD and every button keep their own taps.
+  app.canvas.addEventListener('pointerdown', () => {
+    if (gig.onPointer()) return;
+  });
 
   const hud = new Hud(root, kits);
   const input = new Input();
@@ -57,6 +65,27 @@ export async function bootGame(
   let view: RunView | null = null;
   let muted = false;
   let paused = false;
+
+  // THE GIG (#268). Owns the set list, the tape and the microphone; the shell
+  // keeps owning everything it already owned. Constructed once and reset per
+  // run, the same lifetime as the hud.
+  const gig = new Gig(root, {
+    engine,
+    kits,
+    world: () => world,
+    live: () => state === 'run' && !!world && !world.won,
+    toast: (text) => hud.showToast(text),
+    deactivated: (role) => deactivatedRoles.has(role),
+    grantLevels: (role, count) => {
+      if (!world) return;
+      for (let i = 0; i < count; i++) promoteWeapon(world, role);
+    },
+    offerReplacements: () => {
+      if (!world || state !== 'run') return;
+      offerSwapReplacements(world);
+    },
+    refresh: () => paintBand(),
+  });
 
   // Global time scale (issue #21): one knob scaling the sim, audio tempo, and
   // world juice together, live mid-run, in run + sandbox only. Continuous
@@ -168,7 +197,11 @@ export async function bootGame(
       evolved: w.evolved,
       showTiers: true,
     });
-    void pauseArrange;
+    // THE ARRANGE SLOT, filled (#265 left it mounted and empty for exactly
+    // this). The set drawn as one strip per track: what the band actually plays,
+    // which a rack of names cannot show.
+    if (gigOn('takes')) gig.paintRack(pauseArrange);
+    else pauseArrange.replaceChildren();
     hud.renderStats({ maxHp: w.playerMaxHp, armor: w.playerArmor, mods: w.buildMods }, pauseStats);
   }
   const resumeButton = pauseOverlay.querySelector('.pause-resume') as HTMLButtonElement;
@@ -421,6 +454,9 @@ export async function bootGame(
         pendingTiers: outstandingPromises(),
         rng: Math.random,
         timeS: w.timeS,
+        // The song decides which corner of the band draws heavier, and which
+        // voices this engine cannot use at all (#268).
+        ...gig.shaping(),
       });
       dropGroundPicks(w, options);
     }
@@ -569,11 +605,19 @@ export async function bootGame(
       // NEXT bar — they armed their own callback and are still in `queued`.
       const owed = p.onEntered.splice(0);
       const target = Math.min(WEAPON_MAX_LEVEL, (w.tiers.get(role) ?? 0) + p.entering);
-      engine.setVoiceTier(role, chartStageForLevel(target));
-      // Sticky deactivation: a tier-up applies the new tier but does not revive
-      // an instrument the developer deliberately turned off. It returns at the
-      // higher tier when reactivated.
-      if (!deactivatedRoles.has(role)) engine.setVoiceEnabled(role, true);
+      // A LEVEL IS A RUNG OF TAPE (#268), not a rung of somebody's ladder. The
+      // gig grows the loop, installs whatever is on the tape, and opens the
+      // microphone; it owns whether the voice comes back on, because a brand-new
+      // track has nothing to play yet and must stay silent until it does.
+      if (gigOn('takes')) {
+        gig.installLevel(role, target);
+      } else {
+        engine.setVoiceTier(role, chartStageForLevel(target));
+        // Sticky deactivation: a tier-up applies the new tier but does not revive
+        // an instrument the developer deliberately turned off. It returns at the
+        // higher tier when reactivated.
+        if (!deactivatedRoles.has(role)) engine.setVoiceEnabled(role, true);
+      }
       engine.atAudioTime(barAudioTime, () => {
         if (world !== w || (state !== 'run' && state !== 'sandbox')) return;
         p.entering = 0;
@@ -603,6 +647,7 @@ export async function bootGame(
     const option = item.option;
     clearGroundPicks();
     if (option.kind !== 'evolution') {
+      if (option.kind === 'weapon' && !w.tiers.has(option.role)) gig.onReplacementChosen(option.role);
       const outcome = applyPickup(w, option, (barAudioTime) => {
         pickAwaitingBar = false;
         // Wait until this bar's due gameplay triggers have been consumed by one
@@ -634,6 +679,7 @@ export async function bootGame(
       engine.atAudioTime(barAudioTime, () => {
         if (world !== w || state !== 'run') return;
         w.evolve(option.evolution.role);
+        gig.onEvolved(option.evolution.role);
         hud.renderBand(w.tiers, { deactivated: deactivatedRoles, pending: pendingRoles, evolved: w.evolved });
         refreshTrackOverlay();
         view?.flourish(w.player.x, w.player.y);
@@ -643,6 +689,23 @@ export async function bootGame(
     });
   }
 
+
+  /** THE CHANGEOVER SWAP's other half (#268). A dropped track frees its slot and
+   *  leaves half its tape behind; this puts three instruments on the floor to
+   *  spend it on. Reuses the level-up triangle wholesale — same pedestals, same
+   *  walk-onto collection — so a swap is the game's existing reward verb rather
+   *  than a menu, and the empty changeover stage is what makes walking to one
+   *  free. */
+  function offerSwapReplacements(w: RunWorld): void {
+    const options = rollStartingWeapons({
+      tiers: w.tiers,
+      rng: Math.random,
+      timeS: w.timeS,
+      ...gig.shaping(),
+    });
+    if (options.length === 0) return;
+    dropGroundPicks(w, options, 'none');
+  }
 
   // ---------------------------------------------------------------------------
   // The chest slot machine. Walking onto a chest no longer resolves instantly:
@@ -935,6 +998,7 @@ export async function bootGame(
     view = null;
     world = null;
     resetDeactivations(); // new run starts with every instrument active
+    gig.end();
     engine.clearBarQueue();
     engine.resetEvolutionMixes();
     for (const role of ROLES) engine.setVoiceEnabled(role, false);
@@ -946,8 +1010,13 @@ export async function bootGame(
     // manual keeps the keyboard/joystick.
     // The seam reads playerControl live, so the in-game toggle works too.
     setAutoMode(mode);
+    gig.begin();
     const w: RunWorld = new RunWorld(app.screen, events, {
       control: () => playerControl(w),
+      // THE RUN SHAPE (#268): three songs, two changeovers, an encore. Undefined
+      // when the `songs` layer is off, which hands the run back to Mad Forest's
+      // thirty minutes so the takes layer can be judged on its own.
+      stage: gig.stage(),
     });
     world = w;
     w.player.hp = w.playerMaxHp;
@@ -966,12 +1035,14 @@ export async function bootGame(
     // the chosen one on the next bar. This is deliberately NOT a level-up: no
     // upgrade is enqueued and world level/XP are untouched, so the HUD still
     // reads level 1 after the pick.
+    hud.showToast(`LAYERS · ${gigLayerSummary()}`);
     dropGroundPicks(
       w,
       rollStartingWeapons({
         tiers: w.tiers,
         rng: Math.random,
         timeS: 0,
+        ...gig.shaping(),
       }),
       'none',
     );
@@ -1159,7 +1230,14 @@ export async function bootGame(
   // one trigger, two outputs: the engine already made the sound; this makes
   // the damage.
   engine.addTriggerListener((t) => {
-    if ((state === 'run' || state === 'sandbox') && world) world.fireTrigger(t);
+    if (state !== 'run' && state !== 'sandbox') return;
+    if (!world) return;
+    // THE VALLEY (#268). An instrument being recorded is not attacking — the
+    // sound may still be there (an overdub keeps playing so the player can hear
+    // the hole they are filling) but the world never sees the trigger. This one
+    // line is The Gig's entire cost model.
+    if (gig.suppressesDamage(t.role)) return;
+    world.fireTrigger(t);
   });
 
   app.ticker.add((ticker) => {
@@ -1294,6 +1372,7 @@ export async function bootGame(
         w.timeS,
       );
       hud.setRunInfo(w.evolved, w.notesCollected);
+      gig.frame(frameS);
       sandboxPanel?.update();
     }
     if (trackOverlayEl.style.display !== 'none') trackOverlay.tick();
@@ -1401,6 +1480,37 @@ export async function bootGame(
   setTimeScale(1); // paint the initial readout ("speed 1.00x")
   syncTimeScaleControl(); // start disabled until a run or sandbox begins
 
+  // THE LAYER TOGGLES (#256: "every layer in every stack is individually
+  // switchable so each gets its own verdict"). One button per layer in the debug
+  // row, and each one takes effect on the NEXT run — half of them change what a
+  // run shape is, and a run cannot be half of two shapes.
+  const layerRow = document.createElement('div');
+  layerRow.className = 'gig-layer-row';
+  const layerLabel = document.createElement('span');
+  layerLabel.className = 'gig-layer-label';
+  layerLabel.textContent = 'gig';
+  layerRow.appendChild(layerLabel);
+  const layerButtons: { layer: (typeof GIG_LAYERS)[number]; btn: HTMLButtonElement }[] = [];
+  for (const layer of GIG_LAYERS) {
+    const btn = document.createElement('button');
+    btn.className = 'gig-layer-btn';
+    btn.textContent = layer;
+    btn.title = `${layer} — takes effect on the next run`;
+    btn.onclick = () => {
+      setGigLayer(layer, !gigOn(layer));
+      paintLayerRow();
+      hud.showToast(`${layer} ${gigOn(layer) ? 'ON' : 'OFF'} — next run`);
+      btn.blur();
+    };
+    layerRow.appendChild(btn);
+    layerButtons.push({ layer, btn });
+  }
+  function paintLayerRow(): void {
+    for (const { layer, btn } of layerButtons) btn.classList.toggle('on', gigOn(layer));
+  }
+  paintLayerRow();
+  hud.appendDebug(layerRow);
+
 
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Escape') {
@@ -1426,7 +1536,16 @@ export async function bootGame(
       }
       return;
     }
-    // Number-key instrument toggles are live only in a run or sandbox.
+    // SPACE / ENTER / the digits belong to the gig first: SPACE lays a hit,
+    // ENTER keeps the take, and 1-5 re-cut a track (#268). Everything the gig
+    // declines falls through to the shell's own bindings below.
+    if (!e.ctrlKey && !e.metaKey && !e.altKey && gig.onKey(e)) {
+      e.preventDefault();
+      return;
+    }
+    // Number-key instrument toggles are live only in a run or sandbox. With the
+    // takes layer on this is SHIFT+1-5, because the gig has taken the bare
+    // digits for the verb it is built around.
     if (/^Digit[1-5]$/.test(e.code) && !e.ctrlKey && !e.metaKey && !e.altKey) {
       if ((state === 'run' || state === 'sandbox') && world) {
         const role = [...world.tiers.keys()][Number(e.code.slice(5)) - 1];
@@ -1461,6 +1580,18 @@ export async function bootGame(
       },
       get world() {
         return world;
+      },
+    },
+    // THE GIG's console handle. `loop.gig.setTake(role, bars, steps)` installs a
+    // performance directly, which is what makes a capture set reproducible here:
+    // `docs/baseline/`'s rig names a build by weapon level, and under The Gig a
+    // build is a set of performances that no level can name.
+    gig: {
+      ...gig.handle(),
+      layerState: () => gigLayers(),
+      setLayer: (layer: (typeof GIG_LAYERS)[number], on: boolean) => {
+        setGigLayer(layer, on);
+        paintLayerRow();
       },
     },
   });
