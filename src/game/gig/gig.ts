@@ -21,7 +21,6 @@ import type { MusicEngine } from '../../audio/engine';
 import { SOUNDSET } from '../../audio/soundset';
 import { PALETTE_SEATS, type Kit, type Role } from '../../audio/kits';
 import type { RunWorld, StageScript } from '../run';
-import type { RollShaping } from '../picks';
 import { WEAPON_MAX_LEVEL } from '../weapons/levels';
 import { chartFromTake, autoTake, growTake, normalizeTake, takeDensity, TAPE_LADDER, tapeRung, type Take, type TapeBars } from './tape';
 import { Recorder, type RecordMode } from './recorder';
@@ -76,6 +75,18 @@ interface Track {
   role: Role;
   level: number;
   take: Take | null;
+  /** Hits this track holds ON TOP of its rung — today only the evolution bonus.
+   *  It has to live on the track rather than being spent as a one-off overdub:
+   *  otherwise the first re-cut hands the tape back at the plain rung size and
+   *  quietly deletes the evolution's whole audible half. */
+  bonus: number;
+}
+
+/** How many hits a track's tape holds: its rung, plus anything it has earned on
+ *  top. The one place capacity is decided, so a fresh take, an overdub and a
+ *  re-cut cannot disagree about it. */
+function capacity(track: Track): number {
+  return tapeRung(track.level).hits + track.bonus;
 }
 
 export interface GigHost {
@@ -146,7 +157,7 @@ export class Gig {
 
   /** Roles the level-up pool must not offer, and roles it should draw heavier.
    *  Fed straight into `rollOffers`. */
-  shaping(): RollShaping {
+  shaping(): { exclude: ReadonlySet<Role>; favour: ReadonlySet<Role>; favourFactor: number } {
     return {
       exclude: gigOn('takes') ? UNPERFORMABLE : new Set<Role>(),
       favour: new Set(this.section?.favours ?? []),
@@ -217,7 +228,7 @@ export class Gig {
     const capped = Math.max(1, Math.min(WEAPON_MAX_LEVEL, Math.floor(level)));
     const rung = tapeRung(capped);
     const existing = this.tracks.get(role);
-    const track: Track = existing ?? { role, level: capped, take: null };
+    const track: Track = existing ?? { role, level: capped, take: null, bonus: 0 };
     track.level = capped;
     this.tracks.set(role, track);
 
@@ -233,7 +244,7 @@ export class Gig {
       // Nothing on the tape yet. Silence is correct here rather than a penalty:
       // there is genuinely nothing to play.
       engine.setVoiceEnabled(role, false);
-      this.openPass(role, 'fresh', rung.bars, [], rung.hits);
+      this.openPass(role, 'fresh', rung.bars, [], capacity(track));
       return;
     }
 
@@ -241,7 +252,7 @@ export class Gig {
     track.take = grown;
     engine.setVoiceChart(role, chartFromTake(grown), tierForLevel(capped));
     if (!this.host.deactivated(role)) engine.setVoiceEnabled(role, true);
-    this.openPass(role, 'overdub', rung.bars, grown.steps, Math.max(0, rung.hits - grown.steps.length));
+    this.openPass(role, 'overdub', rung.bars, grown.steps, Math.max(0, capacity(track) - grown.steps.length));
     this.host.refresh();
   }
 
@@ -258,7 +269,7 @@ export class Gig {
     }
     const rung = tapeRung(track.level);
     this.host.engine.setVoiceEnabled(track.role, false);
-    this.openPass(track.role, 'recut', rung.bars, [], rung.hits);
+    this.openPass(track.role, 'recut', rung.bars, [], capacity(track));
   }
 
   /** GIVE SOMETHING UP (#268's changeover: "you rebuild, swap and give things
@@ -302,9 +313,10 @@ export class Gig {
     if (!gigOn('evoTape') || !gigOn('takes')) return;
     const track = this.tracks.get(role);
     if (!track || !track.take) return;
+    track.bonus += EVOLUTION_TAPE_BONUS;
     const bars = track.take.bars;
     this.host.toast(`${this.host.kits.get(role)?.name ?? role} · +${EVOLUTION_TAPE_BONUS} TAPE`);
-    this.openPass(role, 'overdub', bars, track.take.steps, EVOLUTION_TAPE_BONUS);
+    this.openPass(role, 'overdub', bars, track.take.steps, Math.max(0, capacity(track) - track.take.steps.length));
   }
 
   // ---- input --------------------------------------------------------------
@@ -510,7 +522,7 @@ export class Gig {
       /** Install a take directly. `steps` is a list of 16th positions. */
       setTake: (role: Role, bars: TapeBars, steps: number[], level = 8): void => {
         const take = normalizeTake(role, bars, steps);
-        this.tracks.set(role, { role, level, take });
+        this.tracks.set(role, { role, level, take, bonus: 0 });
         this.host.engine.setVoiceChart(role, chartFromTake(take), tierForLevel(level));
         this.host.engine.setVoiceEnabled(role, true);
         this.host.world()?.addWeapon(role, level);
@@ -520,7 +532,7 @@ export class Gig {
        *  arm, reachable without restarting into `autoTakes`. */
       setAutoTake: (role: Role, level = 8): void => {
         const take = autoTake(role, level);
-        this.tracks.set(role, { role, level, take });
+        this.tracks.set(role, { role, level, take, bonus: 0 });
         this.host.engine.setVoiceChart(role, chartFromTake(take), tierForLevel(level));
         this.host.engine.setVoiceEnabled(role, true);
         this.host.world()?.addWeapon(role, level);

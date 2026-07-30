@@ -3,10 +3,18 @@
 //
 //   node docs/baseline/receiver.mjs
 //   node docs/baseline/receiver.mjs --out docs/palette-control
+//   node docs/baseline/receiver.mjs --out docs/gig --port 3302
 //
 // `--out` is a repo-relative directory to write into; it defaults to this one.
 // A prototype branch takes its own comparable set and must not overwrite the
 // reference the comparison is against.
+//
+// `--port` defaults to 3300 and exists because ROUND 1 RUNS FIVE BRANCHES AT
+// ONCE. With the port hardcoded, the second branch to start a receiver either
+// crashes on EADDRINUSE or — much worse, and this is what actually happened —
+// finds the first branch's receiver already listening, POSTs to it happily, and
+// its whole capture set lands silently in another stack's `docs/` directory. A
+// branch pins a port the same way it pins its dev server port.
 //
 // Developer tooling, run by hand. Nothing in the game talks to it.
 
@@ -16,10 +24,13 @@ import { dirname, join, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const outArg = process.argv.indexOf('--out');
-const ROOT = outArg >= 0 && process.argv[outArg + 1]
-  ? join(HERE, '..', '..', process.argv[outArg + 1])
-  : HERE;
+const arg = (name) => {
+  const at = process.argv.indexOf(name);
+  return at >= 0 ? process.argv[at + 1] : undefined;
+};
+const out = arg('--out');
+const ROOT = out ? join(HERE, '..', '..', out) : HERE;
+const PORT = Number(arg('--port') ?? 3300);
 const AUDIO = join(ROOT, 'audio');
 await mkdir(AUDIO, { recursive: true });
 
@@ -43,4 +54,4 @@ createServer(async (req, res) => {
   await writeFile(join(dirFor(name), name), body);
   console.log(`wrote ${name} (${(body.length / 1024).toFixed(0)} KB)`);
   res.writeHead(200).end('ok');
-}).listen(3300, () => console.log(`receiver on :3300 -> ${AUDIO}`));
+}).listen(PORT, () => console.log(`receiver on :${PORT} -> ${AUDIO}`));

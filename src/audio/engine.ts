@@ -91,7 +91,7 @@ export type TriggerListener = (t: ScheduledTrigger) => void;
  *  timing verb (tapping a rhythm, playing along, calling a change on the beat)
  *  needs to be able to place a real-world instant on the musical grid, and
  *  currentStep() only answers to the nearest whole step. */
-export type StepListener = (step: number, audioTime: number) => void;
+type StepListener = (step: number, audioTime: number) => void;
 
 interface TimedAction {
   time: number;

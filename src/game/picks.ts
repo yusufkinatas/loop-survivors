@@ -63,7 +63,7 @@ export type AnyPickOption = WeaponPickOption | EncorePickOption;
  *  firing moment cannot use a bed, which has none) or that this moment wants a
  *  particular corner of the band. Both were otherwise going to be a rewritten
  *  copy of `buildFinitePool` in each of five branches. */
-export interface RollShaping {
+interface RollShaping {
   /** Roles this engine cannot use at all. Never hired, never upgraded. */
   exclude?: ReadonlySet<Role>;
   /** Roles that draw heavier right now, by `favourFactor`. A THUMB ON THE
