@@ -104,6 +104,13 @@ export class Gig {
   private section: GigSection | null = null;
   private bpmTarget = BALANCE_BPM;
   private swingTarget = SOUNDSET.swing;
+  /** Where the glide started, and how far through it is. A LINEAR ramp with a
+   *  known end, not an exponential approach: a changeover is 25 seconds and the
+   *  player has to be able to cut a take against the tempo they are about to
+   *  play, so "arrives eventually" is not good enough. */
+  private bpmFrom = BALANCE_BPM;
+  private swingFrom = SOUNDSET.swing;
+  private glideT = TEMPO_GLIDE_S;
   /** Level of the track the player just dropped, waiting for its replacement. */
   private inherit = 0;
   private awaitingSwap = false;
@@ -166,6 +173,9 @@ export class Gig {
     const opening = gigOn('songs') ? GIG_SECTIONS[0] : null;
     this.bpmTarget = opening?.bpm ?? BALANCE_BPM;
     this.swingTarget = opening?.swing ?? SOUNDSET.swing;
+    this.bpmFrom = this.bpmTarget;
+    this.swingFrom = this.swingTarget;
+    this.glideT = TEMPO_GLIDE_S;
     this.host.engine.clock.bpm = this.bpmTarget;
     this.host.engine.clock.swing = this.swingTarget;
     this.ui.setStrip(null);
@@ -363,9 +373,15 @@ export class Gig {
     // doing the work of "three different songs", and a step change reads as a
     // glitch where a glide reads as a decision.
     const engine = this.host.engine;
-    const step = Math.min(1, frameS / TEMPO_GLIDE_S);
-    engine.clock.bpm += (this.bpmTarget - engine.clock.bpm) * step;
-    engine.clock.swing += (this.swingTarget - engine.clock.swing) * step;
+    if (this.glideT < TEMPO_GLIDE_S) {
+      this.glideT = Math.min(TEMPO_GLIDE_S, this.glideT + frameS);
+      const t = this.glideT / TEMPO_GLIDE_S;
+      // Smoothstep, so the band leans into the new speed rather than snapping to
+      // it — and lands exactly on it, exactly on time.
+      const ease = t * t * (3 - 2 * t);
+      engine.clock.bpm = this.bpmFrom + (this.bpmTarget - this.bpmFrom) * ease;
+      engine.clock.swing = this.swingFrom + (this.swingTarget - this.swingFrom) * ease;
+    }
     if (gigOn('tempoComp')) {
       world.powerMul = SOUNDSET.powerMul * (BALANCE_BPM / Math.max(40, engine.clock.bpm));
     }
@@ -375,6 +391,11 @@ export class Gig {
   private enterSection(section: GigSection, world: RunWorld): void {
     const previous = this.section;
     this.section = section;
+    if (section.bpm !== this.bpmTarget || section.swing !== this.swingTarget) {
+      this.bpmFrom = this.host.engine.clock.bpm;
+      this.swingFrom = this.host.engine.clock.swing;
+      this.glideT = 0;
+    }
     this.bpmTarget = section.bpm;
     this.swingTarget = section.swing;
     if (section.kind === 'changeover') {
@@ -474,6 +495,16 @@ export class Gig {
       /** The tape ladder, so a capture session can read the rungs without
        *  opening a source file. */
       ladder: () => TAPE_LADDER,
+      /** The pass in flight, with its live playhead. A scripted session needs to
+       *  see where the loop is to lay a hit on a chosen step. */
+      recording: () => {
+        const session = this.recorder.session;
+        return session && { ...session, laid: [...session.laid], existing: [...session.existing], playhead: this.recorder.position() };
+      },
+      /** Lay a hit now, without a keyboard. The same path SPACE takes. */
+      tap: () => this.recorder.tap(),
+      /** Keep what has been played and hand the instrument back. */
+      finish: () => this.recorder.finish(),
       log: () => this.log,
       section: () => this.section?.name ?? null,
       /** Install a take directly. `steps` is a list of 16th positions. */

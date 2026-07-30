@@ -193,6 +193,9 @@ export function mountGigUi(root: HTMLElement, kits: Map<Role, Kit>): GigUi {
       return;
     }
     changeover.style.display = '';
+    // While the player is choosing a replacement, the overlay gets out of the
+    // way: the pedestals are on the floor and they have to be able to see them.
+    changeover.classList.toggle('choosing', view.awaitingSwap);
     const key = `${view.remainS}|${view.awaitingSwap}|${view.tracks
       .map((t) => `${t.role}${t.level}${t.take?.steps.length ?? 0}${t.recording ? 'r' : ''}`)
       .join(',')}`;

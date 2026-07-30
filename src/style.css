@@ -2165,14 +2165,16 @@ button.big {
 
 /* ---- the song card ------------------------------------------------------- */
 
+/* TOP-RIGHT, not top-centre. The base already owns the top middle with the
+   five-slot band rack and the toast stack directly under it; a centred card sat
+   on top of slot 3. */
 .gig-card {
   position: absolute;
   top: max(10px, env(safe-area-inset-top));
-  left: 50%;
-  transform: translateX(-50%);
+  right: max(12px, env(safe-area-inset-right));
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-end;
   gap: 1px;
   padding: var(--sp-1) var(--sp-3);
   background: rgba(16, 16, 20, 0.72);
@@ -2180,7 +2182,7 @@ button.big {
   border-radius: var(--r-sm);
   pointer-events: none;
   z-index: 3;
-  text-align: center;
+  text-align: right;
 }
 
 .gig-card-label {
@@ -2424,9 +2426,21 @@ button.big {
   align-items: center;
   justify-content: center;
   gap: var(--sp-3);
-  background: rgba(10, 11, 15, 0.78);
+  background: rgba(10, 11, 15, 0.62);
   pointer-events: none;
   z-index: 5;
+}
+
+/* Choosing a replacement: the rack has said what it has to say, the floor is
+   where the decision is, so the overlay recedes to a title and a clock. */
+.gig-changeover.choosing {
+  background: rgba(10, 11, 15, 0.2);
+  justify-content: flex-start;
+  padding-top: 12vh;
+}
+
+.gig-changeover.choosing .gig-co-rack {
+  display: none;
 }
 
 .gig-co-title {
