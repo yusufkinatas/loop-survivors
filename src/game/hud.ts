@@ -244,6 +244,11 @@ export class Hud {
   showStart(
     onStart: () => void,
     onSandbox: () => void,
+    /** A prototype's own controls, painted under the title. #256 requires every
+     *  layer of every round-1 stack to be individually switchable so each gets its
+     *  own verdict, and the start screen is where a tester flips them — the run
+     *  shape and the build model are both decided at run start. */
+    extra?: (into: HTMLElement) => void,
   ): void {
     const s = this.newScreen();
     s.classList.add('start-screen');
@@ -256,6 +261,8 @@ export class Hud {
     // The career panel, the Afterhours Shop and the mastery recipe chips all
     // stood here. They went with the meta layer (#265): there is no wallet, no
     // power-up rank and no save, so the start screen is a title and a button.
+
+    extra?.(el('div', 'start-proto', s));
 
     const startBtn = el('button', 'start-btn', s, 'ENTER THE SOUNDWOOD');
     startBtn.onclick = () => {

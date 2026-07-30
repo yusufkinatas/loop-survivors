@@ -21,8 +21,35 @@ import { mountSandboxPanel, type SandboxPanel } from './sandbox';
 import { EVOLUTION_BY_ROLE, type EvolutionDefinition } from './build';
 import { chartStageForLevel, WEAPON_MAX_LEVEL } from './weapons/levels';
 import { mulberry32 } from './rng';
+// ---- THE ROUTE (#267) ------------------------------------------------------
+// Rooms + Shell + Toll. Every layer is an in-branch toggle (#256), and with all
+// of them off this file takes the base's path verbatim — `routeActive()` is the
+// single fork, and it is the control the branch is measured against.
+import { hasWeaponModule } from './weapons';
+import { payToll, TOLLS, type DoorOffer } from './route/gates';
+import { pattern, SHELL_CEILING } from './route/patterns';
+import { rollRouteOffers, rollRouteStartingShells } from './route/offers';
+import { RouteRun, type DensitySample } from './route/run';
+import { syncBand } from './route/sync';
+import { setToggle, TOGGLE_LABELS, toggles, toggleSummary, type RouteToggles } from './route/toggles';
+import {
+  doorPedestal,
+  mountGateScreen,
+  paintDoorsPanel,
+  patternPedestal,
+  rewardToast,
+  type GateScreen,
+} from './route/ui';
 
 type State = 'start' | 'run' | 'end' | 'sandbox';
+
+/** Whether any of this stack's layers is switched on. All off is the base game,
+ *  reached through the base's own code paths rather than through a neutral
+ *  configuration of the new ones — the control has to be the control. */
+function routeActive(): boolean {
+  const t = toggles();
+  return t.rooms || t.shells || t.exclusive || t.dial;
+}
 
 export async function bootGame(
   root: HTMLElement,
@@ -180,6 +207,9 @@ export async function bootGame(
   root.appendChild(pauseButton);
   function togglePause(): void {
     if (state !== 'run' && state !== 'sandbox') return;
+    // Not in the corridor. Pausing holds the transport, and the bench's whole
+    // premise is that you are arranging something you can hear (#267).
+    if (inCorridor) return;
     paused = !paused;
     pauseOverlay.style.display = paused ? '' : 'none';
     pauseButton.textContent = paused ? 'RESUME' : 'PAUSE';
@@ -202,6 +232,71 @@ export async function bootGame(
   overlay.className = 'debug-overlay';
   overlay.style.display = 'none';
   root.appendChild(overlay);
+
+  // ---- THE ROUTE's surfaces ------------------------------------------------
+  //
+  // Three of them, and each is only up during one phase of the loop: a strip that
+  // says where you are on the route, the panel that spells out the three doors
+  // while their pedestals are on the ground, and the corridor itself.
+  /** One run's route: where it is, what is behind the doors, and the density
+   *  curve. Null in a run with every layer switched off. */
+  let route: RouteRun | null = null;
+  let gate: GateScreen | null = null;
+  /** True while the corridor is up: the director is held and the field is clear,
+   *  but the transport keeps running so the bench is arranging something audible. */
+  let inCorridor = false;
+  const routeStrip = document.createElement('div');
+  routeStrip.className = 'route-strip';
+  routeStrip.style.display = 'none';
+  root.appendChild(routeStrip);
+  const doorsPanel = document.createElement('div');
+  doorsPanel.className = 'route-doors';
+  doorsPanel.style.display = 'none';
+  root.appendChild(doorsPanel);
+  /** Re-derive the whole band from the build. Called on a bar line after every
+   *  change; see route/sync.ts for why it is never incremental. */
+  function pushBand(): void {
+    if (route && world) syncBand(engine, world, route.build, { deactivated: deactivatedRoles });
+  }
+
+  /** THE LAYER SWITCHES, on the start screen (#256: every layer individually
+   *  switchable so each gets its own verdict). Everything off is the base game,
+   *  reached through the base's own code paths — so the same build is both the
+   *  prototype and its control, and a per-mechanic verdict is one run each away. */
+  function paintTogglePanel(into: HTMLElement): void {
+    const paint = (): void => {
+      into.replaceChildren();
+      const head = document.createElement('span');
+      head.className = 'eyebrow';
+      head.textContent = `THE ROUTE — ROOMS + SHELL + TOLL · ${toggleSummary()}`;
+      into.appendChild(head);
+      const row = document.createElement('div');
+      row.className = 'proto-row';
+      into.appendChild(row);
+      const live = toggles();
+      for (const name of Object.keys(TOGGLE_LABELS) as (keyof RouteToggles)[]) {
+        const btn = document.createElement('button');
+        btn.className = `small proto-toggle ${live[name] ? 'on' : ''}`;
+        btn.textContent = TOGGLE_LABELS[name];
+        if (name === 'toll' && !live.rooms) {
+          btn.disabled = true;
+          btn.title = 'A toll needs a gate to be paid at. Switch The Rooms on first.';
+        }
+        btn.onclick = () => {
+          setToggle(name, !toggles()[name]);
+          paint();
+        };
+        row.appendChild(btn);
+      }
+      const hint = document.createElement('p');
+      hint.className = 'start-hint';
+      hint.textContent = routeActive()
+        ? 'Rooms with doors · patterns are the loot · every door costs something. Switch all five off to play the base.'
+        : 'Every layer is off: this is the prototype base, unchanged, as the control.';
+      into.appendChild(hint);
+    };
+    paint();
+  }
 
   // Every XP threshold and every chest grants one upgrade. Several can
   // arrive in the same simulation tick, including while the first pick screen
@@ -296,7 +391,12 @@ export async function bootGame(
   // a triangle around the player. Shell-owned (never entities in the
   // simulation), so it stays independent from world entities. Empty = none.
   type EvolutionPick = { kind: 'evolution'; evolution: EvolutionDefinition };
-  type ShellPick = AnyPickOption | EvolutionPick;
+  /** A DOOR, dropped as a pedestal (#267). Doors ride the level-up triangle's own
+   *  machinery rather than a menu, which is what makes choosing one a thing you do
+   *  with your feet while the room you just played is still chasing you. Not part
+   *  of `AnyPickOption`: a door is not something a level-up can offer. */
+  type DoorPick = { kind: 'door'; door: DoorOffer };
+  type ShellPick = AnyPickOption | EvolutionPick | DoorPick;
   interface GroundItem {
     x: number;
     y: number;
@@ -342,6 +442,17 @@ export async function bootGame(
     if (option.kind === 'evolution') {
       return { role: option.evolution.role, color: option.evolution.color,
         name: option.evolution.name, badge: 'EVOLVE' };
+    }
+    if (option.kind === 'door') {
+      const copy = doorPedestal(option.door);
+      return { glyph: '⌸', color: copy.color, name: copy.name, badge: copy.badge };
+    }
+    if (option.kind === 'pattern') {
+      // A pattern pedestal names its destination AND what it displaces: slotting
+      // is destructive, so the cost has to be readable before you walk onto it.
+      const displaced = route?.build.shells.get(option.role)?.pattern ?? null;
+      const copy = patternPedestal(option.pattern, option.role, displaced);
+      return { role: option.role, color: ROLE_COLORS[option.role], name: copy.name, badge: copy.badge };
     }
     if (option.kind === 'encore') return encorePickView(w, option.encore);
     const level = weaponLevelNow(w, option.role);
@@ -396,6 +507,10 @@ export async function bootGame(
     if (world.won) return; // the set is over; the demo end offers nothing more
     if (chestCeremony !== null) return; // the slot reel owns the moment
     if (groundPicks.length > 0) return; // one triangle at a time
+    // Doors and the corridor own the moment too: a triangle dropped under the
+    // door pedestals would be two different kinds of choice in one ring, and one
+    // dropped behind the bench would be invisible.
+    if (route && route.phase !== 'room') return;
 
     const w = world;
     if (pendingEvolutionChoices.length > 0) {
@@ -416,12 +531,14 @@ export async function bootGame(
       // is complete — the Encore's fixed pair. The pool sees what the run has
       // already promised (a chest payout can be lying on the ground right now),
       // so it never offers a level that is already spoken for.
-      const options = rollOffers({
-        tiers: w.tiers,
-        pendingTiers: outstandingPromises(),
-        rng: Math.random,
-        timeS: w.timeS,
-      });
+      const options = route
+        ? rollRouteOffers({ build: route.build, promised: outstandingPromises(), rng: Math.random })
+        : rollOffers({
+          tiers: w.tiers,
+          pendingTiers: outstandingPromises(),
+          rng: Math.random,
+          timeS: w.timeS,
+        });
       dropGroundPicks(w, options);
     }
   }
@@ -521,6 +638,36 @@ export async function bootGame(
         : `TIP JAR · +${landed} ♫`);
       return 'now';
     }
+    if (option.kind === 'pattern') {
+      // A pattern IS the notes, so it enters on a bar line like every other
+      // change to what the band plays — and the toast names the loss, because the
+      // swap is destructive and the pedestal is already gone by the time it lands.
+      const r = route;
+      if (!r) return 'now';
+      const displaced = r.build.shells.get(option.role)?.pattern ?? null;
+      pickAwaitingBar = true;
+      engine.atNextBar((barAudioTime) => {
+        if (world !== w || (state !== 'run' && state !== 'sandbox')) {
+          pickAwaitingBar = false;
+          return;
+        }
+        const result = r.build.slot(option.role, option.pattern);
+        pushBand();
+        engine.atAudioTime(barAudioTime, () => {
+          if (world !== w) return;
+          pickAwaitingBar = false;
+          presentQueuedPickAtAudioT = barAudioTime;
+          if (!result.ok) return;
+          view?.flourish(w.player.x, w.player.y);
+          paintBand();
+          r.note(`${kits.get(option.role)!.name} took ${pattern(option.pattern).name}`
+            + (displaced ? ` over ${pattern(displaced).name}` : ''));
+        });
+      });
+      hud.showToast(`${kits.get(option.role)!.name} → ${pattern(option.pattern).name}`
+        + (displaced ? ` · dropped ${pattern(displaced).name}` : ''));
+      return 'bar';
+    }
     const level = weaponLevelNow(w, option.role);
     if (level >= WEAPON_MAX_LEVEL) return applyPickup(w, TIP_JAR, onEntered);
     // One level short of the top is the only warning the player gets that an
@@ -569,7 +716,17 @@ export async function bootGame(
       // NEXT bar — they armed their own callback and are still in `queued`.
       const owed = p.onEntered.splice(0);
       const target = Math.min(WEAPON_MAX_LEVEL, (w.tiers.get(role) ?? 0) + p.entering);
-      engine.setVoiceTier(role, chartStageForLevel(target));
+      if (route) {
+        // THE ROUTE's version of the same entry: a level is a level on a SHELL, and
+        // a hire arrives holding a starter pattern. `syncBand` re-derives the whole
+        // band from the build, so the chart, the trim and the per-weapon damage all
+        // change on this bar line together.
+        if (!route.build.shells.has(role)) route.build.hire(role);
+        route.build.shells.get(role)!.level = target;
+        pushBand();
+      } else {
+        engine.setVoiceTier(role, chartStageForLevel(target));
+      }
       // Sticky deactivation: a tier-up applies the new tier but does not revive
       // an instrument the developer deliberately turned off. It returns at the
       // higher tier when reactivated.
@@ -602,6 +759,10 @@ export async function bootGame(
     w.shoveEnemiesOut(item.x, item.y, LEVELUP.pickupPushRadius);
     const option = item.option;
     clearGroundPicks();
+    if (option.kind === 'door') {
+      enterCorridor(w, option.door);
+      return;
+    }
     if (option.kind !== 'evolution') {
       const outcome = applyPickup(w, option, (barAudioTime) => {
         pickAwaitingBar = false;
@@ -645,6 +806,134 @@ export async function bootGame(
 
 
   // ---------------------------------------------------------------------------
+  // THE ROUTE's loop: room -> doors -> corridor -> room.
+  //
+  // Each beat is one function, and the ticker only ever asks one question ("is
+  // this room played out?"). The doors are pedestals, so choosing one is walking
+  // onto it; the corridor is a screen, because arranging is not something you do
+  // with your feet.
+
+  /** The room is played out. The director stops, the crowd stays, and three doors
+   *  thud down around the player.
+   *
+   *  THE CROWD STAYING IS THE POINT. A room that ends by clearing itself would make
+   *  the door choice free; leaving the bodies on the field means the last thing a
+   *  room asks of you is to read three doors while it is still trying to kill you.
+   *  #255 flagged this shape's weakness as "the corridor is thin for free, which is
+   *  rest rather than an authored valley" — the rest is real, and this is where it
+   *  is paid for. */
+  function endRoom(w: RunWorld): void {
+    const r = route;
+    if (!r || r.phase !== 'room') return;
+    w.holdStage();
+    if (r.room.summit) {
+      r.note('cleared the summit');
+      r.finish();
+      w.declareVictory();
+      return;
+    }
+    const doors = r.openDoors();
+    hud.showToast(rewardToast(r.pendingReward));
+    paintDoorsPanel(doorsPanel, doors);
+    doorsPanel.style.display = '';
+    dropGroundPicks(w, doors.map((door): ShellPick => ({ kind: 'door', door })), 'level');
+  }
+
+  /** A door was taken. Sweep the room behind it and open the corridor. */
+  function enterCorridor(w: RunWorld, door: DoorOffer): void {
+    const r = route;
+    if (!r) return;
+    r.note(`took ${r.describeDoor(door)}`);
+    r.takeDoor(door);
+    w.clearField();
+    doorsPanel.style.display = 'none';
+    inCorridor = true;
+    // The transport is deliberately NOT held: the bench exists so the player can
+    // hear what they are arranging, and a held transport would make it a diagram.
+    const hirable = (Object.keys(SHELL_CEILING) as Role[])
+      .concat(['pad', 'air'])
+      .filter((role) => hasWeaponModule(role) && r.build.canHire(role))
+      .slice(0, 3);
+    gate = mountGateScreen(root, r, hirable, {
+      onChanged(summary) {
+        // Every bench change enters on a bar line, exactly like a pick does, so
+        // the ear hears the arrangement change on the beat rather than mid-note.
+        engine.atNextBar(() => {
+          if (world !== w) return;
+          pushBand();
+          paintBand();
+        });
+        if (summary) hud.showToast(summary.toUpperCase());
+        gate?.refresh();
+      },
+      onHire(role) {
+        r.build.hire(role);
+        engine.atNextBar(() => {
+          if (world !== w) return;
+          pushBand();
+          paintBand();
+        });
+      },
+      onPayToll(payer, receiver) {
+        const spec = r.chosen?.toll;
+        if (!spec || spec.kind === 'none') return;
+        const result = payToll(r.build, TOLLS[spec.kind], { payer, receiver });
+        r.tollPaid = true;
+        r.note(`paid the gate: ${result.line}`);
+        hud.showToast(result.line);
+        engine.atNextBar(() => {
+          if (world !== w) return;
+          pushBand();
+          paintBand();
+        });
+      },
+      onOpen() {
+        openTheDoor(w);
+      },
+    });
+  }
+
+  /** Walk through: the next room's script takes over the director. */
+  function openTheDoor(w: RunWorld): void {
+    const r = route;
+    if (!r) return;
+    const { room, unlockedBars } = r.enterChosenRoom();
+    gate?.destroy();
+    gate = null;
+    inCorridor = false;
+    w.enterStage(room.script);
+    pushBand();
+    paintBand();
+    if (unlockedBars) {
+      hud.showToast(unlockedBars === 2
+        ? 'THE SECOND BAR — patterns can be twice as long now'
+        : 'THE FOURTH BAR — a whole phrase to arrange in');
+      r.note(`the ${unlockedBars === 2 ? 'second' : 'fourth'} bar opened`);
+    }
+    hud.showToast(`${room.name.toUpperCase()} · ${room.phrases} PHRASES`);
+  }
+
+  /** The strip that says where on the route you are. Cheap enough to repaint from
+   *  the ticker; the text is keyed so it only actually writes on a change. */
+  let routeStripKey = '';
+  function paintRouteStrip(w: RunWorld): void {
+    const r = route;
+    if (!r || !toggles().rooms) {
+      routeStrip.style.display = 'none';
+      return;
+    }
+    routeStrip.style.display = '';
+    const left = Math.max(0, Math.ceil(r.roomSeconds - w.stageTimeS));
+    const key = `${r.room.depth}/${r.phase}/${left}/${r.build.density().toFixed(1)}`;
+    if (key === routeStripKey) return;
+    routeStripKey = key;
+    const phase = r.phase === 'doors' ? 'PICK A DOOR' : r.phase === 'gate' ? 'THE CORRIDOR' : `${left}s`;
+    routeStrip.textContent =
+      `ROOM ${r.room.depth + 1}/12 · ${r.room.name.toUpperCase()} · ${phase}`
+      + ` · ${r.build.density().toFixed(1)} HITS/BAR · ${r.build.playingCount()} PLAYING`;
+  }
+
+  // ---------------------------------------------------------------------------
   // The chest slot machine. Walking onto a chest no longer resolves instantly:
   // the case rattles under a reel of possible rewards while ticks climb the
   // scale (each one a note higher, the intervals stretching like a slowing
@@ -667,6 +956,19 @@ export async function bootGame(
    *  Without this, two chests opened back to back with one recipe ready would
    *  both land "EVOLUTION READY" — and the second would pay nothing. */
   function unpromisedEvolutions(w: RunWorld): EvolutionDefinition[] {
+    // EVOLUTIONS ARE OFF ON THE ROUTE, and the reason is that this stack already
+    // has a transformation system. The Toll's whole sentence is "what you feed the
+    // gate comes back transformed onto something you kept"; an evolution is a
+    // second transformation, arriving on a different trigger, by a different rule,
+    // paying out in geometry rather than in the run's own currency. Running both
+    // would put noise on exactly the axis under test, and #273 established that an
+    // evolution is musically silent anyway — which is the disease this map exists
+    // to treat rather than a thing to keep.
+    //
+    // #267 asked for the reason either way, and this is it. They stay in the base
+    // (#273 merged them there), stay reachable with the layers off, and the chest
+    // pays the route's own currency instead.
+    if (route) return [];
     const promised = new Set<Role>();
     for (const choices of pendingEvolutionChoices) for (const choice of choices) promised.add(choice.role);
     for (const pick of groundPicks) {
@@ -770,6 +1072,11 @@ export async function bootGame(
   function rollChestDrops(w: RunWorld, count: 1 | 3 | 5): ChestDropPlan[] {
     const cx = w.player.x;
     const cy = w.player.y;
+    // On the route a chest pays the route's currency: patterns and levels, from the
+    // same pool a level-up draws. Without this a chest would be the one surface
+    // still handing out nothing but ladder rungs, which is the shape this stack is
+    // built to get away from.
+    if (route) return rollRouteChestDrops(w, count);
     // Same portrait-screen clamp as the level-up triangle: pedestals must stay
     // fully readable inside the camera.
     const horizontalRoom = Math.max(LEVELUP.itemPickupRadius + 4, w.worldW / 2 - 92);
@@ -795,6 +1102,36 @@ export async function bootGame(
       // This hit is now a promise of its own, and the next hit must see it.
       if (target.kind === 'weapon') promised.set(target.role, (promised.get(target.role) ?? 0) + 1);
       drops.push({ x, y, option: target });
+    }
+    return drops;
+  }
+
+  /** A chest's payout on the route: `count` picks off the route's own pool, each
+   *  rolled against the promises the ones before it made, so a jackpot spends its
+   *  hits across the build instead of naming the same shell five times. */
+  function rollRouteChestDrops(w: RunWorld, count: 1 | 3 | 5): ChestDropPlan[] {
+    const r = route!;
+    const horizontalRoom = Math.max(LEVELUP.itemPickupRadius + 4, w.worldW / 2 - 92);
+    const startDeg = Math.random() * 360;
+    const promised = outstandingPromises();
+    const takenPatterns = new Set<Role>();
+    const drops: ChestDropPlan[] = [];
+    for (let i = 0; i < count; i++) {
+      const deg = startDeg + (360 / count) * i + (Math.random() - 0.5) * 24;
+      const rad = (deg * Math.PI) / 180;
+      const radius = CHEST.dropRadius + (Math.random() - 0.5) * 30;
+      const x = w.player.x + Math.max(-horizontalRoom, Math.min(horizontalRoom, Math.cos(rad) * radius));
+      const y = w.player.y + Math.sin(rad) * radius;
+      const pool = rollRouteOffers({ build: r.build, promised, rng: Math.random })
+        // A chest never hires: it pays a build, it does not widen one.
+        .filter((option) => option.kind !== 'weapon' || r.build.shells.has(option.role))
+        // One pattern per shell per payout, so a ×5 does not overwrite itself four
+        // times before the player has walked to the first pedestal.
+        .filter((option) => option.kind !== 'pattern' || !takenPatterns.has(option.role));
+      const option = pool[0] ?? TIP_JAR;
+      if (option.kind === 'weapon') promised.set(option.role, (promised.get(option.role) ?? 0) + 1);
+      if (option.kind === 'pattern') takenPatterns.add(option.role);
+      drops.push({ x, y, option });
     }
     return drops;
   }
@@ -907,6 +1244,20 @@ export async function bootGame(
     },
   };
   let sandboxPanel: SandboxPanel | null = null;
+  /** The last finished route run's measurement, kept on `loop.route` so a capture
+   *  session can read it after the end screen is up. */
+  interface RouteReport {
+    toggles: string;
+    rooms: number;
+    timeS: number;
+    peakDensity: number;
+    falls: { atS: number; from: number; to: number }[];
+    density: DensitySample[];
+    table: string;
+    log: string[];
+    band: string;
+  }
+  let lastRouteReport: RouteReport | null = null;
   let liveAcc = 0;
   /** Audio-clock instant the win screen is due, or null outside the demo end.
    *  Audio time, not wall time, so a pause (which suspends the context) holds
@@ -936,8 +1287,16 @@ export async function bootGame(
     world = null;
     resetDeactivations(); // new run starts with every instrument active
     engine.clearBarQueue();
-    engine.resetEvolutionMixes();
+    engine.resetEvolutionMixes(); // also clears every build trim (#267)
     for (const role of ROLES) engine.setVoiceEnabled(role, false);
+    gate?.destroy();
+    gate = null;
+    inCorridor = false;
+    route = null;
+    routeStrip.style.display = 'none';
+    routeStripKey = '';
+    doorsPanel.style.display = 'none';
+    doorsPanel.replaceChildren();
   }
 
   function startRun(mode: AutoMoveMode = 'off'): void {
@@ -946,8 +1305,16 @@ export async function bootGame(
     // manual keeps the keyboard/joystick.
     // The seam reads playerControl live, so the in-game toggle works too.
     setAutoMode(mode);
+    // THE ROUTE, if any of its layers is on. The two arguments below are the whole
+    // of the run-shape change: the director walks the first ROOM's script instead
+    // of Mad Forest's thirty minutes, and no timestamp wins the run — the summit
+    // does (#267; this is where pillar 5 dies).
+    route = routeActive() ? new RouteRun(Math.random) : null;
+    const roomsOn = route !== null && toggles().rooms;
     const w: RunWorld = new RunWorld(app.screen, events, {
       control: () => playerControl(w),
+      stage: roomsOn ? route!.room.script : undefined,
+      victoryAtS: roomsOn ? null : undefined,
     });
     world = w;
     w.player.hp = w.playerMaxHp;
@@ -966,13 +1333,19 @@ export async function bootGame(
     // the chosen one on the next bar. This is deliberately NOT a level-up: no
     // upgrade is enqueued and world level/XP are untouched, so the HUD still
     // reads level 1 after the pick.
+    if (route) {
+      hud.showToast(`THE ROUTE · ${toggleSummary().toUpperCase()}`);
+      hud.showToast(`${route.room.name.toUpperCase()} · ${route.room.phrases} PHRASES`);
+    }
     dropGroundPicks(
       w,
-      rollStartingWeapons({
-        tiers: w.tiers,
-        rng: Math.random,
-        timeS: 0,
-      }),
+      route
+        ? rollRouteStartingShells(route.build, Math.random)
+        : rollStartingWeapons({
+          tiers: w.tiers,
+          rng: Math.random,
+          timeS: 0,
+        }),
       'none',
     );
   }
@@ -1001,7 +1374,7 @@ export async function bootGame(
         resetWorld();
         engine.clock.stop();
         hud.showHud(false);
-        hud.showStart(startRun, startSandbox);
+        hud.showStart(startRun, startSandbox, paintTogglePanel);
         state = 'start';
         syncTimeScaleControl(); // resetWorld ran while still 'sandbox'; re-grey now
       },
@@ -1042,6 +1415,31 @@ export async function bootGame(
 
   function endRun(victory = false): void {
     if (!world || state === 'end') return;
+    // THE RUN'S OWN MEASUREMENT, printed where a tester can copy it. The hard
+    // floor (#256) asks whether a run's density fell because the player chose it;
+    // a verdict on that has to be a curve and a list of decisions, not an
+    // impression, so both go to the console and stay on `loop.route` until the
+    // next run replaces them.
+    if (route) {
+      const falls = route.falls();
+      lastRouteReport = {
+        toggles: toggleSummary(),
+        rooms: route.room.depth + 1,
+        timeS: Math.round(world.timeS),
+        peakDensity: route.density.reduce((max, s) => Math.max(max, s.density), 0),
+        falls,
+        density: route.density,
+        table: route.densityTable(),
+        log: route.log,
+        band: route.build.describe(),
+      };
+      console.info(
+        `[route] ${toggleSummary()} · ${route.room.depth + 1} rooms · `
+        + `${falls.length} density fall${falls.length === 1 ? '' : 's'} · `
+        + `peak ${lastRouteReport.peakDensity.toFixed(2)} hits/bar`,
+      );
+      console.info('[route] copy(loop.route.table) for the density curve, loop.route.log for the decisions');
+    }
     state = 'end';
     victoryScreenAtAudioT = null;
     syncTimeScaleControl(); // no live world to scale on the end screen
@@ -1071,7 +1469,7 @@ export async function bootGame(
       },
       () => {
         hud.showHud(false);
-        hud.showStart(startRun, startSandbox);
+        hud.showStart(startRun, startSandbox, paintTogglePanel);
         state = 'start';
       },
     );
@@ -1239,6 +1637,22 @@ export async function bootGame(
       ) {
         presentQueuedPickAtAudioT = null;
         presentNextUpgrade();
+      }
+      // THE ROUTE's one question per frame: is this room played out? Asked after
+      // the fixed steps so the room ends on a simulated instant rather than a
+      // frame boundary, and only in a live room — the corridor and the door
+      // pedestals are their own phases.
+      if (route && world === w && state === 'run' && !w.won) {
+        route.sample(w.timeS);
+        paintRouteStrip(w);
+        if (
+          toggles().rooms
+          && route.phase === 'room'
+          && steps > 0
+          && w.stageTimeS >= route.roomSeconds
+        ) {
+          endRoom(w);
+        }
       }
       // Level and chest rewards are raised from inside RunWorld.update(). Drop
       // their triangle only after the full fixed step has survived, so contact
@@ -1450,7 +1864,7 @@ export async function bootGame(
     }
   });
 
-  hud.showStart(startRun, startSandbox);
+  hud.showStart(startRun, startSandbox, paintTogglePanel);
 
   // extend the dev console handle
   Object.assign((window as unknown as { loop: object }).loop, {
@@ -1461,6 +1875,84 @@ export async function bootGame(
       },
       get world() {
         return world;
+      },
+    },
+    /** THE ROUTE's console handle (#267). Two things a capture session needs and
+     *  cannot get from the screen: the live build, so a take can be set up without
+     *  playing to it, and the last run's density curve. */
+    route: {
+      get live() {
+        return route;
+      },
+      get build() {
+        return route?.build ?? null;
+      },
+      get report() {
+        return lastRouteReport;
+      },
+      get table() {
+        return route?.densityTable() ?? lastRouteReport?.table ?? '';
+      },
+      get log() {
+        return route?.log ?? lastRouteReport?.log ?? [];
+      },
+      /** Re-derive the band from the build. For a console session that edited the
+       *  build directly. */
+      push: () => {
+        engine.atNextBar(() => {
+          pushBand();
+          paintBand();
+        });
+      },
+      toggles,
+      setToggle,
+
+      // ---- the driving hooks -------------------------------------------------
+      //
+      // A route run is thirteen minutes long and asks the player a question every
+      // eighty seconds, which makes it awkward to VERIFY and awkward to CAPTURE.
+      // These four hooks let a console session walk a whole route without a hand
+      // on the keyboard: they only ever do what a player's feet and clicks do, so
+      // a scripted walk exercises the same code paths a played one does.
+      //
+      // Not a shortcut around any rule: `grab` teleports onto a pedestal the
+      // player could have walked to, and `gateClick` presses a button that is on
+      // the screen. Nothing here writes to the build.
+
+      /** What is on the ground right now: the level-up triangle or the doors. */
+      picks: () => groundPicks.map((pick, index) => ({
+        index,
+        x: Math.round(pick.x),
+        y: Math.round(pick.y),
+        ...(world ? pedestalFor(world, pick.option) : {}),
+        kind: pick.option.kind,
+      })),
+      /** Stand on pedestal `index`. The shell's own walk-onto check does the rest
+       *  on the next fixed step, exactly as it would for a player. */
+      grab: (index = 0) => {
+        const pick = groundPicks[index];
+        if (!pick || !world) return false;
+        world.player.x = pick.x;
+        world.player.y = pick.y;
+        return true;
+      },
+      /** Every button the corridor is currently showing, by its label. */
+      gateButtons: () => [...root.querySelectorAll<HTMLButtonElement>('.route-gate button')]
+        .map((btn, index) => ({ index, label: btn.textContent ?? '', disabled: btn.disabled })),
+      /** Press one of them. */
+      gateClick: (index: number) => {
+        const btn = [...root.querySelectorAll<HTMLButtonElement>('.route-gate button')][index];
+        if (!btn || btn.disabled) return false;
+        btn.click();
+        return true;
+      },
+      /** Skip to the end of the room being fought, so a whole route can be walked
+       *  without waiting out every phrase. Changes WHEN the doors drop and nothing
+       *  else — the arrangement, the toll and the bench are untouched. */
+      skipRoom: () => {
+        if (!world || !route || route.phase !== 'room') return false;
+        endRoom(world);
+        return true;
       },
     },
   });

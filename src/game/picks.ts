@@ -48,11 +48,30 @@ interface EncorePickOption {
   encore: EncoreId;
 }
 
+/** A PATTERN, for one named shell (#267, The Shell). Rolled by
+ *  `route/offers.ts`, not by this file: what a level-up offers is the stack's own
+ *  rule, and the base's roller has no business knowing what a pattern is.
+ *
+ *  Names both the pattern and its destination because slotting is DESTRUCTIVE —
+ *  taking this discards whatever that shell was playing — and a destructive pick
+ *  with no destination printed on it is a coin flip. `pattern` is a plain string
+ *  so this file needs no import from the stack.
+ *
+ *  This is the widening the base invited: "a prototype whose power currency is
+ *  patterns, tape, stage positions or upkeep widens `AnyPickOption` and rewrites
+ *  `rollOffers`", and the shell's exhaustive switches then point at every site
+ *  that has to learn about it. */
+interface PatternPickOption {
+  kind: 'pattern';
+  role: Role;
+  pattern: string;
+}
+
 /** Everything a level-up can offer. Kept as a discriminated union of more than
  *  one member on purpose: a prototype that adds its own pick kind (a pattern, a
  *  reel of tape, a stage position) widens this type and the shell's exhaustive
  *  switches then point at every site that has to learn about it. */
-export type AnyPickOption = WeaponPickOption | EncorePickOption;
+export type AnyPickOption = WeaponPickOption | EncorePickOption | PatternPickOption;
 
 export interface RollOffersInput {
   tiers: ReadonlyMap<Role, number>;

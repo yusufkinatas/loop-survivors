@@ -60,6 +60,11 @@ export interface Voice {
   /** The most recent trigger's nodes, so choked kits can cut it. */
   lastHit: VoiceHit | null;
   evolved: boolean;
+  /** Decibels the evolution asks for (setEvolutionGain). */
+  evolutionDb: number;
+  /** Decibels the BUILD asks for (setVoiceTrim). Separate from the evolution's so
+   *  the two compose instead of overwriting each other — see applyVoiceLevel. */
+  trimDb: number;
   /** A BED's one continuous looping source, and the gain its level rides on.
    *  Null while the bed is off. Only texture voices ever have these; every
    *  other voice makes sound only through `trigger`. */
@@ -307,6 +312,8 @@ export class MusicEngine {
         override: null,
         lastHit: null,
         evolved: false,
+        evolutionDb: 0,
+        trimDb: 0,
         bedSource: null,
         bedGain: null,
       });
@@ -353,17 +360,26 @@ export class MusicEngine {
     return this.audioSetId;
   }
 
+  /** A voice's level, from its calibrated mix position plus every decibel the
+   *  game has asked for on top. ONE place, because there are now two independent
+   *  sources of trim — the evolution's and the build's — and a setter that wrote
+   *  the absolute value would silently cancel the other one. */
+  private applyVoiceLevel(voice: Voice, rampS = 0.025): void {
+    voice.gain.gain.setTargetAtTime(
+      voiceMixGain(voice.role) * Math.pow(10, (voice.evolutionDb + voice.trimDb) / 20),
+      this.ctx.currentTime,
+      rampS,
+    );
+  }
+
   /** Evolution voices stay in the same musical lane; a few dense weapons are
    * trimmed in decibels so their extra geometry does not become extra loudness. */
   setEvolutionGain(role: Role, gainDb: number): void {
     const voice = this.voices.get(role);
     if (!voice) return;
     voice.evolved = true;
-    voice.gain.gain.setTargetAtTime(
-      voiceMixGain(role) * Math.pow(10, gainDb / 20),
-      this.ctx.currentTime,
-      0.025,
-    );
+    voice.evolutionDb = gainDb;
+    this.applyVoiceLevel(voice);
   }
 
   /** Sandbox before/after switch: restore this voice's calibrated base mix. */
@@ -371,14 +387,55 @@ export class MusicEngine {
     const voice = this.voices.get(role);
     if (!voice) return;
     voice.evolved = false;
-    voice.gain.gain.setTargetAtTime(voiceMixGain(role), this.ctx.currentTime, 0.02);
+    voice.evolutionDb = 0;
+    this.applyVoiceLevel(voice, 0.02);
   }
 
   resetEvolutionMixes(): void {
     for (const voice of this.voices.values()) {
       voice.evolved = false;
-      voice.gain.gain.setTargetAtTime(voiceMixGain(voice.role), this.ctx.currentTime, 0.02);
+      voice.evolutionDb = 0;
+      voice.trimDb = 0;
+      this.applyVoiceLevel(voice, 0.02);
     }
+  }
+
+  /** THE BUILD'S OWN TRIM, in decibels, composing with the evolution's.
+   *
+   *  A SEAM FOR ROUND 1, and a shared one. `docs/baseline/` measured the shipped
+   *  game's whole power curve buying 2.8 dB across a run and its loudness range
+   *  sitting at 0.4-0.6 LU everywhere; #273 confirmed that evolution adds nothing
+   *  audible either. Any stack whose answer to that is "power should be LOUDNESS
+   *  rather than more notes" needs a way to say so per voice, and there was none:
+   *  `setVoiceGain` writes an absolute value and knows nothing about the
+   *  calibrated mix position it would be overwriting. */
+  setVoiceTrim(role: Role, gainDb: number): void {
+    const voice = this.voices.get(role);
+    if (!voice) return;
+    voice.trimDb = gainDb;
+    this.applyVoiceLevel(voice, 0.05);
+  }
+
+  /** PLAY AN ARBITRARY CHART ON A VOICE, instead of one of the soundset's four
+   *  authored rungs.
+   *
+   *  The other half of the same seam. `setVoiceTier` is the base's only way in and
+   *  it can only ever select a rung of the hand-authored ladder — which is exactly
+   *  the coupling #247 exists to break, since a rung is simultaneously the notes
+   *  and (through the trigger count) the damage. A stack whose currency is the
+   *  NOTES THEMSELVES — a pattern found as loot, a phrase the player recorded —
+   *  has to be able to hand a voice something the ladder never contained.
+   *
+   *  Object identity is the contract, exactly as it is for `getChart`: the engine
+   *  holds this reference and reads it on every step, so pass a stable object and
+   *  do not mutate it while it is playing. Takes effect on the next step the new
+   *  chart fires; scheduled sources keep their old buffer, so the swap is
+   *  click-free mid-bar. */
+  setVoiceChart(role: Role, chart: Chart): void {
+    const voice = this.voices.get(role);
+    if (!voice || chart.role !== role) return;
+    voice.chart = chart;
+    this.syncBed(voice);
   }
 
   /** RMS of the current output window, 0..~1. Debug metering. */

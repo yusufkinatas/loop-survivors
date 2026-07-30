@@ -618,6 +618,18 @@ export interface RunWorldOpts {
   /** The stage script the director walks; Mad Forest when omitted. See
    *  `StageScript` — this is the seam a new run shape replaces. */
   stage?: StageScript;
+  /**
+   * When the clock alone wins the run. `null` hands that decision to the caller
+   * (`declareVictory`), which is what a run shape that is a PLACE rather than a
+   * duration needs.
+   *
+   * THE ROUTE (#267) sets this to null: a set is over when the summit is cleared,
+   * so nothing about the ending is a timestamp any more. This is where the stack
+   * breaks `docs/plan.md`'s pillar 5 outright, and it is the smallest honest
+   * expression of that break — one number becoming optional rather than the
+   * director being rewritten.
+   */
+  victoryAtS?: number | null;
 }
 
 export class RunWorld {
@@ -730,9 +742,16 @@ export class RunWorld {
    *  snapshotted. */
   private readonly weaponCtx = new Map<Role, WeaponContext>();
   private scripted: boolean;
-  private readonly stage: StageScript;
-  /** The stage's event rows unrolled into individual firings, once per world. */
-  private readonly occurrences: readonly StageOccurrence[];
+  /** Not readonly any more: a run shape made of rooms swaps this at every door
+   *  (`enterStage`). Mad Forest hands it over once and never touches it again. */
+  private stage: StageScript;
+  /** The stage's event rows unrolled into individual firings. Rebuilt by
+   *  `enterStage`; built once for a run shape that never swaps. */
+  private occurrences: readonly StageOccurrence[];
+  /** The clock instant the current stage script's own times are measured from.
+   *  Zero for a whole-run script; the door's timestamp for a room. */
+  private stageEpochS = 0;
+  private readonly victoryAtS: number | null;
   /** The run has been won (mad-forest-spec §8). Set once, never cleared: a
    *  world that reached 30:00 only ever plays out its clear wave. */
   won = false;
@@ -758,6 +777,7 @@ export class RunWorld {
     this.fx = (opts.fx ?? true) ? [] : null;
     this.stage = opts.stage ?? MAD_FOREST;
     this.occurrences = unrollStageEvents(this.stage.events);
+    this.victoryAtS = opts.victoryAtS === undefined ? VICTORY.atS : opts.victoryAtS;
     // Built after the drop seed draw above: the context factory draws no rng,
     // so no draw moves.
     for (const m of WEAPON_MODULES) {
@@ -1035,7 +1055,36 @@ export class RunWorld {
     if (!tiers) return null;
     // Single build-transform pipeline (D1): tempo compensation, folded in one
     // place — balance code multiplies here.
-    return this.applyBuild(tiers[tier - 1]);
+    return this.perWeapon(role, this.applyBuild(tiers[tier - 1]));
+  }
+
+  /** THE PER-WEAPON STAT SEAM (#267). `mods` is one struct for the whole build,
+   *  which is the right shape for a stat layer that applies to everything —
+   *  Antonio's Might, a passive's Area — and the wrong shape the moment a stack's
+   *  currency is owned by ONE INSTRUMENT.
+   *
+   *  The Route needs both halves of that. Its density compensation is per shell by
+   *  definition (a shell playing a quarter of the notes hits four times as hard),
+   *  and the toll pays its return onto one instrument the player chose. Neither can
+   *  be expressed as a number in a struct the whole band reads.
+   *
+   *  Neutral in the base — nothing writes to `perWeaponMods`, so `builtConf`
+   *  returns exactly what it returned before, which is what keeps this branch
+   *  comparable to `docs/palette-control/`. A CANDIDATE FOR THE SHARED BASE: it is
+   *  the same gap any stack with per-instrument power hits, and at least one other
+   *  round-1 stack (The Circuit's upkeep) is likely to want it. */
+  readonly perWeaponMods = new Map<Role, { damageMul: number; areaMul: number }>();
+
+  private perWeapon(role: Role, conf: WeaponConf): WeaponConf {
+    const per = this.perWeaponMods.get(role);
+    if (!per) return conf;
+    return {
+      ...conf,
+      damage: conf.damage * per.damageMul,
+      ...(conf.radius === undefined ? {} : { radius: conf.radius * per.areaMul }),
+      ...(conf.area === undefined ? {} : { area: conf.area * per.areaMul }),
+      ...(conf.orbitRadius === undefined ? {} : { orbitRadius: conf.orbitRadius * per.areaMul }),
+    };
   }
 
   /** Add a weapon or raise its tier. The pulse fires when the change lands
@@ -1184,7 +1233,9 @@ export class RunWorld {
     // stops, and the clear wave takes over as the only thing that kills.
     if (!this.won) {
       this.timeS += dt;
-      if (this.scripted && this.timeS >= VICTORY.atS) this.beginVictory();
+      if (this.scripted && this.victoryAtS !== null && this.timeS >= this.victoryAtS) {
+        this.beginVictory(this.victoryAtS);
+      }
     }
     this.updatePassiveRecovery(dt);
     this.movePlayer(dt);
@@ -1291,12 +1342,16 @@ export class RunWorld {
    * 30:00, where update() takes the victory branch and this stops being
    * called at all. */
   private runDirector(_dt: number): void {
+    // Stage-relative time. Zero offset for a whole-run script, so Mad Forest's
+    // arithmetic is character for character what it was; a room's script counts
+    // from the moment its door opened.
+    const stageT = this.timeS - this.stageEpochS;
     if (!this.stageStarted) {
       this.stageStarted = true;
       for (let i = 0; i < this.stage.startingSpawns; i++) this.spawnEnemy(this.stage.startingKind);
     }
 
-    while (this.waveIdx + 1 < this.stage.waves.length && this.timeS >= this.stage.waves[this.waveIdx + 1].atS) {
+    while (this.waveIdx + 1 < this.stage.waves.length && stageT >= this.stage.waves[this.waveIdx + 1].atS) {
       this.currentWave = this.stage.waves[++this.waveIdx];
       // Source timers wait one full interval before their first callback. The
       // ten starting bats therefore remain ten until 0:01, and each new
@@ -1306,7 +1361,7 @@ export class RunWorld {
 
     while (
       this.eventIdx < this.occurrences.length &&
-      this.timeS >= this.occurrences[this.eventIdx].atS
+      stageT >= this.occurrences[this.eventIdx].atS
     ) {
       const occ = this.occurrences[this.eventIdx++];
       if (occ.type === 'boss') {
@@ -1329,19 +1384,72 @@ export class RunWorld {
     const wave = this.currentWave;
     if (!wave) return;
     // A large frame must drain every scheduled attempt instead of dropping spawns.
-    while (this.timeS + 1e-9 >= this.nextSpawnT) {
+    while (stageT + 1e-9 >= this.nextSpawnT) {
       this.spawnWaveAttempt(wave);
       this.nextSpawnT += wave.intervalS;
     }
+  }
+
+  /** THE ROOM SEAM (#267). Put the director on a new script, counting from now.
+   *
+   *  `RunWorldOpts.stage` made the wave tables an argument (#265); a run shape
+   *  made of rooms needs them to be an argument that can be handed over again at
+   *  every door. Everything the director remembers about where it is in a script
+   *  — the wave cursor, the event cursor, the next spawn attempt — resets, and the
+   *  script's own timestamps are then read relative to this instant.
+   *
+   *  Does NOT touch the field: the crowd a player walks away from is the shell's
+   *  business (a door clears it; a mid-room script change would not want to). */
+  enterStage(script: StageScript): void {
+    this.stage = script;
+    this.occurrences = unrollStageEvents(script.events);
+    this.stageEpochS = this.timeS;
+    this.waveIdx = -1;
+    this.eventIdx = 0;
+    this.currentWave = null;
+    this.nextSpawnT = 0;
+    this.stageStarted = false;
+  }
+
+  /** Stop the director without ending the run: the room is played out, and the
+   *  crowd already on the field is what is left to deal with. */
+  holdStage(): void {
+    this.currentWave = null;
+    this.eventIdx = this.occurrences.length;
+    this.waveIdx = this.stage.waves.length;
+  }
+
+  /** Seconds since the current room's script started. */
+  get stageTimeS(): number {
+    return this.timeS - this.stageEpochS;
+  }
+
+  /** Clear the field the way the off-screen recycle does — no gem, no kill, no
+   *  chest, no splitter burst. What a door does to the room behind it. */
+  clearField(): void {
+    for (const e of this.enemies) {
+      if (e.dead || e.dummy) continue;
+      e.dead = true;
+      this.fx?.push({ type: 'death', x: e.x, y: e.y, color: e.color, radius: e.radius, elite: false });
+    }
+    this.reapEnemies();
+  }
+
+  /** THE ROUTE'S OWN ENDING (#267): a set is over when the summit is cleared, not
+   *  at a timestamp. Freezes the clock where the run actually ended, so the run
+   *  report reads the real length rather than a constant. */
+  declareVictory(): void {
+    if (this.won) return;
+    this.beginVictory(this.timeS);
   }
 
   /** 30:00: the set is played (mad-forest-spec §8). Freeze the clock on the
    *  winning time, make the player untouchable, and arm the clear wave. The
    *  shell takes it from here — it stops the track on the next bar line, rings
    *  the win flourish, and opens the win screen after the quiet beat. */
-  private beginVictory(): void {
+  private beginVictory(freezeAtS = VICTORY.atS): void {
     this.won = true;
-    this.timeS = VICTORY.atS;
+    this.timeS = freezeAtS;
     this.invincible = true;
     this.player.iframesT = 0;
     this.sweepR = 0;
