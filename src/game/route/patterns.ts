@@ -556,8 +556,18 @@ export function silentChart(role: Role): Chart {
 // Heft: the join that decouples density from power
 // ---------------------------------------------------------------------------
 
-/** Guard rails only. The ceiling rule keeps real cases well inside these; they
- *  exist so a future ladder edit cannot turn into a 30x weapon in silence. */
+/** Guard rails, and MEASURED AS REACHABLE rather than theoretical.
+ *
+ *  `HEFT_MIN` engages whenever a shell plays more than five times its own rung —
+ *  an Arp at level 2 (authored 2 a bar) holding The Rush (twelve a bar) wants 0.167
+ *  and gets 0.2. So the compensation is not exact there: that shell does about 20%
+ *  MORE damage per second than the authored weapon would.
+ *
+ *  Left as is, and flagged on #267 rather than tuned away, for two reasons. It is
+ *  small, and it happens to give a very dense arrangement the only mechanical
+ *  reason to exist that this design otherwise gives it — everywhere else density is
+ *  purely a musical choice. That is an accident of a guard rail rather than a
+ *  design decision, and it should be decided on purpose or not at all. */
 const HEFT_MIN = 0.2;
 const HEFT_MAX = 6;
 

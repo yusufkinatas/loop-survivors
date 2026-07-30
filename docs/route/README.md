@@ -121,7 +121,44 @@ Same rig, same tap, same procedure as `docs/baseline/` and
 first, Opus at 128 kbps off the post-limiter tap. Measured with
 `ffmpeg -af ebur128`.
 
-CAPTURE_TABLE_GOES_HERE
+| capture | hits/bar | voices | LUFS | **LRA** | true peak |
+|---|---|---|---|---|---|
+| `10-route-opening` | 6 | 2 | -13.9 | 0.6 | -1.3 |
+| `11-route-early-four` | 9 | 4 | -13.3 | 0.6 | -0.8 |
+| `12-route-a-peak` | 16 | 4 | -12.4 | 0.5 | -0.6 |
+| `13-route-after-a-toll` | 8 | 3 | **-11.3** | 0.4 | -0.6 |
+| `14-route-summit` | 9.5 | 5 | -12.2 | **1.3** | +0.5 |
+| `15-route-thinnest` | 5 | 5 | -13.4 | **2.3** | +0.4 |
+| `16-route-busiest` | 48 | 5 | -10.9 | 0.5 | +0.3 |
+| `20-the-toll` *(moving)* | 16 → 8 → 11 → 16 | 4 → 3 → 4 → 4 | -11.1 | **2.3** | 0.0 |
+
+**The second half of the hard floor is met, and not narrowly.** `docs/baseline/`
+measured loudness range at 0.4–0.6 LU at every point and concluded "there are no
+peaks at any scale"; `docs/palette-control/` measured 0.3–0.7 LU across twelve more
+takes and concluded that widening the palette "did not fix the flatness, and was
+never going to". Across twenty-one takes neither set ever reached 0.8. **This set
+reaches 2.3 LU, three times over.**
+
+Three things in that table matter more than the floor:
+
+**Halving the density made the mix louder.** `13-route-after-a-toll` is the same
+band as `12-route-a-peak` with one voice fed to a gate and the weight paid onto the
+kick: **half the hits a bar, and 1.1 dB louder.** `docs/baseline/` found ×13.5 the
+triggers buying 2.8 dB with the rest going into the limiter. Here a *reduction* buys
+1.1 dB. That is #251's "removal beats addition" as a measured number rather than a
+principle, and it is the clearest evidence that the density-compensation join works.
+
+**Sparseness is where the loudness range comes from.** `15-route-thinnest` is five
+voices each playing one hit a bar — the sparsest legal band — and it has the joint
+widest range in the set at **2.3 LU**, off a static arrangement. Nothing is moving;
+the range is simply the gap between a huge hit and the air after it. The busiest
+take, at nearly ten times the density, is the loudest and the flattest: **-10.9 LUFS
+at 0.5 LU.** Mud, exactly as `docs/palette-control/` found at 96 triggers a bar.
+
+**And the moving take is what a run sounds like.** `20-the-toll` is sixteen bars
+across four arrangements — the peak, the valley a gate leaves, the climb back as the
+case puts notes into a shell, and the peak the weight bought — and it measures 2.3 LU
+with a true peak of exactly 0.0. That is a track with a shape in it.
 
 Listen to `audio/`, or open `docs/baseline/player.html` against this directory.
 
@@ -130,6 +167,32 @@ not touch a single authored ladder, so `01`–`09` come back byte-identical to
 `docs/palette-control/` by construction rather than by measurement — the same
 argument that set made for `docs/baseline/`'s eight voices. Re-running them would
 measure the encoder.
+
+## Judged against [#253](https://github.com/yusufkinatas/loop-survivors/issues/253), item by item
+
+The ticket asks for this explicitly. Where an item needs ears, it says so.
+
+| #253 asks for | this stack |
+|---|---|
+| **peaks the player authors and pays for in advance** | **Yes, and it is the toll's whole sentence.** You give up a voice at a gate and what you kept comes back heavier and louder. Measured: the density falls at the gate and the weight buys the climb back. |
+| **a job to do down in the valley that sizes the drop** | **Partial, and the weakest of the seven.** The valley is the next room played thin, which is a job — but it is the *same* job with less band, not a distinct one. #255 named The Take and The Stage as cleaner answers here and it was right. |
+| **the drop hard-gated until there is something worth stripping** | **Yes, by construction.** `payersFor` refuses to silence the last playing voice or eat the last instrument, and a build too small to be charged gets a free door. You cannot drop out of a kick and a snare here because the gate will not let you. |
+| **ordinary play erodes late, so the skill is picking the last safe moment** | **No. Not answered at all.** The pressure ramps with route depth; nothing about the player's own play degrades. This stack has no answer and does not pretend to. |
+| **an ending that is a summit** | **Structurally yes, musically no.** The Roof is two Giants over a full crowd for sixteen phrases and clearing it is what wins. But the *arrangement* does not peak there — see the density table. The summit is a fight, not a crescendo. |
+| **discovery that is musical with a combat payoff, visible on screen** | **Yes, and it is the strongest item.** A door names the pattern it pays: *"PAYS · The Rush"*. Walking into a room to go and get a specific rhythm is a different act from walking in and hoping. |
+| **run two must PLAY differently, not merely sound different** | **Yes — the route itself is rolled.** See below. |
+
+### What makes run two different
+
+Rolled per run, not per save: **the opening three instruments**; and at every one of
+eleven gates, **which three crowd shapes are behind the doors**, **what each pays**
+(often a specific named pattern), and **which three of the prices are payable**. So
+two runs walk a different sequence of rooms, in a different order, at different
+prices, and reach the summit with a different arrangement — not a different list of
+weapons with the same numbers on them.
+
+What is *not* rolled: the route's length, where the second and fourth bars open, and
+the summit. Those are the spine.
 
 ## Re-capturing
 
