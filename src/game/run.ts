@@ -823,6 +823,7 @@ export class RunWorld {
         get worldW() { return self.worldW; },
         get worldH() { return self.worldH; },
         near: (x, y, r) => this.hash.query(x, y, r, this.stageQueryBuf),
+        get enemies() { return self.enemies; },
         fx: (event) => { this.fx?.push(event); },
       },
       this.venue,
@@ -2736,10 +2737,18 @@ export class RunWorld {
       // drop, no sound. The sweep above collects it next frame.
       oldest.dead = true;
     }
+    // Kept inside the room (#269). A toppled follow-spot standing outside the
+    // venue's wall reads as a bug, and a light is scenery you may walk to.
+    const spot = clampToVenue(
+      this.venue,
+      this.player.x + PLAYER_FOOT_OFFSET.x + Math.cos(angle) * rx,
+      this.player.y + PLAYER_FOOT_OFFSET.y + Math.sin(angle) * ry,
+      STAGE_LIGHT.radius,
+    );
     this.stageLights.push({
       prop: true,
-      x: this.player.x + PLAYER_FOOT_OFFSET.x + Math.cos(angle) * rx,
-      y: this.player.y + PLAYER_FOOT_OFFSET.y + Math.sin(angle) * ry,
+      x: spot.x,
+      y: spot.y,
       radius: STAGE_LIGHT.radius,
       hp: STAGE_LIGHT.hp,
       dead: false,

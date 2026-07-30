@@ -26,6 +26,7 @@
 //      on the base.
 
 import { SOUNDSET_LADDERS } from '../src/audio/ladders/house';
+import { SOUNDSET } from '../src/audio/soundset';
 import type { Role } from '../src/audio/kits';
 import { RunWorld } from '../src/game/run';
 import { rollOffers, rollStartingWeapons } from '../src/game/picks';
@@ -99,6 +100,49 @@ function bandWorld(layers: Layers, seed = 0x10ad): {
 function step(world: RunWorld, seconds: number): void {
   const frames = Math.round(seconds / SIM_DT);
   for (let i = 0; i < frames; i++) world.update(SIM_DT);
+}
+
+/** THE MISSING HALF OF A HEADLESS RUN, and the first version of this harness
+ *  did not have it.
+ *
+ *  Damage in this game rides the music engine's triggers — one grid event, a
+ *  sound and an attack — and there is no engine outside a browser. So a headless
+ *  world runs with NOTHING firing except the two texture auras, which are driven
+ *  by the clock instead. The first pass of section 5 measured exactly that: a
+ *  seed whose opening hire was a bell scored zero kills for thirty minutes and
+ *  never reached a second level-up, while a seed that happened to open on a pad
+ *  scored four thousand.
+ *
+ *  This puts the triggers back, at each voice's REAL rate: its ladder's
+ *  triggers-per-bar at its current level, which is the same number
+ *  `docs/baseline/density.ts` reports. A carried or knocked-over piece fires
+ *  nothing, which is the whole point. */
+class TriggerPump {
+  private nextAt = new Map<Role, number>();
+  private readonly barS = (4 * 60) / SOUNDSET.bpm;
+
+  constructor(private readonly world: RunWorld) {}
+
+  /** Fire everything due at the world's current time. */
+  tick(): void {
+    for (const [role, tier] of this.world.tiers) {
+      if (!this.world.plot.audible(role)) {
+        // A silent piece does not bank up triggers to fire when it lands: it is
+        // not playing, and neither is the grid it would have played on.
+        this.nextAt.set(role, this.world.timeS);
+        continue;
+      }
+      const rate = perBar(role, tier);
+      if (rate <= 0) continue;
+      const gap = this.barS / rate;
+      let next = this.nextAt.get(role) ?? this.world.timeS;
+      while (next <= this.world.timeS) {
+        this.world.fireTrigger({ role, time: next, velocity: 0.9, step: 0 });
+        next += gap;
+      }
+      this.nextAt.set(role, next);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -226,19 +270,25 @@ function checkAudibility(): void {
   // texture auras (pad, air) are the ones that could break this — they are
   // clock-driven, not chart-driven, so nothing about disabling a voice would
   // stop them on its own.
+  // The band deliberately mixes both kinds: `kick` and `bell` are chart-driven
+  // and stop for free when a voice goes quiet, `pad` and `air` are BEDS driven
+  // by the clock and are the two that could have kept swinging out of silence.
+  const band = ['pad', 'air', 'kick', 'bell'] as Role[];
   const run = (haul: boolean): Record<string, number> => {
     const world = new RunWorld(VIEW, { onLevelUp: noop, onDeath: noop, onVictory: noop, onHit: noop }, {
       scripted: false, fx: false, rng: mulberry32(0x51e17), layers: layerSet(),
     });
     world.invincible = true;
-    for (const role of ['pad', 'air', 'drone'] as Role[]) world.addWeapon(role, WEAPON_MAX_LEVEL);
+    world.powerMul = SOUNDSET.powerMul;
+    for (const role of band) world.addWeapon(role, WEAPON_MAX_LEVEL);
+    const pump = new TriggerPump(world);
     // A wall of bodies right on top of the gear, so an aura that is still live
     // cannot possibly miss.
     for (let i = 0; i < 40; i++) {
       world.spawnEnemyAt('greenMudman', (i % 8) * 26 - 90, Math.floor(i / 8) * 26 - 60);
     }
     if (haul) {
-      for (const role of ['pad', 'air', 'drone'] as Role[]) {
+      for (const role of band) {
         const rig = world.plot.rigFor(role)!;
         world.player.x = rig.x;
         world.player.y = rig.y;
@@ -253,7 +303,10 @@ function checkAudibility(): void {
     for (const key of Object.keys(world.damageByRole)) {
       delete (world.damageByRole as Record<string, number>)[key];
     }
-    step(world, 6);
+    for (let i = 0; i < Math.round(6 / SIM_DT); i++) {
+      world.update(SIM_DT);
+      pump.tick();
+    }
     return world.damageByRole as Record<string, number>;
   };
   const playing = run(false);
@@ -307,7 +360,7 @@ function checkKnockdown(): void {
 /** Drive a whole 30 minutes with the level-up economy and chest payout wired the
  *  way game.ts wires them — the same shape of check #265 ran on the base, which
  *  is what produced the "runs dry at 13:27" number this stack is answering. */
-function fullRun(seed: number, crewOn: boolean): void {
+function fullRun(seed: number, crewOn: boolean, label = crewOn ? 'crew on ' : 'crew off', overrides: Partial<Record<LayerKey, boolean>> = {}): void {
   const rng = mulberry32(seed);
   let level = 1;
   const pendingLevels: number[] = [];
@@ -317,8 +370,10 @@ function fullRun(seed: number, crewOn: boolean): void {
     onVictory: noop,
     onHit: noop,
     onChest() { pendingLevels.push(level); },
-  }, { fx: false, rng, layers: layerSet({ crew: crewOn }) });
+  }, { fx: false, rng, layers: layerSet({ crew: crewOn, ...overrides }) });
   world.invincible = true;
+  world.powerMul = SOUNDSET.powerMul;
+  const pump = new TriggerPump(world);
   // THE OPENING HIRE. A run opens on a choice of three instruments rather than
   // a fixed one, and without making it nothing ever dies, so no XP is earned and
   // the decision stream never starts. The first pass of this harness skipped it
@@ -334,6 +389,7 @@ function fullRun(seed: number, crewOn: boolean): void {
   const frames = Math.round((30 * 60) / SIM_DT) + 30;
   for (let f = 0; f < frames && !world.won; f++) {
     world.update(SIM_DT);
+    pump.tick();
     while (pendingLevels.length > 0) {
       pendingLevels.shift();
       const offers = rollOffers({
@@ -371,6 +427,18 @@ function fullRun(seed: number, crewOn: boolean): void {
       tx = standing.reduce((sum, rig) => sum + rig.x, 0) / standing.length;
       ty = standing.reduce((sum, rig) => sum + rig.y, 0) / standing.length;
     }
+    // AND IT PICKS UP ITS XP. Without this the mover parks on the centroid and
+    // never touches a gem outside the 53-unit magnet: one seed ended a whole set
+    // at level 4 on 470 kills, which is a fact about the harness rather than
+    // about the stack. Nearest gem inside half a screen wins over the centroid.
+    let bestD = 700 * 700;
+    for (const gem of world.gems) {
+      const d = (gem.x - world.player.x) ** 2 + (gem.y - world.player.y) ** 2;
+      if (d >= bestD) continue;
+      bestD = d;
+      tx = gem.x;
+      ty = gem.y;
+    }
     const dx = tx - world.player.x;
     const dy = ty - world.player.y;
     const d = Math.hypot(dx, dy);
@@ -383,7 +451,7 @@ function fullRun(seed: number, crewOn: boolean): void {
 
   const mm = (s: number): string => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
   console.log(
-    `  seed ${seed.toString(16)}  crew ${crewOn ? 'on ' : 'off'}  ` +
+    `  seed ${seed.toString(16)}  ${label.padEnd(9)}  ` +
     `${world.won ? 'WON' : `ended ${mm(world.timeS)}`}  ` +
     `· ${world.kills} kills · lv ${world.level}  ` +
     `· last real decision ${mm(lastRealDecisionS)}  ` +
@@ -394,11 +462,23 @@ function fullRun(seed: number, crewOn: boolean): void {
 
 function checkStream(): void {
   heading('5. THE DECISION STREAM — #265 measured the base running dry at 13:27');
+  // THE CONTROL, first, and it is the whole reason this section is worth
+  // anything: `placement` off is prototype-base in-branch, so the same mover,
+  // the same trigger pump and the same seed produce a directly comparable row.
+  // Without it the numbers below could only be set against #265's harness, which
+  // is not this one.
+  fullRun(0x10ad1, false, 'BASE     ', {
+    placement: false, venue: false, exclusivity: false, crew: false,
+  });
   fullRun(0x10ad1, false);
   fullRun(0x10ad1, true);
   fullRun(0x10ad2, true);
-  console.log('\n  Crew is this stack\'s answer to the back half. The "build complete" column');
-  console.log('  is the last level-up that added anything; everything after it is an Encore.');
+  console.log('\n  "last real decision" is the last level-up that added anything; everything');
+  console.log('  after it is an Encore. The base row is the same harness with `placement`');
+  console.log('  off — every weapon back on the player — so the difference is this stack.');
+  console.log('\n  The mover is deliberately dumb: it hires from a slow circuit, then stands in');
+  console.log('  the middle of whatever stage plot that produced. It NEVER hauls, never');
+  console.log('  repositions a piece, never uses a socket on purpose. These are floors.');
 }
 
 // ---------------------------------------------------------------------------

@@ -89,8 +89,42 @@ export class Crowd {
     return sum;
   }
 
+  /** Bounding box of the whole crowd, recomputed once a frame. `slows` is asked
+   *  about EVERY body every frame — seventy fans against four hundred bodies is
+   *  twenty-eight thousand distance tests — and the crowd is a cloud around the
+   *  player, so the overwhelming majority of those bodies are nowhere near it.
+   *  One rectangle test throws them out. */
+  private minX = 0;
+  private minY = 0;
+  private maxX = 0;
+  private maxY = 0;
+
+  private bound(): void {
+    if (this.fans.length === 0) {
+      this.minX = this.maxX = this.minY = this.maxY = 0;
+      return;
+    }
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const fan of this.fans) {
+      if (fan.dead) continue;
+      if (fan.x < minX) minX = fan.x;
+      if (fan.x > maxX) maxX = fan.x;
+      if (fan.y < minY) minY = fan.y;
+      if (fan.y > maxY) maxY = fan.y;
+    }
+    const pad = CROWD.fanRadius + 64;
+    this.minX = minX - pad;
+    this.minY = minY - pad;
+    this.maxX = maxX + pad;
+    this.maxY = maxY + pad;
+  }
+
   update(dt: number, enemies: readonly { x: number; y: number; radius: number; dead: boolean; dummy: boolean; damage: number; speed: number }[]): void {
     this.moveFans(dt);
+    this.bound();
     this.soak(dt, enemies);
     const c = this.concentration();
     // Linear between the two ends. Perfectly even across five voices is 0.2, one
@@ -134,6 +168,7 @@ export class Crowd {
     if (this.fans.length === 0) return;
     for (const e of enemies) {
       if (e.dead || e.dummy) continue;
+      if (e.x < this.minX || e.x > this.maxX || e.y < this.minY || e.y > this.maxY) continue;
       for (const fan of this.fans) {
         if (fan.dead) continue;
         const reach = CROWD.fanRadius + e.radius;
@@ -151,6 +186,7 @@ export class Crowd {
    *  to slow it. A query rather than a write, so the crowd never touches enemy
    *  state directly. */
   slows(x: number, y: number, radius: number): boolean {
+    if (x < this.minX || x > this.maxX || y < this.minY || y > this.maxY) return false;
     for (const fan of this.fans) {
       if (fan.dead) continue;
       const reach = CROWD.fanRadius + radius;

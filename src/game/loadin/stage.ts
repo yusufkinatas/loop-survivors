@@ -99,8 +99,15 @@ export interface StageHost {
   readonly player: { x: number; y: number };
   readonly worldW: number;
   readonly worldH: number;
-  /** Live bodies within `radius` of a point — the world's spatial hash. */
+  /** Live bodies within `radius` of a point — the world's spatial hash. For
+   *  SMALL radii only: the hash holds one 32-unit cell per body, so a wide query
+   *  walks thousands of cells. Gear contact is the right size for it. */
   near(x: number, y: number, radius: number): readonly Enemy[];
+  /** The world's live enemy array, by reference. What the aim pass walks: a
+   *  900-unit hash query per piece of gear is ~3000 cell lookups, and a linear
+   *  scan of at most 500 bodies is cheaper by an order of magnitude. The world's
+   *  own `nearestEnemy` makes the same choice for the same reason. */
+  readonly enemies: readonly Enemy[];
   fx(event: FxEvent): void;
 }
 
@@ -535,8 +542,8 @@ export class Stage {
 
   private nearestBody(x: number, y: number): Enemy | null {
     let best: Enemy | null = null;
-    let bestD = Infinity;
-    for (const e of this.host.near(x, y, AIM_REACH)) {
+    let bestD = AIM_REACH * AIM_REACH;
+    for (const e of this.host.enemies) {
       if (e.dead || e.dummy) continue;
       const d = (e.x - x) ** 2 + (e.y - y) ** 2;
       if (d >= bestD) continue;

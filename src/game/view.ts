@@ -116,6 +116,14 @@ export type GroundPickCopy = GroundPickCopyBase & (
 
 export type GroundPickView = GroundPickCopy & { x: number; y: number };
 
+/** How far the camera is allowed past a venue wall, so the wall lands inside the
+ *  frame instead of on its last column of pixels. */
+const VENUE_CAMERA_INSET = 130;
+/** How much blacked-out backstage is drawn outside the walls. Wider than the
+ *  camera inset, so no arrangement of screen size and aspect ratio can show the
+ *  floor tiling carrying on past the room. */
+const VENUE_BACKSTAGE = 900;
+
 /** How long a field may go unreported before its graphic is removed. Comfortably
  *  longer than a frame at any refresh rate, and far shorter than a player would
  *  notice a stale outline for. */
@@ -738,8 +746,12 @@ export class RunView {
     // something. A venue narrower than the view centres instead of clamping.
     if (this.world.layers.venue) {
       const venue = this.world.venue;
-      const marginX = this.world.worldW / 2;
-      const marginY = this.world.worldH / 2;
+      // Overshoot the wall by a strip rather than stopping exactly on it. A
+      // camera clamped to the wall puts the wall on the last column of pixels,
+      // where it reads as the screen ending rather than as the room ending; a
+      // hundred units of backstage past it is what makes it a wall.
+      const marginX = this.world.worldW / 2 - VENUE_CAMERA_INSET;
+      const marginY = this.world.worldH / 2 - VENUE_CAMERA_INSET;
       cameraX = venue.halfW > marginX
         ? Math.max(-venue.halfW + marginX, Math.min(venue.halfW - marginX, cameraX))
         : 0;
@@ -1076,12 +1088,23 @@ export class RunView {
     const venue = world.venue;
 
     if (world.layers.venue) {
-      // The room. A double line, warm outside and dark inside, so a wall reads
-      // as a boundary rather than as a decorative rectangle.
-      gfx.rect(snap(-venue.halfW), snap(-venue.halfH), snap(venue.halfW * 2), snap(venue.halfH * 2))
-        .stroke({ width: 7, color: SOUNDWOOD.bark, alpha: 0.95 });
-      gfx.rect(snap(-venue.halfW), snap(-venue.halfH), snap(venue.halfW * 2), snap(venue.halfH * 2))
-        .stroke({ width: 2, color: SOUNDWOOD.amber, alpha: 0.42 });
+      // The room. Everything past the wall is blacked out, so the boundary reads
+      // as somewhere you cannot go rather than as a rectangle drawn on a floor
+      // that carries on. Four bands rather than a hole in a fill, because Pixi
+      // Graphics has no even-odd hole and four rects is cheaper than a mask.
+      const w = venue.halfW;
+      const h = venue.halfH;
+      const out = VENUE_BACKSTAGE;
+      const dark = { color: SOUNDWOOD.ink, alpha: 0.88 } as const;
+      gfx.rect(snap(-w - out), snap(-h - out), snap((w + out) * 2), snap(out)).fill(dark);
+      gfx.rect(snap(-w - out), snap(h), snap((w + out) * 2), snap(out)).fill(dark);
+      gfx.rect(snap(-w - out), snap(-h), snap(out), snap(h * 2)).fill(dark);
+      gfx.rect(snap(w), snap(-h), snap(out), snap(h * 2)).fill(dark);
+      // A double line on the boundary itself, warm over dark.
+      gfx.rect(snap(-w), snap(-h), snap(w * 2), snap(h * 2))
+        .stroke({ width: 8, color: SOUNDWOOD.bark, alpha: 0.95 });
+      gfx.rect(snap(-w), snap(-h), snap(w * 2), snap(h * 2))
+        .stroke({ width: 2, color: SOUNDWOOD.amber, alpha: 0.5 });
     }
 
     if (world.layers.sockets) {
