@@ -2156,3 +2156,240 @@ button.big {
     opacity: 0.7;
   }
 }
+/* ===========================================================================
+   THE CIRCUIT (#270). Three readouts under the transport panel, and NOT ONE
+   NUMBER IN ANY OF THEM.
+
+   #270 names "upkeep is bookkeeping — if you are reading a meter instead of
+   feeling a budget, it is a spreadsheet" as a kill criterion, while pillar 3's
+   rewritten form (the music is the reward, the screen is the information)
+   requires the pool to be a screen object rather than something inferred by
+   ear. The way through is levels and words: a bar that falls on every trigger,
+   a hairline where this bar's draw sits, three wedges that are lit or dark.
+   =========================================================================== */
+.circuit-hud {
+  position: absolute;
+  top: calc(max(12px, env(safe-area-inset-top)) + 96px);
+  left: max(12px, env(safe-area-inset-left));
+  width: 264px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--sp-3);
+  background: rgba(16, 18, 24, 0.85);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  pointer-events: none;
+  z-index: 2;
+}
+.circuit-hud.no-headroom .ci-pool,
+.circuit-hud.no-headroom .ci-bank { display: none; }
+.circuit-hud.no-coverage .ci-wheel { display: none; }
+
+/* The room card. On the street it dims and loses its accent, so "I am between
+   rooms" is legible from peripheral vision alone. */
+.ci-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border-left: 3px solid var(--signal);
+  padding-left: 8px;
+}
+.ci-card.street { border-left-color: var(--ink-faint); }
+.ci-card-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.ci-where {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--ink);
+}
+/* The in-world clock: doors at 21:00, closing at 03:00. It replaces the run
+   timer outright — see hud.setTimerVisible. */
+.ci-clock {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+  color: var(--warn);
+}
+.ci-act {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--ink-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ci-set {
+  height: 3px;
+  background: #0c0e13;
+  border-radius: var(--r-pill);
+  overflow: hidden;
+}
+.ci-set-fill {
+  height: 100%;
+  background: var(--signal);
+  border-radius: inherit;
+  transition: width 120ms linear;
+}
+
+/* THE POOL. Three things in one bar:
+     the fill      — what is left, falling on every trigger
+     the regen zone — how much of the bar regeneration covers, shaded
+     the draw mark  — a hairline where this bar's draw sits
+   Draw mark left of the regen zone means banking; right of it means falling. */
+.ci-pool {
+  position: relative;
+  height: 14px;
+  background: #0c0e13;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  overflow: hidden;
+}
+.ci-pool-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: linear-gradient(90deg, #2c6f8f, #7fd7ff);
+  border-radius: inherit;
+  /* No CSS transition: the pool falling on the beat IS the readout, and an
+     easing curve would smear the very thing the player is meant to feel. */
+}
+.ci-pool-fill.spending { background: linear-gradient(90deg, #8f5a2c, #ffb85c); }
+.ci-pool-fill.blackout {
+  background: linear-gradient(90deg, var(--warn), #fff3c4);
+}
+.ci-pool-regen {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: rgba(89, 255, 209, 0.13);
+  border-right: 1px solid rgba(89, 255, 209, 0.45);
+}
+.ci-pool-draw {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--ink);
+  opacity: 0.85;
+}
+
+/* THE BANK. Only moves while the band is under budget. Whole-bar glow when a
+   Blackout is buyable — the one moment this readout shouts. */
+.ci-bank {
+  position: relative;
+  height: 7px;
+  background: #0c0e13;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  overflow: hidden;
+}
+.ci-bank-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #8f7a2c, var(--warn));
+  border-radius: inherit;
+  transition: width 180ms var(--ease);
+}
+/* The bank's label sits on the RIGHT, unlike the pool's. The fill grows from the
+   left, and at 8px from that edge the yellow nub sat straight under the word — the
+   one place in this HUD where a readout was illegible. By the time the fill reaches
+   the right-hand label the bank is full, which is the state that glows anyway. */
+.ci-bank .ci-cap {
+  left: auto;
+  right: 8px;
+}
+
+.ci-bank.ready {
+  border-color: var(--warn);
+  box-shadow: 0 0 0 1px rgba(255, 201, 60, 0.45), 0 0 12px rgba(255, 201, 60, 0.35);
+}
+.ci-bank.spent { opacity: 0.35; }
+
+.ci-cap {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 8px;
+  letter-spacing: 0.16em;
+  color: rgba(255, 255, 255, 0.62);
+  pointer-events: none;
+}
+
+/* THE COVERAGE WHEEL. Three words, lit if the band PLAYING RIGHT NOW can answer
+   that kind of body. Drawn from the active band, so muting a voice to afford
+   the rest visibly opens a hole — which is the interlock the whole stack turns
+   on. Dark is not "off", it is "some wave is going to walk through this". */
+.ci-wheel {
+  display: flex;
+  gap: 4px;
+}
+.ci-wedge {
+  flex: 1;
+  text-align: center;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  padding: 3px 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--ink-faint);
+  background: #0c0e13;
+}
+.ci-wedge.lit {
+  color: var(--bg-0);
+  background: var(--signal);
+  border-color: var(--signal);
+}
+
+/* THE ARRANGE SURFACE (#265's empty seam, filled). The pause screen's price
+   list: one row per hired voice, its cost per bar as a bar, and clicking it
+   switches the voice on or off with the world stopped. */
+.ci-upkeep-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  margin-top: 3px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--voice-color);
+  border-radius: var(--r-sm);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  text-align: left;
+  cursor: pointer;
+}
+.ci-upkeep-row:hover { background: var(--bg-3); }
+.ci-upkeep-row.off { opacity: 0.42; }
+.ci-upkeep-name { flex: 1; letter-spacing: 0.06em; }
+.ci-upkeep-meter {
+  width: 84px;
+  height: 6px;
+  background: #0c0e13;
+  border-radius: var(--r-pill);
+  overflow: hidden;
+}
+.ci-upkeep-fill {
+  display: block;
+  height: 100%;
+  background: var(--voice-color);
+}
+.ci-upkeep-verb {
+  width: 52px;
+  text-align: right;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: var(--ink-dim);
+}
+
+@media (max-width: 720px) {
+  .circuit-hud { width: min(264px, 62vw); }
+}

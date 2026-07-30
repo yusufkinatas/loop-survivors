@@ -5,7 +5,7 @@
 import { Application } from 'pixi.js';
 import type { MusicEngine } from '../audio/engine';
 import { SOUNDSET } from '../audio/soundset';
-import { ROLE_COLORS, ROLES, type Kit, type Role } from '../audio/kits';
+import { ROLE_COLORS, ROLES, type Attack, type Kit, type Role } from '../audio/kits';
 import { CHEST, chestTickTimes, ENCORE, GEM_CUE, HEALTH_PICKUP, LEVELUP, NOTE_CUE, VICTORY } from './config';
 import { mountTrackOverlay } from './trackoverlay';
 import { Hud } from './hud';
@@ -13,8 +13,15 @@ import { pushDamageFeedback } from './damage-feedback';
 import { createGreedyMover, createKiter, type AutoMover } from './auto-move';
 import { autoMove, Input, type AutoMoveMode } from './input';
 import { mountJoystick } from './joystick';
-import { rollOffers, rollStartingWeapons, type AnyPickOption } from './picks';
+import { rollOffers, rollStartingWeapons, type AnyPickOption, type HeadroomUpgradeId } from './picks';
 import { RunWorld, type Chest, type VacuumResult } from './run';
+// ---- THE CIRCUIT (#270) ---------------------------------------------------
+import { CIRCUIT, circuitLabel } from '../circuit/toggles';
+import { CircuitHud } from '../circuit/hud';
+import { costPerBar, upkeepFloor } from '../circuit/upkeep';
+import { ARMOUR_LABEL, ATTACK_VERB, attackOf, coveredAttacks, type Armour } from '../circuit/coverage';
+import { STREET_REGEN_MUL, VENUES, type Venue, type VenueSet } from '../circuit/venues';
+import { PALETTE_COMPOSED_BPM } from '../audio/palette-samples';
 import { SIM_DT } from './timing';
 import { preloadRunArt, RunView, type ChestReelEntry, type GroundPickCopy } from './view';
 import { mountSandboxPanel, type SandboxPanel } from './sandbox';
@@ -168,7 +175,7 @@ export async function bootGame(
       evolved: w.evolved,
       showTiers: true,
     });
-    void pauseArrange;
+    paintArrange(w);
     hud.renderStats({ maxHp: w.playerMaxHp, armor: w.playerArmor, mods: w.buildMods }, pauseStats);
   }
   const resumeButton = pauseOverlay.querySelector('.pause-resume') as HTMLButtonElement;
@@ -344,6 +351,7 @@ export async function bootGame(
         name: option.evolution.name, badge: 'EVOLVE' };
     }
     if (option.kind === 'encore') return encorePickView(w, option.encore);
+    if (option.kind === 'headroom') return headroomPickView(option.upgrade);
     const level = weaponLevelNow(w, option.role);
     // Nothing left to level: the scoop pays a Tip Jar, so the pedestal is one.
     if (level >= WEAPON_MAX_LEVEL) return encorePickView(w, 'tipJar');
@@ -421,6 +429,14 @@ export async function bootGame(
         pendingTiers: outstandingPromises(),
         rng: Math.random,
         timeS: w.timeS,
+        // THE CIRCUIT (#270). Both fields are omitted with their layer off, and
+        // `rollOffers` then behaves exactly as the base's does — which is what
+        // makes a toggled capture comparable.
+        headroomTaken: CIRCUIT.headroom ? headroomTaken : undefined,
+        // OWNED coverage, not active: a voice muted to afford the rest has not
+        // stopped being an answer the player holds, so muting must not summon
+        // help the build does not need. See RollOffersInput.covered.
+        covered: CIRCUIT.coverage ? coveredAttacks([...w.tiers.keys()]) : undefined,
       });
       dropGroundPicks(w, options);
     }
@@ -456,6 +472,21 @@ export async function bootGame(
         badge: `+${Math.round(w.playerMaxHp * HEALTH_PICKUP.healFraction)} HP` };
     }
     return { glyph: '♫', color: 0xffd45c, name: 'Tip Jar', badge: `+${ENCORE.tipJarNotes} ♫` };
+  }
+
+  /** THE CIRCUIT'S OWN CARDS (#270). Three shapes of "the band is too expensive
+   *  to hold", and the badge is the one place in the game where the upkeep
+   *  economy says a word rather than moving a bar. Deliberately phrased as what
+   *  it lets you DO, never as a number: "hold the whole band longer" is the
+   *  decision; "+8 pool" is a spreadsheet row. */
+  function headroomPickView(upgrade: HeadroomUpgradeId): GroundPickCopy {
+    if (upgrade === 'capacity') {
+      return { glyph: '▮', color: 0x7fd7ff, name: 'Bigger Room', badge: 'LONGER BURSTS' };
+    }
+    if (upgrade === 'regen') {
+      return { glyph: '↻', color: 0x59ffd1, name: 'Second Wind', badge: 'A BIGGER BAND, HELD' };
+    }
+    return { glyph: '◆', color: 0xffd45c, name: 'Deeper Pockets', badge: 'A LONGER BLACKOUT' };
   }
 
   /** Drop the offered options as items in a ring around the player, shove the
@@ -519,6 +550,14 @@ export async function bootGame(
       hud.showToast(option.encore === 'firstAid'
         ? `FIRST AID · +${Math.round(landed)} HP`
         : `TIP JAR · +${landed} ♫`);
+      return 'now';
+    }
+    if (option.kind === 'headroom') {
+      // Lands now, like an Encore and for the same reason: it changes what the
+      // band can AFFORD, never what the band is playing, so there is no bar line
+      // to wait for. The player may well switch a voice back on a moment later —
+      // that change does wait for a bar, as every change to the arrangement does.
+      applyHeadroomUpgrade(w, option.upgrade);
       return 'now';
     }
     const level = weaponLevelNow(w, option.role);
@@ -866,6 +905,33 @@ export async function bootGame(
       engine.playHealthPickupCue();
       hud.showToast(`FIRST AID · +${Math.round(healed)} HP`);
     },
+    // ---- THE NIGHT OUT (#270) ---------------------------------------------
+    onVenueEntered(venue: Venue, set: VenueSet): void {
+      enterVenueAudio(set);
+      hud.showToast(`${venue.name.toUpperCase()} · ${set.act}`);
+      if (world) view?.levelBurst(world.player.x, world.player.y);
+    },
+    onVenueBlocked(_venue: Venue, reason: string): void {
+      hud.showToast(reason);
+    },
+    onVenueLeft(venue: Venue, midSet: boolean): void {
+      enterStreetAudio();
+      // The set is remembered, and saying so is the difference between a walk
+      // that feels like a decision and one that feels like a mistake.
+      hud.showToast(midSet
+        ? `LEFT ${venue.name.toUpperCase()} MID-SET · IT WILL BE WHERE YOU LEFT IT`
+        : 'BACK ON THE STREET');
+    },
+    onVenueFinished(venue: Venue, _set: VenueSet, headliner: boolean): void {
+      if (!headliner) enterStreetAudio();
+      hud.showToast(headliner
+        ? `${venue.name.toUpperCase()} · YOU PLAYED THE HEADLINE SLOT`
+        : `${venue.name.toUpperCase()} · SET PLAYED`);
+    },
+    // ---- COVERAGE (#270) ---------------------------------------------------
+    onCoverageChip(armour: Armour, needs: Attack): void {
+      hud.showToast(`${ARMOUR_LABEL[armour]} · ONLY ${ATTACK_VERB[needs]} GETS THROUGH`);
+    },
   };
 
   // Sandbox: same world, no stage script. Death just refills (the panel's
@@ -938,6 +1004,17 @@ export async function bootGame(
     engine.clearBarQueue();
     engine.resetEvolutionMixes();
     for (const role of ROLES) engine.setVoiceEnabled(role, false);
+    // THE CIRCUIT (#270): every layer's shell-side state back to the door. The
+    // tempo especially — a run that ended inside a fast room must not open the
+    // next one at that room's tempo.
+    headroomTaken.clear();
+    blackoutArmed = false;
+    blackoutRestore = null;
+    lastPricedWorldTimeS = -1;
+    circuitHud.show(false);
+    engine.clock.bpm = SOUNDSET.bpm;
+    engine.clock.swing = SOUNDSET.swing;
+    engine.setComposedBedRate(1);
   }
 
   function startRun(mode: AutoMoveMode = 'off'): void {
@@ -948,6 +1025,10 @@ export async function bootGame(
     setAutoMode(mode);
     const w: RunWorld = new RunWorld(app.screen, events, {
       control: () => playerControl(w),
+      // THE CIRCUIT (#270): the world reads the shell's mute set by reference,
+      // so "what is playing" has exactly one home. The coverage wheel, the venue
+      // doors and the bar-line price all read it.
+      deactivated: deactivatedRoles,
     });
     world = w;
     w.player.hp = w.playerMaxHp;
@@ -955,6 +1036,12 @@ export async function bootGame(
     view = new RunView(w, app.screen);
     app.stage.addChild(view.stage);
     hud.showHud(true);
+    // The night clock replaces the run timer outright rather than sitting beside
+    // it: two clocks counting the same thing in different units is noise, and
+    // "closing time is coming" is the sentence this run shape wants the player
+    // reading. The mapping is monotonic, so nothing is hidden.
+    hud.setTimerVisible(!CIRCUIT.nightOut);
+    circuitHud.show(true);
     pauseButton.style.display = '';
     hud.renderBand(w.tiers, { evolved: w.evolved });
     state = 'run';
@@ -1068,6 +1155,28 @@ export async function bootGame(
         notesCollected: world.notesCollected,
         damageByRole: world.damageByRole,
         killsByRole: world.killsByRole,
+        circuit: world.circuit
+          ? {
+              label: circuitLabel(),
+              outcome: world.nightOutcome,
+              ...(CIRCUIT.nightOut
+                ? { roomsPlayed: world.circuit.finishedCount, roomsOnMap: VENUES.length }
+                : {}),
+              ...(CIRCUIT.headroom
+                ? {
+                    blackouts: world.circuit.headroom.blackoutsUsed,
+                    brownouts: world.circuit.headroom.brownoutsSuffered,
+                  }
+                : {}),
+              ...(CIRCUIT.coverage
+                ? {
+                    chipWasted: world.chipWasted,
+                    onKindHits: world.onKindHits,
+                    offKindHits: world.offKindHits,
+                  }
+                : {}),
+            }
+          : undefined,
       },
       () => {
         hud.showHud(false);
@@ -1096,11 +1205,19 @@ export async function bootGame(
     if (show) refreshTrackOverlay();
   }
 
-  // Number-key instrument toggles (dev mechanism): Digit1..Digit5 map to the
-  // five weapon slots in acquisition order and activate/deactivate the weapon in
-  // that slot, quantized to the next heard bar. Deactivation flips the voice's
-  // `enabled` flag: a disabled voice generates no triggers, so its sound AND its
-  // damage stop together because live damage rides the engine's triggers.
+  // Number-key instrument toggles: Digit1..Digit5 map to the five weapon slots in
+  // acquisition order and activate/deactivate the weapon in that slot, quantized
+  // to the next heard bar. Deactivation flips the voice's `enabled` flag: a
+  // disabled voice generates no triggers, so its sound AND its damage stop
+  // together because live damage rides the engine's triggers.
+  //
+  // THE CIRCUIT (#270) PROMOTES THIS FROM A DEV MECHANISM TO THE CORE VERB, and
+  // it is the only thing in this branch that was already built. Under Headroom,
+  // switching a voice off is how you pay for the rest of the band, how you bank a
+  // Blackout, and how you accidentally open a hole in your own coverage. #253
+  // asked for "the player goes thin, and the depth of the payment is theirs to
+  // pick"; this is the gesture that does it, and it was sitting behind a number
+  // key the whole time.
   //
   // deactivatedRoles = the settled off-state (dim). pendingRoles = a change is
   // scheduled but has not reached its bar yet (pulse). A pending role is always
@@ -1154,6 +1271,276 @@ export async function bootGame(
     for (const role of deactivatedRoles) engine.setVoiceEnabled(role, true);
     deactivatedRoles.clear();
     pendingRoles.clear();
+  }
+
+  // =========================================================================
+  // THE CIRCUIT (#270) — the shell's half of the three layers.
+  //
+  // The world owns the pool, the armour and the venue clock. Everything that
+  // needs the AUDIO ENGINE lives here, because the world is pure simulation and
+  // must stay that way: the bar line, the tempo change on arrival, and switching
+  // a voice off when the budget runs out.
+  // =========================================================================
+
+  /** Headroom cards taken, per flavour, so the roll can favour the least-taken
+   *  one once weapons run out. */
+  const headroomTaken = new Map<HeadroomUpgradeId, number>();
+
+  /** How much each card gives. Every step is a multiple of the DERIVED floor
+   *  (upkeep.ts, call 2 — measured at 4.0 units a bar), so the whole economy
+   *  scales with the ladders instead of against three magic numbers.
+   *
+   *  One floor is one busy level-1 voice's worth. So:
+   *
+   *   `regen`    +1 floor — one more voice you can hold forever. The card that
+   *              makes the resting band bigger, and the only one that does.
+   *   `capacity` +4 floors of depth — about half a bar more of the full late band
+   *              before the brownout. Longer bursts, no cheaper to hold.
+   *   `bank`     +1 floor of bank and +1 bar of Blackout — a taller peak, which
+   *              also takes longer to fill for.
+   *
+   *  Deliberately different SHAPES rather than different sizes of one thing: three
+   *  cards that all made the band cheaper would be one card offered three times. */
+  function applyHeadroomUpgrade(w: RunWorld, upgrade: HeadroomUpgradeId): void {
+    const headroom = w.circuit?.headroom;
+    if (!headroom) return;
+    headroomTaken.set(upgrade, (headroomTaken.get(upgrade) ?? 0) + 1);
+    const floor = upkeepFloor();
+    if (upgrade === 'capacity') {
+      headroom.poolMax += floor * 4;
+      headroom.pool = Math.min(headroom.poolMax, headroom.pool + floor * 4);
+      hud.showToast('BIGGER ROOM · THE WHOLE BAND, FOR LONGER');
+    } else if (upgrade === 'regen') {
+      headroom.regen += floor;
+      hud.showToast('SECOND WIND · ONE MORE VOICE YOU CAN HOLD');
+    } else {
+      headroom.bankMax += floor;
+      headroom.blackoutBars += 1;
+      hud.showToast('DEEPER POCKETS · A LONGER BLACKOUT');
+    }
+    paintBand();
+  }
+
+  const circuitHud = new CircuitHud(root);
+
+  /** What the coming bar costs, in pool units: the sum over the playing band. */
+  function bandDraw(w: RunWorld): number {
+    const circuit = w.circuit;
+    if (!circuit) return 0;
+    let total = 0;
+    for (const role of circuit.activeBand(w.tiers)) total += costPerBar(role, w.tiers.get(role) ?? 0);
+    return total;
+  }
+
+  /** THE BLACKOUT, armed by the player and entered on a bar line.
+   *
+   *  Armed rather than immediate for the same reason every other change to the
+   *  arrangement waits for a bar: a peak that starts mid-bar is not a peak, it is
+   *  a glitch. The gap between the press and the bar is also the only place the
+   *  player can hear their own decision arriving. */
+  let blackoutArmed = false;
+  /** The mute set to put back when the Blackout ends — the band the player had
+   *  chosen before everything they own was switched on for them. */
+  let blackoutRestore: Role[] | null = null;
+
+  function requestBlackout(): void {
+    if (!CIRCUIT.headroom) return;
+    const w = world;
+    const headroom = w?.circuit?.headroom;
+    if (!w || !headroom || (state !== 'run' && state !== 'sandbox')) return;
+    if (headroom.blackout || blackoutArmed) return;
+    if (!headroom.blackoutReady) {
+      hud.showToast('THE BANK IS NOT FULL · RUN LEANER');
+      return;
+    }
+    // A full bank with the whole band already playing buys four bars of free
+    // upkeep and not one new note. See CircuitRun.blackoutAvailable.
+    if (!w.circuit!.blackoutAvailable()) {
+      hud.showToast('EVERYTHING IS ALREADY PLAYING · NOTHING TO BRING BACK');
+      return;
+    }
+    blackoutArmed = true;
+    hud.showToast('BLACKOUT · ON THE NEXT BAR');
+  }
+
+  /** THE BAR LINE. Where the upkeep economy makes every decision it makes.
+   *
+   *  A recurring listener rather than a self-re-arming one-shot: `clearBarQueue()`
+   *  runs on every world reset and every victory outro, and a one-shot that
+   *  re-arms itself would be silently dropped by it, after which the economy would
+   *  stop accounting for the rest of the run with nothing on screen to say so. */
+  /** The world clock at the last bar line the economy actually priced. See the
+   *  divergence guard in the listener below. */
+  let lastPricedWorldTimeS = -1;
+
+  engine.addBarListener(() => {
+    const w = world;
+    if (!CIRCUIT.headroom || !w?.circuit) return;
+    // RUN ONLY, AND THE SANDBOX'S EXEMPTION IS LOAD-BEARING (design call 11).
+    //
+    // The Sandbox is this branch's CAPTURE SURFACE — `docs/prototype-base.md` is
+    // explicit that a branch which loses it "cannot produce a comparable arrangement
+    // capture", because the nine reference build states are loaded there with waves
+    // off. An upkeep economy running in the Sandbox would brown FULL BAND VIII down
+    // to two voices on the first bar line, and every capture this branch takes would
+    // be a capture of the economy rather than of the arrangement.
+    //
+    // So the economy is a property of a RUN. The Sandbox stays the control's own
+    // instrument, which is the only way anything measured here is comparable to
+    // `docs/palette-control/`.
+    if (state !== 'run') return;
+    // TWO CLOCKS, AND THEY CAN DIVERGE. Bar lines arrive from the audio clock's
+    // setInterval; the world advances from the Pixi ticker's requestAnimationFrame,
+    // and Chrome does not run rAF in a hidden tab (the same fact that
+    // `tools/verify-weapons.ts` exists because of). So a backgrounded tab keeps
+    // reaching bar lines while the world stands still — and since a trigger is only
+    // charged when `world.fireTrigger` runs, that is bar after bar of regeneration
+    // and banking against a band that played nothing.
+    //
+    // Measured: 0.2 seconds of world time with the bank 65% full. Alt-tabbing was a
+    // free Blackout.
+    //
+    // The guard is the world's own clock: a bar the world did not live through is
+    // not a bar. Skipping outright rather than catching up is right — the missed
+    // bars had no notes in them either, so there is nothing to charge for.
+    if (w.timeS <= lastPricedWorldTimeS) return;
+    lastPricedWorldTimeS = w.timeS;
+    const headroom = w.circuit.headroom;
+
+    // Entering a Blackout owns the whole bar line: it is not priced, so the bar
+    // you spend the bank on can never also be the bar that browns you out.
+    if (blackoutArmed) {
+      blackoutArmed = false;
+      if (headroom.startBlackout()) {
+        blackoutRestore = [...deactivatedRoles];
+        for (const role of blackoutRestore) {
+          deactivatedRoles.delete(role);
+          engine.setVoiceEnabled(role, true);
+        }
+        pendingRoles.clear();
+        paintBand();
+        hud.showToast('BLACKOUT · EVERYTHING YOU OWN, ALL AT ONCE');
+        view?.levelBurst(w.player.x, w.player.y);
+        return;
+      }
+    }
+
+    const wasBlackout = headroom.blackout;
+    const outcome = headroom.atBarLine(
+      w.circuit.activeBand(w.tiers),
+      (role) => w.tiers.get(role) ?? 0,
+    );
+
+    // The Blackout ran out on this bar line: hand the player back the band they
+    // had chosen. Their own mutes, not a fresh guess — the peak was a loan of the
+    // whole band, not a rearrangement of it.
+    if (wasBlackout && !headroom.blackout) {
+      for (const role of blackoutRestore ?? []) {
+        if (!w.tiers.has(role)) continue;
+        deactivatedRoles.add(role);
+        engine.setVoiceEnabled(role, false);
+      }
+      blackoutRestore = null;
+      paintBand();
+      hud.showToast('LIGHTS BACK UP');
+    }
+
+    // THE BROWNOUT. Switched off HERE, inside the bar-line callback, before this
+    // bar's notes are queued — so a voice the budget cannot afford never plays a
+    // single note of the bar it was cut from.
+    if (outcome.brownedOut.length > 0) {
+      for (const role of outcome.brownedOut) {
+        deactivatedRoles.add(role);
+        pendingRoles.delete(role);
+        engine.setVoiceEnabled(role, false);
+      }
+      const names = outcome.brownedOut.map((role) => kits.get(role)!.name).join(', ');
+      hud.showToast(`BROWNOUT · ${names.toUpperCase()} DROPPED OUT`);
+      paintBand();
+    }
+
+    if (outcome.bankFilled) hud.showToast('BANK FULL · SPACE FOR A BLACKOUT');
+  });
+
+  /** Arriving somewhere: the room's tempo and groove, on the next bar.
+   *
+   *  The composed pad is re-rated with it (engine.setComposedBedRate) — see
+   *  circuit/venues.ts design call 6 for why the three tempos are the intervals
+   *  they are. */
+  function enterVenueAudio(set: VenueSet): void {
+    engine.atNextBar(() => {
+      engine.clock.bpm = set.bpm;
+      engine.clock.swing = set.swing;
+      engine.setComposedBedRate(set.bpm / PALETTE_COMPOSED_BPM);
+    });
+  }
+
+  /** Back on the street: neutral ground, at the tempo the pad was composed at,
+   *  so the walk is where the arrangement sits at rest and every arrival is a
+   *  change the ear can hear. */
+  function enterStreetAudio(): void {
+    engine.atNextBar(() => {
+      engine.clock.bpm = PALETTE_COMPOSED_BPM;
+      engine.clock.swing = SOUNDSET.swing;
+      engine.setComposedBedRate(1);
+    });
+  }
+
+  /** THE ARRANGE SURFACE (#265's seam), filled.
+   *
+   *  The pause screen is the one place in the game that stops the world without
+   *  ending the run, and #255 named "somewhere to arrange off the clock" as a
+   *  shared dependency. Here it is the band's PRICE LIST: one row per hired
+   *  voice, its cost per bar drawn as a bar, and clicking it switches the voice
+   *  on or off. The whole upkeep decision, made with the world stopped.
+   *
+   *  Rows are clickable rather than read-only because that is the difference
+   *  between a readout and a surface: the point of stopping the clock is to make
+   *  a decision, not to look at one. */
+  function paintArrange(w: RunWorld): void {
+    if (!CIRCUIT.headroom || !w.circuit) {
+      pauseArrange.replaceChildren();
+      return;
+    }
+    pauseArrange.replaceChildren();
+    const head = document.createElement('div');
+    head.className = 'pause-items-head';
+    const title = document.createElement('strong');
+    title.textContent = 'UPKEEP';
+    const sub = document.createElement('span');
+    const draw = bandDraw(w);
+    sub.textContent = draw > w.circuit.headroom.regen ? 'OVER BUDGET' : 'SUSTAINABLE';
+    head.append(title, sub);
+    pauseArrange.appendChild(head);
+    // Priced against the most expensive voice in the band, so the bars compare
+    // against each other rather than against an invisible absolute.
+    const owned = [...w.tiers.keys()];
+    const costs = owned.map((role) => costPerBar(role, w.tiers.get(role) ?? 0));
+    const worst = Math.max(1, ...costs);
+    owned.forEach((role, i) => {
+      const off = deactivatedRoles.has(role);
+      const row = document.createElement('button');
+      row.className = `ci-upkeep-row${off ? ' off' : ''}`;
+      row.style.setProperty('--voice-color', kits.get(role)!.color);
+      const name = document.createElement('span');
+      name.className = 'ci-upkeep-name';
+      name.textContent = `${i + 1}. ${kits.get(role)!.name}`;
+      const meter = document.createElement('span');
+      meter.className = 'ci-upkeep-meter';
+      const fill = document.createElement('span');
+      fill.className = 'ci-upkeep-fill';
+      fill.style.width = `${(costs[i] / worst) * 100}%`;
+      meter.appendChild(fill);
+      const verb = document.createElement('span');
+      verb.className = 'ci-upkeep-verb';
+      verb.textContent = off ? 'SILENT' : ATTACK_VERB[attackOf(role) ?? 'impact'];
+      row.append(name, meter, verb);
+      row.onclick = () => {
+        toggleRoleActive(role);
+        paintArrange(w);
+      };
+      pauseArrange.appendChild(row);
+    });
   }
 
   // one trigger, two outputs: the engine already made the sound; this makes
@@ -1294,6 +1681,42 @@ export async function bootGame(
         w.timeS,
       );
       hud.setRunInfo(w.evolved, w.notesCollected);
+      // THE CIRCUIT (#270): the continuous half of the economy, plus its screen.
+      //
+      // Regeneration and a bed's draw are paid per BAR, and the bar's length is
+      // the room's tempo — so the whole thing is driven by how much of a bar the
+      // audio clock actually advanced this frame. That is what makes a fast venue
+      // expensive without anything in the economy knowing what a venue is: the
+      // same units per bar, fewer seconds per bar.
+      //
+      // Off REAL frame seconds scaled by the clock's own rate, not off the sim's
+      // fixed steps: the pool is an audio object and the audio clock is what it
+      // has to agree with.
+      const circuit = w.circuit;
+      if (circuit && world === w) {
+        if (CIRCUIT.headroom) {
+          const barsElapsed = (engine.clock.bpm * engine.clock.rate * frameS) / 240;
+          circuit.tickEconomy(
+            barsElapsed,
+            circuit.activeBeds(w.tiers),
+            // THE STREET PAYS DOUBLE. The one number that decides whether the
+            // walk is a valley with a job in it or downtime between the parts of
+            // the game that are the game (venues.ts, STREET_REGEN_MUL).
+            CIRCUIT.nightOut && !circuit.place.playing ? STREET_REGEN_MUL : 1,
+          );
+        }
+        const draw = CIRCUIT.headroom ? bandDraw(w) : 0;
+        circuitHud.paint({
+          circuit,
+          tiers: w.tiers,
+          playerX: w.player.x,
+          playerY: w.player.y,
+          timeS: w.timeS,
+          nightLengthS: VICTORY.atS,
+          draw01: circuit.headroom.poolMax > 0 ? draw / circuit.headroom.poolMax : 0,
+          regen01: circuit.headroom.poolMax > 0 ? circuit.headroom.regen / circuit.headroom.poolMax : 0,
+        });
+      }
       sandboxPanel?.update();
     }
     if (trackOverlayEl.style.display !== 'none') trackOverlay.tick();
@@ -1305,10 +1728,29 @@ export async function bootGame(
         .sort((a, b) => b[1] - a[1])
         .map(([r, dmg]) => `${r} ${Math.round((dmg / (total || 1)) * 100)}%`)
         .join(' ');
+      // THE CIRCUIT (#270): the layer configuration is printed here on purpose.
+      // Every measurement this branch reports is only meaningful next to the
+      // switches it was taken under, and an overlay screenshot is the cheapest
+      // place for the two to travel together.
+      const circuit = world.circuit;
+      const circuitLine = circuit
+        ? ` · ${circuitLabel()}` +
+          (CIRCUIT.headroom
+            ? ` · pool ${Math.round(circuit.headroom.pool01 * 100)}%` +
+              ` bank ${Math.round(circuit.headroom.bank01 * 100)}%` +
+              ` draw ${bandDraw(world).toFixed(1)}/${circuit.headroom.regen.toFixed(1)}` +
+              `${circuit.headroom.blackout ? ' · BLACKOUT' : ''}` +
+              ` · brownouts ${circuit.headroom.brownoutsSuffered} blackouts ${circuit.headroom.blackoutsUsed}`
+            : '') +
+          (CIRCUIT.nightOut
+            ? ` · ${circuit.place.venue?.name ?? 'street'}${circuit.place.playing ? ` ${Math.round(circuit.setProgress01() * 100)}%` : ''}` +
+              ` · played ${circuit.finishedCount}/7`
+            : '')
+        : '';
       overlay.textContent =
         `fps ${Math.round(ticker.FPS)} · enemies ${world.enemyCount} · ` +
         `shots ${world.projectileCount} · dmg ${attribution || '—'}` +
-        `${world.invincible ? ' · INVINCIBLE' : ''}${muted ? ' · MUTED' : ''}`;
+        `${world.invincible ? ' · INVINCIBLE' : ''}${muted ? ' · MUTED' : ''}${circuitLine}`;
     }
   });
 
@@ -1424,6 +1866,14 @@ export async function bootGame(
         setTimeScale(1);
         hud.showToast(`speed ${timeScale.toFixed(2)}x`);
       }
+      return;
+    }
+    // THE BLACKOUT (#270): the run's one active verb, on the space bar. Spends a
+    // full bank on a phrase where everything you own plays at once and upkeep is
+    // free. Enters on the next bar, never mid-bar.
+    if (e.code === 'Space' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      requestBlackout();
       return;
     }
     // Number-key instrument toggles are live only in a run or sandbox.

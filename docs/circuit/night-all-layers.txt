@@ -1,0 +1,749 @@
+
+=== THE CIRCUIT — one night, seed 793025, route greedy ===
+layers: headroom=true coverage=true nightOut=true · INVINCIBLE (measuring the economy, not the difficulty)
+
+00:00  OPEN  bass (offered bass, lead, kick)
+00:00  ENTER Doors — THE SUPPORT ACT @ 122bpm, wants nothing
+02:09  LEARN shielded needs CUT
+02:30  DONE  Doors
+02:30  SHUT  DOORS · ALREADY PLAYED TONIGHT
+02:35  LEAVE Doors
+02:43  ENTER The Back Room — SLUDGE NIGHT @ 109bpm, wants PUNCH
+02:45  THIN  player muted pad — this room does not need it
+02:47  PEAK  blackout — everything owned, 4 bars
+02:56  ---   lights back up
+02:56  THIN  player muted pad — this room does not need it
+02:57  LEARN armoured needs PUNCH
+04:00  PEAK  blackout — everything owned, 4 bars
+04:09  ---   lights back up
+04:09  THIN  player muted pad — this room does not need it
+05:12  PEAK  blackout — everything owned, 4 bars
+05:21  ---   lights back up
+05:21  THIN  player muted pad — this room does not need it
+05:38  DONE  The Back Room
+05:38  SHUT  THE BACK ROOM · ALREADY PLAYED TONIGHT
+05:39  BACK  player switched pad back on
+05:40  LEAVE The Back Room
+05:55  ENTER The Loading Bay — CARGO NIGHT @ 122bpm, wants PUNCH+HOLD
+06:32  LEARN phasing needs HOLD
+08:48  THIN  player muted hat — this room does not need it
+08:50  PEAK  blackout — everything owned, 4 bars
+08:57  ---   lights back up
+08:57  THIN  player muted hat — this room does not need it
+09:05  DONE  The Loading Bay
+09:05  SHUT  THE LOADING BAY · ALREADY PLAYED TONIGHT
+09:07  BACK  player switched hat back on — it opens a door
+09:07  LEAVE The Loading Bay
+09:22  ENTER The Cellar — AMBIENT ALL-NIGHTER @ 109bpm, wants PUNCH+HOLD
+09:23  THIN  player muted hat — this room does not need it
+10:49  PEAK  blackout — everything owned, 4 bars
+10:58  ---   lights back up
+10:58  THIN  player muted hat — this room does not need it
+12:32  DONE  The Cellar
+12:32  SHUT  THE CELLAR · ALREADY PLAYED TONIGHT
+12:32  BACK  player switched hat back on — it opens a door
+12:34  THIN  player muted hat to stay inside the budget
+12:34  BACK  player switched hat back on — it opens a door
+12:36  THIN  player muted hat to stay inside the budget
+12:36  BACK  player switched hat back on — it opens a door
+12:38  THIN  player muted hat to stay inside the budget
+12:38  BACK  player switched hat back on — it opens a door
+12:40  THIN  player muted hat to stay inside the budget
+12:40  BACK  player switched hat back on — it opens a door
+12:42  THIN  player muted hat to stay inside the budget
+12:42  BACK  player switched hat back on — it opens a door
+12:42  LEAVE The Cellar
+12:44  THIN  player muted hat to stay inside the budget
+12:44  BACK  player switched hat back on — it opens a door
+12:46  THIN  player muted hat to stay inside the budget
+12:46  BACK  player switched hat back on — it opens a door
+12:48  THIN  player muted hat to stay inside the budget
+12:48  BACK  player switched hat back on — it opens a door
+12:50  THIN  player muted hat to stay inside the budget
+12:50  BACK  player switched hat back on — it opens a door
+12:50  ENTER The Stairwell — SPEED NIGHT @ 145bpm, wants CUT
+12:52  THIN  player muted kick — this room does not need it
+12:54  THIN  player muted bass — this room does not need it
+12:55  THIN  player muted pad — this room does not need it
+14:03  PEAK  blackout — everything owned, 4 bars
+14:10  ---   lights back up
+14:10  THIN  player muted kick — this room does not need it
+14:11  THIN  player muted bass — this room does not need it
+14:13  THIN  player muted pad — this room does not need it
+15:26  PEAK  blackout — everything owned, 4 bars
+15:32  ---   lights back up
+15:32  THIN  player muted kick — this room does not need it
+15:34  THIN  player muted bass — this room does not need it
+15:35  DONE  The Stairwell
+15:35  SHUT  THE STAIRWELL · ALREADY PLAYED TONIGHT
+15:36  BACK  player switched kick back on — it opens a door
+15:37  LEAVE The Stairwell
+15:38  THIN  player muted hat to stay inside the budget
+15:38  BACK  player switched hat back on — it opens a door
+15:40  THIN  player muted hat to stay inside the budget
+15:40  BACK  player switched hat back on — it opens a door
+15:42  THIN  player muted hat to stay inside the budget
+15:42  BACK  player switched hat back on — it opens a door
+15:44  THIN  player muted hat to stay inside the budget
+15:44  BACK  player switched hat back on — it opens a door
+15:46  THIN  player muted hat to stay inside the budget
+15:46  BACK  player switched hat back on — it opens a door
+15:48  THIN  player muted hat to stay inside the budget
+15:48  BACK  player switched hat back on — it opens a door
+15:49  SHUT  DOORS · ALREADY PLAYED TONIGHT
+15:50  THIN  player muted hat to stay inside the budget
+15:50  BACK  player switched hat back on — it opens a door
+15:52  THIN  player muted hat to stay inside the budget
+15:52  BACK  player switched hat back on — it opens a door
+15:54  THIN  player muted hat to stay inside the budget
+15:54  BACK  player switched hat back on — it opens a door
+15:55  LEAVE Doors
+15:55  THIN  player muted hat to stay inside the budget
+15:55  BACK  player switched hat back on — it opens a door
+15:57  THIN  player muted hat to stay inside the budget
+15:57  BACK  player switched hat back on — it opens a door
+15:59  THIN  player muted hat to stay inside the budget
+15:59  BACK  player switched hat back on — it opens a door
+16:01  THIN  player muted hat to stay inside the budget
+16:01  BACK  player switched hat back on — it opens a door
+16:03  THIN  player muted hat to stay inside the budget
+16:03  BACK  player switched hat back on — it opens a door
+16:05  THIN  player muted hat to stay inside the budget
+16:05  BACK  player switched hat back on — it opens a door
+16:07  THIN  player muted hat to stay inside the budget
+16:07  BACK  player switched hat back on — it opens a door
+16:09  THIN  player muted hat to stay inside the budget
+16:09  BACK  player switched hat back on — it opens a door
+16:11  ENTER The Balcony — AFTERS @ 145bpm, wants PUNCH+CUT
+16:11  THIN  player muted pad — this room does not need it
+16:11  BACK  player switched bass back on
+16:13  THIN  player muted drone — this room does not need it
+16:14  THIN  player muted kick to stay inside the budget
+16:14  BACK  player switched kick back on
+16:16  THIN  player muted kick to stay inside the budget
+16:16  BACK  player switched kick back on
+16:18  THIN  player muted kick to stay inside the budget
+16:18  BACK  player switched kick back on
+16:19  THIN  player muted kick to stay inside the budget
+16:19  BACK  player switched kick back on
+16:21  THIN  player muted kick to stay inside the budget
+16:21  BACK  player switched kick back on
+16:23  THIN  player muted kick to stay inside the budget
+16:23  BACK  player switched kick back on
+16:24  THIN  player muted kick to stay inside the budget
+16:24  BACK  player switched kick back on
+16:26  THIN  player muted kick to stay inside the budget
+16:26  BACK  player switched kick back on
+16:28  THIN  player muted kick to stay inside the budget
+16:28  BACK  player switched kick back on
+16:29  THIN  player muted kick to stay inside the budget
+16:29  BACK  player switched kick back on
+16:31  THIN  player muted kick to stay inside the budget
+16:31  BACK  player switched kick back on
+16:33  THIN  player muted kick to stay inside the budget
+16:33  BACK  player switched kick back on
+16:34  THIN  player muted kick to stay inside the budget
+16:34  BACK  player switched kick back on
+16:36  THIN  player muted kick to stay inside the budget
+16:36  BACK  player switched kick back on
+16:38  THIN  player muted kick to stay inside the budget
+16:38  BACK  player switched kick back on
+16:39  THIN  player muted kick to stay inside the budget
+16:39  BACK  player switched kick back on
+16:41  THIN  player muted kick to stay inside the budget
+16:41  BACK  player switched kick back on
+16:43  THIN  player muted kick to stay inside the budget
+16:43  BACK  player switched kick back on
+16:44  THIN  player muted kick to stay inside the budget
+16:44  BACK  player switched kick back on
+16:46  THIN  player muted kick to stay inside the budget
+16:46  BACK  player switched kick back on
+16:48  THIN  player muted kick to stay inside the budget
+16:48  BACK  player switched kick back on
+16:49  THIN  player muted kick to stay inside the budget
+16:49  BACK  player switched kick back on
+16:51  THIN  player muted kick to stay inside the budget
+16:51  BACK  player switched kick back on
+16:53  THIN  player muted kick to stay inside the budget
+16:53  BACK  player switched kick back on
+16:54  THIN  player muted kick to stay inside the budget
+16:54  BACK  player switched kick back on
+16:56  THIN  player muted kick to stay inside the budget
+16:56  BACK  player switched kick back on
+16:58  THIN  player muted kick to stay inside the budget
+16:58  BACK  player switched kick back on
+16:59  THIN  player muted kick to stay inside the budget
+16:59  BACK  player switched kick back on
+17:01  THIN  player muted kick to stay inside the budget
+17:01  BACK  player switched kick back on
+17:02  THIN  player muted kick to stay inside the budget
+17:02  BACK  player switched kick back on
+17:04  THIN  player muted kick to stay inside the budget
+17:04  BACK  player switched kick back on
+17:06  THIN  player muted kick to stay inside the budget
+17:06  BACK  player switched kick back on
+17:07  THIN  player muted kick to stay inside the budget
+17:07  BACK  player switched kick back on
+17:09  THIN  player muted kick to stay inside the budget
+17:09  BACK  player switched kick back on
+17:11  THIN  player muted kick to stay inside the budget
+17:11  BACK  player switched kick back on
+17:12  THIN  player muted kick to stay inside the budget
+17:12  BACK  player switched kick back on
+17:14  THIN  player muted kick to stay inside the budget
+17:14  BACK  player switched kick back on
+17:16  THIN  player muted kick to stay inside the budget
+17:16  BACK  player switched kick back on
+17:17  THIN  player muted kick to stay inside the budget
+17:17  BACK  player switched kick back on
+17:19  THIN  player muted kick to stay inside the budget
+17:19  BACK  player switched kick back on
+17:21  THIN  player muted kick to stay inside the budget
+17:21  BACK  player switched kick back on
+17:22  THIN  player muted kick to stay inside the budget
+17:22  BACK  player switched kick back on
+17:24  THIN  player muted kick to stay inside the budget
+17:24  BACK  player switched kick back on
+17:26  THIN  player muted kick to stay inside the budget
+17:26  BACK  player switched kick back on
+17:27  THIN  player muted kick to stay inside the budget
+17:27  BACK  player switched kick back on
+17:29  THIN  player muted kick to stay inside the budget
+17:29  BACK  player switched kick back on
+17:31  THIN  player muted kick to stay inside the budget
+17:31  BACK  player switched kick back on
+17:32  THIN  player muted kick to stay inside the budget
+17:32  BACK  player switched kick back on
+17:34  THIN  player muted kick to stay inside the budget
+17:34  BACK  player switched kick back on
+17:36  THIN  player muted kick to stay inside the budget
+17:36  BACK  player switched kick back on
+17:37  THIN  player muted kick to stay inside the budget
+17:37  BACK  player switched kick back on
+17:39  THIN  player muted kick to stay inside the budget
+17:39  BACK  player switched kick back on
+17:41  THIN  player muted kick to stay inside the budget
+17:41  BACK  player switched kick back on
+17:42  THIN  player muted kick to stay inside the budget
+17:42  BACK  player switched kick back on
+17:44  THIN  player muted kick to stay inside the budget
+17:44  BACK  player switched kick back on
+17:46  THIN  player muted kick to stay inside the budget
+17:46  BACK  player switched kick back on
+17:47  THIN  player muted kick to stay inside the budget
+17:47  BACK  player switched kick back on
+17:49  THIN  player muted kick to stay inside the budget
+17:49  BACK  player switched kick back on
+17:50  THIN  player muted kick to stay inside the budget
+17:50  BACK  player switched kick back on
+17:52  THIN  player muted kick to stay inside the budget
+17:52  BACK  player switched kick back on
+17:54  THIN  player muted kick to stay inside the budget
+17:54  BACK  player switched kick back on
+17:55  THIN  player muted kick to stay inside the budget
+17:55  BACK  player switched kick back on
+17:57  THIN  player muted kick to stay inside the budget
+17:57  BACK  player switched kick back on
+17:59  THIN  player muted kick to stay inside the budget
+17:59  BACK  player switched kick back on
+18:00  THIN  player muted kick to stay inside the budget
+18:00  BACK  player switched kick back on
+18:02  THIN  player muted kick to stay inside the budget
+18:02  BACK  player switched kick back on
+18:04  THIN  player muted kick to stay inside the budget
+18:04  BACK  player switched kick back on
+18:05  THIN  player muted kick to stay inside the budget
+18:05  BACK  player switched kick back on
+18:07  THIN  player muted kick to stay inside the budget
+18:07  BACK  player switched kick back on
+18:09  THIN  player muted kick to stay inside the budget
+18:09  BACK  player switched kick back on
+18:10  THIN  player muted kick to stay inside the budget
+18:10  BACK  player switched kick back on
+18:12  THIN  player muted kick to stay inside the budget
+18:12  BACK  player switched kick back on
+18:14  THIN  player muted kick to stay inside the budget
+18:14  BACK  player switched kick back on
+18:15  THIN  player muted kick to stay inside the budget
+18:15  BACK  player switched kick back on
+18:17  THIN  player muted kick to stay inside the budget
+18:17  BACK  player switched kick back on
+18:19  THIN  player muted kick to stay inside the budget
+18:19  BACK  player switched kick back on
+18:20  THIN  player muted kick to stay inside the budget
+18:20  BACK  player switched kick back on
+18:22  THIN  player muted kick to stay inside the budget
+18:22  BACK  player switched kick back on
+18:24  THIN  player muted kick to stay inside the budget
+18:24  BACK  player switched kick back on
+18:25  THIN  player muted kick to stay inside the budget
+18:25  BACK  player switched kick back on
+18:27  THIN  player muted kick to stay inside the budget
+18:27  BACK  player switched kick back on
+18:29  THIN  player muted kick to stay inside the budget
+18:29  BACK  player switched kick back on
+18:30  THIN  player muted kick to stay inside the budget
+18:30  BACK  player switched kick back on
+18:32  THIN  player muted kick to stay inside the budget
+18:32  BACK  player switched kick back on
+18:34  THIN  player muted kick to stay inside the budget
+18:34  BACK  player switched kick back on
+18:35  THIN  player muted kick to stay inside the budget
+18:35  BACK  player switched kick back on
+18:37  THIN  player muted kick to stay inside the budget
+18:37  BACK  player switched kick back on
+18:38  THIN  player muted kick to stay inside the budget
+18:38  BACK  player switched kick back on
+18:40  THIN  player muted kick to stay inside the budget
+18:40  BACK  player switched kick back on
+18:42  THIN  player muted kick to stay inside the budget
+18:42  BACK  player switched kick back on
+18:43  THIN  player muted kick to stay inside the budget
+18:43  BACK  player switched kick back on
+18:45  THIN  player muted kick to stay inside the budget
+18:45  BACK  player switched kick back on
+18:47  THIN  player muted kick to stay inside the budget
+18:47  BACK  player switched kick back on
+18:48  THIN  player muted kick to stay inside the budget
+18:48  BACK  player switched kick back on
+18:50  THIN  player muted kick to stay inside the budget
+18:50  BACK  player switched kick back on
+18:52  THIN  player muted kick to stay inside the budget
+18:52  BACK  player switched kick back on
+18:53  THIN  player muted kick to stay inside the budget
+18:53  BACK  player switched kick back on
+18:55  THIN  player muted kick to stay inside the budget
+18:55  BACK  player switched kick back on
+18:57  THIN  player muted kick to stay inside the budget
+18:57  BACK  player switched kick back on
+18:58  THIN  player muted kick to stay inside the budget
+18:58  BACK  player switched kick back on
+19:00  THIN  player muted kick to stay inside the budget
+19:00  BACK  player switched kick back on
+19:02  THIN  player muted kick to stay inside the budget
+19:02  BACK  player switched kick back on
+19:03  THIN  player muted kick to stay inside the budget
+19:03  BACK  player switched kick back on
+19:05  THIN  player muted kick to stay inside the budget
+19:05  BACK  player switched kick back on
+19:07  THIN  player muted kick to stay inside the budget
+19:07  BACK  player switched kick back on
+19:08  THIN  player muted kick to stay inside the budget
+19:08  BACK  player switched kick back on
+19:10  THIN  player muted kick to stay inside the budget
+19:10  BACK  player switched kick back on
+19:12  THIN  player muted kick to stay inside the budget
+19:12  BACK  player switched kick back on
+19:13  THIN  player muted kick to stay inside the budget
+19:13  BACK  player switched kick back on
+19:15  THIN  player muted kick to stay inside the budget
+19:15  BACK  player switched kick back on
+19:17  THIN  player muted kick to stay inside the budget
+19:17  BACK  player switched kick back on
+19:18  THIN  player muted kick to stay inside the budget
+19:18  BACK  player switched kick back on
+19:20  THIN  player muted kick to stay inside the budget
+19:20  BACK  player switched kick back on
+19:22  THIN  player muted kick to stay inside the budget
+19:22  BACK  player switched kick back on
+19:23  THIN  player muted kick to stay inside the budget
+19:23  BACK  player switched kick back on
+19:25  THIN  player muted kick to stay inside the budget
+19:25  BACK  player switched kick back on
+19:26  DONE  The Balcony
+19:26  SHUT  THE BALCONY · ALREADY PLAYED TONIGHT
+19:27  THIN  player muted hat to stay inside the budget
+19:31  LEAVE The Balcony
+19:32  BACK  player switched drone back on
+19:34  BACK  player switched hat back on — it opens a door
+19:36  THIN  player muted hat to stay inside the budget
+19:36  BACK  player switched hat back on — it opens a door
+19:38  THIN  player muted hat to stay inside the budget
+19:38  BACK  player switched hat back on — it opens a door
+19:40  THIN  player muted hat to stay inside the budget
+19:40  BACK  player switched hat back on — it opens a door
+19:42  SHUT  THE BACK ROOM · ALREADY PLAYED TONIGHT
+19:42  THIN  player muted hat to stay inside the budget
+19:42  BACK  player switched hat back on — it opens a door
+19:44  THIN  player muted hat to stay inside the budget
+19:44  BACK  player switched hat back on — it opens a door
+19:46  THIN  player muted hat to stay inside the budget
+19:46  BACK  player switched hat back on — it opens a door
+19:48  THIN  player muted hat to stay inside the budget
+19:48  BACK  player switched hat back on — it opens a door
+19:50  THIN  player muted hat to stay inside the budget
+19:50  BACK  player switched hat back on — it opens a door
+19:52  THIN  player muted hat to stay inside the budget
+19:52  BACK  player switched hat back on — it opens a door
+19:54  THIN  player muted hat to stay inside the budget
+19:54  BACK  player switched hat back on — it opens a door
+19:54  LEAVE The Back Room
+19:56  THIN  player muted hat to stay inside the budget
+19:56  BACK  player switched hat back on — it opens a door
+19:58  THIN  player muted hat to stay inside the budget
+19:58  BACK  player switched hat back on — it opens a door
+20:00  THIN  player muted hat to stay inside the budget
+20:00  BACK  player switched hat back on — it opens a door
+20:02  THIN  player muted hat to stay inside the budget
+20:02  BACK  player switched hat back on — it opens a door
+20:04  THIN  player muted hat to stay inside the budget
+20:04  BACK  player switched hat back on — it opens a door
+20:06  THIN  player muted hat to stay inside the budget
+20:06  BACK  player switched hat back on — it opens a door
+20:08  THIN  player muted hat to stay inside the budget
+20:08  BACK  player switched hat back on — it opens a door
+20:10  THIN  player muted hat to stay inside the budget
+20:10  BACK  player switched hat back on — it opens a door
+20:11  ENTER The Attic — THE HEADLINER @ 145bpm, wants PUNCH+CUT+HOLD
+20:12  THIN  player muted kick to stay inside the budget
+20:12  BACK  player switched pad back on
+20:13  BACK  player switched kick back on
+20:15  THIN  player muted kick to stay inside the budget
+20:15  BACK  player switched kick back on
+20:17  THIN  player muted kick to stay inside the budget
+20:17  BACK  player switched kick back on
+20:18  THIN  player muted kick to stay inside the budget
+20:18  BACK  player switched kick back on
+20:20  THIN  player muted kick to stay inside the budget
+20:20  BACK  player switched kick back on
+20:22  THIN  player muted kick to stay inside the budget
+20:22  BACK  player switched kick back on
+20:23  THIN  player muted kick to stay inside the budget
+20:23  BACK  player switched kick back on
+20:25  THIN  player muted kick to stay inside the budget
+20:25  BACK  player switched kick back on
+20:27  THIN  player muted kick to stay inside the budget
+20:27  BACK  player switched kick back on
+20:28  THIN  player muted kick to stay inside the budget
+20:28  BACK  player switched kick back on
+20:30  THIN  player muted kick to stay inside the budget
+20:30  BACK  player switched kick back on
+20:32  THIN  player muted kick to stay inside the budget
+20:32  BACK  player switched kick back on
+20:33  THIN  player muted kick to stay inside the budget
+20:33  BACK  player switched kick back on
+20:35  THIN  player muted kick to stay inside the budget
+20:35  BACK  player switched kick back on
+20:37  THIN  player muted kick to stay inside the budget
+20:37  BACK  player switched kick back on
+20:38  THIN  player muted kick to stay inside the budget
+20:38  BACK  player switched kick back on
+20:40  THIN  player muted kick to stay inside the budget
+20:40  BACK  player switched kick back on
+20:42  THIN  player muted kick to stay inside the budget
+20:42  BACK  player switched kick back on
+20:43  THIN  player muted kick to stay inside the budget
+20:43  BACK  player switched kick back on
+20:45  THIN  player muted kick to stay inside the budget
+20:45  BACK  player switched kick back on
+20:47  THIN  player muted kick to stay inside the budget
+20:47  BACK  player switched kick back on
+20:48  THIN  player muted kick to stay inside the budget
+20:48  BACK  player switched kick back on
+20:50  THIN  player muted kick to stay inside the budget
+20:50  BACK  player switched kick back on
+20:51  THIN  player muted kick to stay inside the budget
+20:51  BACK  player switched kick back on
+20:53  THIN  player muted kick to stay inside the budget
+20:53  BACK  player switched kick back on
+20:55  THIN  player muted kick to stay inside the budget
+20:55  BACK  player switched kick back on
+20:56  THIN  player muted kick to stay inside the budget
+20:56  BACK  player switched kick back on
+20:58  THIN  player muted kick to stay inside the budget
+20:58  BACK  player switched kick back on
+21:00  THIN  player muted kick to stay inside the budget
+21:00  BACK  player switched kick back on
+21:01  THIN  player muted kick to stay inside the budget
+21:01  BACK  player switched kick back on
+21:03  THIN  player muted kick to stay inside the budget
+21:03  BACK  player switched kick back on
+21:05  THIN  player muted kick to stay inside the budget
+21:05  BACK  player switched kick back on
+21:06  THIN  player muted kick to stay inside the budget
+21:06  BACK  player switched kick back on
+21:08  THIN  player muted kick to stay inside the budget
+21:08  BACK  player switched kick back on
+21:10  THIN  player muted kick to stay inside the budget
+21:10  BACK  player switched kick back on
+21:11  THIN  player muted kick to stay inside the budget
+21:11  BACK  player switched kick back on
+21:13  THIN  player muted kick to stay inside the budget
+21:13  BACK  player switched kick back on
+21:15  THIN  player muted kick to stay inside the budget
+21:15  BACK  player switched kick back on
+21:16  THIN  player muted kick to stay inside the budget
+21:16  BACK  player switched kick back on
+21:18  THIN  player muted kick to stay inside the budget
+21:18  BACK  player switched kick back on
+21:20  THIN  player muted kick to stay inside the budget
+21:20  BACK  player switched kick back on
+21:21  THIN  player muted kick to stay inside the budget
+21:21  BACK  player switched kick back on
+21:23  THIN  player muted kick to stay inside the budget
+21:23  BACK  player switched kick back on
+21:25  THIN  player muted kick to stay inside the budget
+21:25  BACK  player switched kick back on
+21:26  THIN  player muted kick to stay inside the budget
+21:26  BACK  player switched kick back on
+21:28  THIN  player muted kick to stay inside the budget
+21:28  BACK  player switched kick back on
+21:30  THIN  player muted kick to stay inside the budget
+21:30  BACK  player switched kick back on
+21:31  THIN  player muted kick to stay inside the budget
+21:31  BACK  player switched kick back on
+21:33  THIN  player muted kick to stay inside the budget
+21:33  BACK  player switched kick back on
+21:35  THIN  player muted kick to stay inside the budget
+21:35  BACK  player switched kick back on
+21:36  THIN  player muted kick to stay inside the budget
+21:36  BACK  player switched kick back on
+21:38  THIN  player muted kick to stay inside the budget
+21:38  BACK  player switched kick back on
+21:39  THIN  player muted kick to stay inside the budget
+21:39  BACK  player switched kick back on
+21:41  THIN  player muted kick to stay inside the budget
+21:41  BACK  player switched kick back on
+21:43  THIN  player muted kick to stay inside the budget
+21:43  BACK  player switched kick back on
+21:44  THIN  player muted kick to stay inside the budget
+21:44  BACK  player switched kick back on
+21:46  THIN  player muted kick to stay inside the budget
+21:46  BACK  player switched kick back on
+21:48  THIN  player muted kick to stay inside the budget
+21:48  BACK  player switched kick back on
+21:49  THIN  player muted kick to stay inside the budget
+21:49  BACK  player switched kick back on
+21:51  THIN  player muted kick to stay inside the budget
+21:51  BACK  player switched kick back on
+21:53  THIN  player muted kick to stay inside the budget
+21:53  BACK  player switched kick back on
+21:54  THIN  player muted kick to stay inside the budget
+21:54  BACK  player switched kick back on
+21:56  THIN  player muted kick to stay inside the budget
+21:56  BACK  player switched kick back on
+21:58  THIN  player muted kick to stay inside the budget
+21:58  BACK  player switched kick back on
+21:59  THIN  player muted kick to stay inside the budget
+21:59  BACK  player switched kick back on
+22:01  THIN  player muted kick to stay inside the budget
+22:01  BACK  player switched kick back on
+22:03  THIN  player muted kick to stay inside the budget
+22:03  BACK  player switched kick back on
+22:04  THIN  player muted kick to stay inside the budget
+22:04  BACK  player switched kick back on
+22:06  THIN  player muted kick to stay inside the budget
+22:06  BACK  player switched kick back on
+22:08  THIN  player muted kick to stay inside the budget
+22:08  BACK  player switched kick back on
+22:09  THIN  player muted kick to stay inside the budget
+22:09  BACK  player switched kick back on
+22:11  THIN  player muted kick to stay inside the budget
+22:11  BACK  player switched kick back on
+22:13  THIN  player muted kick to stay inside the budget
+22:13  BACK  player switched kick back on
+22:14  THIN  player muted kick to stay inside the budget
+22:14  BACK  player switched kick back on
+22:16  THIN  player muted kick to stay inside the budget
+22:16  BACK  player switched kick back on
+22:18  THIN  player muted kick to stay inside the budget
+22:18  BACK  player switched kick back on
+22:19  THIN  player muted kick to stay inside the budget
+22:19  BACK  player switched kick back on
+22:21  THIN  player muted kick to stay inside the budget
+22:21  BACK  player switched kick back on
+22:23  THIN  player muted kick to stay inside the budget
+22:23  BACK  player switched kick back on
+22:24  THIN  player muted kick to stay inside the budget
+22:24  BACK  player switched kick back on
+22:26  THIN  player muted kick to stay inside the budget
+22:26  BACK  player switched kick back on
+22:27  THIN  player muted kick to stay inside the budget
+22:27  BACK  player switched kick back on
+22:29  THIN  player muted kick to stay inside the budget
+22:29  BACK  player switched kick back on
+22:31  THIN  player muted kick to stay inside the budget
+22:31  BACK  player switched kick back on
+22:32  THIN  player muted kick to stay inside the budget
+22:32  BACK  player switched kick back on
+22:34  THIN  player muted kick to stay inside the budget
+22:34  BACK  player switched kick back on
+22:36  THIN  player muted kick to stay inside the budget
+22:36  BACK  player switched kick back on
+22:37  THIN  player muted kick to stay inside the budget
+22:37  BACK  player switched kick back on
+22:39  THIN  player muted kick to stay inside the budget
+22:39  BACK  player switched kick back on
+22:41  THIN  player muted kick to stay inside the budget
+22:41  BACK  player switched kick back on
+22:42  THIN  player muted kick to stay inside the budget
+22:42  BACK  player switched kick back on
+22:44  THIN  player muted kick to stay inside the budget
+22:44  BACK  player switched kick back on
+22:46  THIN  player muted kick to stay inside the budget
+22:46  BACK  player switched kick back on
+22:47  THIN  player muted kick to stay inside the budget
+22:47  BACK  player switched kick back on
+22:49  THIN  player muted kick to stay inside the budget
+22:49  BACK  player switched kick back on
+22:51  THIN  player muted kick to stay inside the budget
+22:51  BACK  player switched kick back on
+22:52  THIN  player muted kick to stay inside the budget
+22:52  BACK  player switched kick back on
+22:54  THIN  player muted kick to stay inside the budget
+22:54  BACK  player switched kick back on
+22:56  THIN  player muted kick to stay inside the budget
+22:56  BACK  player switched kick back on
+22:57  THIN  player muted kick to stay inside the budget
+22:57  BACK  player switched kick back on
+22:59  THIN  player muted kick to stay inside the budget
+22:59  BACK  player switched kick back on
+23:01  THIN  player muted kick to stay inside the budget
+23:01  BACK  player switched kick back on
+23:02  THIN  player muted kick to stay inside the budget
+23:02  BACK  player switched kick back on
+23:04  THIN  player muted kick to stay inside the budget
+23:04  BACK  player switched kick back on
+23:06  THIN  player muted kick to stay inside the budget
+23:06  BACK  player switched kick back on
+23:07  THIN  player muted kick to stay inside the budget
+23:07  BACK  player switched kick back on
+23:09  THIN  player muted kick to stay inside the budget
+23:09  BACK  player switched kick back on
+23:11  THIN  player muted kick to stay inside the budget
+23:11  BACK  player switched kick back on
+23:12  THIN  player muted kick to stay inside the budget
+23:12  BACK  player switched kick back on
+23:14  THIN  player muted kick to stay inside the budget
+23:14  BACK  player switched kick back on
+23:15  THIN  player muted kick to stay inside the budget
+23:15  BACK  player switched kick back on
+23:17  THIN  player muted kick to stay inside the budget
+23:17  BACK  player switched kick back on
+23:19  THIN  player muted kick to stay inside the budget
+23:19  BACK  player switched kick back on
+23:20  THIN  player muted kick to stay inside the budget
+23:20  BACK  player switched kick back on
+23:22  THIN  player muted kick to stay inside the budget
+23:22  BACK  player switched kick back on
+23:24  THIN  player muted kick to stay inside the budget
+23:24  BACK  player switched kick back on
+23:25  THIN  player muted kick to stay inside the budget
+23:25  BACK  player switched kick back on
+23:27  THIN  player muted kick to stay inside the budget
+23:27  BACK  player switched kick back on
+23:29  THIN  player muted kick to stay inside the budget
+23:29  BACK  player switched kick back on
+23:30  THIN  player muted kick to stay inside the budget
+23:30  BACK  player switched kick back on
+23:32  THIN  player muted kick to stay inside the budget
+23:32  BACK  player switched kick back on
+23:34  THIN  player muted kick to stay inside the budget
+23:34  BACK  player switched kick back on
+23:35  THIN  player muted kick to stay inside the budget
+23:35  BACK  player switched kick back on
+23:37  THIN  player muted kick to stay inside the budget
+23:37  BACK  player switched kick back on
+23:39  THIN  player muted kick to stay inside the budget
+23:39  BACK  player switched kick back on
+23:40  THIN  player muted kick to stay inside the budget
+23:40  BACK  player switched kick back on
+23:42  THIN  player muted kick to stay inside the budget
+23:42  BACK  player switched kick back on
+23:44  THIN  player muted kick to stay inside the budget
+23:44  BACK  player switched kick back on
+23:45  THIN  player muted kick to stay inside the budget
+23:45  BACK  player switched kick back on
+23:47  THIN  player muted kick to stay inside the budget
+23:47  BACK  player switched kick back on
+23:49  THIN  player muted kick to stay inside the budget
+23:49  BACK  player switched kick back on
+23:50  THIN  player muted kick to stay inside the budget
+23:50  BACK  player switched kick back on
+23:52  THIN  player muted kick to stay inside the budget
+23:52  BACK  player switched kick back on
+23:54  THIN  player muted kick to stay inside the budget
+23:54  BACK  player switched kick back on
+23:55  THIN  player muted kick to stay inside the budget
+23:55  BACK  player switched kick back on
+23:57  THIN  player muted kick to stay inside the budget
+23:57  BACK  player switched kick back on
+23:59  THIN  player muted kick to stay inside the budget
+23:59  BACK  player switched kick back on
+24:00  THIN  player muted kick to stay inside the budget
+24:00  BACK  player switched kick back on
+24:01  DONE  The Attic — THE HEADLINE SLOT
+
+--- outcome ---
+ended 24:01 · WON — PLAYED THE HEADLINE SLOT
+rooms played 7/7
+level 12 · kills 988
+band owned bass, pad, drone, hat, kick
+covered PUNCH+HOLD+CUT
+
+--- the hard floor (#256) ---
+density peak 12.5 triggers/bar, trough 2.0
+density falls: 19 total, 19 caused by a player choice
+PASS — density fell because the player chose it (first at 2:45: 4.3 -> 2.3, player muted pad)
+(loudness range is an audio measurement and needs the browser rig — see docs/circuit.md)
+
+--- the economy ---
+regeneration 8.0/bar (floor 4.0) · pool depth 48.0
+brownouts 0 · blackouts 7
+drawn 6171 · banked 1130
+
+--- coverage ---
+hits answered 29% (5053 on-kind, 12373 off-kind)
+damage into the wrong body 57238
+
+--- the trace (every 30 s) ---
+time   where            lvl  kills alive  playing  owned   pool  bank  answers
+0:01   Doors              1      0     4      2.0    2.0 ##### ..... 1/3
+0:30   Doors              2     35    25      4.0    4.0 ####. ###.. 2/3
+1:00   Doors              2     61    46      4.0    4.0 ##### ##### 2/3
+1:30   Doors              2    105    59      4.0    4.0 ##### ##### 2/3
+2:00   Doors              3    167    61      4.3    4.3 ##### ##### 2/3
+2:31   Doors              4    250    50      4.3    4.3 ####. ##### 2/3
+3:01   The Back Room      4    287    23      2.3    4.3 ##### ..... 2/3
+3:31   The Back Room      4    298    32      2.3    4.3 ##### ###.. 2/3
+4:01   The Back Room      4    324    56      4.3    4.3 ##### ..... 2/3  BLACKOUT
+4:31   The Back Room      5    348    83      2.3    4.3 ##### ##... 2/3
+5:01   The Back Room      5    361   116      2.3    4.3 ##### ####. 2/3
+5:31   The Back Room      5    380   145      2.3    4.3 ##### #.... 2/3
+6:01   The Loading Bay    5    381    16      4.3    4.3 ##### ###.. 2/3
+6:30   The Loading Bay    5    382    51      4.3    4.3 ##### ####. 2/3
+7:00   The Loading Bay    5    383    81      4.3    4.3 ##### ##### 2/3
+7:30   The Loading Bay    5    383   108      4.3    4.3 ####. ##### 2/3
+8:00   The Loading Bay    5    393   151      4.3    4.3 ##### ##### 2/3
+8:30   The Loading Bay    5    405   203      4.3    4.3 ##### ##### 2/3
+9:00   The Loading Bay    6    408   259      4.3    8.3 ##### ..... 2/3
+9:30   The Cellar         6    418    16      4.3    8.3 ##### #.... 2/3
+10:00  The Cellar         6    438    27      4.3    8.3 ####. ##... 2/3
+10:30  The Cellar         6    452    50      4.3    8.3 ##### ####. 2/3
+11:00  The Cellar         6    492   105      4.3    8.3 ##### ..... 2/3
+11:30  The Cellar         7    530    51      8.3   12.3 ##... ..... 2/3
+12:00  The Cellar         8    568    86      8.3   12.3 ..... ..... 2/3
+12:30  The Cellar         8    594   120      8.3   12.3 #.... ..... 2/3
+13:00  The Stairwell      8    612    20      4.3   12.3 ###.. #.... 2/3
+13:30  The Stairwell      9    626    28      4.3   12.3 ##### ###.. 2/3
+14:00  The Stairwell      9    646    58      4.3   12.3 ##### ##### 2/3
+14:30  The Stairwell      9    680    83      4.3   12.3 ##### #.... 2/3
+15:00  The Stairwell     10    687   124      4.3   12.3 ##### ###.. 2/3
+15:30  The Stairwell     10    687   185     12.3   12.3 ##### ..... 3/3  BLACKOUT
+16:00  street            10    693     5     10.3   12.3 ####. ..... 3/3
+16:30  The Balcony       10    697    39     10.0   12.3 #.... ..... 2/3
+17:00  The Balcony       10    705    74     10.0   12.3 ..... ..... 2/3
+17:30  The Balcony       10    717   118     10.0   12.3 ..... ..... 2/3
+18:00  The Balcony       10    726   159     10.0   12.3 #.... ..... 2/3
+18:30  The Balcony       10    744   206     10.0   12.3 #.... ..... 2/3
+19:00  The Balcony       10    748   274     10.0   12.3 ..... ..... 2/3
+19:30  The Balcony       11    750   269      6.0   12.3 ##... ..... 1/3
+20:00  street            11    751     5     10.3   12.3 ##### ..... 3/3
+20:30  The Attic         11    754    49     12.3   12.3 ..... ..... 3/3
+21:00  The Attic         11    761    86     12.3   12.3 ..... ..... 3/3
+21:30  The Attic         11    780   123     12.3   12.3 ..... ..... 3/3
+22:00  The Attic         11    792   172     12.3   12.3 ..... ..... 3/3
+22:30  The Attic         11    806   227     12.3   12.3 ..... ..... 3/3
+23:00  The Attic         11    832   288     12.3   12.3 ..... ..... 3/3
+23:30  The Attic         12    984   281     12.5   12.5 #.... ..... 3/3
+24:00  The Attic         12    988   300     12.5   12.5 ..... ..... 3/3

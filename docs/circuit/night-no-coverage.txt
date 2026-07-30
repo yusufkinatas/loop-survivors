@@ -1,0 +1,139 @@
+
+=== THE CIRCUIT — one night, seed 793025, route greedy ===
+layers: headroom=true coverage=false nightOut=true · INVINCIBLE (measuring the economy, not the difficulty)
+
+00:00  OPEN  bass (offered bass, lead, kick)
+00:00  ENTER Doors — THE SUPPORT ACT @ 122bpm, wants nothing
+02:30  DONE  Doors
+02:30  SHUT  DOORS · ALREADY PLAYED TONIGHT
+02:36  LEAVE Doors
+02:42  ENTER The Stairwell — SPEED NIGHT @ 145bpm, wants CUT
+05:27  DONE  The Stairwell
+05:27  SHUT  THE STAIRWELL · ALREADY PLAYED TONIGHT
+05:36  LEAVE The Stairwell
+05:44  ENTER The Cellar — AMBIENT ALL-NIGHTER @ 109bpm, wants PUNCH+HOLD
+08:47  THIN  player muted bass to stay inside the budget
+08:49  PEAK  blackout — everything owned, 4 bars
+08:54  DONE  The Cellar
+08:54  SHUT  THE CELLAR · ALREADY PLAYED TONIGHT
+08:57  ---   lights back up
+08:57  THIN  player muted bass to stay inside the budget
+09:04  LEAVE The Cellar
+09:18  ENTER The Loading Bay — CARGO NIGHT @ 122bpm, wants PUNCH+HOLD
+11:05  PEAK  blackout — everything owned, 4 bars
+11:13  ---   lights back up
+11:13  THIN  player muted bass to stay inside the budget
+12:28  DONE  The Loading Bay
+12:28  SHUT  THE LOADING BAY · ALREADY PLAYED TONIGHT
+12:38  LEAVE The Loading Bay
+12:53  ENTER The Back Room — SLUDGE NIGHT @ 109bpm, wants PUNCH
+13:24  PEAK  blackout — everything owned, 4 bars
+13:33  ---   lights back up
+13:33  THIN  player muted bass to stay inside the budget
+15:48  DONE  The Back Room
+15:48  SHUT  THE BACK ROOM · ALREADY PLAYED TONIGHT
+15:55  PEAK  blackout — everything owned, 4 bars
+16:00  LEAVE The Back Room
+16:03  ---   lights back up
+16:03  THIN  player muted bass to stay inside the budget
+18:11  PEAK  blackout — everything owned, 4 bars
+18:19  ---   lights back up
+18:19  THIN  player muted bass to stay inside the budget
+20:27  PEAK  blackout — everything owned, 4 bars
+20:35  ---   lights back up
+20:35  THIN  player muted bass to stay inside the budget
+20:51  SHUT  THE BACK ROOM · ALREADY PLAYED TONIGHT
+20:54  LEAVE The Back Room
+22:43  PEAK  blackout — everything owned, 4 bars
+22:51  ---   lights back up
+22:51  THIN  player muted bass to stay inside the budget
+24:58  PEAK  blackout — everything owned, 4 bars
+25:06  ---   lights back up
+25:06  THIN  player muted bass to stay inside the budget
+27:14  PEAK  blackout — everything owned, 4 bars
+27:22  ---   lights back up
+27:22  THIN  player muted bass to stay inside the budget
+29:30  PEAK  blackout — everything owned, 4 bars
+29:38  ---   lights back up
+29:38  THIN  player muted bass to stay inside the budget
+
+--- outcome ---
+ended 30:00 · SURVIVED TO CLOSING — not a win, the night ran out
+rooms played 5/7
+level 13 · kills 985
+band owned bass, pad, drone, upright, clap
+covered HOLD+PUNCH
+
+--- the hard floor (#256) ---
+density peak 9.5 triggers/bar, trough 2.0
+density falls: 11 total, 11 caused by a player choice
+PASS — density fell because the player chose it (first at 8:47: 9.5 -> 5.5, player muted bass)
+(loudness range is an audio measurement and needs the browser rig — see docs/circuit.md)
+
+--- the economy ---
+regeneration 8.0/bar (floor 4.0) · pool depth 48.0
+brownouts 0 · blackouts 10
+drawn 6347 · banked 1628
+
+--- the trace (every 30 s) ---
+time   where            lvl  kills alive  playing  owned   pool  bank  answers
+0:01   Doors              1      0     4      2.0    2.0 ##### ..... 1/3
+0:30   Doors              2     35    25      4.0    4.0 ####. ###.. 2/3
+1:00   Doors              2     61    46      4.0    4.0 ##### ##### 2/3
+1:30   Doors              2    105    59      4.0    4.0 ##### ##### 2/3
+2:00   Doors              3    167    61      4.3    4.3 ##### ##### 2/3
+2:31   Doors              4    249    49      4.3    4.3 ####. ##### 2/3
+3:01   The Stairwell      4    257    26      4.3    4.3 ####. ##### 2/3
+3:31   The Stairwell      5    283    33      4.3    4.3 ####. ##### 2/3
+4:01   The Stairwell      5    307    61      4.3    4.3 ##### ##### 2/3
+4:31   The Stairwell      6    375    55      4.3    4.3 ##### ##### 2/3
+5:01   The Stairwell      7    399    91      5.3    5.3 ##### ##### 2/3
+5:31   The Stairwell      8    400   141      5.5    5.5 ##### ##### 2/3
+6:01   The Cellar         8    417    18      5.5    5.5 ##### ##### 2/3
+6:30   The Cellar         8    463    17      5.5    5.5 ##### ##### 2/3
+7:00   The Cellar         8    498    31      5.5    5.5 ####. ##### 2/3
+7:30   The Cellar         8    532   101      5.5    5.5 ##### ##### 2/3
+8:00   The Cellar         9    559    49      7.5    7.5 ##... ##### 2/3
+8:30   The Cellar         9    598    95      7.5    7.5 ..... ##### 2/3
+9:00   The Cellar        11    640   104      5.5    9.5 ####. ..... 2/3
+9:30   The Loading Bay   11    646    27      5.5    9.5 ####. #.... 2/3
+10:00  The Loading Bay   11    651    50      5.5    9.5 ##### ###.. 2/3
+10:30  The Loading Bay   11    655    81      5.5    9.5 ##### ####. 2/3
+11:00  The Loading Bay   11    655   111      5.5    9.5 ####. ##### 2/3
+11:30  The Loading Bay   11    673   149      5.5    9.5 ####. #.... 2/3
+12:00  The Loading Bay   11    691   202      5.5    9.5 ##### ##... 2/3
+12:30  The Loading Bay   11    696   246      5.5    9.5 ##### ###.. 2/3
+13:00  The Back Room     11    704    18      5.5    9.5 ##### ####. 2/3
+13:30  The Back Room     11    725    15      9.5    9.5 ##### ..... 2/3  BLACKOUT
+14:00  The Back Room     11    744    45      5.5    9.5 ##### #.... 2/3
+14:30  The Back Room     11    770    71      5.5    9.5 ####. ##... 2/3
+15:00  The Back Room     11    780   103      5.5    9.5 ####. ###.. 2/3
+15:30  The Back Room     12    791   135      5.5    9.5 ##### ####. 2/3
+16:00  street            12    810   135      9.5    9.5 ##### ..... 2/3  BLACKOUT
+16:30  street            12    816    95      5.5    9.5 ####. #.... 2/3
+17:00  street            12    829    82      5.5    9.5 ##### ##... 2/3
+17:30  street            12    834    77      5.5    9.5 ##### ###.. 2/3
+18:00  street            12    838    73      5.5    9.5 ####. ##### 2/3
+18:30  street            12    842    69      5.5    9.5 ####. ..... 2/3
+19:00  street            12    857    54      5.5    9.5 ##### ##... 2/3
+19:30  street            12    861    50      5.5    9.5 ##### ###.. 2/3
+20:00  street            12    865    46      5.5    9.5 ####. ####. 2/3
+20:30  street            13    875    36      9.5    9.5 ##### ..... 2/3  BLACKOUT
+21:00  street            13    883    28      5.5    9.5 ##### #.... 2/3
+21:30  street            13    883    28      5.5    9.5 ##### ##... 2/3
+22:00  street            13    883    28      5.5    9.5 ####. ###.. 2/3
+22:30  street            13    883    28      5.5    9.5 ####. ##### 2/3
+23:00  street            13    887    24      5.5    9.5 ##### ..... 2/3
+23:30  street            13    889    22      5.5    9.5 ##### ##... 2/3
+24:00  street            13    889    22      5.5    9.5 ####. ###.. 2/3
+24:30  street            13    893    18      5.5    9.5 ####. ####. 2/3
+25:00  street            13    894    17      9.5    9.5 ##### ..... 2/3  BLACKOUT
+25:30  street            13    897    14      5.5    9.5 ##### #.... 2/3
+26:00  street            13    905     6      5.5    9.5 ####. ##... 2/3
+26:30  street            13    916     3      5.5    9.5 ####. ###.. 2/3
+27:00  street            13    926     2      5.5    9.5 ##### ##### 2/3
+27:30  street            13    936     2      5.5    9.5 ##### ..... 2/3
+28:00  street            13    946     2      5.5    9.5 ####. #.... 2/3
+28:30  street            13    956     2      5.5    9.5 ####. ###.. 2/3
+29:00  street            13    966     2      5.5    9.5 ##### ####. 2/3
+29:30  street            13    976     2      9.5    9.5 ##### ..... 2/3  BLACKOUT

@@ -6,7 +6,7 @@
 // This file is pure simulation: no rendering, input devices, or real-time
 // clock. Rendering lives in view.ts, which reads the world each frame.
 
-import { ROLE_COLORS, type Role } from '../audio/kits';
+import { ROLE_COLORS, type Attack, type Role } from '../audio/kits';
 import type { ScheduledTrigger } from '../audio/engine';
 import {
   AIM_RANGE,
@@ -57,6 +57,25 @@ import {
   type WeaponInstance,
   type WeaponTarget,
 } from './weapons';
+// ---- THE CIRCUIT (#270) ---------------------------------------------------
+// Three layers hang off this file, each behind its own switch (`CIRCUIT`):
+// Headroom charges the pool as triggers fire, Coverage scales damage by whether
+// the sound answers the body, and The Night Out replaces the stage script with a
+// per-venue one on a clock that stands still while you are outside the room.
+import { CIRCUIT } from '../circuit/toggles';
+import {
+  ANSWERS,
+  ARMOUR_BY_KIND,
+  ARMOUR_HP_MUL,
+  ATTACK_VERB,
+  attackOf,
+  CHIP_MUL,
+  coveredAttacks,
+  coverageMul,
+  type Armour,
+} from '../circuit/coverage';
+import { CircuitRun } from '../circuit/run-state';
+import { doorBlockedReason, STREET_WAVES, type Venue, type VenueSet } from '../circuit/venues';
 
 /** Source player sprite uses a feet anchor; the stored player position is its
  * circle center. This is the source feet offset normalized to H800. */
@@ -195,6 +214,16 @@ const MAD_FOREST: StageScript = {
   startingSpawns: STAGE_STARTING_SPAWNS,
 };
 
+/** THE STREET (#270): the script that runs between rooms. Almost nothing, and
+ *  no opening batch at all — a night opens on an empty street outside the first
+ *  door, which is the whole of "entered from the same door every time". */
+const STREET: StageScript = {
+  waves: STREET_WAVES,
+  events: [],
+  startingKind: 'redBat2',
+  startingSpawns: 0,
+};
+
 export interface Enemy {
   id: number;
   kind: EnemyKind;
@@ -251,6 +280,11 @@ export interface Enemy {
   dummy: boolean;
   /** Dummy-only damage bookkeeping; null on every ordinary enemy. */
   readout: DummyReadout | null;
+  /** COVERAGE (#270): what this body is wearing, and therefore what kind of
+   *  sound answers it. Authored per kind in `src/circuit/coverage.ts`. Always
+   *  `'none'` with the Coverage layer switched off, which is what makes the
+   *  toggle a real A/B rather than a re-skin. */
+  armour: Armour;
 }
 
 /** A Stage Light: a destructible prop, warm amber against the Hush's cold
@@ -590,6 +624,21 @@ export interface RunEvents {
   onHit(): void;
   onChest?(chest: Chest): void;
   onNoteCollected?(value: number, runTotal: number): void;
+  // ---- THE CIRCUIT (#270) -------------------------------------------------
+  /** The door opened and the room's set has started. The shell changes tempo on
+   *  the next bar, drops the arrival burst's toast, and paints the venue card. */
+  onVenueEntered?(venue: Venue, set: VenueSet): void;
+  /** The player is standing in a room whose door will not open, with the reason
+   *  already phrased for the screen. Fires once per arrival, not per frame. */
+  onVenueBlocked?(venue: Venue, reason: string): void;
+  /** Back on the street: the set clock has stopped where it stood. */
+  onVenueLeft?(venue: Venue, midSet: boolean): void;
+  /** A room's set survived to the end. `headliner` ends the night. */
+  onVenueFinished?(venue: Venue, set: VenueSet, headliner: boolean): void;
+  /** COVERAGE (#270): a hit just bounced off an armour kind this run has not met
+   *  before. Raised ONCE per kind — the shell turns it into the one line of
+   *  teaching the matrix ever gets. */
+  onCoverageChip?(armour: Armour, needs: Attack): void;
   /** One XP gem picked up. Fires per gem, including during a Stage Magnet
    *  vacuum — the audio cue does its own throttling (GEM_CUE.minGapS).
    *  `levelProgress` is 0..1 toward the next level, clamped: the gem that
@@ -618,6 +667,11 @@ export interface RunWorldOpts {
   /** The stage script the director walks; Mad Forest when omitted. See
    *  `StageScript` — this is the seam a new run shape replaces. */
   stage?: StageScript;
+  /** THE CIRCUIT (#270): the shell's set of switched-off voices, handed in by
+   *  reference so the coverage wheel, the venue doors and the upkeep price all
+   *  read the same "what is playing" rather than three copies of it. Omitted by
+   *  fixtures, which get their own empty set and never mute anything. */
+  deactivated?: Set<Role>;
 }
 
 export class RunWorld {
@@ -730,9 +784,42 @@ export class RunWorld {
    *  snapshotted. */
   private readonly weaponCtx = new Map<Role, WeaponContext>();
   private scripted: boolean;
-  private readonly stage: StageScript;
+  /** MUTABLE FOR THE NIGHT OUT (#270). In the base this is set once and the
+   *  director walks it for thirty minutes. Under The Night Out a room's set IS a
+   *  stage script, so arriving somewhere installs a new one — see `setStage`. */
+  private stage: StageScript;
   /** The stage's event rows unrolled into individual firings, once per world. */
-  private readonly occurrences: readonly StageOccurrence[];
+  private occurrences: readonly StageOccurrence[];
+  /** THE STAGE CLOCK (#270). What the director reads instead of `timeS`.
+   *
+   *  In the base they are the same number and always have been — the wave table's
+   *  `atS` is run time. Under The Night Out a venue's rows are seconds SINCE
+   *  ARRIVAL, and this clock STANDS STILL while the player is outside the room,
+   *  so stepping out of a set pauses the set. The night clock never pauses, which
+   *  is what makes standing on the street cost something. */
+  private stageClockS = 0;
+  /** Whether the director is walking a script this step. False on the street,
+   *  and false in a room whose door has not opened. Always true in the base. */
+  private stageRunning = true;
+  /** Sets left part-played, by venue id: what walking out of a room remembers.
+   *  A room you left at 40 seconds is a room you walk back into at 40 seconds. */
+  private readonly pausedSets = new Map<string, number>();
+  /** Seconds until the street's next spawn attempt. */
+  private streetSpawnT = 0;
+  /** How the night ended, once it has: `'headliner'` for the summit,
+   *  `'closing'` when 03:00 arrived wherever the player happened to be. Null
+   *  until the run is won. The end screen reads it. */
+  nightOutcome: 'headliner' | 'closing' | null = null;
+  /** COVERAGE, MEASURED. Effective damage thrown away on bodies the sound did not
+   *  answer, and the two hit counts either side of the matrix. The run report
+   *  prints all three: they are how this branch answers the pistol test with a
+   *  number rather than a feeling. */
+  chipWasted = 0;
+  onKindHits = 0;
+  offKindHits = 0;
+  /** THE CIRCUIT'S run state, or null with every layer switched off. Holds the
+   *  upkeep pool, tonight's bill, and where the player is standing. */
+  readonly circuit: CircuitRun | null;
   /** The run has been won (mad-forest-spec §8). Set once, never cleared: a
    *  world that reached 30:00 only ever plays out its clear wave. */
   won = false;
@@ -756,8 +843,43 @@ export class RunWorld {
     this.stageLightDropRng = mulberry32(dropSeed ^ 0x44524f50);
     this.control = opts.control ?? (() => ({ x: 0, y: 0 }));
     this.fx = (opts.fx ?? true) ? [] : null;
-    this.stage = opts.stage ?? MAD_FOREST;
+    // THE CIRCUIT (#270). Built before the stage is chosen, because with The
+    // Night Out on the opening stage script is the street rather than Mad
+    // Forest's table — the run starts at the door of the first room, not inside
+    // a wave. Its rng is the world's own stream, so a seeded run rolls the same
+    // bill every time.
+    // Its OWN derived stream, for the same reason the Stage Light rolls have one:
+    // rolling tonight's bill off the main stream would shift every later draw, so
+    // the opening weapon a seed hands you would depend on whether The Night Out is
+    // switched on. That makes the layer A/B this branch exists to run meaningless —
+    // the control and the stack would be playing different builds. Measured: the
+    // control opened on the bass and the stack on the kick from the same seed, and
+    // the kill counts that looked like a run-shape difference were a weapon
+    // difference.
+    this.circuit = CIRCUIT.headroom || CIRCUIT.coverage || CIRCUIT.nightOut
+      ? new CircuitRun(opts.deactivated ?? new Set<Role>(), mulberry32(dropSeed ^ 0x42494c4c))
+      : null;
+    this.stage = opts.stage ?? (CIRCUIT.nightOut ? STREET : MAD_FOREST);
     this.occurrences = unrollStageEvents(this.stage.events);
+    // DESIGN CALL 10: COVERAGE PAYS FOR ITSELF THROUGH THE STAT SEAM.
+    //
+    // Coverage cuts a build's EFFECTIVE output to roughly the share of the band that
+    // answers what is in front of it — measured between 57% and 92% of hits on-kind
+    // depending on how well the player retools, so call it two thirds. The base's
+    // damage curve is authored against unarmoured bodies at full damage, so a layer
+    // that removes a third of it has to give it back somewhere or every enemy
+    // statline is silently a third tougher.
+    //
+    // `RunWorld.mods` is exactly the channel for that (#265's stat seam: "a
+    // prototype's power currency writes into the struct; every weapon module reads
+    // it and never learns where the number came from"), so this is one line rather
+    // than a pass over nineteen weapon tables. 1.5 is the reciprocal of the measured
+    // two thirds.
+    //
+    // What it does NOT do is soften the constraint: a build with a coverage hole
+    // still chips at 0.12, and 1.5 x 0.12 is still nothing. It restores the output of
+    // a build that answers correctly, which is the build the layer is asking for.
+    if (CIRCUIT.coverage) this.mods.damageMul = 1.5;
     // Built after the drop seed draw above: the context factory draws no rng,
     // so no draw moves.
     for (const m of WEAPON_MODULES) {
@@ -994,6 +1116,17 @@ export class RunWorld {
   fireTrigger(t: ScheduledTrigger): void {
     const tier = this.tiers.get(t.role);
     if (!tier) return;
+    // HEADROOM (#270): the note is the cost. Charged HERE and not at the bar line
+    // because a trigger reaching this method is a trigger the player heard — the
+    // engine skips a disabled voice's chart entirely, so a muted weapon never
+    // arrives and never pays. That is the audibility rule doing double duty: if
+    // it is not audible it is not attacking, and if it is not attacking it is not
+    // costing anything either.
+    //
+    // Charged BEFORE the module lookup on purpose. A voice that is audible but
+    // owns no gameplay still costs upkeep, because upkeep prices the arrangement
+    // rather than the damage.
+    if (CIRCUIT.headroom) this.circuit?.headroom.spendTrigger();
     // A VOICED ROLE IS NOT NECESSARILY A PLAYABLE ONE, and this lookup used to
     // assume it was. The palette (#266) lands its twelve new voices' sound and
     // rhythm ahead of their weapon modules, so a role can sit in `tiers` while
@@ -1186,14 +1319,36 @@ export class RunWorld {
       this.timeS += dt;
       if (this.scripted && this.timeS >= VICTORY.atS) this.beginVictory();
     }
+    // DESIGN CALL 9: UNDER THE NIGHT OUT, CLOSING TIME IS NOT A WIN.
+    //
+    // #253 asked that the ending be a summit, and #255 gave this run shape "time,
+    // and nothing else" as its constraint. Both fail if reaching 03:00 anywhere is a
+    // victory — measured: the `loiter` route, which plays ONE room and then stands
+    // on the street for twenty-eight minutes, reached closing time alive at level 11
+    // with 719 kills and was reported a winner. It was the best result any route
+    // produced, because the street is unbounded and therefore inherits the base's
+    // real pressure valve: walk in a straight line and the crowd recycles behind you
+    // forever.
+    //
+    // So the night is WON at the Headliner and merely ENDS at closing. That is what
+    // makes the route a decision: the summit is the only win, and it costs you every
+    // room you have to play to earn the door.
+    //
+    // The base's own ending is untouched — with The Night Out off, 30:00 is the win
+    // it has always been (mad-forest-spec §8).
     this.updatePassiveRecovery(dt);
     this.movePlayer(dt);
     // AFTER movePlayer, BEFORE the weapon phases: the spawn oval is measured
     // from where the player is now, and the sweep here is what clears the
     // lights broken during last frame's hit passes.
     this.updateStageLights(dt);
+    // AND AFTER movePlayer for the same reason: which room you are in is a
+    // question about where you are standing now, and it decides whether this
+    // frame's stage clock advances at all.
+    if (this.scripted && !this.won) this.updateNight(dt);
     if (this.scripted && !this.won) {
-      this.runDirector(dt);
+      if (this.stageRunning) this.runDirector(dt);
+      else this.streetTrickle(dt);
     }
     if (this.won) this.advanceVictorySweep(dt);
 
@@ -1296,7 +1451,7 @@ export class RunWorld {
       for (let i = 0; i < this.stage.startingSpawns; i++) this.spawnEnemy(this.stage.startingKind);
     }
 
-    while (this.waveIdx + 1 < this.stage.waves.length && this.timeS >= this.stage.waves[this.waveIdx + 1].atS) {
+    while (this.waveIdx + 1 < this.stage.waves.length && this.stageClockS >= this.stage.waves[this.waveIdx + 1].atS) {
       this.currentWave = this.stage.waves[++this.waveIdx];
       // Source timers wait one full interval before their first callback. The
       // ten starting bats therefore remain ten until 0:01, and each new
@@ -1306,7 +1461,7 @@ export class RunWorld {
 
     while (
       this.eventIdx < this.occurrences.length &&
-      this.timeS >= this.occurrences[this.eventIdx].atS
+      this.stageClockS >= this.occurrences[this.eventIdx].atS
     ) {
       const occ = this.occurrences[this.eventIdx++];
       if (occ.type === 'boss') {
@@ -1329,10 +1484,198 @@ export class RunWorld {
     const wave = this.currentWave;
     if (!wave) return;
     // A large frame must drain every scheduled attempt instead of dropping spawns.
-    while (this.timeS + 1e-9 >= this.nextSpawnT) {
+    while (this.stageClockS + 1e-9 >= this.nextSpawnT) {
       this.spawnWaveAttempt(wave);
       this.nextSpawnT += wave.intervalS;
     }
+  }
+
+  /**
+   * THE NIGHT (#270): where the player is standing, and what that means.
+   *
+   * Called once a step, after the player has moved. Three jobs:
+   *
+   *  1. Resolve the room. Arriving somewhere either opens its door and starts its
+   *     set, or leaves the room dark with a reason on screen.
+   *  2. Decide whether the stage clock advances. It advances only while a set is
+   *     playing and the player is in the room playing it, so stepping outside
+   *     PAUSES the set exactly where it stood. Nothing about that is free: the
+   *     night clock never pauses, and night is the run's only real currency.
+   *  3. End a set that has run its length, which finishes the room, pays a chest,
+   *     and — at the Headliner — ends the night on a summit rather than a timer.
+   *
+   * With The Night Out switched off this is a two-line function: the stage clock
+   * is the run clock, exactly as the base has always had it.
+   */
+  private updateNight(dt: number): void {
+    const circuit = this.circuit;
+    if (!CIRCUIT.nightOut || !circuit) {
+      this.stageClockS += dt;
+      this.stageRunning = true;
+      return;
+    }
+    const here = circuit.lookUp(this.player.x + PLAYER_FOOT_OFFSET.x, this.player.y + PLAYER_FOOT_OFFSET.y);
+    const place = circuit.place;
+
+    // Left the room we were in.
+    if (place.venue && here?.venue !== place.venue) {
+      const midSet = place.playing && place.playedS > 0 && place.playedS < (place.set?.lengthS ?? 0);
+      this.events.onVenueLeft?.(place.venue, midSet);
+      // The set is REMEMBERED, not abandoned: playedS holds, and walking back in
+      // resumes it. What is lost is the night spent walking.
+      this.pausedSets.set(place.venue.id, place.playedS);
+      circuit.place = { venue: null, set: null, playedS: 0, playing: false };
+      circuit.blockedAt = null;
+      this.stageRunning = false;
+      return;
+    }
+
+    // On the street and staying there.
+    if (!here) {
+      this.stageRunning = false;
+      return;
+    }
+
+    // Arrived somewhere new.
+    if (here.venue !== place.venue) {
+      if (this.finishedOrBlocked(here.venue, here.set)) return;
+      const resumeAt = this.pausedSets.get(here.venue.id) ?? 0;
+      circuit.place = { venue: here.venue, set: here.set, playedS: resumeAt, playing: true };
+      circuit.blockedAt = null;
+      this.setStage({
+        waves: here.set.waves,
+        events: here.set.events,
+        startingKind: here.set.arrivalKind,
+        // ARRIVING IS LOUD: the room's door burst is the stage script's opening
+        // batch, so it lands on the frame you walk in rather than after a wave
+        // interval. Travelling is quiet and this is the other half of the
+        // sentence.
+        startingSpawns: resumeAt > 0 ? 0 : here.set.arrivalCount,
+      });
+      this.stageClockS = resumeAt;
+      // A resumed set has already walked its early rows; fast-forward the
+      // director's cursors to where the clock now stands instead of replaying
+      // them, which would spawn every earlier wave's batch at once.
+      if (resumeAt > 0) this.fastForwardStage(resumeAt);
+      this.stageRunning = true;
+      this.events.onVenueEntered?.(here.venue, here.set);
+      return;
+    }
+
+    // Standing in the room we are already in.
+    if (!place.playing) {
+      // A dark room: the door is still shut. Re-test it every step, because the
+      // thing that opens it is switching a voice back on, which the player can
+      // do while standing here.
+      if (this.finishedOrBlocked(here.venue, here.set)) return;
+      circuit.place = { venue: here.venue, set: here.set, playedS: this.pausedSets.get(here.venue.id) ?? 0, playing: true };
+      circuit.blockedAt = null;
+      this.setStage({
+        waves: here.set.waves,
+        events: here.set.events,
+        startingKind: here.set.arrivalKind,
+        startingSpawns: circuit.place.playedS > 0 ? 0 : here.set.arrivalCount,
+      });
+      this.stageClockS = circuit.place.playedS;
+      if (circuit.place.playedS > 0) this.fastForwardStage(circuit.place.playedS);
+      this.stageRunning = true;
+      this.events.onVenueEntered?.(here.venue, here.set);
+      return;
+    }
+
+    this.stageRunning = true;
+    this.stageClockS += dt;
+    place.playedS += dt;
+    if (place.playedS >= here.set.lengthS) {
+      circuit.finished.add(here.venue.id);
+      this.pausedSets.delete(here.venue.id);
+      place.playing = false;
+      this.stageRunning = false;
+      // The room pays. A chest at the player's feet, which is the base's own
+      // reward surface — a finished set is worth exactly what a boss is worth,
+      // because it IS the boss plus everything that came before it.
+      this.spawnChestAt(this.player.x, this.player.y);
+      this.events.onVenueFinished?.(here.venue, here.set, here.venue.headliner);
+      if (here.venue.headliner) {
+        this.nightOutcome = 'headliner';
+        this.beginVictory();
+      }
+    }
+  }
+
+  /** A room the player cannot start: already finished, or its door will not
+   *  open. Returns true if the room stays dark, having already told the shell
+   *  why (once per arrival, not once per step). */
+  private finishedOrBlocked(venue: Venue, set: VenueSet): boolean {
+    const circuit = this.circuit!;
+    const already = circuit.finished.has(venue.id);
+    const reason = already
+      ? `${venue.name.toUpperCase()} · ALREADY PLAYED TONIGHT`
+      : doorBlockedReason(
+          venue,
+          circuit.covered(this.tiers),
+          circuit.finishedCount,
+          (attack) => ATTACK_VERB[attack],
+          // The owned band too, so a door the player is one key away from opening
+          // says so instead of reading as a dead end.
+          coveredAttacks([...this.tiers.keys()]),
+        );
+    if (!reason) return false;
+    circuit.place = { venue, set, playedS: 0, playing: false };
+    this.stageRunning = false;
+    if (circuit.blockedAt !== venue) {
+      circuit.blockedAt = venue;
+      this.events.onVenueBlocked?.(venue, reason);
+    }
+    return true;
+  }
+
+  /** Walk the director's cursors up to `toS` without firing anything. A resumed
+   *  set must not replay the waves it already played, and a wave row's arrival is
+   *  a spawn batch — replaying four of them at once would empty the room's whole
+   *  set into one frame. */
+  private fastForwardStage(toS: number): void {
+    this.stageStarted = true;
+    while (this.waveIdx + 1 < this.stage.waves.length && toS >= this.stage.waves[this.waveIdx + 1].atS) {
+      this.currentWave = this.stage.waves[++this.waveIdx];
+      this.nextSpawnT = this.currentWave.atS + this.currentWave.intervalS;
+    }
+    if (this.currentWave) this.nextSpawnT = Math.max(this.nextSpawnT, toS);
+    while (this.eventIdx < this.occurrences.length && this.occurrences[this.eventIdx].atS <= toS) {
+      this.eventIdx += 1;
+    }
+  }
+
+  /** THE STREET: sparse pressure between rooms, on its own timer rather than
+   *  through the director, so the room's paused set can stay installed.
+   *
+   *  Deliberately not empty. #255 named The Route's stated weakness as a corridor
+   *  that is "thin for free — rest rather than an authored valley". A handful of
+   *  bare mites keeps a thin band's hands busy while it banks, and keeps the walk
+   *  a place where a mistake is still possible. */
+  private streetTrickle(dt: number): void {
+    if (!CIRCUIT.nightOut) return;
+    this.streetSpawnT -= dt;
+    if (this.streetSpawnT > 0) return;
+    const row = STREET_WAVES[0];
+    this.streetSpawnT = row.intervalS;
+    if (this.aliveCount() >= row.minimum) return;
+    this.spawnEnemy(row.pattern[0]);
+  }
+
+  /** THE NIGHT OUT (#270): install a room's set as the live stage script, from
+   *  its own zero. Everything the director remembers about the previous script
+   *  is dropped — the bodies it already spawned are not, because they are in the
+   *  room with you and a set that ends does not delete the crowd it drew. */
+  private setStage(script: StageScript): void {
+    this.stage = script;
+    this.occurrences = unrollStageEvents(script.events);
+    this.waveIdx = -1;
+    this.eventIdx = 0;
+    this.currentWave = null;
+    this.nextSpawnT = 0;
+    this.stageClockS = 0;
+    this.stageStarted = false;
   }
 
   /** 30:00: the set is played (mad-forest-spec §8). Freeze the clock on the
@@ -1341,7 +1684,21 @@ export class RunWorld {
    *  the win flourish, and opens the win screen after the quiet beat. */
   private beginVictory(): void {
     this.won = true;
-    this.timeS = VICTORY.atS;
+    // CLOSING TIME COMES WHEREVER YOU ARE (#270). Reaching 03:00 is a win, and
+    // it is the LESSER win: the night ran out with the Headliner unplayed. The
+    // summit sets `nightOutcome` before it gets here, so this only ever labels
+    // the other ending. `timeS` is left where it stands for a summit, because a
+    // night that ended at the Attic did not end at closing and the clock should
+    // not claim it did.
+    if (!this.nightOutcome) {
+      this.nightOutcome = 'closing';
+      this.timeS = VICTORY.atS;
+    }
+    // See design call 9 in update(): closing time ENDS the night, the Headliner WINS
+    // it. `won` is still set either way — the world stops its script, freezes its
+    // clock and plays out its clear wave identically — so what differs is only what
+    // the end screen calls it. The shell reads `nightOutcome`.
+
     this.invincible = true;
     this.player.iframesT = 0;
     this.sweepR = 0;
@@ -1570,6 +1927,11 @@ export class RunWorld {
     const stats = enemyStats(kind, this.level);
     const body = this.nextEnemyBody(kind, stats.radius, stats.sizeMul);
     const dummy = kind === 'dummy';
+    // COVERAGE (#270): what this body wears, and the HP that makes the wrong
+    // tool measurably wrong. `'none'` with the layer off, so an armour-free
+    // capture is byte-comparable to the control.
+    const armour: Armour = CIRCUIT.coverage ? ARMOUR_BY_KIND[kind] : 'none';
+    const hp = armour === 'none' ? stats.hp : stats.hp * ARMOUR_HP_MUL;
     const enemy: Enemy = {
       id: this.nextEnemyId++,
       kind,
@@ -1578,8 +1940,8 @@ export class RunWorld {
       radius: body.radius,
       footOffsetX: body.footOffsetX,
       footOffsetY: body.footOffsetY,
-      hp: stats.hp,
-      spawnHp: stats.hp,
+      hp,
+      spawnHp: hp,
       speed: stats.speed,
       damage: stats.damage,
       xp: stats.xp,
@@ -1611,6 +1973,7 @@ export class RunWorld {
             dps: 0,
           }
         : null,
+      armour,
     };
     this.enemies.push(enemy);
     return enemy;
@@ -1789,6 +2152,65 @@ export class RunWorld {
 
   private damageEnemy(e: Enemy, amount: number, source?: Role): void {
     if (e.dead) return;
+    // COVERAGE (#270): the answer matrix, applied at the one choke point every
+    // weapon's damage already passes through. A hit that answers what the body is
+    // wearing lands in full; a hit that does not is chip.
+    //
+    // A sourceless hit is not a weapon — the victory sweep's Infinity, the enemy
+    // lab's instakill — and is never scaled: those are not attacks, they are the
+    // game clearing the field.
+    // DESIGN CALL 8: A BLACKOUT IGNORES ARMOUR. For its four bars, everything you
+    // own plays AND everything you hit is answerable.
+    //
+    // Found by measuring. Coverage cuts a mixed room's effective output to roughly
+    // the share of your band that answers it — the harness's first full night ran
+    // 14% of its hits on-kind and died at 3:00. The correct player response is to
+    // mute the voices the room does not need, which is exactly what Headroom wants
+    // and exactly the density fall the hard floor asks for. But it leaves the
+    // Blackout in a strange place: switching your off-kind voices back on for four
+    // bars is a musical peak that does almost nothing, and #253 asked for peaks
+    // the player authors and PAYS FOR — a peak that does nothing is not paid for,
+    // it is decorative.
+    //
+    // So the bank buys both halves of the same sentence: everything plays, and for
+    // those four bars nothing is armoured against you. It makes the Blackout the
+    // answer to a set's climax rather than a flourish between waves, and it gives
+    // "save the bank for the boss" a reason that is not vibes.
+    //
+    // The alternative — armour applies through a Blackout — is one condition away,
+    // and it is the version #255 literally describes (the bank buys free upkeep,
+    // nothing else). It was rejected because it makes the run's only active verb
+    // weakest exactly where the run is hardest.
+    const blackout = CIRCUIT.headroom && (this.circuit?.headroom.blackout ?? false);
+    if (source && e.armour !== 'none' && !blackout) {
+      const attack = attackOf(source);
+      // A voice outside the palette's grid (a retired catalog kind the Sandbox
+      // can still load) has no attack, so it chips everything. That is the honest
+      // answer for a sound the palette never placed.
+      const mul = attack ? coverageMul(e.armour, attack) : CHIP_MUL;
+      // THE PISTOL TEST, MEASURED. #270 asks whether a weapon can still be
+      // rationally owned and never switched on, and the number that answers it is
+      // how much of a run's damage went into the wrong body. Counted as EFFECTIVE
+      // damage on both sides — `Math.min(hp, …)` twice — because #273 found this
+      // rig crediting overkill and every measurement of output after that was a
+      // kill count wearing a damage label.
+      if (mul < 1) {
+        this.chipWasted += Math.min(e.hp, amount) - Math.min(e.hp, amount * mul);
+        this.offKindHits += 1;
+        // THE ONE PLACE THE MATRIX IS TAUGHT. The first time a run throws a hit
+        // at armour it cannot crack, the game says so once and never again. That
+        // is the moment the player is already asking the question — they have just
+        // watched a tiny damage number come off a big body — so it is the only
+        // moment the answer is worth anything. No tutorial, no codex, no glossary.
+        if (this.circuit && !this.circuit.taught.has(e.armour)) {
+          this.circuit.taught.add(e.armour);
+          this.events.onCoverageChip?.(e.armour, ANSWERS[e.armour]);
+        }
+      } else {
+        this.onKindHits += 1;
+      }
+      amount *= mul;
+    }
     // Past 30:00 the clear wave is the only thing that kills. The band is
     // still playing its final bar and its shots are still in the air, but they
     // score nothing: the run's kill count, XP and drops are settled at the
