@@ -14,6 +14,14 @@ import { createGreedyMover, createKiter, type AutoMover } from './auto-move';
 import { autoMove, Input, type AutoMoveMode } from './input';
 import { mountJoystick } from './joystick';
 import { rollOffers, rollStartingWeapons, type AnyPickOption } from './picks';
+import {
+  Frontman,
+  MIC_ORDERS,
+  MIC_STATS,
+  SOLO,
+  type FrontmanStage,
+} from './frontman';
+import { mountFrontmanStrip } from './frontman-strip';
 import { RunWorld, type Chest, type VacuumResult } from './run';
 import { SIM_DT } from './timing';
 import { preloadRunArt, RunView, type ChestReelEntry, type GroundPickCopy } from './view';
@@ -168,7 +176,19 @@ export async function bootGame(
       evolved: w.evolved,
       showTiers: true,
     });
-    void pauseArrange;
+    // THE FRONTMAN fills the base's arranging slot (#271). Not with an arranger —
+    // there is nothing to arrange off the clock here — but with the readable half
+    // of the hand: what the run's feel is asking of you, and what each rank you
+    // bought actually did. #248's finding is that the cap on a real-time build
+    // decision is reading text during action, so the words live on the one surface
+    // that stops the world.
+    if (frontman.layers.mic) {
+      pauseArrange.style.display = '';
+      strip.renderPausePanel(frontman.readout(engine.currentStep(), bandVoices()), pauseArrange);
+    } else {
+      pauseArrange.style.display = 'none';
+      pauseArrange.replaceChildren();
+    }
     hud.renderStats({ maxHp: w.playerMaxHp, armor: w.playerArmor, mods: w.buildMods }, pauseStats);
   }
   const resumeButton = pauseOverlay.querySelector('.pause-resume') as HTMLButtonElement;
@@ -344,6 +364,18 @@ export async function bootGame(
         name: option.evolution.name, badge: 'EVOLVE' };
     }
     if (option.kind === 'encore') return encorePickView(w, option.encore);
+    // THE FRONTMAN's own cards (#271). A hand rank names what it does to your
+    // hand and shows how far up that ladder the pedestal takes you; an order
+    // names the command your hits will carry.
+    if (option.kind === 'mic') {
+      const stat = MIC_STATS.find(({ id }) => id === option.stat)!;
+      return { glyph: stat.glyph, color: 0x59ffd1, name: stat.name,
+        badge: `MIC ${frontman.rank(option.stat) + 1}` };
+    }
+    if (option.kind === 'order') {
+      const order = MIC_ORDERS.find(({ id }) => id === option.order)!;
+      return { glyph: '↯', color: 0xff70d4, name: order.name, badge: 'THE CALL' };
+    }
     const level = weaponLevelNow(w, option.role);
     // Nothing left to level: the scoop pays a Tip Jar, so the pedestal is one.
     if (level >= WEAPON_MAX_LEVEL) return encorePickView(w, 'tipJar');
@@ -421,6 +453,13 @@ export async function bootGame(
         pendingTiers: outstandingPromises(),
         rng: Math.random,
         timeS: w.timeS,
+        // THE ALLOCATION DECISION, in the economy (#271). Hand ranks share the
+        // pool with weapon levels, so every level-up asks the player how much of
+        // their output they want to be theirs — and the mic's 25 ranks are what
+        // fills the decision hole #265 measured at minute fourteen.
+        micStats: frontman.layers.mic && frontman.layers.micCards ? frontman.openStats() : [],
+        needsOrder: frontman.layers.mic && frontman.layers.call && frontman.order === null,
+        seatExclusive: frontman.layers.seatExclusive,
       });
       dropGroundPicks(w, options);
     }
@@ -521,6 +560,23 @@ export async function bootGame(
         : `TIP JAR · +${landed} ♫`);
       return 'now';
     }
+    // A hand rank lands on the spot. Nothing about it waits for a bar, because
+    // nothing about it changes what the band is playing — that is the whole
+    // distinction between the two halves of the axis.
+    if (option.kind === 'mic') {
+      const stat = MIC_STATS.find(({ id }) => id === option.stat)!;
+      const rank = frontman.rankUp(option.stat);
+      hud.showToast(`${stat.name} ${rank} — ${stat.blurb}`);
+      paintStrip();
+      return 'now';
+    }
+    if (option.kind === 'order') {
+      const order = MIC_ORDERS.find(({ id }) => id === option.order)!;
+      frontman.order = option.order;
+      hud.showToast(`${order.name} — ${order.blurb}`);
+      paintStrip();
+      return 'now';
+    }
     const level = weaponLevelNow(w, option.role);
     if (level >= WEAPON_MAX_LEVEL) return applyPickup(w, TIP_JAR, onEntered);
     // One level short of the top is the only warning the player gets that an
@@ -572,13 +628,29 @@ export async function bootGame(
       engine.setVoiceTier(role, chartStageForLevel(target));
       // Sticky deactivation: a tier-up applies the new tier but does not revive
       // an instrument the developer deliberately turned off. It returns at the
-      // higher tier when reactivated.
-      if (!deactivatedRoles.has(role)) engine.setVoiceEnabled(role, true);
+      // higher tier when reactivated. The mic and a live solo are sticky the same
+      // way — levelling the weapon you are HOLDING must not hand it back to the
+      // band mid-bar (#271).
+      syncVoice(role);
       engine.atAudioTime(barAudioTime, () => {
         if (world !== w || (state !== 'run' && state !== 'sandbox')) return;
         p.entering = 0;
         if (p.queued === 0 && p.onEntered.length === 0) pendingWeapons.delete(role);
         w.addWeapon(role, target);
+        // THE OPENING TEACHES THE VERB (#271). The run's first instrument walks
+        // straight to the mic, so the very first thing a player has is something
+        // to play rather than something that plays itself. Three placements a bar
+        // at ×3 outdo the opening chart's four triggers, so #255's floor rule
+        // holds: a player holding one weapon can always play it, and here they
+        // are better off for holding it.
+        if (
+          frontman.layers.mic &&
+          frontman.micRole === null &&
+          frontman.micPendingRole === undefined &&
+          w.tiers.size === 1
+        ) {
+          frontman.cycleMic(micCandidates());
+        }
         paintBand();
         view?.flourish(w.player.x, w.player.y);
         refreshPedestals(); // this weapon's other pedestals are worth a level more now
@@ -935,6 +1007,10 @@ export async function bootGame(
     view = null;
     world = null;
     resetDeactivations(); // new run starts with every instrument active
+    // The mic goes down and the feel is re-rolled: a new run is a new hand.
+    soloDown = false;
+    frontman.reset();
+    strip.hide();
     engine.clearBarQueue();
     engine.resetEvolutionMixes();
     for (const role of ROLES) engine.setVoiceEnabled(role, false);
@@ -952,6 +1028,7 @@ export async function bootGame(
     world = w;
     w.player.hp = w.playerMaxHp;
     w.powerMul = SOUNDSET.powerMul;
+    w.frontmanCharge = frontman.layers.mic && frontman.layers.charge;
     view = new RunView(w, app.screen);
     app.stage.addChild(view.stage);
     hud.showHud(true);
@@ -961,6 +1038,8 @@ export async function bootGame(
     syncTimeScaleControl(); // arm the timeScale slider for the live run
     void engine.ctx.resume();
     engine.clock.start();
+    armBarPump(w);
+    hud.showToast(`${frontman.feel.name} — ${frontman.feel.blurb}`);
     // The run opens silent, on a choice of instrument rather than a fixed one.
     // Three weapon pedestals drop around the player and collectGroundPick arms
     // the chosen one on the next bar. This is deliberately NOT a level-up: no
@@ -987,10 +1066,16 @@ export async function bootGame(
     world = w;
     w.powerMul = SOUNDSET.powerMul;
     w.invincible = true;
+    w.frontmanCharge = frontman.layers.mic && frontman.layers.charge;
     view = new RunView(w, app.screen);
     app.stage.addChild(view.stage);
     sandboxPanel = mountSandboxPanel(root, engine, w, {
       onLoadout: () => {
+        // The loadout editor can take the weapon out from under the mic.
+        if (frontman.micRole && !w.tiers.has(frontman.micRole)) {
+          frontman.forgetRole(frontman.micRole);
+        }
+        syncAllVoices();
         hud.renderBand(w.tiers, { deactivated: deactivatedRoles, pending: pendingRoles, evolved: w.evolved });
         refreshTrackOverlay();
         // The editor can move the ground out from under a pedestal still lying
@@ -1013,6 +1098,7 @@ export async function bootGame(
     syncTimeScaleControl(); // arm the timeScale slider for the sandbox
     void engine.ctx.resume();
     engine.clock.start();
+    armBarPump(w);
   }
 
   /** The demo end (mad-forest-spec §8), from the world's 30:00 onward. The
@@ -1056,6 +1142,7 @@ export async function bootGame(
     engine.clock.stop();
     engine.clearBarQueue();
     hud.showHud(false);
+    strip.hide();
     pauseButton.style.display = 'none';
     // Nothing is settled any more: the run ends where it ends (#265). The end
     // screen reports the run and offers another one.
@@ -1154,6 +1241,169 @@ export async function bootGame(
     for (const role of deactivatedRoles) engine.setVoiceEnabled(role, true);
     deactivatedRoles.clear();
     pendingRoles.clear();
+  }
+
+  // ---------------------------------------------------------------------------
+  // THE FRONTMAN (#271). The band plays itself and you play along with it.
+  //
+  // The mechanic lives in frontman.ts; this is the shell's half — which keys it
+  // reads, which voices go quiet, when the bar line comes round, and what the
+  // strip says. See docs/frontman.md for the design and every call this build
+  // made on its own.
+  // ---------------------------------------------------------------------------
+
+  /** True while a solo has the band down. Shell state, because "is this voice's
+   *  chart playing" is composed from three independent reasons and only the shell
+   *  sees all three. */
+  let soloDown = false;
+
+  /** THE ONE ANSWER to whether a voice's chart plays. Three reasons can silence
+   *  one and they compose rather than override: the dev number-key toggle, the
+   *  mic (the player is playing this instrument by hand), and a live solo (the
+   *  band is down). */
+  function chartShouldPlay(role: Role): boolean {
+    if (deactivatedRoles.has(role)) return false;
+    if (frontman.micRole === role) return false;
+    if (soloDown) return false;
+    return true;
+  }
+  function syncVoice(role: Role): void {
+    engine.setVoiceEnabled(role, chartShouldPlay(role));
+  }
+  function syncAllVoices(): void {
+    if (!world) return;
+    // The world's mirror of the miked role is what its charge loop reads to tell
+    // the band's damage from the hand's, so it is re-stated wherever voices are.
+    world.frontmanMicRole = frontman.layers.mic ? frontman.micRole : null;
+    for (const role of world.tiers.keys()) syncVoice(role);
+  }
+
+  /** Voices the player can currently HEAR playing themselves — what a cue is
+   *  worth, and what there is to strip. */
+  function bandVoices(): number {
+    if (!world) return 0;
+    let count = 0;
+    for (const role of world.tiers.keys()) if (chartShouldPlay(role)) count += 1;
+    return count;
+  }
+
+  /** Weapons that can hold the mic, in rack order.
+   *
+   *  A TEXTURE VOICE CANNOT. A bed is one continuous source with no triggers at
+   *  all (Kit.bed), so there is nothing for a hand to place — miking one would
+   *  silence a background and hand the player a key that does nothing. */
+  function micCandidates(): Role[] {
+    if (!world) return [];
+    return [...world.tiers.keys()].filter((role) => !kits.get(role)?.bed);
+  }
+
+  const frontman = new Frontman({
+    anchor: () => engine.gridAnchor(),
+    latencyS: () => engine.outputLatencyS,
+    strike: (role, ev, gainMul) => engine.handStrike(role, ev, gainMul),
+    syncChart: (role) => syncVoice(role),
+  });
+
+  /** The world surface, bound once. RunWorld implements FrontmanStage; this
+   *  closure only supplies the world that is live right now. */
+  function stageFor(w: RunWorld): FrontmanStage {
+    return w;
+  }
+
+  const strip = mountFrontmanStrip(root, kits);
+
+  function paintStrip(): void {
+    if (!world || (state !== 'run' && state !== 'sandbox')) {
+      strip.hide();
+      return;
+    }
+    strip.render(frontman.readout(engine.currentStep(), bandVoices()), frontman.layers);
+  }
+
+  /** THE BAR PUMP. Re-arms itself every bar for as long as a world is live, so
+   *  the mechanic gets one call per bar line without polling: the budget refills,
+   *  the band's downbeat cashes the cues the hand marked, a solo starts or ends,
+   *  and a mic change lands. Every one of those is a thing that must happen ON a
+   *  bar line rather than whenever a frame fell. */
+  function armBarPump(w: RunWorld): void {
+    engine.atNextBar((barAudioTime) => {
+      if (world !== w || (state !== 'run' && state !== 'sandbox')) return;
+      // The step is read at the HEARD timestamp, not here. `atNextBar` fires while
+      // the bar is being scheduled — about a step ahead of the ear — so reading it
+      // now would hand the mechanic the step before the bar line on every bar.
+      engine.atAudioTime(barAudioTime, () => {
+        if (world !== w || (state !== 'run' && state !== 'sandbox')) return;
+        onBarLine(w, engine.currentStep());
+      });
+      armBarPump(w);
+    });
+  }
+
+  function onBarLine(w: RunWorld, step: number): void {
+    const settled = frontman.settleMic();
+    if (settled) {
+      syncAllVoices();
+      const name = settled.now ? kits.get(settled.now)!.name : null;
+      hud.showToast(name ? `${name.toUpperCase()} — YOURS NOW` : 'MIC DOWN — THE BAND HAS IT ALL');
+      paintBand();
+    }
+    const before = bandVoices();
+    const result = frontman.onBarLine(step, stageFor(w), before);
+    if (result.soloStarted) {
+      soloDown = true;
+      syncAllVoices();
+      w.callout('SOLO', 0xffd45c);
+      hud.showToast('SOLO — the band is down, it is only you');
+      paintBand();
+    }
+    if (result.reentry) {
+      soloDown = false;
+      syncAllVoices();
+      const roles = [...w.tiers.keys()].filter((role) => chartShouldPlay(role));
+      // The fill is the peak's sound. Everything else in this branch takes
+      // triggers away; this is the one place that adds them, and it exists
+      // because a peak paid for with four bars of silence has to be heard as well
+      // as counted.
+      frontman.fill(roles, w.tiers, result.reentry.landed);
+      w.callout(`BACK IN · ${Math.round(result.reentry.damage)}`, 0xff8a55);
+      hud.showToast(`BACK IN — ${result.reentry.landed} placed, the band lands on it`);
+      paintBand();
+    }
+  }
+
+  /** The placement key went down. Resolved against the audio clock at the instant
+   *  of the press, not on the next frame: a frame is up to 16 ms of slop and the
+   *  landing window is 55. */
+  function placeNow(): void {
+    const w = world;
+    if (!w || (state !== 'run' && state !== 'sandbox') || paused) return;
+    const result = frontman.place(stageFor(w), engine.ctx.currentTime, w.tiers);
+    if (result.kind === 'landed' && result.groove > 0 && result.groove % 6 === 0) {
+      w.callout(`GROOVE ×${frontman.grooveMul.toFixed(2)}`, 0x6febff);
+    }
+    strip.flash(result);
+    paintStrip();
+  }
+
+  function cycleMicNow(): void {
+    if (!world || (state !== 'run' && state !== 'sandbox')) return;
+    if (!frontman.layers.mic) return;
+    const next = frontman.cycleMic(micCandidates());
+    hud.showToast(next ? `TAKING ${kits.get(next)!.name.toUpperCase()}…` : 'PUTTING THE MIC DOWN…');
+    paintBand();
+    paintStrip();
+  }
+
+  function soloNow(): void {
+    if (!world || (state !== 'run' && state !== 'sandbox')) return;
+    if (frontman.soloing || frontman.soloArming) return;
+    if (frontman.armSolo(bandVoices())) {
+      hud.showToast('SOLO ARMED — the band drops on the bar');
+      paintStrip();
+      return;
+    }
+    if (frontman.soloMeter < 100) hud.showToast('not enough groove banked yet');
+    else hud.showToast(`nothing worth stripping — ${SOLO.minBandVoices} voices playing, minimum`);
   }
 
   // one trigger, two outputs: the engine already made the sound; this makes
@@ -1294,6 +1544,7 @@ export async function bootGame(
         w.timeS,
       );
       hud.setRunInfo(w.evolved, w.notesCollected);
+      paintStrip();
       sandboxPanel?.update();
     }
     if (trackOverlayEl.style.display !== 'none') trackOverlay.tick();
@@ -1378,6 +1629,97 @@ export async function bootGame(
   };
   hud.mountDebug(Object.values(debugActions));
 
+  // ---------------------------------------------------------------------------
+  // THE FRONTMAN's layer switches (#256: every layer in every stack is
+  // individually switchable so each earns its own verdict). Buttons rather than
+  // hotkeys — there are eight of them and the letters are spoken for — and the
+  // set is deliberately complete: turning them all off leaves the base branch
+  // exactly, which is the control this stack is measured against.
+  //
+  // A switch takes hold immediately. `mic` off puts the mic down and hands every
+  // instrument back to the band, so the A/B is one click rather than a restart.
+  // ---------------------------------------------------------------------------
+  const LAYER_SWITCHES: readonly { id: keyof Frontman['layers']; label: string }[] = [
+    { id: 'mic', label: 'mic' },
+    { id: 'cue', label: 'cue' },
+    { id: 'charge', label: 'charge' },
+    { id: 'solo', label: 'solo' },
+    { id: 'feels', label: 'feels' },
+    { id: 'call', label: 'call' },
+    { id: 'micCards', label: 'mic cards' },
+    { id: 'seatExclusive', label: 'one per seat' },
+  ];
+  const layerRow = document.createElement('div');
+  layerRow.className = 'debug-row-sub';
+  for (const { id, label } of LAYER_SWITCHES) {
+    const btn = document.createElement('button');
+    btn.className = 'small debug-btn';
+    btn.textContent = label;
+    const paint = (): void => {
+      btn.classList.toggle('on', frontman.layers[id]);
+    };
+    btn.onclick = () => {
+      frontman.layers[id] = !frontman.layers[id];
+      // Switching the mic off hands the instrument back to the band on the spot,
+      // so an A/B against the base is one click rather than a fresh run.
+      if (id === 'mic' && !frontman.layers.mic && frontman.micRole) {
+        frontman.forgetRole(frontman.micRole);
+      }
+      if (world) world.frontmanCharge = frontman.layers.mic && frontman.layers.charge;
+      if (!frontman.layers.charge || !frontman.layers.cue) world?.clearFrontmanMarks();
+      syncAllVoices();
+      paint();
+      paintStrip();
+      btn.blur();
+    };
+    paint();
+    layerRow.appendChild(btn);
+  }
+  hud.appendDebug(layerRow);
+
+  // Timing calibration. The window is 55 ms wide and the gap between a scheduled
+  // audio time and the ear is device-dependent, so "does a placement feel like it
+  // landed where you heard it" is not a thing this build could check for itself —
+  // it was made without an ear in the loop. This is the knob that settles it.
+  const biasControl = document.createElement('label');
+  biasControl.className = 'ts-control';
+  const biasLabel = document.createElement('span');
+  biasLabel.className = 'ts-label';
+  const biasSlider = document.createElement('input');
+  biasSlider.type = 'range';
+  biasSlider.min = '-80';
+  biasSlider.max = '80';
+  biasSlider.step = '5';
+  biasSlider.value = '0';
+  const paintBias = (): void => {
+    biasLabel.textContent = `hand ${frontman.latencyBiasMs > 0 ? '+' : ''}${frontman.latencyBiasMs}ms`;
+  };
+  biasSlider.addEventListener('input', () => {
+    frontman.latencyBiasMs = Number(biasSlider.value);
+    paintBias();
+  });
+  biasSlider.addEventListener('change', () => biasSlider.blur());
+  paintBias();
+  biasControl.append(biasLabel, biasSlider);
+  hud.appendDebug(biasControl);
+
+  // Developer console handle for the capture rig. The rig is a console snippet
+  // against `window.loop` and carries no repo code (#265), which is what lets a
+  // prototype branch produce a `docs/palette-control/`-comparable set — but this
+  // branch's whole point is a PERFORMANCE, and a rig that can only set a build
+  // cannot record one. So the hand is reachable: see docs/frontman/README.md.
+  (window as unknown as { loop: Record<string, unknown> }).loop.frontman = {
+    it: frontman,
+    place: () => placeNow(),
+    mic: (role: Role | null) => {
+      frontman.micRole = role;
+      syncAllVoices();
+      paintStrip();
+    },
+    solo: () => soloNow(),
+    bandVoices,
+  };
+
   // timeScale slider (issue #21): lives in the debug row beside the buttons and
   // shares the debug disclosure. A live readout ("speed 1.50x") + a 0.25-step
   // range; the [ and ] keys drive the same value and drag the handle.
@@ -1405,6 +1747,26 @@ export async function bootGame(
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Escape') {
       togglePause();
+      return;
+    }
+    // THE FRONTMAN's three keys (#271), and they come FIRST because the placement
+    // key is the one input in this game whose timing is the whole point: it must
+    // not queue behind a slider check. Space is the placement, Q takes and puts
+    // down the mic, Shift calls the solo.
+    //
+    // Auto-repeat is dropped outright. A held Space would otherwise place at the
+    // OS repeat rate, which is mashing the player did not even ask for.
+    if (e.code === 'Space' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault(); // Space scrolls the page and re-clicks a focused button
+      if (!e.repeat) placeNow();
+      return;
+    }
+    if (e.code === 'KeyQ' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (!e.repeat) cycleMicNow();
+      return;
+    }
+    if ((e.code === 'ShiftLeft' || e.code === 'ShiftRight') && !e.ctrlKey && !e.metaKey) {
+      if (!e.repeat) soloNow();
       return;
     }
     // timeScale nudge (issue #21): [ slower, ] faster, by one 0.25 step. Live

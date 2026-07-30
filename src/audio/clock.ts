@@ -8,6 +8,18 @@
 
 export type StepCallback = (step: number, time: number) => void;
 
+/** How late a step lays back, as a fraction of one step, at a given shuffle.
+ *
+ *  THE ONE STATEMENT OF THE SHUFFLE RULE. The scheduler applies it when it
+ *  queues a step; anything that needs to know where a step will actually be
+ *  heard — The Frontman's placement window aims at heard onsets, not at
+ *  arithmetic ones — has to apply the same rule, so it lives here rather than
+ *  being written twice. Only the offbeat 8th of each beat lays back; the grid's
+ *  backbone stays even. */
+export function swingOffsetSteps(step: number, swing: number): number {
+  return ((step % 4) + 4) % 4 === 2 ? swing : 0;
+}
+
 const LOOKAHEAD_MS = 25; // how often the timer wakes up
 const SCHEDULE_AHEAD_S = 0.12; // how far ahead each wake-up schedules
 
@@ -102,7 +114,7 @@ export class Clock {
     while (this.nextStepTime < this.ctx.currentTime + SCHEDULE_AHEAD_S) {
       // Swing delays the offbeat 8th of each beat (steps 2, 6, 10, 14) while
       // leaving the grid backbone even.
-      const swung = this.nextStep % 4 === 2 ? this.swing * step : 0;
+      const swung = swingOffsetSteps(this.nextStep, this.swing) * step;
       this.onStep(this.nextStep, this.nextStepTime + swung);
       // A step callback is allowed to stop the transport (the demo end stops
       // the track exactly on a bar line). Honour it inside the loop instead of
