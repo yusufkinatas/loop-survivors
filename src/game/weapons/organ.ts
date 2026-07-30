@@ -1,5 +1,7 @@
 // The Organ weapon module: a long sustained beam that holds while the note
-// rings.
+// rings — and its evolution, Wall of Sound, which turns that beam ninety degrees
+// and stands it across the ground ahead of you. Base and evolved live in the same
+// module; evolving flips an internal mode (ctx.evolved).
 //
 // LED BY THE SOUND (#266). The organ is the palette's held harmonic voice — a
 // pipe speaks and keeps speaking. A beam is the only shape that says the same
@@ -25,6 +27,55 @@ interface OrganStats extends WeaponStats {
   /** Seconds between damage passes down a live beam. A body standing in it is
    *  hit repeatedly, which is what "sustained" has to mean for damage. */
   readonly tickS: number;
+
+  // ---------------- Wall of Sound (evolved) --------------------------------
+  //
+  // THE SHAPE TURNS NINETY DEGREES, and that one change is the whole evolution.
+  // The base beam points down your aim line: you shoot along it, and what it hits
+  // is whatever happens to be in front of you. Evolved, the same held note is
+  // laid ACROSS your aim instead — a long bar of light standing on the ground a
+  // little ahead of you, holding for seconds while the crowd walks into it.
+  //
+  // WHICH CHANGES WHAT AIMING MEANS. Down a line, aiming asks "what is in front
+  // of me right now". Across it, aiming asks "where are they coming FROM" — you
+  // are cutting off an approach rather than picking a target, and a wall put down
+  // in the wrong place is simply not where anybody walks. The organ stops being a
+  // weapon you point and becomes ground you own.
+  //
+  // A big pipe organ is described as a wall of sound for a reason; it fills a
+  // room rather than aiming at anyone in it. This is that, made literal.
+  //
+  // NOT A BARRIER IN THE PHYSICAL SENSE. It blocks nothing and stops nobody, in
+  // line with every other shape in the game — it only hurts what walks through.
+
+  /** How much longer the wall holds than the beam. The base beam is one note
+   *  ringing; this is the note held down — a bar of it. */
+  readonly evolvedHoldMul: number;
+  /** How many walls may stand at once, oldest retired first.
+   *
+   *  THE FIRST VERSION HAD NO CAP AND IT WAS UNPLAYABLE. Held 3.15 s against this
+   *  weapon's own chart density, EIGHT walls stood at once, each 700 units long and
+   *  60 thick — a starburst of light with the arena somewhere underneath it, which
+   *  is the same failure the reach note below records from the base beam's first
+   *  pass. A hold multiplier cannot be the only lever: the chart decides the count,
+   *  so the count needs its own limit.
+   *
+   *  It also turns out to be the better RULE. Two walls means the two you put down
+   *  most recently are the ground you own, so placing a third is a decision to give
+   *  up the first — which is a positional weapon rather than an accumulating one. */
+  readonly evolvedMaxWalls: number;
+  /** Wall length as a multiple of the beam's reach, and its half-thickness as a
+   *  multiple of the beam's. Long and thick where the beam is long and thin. */
+  readonly evolvedLengthMul: number;
+  readonly evolvedHalfWidthMul: number;
+  /** How far ahead of the player the wall stands, in world units. Far enough to
+   *  be between them and the crowd, close enough that the player picked the spot
+   *  rather than lobbed it. */
+  readonly evolvedStandOffset: number;
+  /** Per-pass damage as a multiple of the beam's. Under 1 because the wall runs
+   *  three and a half times as many passes over its life; a body that genuinely
+   *  stands in one still takes far more than the beam ever dealt. */
+  readonly evolvedDamageMul: number;
 }
 
 const ORGAN_STATS: OrganStats = {
@@ -57,6 +108,15 @@ const ORGAN_STATS: OrganStats = {
   halfWidth: 9,
   holdS: 0.9,
   tickS: 0.12,
+
+  // A bar at 122 bpm, so a wall stands for exactly as long as a phrase of the
+  // music it came from.
+  evolvedHoldMul: (60 / 122) * 4 / 0.9,
+  evolvedMaxWalls: 2,
+  evolvedLengthMul: 1.25,
+  evolvedHalfWidthMul: 1.15,
+  evolvedStandOffset: 120,
+  evolvedDamageMul: 0.75,
 };
 
 interface LiveBeam {
@@ -69,6 +129,14 @@ interface LiveBeam {
   damage: number;
   expiresAt: number;
   nextTickAt: number;
+  /** A Wall of Sound rather than a beam. Decides only ONE thing — where the
+   *  drawing is emitted from — because the damage pass is identical for both. A
+   *  beam is drawn ONCE in fire() for its whole life; a wall is drawn EVERY FRAME
+   *  from tick(), because a wall can be retired early by the cap and a one-shot
+   *  drawing cannot be taken back. Emitting it per frame means the light stops
+   *  within a frame of the damage stopping, which is the honest pairing the note
+   *  on the base beam's `dur` argues for from the other direction. */
+  wall: boolean;
 }
 
 class OrganInstance implements WeaponInstance {
@@ -78,6 +146,10 @@ class OrganInstance implements WeaponInstance {
     const p = ctx.player;
     const dir = ctx.aimDir(0);
     const area = conf.area ?? 1;
+    if (ctx.evolved) {
+      this.raiseWall(ctx, conf, dir, area);
+      return;
+    }
     const hold = ORGAN_STATS.holdS * ctx.buildMods.durationMul;
     this.beams.push({
       x: p.x,
@@ -90,6 +162,7 @@ class OrganInstance implements WeaponInstance {
       expiresAt: ctx.timeS + hold,
       // First pass immediately, so the beam bites the instant it lights.
       nextTickAt: ctx.timeS,
+      wall: false,
     });
     // DRAWN ONCE, FOR ITS WHOLE LIFE. The beam is anchored at fire time and
     // never moves, so one emission is the honest one — and re-emitting an
@@ -111,6 +184,52 @@ class OrganInstance implements WeaponInstance {
     });
   }
 
+  /** Wall of Sound: the same held note, laid ACROSS the aim instead of along it.
+   *
+   *  ONE LiveBeam, AND tick() NEEDS NO CHANGE. A wall is a capsule like a beam
+   *  is, so it reuses the whole damage pass: what differs is only where the
+   *  capsule starts and which way it runs. It is stored from its END rather than
+   *  from the player — start at one tip, `reach` its full length along the
+   *  perpendicular — because `inBeam` measures distance along the segment from
+   *  (x, y), and that is what makes a wall CENTRED on the point the player aimed
+   *  at rather than growing off one side of it. */
+  private raiseWall(
+    ctx: WeaponContext,
+    conf: WeaponConf,
+    dir: { x: number; y: number },
+    area: number,
+  ): void {
+    const p = ctx.player;
+    const hold = ORGAN_STATS.holdS * ORGAN_STATS.evolvedHoldMul * ctx.buildMods.durationMul;
+    const length = ORGAN_STATS.reach * ORGAN_STATS.evolvedLengthMul * area;
+    const halfWidth = ORGAN_STATS.halfWidth * ORGAN_STATS.evolvedHalfWidthMul * area;
+    // The perpendicular of a unit vector, which is still a unit vector — so
+    // `reach` stays a length in world units and inBeam's maths is unchanged.
+    const runX = -dir.y;
+    const runY = dir.x;
+    const midX = p.x + dir.x * ORGAN_STATS.evolvedStandOffset;
+    const midY = p.y + dir.y * ORGAN_STATS.evolvedStandOffset;
+    const x = midX - runX * length * 0.5;
+    const y = midY - runY * length * 0.5;
+    this.beams.push({
+      x,
+      y,
+      dx: runX,
+      dy: runY,
+      reach: length,
+      halfWidth,
+      damage: conf.damage * ORGAN_STATS.evolvedDamageMul,
+      expiresAt: ctx.timeS + hold,
+      nextTickAt: ctx.timeS,
+      wall: true,
+    });
+    // Oldest out first, so the newest wall the player placed is always standing.
+    // Only walls are capped: a base beam holds a fifth as long and is a fraction
+    // of the size, so it has never needed one.
+    while (this.beams.length > ORGAN_STATS.evolvedMaxWalls) this.beams.shift();
+    // NOT DRAWN HERE — tick() draws it every frame. See LiveBeam.wall.
+  }
+
   /** ANCHORED AT FIRE TIME, like the bass's Subquake and unlike the auras. A
    *  beam that swung around with the player would be a searchlight, and aiming
    *  it would stop being a decision — you would just point at whatever you
@@ -123,10 +242,27 @@ class OrganInstance implements WeaponInstance {
         this.beams.splice(i, 1);
         continue;
       }
+      // A wall is redrawn every frame, so that retiring one to the cap takes its
+      // light with it. `steady` keeps that from stacking additively into a solid
+      // slab — the exact failure the base beam hit when it was re-emitted — and the
+      // short `dur` is what makes the drawing stop within a frame of the wall
+      // going. A base beam draws nothing here: it was emitted once, in fire(), for
+      // its whole life.
+      if (beam.wall) {
+        ctx.fx({
+          type: 'beam',
+          x: beam.x,
+          y: beam.y,
+          x2: beam.x + beam.dx * beam.reach,
+          y2: beam.y + beam.dy * beam.reach,
+          width: beam.halfWidth,
+          color: ctx.color,
+          steady: true,
+          dur: 0.06,
+        });
+      }
       // Damage runs on its own slower cadence so a body standing in the beam
-      // takes a readable series of hits rather than sixty a second. The drawing
-      // is not here at all: it was emitted once, in fire(), for the beam's whole
-      // life.
+      // takes a readable series of hits rather than sixty a second.
       const midX = beam.x + beam.dx * beam.reach * 0.5;
       const midY = beam.y + beam.dy * beam.reach * 0.5;
       if (now < beam.nextTickAt) continue;

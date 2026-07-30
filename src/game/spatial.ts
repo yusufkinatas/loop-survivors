@@ -75,6 +75,33 @@ export function circleIntersectsRect(
   return dx * dx + dy * dy <= radius * radius;
 }
 
+/** Shortest distance from a point to a line SEGMENT.
+ *
+ *  The rotation-free half of a capsule test, and the honest shape for anything
+ *  that runs at an arbitrary angle: circleIntersectsRect above is axis-aligned,
+ *  so it cannot describe a blade turned 40 degrees or a cable strung between two
+ *  points the player chose. Callers compare the result against their own
+ *  half-thickness plus the body's radius. The organ's beam keeps its own inlined
+ *  copy of this arithmetic, because it needs the clamped distance ALONG the beam
+ *  as well and this returns only the distance across it. */
+export function distanceToSegment(
+  px: number,
+  py: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+): number {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  // A degenerate segment is a real case, not a guard against nonsense: two drone
+  // fields land on the same spot whenever the player stands still through two
+  // triggers, and then the honest answer is the distance to that point.
+  const t = len2 > 0 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2)) : 0;
+  return Math.hypot(px - (ax + dx * t), py - (ay + dy * t));
+}
+
 export function circlesOverlap(a: Circle, b: Circle): boolean {
   const dx = a.x - b.x;
   const dy = a.y - b.y;

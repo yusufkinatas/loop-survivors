@@ -1,5 +1,8 @@
 // The Sub weapon module: a wall of low pressure that ploughs away from the
-// player, shoving everything it passes through.
+// player, shoving everything it passes through — and its evolution, Standing
+// Wave, which turns at its limit and sweeps back through the same ground. Base
+// and evolved live in the same module; evolving flips an internal mode
+// (ctx.evolved), read once at fire time.
 //
 // LED BY THE SOUND (#266). The sub is the roundest, deepest, slowest voice in
 // the palette — one note every two bars at its lowest rung, felt more than
@@ -43,6 +46,27 @@ interface SubStats extends WeaponStats {
    *  game: a voice this sparse earns a big physical result per trigger, and
    *  being shoved ALONG the wall's travel is what makes the lane clear. */
   readonly shove: number;
+
+  // ---------------- Standing Wave (evolved) --------------------------------
+  //
+  // THE FRONT COMES BACK. A sub in a real room does not simply leave: it hits
+  // the far wall and returns through you, which is why one note can feel like
+  // two. So the evolved front reaches its limit, turns, and sweeps back over
+  // exactly the ground it just cleared — one trigger, two passes, and the second
+  // one is the harder of the two.
+  //
+  // It is also the only thing on the field that REVERSES, which is how it stays
+  // clear of Subquake next door: that ring expands once and is gone.
+  //
+  // The return DRAGS INWARD rather than shoving out, so the wave gathers what it
+  // caught into the middle instead of scattering it. That is a real risk the
+  // player takes on — the crowd ends up closer to them than it started — and it
+  // is what sets up every close-range weapon in the build.
+
+  /** Return-pass damage as a multiple of the outward pass. Above 1: the wave
+   *  comes back heavier, so the second half of the trigger is the payoff rather
+   *  than an echo. */
+  readonly evolvedReturnDamageMul: number;
 }
 
 const SUB_STATS: SubStats = {
@@ -92,6 +116,8 @@ const SUB_STATS: SubStats = {
   halfAngle: 0.5,
   segments: 7,
   shove: 54,
+
+  evolvedReturnDamageMul: 1.3,
 };
 
 /** One pressure front in flight. */
@@ -109,14 +135,29 @@ interface Front {
   damage: number;
   shove: number;
   /** Bodies the front has already passed through. It hits each once, as it
-   *  crosses — it is a wave, not a field. */
+   *  crosses — it is a wave, not a field. CLEARED at the turn, so Standing
+   *  Wave's return pass gets its own fresh set and can catch the same bodies
+   *  again. */
   hit: Set<WeaponTarget>;
+  /** Whether this front turns at its limit instead of dissipating. FROZEN AT
+   *  FIRE TIME, not a live read of ctx.evolved: a front already travelling when
+   *  the chest lands keeps the rule it was born under, the same way a chord zone
+   *  keeps its own. */
+  reflects: boolean;
+  /** Which way it is going. Only ever true on a `reflects` front. */
+  returning: boolean;
 }
 
 /** Half-thickness of the front, in world units. Thin: the wave is wide across
  *  and shallow through, which is what makes it a front rather than a blob. */
 const FRONT_DEPTH = 30;
 const QUERY_PAD = 24;
+
+/** Radius a front is born at, and the radius a returning one dies at. A wave
+ *  born at zero is a point, and its first frames would draw a dot rather than a
+ *  curve; a returning wave that collapsed to zero would spend its last frames
+ *  the same way. */
+const BIRTH_RADIUS = 40;
 
 class SubInstance implements WeaponInstance {
   private fronts: Front[] = [];
@@ -130,11 +171,13 @@ class SubInstance implements WeaponInstance {
       angle: Math.atan2(dir.y, dir.x),
       // Starts out from the player rather than at zero: a wave born at radius 0
       // is a point, and its first frames would be a dot rather than a curve.
-      radius: 40,
+      radius: BIRTH_RADIUS,
       reach: conf.radius!,
       damage: conf.damage,
       shove: SUB_STATS.shove * ctx.buildMods.knockbackMul,
       hit: new Set(),
+      reflects: ctx.evolved,
+      returning: false,
     });
   }
 
@@ -148,10 +191,29 @@ class SubInstance implements WeaponInstance {
   tick(ctx: WeaponContext, dt: number): void {
     for (let i = this.fronts.length - 1; i >= 0; i--) {
       const front = this.fronts[i];
-      front.radius += SUB_STATS.speed * dt;
-      if (front.radius >= front.reach) {
-        this.fronts.splice(i, 1);
-        continue;
+      if (front.returning) {
+        // Back the way it came, at the same speed, so the two passes read as one
+        // wave rather than as two weapons.
+        front.radius -= SUB_STATS.speed * dt;
+        if (front.radius <= BIRTH_RADIUS) {
+          this.fronts.splice(i, 1);
+          continue;
+        }
+      } else {
+        front.radius += SUB_STATS.speed * dt;
+        if (front.radius >= front.reach) {
+          if (!front.reflects) {
+            this.fronts.splice(i, 1);
+            continue;
+          }
+          // THE TURN. A fresh hit set is what makes the return a second pass
+          // rather than a redraw: every body it already crossed is eligible
+          // again, and this time for more.
+          front.radius = front.reach;
+          front.returning = true;
+          front.hit.clear();
+          front.damage *= SUB_STATS.evolvedReturnDamageMul;
+        }
       }
 
       // Drawn as short segments laid END TO END along the arc, each tangent to
@@ -194,9 +256,19 @@ class SubInstance implements WeaponInstance {
         if (Math.abs(off) > SUB_STATS.halfAngle + slack) continue;
         front.hit.add(e);
         ctx.damage(e, front.damage);
-        // Shoved outward from the origin: the wave pushes what it meets ahead of
-        // itself, which is what clears the ground behind it.
-        ctx.shove(e, front.x, front.y, front.shove);
+        if (front.returning) {
+          // DRAGGED INWARD, toward where the wave started. ctx.shove only ever
+          // pushes AWAY from a point and ignores a negative distance, so the
+          // point it is handed is one unit further out than the body along the
+          // same ray — pushing away from there is pulling toward the centre.
+          const ux = dist > 1 ? relX / dist : 1;
+          const uy = dist > 1 ? relY / dist : 0;
+          ctx.shove(e, e.x + ux, e.y + uy, front.shove);
+        } else {
+          // Shoved outward from the origin: the wave pushes what it meets ahead
+          // of itself, which is what clears the ground behind it.
+          ctx.shove(e, front.x, front.y, front.shove);
+        }
       }
     }
   }
