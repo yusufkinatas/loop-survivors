@@ -1,0 +1,53 @@
+THE LOAD-IN — headless verification (#269)
+
+1. THE HARD FLOOR — does density fall because the player chose it?
+------------------------------------------------------------------
+  band standing              13.75 triggers/bar   (5 voices)
+  carrying 1                 12.50 triggers/bar   move ×0.87
+  carrying 2                 8.50 triggers/bar   move ×0.74
+  carrying 3                 6.00 triggers/bar   move ×0.61
+  carrying 4                 3.00 triggers/bar   move ×0.48
+  carrying 5                 0.00 triggers/bar   move ×0.35
+  set down                   13.75 triggers/bar   (the drop)
+
+  VERDICT: density FALLS on the player's own choice — 13.75 → 0.00 → 13.75 triggers/bar.
+  For comparison, docs/baseline/ measured the base going 2.00 → 23.00 and NEVER ONCE FALLING.
+
+2. THE GEOMETRY — what the stage plot is worth, in output and decibels
+----------------------------------------------------------------------
+  the blob                   output 0.40  masked 5  wired 0  plugged 0
+  scattered to the walls     output 1.00  masked 0  wired 0  plugged 0
+  a drop (the ring)          output 1.36  masked 0  wired 5  plugged 0
+  every piece on a socket    output 1.01  masked 2  wired 0  plugged 5
+
+  VERDICT: worst-to-best stage plot spans 10.63 dB and ×3.40 damage, at the same build and the same levels.
+  Sockets are CROWDED in this venue — plugging everything in costs masking.
+
+3. THE AUDIBILITY RULE — does carried gear really stop attacking?
+-----------------------------------------------------------------
+  standing, 6 s against 40 bodies   5262 damage  {"pad":1530.2800000000161,"air":478.72000000000423,"kick":1101.7600000000002,"bell":2151.6400000000053}
+  on your back, same 6 s            0 damage  {}
+
+  VERDICT: PASS — carried gear deals exactly nothing.
+
+4. KNOCKDOWN — what a horde parked on your stage costs
+------------------------------------------------------
+  six bodies standing in one piece: down after 9.1 s
+  audible while down: false
+  righted by walking onto it: true (hp back to 141)
+
+5. THE DECISION STREAM — #265 measured the base running dry at 13:27
+--------------------------------------------------------------------
+  seed 10ad1  BASE       WON  · 12062 kills · lv 61  · last real decision 12:17  · 40 Encores  · crew 0/8 taken, offered on 0 screens  · bell8 kick8 clap8 pad8 hat8
+  seed 10ad1  crew off   WON  · 9851 kills · lv 54  · last real decision 12:53  · 33 Encores  · crew 0/8 taken, offered on 0 screens  · pad8 hat8 drone8 organ8 lead8
+  seed 10ad1  crew on    WON  · 8174 kills · lv 48  · last real decision 15:08  · 18 Encores  · crew 8/8 taken, offered on 26 screens  · pad8 snare8 upright8 rhodes8 lead8
+  seed 10ad2  crew on    WON  · 8649 kills · lv 49  · last real decision 14:12  · 18 Encores  · crew 8/8 taken, offered on 26 screens  · bell8 clap8 sub8 air8 rhodes8
+
+  "last real decision" is the last level-up that added anything; everything
+  after it is an Encore. The base row is the same harness with `placement`
+  off — every weapon back on the player — so the difference is this stack.
+
+  The mover is deliberately dumb: it hires from a slow circuit, then stands in
+  the middle of whatever stage plot that produced. It NEVER hauls, never
+  repositions a piece, never uses a socket on purpose. These are floors.
+

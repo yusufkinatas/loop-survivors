@@ -162,7 +162,7 @@ in before making a single decision.
 voices. That is the conventional answer and it makes run two *sound* different.
 It does not make run two *play* differently.
 
-### 5. Crew is the second currency
+### 5. Crew is the second currency — and it only half works
 
 A level-up may offer **Crew** instead of a weapon: eight rungs, each one making
 carried gear lighter, the carry floor higher, and the gear tougher.
@@ -174,6 +174,25 @@ gear can be moved".
 
 **Alternative:** let the back half be Encores, as the base does. Rejected — that
 is the measured hole, not a feature.
+
+**Measured, and it does not close the hole.** Same harness, same mover, same
+seed, thirty minutes each — the `BASE` row is `placement` off, which is
+`prototype-base` in-branch:
+
+| | last level-up that added anything | Encores after it |
+|---|---|---|
+| **BASE** (`placement` off) | 12:17 | 40 |
+| The Load-In, `crew` off | 12:53 | 33 |
+| The Load-In, `crew` on | **15:08** | **18** |
+| The Load-In, `crew` on, second seed | **14:12** | **18** |
+
+Two things come out of that. **The control reproduces #265's finding** — the base
+runs dry at twelve minutes and pays forty dead level-ups — which is what makes
+the other rows worth reading. And **crew buys about two and a quarter minutes and
+halves the dead level-ups, and that is all**: eight rungs is not enough to fill
+a seventeen-minute back half. Closing it needs more rungs, or a currency with no
+cap, or something that is not a ladder at all. Taking crew also visibly costs
+weapon levels (kills fall 9851 → 8174), which is the trade working as intended.
 
 ### 6. The arena is **bounded**
 
@@ -286,6 +305,23 @@ read off a modified configuration is a verdict about a different game.
 shot start, what do I aim from, where is my field centred"*. `RunWorld.originFor`
 changes the answer and nothing else — nineteen weapon modules fire from where
 they stand without one line of change in any of them.
+
+### What the harness can and cannot measure
+
+`tools/verify-loadin.ts` drives a real `RunWorld`, so what it reports about
+geometry, silence, knockdown and the ladder is the game's own arithmetic.
+
+Two things it is **not**:
+
+- **It is not a player.** The mover hires from a slow circuit, then stands in
+  the middle of whatever stage plot that produced and walks to the nearest gem.
+  It never hauls, never repositions a piece, never uses a socket on purpose and
+  never leads a wave across the far side of the plot. Every number in section 5
+  is a **floor**.
+- **It is not the mix.** There is no audio engine outside a browser, so the
+  harness synthesises triggers at each voice's real ladder rate. That is faithful
+  for *damage*; it says nothing about loudness, which is what the capture set in
+  `docs/loadin/` is for.
 
 ### Base gaps found
 
