@@ -259,6 +259,16 @@ export class MusicEngine {
   private timedActions: TimedAction[] = [];
   private nextTimedActionSeq = 0;
   private stepMarkers: { step: number; time: number }[] = [];
+  /** Seconds of already-sounded grid the marker list keeps.
+   *
+   *  currentStep() drains markers as they come due, but its only in-game caller
+   *  is the dev track overlay (hotkey C) — so in ordinary play NOTHING drains
+   *  them and the array grew for the whole run: about 14,600 entries across
+   *  thirty minutes at 122 BPM, with four separate paths scanning or filtering
+   *  it. One second of retained past is far more than a per-frame readout needs,
+   *  and every other reader (atNextBar, atNextPhrase, rewindScheduledTail) only
+   *  ever looks FORWARD. */
+  private static readonly MARKER_HISTORY_S = 1;
   private lastDueStep = 0;
   private readonly gemCue = new GemCue();
   private readonly noteCue = new NoteCue();
@@ -908,6 +918,19 @@ export class MusicEngine {
     }
   }
 
+  /** Drop markers whose moment has passed. `lastDueStep` moves with them, so a
+   *  readout that starts asking later still reports the step that is sounding
+   *  rather than an old one — the marker being retired is exactly the marker that
+   *  had already decided the answer. */
+  private retireHeardMarkers(): void {
+    const cutoff = this.ctx.currentTime - MusicEngine.MARKER_HISTORY_S;
+    let drop = 0;
+    while (drop < this.stepMarkers.length && this.stepMarkers[drop].time <= cutoff) drop++;
+    if (drop === 0) return;
+    this.lastDueStep = this.stepMarkers[drop - 1].step;
+    this.stepMarkers.splice(0, drop);
+  }
+
   /** The grid step currently sounding, for position readouts. Valid while
    *  the clock runs; tempo-change-safe because it follows scheduled times. */
   currentStep(): number {
@@ -929,6 +952,7 @@ export class MusicEngine {
   private onStep(step: number, time: number): void {
     if (step === 0) this.lastDueStep = 0;
     this.stepMarkers.push({ step, time });
+    this.retireHeardMarkers();
     // The phrase clock: bars 1-4, then roll over. Charts loop inside the
     // phrase, so a 4-bar chart's bar 4 is always the phrase's bar 4 and
     // once-per-phrase material lands where it was written.
