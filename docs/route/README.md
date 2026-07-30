@@ -168,6 +168,27 @@ not touch a single authored ladder, so `01`–`09` come back byte-identical to
 argument that set made for `docs/baseline/`'s eight voices. Re-running them would
 measure the encoder.
 
+## Two things to know before you play it
+
+Both were found by measuring, and both are left in and flagged rather than tuned
+away — see the record on [#267](https://github.com/yusufkinatas/loop-survivors/issues/267).
+
+**The toll economy runs dry from about room eight.** Weight caps at four stacks per
+shell, and by the summit a driven run had four of its five shells sitting at exactly
+the cap — so the late gates had no receiver left and fell back to level tolls or to
+free passage. That is the same failure shape as #265's decision stream drying up at
+minute fourteen, in a different currency. A constraint that stops constraining two
+thirds of the way through a run is not yet a constraint.
+
+**The compensation clamp is reachable.** `HEFT_MIN` engages when a shell plays more
+than about five times its own rung — an Arp at level 2 (authored two a bar) holding
+The Rush (twelve a bar) wants 0.167 and gets 0.2 — so that shell does roughly 20%
+more damage per second than the authored weapon would. It is small, and it happens
+to give a very dense arrangement the only *mechanical* reason to exist that this
+design otherwise gives it, since everywhere else density is purely a musical choice.
+An accident of a guard rail rather than a decision, so it should be decided on
+purpose or not at all.
+
 ## Judged against [#253](https://github.com/yusufkinatas/loop-survivors/issues/253), item by item
 
 The ticket asks for this explicitly. Where an item needs ears, it says so.
