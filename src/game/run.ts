@@ -634,6 +634,23 @@ export class RunWorld {
   readonly tiers = new Map<Role, number>();
   readonly evolved = new Set<Role>();
 
+  /** Weapons the shell has switched OFF: owned, at their tier, and not playing.
+   *
+   *  The world cannot work this out for itself — whether a voice is enabled is
+   *  the engine's state and the shell's decision — so the shell tells it. The
+   *  one thing it is read for is `builtConf`, which is how a clock-driven weapon
+   *  learns it has been silenced; see the note there.
+   *
+   *  A prototype whose engine can silence a weapon for its own reasons (gear on
+   *  the player's back, a member sitting out, a pattern nobody is holding) adds
+   *  to this set rather than inventing a second one.
+   *
+   *  ADOPTED FROM #277 (The Load-In), verbatim, rather than re-invented here:
+   *  "a pattern nobody is holding" is this stack's own case, and #256's protocol
+   *  is that a seam one stack widens must not be five parallel notions of the
+   *  same thing. */
+  readonly silenced = new Set<Role>();
+
   /** THE STAT SEAM (#265). Every weapon module reads these and none of them
    *  knows where a number came from. In the base nothing writes to it, so a
    *  run plays at the weapons' authored tier numbers and nothing else — that is
@@ -1050,6 +1067,17 @@ export class RunWorld {
   private builtConf(role: Role): WeaponConf | null {
     const tier = this.tiers.get(role);
     if (!tier) return null;
+    // A SILENCED WEAPON DOES NOT ATTACK — the audibility rule (#255), which
+    // every OTHER weapon in the game obeys for free.
+    //
+    // Disabling a voice stops its chart triggers, and a trigger-driven weapon's
+    // damage stops with its sound because the two are the same event (Model A).
+    // The texture auras are the one family that is not trigger-driven: a bed is
+    // never sequenced, so `pad` and `air` are stepped by the clock and kept
+    // damaging out of a voice nobody could hear. They ask for their tuning here
+    // and bail when it hands back null, which is why the guard belongs on this
+    // method rather than on each of them.
+    if (this.silenced.has(role)) return null;
     const tiers = weaponTiers(role);
     if (!tiers) return null;
     // Single build-transform pipeline (D1): tempo compensation, folded in one

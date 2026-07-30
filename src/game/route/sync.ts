@@ -14,6 +14,7 @@ import { ROLES, type Role } from '../../audio/kits';
 import type { RunWorld } from '../run';
 import { chartStageForLevel } from '../weapons/levels';
 import type { RouteBuild } from './build';
+import { isBedRole } from './patterns';
 
 export interface SyncOptions {
   /** Voices the developer number keys have switched off. Sticky: a level or a
@@ -37,6 +38,7 @@ export function syncBand(
       engine.setVoiceTrim(role, 0);
       world.tiers.delete(role);
       world.perWeaponMods.delete(role);
+      world.silenced.delete(role);
       continue;
     }
     // The tier rides along with the chart, and it still matters even though the
@@ -47,7 +49,18 @@ export function syncBand(
     // every voice to its bottom rung.
     engine.setVoiceChart(role, build.chartFor(role), chartStageForLevel(shell.level));
     engine.setVoiceTrim(role, build.trimDbFor(role));
-    engine.setVoiceEnabled(role, !deactivated?.has(role));
+    const off = deactivated?.has(role) ?? false;
+    engine.setVoiceEnabled(role, !off);
+    // A SHELL WITH NO PATTERN IS NOT ATTACKING, and for most of the band that is
+    // free: an empty chart fires no triggers, and a trigger IS the attack. The two
+    // texture voices are the exception — a bed is never sequenced, so `pad` and
+    // `air` are stepped by the clock and would keep damaging out of a silence
+    // nobody could hear. `RunWorld.silenced` (adopted from #277, The Load-In, whose
+    // own note names "a pattern nobody is holding" as this case) is where the world
+    // is told. Registering every silent shell rather than only the beds keeps one
+    // rule instead of an exception.
+    if (off || (!isBedRole(role) && build.densityOf(role) === 0)) world.silenced.add(role);
+    else world.silenced.delete(role);
     world.tiers.set(role, shell.level);
     world.perWeaponMods.set(role, {
       damageMul: build.damageMulFor(role),
