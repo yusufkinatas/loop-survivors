@@ -108,7 +108,10 @@ export const PALETTE_ROLES: readonly Role[] = Object.values(PALETTE_SEATS).flat(
  *
  *  `impact` short and hard, there and gone. `sustained` held, it rings on.
  *  `bright-transient` short, high and cutting, all spike and no body. */
-type Attack = 'impact' | 'sustained' | 'bright-transient';
+export type Attack = 'impact' | 'sustained' | 'bright-transient';
+
+/** The three columns, in the order every Circuit surface reads them. */
+export const ATTACKS: readonly Attack[] = ['impact', 'bright-transient', 'sustained'];
 
 /** THE SECOND AXIS, AND IT IS A MIXING TAXONOMY ONLY.
  *
@@ -119,11 +122,15 @@ type Attack = 'impact' | 'sustained' | 'bright-transient';
  *  take the sustained voice in every seat — and that is a real thing to notice
  *  about a mix, not a rule the game enforces.
  *
- *  Nothing in the game reads this, so it is deliberately NOT exported — it
- *  exists so the palette's shape is legible and so the grid rules below can be
- *  checked rather than asserted. Export it when something needs it; a stack
- *  building a Coverage rule is the obvious first caller. */
-const PALETTE_ATTACK: Readonly<Record<string, Attack>> = {
+ *  NOW EXPORTED, and #266 called the caller in advance: "a stack building a
+ *  Coverage rule is the obvious first caller." The Circuit (#270) is that stack.
+ *  Exporting it does not promote the axis from taxonomy to rule for the base —
+ *  nothing outside `src/circuit/` reads it, and Coverage rides behind a toggle.
+ *  What it does mean is that the mixing fact ("this build has nothing that
+ *  cuts") and the gameplay fact ("this build cannot answer a shield") are read
+ *  from ONE table, which is the whole reason Coverage was keyed to attack rather
+ *  than to seat. */
+export const PALETTE_ATTACK: Readonly<Record<string, Attack>> = {
   // Low anchor.
   bass: 'impact', sub: 'impact', upright: 'impact', drone: 'sustained',
   // Harmonic body.

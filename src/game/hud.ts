@@ -72,6 +72,14 @@ export class Hud {
     this.rack.style.display = show ? '' : 'none';
   }
 
+  /** Hide the run timer. Used by The Circuit (#270), whose run shape counts the
+   *  night in in-world hours on its own card: two clocks measuring the same thing
+   *  in different units is noise, so the run shape's clock replaces this one
+   *  rather than sitting beside it. */
+  setTimerVisible(show: boolean): void {
+    this.timer.style.display = show ? '' : 'none';
+  }
+
   /** The passive rack that used to live here went with the passives (#265).
    *  What is left is the note counter — a run stat now, banked nowhere. */
   setRunInfo(evolved: ReadonlySet<Role>, notesCollected: number): void {
@@ -328,6 +336,24 @@ export class Hud {
       notesCollected: number;
       damageByRole: Partial<Record<Role, number>>;
       killsByRole: Partial<Record<Role, number>>;
+      /** THE CIRCUIT'S RUN REPORT (#270). Absent with the whole stack switched
+       *  off, and each field absent with its own layer off. Every line here
+       *  exists to answer one of the ticket's kill criteria with a number:
+       *  whether the player ever chose to go thin, whether the peaks were paid
+       *  for, and how much damage went into the wrong body. */
+      circuit?: {
+        label: string;
+        outcome: 'headliner' | 'closing' | null;
+        roomsPlayed?: number;
+        roomsOnMap?: number;
+        blackouts?: number;
+        brownouts?: number;
+        /** Effective damage thrown away on bodies the sound did not answer, and
+         *  the share of hits that landed on the right kind. */
+        chipWasted?: number;
+        onKindHits?: number;
+        offKindHits?: number;
+      };
     },
     onRetry: () => void,
   ): void {
@@ -336,12 +362,49 @@ export class Hud {
     // One screen, two endings. Only the headline and the demo-end block differ;
     // the stats and ONE MORE SET are the same run report either way.
     if (victory) s.classList.add('win-screen');
-    el('span', 'eyebrow', s, victory ? "THE HUSH COULDN'T STOP YOU" : 'THE CROWD FINALLY WON');
-    el('h1', '', s, victory ? 'SET COMPLETE' : 'SET ENDED');
+    // THE CIRCUIT'S TWO ENDINGS (#270). The night ends either at the Headliner —
+    // a summit, which is what #253 asked an ending to be — or at closing time
+    // wherever you happened to be standing. Both are wins; only one is the one
+    // you were walking toward, and the screen has to say which.
+    const summit = stats.circuit?.outcome === 'headliner';
+    const closing = stats.circuit?.outcome === 'closing';
+    // THREE ENDINGS, and only one of them is a win (design call 9, run.ts):
+    //   the Headliner  — the summit. The night is yours.
+    //   closing time   — the night ran out on you. Survived, not won.
+    //   death          — the crowd won.
+    // The win-screen styling follows the SUMMIT, not survival, so the screen never
+    // congratulates a player for standing on the street until 03:00.
+    if (closing) s.classList.remove('win-screen');
+    el('span', 'eyebrow', s, victory
+      ? summit
+        ? 'YOU PLAYED THE HEADLINE SLOT'
+        : closing
+          ? 'CLOSING TIME CAME AND YOU WERE STILL WALKING'
+          : "THE HUSH COULDN'T STOP YOU"
+      : 'THE CROWD FINALLY WON');
+    el('h1', '', s, victory
+      ? summit
+        ? 'THE NIGHT IS YOURS'
+        : closing
+          ? 'THE NIGHT RAN OUT'
+          : 'SET COMPLETE'
+      : 'SET ENDED');
     el('p', 'sub run-summary', s,
       `${formatTime(stats.timeS)} · ${stats.kills} kills · level ${stats.level} · ♫ ${stats.notesCollected}`);
+    if (stats.circuit) {
+      const c = stats.circuit;
+      const lines: string[] = [c.label];
+      if (c.roomsOnMap !== undefined) lines.push(`${c.roomsPlayed ?? 0}/${c.roomsOnMap} rooms played`);
+      if (c.blackouts !== undefined) lines.push(`${c.blackouts} blackouts · ${c.brownouts ?? 0} brownouts`);
+      if (c.chipWasted !== undefined) {
+        const hits = (c.onKindHits ?? 0) + (c.offKindHits ?? 0);
+        const answered = hits > 0 ? Math.round(((c.onKindHits ?? 0) / hits) * 100) : 0;
+        lines.push(`${answered}% of hits answered · ${Math.round(c.chipWasted)} damage into the wrong body`);
+      }
+      el('p', 'sub run-summary circuit-summary', s, lines.join(' · '));
+    }
 
-    if (victory) {
+    if (victory && !closing) {
       // The demo has no minute 31: say so here, and give the player somewhere
       // to send what they thought of it.
       const demo = el('section', 'demo-end', s);

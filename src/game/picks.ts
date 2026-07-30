@@ -21,7 +21,7 @@
 // run receives identical offers on every platform.
 
 import { soundsetSupports } from '../audio/soundset';
-import { ROLES, type Role } from '../audio/kits';
+import { PALETTE_ATTACK, ROLES, type Attack, type Role } from '../audio/kits';
 import { BUILD } from './config';
 import { hasWeaponModule } from './weapons';
 import { WEAPON_MAX_LEVEL } from './weapons/levels';
@@ -29,6 +29,8 @@ import type { Rng } from './rng';
 
 const OFFER_COUNT = 3;
 const WEAPON_WEIGHT = 3;
+/** Under a weapon, deliberately. See the Headroom card block below. */
+const HEADROOM_WEIGHT = 1.6;
 
 /** A pick is a +1 INCREMENT, never a target level: the option names the thing,
  *  and the shell resolves what level that means against live state at the
@@ -48,14 +50,62 @@ interface EncorePickOption {
   encore: EncoreId;
 }
 
+/** THE CIRCUIT'S OWN POWER CURRENCY (#270), and the pick kind the base's seam
+ *  was left open for.
+ *
+ *  #255 says this stack's power buys "reach and hold — how much ground you can
+ *  cover and keep — plus upkeep capacity". Weapon levels already buy reach and
+ *  hold; nothing in the base buys upkeep capacity, because nothing in the base
+ *  has upkeep. These three cards are it:
+ *
+ *   - `capacity` — a deeper pool. Longer bursts of the whole band before the
+ *     brownout, without making the band any cheaper to hold.
+ *   - `regen`    — a faster refill. Raises the SUSTAINABLE size of the band,
+ *     which is the only card here that makes the resting state less partial.
+ *   - `bank`     — a bigger bank, and a longer Blackout out of it. Buys a taller
+ *     peak rather than a wider floor.
+ *
+ *  They are repeatable and never run out, which is deliberate: #265 measured the
+ *  base's decision stream dying at minute fourteen with every level-up after that
+ *  an Encore, and named each stack's own currency as what has room to fill it.
+ *  This is what fills it here — and unlike a stat card it is a real decision,
+ *  because the three answers to "the band is too expensive" are genuinely
+ *  different shapes. */
+const HEADROOM_UPGRADE_IDS = ['capacity', 'regen', 'bank'] as const;
+export type HeadroomUpgradeId = (typeof HEADROOM_UPGRADE_IDS)[number];
+
+interface HeadroomPickOption {
+  kind: 'headroom';
+  upgrade: HeadroomUpgradeId;
+}
+
 /** Everything a level-up can offer. Kept as a discriminated union of more than
  *  one member on purpose: a prototype that adds its own pick kind (a pattern, a
  *  reel of tape, a stage position) widens this type and the shell's exhaustive
  *  switches then point at every site that has to learn about it. */
-export type AnyPickOption = WeaponPickOption | EncorePickOption;
+export type AnyPickOption = WeaponPickOption | EncorePickOption | HeadroomPickOption;
 
 export interface RollOffersInput {
   tiers: ReadonlyMap<Role, number>;
+  /** THE CIRCUIT (#270): how many Headroom cards the run has already taken, per
+   *  flavour. Read only to keep a single flavour from being offered forever once
+   *  the weapon pool empties — the cards never run out, but a screen of three
+   *  identical ones is not a decision. Omitted with the layer off. */
+  headroomTaken?: ReadonlyMap<HeadroomUpgradeId, number>;
+  /** THE COVERAGE GUARANTEE (#270). The attack kinds the OWNED build can answer
+   *  — owned rather than active, because a voice muted to save upkeep has not
+   *  stopped being an answer the player holds. Omitted with the layer off.
+   *
+   *  While this set holds fewer than two of the three kinds, one of the three
+   *  offers is reserved for a weapon that adds a missing one. Two kinds and the
+   *  player is on their own for the third, which is where the real decision is.
+   *
+   *  Why a floor at two rather than three: a band that can answer only ONE kind
+   *  loses to two thirds of the bestiary and cannot fight its way back, and #255's
+   *  floor rule is about never being powerless. A band that answers two is
+   *  choosing to gamble on the third not turning up, which is exactly the bet
+   *  Coverage exists to offer ("drop a kind on purpose to concentrate"). */
+  covered?: ReadonlySet<Attack>;
   /** Increments already promised to a weapon but not yet in `tiers`: scooped
    *  pickups waiting for their bar, plus every un-scooped pedestal on the
    *  ground (both surfaces — a triangle and a chest payout can be out at once).
@@ -68,8 +118,9 @@ export interface RollOffersInput {
 
 /** The finite half of the economy — everything that is still an addition to the
  *  build, as opposed to the Encore that pays out once there is nothing left to
- *  add. One member today; a prototype's own pick kind joins it here. */
-type BuildPickOption = WeaponPickOption;
+ *  add. Two members now: The Circuit's Headroom cards join the weapons, which is
+ *  what stops the pool ever emptying and the Encore ever appearing. */
+type BuildPickOption = WeaponPickOption | HeadroomPickOption;
 
 interface WeightedOption<T> {
   option: T;
@@ -147,7 +198,49 @@ function buildFinitePool(input: RollOffersInput): WeightedOption<BuildPickOption
     }
   }
 
+  // THE CIRCUIT'S HEADROOM CARDS (#270). Weighted UNDER a weapon so the band
+  // still leads the early build — the pool is meant to be something you widen
+  // once holding the band starts to hurt, not something you open on.
+  //
+  // The least-taken flavour draws heaviest. Not a cap and not exclusion: three
+  // copies of `regen` is a legitimate build (a big sustainable band), it just
+  // should not be what the roll hands you by default once weapons run out.
+  if (input.headroomTaken) {
+    const taken = input.headroomTaken;
+    let fewest = Infinity;
+    for (const id of HEADROOM_UPGRADE_IDS) fewest = Math.min(fewest, taken.get(id) ?? 0);
+    for (const upgrade of HEADROOM_UPGRADE_IDS) {
+      const count = taken.get(upgrade) ?? 0;
+      pool.push({
+        option: { kind: 'headroom', upgrade },
+        weight: HEADROOM_WEIGHT * (count === fewest ? 1 : 0.45),
+      });
+    }
+  }
+
   return pool;
+}
+
+/** Weapons that would ADD an attack kind the build cannot answer yet, in
+ *  catalog order. The coverage guarantee's shortlist. */
+function coverageFillers(input: RollOffersInput): WeaponPickOption[] {
+  const covered = input.covered;
+  if (!covered || covered.size >= 2) return [];
+  const weaponSlotsFull = ownedWeaponCount(input.tiers) >= BUILD.weaponCap;
+  // At the cap there is no hire left to make, so there is no filler to offer
+  // either. That is not an oversight: a build that filled all five slots inside
+  // one attack kind, while the wheel showed two holes the whole time, has made
+  // five choices to get there. The constraint biting is the point.
+  if (weaponSlotsFull) return [];
+  const out: WeaponPickOption[] = [];
+  for (const role of ROLES) {
+    if (!soundsetSupports(role) || !hasWeaponModule(role)) continue;
+    if ((input.tiers.get(role) ?? 0) > 0) continue;
+    const attack = PALETTE_ATTACK[role];
+    if (!attack || covered.has(attack)) continue;
+    out.push({ kind: 'weapon', role });
+  }
+  return out;
 }
 
 function rngKey(rng: Rng, weight: number): number {
@@ -199,7 +292,24 @@ function encoreOffers(): EncorePickOption[] {
 export function rollOffers(input: RollOffersInput): AnyPickOption[] {
   const pool = buildFinitePool(input);
   if (pool.length === 0) return encoreOffers();
-  return selectFiniteOffers(pool, input.rng);
+  const offers = selectFiniteOffers(pool, input.rng);
+  // THE COVERAGE GUARANTEE, applied AFTER the roll rather than by re-weighting
+  // it. Re-weighting would make the guarantee probabilistic, which is not a
+  // guarantee; and it would move the whole roll, so a seeded run's later offers
+  // would change the moment coverage was toggled. Substituting one card leaves
+  // every other draw exactly where the base put it.
+  const fillers = coverageFillers(input);
+  if (fillers.length === 0) return offers;
+  const alreadyHelps = offers.some(
+    (offer) => offer.kind === 'weapon' && fillers.some((filler) => filler.role === offer.role),
+  );
+  if (alreadyHelps) return offers;
+  const filler = fillers[Math.min(fillers.length - 1, Math.floor(input.rng() * fillers.length))];
+  // Replace the LAST card, never the first: the first card is the one the player
+  // reads first, and a guarantee should not also decide what leads the screen.
+  const out = [...offers];
+  out[out.length - 1] = filler;
+  return out;
 }
 
 export interface RollStartingWeaponsInput {

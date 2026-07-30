@@ -1,0 +1,79 @@
+
+=== THE CIRCUIT — one night, seed 793025, route greedy ===
+layers: headroom=false coverage=false nightOut=false · INVINCIBLE (measuring the economy, not the difficulty)
+
+00:00  OPEN  bass (offered bass, lead, kick)
+
+--- outcome ---
+ended 30:00 · SURVIVED TO CLOSING — not a win, the night ran out
+level 13 · kills 3120
+band owned bass, air, flute, kick, sub
+
+--- the hard floor (#256) ---
+density peak 9.3 triggers/bar, trough 2.0
+density falls: 0 total, 0 caused by a player choice
+FAIL — density never fell by the player's choice
+(loudness range is an audio measurement and needs the browser rig — see docs/circuit.md)
+
+--- the trace (every 30 s) ---
+time   where            lvl  kills alive  playing  owned   pool  bank  answers
+0:01   the arena          1      0    15      2.0    2.0 ##### ..... 3/3
+0:30   the arena          1     14    31      2.0    2.0 ##### ..... 3/3
+1:00   the arena          1     28    46      2.0    2.0 ##### ..... 3/3
+1:30   the arena          2     46    84      4.0    4.0 ##### ..... 3/3
+2:00   the arena          2     59   111      4.0    4.0 ##### ..... 3/3
+2:31   the arena          2    179    89      4.0    4.0 ##### ..... 3/3
+3:01   the arena          3    212   102      4.3    4.3 ##### ..... 3/3
+3:31   the arena          3    223    95      4.3    4.3 ##### ..... 3/3
+4:01   the arena          3    230    70      4.3    4.3 ##### ..... 3/3
+4:31   the arena          3    234    41      4.3    4.3 ##### ..... 3/3
+5:01   the arena          3    244   154      4.3    4.3 ##### ..... 3/3
+5:31   the arena          4    290    29      8.3    8.3 ##### ..... 3/3
+6:01   the arena          4    290    23      8.3    8.3 ##### ..... 3/3
+6:30   the arena          5    295    53      8.8    8.8 ##### ..... 3/3
+7:00   the arena          5    303    88      8.8    8.8 ##### ..... 3/3
+7:30   the arena          5    421   277      8.8    8.8 ##### ..... 3/3
+8:00   the arena          6    492   134      8.8    8.8 ##### ..... 3/3
+8:30   the arena          6    565   135      8.8    8.8 ##### ..... 3/3
+9:00   the arena          6    635   105      8.8    8.8 ##### ..... 3/3
+9:30   the arena          6    658   120      8.8    8.8 ##### ..... 3/3
+10:00  the arena          6    734   156      8.8    8.8 ##### ..... 3/3
+10:30  the arena          6    738   231      8.8    8.8 ##### ..... 3/3
+11:00  the arena          6    739   300      8.8    8.8 ##### ..... 3/3
+11:30  the arena          7    781   300      8.8    8.8 ##### ..... 3/3
+12:00  the arena          7    815   300      8.8    8.8 ##### ..... 3/3
+12:30  the arena          8    866   180      8.8    8.8 ##### ..... 3/3
+13:00  the arena          9    894   160      8.8    8.8 ##### ..... 3/3
+13:30  the arena          9   1180   224      8.8    8.8 ##### ..... 3/3
+14:00  the arena          9   1312   196      8.8    8.8 ##### ..... 3/3
+14:30  the arena          9   1328   300      8.8    8.8 ##### ..... 3/3
+15:00  the arena          9   1328   273      8.8    8.8 ##### ..... 3/3
+15:30  the arena          9   1329   298      8.8    8.8 ##### ..... 3/3
+16:00  the arena          9   1329   292      8.8    8.8 ##### ..... 3/3
+16:30  the arena          9   1329   285      8.8    8.8 ##### ..... 3/3
+17:00  the arena          9   1329   273      8.8    8.8 ##### ..... 3/3
+17:30  the arena          9   1330    59      8.8    8.8 ##### ..... 3/3
+18:00  the arena          9   1330    61      8.8    8.8 ##### ..... 3/3
+18:30  the arena         10   1330    64      8.8    8.8 ##### ..... 3/3
+19:00  the arena         10   1331   118      8.8    8.8 ##### ..... 3/3
+19:30  the arena         10   1331   107      8.8    8.8 ##### ..... 3/3
+20:00  the arena         10   1331   146      8.8    8.8 ##### ..... 3/3
+20:30  the arena         11   1992   290      9.3    9.3 ##### ..... 3/3
+21:00  the arena         11   2263   300      9.3    9.3 ##### ..... 3/3
+21:30  the arena         11   2263   300      9.3    9.3 ##### ..... 3/3
+22:00  the arena         12   2263   300      9.3    9.3 ##### ..... 3/3
+22:30  the arena         12   2263   240      9.3    9.3 ##### ..... 3/3
+23:00  the arena         12   2263   301      9.3    9.3 ##### ..... 3/3
+23:30  the arena         12   2263   300      9.3    9.3 ##### ..... 3/3
+24:00  the arena         12   2263   300      9.3    9.3 ##### ..... 3/3
+24:30  the arena         12   2263   300      9.3    9.3 ##### ..... 3/3
+25:00  the arena         12   2264   270      9.3    9.3 ##### ..... 3/3
+25:30  the arena         12   2264   300      9.3    9.3 ##### ..... 3/3
+26:00  the arena         12   2266   283      9.3    9.3 ##### ..... 3/3
+26:30  the arena         12   2267   257      9.3    9.3 ##### ..... 3/3
+27:00  the arena         12   2268   299      9.3    9.3 ##### ..... 3/3
+27:30  the arena         12   2362   316      9.3    9.3 ##### ..... 3/3
+28:00  the arena         12   2495   311      9.3    9.3 ##### ..... 3/3
+28:30  the arena         12   2508   299      9.3    9.3 ##### ..... 3/3
+29:00  the arena         12   2508   324      9.3    9.3 ##### ..... 3/3
+29:30  the arena         12   2765   343      9.3    9.3 ##### ..... 3/3

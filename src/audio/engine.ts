@@ -235,6 +235,15 @@ export class MusicEngine {
   private activeSources = new Set<AudioBufferSourceNode>();
   private listeners: TriggerListener[] = [];
   private barQueue: ((audioTime: number) => void)[] = [];
+  /** RECURRING bar-line subscribers, as distinct from `barQueue`'s one-shots.
+   *
+   *  Added for The Circuit (#270), whose upkeep economy has to price the coming
+   *  bar at every bar line for the whole run. Re-arming a one-shot each bar was
+   *  the alternative and it is a latch: `clearBarQueue()` can drop the callback
+   *  that would have re-armed it, after which the economy silently stops
+   *  accounting for the rest of the run. A listener list cannot be dropped by a
+   *  queue flush, which is the same reasoning `addTriggerListener` already uses. */
+  private barListeners: ((audioTime: number) => void)[] = [];
   /** Armed by stopAtBarEnd(): the track stops on the next bar line. */
   private barEndStop: ((audioTime: number) => void) | null = null;
   private phraseQueue: Array<{
@@ -632,6 +641,9 @@ export class MusicEngine {
       // starts at a RANDOM offset, so two runs never open on the same instant of
       // the same recording.
       if (voice.kit.bedBars) {
+        // A composed bed inherits the room's tempo ratio (setComposedBedRate),
+        // so a pad switched on inside a fast venue starts in that venue's time.
+        src.playbackRate.value = this.composedBedRate;
         src.start(this.nextPhraseTime() ?? now);
       } else {
         src.start(now, Math.random() * buffer.duration);
@@ -661,6 +673,39 @@ export class MusicEngine {
     if (voice) voice.gain.gain.setTargetAtTime(value, this.ctx.currentTime, 0.02);
   }
 
+  /**
+   * Re-rate every COMPOSED bed to a new tempo.
+   *
+   * #266 left a build-time error saying a composed bed is only in time at the
+   * tempo it was rendered at, and it is right: the pad is four bars of real
+   * music baked into a file at 122 bpm, so a room that plays at another tempo
+   * would hear its chord cycle drift off the bar with nothing to follow but "the
+   * track has stopped lining up".
+   *
+   * The Circuit's venues change tempo (#270 design call 6), so the bed's own
+   * playback rate follows the ratio. That keeps its bars aligned and shifts its
+   * PITCH — which is why the venue tempos were chosen as musical intervals the
+   * skeleton's note set already allows. A bed with no musical length (`bedBars`
+   * 0 — the air's noise floor) is left alone: it has no bar to align and
+   * shifting a noise floor's pitch would only thin it out.
+   *
+   * Applied immediately rather than at a bar line: the ratio is a continuous
+   * change to a looping source, and re-rating it mid-bar keeps its phase where
+   * the ear already put it instead of jumping.
+   */
+  setComposedBedRate(ratio: number): void {
+    const safe = Math.max(0.25, Math.min(4, ratio));
+    for (const voice of this.voices.values()) {
+      if (!voice.kit.bed || !voice.kit.bedBars || !voice.bedSource) continue;
+      voice.bedSource.playbackRate.setTargetAtTime(safe, this.ctx.currentTime, 0.05);
+    }
+    this.composedBedRate = safe;
+  }
+
+  /** The rate a newly started composed bed inherits, so a pad switched on inside
+   *  a fast room starts in that room's time rather than in the file's. */
+  private composedBedRate = 1;
+
   /** Swap a voice's samples for a sample set's buffers (null restores the
    *  builtin kit). Takes effect on the next trigger; already-scheduled
    *  sources keep their old buffer, so the swap is click-free mid-play. */
@@ -685,6 +730,22 @@ export class MusicEngine {
       // Replace rather than splice: unsubscribing inside a callback cannot make
       // the current dispatch skip the listener that follows it.
       this.listeners = this.listeners.filter((candidate) => candidate !== listener);
+    };
+  }
+
+  /** Subscribe to every bar line for as long as the returned unsubscribe is not
+   *  called. Fires at the moment the bar is SCHEDULED, like atNextBar, so a
+   *  subscriber can still change a voice before the bar's notes are queued. */
+  addBarListener(cb: (audioTime: number) => void): () => void {
+    let active = true;
+    const listener = (time: number): void => {
+      if (active) cb(time);
+    };
+    this.barListeners.push(listener);
+    return () => {
+      if (!active) return;
+      active = false;
+      this.barListeners = this.barListeners.filter((candidate) => candidate !== listener);
     };
   }
 
@@ -876,10 +937,17 @@ export class MusicEngine {
       stop(time);
       return;
     }
-    if (phraseStep % STEPS_PER_BAR === 0 && this.barQueue.length > 0) {
-      const queue = this.barQueue;
-      this.barQueue = [];
-      for (const fn of queue) fn(time);
+    if (phraseStep % STEPS_PER_BAR === 0) {
+      // Recurring subscribers first, then the one-shots: an economy that prices
+      // the coming bar has to see the band as it stood BEFORE this bar line's
+      // queued changes (a weapon entering, a voice switching on) are applied, or
+      // it charges for a bar that has not been played yet.
+      for (const fn of this.barListeners) fn(time);
+      if (this.barQueue.length > 0) {
+        const queue = this.barQueue;
+        this.barQueue = [];
+        for (const fn of queue) fn(time);
+      }
     }
     if (phraseStep === 0 && this.phraseQueue.length > 0) {
       const retained: typeof this.phraseQueue = [];

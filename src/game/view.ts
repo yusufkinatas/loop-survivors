@@ -28,6 +28,11 @@ import {
   snap,
   soundwoodFloorTexture,
 } from './soundwood-art';
+// ---- THE CIRCUIT (#270) ---------------------------------------------------
+import { CIRCUIT } from '../circuit/toggles';
+import { ARMOUR_COLOR, ATTACK_VERB, coveredAttacks } from '../circuit/coverage';
+import { doorBlockedReason, venueWants, type Venue } from '../circuit/venues';
+import { ATTACKS, type Attack } from '../audio/kits';
 import {
   animateSceneryCell,
   BOSS_RING_SCALE,
@@ -193,6 +198,65 @@ const BANNER_STYLE = new TextStyle({
   fill: 0xffffff,
   stroke: { color: SOUNDWOOD.ink, width: 7, join: 'round' },
 });
+
+/** THE VENUE PLATE (#270): a room's name and what it is asking for, standing on
+ *  the floor above its ring. Two lines, both readable from the far side of the
+ *  map at the run's fixed zoom — a route decision the player has to walk twenty
+ *  seconds to act on cannot be made from a label they have to squint at. */
+const VENUE_NAME_STYLE = new TextStyle({
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  fontSize: 19,
+  fontWeight: '900',
+  letterSpacing: 3,
+  align: 'center',
+  fill: 0xffffff,
+  stroke: { color: SOUNDWOOD.ink, width: 6, join: 'round' },
+});
+
+const VENUE_SUB_STYLE = new TextStyle({
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  fontSize: 13,
+  fontWeight: '700',
+  letterSpacing: 1.5,
+  align: 'center',
+  fill: 0xffffff,
+  stroke: { color: SOUNDWOOD.ink, width: 5, join: 'round' },
+});
+
+interface VenuePlate extends Container {
+  __name: Text;
+  __sub: Text;
+}
+
+function makeVenuePlate(): VenuePlate {
+  const root = new Container() as VenuePlate;
+  const name = new Text({ text: '', style: VENUE_NAME_STYLE, roundPixels: true });
+  name.anchor.set(0.5, 1);
+  const sub = new Text({ text: '', style: VENUE_SUB_STYLE, roundPixels: true });
+  sub.anchor.set(0.5, 0);
+  sub.position.set(0, 4);
+  root.addChild(name, sub);
+  root.__name = name;
+  root.__sub = sub;
+  return root;
+}
+
+/** What a shut door is asking for, short enough for a floor plate. The full
+ *  sentence is the toast the world raises on arrival; this is the version you
+ *  read from across the map while deciding whether to walk over at all. */
+function doorLine(venue: Venue, covered: ReadonlySet<Attack>, owned: ReadonlySet<Attack>): string {
+  const missing = venue.headliner
+    ? ATTACKS.filter((attack) => !covered.has(attack))
+    : venue.door && !covered.has(venue.door)
+      ? [venue.door]
+      : [];
+  if (missing.length === 0) return venue.headliner ? 'THE HEADLINE SLOT' : 'PLAY MORE ROOMS FIRST';
+  // Same disarming as the toast (venues.ts, doorBlockedReason): a door you are one
+  // key away from opening must not read as a wall.
+  const silent = missing.filter((attack) => owned.has(attack));
+  const need = `NEEDS ${missing.map((a) => ATTACK_VERB[a]).join(' + ')}`;
+  return silent.length === missing.length ? `${need} — SWITCH IT ON` : need;
+}
 
 /** The chest reel window: one cycling reward name above the rattling case. */
 const REEL_STYLE = new TextStyle({
@@ -419,6 +483,18 @@ export class RunView {
 
   private telegraphGfx = new Graphics({ roundPixels: true });
   private bossGlowGfx = new Graphics({ roundPixels: true });
+  /** THE CIRCUIT (#270). Two passes, both cleared and redrawn per frame because
+   *  both are read off live world state rather than cached per entity.
+   *
+   *  `venueGfx` is on the FLOOR: a room is a place on the ground, and its ring
+   *  has to sit under everything standing in it. `armourGfx` is with the
+   *  telegraphs, above the floor and under the bodies, so a tell reads as
+   *  something the body is wearing rather than something painted over it. */
+  private venueGfx = new Graphics({ roundPixels: true });
+  private armourGfx = new Graphics({ roundPixels: true });
+  /** One floor plate per room, built on first sight and kept: seven of them for
+   *  the whole run, so there is nothing to pool and nothing to reap. */
+  private venuePlates = new Map<string, VenuePlate>();
   private trailGfx = new Graphics({ roundPixels: true });
   private projectileLayer = new Container();
   private systemAttackGfx = new Graphics({ roundPixels: true });
@@ -494,11 +570,13 @@ export class RunView {
     this.playerGfx = makePlayerGfx(RUN.playerRadius);
 
     this.tiledGroundLayer.addChild(this.floorFallback, this.floorTileLayer, this.floorShade);
-    this.environmentLayer.addChild(this.environmentFloorGfx);
+    // The venue ring goes UNDER the floor motifs: it is the ground itself, not
+    // paint on it, so the cable loops and drain grates lie on top of it.
+    this.environmentLayer.addChild(this.venueGfx, this.environmentFloorGfx);
     // Additive, and below the enemy layer: the glow reads as light thrown on
     // the floor under the boss rather than a disc painted over it.
     this.bossGlowGfx.blendMode = 'add';
-    this.zoneLayer.addChild(this.bossGlowGfx, this.telegraphGfx);
+    this.zoneLayer.addChild(this.bossGlowGfx, this.telegraphGfx, this.armourGfx);
     this.attackLayer.addChild(
       this.trailGfx,
       this.projectileLayer,
@@ -720,11 +798,13 @@ export class RunView {
     this.chapter = nextChapter;
 
     this.updateFloor(cameraX, cameraY);
+    this.drawVenues(cameraX, cameraY);
     this.drawArenaEnvironment(cameraX, cameraY);
     this.updateScenery(cameraX, cameraY);
     this.syncStageLights(cameraX, cameraY);
     this.syncZones();
     this.drawEnemyTelegraphs(cameraX, cameraY);
+    this.drawArmourTells(cameraX, cameraY);
     this.syncGems(cameraX, cameraY);
     this.syncMusicNotes(cameraX, cameraY);
     this.syncStageMagnets(cameraX, cameraY);
@@ -968,6 +1048,136 @@ export class RunView {
           .map((value, i) => snap(value + (i % 2 === 0 ? enemy.x : enemy.y))))
           .fill({ color: enemy.color, alpha });
       }
+    }
+  }
+
+  /**
+   * COVERAGE'S TELL (#270): what a body is wearing, drawn on the body.
+   *
+   * A ring in the armour's colour, and a second inner ring for the two rarer
+   * kinds so the three read apart at a glance rather than only by hue — a
+   * one-hue-per-state tell is unreadable at the density this game reaches, and
+   * unreadable to anyone colourblind at any density.
+   *
+   *   ARMOURED (needs PUNCH)  one thick warm ring, like plating.
+   *   SHIELDED (needs CUT)    two thin cold rings, like a barrier standing off.
+   *   PHASING  (needs HOLD)   one dashed violet ring that breathes, like
+   *                           something only half here.
+   *
+   * The alternative was tinting the body. Rejected: the silhouettes already
+   * carry a colour per kind (and the generated sprites ship baked colour that a
+   * tint has nothing to give back — #207), so tinting would either destroy the
+   * bestiary's identity or be invisible on half of it.
+   */
+  private drawArmourTells(cameraX: number, cameraY: number): void {
+    const gfx = this.armourGfx;
+    gfx.clear();
+    if (!CIRCUIT.coverage) return;
+    const halfW = this.world.worldW / 2 + 80;
+    const halfH = this.world.worldH / 2 + 80;
+    for (const enemy of this.world.enemies) {
+      if (enemy.armour === 'none' || enemy.dead) continue;
+      if (Math.abs(enemy.x - cameraX) > halfW || Math.abs(enemy.y - cameraY) > halfH) continue;
+      const color = ARMOUR_COLOR[enemy.armour];
+      const r = enemy.radius;
+      if (enemy.armour === 'armoured') {
+        gfx.circle(snap(enemy.x), snap(enemy.y), Math.round(r * 1.12))
+          .stroke({ width: 3, color, alpha: 0.85 });
+      } else if (enemy.armour === 'shielded') {
+        gfx.circle(snap(enemy.x), snap(enemy.y), Math.round(r * 1.3))
+          .stroke({ width: 1, color, alpha: 0.8 });
+        gfx.circle(snap(enemy.x), snap(enemy.y), Math.round(r * 1.05))
+          .stroke({ width: 1, color, alpha: 0.55 });
+      } else {
+        // Eight dashes on a slowly turning ring: the shape says "not solid"
+        // without any of it moving fast enough to compete with a projectile.
+        const spin = this.world.timeS * 0.9 + enemy.id;
+        const ring = Math.round(r * 1.2);
+        for (let i = 0; i < 8; i++) {
+          const a0 = spin + (i / 8) * Math.PI * 2;
+          const a1 = a0 + Math.PI / 11;
+          gfx.moveTo(snap(enemy.x + Math.cos(a0) * ring), snap(enemy.y + Math.sin(a0) * ring))
+            .lineTo(snap(enemy.x + Math.cos(a1) * ring), snap(enemy.y + Math.sin(a1) * ring))
+            .stroke({ width: 2, color, alpha: 0.8 });
+        }
+      }
+    }
+  }
+
+  /**
+   * THE MAP, DRAWN (#270). The rooms of the night, on the floor, in world space.
+   *
+   * #253 asked for discovery that is visible on screen and for the map to be
+   * "build knowledge made visible". So a room is drawn whether or not you are in
+   * it, from any distance, as a ring on the ground with its name and what its
+   * door wants — and a room you have already played is drawn dimmed and struck
+   * through. Standing on the street you can see where you have been, where you
+   * have not, and what each unplayed room is asking of your band. That readout
+   * IS the route decision; without it the map would be a maze.
+   *
+   * Culled to what is on screen plus a wide margin, so the far side of the map
+   * costs nothing to have.
+   */
+  private drawVenues(cameraX: number, cameraY: number): void {
+    const gfx = this.venueGfx;
+    gfx.clear();
+    const circuit = this.world.circuit;
+    if (!CIRCUIT.nightOut || !circuit) {
+      for (const plate of this.venuePlates.values()) plate.visible = false;
+      return;
+    }
+    const halfW = this.world.worldW / 2 + 900;
+    const halfH = this.world.worldH / 2 + 900;
+    const covered = circuit.covered(this.world.tiers);
+    const ownedCoverage = coveredAttacks([...this.world.tiers.keys()]);
+    for (const { venue, set, finished } of circuit.roomStates()) {
+      const onScreen =
+        Math.abs(venue.x - cameraX) < halfW + venue.radius &&
+        Math.abs(venue.y - cameraY) < halfH + venue.radius;
+      let plate = this.venuePlates.get(venue.id);
+      if (!plate) {
+        plate = makeVenuePlate();
+        this.venuePlates.set(venue.id, plate);
+        this.environmentLayer.addChild(plate);
+      }
+      plate.visible = onScreen;
+      if (!onScreen) continue;
+
+      const inside = circuit.place.venue === venue;
+      const shut = !finished && !!doorBlockedReason(venue, covered, circuit.finishedCount, (a) => ATTACK_VERB[a], ownedCoverage);
+      // The floor of the room, then its edge. The edge is the one line that has
+      // to be unmistakable: crossing it is what starts and pauses a set.
+      const tone = finished ? SOUNDWOOD.ink : shut ? 0x7a5a70 : venue.headliner ? SOUNDWOOD.amber : ARENA_PALETTE.accent;
+      gfx.circle(snap(venue.x), snap(venue.y), Math.round(venue.radius))
+        .fill({ color: tone, alpha: finished ? 0.03 : inside ? 0.075 : 0.05 });
+      gfx.circle(snap(venue.x), snap(venue.y), Math.round(venue.radius))
+        .stroke({ width: inside ? 4 : 3, color: tone, alpha: finished ? 0.18 : 0.45 });
+      // The Headliner gets a second ring: the summit should be visible from the
+      // other side of the map, because deciding to walk to it is the run's
+      // biggest decision and it has to be makeable early.
+      if (venue.headliner && !finished) {
+        gfx.circle(snap(venue.x), snap(venue.y), Math.round(venue.radius * 1.1))
+          .stroke({ width: 2, color: SOUNDWOOD.amber, alpha: 0.3 });
+      }
+      plate.position.set(snap(venue.x), snap(venue.y - venue.radius - 34));
+      plate.__name.text = finished ? `— ${venue.name.toUpperCase()} —` : venue.name.toUpperCase();
+      plate.__name.style.fill = finished ? SOUNDWOOD.ink : tone;
+      // THE TELEGRAPH (#270): an open room says what its crowd will need, so
+      // setting your band before you walk in is a decision with information
+      // behind it. That was Coverage's outstanding debt from #255 and this line
+      // is where it is paid.
+      const wants = CIRCUIT.coverage ? venueWants(set) : [];
+      const wantsLine = wants.length > 0
+        ? `WANTS ${wants.map((a) => ATTACK_VERB[a]).join(' + ')}`
+        : `${Math.floor(set.lengthS / 60)}:${String(Math.round(set.lengthS % 60)).padStart(2, '0')}`;
+      plate.__sub.text = finished ? 'PLAYED' : shut ? doorLine(venue, covered, ownedCoverage) : `${set.act} · ${wantsLine}`;
+      plate.__sub.style.fill = shut
+        ? 0xffb3d0
+        // A room asking for something the band cannot answer is warm-tinted even
+        // with its door open: you can walk in, and you will not enjoy it.
+        : wants.some((attack) => !covered.has(attack))
+          ? SOUNDWOOD.amber
+          : SOUNDWOOD.moon;
     }
   }
 
