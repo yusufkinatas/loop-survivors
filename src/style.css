@@ -2156,3 +2156,130 @@ button.big {
     opacity: 0.7;
   }
 }
+/* ---------------------------------------------------------------------------
+   THE LOAD-IN (#269)
+
+   Three surfaces this stack adds: the live stage line under the transport
+   panel, the layer switchboard on the start screen, and the stage plot that
+   fills the pause screen's arrange slot.
+   ------------------------------------------------------------------------- */
+
+/* The stage line: what the geometry on the floor currently adds up to. Sits
+   under the meters, in the same glass panel, because it is run state and not a
+   notification. */
+.hud-stage {
+  font-size: var(--fs-xs);
+  letter-spacing: 0.06em;
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+  border-top: 1px solid var(--line);
+  padding-top: var(--sp-2);
+}
+.hud-stage.warn { color: var(--warn); }
+.hud-stage.danger { color: var(--hp); }
+
+/* The layer switchboard. Deliberately plain: it is a developer surface and it
+   sits with the other developer surfaces. */
+.loadin-layers {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+}
+
+.loadin-layer-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  width: min(92vw, 560px);
+  max-height: 44vh;
+  overflow-y: auto;
+  padding: var(--sp-3);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  text-align: left;
+}
+
+.loadin-layer-note {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+
+.loadin-layer-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--sp-2);
+  align-items: start;
+  padding: var(--sp-1) 0;
+  cursor: pointer;
+}
+.loadin-layer-row input { margin-top: 3px; accent-color: var(--signal); }
+.loadin-layer-row b {
+  display: block;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--ink);
+}
+.loadin-layer-row i {
+  display: block;
+  font-size: var(--fs-xs);
+  font-style: normal;
+  color: var(--ink-faint);
+  line-height: 1.45;
+}
+
+.loadin-layer-actions {
+  display: flex;
+  gap: var(--sp-2);
+  justify-content: flex-end;
+  margin-top: var(--sp-2);
+}
+
+/* The stage plot on the pause screen: the whole room at once, which the camera
+   can never show you while you are standing in the middle of it. */
+.pause-arrange {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+.plot-title {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--ink-dim);
+}
+.stage-plot {
+  border-radius: var(--r-sm);
+  image-rendering: pixelated;
+}
+.plot-readout {
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  max-width: 340px;
+  line-height: 1.5;
+}
+
+/* The end screen's stack report: the room, the plot, and any layer that was
+   not at its shipped default. */
+.loadin-report {
+  margin-top: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  max-width: min(90vw, 560px);
+}
+.loadin-report p {
+  margin: 2px 0;
+  font-size: var(--fs-xs);
+  color: var(--ink-dim);
+  line-height: 1.55;
+}

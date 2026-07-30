@@ -34,6 +34,8 @@ export class Hud {
   private pulse: HTMLElement;
   private toastStack: HTMLElement;
   private rack: HTMLElement;
+  private stageEl!: HTMLElement;
+  private stageKey = '';
   private runInfoKey = '';
   private screen: HTMLElement | null = null;
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
@@ -65,11 +67,44 @@ export class Hud {
     // The band rack: one numbered socket per weapon slot, empty until hired.
     this.rack = el('div', 'band-rack', root);
     this.rack.style.display = 'none';
+    // THE LOAD-IN's live stage line (#269): what the stage plot is doing, in
+    // plain words, under the transport panel. Everything on it is also visible
+    // on the floor — this is the number for the thing the picture shows.
+    this.stageEl = el('div', 'hud-stage', this.bar);
+    this.stageEl.style.display = 'none';
   }
 
   showHud(show: boolean): void {
     this.bar.style.display = show ? '' : 'none';
     this.rack.style.display = show ? '' : 'none';
+  }
+
+  /** The stage line. `report` is null when the placement layer is off, which is
+   *  the base game and has no stage plot to report. */
+  setStageInfo(
+    report: { masked: number; cables: number; plugged: number; down: number; carried: number; output: number } | null,
+    crew: number,
+    room: number | null,
+  ): void {
+    if (!report) {
+      this.stageEl.style.display = 'none';
+      return;
+    }
+    const parts = [`STAGE ${Math.round(report.output * 100)}%`];
+    if (report.cables > 0) parts.push(`${report.cables} wired`);
+    if (report.masked > 0) parts.push(`${report.masked} masked`);
+    if (report.plugged > 0) parts.push(`${report.plugged} plugged`);
+    if (report.carried > 0) parts.push(`${report.carried} carried`);
+    if (report.down > 0) parts.push(`${report.down} down`);
+    if (crew > 0) parts.push(`crew ${crew}`);
+    if (room !== null) parts.push(`room ${Math.round(room * 100)}%`);
+    const key = parts.join('·');
+    if (key === this.stageKey) return;
+    this.stageKey = key;
+    this.stageEl.style.display = '';
+    this.stageEl.textContent = parts.join(' · ');
+    this.stageEl.classList.toggle('warn', report.masked > 0 || report.down > 0);
+    this.stageEl.classList.toggle('danger', room !== null && room < 0.25);
   }
 
   /** The passive rack that used to live here went with the passives (#265).
@@ -244,6 +279,10 @@ export class Hud {
   showStart(
     onStart: () => void,
     onSandbox: () => void,
+    /** THE LAYER SWITCHBOARD (#269). Handed the same `start-dev` block the
+     *  sandbox and experiments buttons live in, because the layers are a
+     *  developer surface and belong with the other ones. */
+    mountDev?: (dev: HTMLElement) => void,
   ): void {
     const s = this.newScreen();
     s.classList.add('start-screen');
@@ -262,8 +301,13 @@ export class Hud {
       this.closeScreen();
       onStart();
     };
+    // THE LOAD-IN (#269): the hint has to teach the genre break in one line,
+    // because a player who does not know they are unarmed will read the first
+    // thirty seconds as the game being broken.
     el('p', 'start-hint', s,
-      'WASD / arrow keys / touch to move · collect blue XP and gold music notes · walk onto coral crosses to heal · rare Stage Magnets vacuum the whole map · walk onto reward pedestals');
+      'You are the roadie — you carry no weapon. The band plays from where it stands. ' +
+      'WASD / arrows / touch to move · E picks up a piece of gear · SPACE sets everything down at once · ' +
+      'what you are carrying is silent, and silent is not attacking.');
     // Boss Fights gets its own menu item right under the primary CTA rather than
     // hiding inside the faint `experiments` disclosure — it's a headline mode,
     // so it earns real visibility. Still beta while it lives on a separate
@@ -301,6 +345,7 @@ export class Hud {
     roomBtn.onclick = () => {
       location.hash = '#rehearsal';
     };
+    mountDev?.(dev);
   }
 
   /** Transient notices stack instead of overlapping, animate in and out,
@@ -328,6 +373,12 @@ export class Hud {
       notesCollected: number;
       damageByRole: Partial<Record<Role, number>>;
       killsByRole: Partial<Record<Role, number>>;
+      /** THE LOAD-IN's run report (#269): the room this set was played in, how
+       *  the stage plot ended up, and every layer that was not at its shipped
+       *  default. A verdict read off a modified configuration is a verdict about
+       *  a different game, so the screen says so rather than leaving it to
+       *  whoever wrote it down. */
+      loadIn?: string[];
     },
     onRetry: () => void,
   ): void {
@@ -369,6 +420,10 @@ export class Hud {
         const chip = el('span', 'kill-chip', row, `${kit.name} ${pct}% (${kills})`);
         chip.style.setProperty('--voice-color', kit.color);
       }
+    }
+    if (stats.loadIn && stats.loadIn.length > 0) {
+      const box = el('div', 'loadin-report', s);
+      for (const line of stats.loadIn) el('p', '', box, line);
     }
     const btn = el('button', 'big retry-btn', s, 'ONE MORE SET');
     btn.onclick = () => {

@@ -26,6 +26,8 @@ import { BUILD } from './config';
 import { hasWeaponModule } from './weapons';
 import { WEAPON_MAX_LEVEL } from './weapons/levels';
 import type { Rng } from './rng';
+import { CREW } from './loadin/config';
+import { SEAT_OF } from './loadin/stage';
 
 const OFFER_COUNT = 3;
 const WEAPON_WEIGHT = 3;
@@ -48,11 +50,25 @@ interface EncorePickOption {
   encore: EncoreId;
 }
 
+/** CREW — The Load-In's second currency (#269), and the pick kind this file was
+ *  left widened for.
+ *
+ *  It exists because of a measured hole rather than an idea: with passives cut,
+ *  #265 drove the base through a full 30 minutes twice and the build COMPLETED
+ *  at 13:27 and 14:42. Every level-up after that is an Encore, so roughly the
+ *  back half of a run has no decision in it. Each stack's own currency is what
+ *  has room to fill that, and this stack's is the roadhands — because what the
+ *  ticket says this stack's power buys is "how fast gear can be moved", and
+ *  moving gear is what a crew is for. */
+interface CrewPickOption {
+  kind: 'crew';
+}
+
 /** Everything a level-up can offer. Kept as a discriminated union of more than
  *  one member on purpose: a prototype that adds its own pick kind (a pattern, a
  *  reel of tape, a stage position) widens this type and the shell's exhaustive
  *  switches then point at every site that has to learn about it. */
-export type AnyPickOption = WeaponPickOption | EncorePickOption;
+export type AnyPickOption = WeaponPickOption | EncorePickOption | CrewPickOption;
 
 export interface RollOffersInput {
   tiers: ReadonlyMap<Role, number>;
@@ -64,12 +80,28 @@ export interface RollOffersInput {
   pendingTiers: ReadonlyMap<Role, number>;
   rng: Rng;
   timeS: number;
+  /** Crew levels owned, and levels promised but not yet landed. Same
+   *  live-versus-promised split the weapon ladder uses, for the same reason. */
+  crew: number;
+  pendingCrew: number;
+  /** ONE SLOT PER SEAT (#269, the `exclusivity` layer). `docs/plan.md`'s "no
+   *  categories, no typed positions" is unlocked for round 1 (#256), and this is
+   *  the stack that spends the unlock: the build is a stage plot, so what has to
+   *  be true is that the five things standing on it sound like five different
+   *  things. Bandwagon's role-exclusive slots, carried over from #258.
+   *
+   *  Off, the base's flat cap of five applies and any five weapons may stand
+   *  together — which is the A/B, and the case where the merged-kit layer starts
+   *  doing real work. */
+  seatSlots: boolean;
+  /** Whether crew is in the pool at all. */
+  crewEnabled: boolean;
 }
 
 /** The finite half of the economy — everything that is still an addition to the
  *  build, as opposed to the Encore that pays out once there is nothing left to
- *  add. One member today; a prototype's own pick kind joins it here. */
-type BuildPickOption = WeaponPickOption;
+ *  add. Crew joined it here (#269). */
+type BuildPickOption = WeaponPickOption | CrewPickOption;
 
 interface WeightedOption<T> {
   option: T;
@@ -115,12 +147,29 @@ function pending<K>(counts: ReadonlyMap<K, number>, key: K): number {
   return Math.max(0, Math.floor(counts.get(key) ?? 0));
 }
 
+/** Seats already holding a voice. With seat slots on, this is the cap: a seat
+ *  that is taken is closed, and a build therefore always ends up as one voice
+ *  from each of the five. */
+function occupiedSeats(tiers: ReadonlyMap<Role, number>): ReadonlySet<string> {
+  const seats = new Set<string>();
+  for (const [role, tier] of tiers) {
+    if (tier <= 0) continue;
+    const seat = SEAT_OF.get(role);
+    if (seat) seats.add(seat);
+  }
+  return seats;
+}
+
 function buildFinitePool(input: RollOffersInput): WeightedOption<BuildPickOption>[] {
   const pool: WeightedOption<BuildPickOption>[] = [];
 
   // The cap closes the hire pool, not the upgrade pool: a capped build keeps
   // being offered tier-ups of the weapons it already owns.
   const weaponSlotsFull = ownedWeaponCount(input.tiers) >= BUILD.weaponCap;
+  const taken = input.seatSlots ? occupiedSeats(input.tiers) : null;
+  if (input.crewEnabled && input.crew + Math.max(0, input.pendingCrew) < CREW.maxLevel) {
+    pool.push({ option: { kind: 'crew' }, weight: CREW.offerWeight });
+  }
   for (const role of ROLES) {
     // Every weapon is career-unlocked from the start; the gates left on a new
     // hire are soundset support and gameplay.
@@ -140,6 +189,8 @@ function buildFinitePool(input: RollOffersInput): WeightedOption<BuildPickOption
     const effective = Math.min(WEAPON_MAX_LEVEL, tier + pending(input.pendingTiers, role));
     if (tier === 0) {
       if (weaponSlotsFull) continue;
+      // The seat, not the count, is what closes a hire with seat slots on.
+      if (taken && taken.has(SEAT_OF.get(role) ?? '')) continue;
       if (effective >= WEAPON_MAX_LEVEL) continue;
       pool.push({ option: { kind: 'weapon', role }, weight: weaponWeight(role, input.timeS) });
     } else if (effective < WEAPON_MAX_LEVEL) {

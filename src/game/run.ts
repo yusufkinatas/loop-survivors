@@ -57,6 +57,11 @@ import {
   type WeaponInstance,
   type WeaponTarget,
 } from './weapons';
+import { Stage } from './loadin/stage';
+import { Crowd } from './loadin/crowd';
+import { clampToVenue, rollVenue, unboundedVenue, type Venue } from './loadin/venue';
+import { layers as liveLayers, type Layers } from './loadin/layers';
+import { CROWD } from './loadin/config';
 
 /** Source player sprite uses a feet anchor; the stored player position is its
  * circle center. This is the source feet offset normalized to H800. */
@@ -598,6 +603,11 @@ export interface RunEvents {
   onGemCollected?(xp: number, levelProgress: number): void;
   onStageMagnet?(result: VacuumResult): void;
   onHealthPickup?(healed: number): void;
+  /** THE CROWD's own ending (#256's win-condition toggle): the room emptied.
+   *  A second way to lose, alongside the health bar — deliberately alongside
+   *  rather than instead of, so the toggle changes what a run is ABOUT without
+   *  changing what killing you means. */
+  onRoomLost?(): void;
 }
 
 // KIT_COLORS IS GONE (#141). It was a sixteen-entry table of weapon hues living
@@ -618,12 +628,33 @@ export interface RunWorldOpts {
   /** The stage script the director walks; Mad Forest when omitted. See
    *  `StageScript` — this is the seam a new run shape replaces. */
   stage?: StageScript;
+  /** THE LOAD-IN's layer switchboard. Read ONCE, here, and never again: a run
+   *  is the unit of judgement, so a layer cannot change under a run. Defaults to
+   *  whatever the panel last stored. */
+  layers?: Layers;
+  /** The venue this run is played in. Rolled from the world's own stream when
+   *  omitted, so a seeded run gets a deterministic room. */
+  venue?: Venue;
 }
 
 export class RunWorld {
   /** Owned weapons and their ladder tier (1-4). */
   readonly tiers = new Map<Role, number>();
   readonly evolved = new Set<Role>();
+
+  /** Weapons the shell has switched OFF: owned, at their tier, and not playing.
+   *
+   *  THIS IS A BASE FIX, pre-adopted here so the merge is a no-op — see
+   *  [PR #277](https://github.com/yusufkinatas/loop-survivors/pull/277). The
+   *  number-key toggles disable a weapon's VOICE, which stops its triggers and
+   *  therefore its damage; the texture auras have no triggers to stop, so a
+   *  switched-off `pad` kept damaging out of silence. `builtConf` reads this.
+   *
+   *  This stack's own silence — gear on the roadie's back, gear knocked over —
+   *  rides `plot.audible()` rather than this set, because it is a property of
+   *  where the gear IS rather than a decision the shell made. Both land in the
+   *  same guard. */
+  readonly silenced = new Set<Role>();
 
   /** THE STAT SEAM (#265). Every weapon module reads these and none of them
    *  knows where a number came from. In the base nothing writes to it, so a
@@ -697,6 +728,9 @@ export class RunWorld {
 
   private hash = new SpatialHash<Enemy>();
   private queryBuf: Enemy[] = [];
+  /** The stage plot's own hash scratch. Its geometry pass runs between the
+   *  weapon phases and must not share a buffer with a weapon mid-iteration. */
+  private stageQueryBuf: Enemy[] = [];
 
   /** Mad Forest table state. */
   private waveIdx = -1;
@@ -739,6 +773,21 @@ export class RunWorld {
   /** Radius of the victory clear wave, growing from the player. */
   private sweepR = 0;
 
+  // ---- THE LOAD-IN (#269) ---------------------------------------------------
+
+  /** This run's layer configuration, frozen at construction. */
+  readonly layers: Layers;
+  /** The room. Bounded when the `venue` layer is on; an unreachable box when it
+   *  is off, so nothing downstream has to branch on whether walls exist. */
+  readonly venue: Venue;
+  /** THE BUILD, as a thing standing on the floor. Every weapon fires from where
+   *  its gear stands, and the geometry between the pieces is the constraint. */
+  readonly plot: Stage;
+  /** The Crowd's fans and its room meter, or null with the toggle off. */
+  readonly crowd: Crowd | null;
+  /** Set once when the room empties; the shell reads it and ends the run. */
+  roomLost = false;
+
   constructor(
     view: { width: number; height: number },
     events: RunEvents,
@@ -758,6 +807,34 @@ export class RunWorld {
     this.fx = (opts.fx ?? true) ? [] : null;
     this.stage = opts.stage ?? MAD_FOREST;
     this.occurrences = unrollStageEvents(this.stage.events);
+    // THE LOAD-IN, built before the weapon contexts because every context closes
+    // over the plot for its firing origin. The venue draws off the main stream,
+    // so a seeded run always walks into the same room.
+    //
+    // `self` rather than `this`: the host below is an object literal, and a
+    // getter written on one binds `this` to the literal.
+    const self = this;
+    this.layers = opts.layers ?? liveLayers();
+    this.venue = opts.venue ?? (this.layers.venue ? rollVenue(this.rng) : unboundedVenue());
+    this.plot = new Stage(
+      {
+        get timeS() { return self.timeS; },
+        get player() { return self.player; },
+        get worldW() { return self.worldW; },
+        get worldH() { return self.worldH; },
+        near: (x, y, r) => this.hash.query(x, y, r, this.stageQueryBuf),
+        fx: (event) => { this.fx?.push(event); },
+      },
+      this.venue,
+      this.layers,
+    );
+    this.crowd = this.layers.crowd
+      ? new Crowd({
+          get timeS() { return self.timeS; },
+          get player() { return self.player; },
+          fx: (event) => { this.fx?.push(event); },
+        })
+      : null;
     // Built after the drop seed draw above: the context factory draws no rng,
     // so no draw moves.
     for (const m of WEAPON_MODULES) {
@@ -785,24 +862,35 @@ export class RunWorld {
     // query owns `buf`. With no light nearby the hash result is returned
     // untouched, so the ordinary case allocates and copies nothing.
     const nearBuf: WeaponTarget[] = [];
+    // THE ORIGIN SEAM (#269). Every weapon in the game asks the world "where am
+    // I" through `ctx.player`, and every one of them means "where does my shot
+    // start, what do I aim from, where is my field centred". The Load-In changes
+    // the answer and NOTHING ELSE: this scratch object reports the position of
+    // the GEAR that plays this voice, so nineteen weapon modules fire from where
+    // they stand without one line of change in any of them.
+    //
+    // Mutated in place rather than allocated per access, because `ctx.player` is
+    // read inside per-enemy loops. Modules read it and use it within the same
+    // tick — none stores it across frames — which is what makes that safe.
+    const origin = { x: 0, y: 0, facingX: 1 as 1 | -1 };
     return {
       role,
       color,
       get evolved() { return world.evolved.has(role); },
       get timeS() { return world.timeS; },
-      get player() { return world.player; },
+      get player() { return world.originFor(role, origin); },
       get worldW() { return world.worldW; },
       get worldH() { return world.worldH; },
       get buildMods() { return world.buildMods; },
       rng: () => world.rng(),
       get triggerCount() { return world.triggerCounts[role] ?? 0; },
       conf: () => world.builtConf(role),
-      aimDir: (spread) => world.aimDir(spread),
-      aimFan: (spread) => world.aimFan(spread),
-      moveDir: () => world.moveDir(),
+      aimDir: (spread) => world.aimDir(spread, role),
+      aimFan: (spread) => world.aimFan(spread, role),
+      moveDir: () => world.moveDir(role),
       fanAround: (base) => world.fanAround(base),
       near: (x, y, r) => world.nearHittable(x, y, r, buf, nearBuf),
-      nearestEnemies: (range, count) => world.nearestEnemies(range, count),
+      nearestEnemies: (range, count) => world.nearestEnemies(range, count, role),
       all: () => world.enemies,
       props: () => world.stageLights,
       damage: (t, amount) => world.damageHittable(t, amount, role),
@@ -888,6 +976,29 @@ export class RunWorld {
         if (index >= 0) world.zones.splice(index, 1);
       },
     };
+  }
+
+  /** Where this voice's weapon lives right now, written into the caller's
+   *  scratch object. The gear that plays it, or the player when the placement
+   *  layer is off — which is the base game, and the in-branch control.
+   *
+   *  `facingX` comes from the gear's aim line rather than from a walk heading,
+   *  because a stationary amp has no walk: it points at the crowd. */
+  private originFor(
+    role: Role,
+    out: { x: number; y: number; facingX: 1 | -1 },
+  ): { x: number; y: number; facingX: 1 | -1 } {
+    const rig = this.plot.rigFor(role);
+    if (!rig) {
+      out.x = this.player.x;
+      out.y = this.player.y;
+      out.facingX = this.player.facingX;
+      return out;
+    }
+    out.x = rig.x;
+    out.y = rig.y;
+    out.facingX = rig.aimX < 0 ? -1 : 1;
+    return out;
   }
 
   /** The motion and hit rules a migrated weapon lends the SHARED projectile
@@ -1031,11 +1142,30 @@ export class RunWorld {
   private builtConf(role: Role): WeaponConf | null {
     const tier = this.tiers.get(role);
     if (!tier) return null;
+    // THE AUDIBILITY RULE, for the one weapon family that could otherwise break
+    // it (#255: if a weapon is not audible, it is not attacking).
+    //
+    // Every trigger-driven weapon obeys the rule for free: silencing a voice
+    // stops its triggers, so its damage stops with its sound and no code
+    // subtracts anything. THE TEXTURE AURAS ARE THE EXCEPTION — a bed is never
+    // sequenced, so `pad` and `air` are driven by the clock and would keep
+    // damaging from inside a box on the player's back. They ask for their tuning
+    // through this method and bail when it hands back null, which is exactly the
+    // hook needed: a carried or knocked-over field is not a field.
+    if (!this.plot.audible(role) || this.silenced.has(role)) return null;
     const tiers = weaponTiers(role);
     if (!tiers) return null;
     // Single build-transform pipeline (D1): tempo compensation, folded in one
     // place — balance code multiplies here.
-    return this.applyBuild(tiers[tier - 1]);
+    const conf = this.applyBuild(tiers[tier - 1]);
+    // THE STAGE PLOT'S ONE NUMBER, applied to damage here and to the voice's
+    // gain in the shell — the same number, in both places, every frame. Masking,
+    // cables, sockets and the crowd all land in it, so a piece of gear that is
+    // quieter is weaker by exactly as much. Model A's coupling survives the move
+    // off the player: what changed is that geometry now sets the level, and
+    // geometry is the build's own doing.
+    const output = this.plot.outputOf(role);
+    return output === 1 ? conf : { ...conf, damage: conf.damage * output };
   }
 
   /** Add a weapon or raise its tier. The pulse fires when the change lands
@@ -1045,13 +1175,19 @@ export class RunWorld {
    *  this must only ever append: `Map.set` on a role already present raises
    *  its tier WITHOUT moving it, which is exactly the wanted behaviour. */
   addWeapon(role: Role, tier = 1): void {
+    const hired = !this.tiers.has(role);
     this.tiers.set(role, tier);
+    // A NEW VOICE ARRIVES AS GEAR, standing where the player was when they took
+    // it (#269). A level-up of something already owned moves nothing: you bought
+    // the instrument a bigger sound, not a new spot.
+    if (hired) this.plot.hire(role);
     this.spawnRing(this.player.x, this.player.y, 220, ROLE_COLORS[role], 0.6);
   }
 
   /** Sandbox loadout editor: drop a weapon entirely. */
   removeWeapon(role: Role): void {
     this.tiers.delete(role);
+    this.plot.retire(role);
   }
 
   /** Sandbox-only evolve that IGNORES THE RECIPE ENTIRELY — no level gate, no
@@ -1187,6 +1323,11 @@ export class RunWorld {
       if (this.scripted && this.timeS >= VICTORY.atS) this.beginVictory();
     }
     this.updatePassiveRecovery(dt);
+    // THE HAUL'S PRICE, through the stat seam (#265) exactly as documented: the
+    // stack's currency writes into `mods` and movePlayer reads it without ever
+    // learning that gear exists. Set before movePlayer so the frame you lift
+    // something is the frame you slow down.
+    this.mods.moveMul = this.plot.carryMoveMul;
     this.movePlayer(dt);
     // AFTER movePlayer, BEFORE the weapon phases: the spawn oval is measured
     // from where the player is now, and the sweep here is what clears the
@@ -1205,6 +1346,19 @@ export class RunWorld {
     this.resolveEnemyCollisions();
     this.hash.clear();
     for (const e of this.enemies) if (!e.dead) this.hash.insert(e);
+    // THE STAGE PLOT, between the fresh hash and the weapon phases: gear rides
+    // the player, bodies chew on what is standing, and the geometry that decides
+    // every voice's output is re-derived — all of it before a single weapon fires
+    // this frame, so no weapon ever reads a stale origin or a stale output.
+    if (this.crowd) this.plot.setFanGain(this.crowd.gainByRig(this.plot.rigs));
+    this.plot.update(dt, (role) => this.tiers.get(role) ?? 1);
+    if (this.crowd && !this.won) {
+      this.crowd.update(dt, this.enemies);
+      if (this.crowd.room <= 0 && !this.roomLost) {
+        this.roomLost = true;
+        this.events.onRoomLost?.();
+      }
+    }
     this.tickWeapons('strikes', dt);
     this.tickWeapons('pinches', dt);
     this.updateProjectiles(dt);
@@ -1242,6 +1396,14 @@ export class RunWorld {
     const speed = RUN.playerSpeed * this.buildMods.moveMul;
     this.player.x += a.x * speed * dt;
     this.player.y += a.y * speed * dt;
+    // THE ROOM HAS WALLS (#269). "Run shape: a place" is the whole premise of
+    // this stack, and a place with no edges is a plane: spreading out costs
+    // nothing on a plane, so the geometry constraint would evaporate. With the
+    // `venue` layer off the bounds sit ten million units away and this clamp is
+    // a no-op, which is the base's own floor.
+    const inside = clampToVenue(this.venue, this.player.x, this.player.y, this.player.radius);
+    this.player.x = inside.x;
+    this.player.y = inside.y;
     if (this.player.iframesT > 0) this.player.iframesT -= dt;
   }
 
@@ -1504,6 +1666,13 @@ export class RunWorld {
         y = playerFootY + (edge === 2 ? -1 : 1) * (this.worldH / 2 + margin);
       }
     }
+    // THE ROOM'S DOORS. Off-screen spawn points that fall outside the venue are
+    // pulled back to the wall, so a player backed into a corner sees The Hush
+    // pour in ALONG that wall rather than materialise on the other side of it.
+    // The pull picks the nearest legal point that is still a decent walk away —
+    // a clamp on its own would drop a whole wave into the player's lap the
+    // moment they touched a corner.
+    ({ x, y } = this.intoVenue(x, y, playerFootX, playerFootY));
     let moveX = 0;
     let moveY = 0;
     let despawnAt = 0;
@@ -1516,6 +1685,46 @@ export class RunWorld {
       despawnAt = this.timeS + 10;
     }
     this.pushEnemy(kind, x, y, spawnClass, moveX, moveY, despawnAt);
+  }
+
+  /** Pull an off-screen spawn point back inside the venue without dumping it on
+   *  the player. Walks the ring for a legal point at a decent range first, and
+   *  falls back to the clamped point pushed as far along the wall as the room
+   *  allows. A no-op outside a bounded venue. */
+  private intoVenue(
+    x: number,
+    y: number,
+    fromX: number,
+    fromY: number,
+  ): { x: number; y: number } {
+    if (!this.layers.venue) return { x, y };
+    const clamped = clampToVenue(this.venue, x, y, 8);
+    if (clamped.x === x && clamped.y === y) return clamped;
+    const keep = Math.min(this.worldW, this.worldH) * 0.44;
+    const dist = Math.hypot(x - fromX, y - fromY) || 1;
+    const base = Math.atan2(y - fromY, x - fromX);
+    // Twelve steps around the ring, so a legal direction is found whenever one
+    // exists; deterministic, and it draws no rng.
+    for (let i = 1; i <= 12; i++) {
+      const angle = base + (i % 2 === 0 ? 1 : -1) * Math.ceil(i / 2) * (Math.PI / 6);
+      const cx = fromX + Math.cos(angle) * dist;
+      const cy = fromY + Math.sin(angle) * dist;
+      const inside = clampToVenue(this.venue, cx, cy, 8);
+      if (inside.x !== cx || inside.y !== cy) continue;
+      return inside;
+    }
+    // Cornered: take the clamped point but shove it along the wall until it is
+    // at least `keep` away, so the player is never spawned on top of.
+    const dx = clamped.x - fromX;
+    const dy = clamped.y - fromY;
+    const d = Math.hypot(dx, dy) || 1;
+    if (d >= keep) return clamped;
+    return clampToVenue(
+      this.venue,
+      fromX + (dx / d) * keep,
+      fromY + (dy / d) * keep,
+      8,
+    );
   }
 
   /** Sandbox/lab helper: construct a real enemy at an explicit world-space
@@ -1695,6 +1904,10 @@ export class RunWorld {
     this.shockwaves.length = 0;
     this.stageLights.length = 0;
     this.stageLightAttemptT = 0;
+    // The gear itself deliberately SURVIVES a CLEAR ALL: the stage plot is the
+    // build, and a dev button that wipes the field must not also wipe the thing
+    // under test. Only the crowd, which is made of cleared bodies, goes.
+    if (this.crowd) this.crowd.fans.length = 0;
     if (this.fx) this.fx.length = 0;
     for (const inst of this.weapons.values()) inst.reset();
     this.overflowGem = null;
@@ -1711,7 +1924,10 @@ export class RunWorld {
       e.prevY = e.y;
       e.lastMoveX = 0;
       e.lastMoveY = 0;
-      const speed = e.speed;
+      // A body standing in the crowd is held up by it. The fans deal no damage —
+      // they are not a weapon — they are simply IN THE WAY, which is the first
+      // thing in this game that has ever stood between the player and the horde.
+      const speed = this.crowd?.slows(e.x, e.y, e.radius) ? e.speed * CROWD.enemySlow : e.speed;
       if (e.flashT > 0) e.flashT -= dt;
       // After the flash decay, never before it: the view tints on flashT, so
       // an early skip would leave a hit dummy permanently solid white.
@@ -1848,6 +2064,12 @@ export class RunWorld {
         color: e.color,
         elite: boss,
       });
+      // THE CROWD's flip (#256's win-condition toggle): the body does not simply
+      // stop existing, it CONVERTS. Everything else about the kill is unchanged
+      // — the gem still drops, the count still counts — because the toggle is
+      // meant to change what a run is ABOUT, not to re-tune it underneath.
+      // Bosses are exempt: a boss joining the audience reads as a bug.
+      if (this.crowd && !boss) this.crowd.convert(e.x, e.y);
       // An ordinary kill pays a gem and NOTHING else (spec §6e): notes, First
       // Aids and Stage Magnets all come off broken Stage Lights now.
       this.spawnGemAt(e.x, e.y, e.xp);
@@ -1984,8 +2206,13 @@ export class RunWorld {
   // ctx.retireShockwave, and its tick() runs in the 'shockwaves' phase where
   // updateShockwaves used to stand.
 
-  private nearestEnemy(range: number): Enemy | null {
-    const p = this.player;
+  /** Every aiming query below is measured from the WEAPON's origin rather than
+   *  from the player (#269). With the placement layer off that origin IS the
+   *  player and every one of them behaves exactly as the base does; with it on,
+   *  each piece of gear aims from where it stands, which is the whole of how a
+   *  band that is not on your back still knows what to shoot. */
+  private nearestEnemy(range: number, role?: Role): Enemy | null {
+    const p = role ? this.plot.originOf(role) : this.player;
     let best: Enemy | null = null;
     let bestD = range * range;
     for (const e of this.enemies) {
@@ -2003,8 +2230,8 @@ export class RunWorld {
 
   /** The `count` closest live enemies inside `range`, nearest first. For
    *  weapons that work on more than one picked target at a time. */
-  private nearestEnemies(range: number, count: number): Enemy[] {
-    const p = this.player;
+  private nearestEnemies(range: number, count: number, role?: Role): Enemy[] {
+    const p = role ? this.plot.originOf(role) : this.player;
     const maxD = range * range;
     const found: Array<{ e: Enemy; d: number }> = [];
     for (const e of this.enemies) {
@@ -2018,9 +2245,9 @@ export class RunWorld {
     return found.slice(0, count).map((f) => f.e);
   }
 
-  private aimDir(spread: number): { x: number; y: number } {
-    const p = this.player;
-    const best = this.nearestEnemy(AIM_RANGE);
+  private aimDir(spread: number, role?: Role): { x: number; y: number } {
+    const p = role ? this.plot.originOf(role) : this.player;
+    const best = this.nearestEnemy(AIM_RANGE, role);
     let ang: number;
     if (best) {
       ang = Math.atan2(best.y - p.y, best.x - p.x);
@@ -2034,8 +2261,8 @@ export class RunWorld {
   /** Aim once, then hand back one direction per shot this trigger owes. Double
    *  Take's extra shots alternate to either side of the aim line so the volley
    *  stays centred on the target instead of drifting off it. */
-  private aimFan(spread: number): Array<{ x: number; y: number }> {
-    return this.fanAround(this.aimDir(spread));
+  private aimFan(spread: number, role?: Role): Array<{ x: number; y: number }> {
+    return this.fanAround(this.aimDir(spread, role));
   }
 
   /** Spread this trigger's shots around an already-chosen direction. Split out
@@ -2058,7 +2285,13 @@ export class RunWorld {
   /** The player's walk heading as a unit vector. No targeting, no jitter, no
    *  rng draw: two triggers while holding one direction produce the exact same
    *  angle. The snare's whole aim, reached through WeaponContext.moveDir. */
-  private moveDir(): { x: number; y: number } {
+  private moveDir(role?: Role): { x: number; y: number } {
+    // A placed instrument has no walk heading — it never walks. What replaces it
+    // is the gear's own aim line, held from the last body it saw, which is the
+    // same "keeps its last value rather than zeroing" contract the player's
+    // heading has. The snare therefore still fires along a line rather than at a
+    // target, and the line is now the amp's.
+    if (role && this.plot.rigFor(role)) return this.plot.aimOf(role);
     return { x: this.player.moveDirX, y: this.player.moveDirY };
   }
 
@@ -2072,10 +2305,11 @@ export class RunWorld {
    *  (weapons/lead.ts sets all three). Do not read these two as any weapon's
    *  tuning — a weapon's numbers live in its own stats block. */
   private baseProjectile(role: Role, conf: WeaponConf, color: number, damage: number): Projectile {
+    const from = this.plot.originOf(role);
     return {
       role,
-      x: this.player.x,
-      y: this.player.y,
+      x: from.x,
+      y: from.y,
       vx: 0,
       vy: 0,
       radius: conf.radius!,
@@ -2258,10 +2492,14 @@ export class RunWorld {
    *  exemption survives without naming the arp. */
   private reflectProjectileFromArena(projectile: ProjectileView): void {
     if (projectile.bounces <= 0) return;
-    const minX = this.player.x - this.worldW * 0.52;
-    const maxX = this.player.x + this.worldW * 0.52;
-    const minY = this.player.y - this.worldH * 0.52;
-    const maxY = this.player.y + this.worldH * 0.52;
+    // In a bounded venue the walls ARE the rails — a ricochet that bounced off
+    // an invisible box travelling with the camera would read as a bug in a room
+    // whose corners you can see. Outside one, the base's camera-relative box.
+    const bounded = this.layers.venue;
+    const minX = bounded ? -this.venue.halfW : this.player.x - this.worldW * 0.52;
+    const maxX = bounded ? this.venue.halfW : this.player.x + this.worldW * 0.52;
+    const minY = bounded ? -this.venue.halfH : this.player.y - this.worldH * 0.52;
+    const maxY = bounded ? this.venue.halfH : this.player.y + this.worldH * 0.52;
     let bounced = false;
     if (projectile.x < minX || projectile.x > maxX) {
       projectile.vx *= -1;
