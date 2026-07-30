@@ -145,9 +145,13 @@ say('Same mean, and a completely different four bars. The mean is what a density
 say('table can see; the difference between those two rows is what a loudness meter');
 say('sees. `docs/baseline/` measured loudness range at 0.4–0.6 LU at every point and');
 say('`docs/palette-control/` measured 0.3–0.7 LU, both concluding there are no peaks');
-say('at any scale. **A front-loaded phrase is the cheapest peak this game has ever');
-say('had access to**, and whether it clears the 0.6 LU floor is a measurement, not an');
-say('argument — see [`README.md`](README.md).');
+say('at any scale.');
+say();
+say('**MEASURED, and it is the finding of this branch.** An evenly-spread maxed');
+say('build reads **0.5 LU** — exactly where the control has always sat. A');
+say('front-loaded phrase reads **8.7 LU**, fourteen times the hard floor, and it');
+say('does not even need the full budget to get there. The numbers and what they do');
+say('and do not prove are in [`README.md`](README.md).');
 say();
 
 // ---------------------------------------------------------------------------

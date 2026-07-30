@@ -77,9 +77,13 @@ Same mean, and a completely different four bars. The mean is what a density
 table can see; the difference between those two rows is what a loudness meter
 sees. `docs/baseline/` measured loudness range at 0.4–0.6 LU at every point and
 `docs/palette-control/` measured 0.3–0.7 LU, both concluding there are no peaks
-at any scale. **A front-loaded phrase is the cheapest peak this game has ever
-had access to**, and whether it clears the 0.6 LU floor is a measurement, not an
-argument — see [`README.md`](README.md).
+at any scale.
+
+**MEASURED, and it is the finding of this branch.** An evenly-spread maxed
+build reads **0.5 LU** — exactly where the control has always sat. A
+front-loaded phrase reads **8.7 LU**, fourteen times the hard floor, and it
+does not even need the full budget to get there. The numbers and what they do
+and do not prove are in [`README.md`](README.md).
 
 ## The set list
 
