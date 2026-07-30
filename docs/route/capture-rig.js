@@ -21,7 +21,9 @@
 // Needs the dev server (it imports the branch's own module), the Sandbox open and
 // RESUMED, and the receiver running:
 //
-//   node docs/baseline/receiver.mjs --out docs/route
+//   node docs/baseline/receiver.mjs --out docs/route --port 3301
+//
+// and set the sink to match before pasting:  window.__sink = 3301
 //
 // Then paste this file and: await __captureRoute(ROUTE_PLAN)
 //                           await __captureMoving('20-the-toll', TOLL_MOVE)
@@ -56,8 +58,10 @@ window.__routeRig = await (async () => {
         continue;
       }
       const [id, level = 1, weight = 0] = entry;
-      e.setVoiceTier(role, stage(level));
-      if (id) e.setVoiceChart(role, P.renderPattern(role, P.pattern(id)));
+      // Chart and tier together: setVoiceChart's tier argument defaults to 1, so
+      // splitting them would reset the rung a bed's presence rides on.
+      if (id) e.setVoiceChart(role, P.renderPattern(role, P.pattern(id)), stage(level));
+      else e.setVoiceTier(role, stage(level));
       e.setVoiceTrim(role, (level - 1) * LEVEL_TRIM_DB + weight * WEIGHT_TRIM_DB);
       e.setVoiceEnabled(role, true);
     }
@@ -94,7 +98,7 @@ window.__routeRig = await (async () => {
     rec.stop();
     await stopped;
     const blob = new Blob(chunks, { type: 'audio/webm' });
-    await fetch('http://localhost:3300/' + name + '.webm', { method: 'POST', body: blob });
+    await fetch(`http://localhost:${window.__sink ?? 3300}/${name}.webm`, { method: 'POST', body: blob });
     return { name, bars, kb: Math.round(blob.size / 1024) };
   };
 
@@ -158,48 +162,63 @@ window.__captureMoving = (name, timeline) => window.__routeRig.moving(name, time
 // The plans
 // ---------------------------------------------------------------------------
 
-/** THE ROUTE'S OWN BUILD STATES, walked in the order a run reaches them.
+/** THE ROUTE'S OWN BUILD STATES, and they are the ones a PLAYED ROUTE ACTUALLY
+ *  REACHED rather than a guess.
  *
- *  10-13 are the arrangement a route actually produces: the opening band, the
- *  band after a few patterns have been found, a band that has paid two tolls (two
- *  voices silent, one carrying weight), and the summit. 14 and 15 are the bounds
- *  the mechanic allows — the sparsest playable band and the busiest. */
+ *  The first pass of this plan was written by hand from the design and came out
+ *  half again as busy as the game: it put the summit at thirty hits a bar where a
+ *  driven twelve-room route ended at eleven. A capture set that overstates its own
+ *  branch is worse than no capture set, so 10-14 are read off the density curve of
+ *  the run logged in this directory's README, point for point.
+ *
+ *  15 and 16 are the BOUNDS the mechanic allows rather than states a run reaches:
+ *  the sparsest playable band, and every voice pushed to its ceiling — the mud the
+ *  ceilings exist to bound. */
 window.ROUTE_PLAN = [
-  ['10-route-opening', {
-    kick: ['anchor', 1], clap: ['backbeat', 1],
-  }],
+  // Room 1, two shells in: 6 hits a bar.
+  ['10-route-opening', { kick: ['anchor', 1], clap: ['backbeat', 1] }],
+  // Room 1 played out, four shells at level 1-2: 9 hits a bar, the measured value.
   ['11-route-early-four', {
-    kick: ['anchor', 2], clap: ['backbeat', 2], bass: ['drag', 1], hat: ['push', 1],
+    kick: ['anchor', 2], clap: ['backbeat', 2], bass: ['drag', 1], sub: ['hold', 1],
   }],
-  ['12-route-found-patterns', {
-    kick: ['anchor', 4], clap: ['backbeat', 4], bass: ['push', 3], hat: ['sprint', 3], lead: ['stagger', 2],
+  // Room 3, THE MEASURED PEAK of the logged run: 16 hits a bar off four shells,
+  // because a found pattern (The Sprint) went into the hat.
+  ['12-route-a-peak', {
+    kick: ['anchor', 4], hat: ['sprint', 3], clap: ['backbeat', 3], bass: ['drag', 3],
   }],
-  ['13-route-after-two-tolls', {
-    // Two voices fed to gates and gone quiet; the two kept are carrying the weight.
-    kick: ['anchor', 5, 2], bass: ['hold', 5, 1], hat: [null], clap: [null], lead: ['question', 3],
+  // The gate at room 3 took the hat's notes; the kick came back heavier. 16 -> 8,
+  // and this is the take the whole stack stands or falls on.
+  ['13-route-after-a-toll', {
+    kick: ['anchor', 5, 2], hat: [null], clap: ['backbeat', 4], bass: ['drag', 4],
   }],
+  // The band the logged run reached the summit with: five shells, four of them at
+  // the weight cap, 9.5 hits a bar. Barely busier than room 1 and much louder.
   ['14-route-summit', {
-    kick: ['anchor', 8, 2], bass: ['push', 8, 1], hat: ['rush', 8], chord: ['stagger', 8], lead: ['wholeStory', 8, 1],
+    shaker: ['walk', 4, 4], bell: ['drag', 5, 4], clap: ['question', 7, 4],
+    sub: ['hold', 3, 4], flute: ['hold', 1],
   }],
   ['15-route-thinnest', {
-    // Every voice on its sparsest legal pattern: the floor of the mechanic.
     kick: ['hold', 8], bass: ['hold', 8], sub: ['hold', 8], organ: ['hold', 8], bell: ['hold', 8],
   }],
   ['16-route-busiest', {
-    // Every voice at its ceiling: the mud the ceilings are there to bound.
     hat: ['rush', 8], shaker: ['rush', 8], arp: ['rush', 8], chord: ['stagger', 8], chank: ['stagger', 8],
   }],
 ];
 
-/** THE TOLL, AS ONE TAKE. Four bars of a full band, four bars of the valley a toll
- *  leaves, four bars climbing back as patterns are re-slotted, four bars of the
- *  peak the weight bought. This is the take the hard floor is about: a static
- *  arrangement cannot have a loudness range, and this one is what a run does. */
+/** THE TOLL, AS ONE TAKE, on the numbers above: four bars of the peak, four bars
+ *  of the valley the gate leaves, four bars climbing back as the case puts notes
+ *  into a shell, four bars of the peak the weight bought.
+ *
+ *  This is the take the hard floor is about. A static arrangement cannot HAVE a
+ *  loudness range — which is why `docs/baseline/` and `docs/palette-control/` both
+ *  measured 0.3-0.7 LU at every single point — and this one is the shape a played
+ *  route has. */
 window.TOLL_MOVE = [
-  [{ kick: ['anchor', 5], clap: ['backbeat', 5], bass: ['push', 5], hat: ['sprint', 5], lead: ['stagger', 4] }, 4],
-  // The gate takes the hat's notes and the clap's; the bass comes back heavier.
-  [{ kick: ['anchor', 5], clap: [null], bass: ['hold', 5, 2], hat: [null], lead: ['stagger', 4] }, 4],
-  // Back up: the case puts notes into the clap, then the hat.
-  [{ kick: ['anchor', 5], clap: ['backbeat', 5], bass: ['hold', 5, 2], hat: [null], lead: ['stagger', 4] }, 4],
-  [{ kick: ['anchor', 6, 1], clap: ['backbeat', 6], bass: ['push', 6, 2], hat: ['sprint', 6], lead: ['stagger', 6, 1] }, 4],
+  [{ kick: ['anchor', 4], hat: ['sprint', 3], clap: ['backbeat', 3], bass: ['drag', 3] }, 4],
+  [{ kick: ['anchor', 5, 2], hat: [null], clap: ['backbeat', 4], bass: ['drag', 4] }, 4],
+  [{ kick: ['anchor', 5, 2], hat: [null], clap: ['backbeat', 5], bass: ['push', 5], lead: ['hold', 3] }, 4],
+  // Back to the peak's own density, not past it: the run's measured ceiling is 16
+  // hits a bar, and a take that climbed to 24 would be reporting a game this
+  // branch does not have.
+  [{ kick: ['anchor', 6, 3], hat: ['sprint', 6], clap: ['backbeat', 6], bass: ['drag', 6, 1] }, 4],
 ];

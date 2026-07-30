@@ -183,6 +183,15 @@ export interface StageScript {
   events: readonly StageEvent[];
   startingKind: EnemyKind;
   startingSpawns: number;
+  /** When the set is played out and the run is won. Mad Forest's 30:00
+   *  (VICTORY.atS) when omitted.
+   *
+   *  ROUND-1 SEAM. "How long a run is" was a module constant, which is fine for
+   *  a stack that keeps the 30-minute clock and wrong for every stack that does
+   *  not: four of the five replace the run shape (#256), and one of them — the
+   *  three-song set — ends on an encore rather than on a timer at all. A length
+   *  is part of a run shape, so it belongs on the run-shape seam. */
+  victoryAtS?: number;
 }
 
 /** Not exported: today nothing outside this file needs it, and knip guards
@@ -618,18 +627,6 @@ export interface RunWorldOpts {
   /** The stage script the director walks; Mad Forest when omitted. See
    *  `StageScript` — this is the seam a new run shape replaces. */
   stage?: StageScript;
-  /**
-   * When the clock alone wins the run. `null` hands that decision to the caller
-   * (`declareVictory`), which is what a run shape that is a PLACE rather than a
-   * duration needs.
-   *
-   * THE ROUTE (#267) sets this to null: a set is over when the summit is cleared,
-   * so nothing about the ending is a timestamp any more. This is where the stack
-   * breaks `docs/plan.md`'s pillar 5 outright, and it is the smallest honest
-   * expression of that break — one number becoming optional rather than the
-   * director being rewritten.
-   */
-  victoryAtS?: number | null;
 }
 
 export class RunWorld {
@@ -751,7 +748,9 @@ export class RunWorld {
   /** The clock instant the current stage script's own times are measured from.
    *  Zero for a whole-run script; the door's timestamp for a room. */
   private stageEpochS = 0;
-  private readonly victoryAtS: number | null;
+  /** When this run's set is played out. The script's own length, or Mad
+   *  Forest's 30:00 for a stack that keeps it. */
+  readonly victoryAtS: number;
   /** The run has been won (mad-forest-spec §8). Set once, never cleared: a
    *  world that reached 30:00 only ever plays out its clear wave. */
   won = false;
@@ -777,7 +776,7 @@ export class RunWorld {
     this.fx = (opts.fx ?? true) ? [] : null;
     this.stage = opts.stage ?? MAD_FOREST;
     this.occurrences = unrollStageEvents(this.stage.events);
-    this.victoryAtS = opts.victoryAtS === undefined ? VICTORY.atS : opts.victoryAtS;
+    this.victoryAtS = this.stage.victoryAtS ?? VICTORY.atS;
     // Built after the drop seed draw above: the context factory draws no rng,
     // so no draw moves.
     for (const m of WEAPON_MODULES) {
@@ -1233,9 +1232,7 @@ export class RunWorld {
     // stops, and the clear wave takes over as the only thing that kills.
     if (!this.won) {
       this.timeS += dt;
-      if (this.scripted && this.victoryAtS !== null && this.timeS >= this.victoryAtS) {
-        this.beginVictory(this.victoryAtS);
-      }
+      if (this.scripted && this.timeS >= this.victoryAtS) this.beginVictory(this.victoryAtS);
     }
     this.updatePassiveRecovery(dt);
     this.movePlayer(dt);

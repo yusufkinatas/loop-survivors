@@ -39,13 +39,13 @@ export function syncBand(
       world.perWeaponMods.delete(role);
       continue;
     }
-    // The tier still matters even though the chart no longer comes from it: a BED
-    // has no notes at all and rides its level as PRESENCE (BED_LEVEL_BY_TIER), so
-    // a bed shell's only audible growth is this call. Set it first — setVoiceTier
-    // swaps in the ladder's chart as a side effect, and the line below is what
-    // overrides that with the pattern.
-    engine.setVoiceTier(role, chartStageForLevel(shell.level));
-    engine.setVoiceChart(role, build.chartFor(role));
+    // The tier rides along with the chart, and it still matters even though the
+    // chart no longer comes from it: a BED has no notes at all and rides its level
+    // as PRESENCE (BED_LEVEL_BY_TIER), so a bed shell's only audible growth is
+    // this argument. Passing them together is also the only safe form — the tier
+    // parameter defaults to 1, so a call that omitted it would silently reset
+    // every voice to its bottom rung.
+    engine.setVoiceChart(role, build.chartFor(role), chartStageForLevel(shell.level));
     engine.setVoiceTrim(role, build.trimDbFor(role));
     engine.setVoiceEnabled(role, !deactivated?.has(role));
     world.tiers.set(role, shell.level);

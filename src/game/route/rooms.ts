@@ -205,6 +205,11 @@ function scriptFor(crowd: Crowd, depth: number, phrases: number): StageScript {
     events: p.events?.(depth, phrases) ?? [],
     startingKind: roster[0],
     startingSpawns: Math.max(6, Math.round(minimum / 3)),
+    // NO CLOCK EVER WINS A ROUTE RUN. A set is over when the summit is cleared
+    // (`RunWorld.declareVictory`), so the run-shape seam's own length is pushed out
+    // of reach rather than left at Mad Forest's 30:00 — which would end a route
+    // halfway up it. This is where the stack breaks `docs/plan.md`'s pillar 5.
+    victoryAtS: Infinity,
   };
 }
 

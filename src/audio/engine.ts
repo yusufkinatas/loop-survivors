@@ -416,28 +416,6 @@ export class MusicEngine {
     this.applyVoiceLevel(voice, 0.05);
   }
 
-  /** PLAY AN ARBITRARY CHART ON A VOICE, instead of one of the soundset's four
-   *  authored rungs.
-   *
-   *  The other half of the same seam. `setVoiceTier` is the base's only way in and
-   *  it can only ever select a rung of the hand-authored ladder — which is exactly
-   *  the coupling #247 exists to break, since a rung is simultaneously the notes
-   *  and (through the trigger count) the damage. A stack whose currency is the
-   *  NOTES THEMSELVES — a pattern found as loot, a phrase the player recorded —
-   *  has to be able to hand a voice something the ladder never contained.
-   *
-   *  Object identity is the contract, exactly as it is for `getChart`: the engine
-   *  holds this reference and reads it on every step, so pass a stable object and
-   *  do not mutate it while it is playing. Takes effect on the next step the new
-   *  chart fires; scheduled sources keep their old buffer, so the swap is
-   *  click-free mid-bar. */
-  setVoiceChart(role: Role, chart: Chart): void {
-    const voice = this.voices.get(role);
-    if (!voice || chart.role !== role) return;
-    voice.chart = chart;
-    this.syncBed(voice);
-  }
-
   /** RMS of the current output window, 0..~1. Debug metering. */
   outputLevel(): number {
     const data = new Float32Array(this.analyser.fftSize);
@@ -710,6 +688,28 @@ export class MusicEngine {
     if (!voice) return;
     voice.tier = Math.max(1, Math.min(TIER_COUNT, tier));
     voice.chart = getChart(role, voice.tier);
+    this.syncBed(voice);
+  }
+
+  /** Put a voice on a chart the caller built, instead of one of the soundset's
+   *  four authored rungs. Takes effect on the next step the new chart fires.
+   *
+   *  ROUND-1 SEAM. The base only ever plays authored ladder rungs, so
+   *  setVoiceTier() — pick a rung, read it out of the chart store — was the whole
+   *  API. Any stack where a pattern is a thing the player OWNS rather than a rung
+   *  they reach (a pattern found as loot, a rhythm the player performed, a
+   *  figure assembled on a strip) has a Chart in hand and nowhere to put it. The
+   *  chart store is deliberately not that place: its charts are the soundset's,
+   *  shared with the rehearsal playground and persisted to localStorage, and a
+   *  run's build has no business writing there.
+   *
+   *  `tier` still moves with it, because a tier is not only a chart — it also
+   *  sets a bed's presence (syncBed) and is what the HUD counts pips with. */
+  setVoiceChart(role: Role, chart: Chart, tier = 1): void {
+    const voice = this.voices.get(role);
+    if (!voice) return;
+    voice.chart = chart;
+    voice.tier = Math.max(1, Math.min(TIER_COUNT, tier));
     this.syncBed(voice);
   }
 

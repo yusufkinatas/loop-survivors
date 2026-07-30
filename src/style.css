@@ -2413,7 +2413,14 @@ button.big {
 }
 
 .bench-cell.beat { background: #232833; }
-.bench-cell.barline { box-shadow: inset 1px 0 0 var(--line-2); }
+/* Where the bars are. At four bars the lane is sixty-four cells wide, and
+   without a visible division it reads as a barcode rather than as an
+   arrangement — the player has to be able to see WHICH BAR a hit is in. */
+.bench-cell.barline {
+  box-shadow: inset 2px 0 0 var(--line-2);
+  margin-left: 3px;
+}
+.bench-cell.barline:first-child { margin-left: 0; }
 .bench-cell.ghost { background: color-mix(in srgb, var(--voice-color) 30%, var(--bg-3)); }
 .bench-cell.hit { background: color-mix(in srgb, var(--voice-color) 65%, var(--bg-3)); }
 .bench-cell.accent {

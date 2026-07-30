@@ -1305,16 +1305,16 @@ export async function bootGame(
     // manual keeps the keyboard/joystick.
     // The seam reads playerControl live, so the in-game toggle works too.
     setAutoMode(mode);
-    // THE ROUTE, if any of its layers is on. The two arguments below are the whole
-    // of the run-shape change: the director walks the first ROOM's script instead
-    // of Mad Forest's thirty minutes, and no timestamp wins the run — the summit
-    // does (#267; this is where pillar 5 dies).
+    // THE ROUTE, if any of its layers is on. One argument is the whole of the
+    // run-shape change: the director walks the first ROOM's script instead of Mad
+    // Forest's thirty minutes, and that script's own length is out of reach — a
+    // route is won by clearing the summit, never by a timestamp (#267; this is
+    // where pillar 5 dies).
     route = routeActive() ? new RouteRun(Math.random) : null;
     const roomsOn = route !== null && toggles().rooms;
     const w: RunWorld = new RunWorld(app.screen, events, {
       control: () => playerControl(w),
       stage: roomsOn ? route!.room.script : undefined,
-      victoryAtS: roomsOn ? null : undefined,
     });
     world = w;
     w.player.hp = w.playerMaxHp;
