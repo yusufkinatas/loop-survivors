@@ -21,14 +21,29 @@
 // run receives identical offers on every platform.
 
 import { soundsetSupports } from '../audio/soundset';
-import { ROLES, type Role } from '../audio/kits';
+import { PALETTE_SEATS, ROLES, type Role } from '../audio/kits';
 import { BUILD } from './config';
 import { hasWeaponModule } from './weapons';
 import { WEAPON_MAX_LEVEL } from './weapons/levels';
+import type { MicOrder, MicStatId } from './frontman';
 import type { Rng } from './rng';
 
 const OFFER_COUNT = 3;
 const WEAPON_WEIGHT = 3;
+/** THE FRONTMAN (#271). A mic rank draws a little heavier than a weapon level,
+ *  because the whole point of the stack is that the hand is a real alternative to
+ *  the band rather than a garnish on it — and because the base runs out of weapon
+ *  levels at minute fourteen (#265) while the mic has 25 ranks to spend.
+ *
+ *  IT IS A WEIGHT, NOT A RULE. Nothing here forces a hand build: a player who
+ *  wants a pure band takes weapon cards every time and the mic ladders sit at
+ *  rank 0 all run. That is a legitimate end of the axis and the economy has to
+ *  let them reach it. */
+const MIC_WEIGHT = 4;
+/** The Call's order pick. Offered once, heavily, because until it lands the
+ *  commanding half of the layer is running on its default and the player has made
+ *  no choice about it. */
+const ORDER_WEIGHT = 8;
 
 /** A pick is a +1 INCREMENT, never a target level: the option names the thing,
  *  and the shell resolves what level that means against live state at the
@@ -48,11 +63,26 @@ interface EncorePickOption {
   encore: EncoreId;
 }
 
+/** A rank in one of the hand's five ladders (#271). THE STACK'S POWER CURRENCY:
+ *  what your verb does and how often you may use it, never more automatic
+ *  damage. */
+interface MicPickOption {
+  kind: 'mic';
+  stat: MicStatId;
+}
+
+/** The Call's order (#271, package 20): which command your hits carry. A one-off
+ *  choice, so it is a pick rather than a ladder. */
+interface OrderPickOption {
+  kind: 'order';
+  order: MicOrder;
+}
+
 /** Everything a level-up can offer. Kept as a discriminated union of more than
  *  one member on purpose: a prototype that adds its own pick kind (a pattern, a
  *  reel of tape, a stage position) widens this type and the shell's exhaustive
  *  switches then point at every site that has to learn about it. */
-export type AnyPickOption = WeaponPickOption | EncorePickOption;
+export type AnyPickOption = WeaponPickOption | EncorePickOption | MicPickOption | OrderPickOption;
 
 export interface RollOffersInput {
   tiers: ReadonlyMap<Role, number>;
@@ -64,12 +94,39 @@ export interface RollOffersInput {
   pendingTiers: ReadonlyMap<Role, number>;
   rng: Rng;
   timeS: number;
+  /** THE FRONTMAN (#271). Hand ladders with a rank still to buy, and whether The
+   *  Call still owes an order. Empty / false is the base's behaviour exactly, so
+   *  the `micCards` layer switch is "do not pass these in". */
+  micStats?: readonly MicStatId[];
+  needsOrder?: boolean;
+  /** Grouping, this stack's own call (#256). Off is the stack's answer — the
+   *  palette stays ungrouped and the mic is the only typed position. On is the
+   *  role-exclusivity toggle #271 lists: at most one voice per seat. */
+  seatExclusive?: boolean;
 }
 
 /** The finite half of the economy — everything that is still an addition to the
  *  build, as opposed to the Encore that pays out once there is nothing left to
- *  add. One member today; a prototype's own pick kind joins it here. */
-type BuildPickOption = WeaponPickOption;
+ *  add. */
+type BuildPickOption = WeaponPickOption | MicPickOption | OrderPickOption;
+
+const SEAT_OF: ReadonlyMap<Role, string> = new Map(
+  Object.entries(PALETTE_SEATS).flatMap(([seat, voices]) =>
+    voices.map((role): [Role, string] => [role, seat]),
+  ),
+);
+
+/** Seats a build already has a voice in. Only consulted when the
+ *  role-exclusivity toggle is on. */
+function occupiedSeats(tiers: ReadonlyMap<Role, number>): Set<string> {
+  const seats = new Set<string>();
+  for (const [role, tier] of tiers) {
+    if (tier <= 0) continue;
+    const seat = SEAT_OF.get(role);
+    if (seat) seats.add(seat);
+  }
+  return seats;
+}
 
 interface WeightedOption<T> {
   option: T;
@@ -118,9 +175,24 @@ function pending<K>(counts: ReadonlyMap<K, number>, key: K): number {
 function buildFinitePool(input: RollOffersInput): WeightedOption<BuildPickOption>[] {
   const pool: WeightedOption<BuildPickOption>[] = [];
 
+  // The hand's ladders sit in the same pool as the band's, so allocation is a
+  // SPEND decision as well as a toggle: the level-up screen is where the player
+  // says how much of their output they want to be theirs. Ranks are offered
+  // whatever the mic is holding — buying The Weight before you have taken an
+  // instrument is a legitimate (if odd) way to open.
+  for (const stat of input.micStats ?? []) {
+    pool.push({ option: { kind: 'mic', stat }, weight: MIC_WEIGHT });
+  }
+  if (input.needsOrder) {
+    for (const order of ['shove', 'pull', 'hold'] as const) {
+      pool.push({ option: { kind: 'order', order }, weight: ORDER_WEIGHT });
+    }
+  }
+
   // The cap closes the hire pool, not the upgrade pool: a capped build keeps
   // being offered tier-ups of the weapons it already owns.
   const weaponSlotsFull = ownedWeaponCount(input.tiers) >= BUILD.weaponCap;
+  const taken = input.seatExclusive ? occupiedSeats(input.tiers) : null;
   for (const role of ROLES) {
     // Every weapon is career-unlocked from the start; the gates left on a new
     // hire are soundset support and gameplay.
@@ -141,6 +213,7 @@ function buildFinitePool(input: RollOffersInput): WeightedOption<BuildPickOption
     if (tier === 0) {
       if (weaponSlotsFull) continue;
       if (effective >= WEAPON_MAX_LEVEL) continue;
+      if (taken?.has(SEAT_OF.get(role) ?? '')) continue;
       pool.push({ option: { kind: 'weapon', role }, weight: weaponWeight(role, input.timeS) });
     } else if (effective < WEAPON_MAX_LEVEL) {
       pool.push({ option: { kind: 'weapon', role }, weight: weaponWeight(role, input.timeS) });

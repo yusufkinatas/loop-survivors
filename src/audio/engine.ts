@@ -246,6 +246,11 @@ export class MusicEngine {
   private nextTimedActionSeq = 0;
   private stepMarkers: { step: number; time: number }[] = [];
   private lastDueStep = 0;
+  /** The audio time `lastDueStep` was heard at, and whether a step has been
+   *  heard at all yet. Together with stepDuration these place ANY nearby step on
+   *  the audio clock by extrapolation — see gridAnchor(). */
+  private lastDueTime = 0;
+  private heardAnyStep = false;
   private readonly gemCue = new GemCue();
   private readonly noteCue = new NoteCue();
 
@@ -776,6 +781,11 @@ export class MusicEngine {
     this.timedActions = [];
     this.stepMarkers = [];
     this.lastDueStep = 0;
+    // The anchor goes with the markers it was read from. Leaving it behind would
+    // hand the next run a heard-step time from the previous one, and every
+    // placement measured against it would be wrong by the gap between runs.
+    this.lastDueTime = 0;
+    this.heardAnyStep = false;
     this.nextTimedActionSeq = 0;
     for (const voice of this.voices.values()) {
       voice.lastHit = null;
@@ -844,9 +854,64 @@ export class MusicEngine {
   currentStep(): number {
     const now = this.ctx.currentTime;
     while (this.stepMarkers.length > 0 && this.stepMarkers[0].time <= now) {
-      this.lastDueStep = this.stepMarkers.shift()!.step;
+      const marker = this.stepMarkers.shift()!;
+      this.lastDueStep = marker.step;
+      this.lastDueTime = marker.time;
+      this.heardAnyStep = true;
     }
     return this.lastDueStep;
+  }
+
+  /** The last step the ear has actually reached, the audio time it arrived at,
+   *  and how long a step currently takes. Null until the transport has been
+   *  heard at all.
+   *
+   *  Exists for THE FRONTMAN, whose placement window has to ask "how far is this
+   *  instant from the tick the player is aiming at" — a question `currentStep()`
+   *  cannot answer, because it rounds. Extrapolating from this anchor reaches
+   *  steps in both directions, including ones the 120 ms lookahead has not
+   *  queued yet and ones it has already dropped, so a press either side of a
+   *  tick is measured the same way.
+   *
+   *  Shuffle is NOT folded in. The caller adds `swingOffsetSteps(step, swing)`
+   *  per step exactly as the clock does, because which steps lay back is a
+   *  property of the grid rather than of this anchor — and a Frontman aiming at
+   *  the laid-back 8th must be measured against where it is HEARD. */
+  gridAnchor(): { step: number; time: number; stepDuration: number; swing: number } | null {
+    this.currentStep();
+    if (!this.heardAnyStep || !this.clock.running) return null;
+    const stepDuration = this.clock.stepDuration;
+    if (!(stepDuration > 0) || !Number.isFinite(stepDuration)) return null;
+    return { step: this.lastDueStep, time: this.lastDueTime, stepDuration, swing: this.clock.swing };
+  }
+
+  /** Play one event NOW, off the grid, SOUND ONLY — no gameplay trigger is
+   *  dispatched to listeners.
+   *
+   *  The Frontman's hand hit is still one event with two outputs, but the two
+   *  halves are assembled by the hand rather than by the sequencer: how much
+   *  damage the hit deals depends on how well the placement landed, which is
+   *  knowledge the audio path does not have and should not grow. So the sound
+   *  comes through here and the caller deals the damage itself.
+   *
+   *  Works on a voice whose chart is switched off, which is the normal case: a
+   *  weapon on the mic has `enabled === false` precisely so its chart stops
+   *  playing itself. `enabled` gates the SEQUENCER (see onStep), never this. */
+  handStrike(role: Role, ev: ChartEvent, gainMul = 1): void {
+    const voice = this.voices.get(role);
+    if (!voice) return;
+    this.trigger(voice, ev, this.ctx.currentTime, -1, false, gainMul);
+  }
+
+  /** Seconds between a scheduled audio time and the moment it reaches the
+   *  player's ears. A press aimed at a beat the player HEARD lands this much
+   *  after the beat's scheduled time, so The Frontman subtracts it before
+   *  measuring. Browsers that do not report `outputLatency` fall back to the
+   *  buffer latency, which is the part that always exists. */
+  get outputLatencyS(): number {
+    const reported = this.ctx.outputLatency;
+    if (Number.isFinite(reported) && reported > 0) return reported;
+    return Number.isFinite(this.ctx.baseLatency) ? this.ctx.baseLatency : 0;
   }
 
   /** Play one event immediately, outside the grid. Rehearsal-room audition. */

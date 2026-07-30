@@ -422,6 +422,13 @@ export class RunView {
   private trailGfx = new Graphics({ roundPixels: true });
   private projectileLayer = new Container();
   private systemAttackGfx = new Graphics({ roundPixels: true });
+  /** THE FRONTMAN's two synergies, drawn (#271). #248 found synergy's most
+   *  legible form is a gated combination object — a thing you can point at, not a
+   *  hidden multiplier — so the cue mark and the charge pips are on the body,
+   *  every frame, in the colour of the side that put them there: green for what
+   *  your hand marked and the band will cash, gold for what the band loaded and
+   *  your hand will spend. */
+  private frontmanGfx = new Graphics({ roundPixels: true });
   private fxLayer = new Container();
   private floaterLayer = new Container();
   private rewardSafeGfx = new Graphics({ roundPixels: true });
@@ -503,6 +510,7 @@ export class RunView {
       this.trailGfx,
       this.projectileLayer,
       this.systemAttackGfx,
+      this.frontmanGfx,
       this.fxLayer,
       this.floaterLayer,
     );
@@ -732,6 +740,7 @@ export class RunView {
     this.syncEnemies(cameraX, cameraY);
     this.syncDummyLabels(cameraX, cameraY);
     this.syncProjectiles(cameraX, cameraY);
+    this.drawFrontmanMarks();
     this.drawTrails();
     this.drawTourAttacks(cameraX, cameraY);
     this.updatePops(dt);
@@ -1295,6 +1304,40 @@ export class RunView {
       if (!this.live.has(projectile)) {
         gfx.destroy();
         this.projectileGfx.delete(projectile);
+      }
+    }
+  }
+
+  /** The two synergies, on the bodies that carry them.
+   *
+   *  A CUE is a green chevron above the head: your hand pointed at this body and
+   *  the band's next downbeat will hit it. A CHARGE is a row of gold pips under
+   *  it: the band has landed this many hits and your next placement spends them.
+   *  Both fade as their timer runs out, so "this is about to be wasted" is
+   *  readable without a number. */
+  private drawFrontmanMarks(): void {
+    this.frontmanGfx.clear();
+    for (const enemy of this.world.enemies) {
+      if (enemy.dead) continue;
+      if (enemy.cueT > 0) {
+        const alpha = Math.min(1, enemy.cueT / 0.5) * 0.9;
+        const top = snap(enemy.y - enemy.radius - 12);
+        const cx = snap(enemy.x);
+        // A chevron, drawn as three stacked bars so it reads at the game's pixel
+        // scale where a stroked polygon would smear.
+        this.frontmanGfx.rect(cx - 4, top, 3, 3).fill({ color: 0x76ff92, alpha });
+        this.frontmanGfx.rect(cx - 1, top + 3, 3, 3).fill({ color: 0x76ff92, alpha });
+        this.frontmanGfx.rect(cx + 2, top, 3, 3).fill({ color: 0x76ff92, alpha });
+      }
+      if (enemy.charge > 0) {
+        const alpha = Math.min(1, enemy.chargeT / 1) * 0.95;
+        const y = snap(enemy.y + enemy.radius + 3);
+        const width = enemy.charge * 4 - 1;
+        let x = snap(enemy.x - width / 2);
+        for (let i = 0; i < enemy.charge; i++) {
+          this.frontmanGfx.rect(x, y, 3, 3).fill({ color: 0xffd45c, alpha });
+          x += 4;
+        }
       }
     }
   }

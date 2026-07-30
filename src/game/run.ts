@@ -31,6 +31,7 @@ import {
   type WeaponConf,
 } from './config';
 import { enemyStats } from './enemy-tuning';
+import { CHARGE, type MicOrder } from './frontman';
 import {
   STAGE_EVENTS,
   STAGE_STARTING_KIND,
@@ -195,6 +196,18 @@ const MAD_FOREST: StageScript = {
   startingSpawns: STAGE_STARTING_SPAWNS,
 };
 
+/** How long a cue stays on a body. Just over one bar at the soundset's tempo, so
+ *  a mark always survives to the downbeat that is coming and never to the one
+ *  after it — a cue you placed is cashed once, by the band, on the next bar. */
+const FRONTMAN_CUE_HOLD_S = 2.4;
+/** The Call's push speed at groove ×1, in world units a second. Sits in the same
+ *  range as the weapons' own knockback so a commanded crowd moves like a shoved
+ *  one rather than like a physics bug. */
+const FRONTMAN_CALL_SPEED = 520;
+const FRONTMAN_CALL_PUSH_S = 0.22;
+/** Seconds a held body stands still. Roughly a beat at the soundset's tempo. */
+const FRONTMAN_CALL_HOLD_S = 0.55;
+
 export interface Enemy {
   id: number;
   kind: EnemyKind;
@@ -251,6 +264,18 @@ export interface Enemy {
   dummy: boolean;
   /** Dummy-only damage bookkeeping; null on every ordinary enemy. */
   readout: DummyReadout | null;
+  /** THE CUE (#271, hands -> band). Seconds this body stays marked by the
+   *  player's hand for the band's next downbeat to cash. Zero means unmarked, and
+   *  the field is the whole of the mark — it is drawn from here, so the synergy is
+   *  a thing on screen you can point at rather than a hidden multiplier (#248). */
+  cueT: number;
+  /** THE CHARGE (#271, band -> hands). Pips the BAND has stacked on this body,
+   *  one per landed automatic trigger, capped at CHARGE.max. The player's hand
+   *  spends them. Drawn as orbiting dots for the same reason as `cueT`. */
+  charge: number;
+  /** Seconds until the newest pip expires. Charge is a short loan from the band,
+   *  not a pool that quietly fills all run. */
+  chargeT: number;
 }
 
 /** A Stage Light: a destructible prop, warm amber against the Hush's cold
@@ -638,6 +663,26 @@ export class RunWorld {
    *  reuse. */
   readonly mods: BuildMods = neutralBuildMods();
 
+  /** THE FRONTMAN (#271). Whether the band stacks charge pips on what it hits.
+   *  The layer's own switch, so the branch can be A/B'd against itself with the
+   *  band -> hands synergy off and everything else untouched (#256). */
+  frontmanCharge = false;
+  /** The weapon standing at the mic, mirrored from the shell.
+   *
+   *  THIS IS HOW THE CHARGE LOOP TELLS THE BAND FROM THE HAND, and it is exact
+   *  rather than approximate. A miked weapon's chart is switched off, so every
+   *  scrap of damage credited to that role is the player's — its hand hits and
+   *  the payouts they trigger. Everything credited to any other role is a voice
+   *  playing itself. "The band" just IS every voice except the one you are
+   *  holding.
+   *
+   *  A synchronous flag around `handFire` was the first attempt and it was wrong:
+   *  a weapon may DEFER its damage to a later tick (the kick's floor strip does,
+   *  and fire-time versus tick-time is explicitly the module's choice), so the
+   *  latch closed before the hand's own damage landed — and the hand quietly
+   *  loaded the magazine it was about to spend. */
+  frontmanMicRole: Role | null = null;
+
   player = {
     x: 0,
     y: 0,
@@ -1016,6 +1061,164 @@ export class RunWorld {
     // nothing, which is the honest answer — there is no half-owned weapon left
     // for the world to finish off.
     this.weapons.get(t.role)?.fire(this.weaponCtx.get(t.role)!, conf);
+  }
+
+  // -------------------------------------------------------------------------
+  // THE FRONTMAN'S WORLD SURFACE (#271)
+  //
+  // FrontmanStage, implemented. Queries in, effects out — the hand asks for a
+  // thing to happen and never receives a body, exactly like a weapon module and
+  // for the same reason. `frontman.ts` owns the timing and the economy; every
+  // line below is the world's half and none of it knows what a bar is.
+  // -------------------------------------------------------------------------
+
+  get playerX(): number {
+    return this.player.x;
+  }
+
+  get playerY(): number {
+    return this.player.y;
+  }
+
+  /** Fire the miked weapon once, by hand, with its per-trigger damage scaled.
+   *
+   *  The same path a chart trigger takes — same module, same conf pipeline, same
+   *  tick phases — so a weapon plays in your hand exactly as it plays in the band,
+   *  and the only difference is who decided when. That is deliberate and it is
+   *  what makes the pistol test answerable here: a weapon earns a place at the mic
+   *  because of the shape it makes in your hand. */
+  handFire(role: Role, damageMul: number): boolean {
+    const conf = this.builtConf(role);
+    if (!conf) return false;
+    const inst = this.weapons.get(role);
+    const ctx = this.weaponCtx.get(role);
+    if (!inst || !ctx) return false;
+    this.triggerCounts[role] = (this.triggerCounts[role] ?? 0) + 1;
+    inst.fire(ctx, { ...conf, damage: conf.damage * damageMul });
+    return true;
+  }
+
+  /** Mark the nearest bodies for the band's next downbeat. Nearest rather than
+   *  whatever the hash hands back first: the mark is a thing the player is meant
+   *  to be able to aim, so it has to follow the crowd they are standing in. */
+  markCues(x: number, y: number, radius: number, count: number): number {
+    const near = this.hash.query(x, y, radius, this.queryBuf);
+    const inReach: Enemy[] = [];
+    for (const e of near) {
+      if (e.dead || e.dummy) continue;
+      const dx = e.x - x;
+      const dy = e.y - y;
+      const reach = radius + e.radius;
+      if (dx * dx + dy * dy <= reach * reach) inReach.push(e);
+    }
+    inReach.sort((a, b) => (a.x - x) ** 2 + (a.y - y) ** 2 - ((b.x - x) ** 2 + (b.y - y) ** 2));
+    let marked = 0;
+    for (const e of inReach) {
+      if (marked >= count) break;
+      e.cueT = FRONTMAN_CUE_HOLD_S;
+      marked += 1;
+    }
+    return marked;
+  }
+
+  /** The band's downbeat cashes every live cue. */
+  cashCues(perBody: number, source?: Role): number {
+    if (!(perBody > 0)) return 0;
+    let hit = 0;
+    for (const e of this.enemies) {
+      if (e.dead || e.dummy || e.cueT <= 0) continue;
+      e.cueT = 0;
+      hit += 1;
+      this.spawnRing(e.x, e.y, e.radius + 16, 0x76ff92, 0.24, true);
+      this.damageEnemy(e, perBody, source);
+    }
+    return hit;
+  }
+
+  /** The hand spends every pip the band loaded in reach. */
+  spendCharge(x: number, y: number, radius: number, perPip: number, source?: Role): number {
+    const near = this.hash.query(x, y, radius, this.queryBuf);
+    let spent = 0;
+    for (const e of [...near]) {
+      if (e.dead || e.dummy || e.charge <= 0) continue;
+      const dx = e.x - x;
+      const dy = e.y - y;
+      const reach = radius + e.radius;
+      if (dx * dx + dy * dy > reach * reach) continue;
+      const pips = e.charge;
+      e.charge = 0;
+      spent += pips;
+      this.spawnRing(e.x, e.y, e.radius + 10 + pips * 4, 0xffd45c, 0.2, true);
+      this.damageEnemy(e, perPip * pips, source);
+    }
+    return spent;
+  }
+
+  /** THE CALL. Your hand does not only damage the crowd, it moves it.
+   *
+   *  Reuses the knockback channel every weapon already writes to, including the
+   *  hold: `moveEnemies` gives a body with `knockT > 0` its knock vector INSTEAD
+   *  of a chase, so a zero vector is a body standing still. No new field, and no
+   *  second movement rule to keep in step with the first. */
+  command(x: number, y: number, radius: number, order: MicOrder, power: number): number {
+    const near = this.hash.query(x, y, radius, this.queryBuf);
+    let moved = 0;
+    for (const e of near) {
+      if (e.dead || e.dummy) continue;
+      const dx = e.x - x;
+      const dy = e.y - y;
+      const reach = radius + e.radius;
+      if (dx * dx + dy * dy > reach * reach) continue;
+      const d = Math.hypot(dx, dy) || 1;
+      const speed = FRONTMAN_CALL_SPEED * power * e.knockbackMul * this.mods.knockbackMul;
+      if (order === 'hold') {
+        e.knockX = 0;
+        e.knockY = 0;
+        e.knockT = FRONTMAN_CALL_HOLD_S;
+      } else {
+        const sign = order === 'pull' ? -1 : 1;
+        e.knockX = (dx / d) * speed * sign;
+        e.knockY = (dy / d) * speed * sign;
+        e.knockT = FRONTMAN_CALL_PUSH_S;
+      }
+      moved += 1;
+    }
+    return moved;
+  }
+
+  /** Everything on screen takes it: the re-entry. */
+  sweep(damage: number, source?: Role): number {
+    if (!(damage > 0)) return 0;
+    const halfW = this.worldW / 2 + 40;
+    const halfH = this.worldH / 2 + 40;
+    const cx = this.player.x + PLAYER_FOOT_OFFSET.x;
+    const cy = this.player.y + PLAYER_FOOT_OFFSET.y;
+    let hit = 0;
+    for (const e of this.enemies) {
+      if (e.dead || e.dummy) continue;
+      if (Math.abs(e.x - cx) > halfW || Math.abs(e.y - cy) > halfH) continue;
+      hit += 1;
+      this.damageEnemy(e, damage, source);
+    }
+    return hit;
+  }
+
+  ring(x: number, y: number, radius: number, color: number, durS: number): void {
+    this.spawnRing(x, y, radius, color, durS);
+  }
+
+  callout(label: string, color: number): void {
+    this.fx?.push({ type: 'pressure', x: this.player.x, y: this.player.y, color, label });
+  }
+
+  /** Drop every Frontman mark. A run reset must not leave a cue on a recycled
+   *  body for the next bar line to cash. */
+  clearFrontmanMarks(): void {
+    for (const e of this.enemies) {
+      e.cueT = 0;
+      e.charge = 0;
+      e.chargeT = 0;
+    }
   }
 
   /** This weapon's per-trigger numbers at its current level, with the single
@@ -1611,6 +1814,9 @@ export class RunWorld {
             dps: 0,
           }
         : null,
+      cueT: 0,
+      charge: 0,
+      chargeT: 0,
     };
     this.enemies.push(enemy);
     return enemy;
@@ -1713,6 +1919,14 @@ export class RunWorld {
       e.lastMoveY = 0;
       const speed = e.speed;
       if (e.flashT > 0) e.flashT -= dt;
+      // The Frontman's two marks age here, alongside the flash and for the same
+      // reason: they are per-body timers the view reads, so they belong on the one
+      // pass that already touches every body once a step.
+      if (e.cueT > 0) e.cueT -= dt;
+      if (e.charge > 0) {
+        e.chargeT -= dt;
+        if (e.chargeT <= 0) e.charge = 0;
+      }
       // After the flash decay, never before it: the view tints on flashT, so
       // an early skip would leave a hit dummy permanently solid white.
       if (e.dummy) continue;
@@ -1828,6 +2042,20 @@ export class RunWorld {
       e.hp = e.spawnHp;
       e.flashT = 0.08;
       return;
+    }
+    // THE CHARGE (#271, band -> hands). Every trigger the BAND lands stacks a pip
+    // the player's hand can spend. The miked role is excluded, which is what keeps
+    // the synergy crossing the axis: a hand hit, a cue cash and a charge
+    // detonation are all credited to the weapon in your hand, so none of them can
+    // load the magazine they spend.
+    if (
+      this.frontmanCharge &&
+      source !== undefined &&
+      source !== this.frontmanMicRole &&
+      e.charge < CHARGE.max
+    ) {
+      e.charge += 1;
+      e.chargeT = CHARGE.lifeS;
     }
     // Effective damage only: overkill on a 1hp bat must not count as a
     // 34-damage contribution, or AoE sweeps inflate their share.

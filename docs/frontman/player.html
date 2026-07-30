@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Loop Survivors — The Frontman captures</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; padding: 28px 20px 60px;
+    background: #0c0f12; color: #d8e0e6;
+    font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  main { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 6px; color: #7ef2c4; letter-spacing: .5px; }
+  p.lede { margin: 0 0 26px; color: #8b9aa5; max-width: 62ch; }
+  .take {
+    border: 1px solid #1e262d; border-left: 3px solid #2f8f6b;
+    border-radius: 6px; padding: 12px 14px; margin-bottom: 10px; background: #10151a;
+  }
+  .take.off-curve { border-left-style: dashed; opacity: .85; }
+  .row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .name { color: #7ef2c4; font-weight: 700; }
+  .density { margin-left: auto; color: #ffd45c; font-weight: 700; white-space: nowrap; }
+  .build { color: #8b9aa5; font-size: 13px; margin: 4px 0 8px; }
+  .bar { height: 6px; background: #1a2229; border-radius: 3px; overflow: hidden; margin: 8px 0; }
+  .bar span { display: block; height: 100%; background: linear-gradient(90deg,#2f8f6b,#ffd45c); }
+  audio { width: 100%; height: 34px; }
+  .note { color: #6c7c88; font-size: 12.5px; margin-top: 4px; }
+  h2 { font-size: 14px; color: #8b9aa5; margin: 28px 0 10px; text-transform: uppercase; letter-spacing: 1px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>The Frontman — captured</h1>
+  <p class="lede">
+    Seven takes off the post-limiter master bus, no combat on the field. 16 bars
+    each, phrase-aligned. The build is the same five maxed weapons throughout —
+    what changes is who is playing them. Numbers are loudness range, the thing
+    every earlier capture set measured at 0.3 to 0.7 LU everywhere. Set a
+    comfortable volume once and leave it: <strong>f04 and f05 are 16 dB quieter
+    than the rest and f06 ends at the ceiling.</strong>
+  </p>
+  <div id="curve"></div>
+  <h2>The arc, and its control</h2>
+  <div id="bounds"></div>
+</main>
+<script>
+const TAKES = [
+  { f: 'f01-band-five-maxed',     build: 'nothing at the mic — the anchor',            d: 0.4, lufs: -10.6 },
+  { f: 'f02-mic-on-hat-3-places', build: 'the hat at the mic, 3 places a bar',         d: 0.5, lufs: -10.6 },
+  { f: 'f03-mic-on-hat-8-places', build: 'the hat at the mic, 8 places a bar',         d: 0.5, lufs: -10.6 },
+  { f: 'f04-solo-3-places',       build: 'SOLO — the band down, 3 places a bar',       d: 3.0, lufs: -27.2 },
+  { f: 'f05-solo-8-places',       build: 'SOLO — the band down, 8 places a bar',       d: 1.1, lufs: -25.0 },
+];
+const BOUNDS = [
+  { f: 'f06-the-arc',         build: '4 bars band, 4 bars solo, back in on a fill, 8 bars band + hand', d: 14.4, lufs: -10.5,
+    note: 'The take the whole set exists for. 14.4 LU of loudness range against a 0.6 LU floor, and against 0.3-0.7 LU everywhere in both earlier sets. Ends at 0.0 dBFS true peak — the return is hitting the ceiling.' },
+  { f: 'f07-the-arc-no-hand', build: 'the same arc, no hand at all',                                     d: 4.0, lufs: -10.6,
+    note: 'The control. The same voices dropping out and coming back with NOBODY playing in the valley. Still clears the floor at 4.0 LU, but only 28% of f06 — because R128 gates out anything 20 LU under the programme, so a drop to silence is discarded as a gap rather than measured as range. A break with nothing in it is a hole; a break with one voice in it is a dynamic.' },
+];
+const MAX = 14.4;
+
+function render(list, host, offCurve) {
+  host.innerHTML = list.map((t) => `
+    <div class="take${offCurve ? ' off-curve' : ''}">
+      <div class="row">
+        <span class="name">${t.f.replace(/^\d+-/, '')}</span>
+        <span class="density">${t.d.toFixed(1)} LU range · ${t.lufs.toFixed(1)} LUFS</span>
+      </div>
+      <div class="build">${t.build}</div>
+      <div class="bar"><span style="width:${(t.d / MAX) * 100}%"></span></div>
+      <audio controls preload="none" src="audio/${t.f}.webm"></audio>
+      ${t.note ? `<div class="note">${t.note}</div>` : ''}
+    </div>`).join('');
+}
+render(TAKES, document.getElementById('curve'), false);
+render(BOUNDS, document.getElementById('bounds'), true);
+
+// One at a time: comparing two takes is only meaningful if only one is playing.
+document.addEventListener('play', (e) => {
+  for (const a of document.querySelectorAll('audio')) if (a !== e.target) a.pause();
+}, true);
+</script>
+</body>
+</html>
