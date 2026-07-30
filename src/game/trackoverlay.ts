@@ -79,7 +79,16 @@ export function mountTrackOverlay(
 
       // Charts loop inside the 4-bar phrase, so precompute which phrase step
       // each event lands on; the per-bar repaint is then a set lookup.
-      const chart = getChart(role, chartStageForLevel(tier));
+      //
+      // READ FROM THE LIVE VOICE, not from the ladder. This used to be
+      // `getChart(role, chartStageForLevel(tier))` — the authored rung the level
+      // selects — which is the same thing for a build whose notes ARE its ladder,
+      // and the wrong thing entirely for one whose notes are the player's
+      // (#267: a pattern found as loot, slotted into a shell). This is the only
+      // surface that answers "what is the band playing RIGHT NOW" without stopping
+      // the game, so it has to read what the engine is actually playing. Falls
+      // back to the ladder for a voice the engine does not know.
+      const chart = engine.voices.get(role)?.chart ?? getChart(role, chartStageForLevel(tier));
       const chartSteps = chart.bars * STEPS_PER_BAR;
       const hits = new Set<number>();
       for (const ev of chart.events) {

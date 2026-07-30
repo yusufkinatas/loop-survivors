@@ -60,6 +60,11 @@ export interface Voice {
   /** The most recent trigger's nodes, so choked kits can cut it. */
   lastHit: VoiceHit | null;
   evolved: boolean;
+  /** Decibels the evolution asks for (setEvolutionGain). */
+  evolutionDb: number;
+  /** Decibels the BUILD asks for (setVoiceTrim). Separate from the evolution's so
+   *  the two compose instead of overwriting each other — see applyVoiceLevel. */
+  trimDb: number;
   /** A BED's one continuous looping source, and the gain its level rides on.
    *  Null while the bed is off. Only texture voices ever have these; every
    *  other voice makes sound only through `trigger`. */
@@ -307,6 +312,8 @@ export class MusicEngine {
         override: null,
         lastHit: null,
         evolved: false,
+        evolutionDb: 0,
+        trimDb: 0,
         bedSource: null,
         bedGain: null,
       });
@@ -353,17 +360,26 @@ export class MusicEngine {
     return this.audioSetId;
   }
 
+  /** A voice's level, from its calibrated mix position plus every decibel the
+   *  game has asked for on top. ONE place, because there are now two independent
+   *  sources of trim — the evolution's and the build's — and a setter that wrote
+   *  the absolute value would silently cancel the other one. */
+  private applyVoiceLevel(voice: Voice, rampS = 0.025): void {
+    voice.gain.gain.setTargetAtTime(
+      voiceMixGain(voice.role) * Math.pow(10, (voice.evolutionDb + voice.trimDb) / 20),
+      this.ctx.currentTime,
+      rampS,
+    );
+  }
+
   /** Evolution voices stay in the same musical lane; a few dense weapons are
    * trimmed in decibels so their extra geometry does not become extra loudness. */
   setEvolutionGain(role: Role, gainDb: number): void {
     const voice = this.voices.get(role);
     if (!voice) return;
     voice.evolved = true;
-    voice.gain.gain.setTargetAtTime(
-      voiceMixGain(role) * Math.pow(10, gainDb / 20),
-      this.ctx.currentTime,
-      0.025,
-    );
+    voice.evolutionDb = gainDb;
+    this.applyVoiceLevel(voice);
   }
 
   /** Sandbox before/after switch: restore this voice's calibrated base mix. */
@@ -371,14 +387,33 @@ export class MusicEngine {
     const voice = this.voices.get(role);
     if (!voice) return;
     voice.evolved = false;
-    voice.gain.gain.setTargetAtTime(voiceMixGain(role), this.ctx.currentTime, 0.02);
+    voice.evolutionDb = 0;
+    this.applyVoiceLevel(voice, 0.02);
   }
 
   resetEvolutionMixes(): void {
     for (const voice of this.voices.values()) {
       voice.evolved = false;
-      voice.gain.gain.setTargetAtTime(voiceMixGain(voice.role), this.ctx.currentTime, 0.02);
+      voice.evolutionDb = 0;
+      voice.trimDb = 0;
+      this.applyVoiceLevel(voice, 0.02);
     }
+  }
+
+  /** THE BUILD'S OWN TRIM, in decibels, composing with the evolution's.
+   *
+   *  A SEAM FOR ROUND 1, and a shared one. `docs/baseline/` measured the shipped
+   *  game's whole power curve buying 2.8 dB across a run and its loudness range
+   *  sitting at 0.4-0.6 LU everywhere; #273 confirmed that evolution adds nothing
+   *  audible either. Any stack whose answer to that is "power should be LOUDNESS
+   *  rather than more notes" needs a way to say so per voice, and there was none:
+   *  `setVoiceGain` writes an absolute value and knows nothing about the
+   *  calibrated mix position it would be overwriting. */
+  setVoiceTrim(role: Role, gainDb: number): void {
+    const voice = this.voices.get(role);
+    if (!voice) return;
+    voice.trimDb = gainDb;
+    this.applyVoiceLevel(voice, 0.05);
   }
 
   /** RMS of the current output window, 0..~1. Debug metering. */
@@ -653,6 +688,28 @@ export class MusicEngine {
     if (!voice) return;
     voice.tier = Math.max(1, Math.min(TIER_COUNT, tier));
     voice.chart = getChart(role, voice.tier);
+    this.syncBed(voice);
+  }
+
+  /** Put a voice on a chart the caller built, instead of one of the soundset's
+   *  four authored rungs. Takes effect on the next step the new chart fires.
+   *
+   *  ROUND-1 SEAM. The base only ever plays authored ladder rungs, so
+   *  setVoiceTier() — pick a rung, read it out of the chart store — was the whole
+   *  API. Any stack where a pattern is a thing the player OWNS rather than a rung
+   *  they reach (a pattern found as loot, a rhythm the player performed, a
+   *  figure assembled on a strip) has a Chart in hand and nowhere to put it. The
+   *  chart store is deliberately not that place: its charts are the soundset's,
+   *  shared with the rehearsal playground and persisted to localStorage, and a
+   *  run's build has no business writing there.
+   *
+   *  `tier` still moves with it, because a tier is not only a chart — it also
+   *  sets a bed's presence (syncBed) and is what the HUD counts pips with. */
+  setVoiceChart(role: Role, chart: Chart, tier = 1): void {
+    const voice = this.voices.get(role);
+    if (!voice) return;
+    voice.chart = chart;
+    voice.tier = Math.max(1, Math.min(TIER_COUNT, tier));
     this.syncBed(voice);
   }
 
