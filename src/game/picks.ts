@@ -54,7 +54,27 @@ interface EncorePickOption {
  *  switches then point at every site that has to learn about it. */
 export type AnyPickOption = WeaponPickOption | EncorePickOption;
 
-export interface RollOffersInput {
+/** Optional shaping every roll accepts. Neutral when omitted, which is what
+ *  the base passes — these are ROUND-1 SEAMS, not new base behaviour.
+ *
+ *  Both exist because #256 shipped the palette UNGROUPED and left grouping to
+ *  each stack: with nineteen voices in the pool, a stack's engine is very often
+ *  the only thing that knows a voice cannot work under it (a stack built on a
+ *  firing moment cannot use a bed, which has none) or that this moment wants a
+ *  particular corner of the band. Both were otherwise going to be a rewritten
+ *  copy of `buildFinitePool` in each of five branches. */
+interface RollShaping {
+  /** Roles this engine cannot use at all. Never hired, never upgraded. */
+  exclude?: ReadonlySet<Role>;
+  /** Roles that draw heavier right now, by `favourFactor`. A THUMB ON THE
+   *  SCALE, exactly like the existing early-drum nudge below — not a gate, and
+   *  deliberately not a grouping: a favoured role's odds change and nothing
+   *  else about it does. */
+  favour?: ReadonlySet<Role>;
+  favourFactor?: number;
+}
+
+export interface RollOffersInput extends RollShaping {
   tiers: ReadonlyMap<Role, number>;
   /** Increments already promised to a weapon but not yet in `tiers`: scooped
    *  pickups waiting for their bar, plus every un-scooped pedestal on the
@@ -104,10 +124,12 @@ const EARLY_NUDGE_UNTIL_S = 120;
 const EARLY_NUDGE_FACTOR = 1.7;
 const EARLY_NUDGE_ROLES: ReadonlySet<Role> = new Set<Role>(['kick', 'snare', 'clap']);
 
-/** A weapon's weight, including the existing gentle early drum nudge. */
-function weaponWeight(role: Role, timeS: number): number {
+/** A weapon's weight: the existing gentle early drum nudge, plus whatever the
+ *  caller is favouring right now. */
+function weaponWeight(role: Role, timeS: number, shaping: RollShaping): number {
   let weight = WEAPON_WEIGHT;
   if (timeS < EARLY_NUDGE_UNTIL_S && EARLY_NUDGE_ROLES.has(role)) weight *= EARLY_NUDGE_FACTOR;
+  if (shaping.favour?.has(role)) weight *= shaping.favourFactor ?? 2;
   return weight;
 }
 
@@ -134,6 +156,7 @@ function buildFinitePool(input: RollOffersInput): WeightedOption<BuildPickOption
     // whole run. It stays audible in the Sandbox, which is where the palette is
     // judged by ear; it is simply never offered until it can fight.
     if (!soundsetSupports(role) || !hasWeaponModule(role)) continue;
+    if (input.exclude?.has(role)) continue;
     const tier = Math.max(0, Math.min(WEAPON_MAX_LEVEL, Math.floor(input.tiers.get(role) ?? 0)));
     // Ownership (hire vs upgrade, and the cap) asks about the LIVE build; the
     // ladder test asks where the weapon will stand once every promise lands.
@@ -141,9 +164,9 @@ function buildFinitePool(input: RollOffersInput): WeightedOption<BuildPickOption
     if (tier === 0) {
       if (weaponSlotsFull) continue;
       if (effective >= WEAPON_MAX_LEVEL) continue;
-      pool.push({ option: { kind: 'weapon', role }, weight: weaponWeight(role, input.timeS) });
+      pool.push({ option: { kind: 'weapon', role }, weight: weaponWeight(role, input.timeS, input) });
     } else if (effective < WEAPON_MAX_LEVEL) {
-      pool.push({ option: { kind: 'weapon', role }, weight: weaponWeight(role, input.timeS) });
+      pool.push({ option: { kind: 'weapon', role }, weight: weaponWeight(role, input.timeS, input) });
     }
   }
 
@@ -202,7 +225,7 @@ export function rollOffers(input: RollOffersInput): AnyPickOption[] {
   return selectFiniteOffers(pool, input.rng);
 }
 
-export interface RollStartingWeaponsInput {
+export interface RollStartingWeaponsInput extends RollShaping {
   tiers: ReadonlyMap<Role, number>;
   rng: Rng;
   timeS: number;
@@ -220,11 +243,12 @@ export function rollStartingWeapons(input: RollStartingWeaponsInput): WeaponPick
   const pool: WeightedOption<WeaponPickOption>[] = [];
   for (const role of ROLES) {
     if (!soundsetSupports(role)) continue;
+    if (input.exclude?.has(role)) continue;
     const tier = Math.max(0, Math.min(WEAPON_MAX_LEVEL, Math.floor(input.tiers.get(role) ?? 0)));
     if (tier !== 0) continue;
     pool.push({
       option: { kind: 'weapon', role },
-      weight: weaponWeight(role, input.timeS),
+      weight: weaponWeight(role, input.timeS, input),
     });
   }
 
