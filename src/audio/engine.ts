@@ -82,6 +82,17 @@ export interface ScheduledTrigger {
 
 export type TriggerListener = (t: ScheduledTrigger) => void;
 
+/** Told about every grid step as the scheduler prepares it: the step index and
+ *  the audio time it is scheduled to sound at. Fires from the lookahead, so it
+ *  arrives BEFORE the step is heard — a listener that needs "what is sounding
+ *  now" keeps the pairs and reads them against ctx.currentTime.
+ *
+ *  ROUND-1 SEAM. Nothing in the base uses it; a prototype whose player has a
+ *  timing verb (tapping a rhythm, playing along, calling a change on the beat)
+ *  needs to be able to place a real-world instant on the musical grid, and
+ *  currentStep() only answers to the nearest whole step. */
+export type StepListener = (step: number, audioTime: number) => void;
+
 interface TimedAction {
   time: number;
   fn: () => void;
@@ -234,7 +245,10 @@ export class MusicEngine {
   private pending: PendingTrigger[] = [];
   private activeSources = new Set<AudioBufferSourceNode>();
   private listeners: TriggerListener[] = [];
+  private stepListeners: StepListener[] = [];
   private barQueue: ((audioTime: number) => void)[] = [];
+  /** Callbacks waiting for the top of a loop of a given length in bars. */
+  private loopTopQueue: { bars: number; fn: (audioTime: number) => void }[] = [];
   /** Armed by stopAtBarEnd(): the track stops on the next bar line. */
   private barEndStop: ((audioTime: number) => void) | null = null;
   private phraseQueue: Array<{
@@ -656,6 +670,28 @@ export class MusicEngine {
     this.syncBed(voice);
   }
 
+  /** Put a voice on a chart the caller built, instead of one of the soundset's
+   *  four authored rungs. Takes effect on the next step the new chart fires.
+   *
+   *  ROUND-1 SEAM. The base only ever plays authored ladder rungs, so
+   *  setVoiceTier() — pick a rung, read it out of the chart store — was the whole
+   *  API. Any stack where a pattern is a thing the player OWNS rather than a rung
+   *  they reach (a pattern found as loot, a rhythm the player performed, a
+   *  figure assembled on a strip) has a Chart in hand and nowhere to put it. The
+   *  chart store is deliberately not that place: its charts are the soundset's,
+   *  shared with the rehearsal playground and persisted to localStorage, and a
+   *  run's build has no business writing there.
+   *
+   *  `tier` still moves with it, because a tier is not only a chart — it also
+   *  sets a bed's presence (syncBed) and is what the HUD counts pips with. */
+  setVoiceChart(role: Role, chart: Chart, tier = 1): void {
+    const voice = this.voices.get(role);
+    if (!voice) return;
+    voice.chart = chart;
+    voice.tier = Math.max(1, Math.min(TIER_COUNT, tier));
+    this.syncBed(voice);
+  }
+
   setVoiceGain(role: Role, value: number): void {
     const voice = this.voices.get(role);
     if (voice) voice.gain.gain.setTargetAtTime(value, this.ctx.currentTime, 0.02);
@@ -669,6 +705,22 @@ export class MusicEngine {
     if (!voice) return;
     voice.activeSamples = samples ?? voice.kit.samples;
     voice.tune = samples ? tune : 0;
+  }
+
+  /** Register for every scheduled grid step. See StepListener: this fires from
+   *  the lookahead, ahead of the sound. Same idempotent-unsubscribe contract as
+   *  addTriggerListener. */
+  addStepListener(cb: StepListener): () => void {
+    let active = true;
+    const listener: StepListener = (step, audioTime) => {
+      if (active) cb(step, audioTime);
+    };
+    this.stepListeners.push(listener);
+    return () => {
+      if (!active) return;
+      active = false;
+      this.stepListeners = this.stepListeners.filter((candidate) => candidate !== listener);
+    };
   }
 
   /** Register for due triggers. Fired from update(), i.e. frame-synced. Returns
@@ -694,6 +746,20 @@ export class MusicEngine {
    *  the scheduled bar is actually heard. */
   atNextBar(fn: (audioTime: number) => void): void {
     this.barQueue.push(fn);
+  }
+
+  /** Run fn at the next bar line that a `bars`-long loop is allowed to START
+   *  on — the next phrase position that is a whole multiple of the loop.
+   *
+   *  ROUND-1 SEAM. A chart loops at `phraseStep % (bars * 16)`, so a two-bar
+   *  pattern only lines up on phrase bars 1 and 3 and a four-bar pattern only on
+   *  bar 1. atNextBar() does not know that, which is fine for the base (it swaps
+   *  charts, it never records them) and wrong for anything that lets the player
+   *  lay a pattern down live: start a four-bar take on bar 3 and the player hears
+   *  their bar 1 material arrive in bar 3 forever after. `bars: 1` is exactly
+   *  atNextBar. */
+  atNextLoopTop(bars: number, fn: (audioTime: number) => void): void {
+    this.loopTopQueue.push({ bars: Math.max(1, Math.floor(bars)), fn });
   }
 
   /** End the track ON the bar line rather than wherever the run happened to
@@ -751,6 +817,7 @@ export class MusicEngine {
     this.barQueue = [];
     this.barEndStop = null;
     this.phraseQueue = [];
+    this.loopTopQueue = [];
     this.timedActions = [];
   }
 
@@ -773,6 +840,7 @@ export class MusicEngine {
     this.barQueue = [];
     this.barEndStop = null;
     this.phraseQueue = [];
+    this.loopTopQueue = [];
     this.timedActions = [];
     this.stepMarkers = [];
     this.lastDueStep = 0;
@@ -791,6 +859,7 @@ export class MusicEngine {
       this.barQueue.length === 0 &&
       this.barEndStop === null &&
       this.phraseQueue.length === 0 &&
+      this.loopTopQueue.length === 0 &&
       this.timedActions.length === 0 &&
       this.stepMarkers.length === 0
     );
@@ -873,6 +942,7 @@ export class MusicEngine {
       this.clock.stop();
       this.barQueue = [];
       this.phraseQueue = [];
+      this.loopTopQueue = [];
       stop(time);
       return;
     }
@@ -880,6 +950,18 @@ export class MusicEngine {
       const queue = this.barQueue;
       this.barQueue = [];
       for (const fn of queue) fn(time);
+    }
+    // Loop tops: only the entries whose loop length divides this phrase position
+    // fire. Partitioned rather than filtered in place so a callback that queues
+    // another wait cannot be dispatched inside its own boundary.
+    if (phraseStep % STEPS_PER_BAR === 0 && this.loopTopQueue.length > 0) {
+      const waiting: typeof this.loopTopQueue = [];
+      const due: typeof this.loopTopQueue = [];
+      for (const entry of this.loopTopQueue) {
+        (phraseStep % (entry.bars * STEPS_PER_BAR) === 0 ? due : waiting).push(entry);
+      }
+      this.loopTopQueue = waiting;
+      for (const entry of due) entry.fn(time);
     }
     if (phraseStep === 0 && this.phraseQueue.length > 0) {
       const retained: typeof this.phraseQueue = [];
@@ -896,6 +978,7 @@ export class MusicEngine {
       this.phraseQueue = retained;
       for (const entry of due) entry.fn(time);
     }
+    for (const cb of this.stepListeners) cb(step, time);
     for (const voice of this.voices.values()) {
       if (!voice.enabled) continue;
       for (const ev of chartEventsAtStep(voice.chart, phraseStep)) {

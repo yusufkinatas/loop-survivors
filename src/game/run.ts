@@ -183,6 +183,15 @@ export interface StageScript {
   events: readonly StageEvent[];
   startingKind: EnemyKind;
   startingSpawns: number;
+  /** When the set is played out and the run is won. Mad Forest's 30:00
+   *  (VICTORY.atS) when omitted.
+   *
+   *  ROUND-1 SEAM. "How long a run is" was a module constant, which is fine for
+   *  a stack that keeps the 30-minute clock and wrong for every stack that does
+   *  not: four of the five replace the run shape (#256), and one of them — the
+   *  three-song set — ends on an encore rather than on a timer at all. A length
+   *  is part of a run shape, so it belongs on the run-shape seam. */
+  victoryAtS?: number;
 }
 
 /** Not exported: today nothing outside this file needs it, and knip guards
@@ -731,6 +740,9 @@ export class RunWorld {
   private readonly weaponCtx = new Map<Role, WeaponContext>();
   private scripted: boolean;
   private readonly stage: StageScript;
+  /** When this run's set is played out. The script's own length, or Mad
+   *  Forest's 30:00 for a stack that keeps it. */
+  readonly victoryAtS: number;
   /** The stage's event rows unrolled into individual firings, once per world. */
   private readonly occurrences: readonly StageOccurrence[];
   /** The run has been won (mad-forest-spec §8). Set once, never cleared: a
@@ -757,6 +769,7 @@ export class RunWorld {
     this.control = opts.control ?? (() => ({ x: 0, y: 0 }));
     this.fx = (opts.fx ?? true) ? [] : null;
     this.stage = opts.stage ?? MAD_FOREST;
+    this.victoryAtS = this.stage.victoryAtS ?? VICTORY.atS;
     this.occurrences = unrollStageEvents(this.stage.events);
     // Built after the drop seed draw above: the context factory draws no rng,
     // so no draw moves.
@@ -1184,7 +1197,7 @@ export class RunWorld {
     // stops, and the clear wave takes over as the only thing that kills.
     if (!this.won) {
       this.timeS += dt;
-      if (this.scripted && this.timeS >= VICTORY.atS) this.beginVictory();
+      if (this.scripted && this.timeS >= this.victoryAtS) this.beginVictory();
     }
     this.updatePassiveRecovery(dt);
     this.movePlayer(dt);
@@ -1341,7 +1354,7 @@ export class RunWorld {
    *  the win flourish, and opens the win screen after the quiet beat. */
   private beginVictory(): void {
     this.won = true;
-    this.timeS = VICTORY.atS;
+    this.timeS = this.victoryAtS;
     this.invincible = true;
     this.player.iframesT = 0;
     this.sweepR = 0;

@@ -2156,3 +2156,352 @@ button.big {
     opacity: 0.7;
   }
 }
+/* ===========================================================================
+   THE GIG (#268). Three surfaces: the song card at the top of the arena, the
+   tape strip at the bottom while a pass is live, and the changeover overlay.
+   All three reuse the existing token vocabulary and the `--voice-color`
+   per-element convention, so a prototype screen never invents a look.
+   =========================================================================== */
+
+/* ---- the song card ------------------------------------------------------- */
+
+.gig-card {
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: var(--sp-1) var(--sp-3);
+  background: rgba(16, 16, 20, 0.72);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  pointer-events: none;
+  z-index: 3;
+  text-align: center;
+}
+
+.gig-card-label {
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  color: var(--ink-faint);
+}
+
+.gig-card-name {
+  font-size: var(--fs-body);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--ink);
+}
+
+.gig-card-meta {
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.1em;
+  color: var(--ink-dim);
+}
+
+.gig-card.is-encore {
+  border-color: var(--warn);
+}
+
+.gig-card.is-encore .gig-card-name {
+  color: var(--warn);
+}
+
+.gig-card.is-changeover {
+  opacity: 0.55;
+}
+
+/* ---- the tape strip ------------------------------------------------------ */
+
+.gig-strip {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: max(64px, calc(env(safe-area-inset-bottom) + 64px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
+  background: rgba(10, 11, 15, 0.9);
+  border: 1px solid var(--voice-color);
+  border-radius: var(--r-md);
+  box-shadow: var(--glow-ring);
+  pointer-events: none;
+  z-index: 6;
+}
+
+.gig-strip-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.12em;
+}
+
+.gig-strip-role {
+  font-weight: 700;
+  color: var(--voice-color);
+}
+
+.gig-strip-mode {
+  color: var(--ink-faint);
+}
+
+.gig-strip-budget {
+  margin-left: auto;
+  color: var(--voice-color);
+  letter-spacing: 0.05em;
+}
+
+.gig-strip-bars {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.gig-bar {
+  display: flex;
+  gap: 2px;
+}
+
+.gig-cell {
+  flex: none;
+  width: 12px;
+  height: 26px;
+  border-radius: 2px;
+  background: #16171f;
+  transition: background var(--dur-fast) var(--ease);
+}
+
+/* The beat starts read as a faint 4/4 ruler, exactly as the track overlay's
+   grid does — the same visual grammar in both places. */
+.gig-cell.beat {
+  background: #22242f;
+}
+
+/* Already on the tape before this pass: dimmer than what you just played, so an
+   overdub shows you the hole rather than hiding it. */
+.gig-cell.kept {
+  background: color-mix(in srgb, var(--voice-color) 40%, #16171f);
+}
+
+.gig-cell.laid {
+  background: var(--voice-color);
+  box-shadow: 0 0 10px -3px var(--voice-color);
+}
+
+.gig-cell.head {
+  outline: 2px solid rgba(255, 255, 255, 0.7);
+  outline-offset: -1px;
+}
+
+.gig-strip-hint {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+}
+
+/* The count-in: the strip is up and the instrument is already down, but taps do
+   not count yet. Breathing rather than static says "not yet" without words. */
+.gig-strip.counting {
+  animation: gig-count 0.5s var(--ease) infinite alternate;
+}
+
+@keyframes gig-count {
+  from { opacity: 0.55; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gig-strip.counting {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+
+/* ---- the rack: the set, drawn ------------------------------------------- */
+
+.gig-co-rack,
+.pause-arrange {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.gig-rack-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-xs);
+}
+
+.gig-rack-row.off {
+  opacity: 0.4;
+}
+
+.gig-rack-row.recording {
+  outline: 1px solid var(--voice-color);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.gig-rack-slot {
+  flex: none;
+  width: 12px;
+  text-align: center;
+  color: var(--ink-faint);
+}
+
+.gig-rack-name {
+  flex: none;
+  width: 62px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--voice-color);
+}
+
+.gig-rack-pips {
+  flex: none;
+  display: flex;
+  gap: 1px;
+}
+
+.gig-rack-pips .pip {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--voice-color) 55%, transparent);
+}
+
+.gig-rack-pips .pip.on {
+  background: var(--voice-color);
+}
+
+.gig-rack-take {
+  display: flex;
+  gap: 1px;
+  margin-left: var(--sp-1);
+}
+
+.gig-mini {
+  flex: none;
+  width: 4px;
+  height: 10px;
+  border-radius: 1px;
+  background: #1c1c24;
+}
+
+.gig-mini.beat {
+  background: #262632;
+}
+
+.gig-mini.hit {
+  background: var(--voice-color);
+}
+
+.gig-rack-density {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-faint);
+}
+
+.gig-rack-empty {
+  color: var(--ink-faint);
+}
+
+/* ---- the changeover ----------------------------------------------------- */
+
+.gig-changeover {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  background: rgba(10, 11, 15, 0.78);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.gig-co-title {
+  font-size: var(--fs-h2);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--ink);
+}
+
+.gig-co-clock {
+  font-size: var(--fs-disp);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--signal);
+}
+
+.gig-co-rack {
+  min-width: 300px;
+  padding: var(--sp-3);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.gig-co-hint {
+  font-size: var(--fs-sm);
+  letter-spacing: 0.06em;
+  color: var(--ink-dim);
+}
+
+/* ---- the layer toggles (dev row) --------------------------------------- */
+
+.gig-layer-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: rgba(34, 34, 42, 0.85);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+
+.gig-layer-label {
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: var(--ink-faint);
+}
+
+.gig-layer-btn {
+  padding: 1px 5px;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: var(--ink-faint);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+
+.gig-layer-btn.on {
+  color: var(--signal);
+  border-color: var(--signal);
+}
+
+@media (max-width: 700px) {
+  .gig-cell {
+    width: 9px;
+    height: 20px;
+  }
+
+  .gig-strip {
+    bottom: max(96px, calc(env(safe-area-inset-bottom) + 96px));
+  }
+
+  .gig-co-rack {
+    min-width: 0;
+    width: min(92vw, 340px);
+  }
+}
