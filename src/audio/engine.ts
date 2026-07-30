@@ -60,6 +60,11 @@ export interface Voice {
   /** The most recent trigger's nodes, so choked kits can cut it. */
   lastHit: VoiceHit | null;
   evolved: boolean;
+  /** Decibels the evolution asks for (setEvolutionGain). */
+  evolutionDb: number;
+  /** Decibels the BUILD asks for (setVoiceTrim). Held apart from the evolution's
+   *  so the two COMPOSE rather than overwrite each other — see applyVoiceLevel. */
+  trimDb: number;
   /** A BED's one continuous looping source, and the gain its level rides on.
    *  Null while the bed is off. Only texture voices ever have these; every
    *  other voice makes sound only through `trigger`. */
@@ -307,6 +312,8 @@ export class MusicEngine {
         override: null,
         lastHit: null,
         evolved: false,
+        evolutionDb: 0,
+        trimDb: 0,
         bedSource: null,
         bedGain: null,
       });
@@ -353,17 +360,26 @@ export class MusicEngine {
     return this.audioSetId;
   }
 
+  /** A voice's level: its calibrated mix position plus every decibel the game has
+   *  asked for on top of it. ONE place, because there are now two independent
+   *  askers — the evolution's trim and the build's — and a setter that wrote the
+   *  absolute value would silently cancel whichever one it did not know about. */
+  private applyVoiceLevel(voice: Voice, rampS = 0.025): void {
+    voice.gain.gain.setTargetAtTime(
+      voiceMixGain(voice.role) * Math.pow(10, (voice.evolutionDb + voice.trimDb) / 20),
+      this.ctx.currentTime,
+      rampS,
+    );
+  }
+
   /** Evolution voices stay in the same musical lane; a few dense weapons are
    * trimmed in decibels so their extra geometry does not become extra loudness. */
   setEvolutionGain(role: Role, gainDb: number): void {
     const voice = this.voices.get(role);
     if (!voice) return;
     voice.evolved = true;
-    voice.gain.gain.setTargetAtTime(
-      voiceMixGain(role) * Math.pow(10, gainDb / 20),
-      this.ctx.currentTime,
-      0.025,
-    );
+    voice.evolutionDb = gainDb;
+    this.applyVoiceLevel(voice);
   }
 
   /** Sandbox before/after switch: restore this voice's calibrated base mix. */
@@ -371,14 +387,48 @@ export class MusicEngine {
     const voice = this.voices.get(role);
     if (!voice) return;
     voice.evolved = false;
-    voice.gain.gain.setTargetAtTime(voiceMixGain(role), this.ctx.currentTime, 0.02);
+    voice.evolutionDb = 0;
+    this.applyVoiceLevel(voice, 0.02);
   }
 
   resetEvolutionMixes(): void {
     for (const voice of this.voices.values()) {
       voice.evolved = false;
-      voice.gain.gain.setTargetAtTime(voiceMixGain(voice.role), this.ctx.currentTime, 0.02);
+      voice.evolutionDb = 0;
+      voice.trimDb = 0;
+      this.applyVoiceLevel(voice, 0.02);
     }
+  }
+
+  /**
+   * THE BUILD'S OWN TRIM, in decibels, composing with the evolution's.
+   *
+   * ROUND-1 SEAM. Nothing in the base calls it, so the base's mix is exactly what
+   * it was — this is width, like `BuildMods`'.
+   *
+   * `docs/baseline/` measured the shipped game's whole power curve buying **2.8 dB
+   * across a run**, with a loudness range of 0.4-0.6 LU at every single point, and
+   * `docs/palette-control/` measured the same thing at nineteen voices. #273 then
+   * found that evolution adds nothing audible either: "an evolution buys GEOMETRY,
+   * and geometry makes no sound." So any stack whose answer is *power should be
+   * LOUDNESS rather than more notes* — a pushed instrument sitting further forward
+   * in the mix, rather than playing busier — needs to be able to say so per voice.
+   *
+   * There was no way to. `setVoiceGain` writes an ABSOLUTE value and knows nothing
+   * about the calibrated mix position (`VOICE_MIX_GAIN`) or the evolution trim it
+   * would be overwriting, so a build that used it would silently undo both — and
+   * the chord sits at +12 dB and the lead at +10 dB in that table, so "silently"
+   * means "by twelve decibels".
+   *
+   * The Route (#267) uses this for both halves of its power currency: a weapon
+   * level is +0.35 dB and a toll's weight stack is +1.2 dB, and they are the only
+   * things in that stack that make power audible at all.
+   */
+  setVoiceTrim(role: Role, gainDb: number): void {
+    const voice = this.voices.get(role);
+    if (!voice) return;
+    voice.trimDb = gainDb;
+    this.applyVoiceLevel(voice, 0.05);
   }
 
   /** RMS of the current output window, 0..~1. Debug metering. */
