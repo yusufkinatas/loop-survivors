@@ -2,8 +2,10 @@
 // file diffs its state into explicit visual layers with cached pixel geometry.
 
 import { Container, Graphics, Text, TextStyle, TilingSprite, type Texture } from 'pixi.js';
-import type { Role } from '../audio/kits';
+import { ROLE_COLORS, type Role } from '../audio/kits';
+import { SOUNDSET } from '../audio/soundset';
 import { RUN, STAGE_LIGHT, WORLD_SCALE } from './config';
+import { CROWD, GEAR, HAUL, STAGE } from './loadin/config';
 import { enemyLoop, loopFrame, playerLoop, preloadPixelArt } from './pixelart';
 import { KICK } from './weapons';
 import {
@@ -113,6 +115,14 @@ export type GroundPickCopy = GroundPickCopyBase & (
 );
 
 export type GroundPickView = GroundPickCopy & { x: number; y: number };
+
+/** How far the camera is allowed past a venue wall, so the wall lands inside the
+ *  frame instead of on its last column of pixels. */
+const VENUE_CAMERA_INSET = 130;
+/** How much blacked-out backstage is drawn outside the walls. Wider than the
+ *  camera inset, so no arrangement of screen size and aspect ratio can show the
+ *  floor tiling carrying on past the room. */
+const VENUE_BACKSTAGE = 900;
 
 /** How long a field may go unreported before its graphic is removed. Comfortably
  *  longer than a frame at any refresh rate, and far shorter than a player would
@@ -417,6 +427,19 @@ export class RunView {
    *  stands on its own. */
   private floorTiling: TilingSprite | null = null;
 
+  // ---- THE LOAD-IN (#269) ---------------------------------------------------
+  //
+  // THREE PASSES, THREE LAYERS, and the split is the point rather than an
+  // implementation detail. The whole claim this stack is testing is that a build
+  // becomes a PICTURE — "coverage versus coherence, visible" — so the floor
+  // markings have to sit UNDER the fight (they are the room, not an effect), the
+  // gear has to sit with the scenery (it is furniture the crowd walks over), and
+  // what is on your back has to sit over the player (it is on your back).
+  private stageFloorGfx = new Graphics({ roundPixels: true });
+  private crowdGfx = new Graphics({ roundPixels: true });
+  private stageGearGfx = new Graphics({ roundPixels: true });
+  private carryGfx = new Graphics({ roundPixels: true });
+
   private telegraphGfx = new Graphics({ roundPixels: true });
   private bossGlowGfx = new Graphics({ roundPixels: true });
   private trailGfx = new Graphics({ roundPixels: true });
@@ -494,7 +517,8 @@ export class RunView {
     this.playerGfx = makePlayerGfx(RUN.playerRadius);
 
     this.tiledGroundLayer.addChild(this.floorFallback, this.floorTileLayer, this.floorShade);
-    this.environmentLayer.addChild(this.environmentFloorGfx);
+    this.environmentLayer.addChild(this.environmentFloorGfx, this.stageFloorGfx);
+    this.propLayer.addChild(this.crowdGfx, this.stageGearGfx);
     // Additive, and below the enemy layer: the glow reads as light thrown on
     // the floor under the boss rather than a disc painted over it.
     this.bossGlowGfx.blendMode = 'add';
@@ -506,7 +530,7 @@ export class RunView {
       this.fxLayer,
       this.floaterLayer,
     );
-    this.playerLayer.addChild(this.playerGfx);
+    this.playerLayer.addChild(this.playerGfx, this.carryGfx);
     this.rewardLayer.addChild(this.rarePickupLayer, this.rewardSafeGfx, this.tourRewardLayer);
     this.foregroundLayer.addChild(this.foregroundGfx);
     this.flashLayer.addChild(this.flashGfx);
@@ -713,8 +737,28 @@ export class RunView {
     }
 
     const player = this.world.player;
-    const cameraX = player.x + PLAYER_FOOT_OFFSET.x;
-    const cameraY = player.y + PLAYER_FOOT_OFFSET.y;
+    let cameraX = player.x + PLAYER_FOOT_OFFSET.x;
+    let cameraY = player.y + PLAYER_FOOT_OFFSET.y;
+    // THE ROOM HAS EDGES, AND YOU HAVE TO BE ABLE TO SEE THEM (#269). The camera
+    // stops at the walls rather than following the player past them: a venue you
+    // can never see the end of is a plane with a rectangle drawn on it, and the
+    // whole reason to bound the arena was that spreading out has to cost
+    // something. A venue narrower than the view centres instead of clamping.
+    if (this.world.layers.venue) {
+      const venue = this.world.venue;
+      // Overshoot the wall by a strip rather than stopping exactly on it. A
+      // camera clamped to the wall puts the wall on the last column of pixels,
+      // where it reads as the screen ending rather than as the room ending; a
+      // hundred units of backstage past it is what makes it a wall.
+      const marginX = this.world.worldW / 2 - VENUE_CAMERA_INSET;
+      const marginY = this.world.worldH / 2 - VENUE_CAMERA_INSET;
+      cameraX = venue.halfW > marginX
+        ? Math.max(-venue.halfW + marginX, Math.min(venue.halfW - marginX, cameraX))
+        : 0;
+      cameraY = venue.halfH > marginY
+        ? Math.max(-venue.halfH + marginY, Math.min(venue.halfH - marginY, cameraY))
+        : 0;
+    }
     const nextChapter = visualChapter(this.world);
     if (this.chapter >= 0 && nextChapter !== this.chapter) this.chapterBurst(cameraX, cameraY, nextChapter);
     this.chapter = nextChapter;
@@ -722,6 +766,9 @@ export class RunView {
     this.updateFloor(cameraX, cameraY);
     this.drawArenaEnvironment(cameraX, cameraY);
     this.updateScenery(cameraX, cameraY);
+    this.drawStageFloor(cameraX, cameraY);
+    this.drawCrowd(cameraX, cameraY);
+    this.drawStageGear(cameraX, cameraY);
     this.syncStageLights(cameraX, cameraY);
     this.syncZones();
     this.drawEnemyTelegraphs(cameraX, cameraY);
@@ -1020,6 +1067,218 @@ export class RunView {
         gfx.destroy({ children: true });
         this.stageLightGfx.delete(light);
       }
+    }
+  }
+
+  /** THE FLOOR MARKINGS: the room, the power, and the picture the stack's whole
+   *  constraint is made of.
+   *
+   *  It is drawn in the order you have to READ it — walls, then sockets, then
+   *  every piece's presence, then the overlaps between them, then the cables —
+   *  because that is also the order of importance when you glance at your own
+   *  stage mid-fight. The overlap is deliberately the loudest thing on the
+   *  floor: masking is the penalty this stack exists to make legible, and a
+   *  penalty you cannot see at a glance is a penalty nobody will learn to
+   *  avoid. */
+  private drawStageFloor(cameraX: number, cameraY: number): void {
+    const gfx = this.stageFloorGfx;
+    gfx.clear();
+    const world = this.world;
+    if (!world.layers.placement) return;
+    const venue = world.venue;
+
+    if (world.layers.venue) {
+      // The room. Everything past the wall is blacked out, so the boundary reads
+      // as somewhere you cannot go rather than as a rectangle drawn on a floor
+      // that carries on. Four bands rather than a hole in a fill, because Pixi
+      // Graphics has no even-odd hole and four rects is cheaper than a mask.
+      const w = venue.halfW;
+      const h = venue.halfH;
+      const out = VENUE_BACKSTAGE;
+      const dark = { color: SOUNDWOOD.ink, alpha: 0.88 } as const;
+      gfx.rect(snap(-w - out), snap(-h - out), snap((w + out) * 2), snap(out)).fill(dark);
+      gfx.rect(snap(-w - out), snap(h), snap((w + out) * 2), snap(out)).fill(dark);
+      gfx.rect(snap(-w - out), snap(-h), snap(out), snap(h * 2)).fill(dark);
+      gfx.rect(snap(w), snap(-h), snap(out), snap(h * 2)).fill(dark);
+      // A double line on the boundary itself, warm over dark.
+      gfx.rect(snap(-w), snap(-h), snap(w * 2), snap(h * 2))
+        .stroke({ width: 8, color: SOUNDWOOD.bark, alpha: 0.95 });
+      gfx.rect(snap(-w), snap(-h), snap(w * 2), snap(h * 2))
+        .stroke({ width: 2, color: SOUNDWOOD.amber, alpha: 0.5 });
+    }
+
+    if (world.layers.sockets) {
+      for (const socket of venue.sockets) {
+        if (Math.abs(socket.x - cameraX) > world.worldW || Math.abs(socket.y - cameraY) > world.worldH) continue;
+        gfx.poly(regularPixelPoly(6, STAGE.socketRadius, Math.PI / 6)
+          .map((v, i) => snap(v + (i % 2 === 0 ? socket.x : socket.y))))
+          .stroke({ width: 2, color: SOUNDWOOD.amber, alpha: 0.3 });
+        pixelDiamond(gfx, snap(socket.x), snap(socket.y), 5, SOUNDWOOD.amber, 0.75);
+      }
+    }
+
+    const standing = world.plot.rigs.filter((rig) => !rig.carried);
+    for (const rig of standing) {
+      const color = ROLE_COLORS[rig.roles[0]];
+      // The presence ring. Solid when the piece is clear, angry when it is being
+      // stepped on — the ring IS the thing masking is measured on, so it has to
+      // be the thing that changes.
+      const masked = rig.maskLoad > 0.02;
+      gfx.poly(regularPixelPoly(24, rig.presence, 0)
+        .map((v, i) => snap(v + (i % 2 === 0 ? rig.x : rig.y))))
+        .stroke({
+          width: masked ? 3 : 2,
+          color: masked ? SOUNDWOOD.coral : color,
+          alpha: masked ? 0.35 + rig.maskLoad * 0.4 : 0.28,
+        });
+      if (rig.socket >= 0) {
+        gfx.poly(regularPixelPoly(24, rig.presence - 6, 0)
+          .map((v, i) => snap(v + (i % 2 === 0 ? rig.x : rig.y))))
+          .stroke({ width: 1, color: SOUNDWOOD.amber, alpha: 0.5 });
+      }
+    }
+
+    // The overlaps. Drawn as a thick line between the two centres whose length
+    // is exactly the depth of the overlap, which is the most honest picture of
+    // "these two are standing in each other's space" that fits on a floor.
+    if (world.layers.masking) {
+      for (let i = 0; i < standing.length; i++) {
+        for (let j = i + 1; j < standing.length; j++) {
+          const a = standing[i];
+          const b = standing[j];
+          const reach = a.presence + b.presence;
+          const d = Math.hypot(a.x - b.x, a.y - b.y);
+          if (d >= reach) continue;
+          const depth = Math.max(0, Math.min(1, (reach - d) / reach));
+          gfx.moveTo(snap(a.x), snap(a.y)).lineTo(snap(b.x), snap(b.y))
+            .stroke({ width: 3 + depth * 7, color: SOUNDWOOD.coral, alpha: 0.16 + depth * 0.34 });
+        }
+      }
+    }
+
+    // The cables. Bright, thin, and unmistakably a different KIND of line from
+    // the mask smear — one is a wire you ran, the other is a mistake.
+    const drawn = new Set<string>();
+    for (const rig of standing) {
+      for (const other of rig.cabled) {
+        const key = rig.x < other.x || (rig.x === other.x && rig.y < other.y)
+          ? `${rig.x},${rig.y}:${other.x},${other.y}`
+          : `${other.x},${other.y}:${rig.x},${rig.y}`;
+        if (drawn.has(key)) continue;
+        drawn.add(key);
+        gfx.moveTo(snap(rig.x), snap(rig.y)).lineTo(snap(other.x), snap(other.y))
+          .stroke({ width: 4, color: SOUNDWOOD.ink, alpha: 0.7 });
+        gfx.moveTo(snap(rig.x), snap(rig.y)).lineTo(snap(other.x), snap(other.y))
+          .stroke({ width: 2, color: SOUNDWOOD.cyanHot, alpha: 0.85 });
+      }
+    }
+  }
+
+  /** The gear itself, and what is riding on the player's back.
+   *
+   *  A piece of gear is a BOX with a lamp on it: lit while it is playing, dark
+   *  the instant it is silent. That is the audibility rule with a light on it —
+   *  you can tell at a glance which of your band is currently attacking, because
+   *  it is exactly the ones you can hear. */
+  private drawStageGear(cameraX: number, cameraY: number): void {
+    const gear = this.stageGearGfx;
+    const carry = this.carryGfx;
+    gear.clear();
+    carry.clear();
+    const world = this.world;
+    if (!world.layers.placement) return;
+    const halfW = world.worldW / 2 + 120;
+    const halfH = world.worldH / 2 + 120;
+    const r = GEAR.radius;
+
+    for (const rig of world.plot.rigs) {
+      if (rig.carried) continue;
+      if (Math.abs(rig.x - cameraX) > halfW || Math.abs(rig.y - cameraY) > halfH) continue;
+      const color = ROLE_COLORS[rig.roles[0]];
+      const lit = !rig.down;
+      const x = snap(rig.x);
+      const y = snap(rig.y);
+      // A downed piece lies flat: same box, half the height, on its side.
+      const h = rig.down ? r * 0.5 : r;
+      // A cabinet: dark shadow, dark box, a bright GRILLE across its face, and a
+      // lamp. The grille is what makes it read as a speaker rather than a
+      // marker, and it is the piece that goes dark when the voice does — you can
+      // see which of your band is currently playing from across the room.
+      gear.rect(x - r - 3, y - h + 2, (r + 3) * 2, h * 2 + 4)
+        .fill({ color: SOUNDWOOD.ink, alpha: 0.8 });
+      gear.rect(x - r, y - h, r * 2, h * 2)
+        .fill({ color: SOUNDWOOD.bark })
+        .stroke({ width: 2, color: rig.flashT > 0 ? 0xffffff : SOUNDWOOD.barkLight, alpha: 0.95 });
+      const gx = r * 0.66;
+      const gy = h * 0.5;
+      gear.rect(x - gx, y - gy, gx * 2, gy * 2)
+        .fill({ color: lit ? color : SOUNDWOOD.shadow, alpha: lit ? 0.55 : 0.9 })
+        .stroke({ width: 1, color: lit ? color : SOUNDWOOD.bark, alpha: lit ? 0.9 : 0.5 });
+      if (lit) {
+        // The lamp on the top edge, so a piece that is playing is visible even
+        // when the grille is behind a body.
+        pixelDiamond(gear, x, y - h - 3, 3, color, 1);
+      }
+      // A merged kit says how many voices it carries, as pips rather than a
+      // number — #258's whole point was that a kit reads as ONE object.
+      for (let i = 1; i < rig.roles.length; i++) {
+        pixelDiamond(gear, x - r + 5 + i * 7, y + h - 4, 2, ROLE_COLORS[rig.roles[i]], lit ? 0.95 : 0.4);
+      }
+      // Health, only once it has been hurt: an untouched stage should not be
+      // wearing five meters.
+      if (rig.hp < rig.maxHp - 0.5) {
+        const w = r * 2;
+        const frac = Math.max(0, rig.hp / rig.maxHp);
+        gear.rect(x - r, y - h - 9, w, 3).fill({ color: SOUNDWOOD.ink, alpha: 0.85 });
+        gear.rect(x - r, y - h - 9, w * frac, 3)
+          .fill({ color: frac < 0.34 ? SOUNDWOOD.coral : SOUNDWOOD.moss, alpha: 0.95 });
+      }
+      if (rig.down) {
+        gear.poly(regularPixelPoly(12, r * 2.2, 0).map((v, i) => snap(v + (i % 2 === 0 ? rig.x : rig.y))))
+          .stroke({ width: 2, color: SOUNDWOOD.coral, alpha: 0.35 + Math.sin(world.timeS * 6) * 0.15 });
+      }
+    }
+
+    // What is on your back. Stacked upward in the order it was gathered, drawn
+    // dark because it is silent — the stack is a picture of how deep the valley
+    // you are currently standing in is.
+    const carried = world.plot.rigs.filter((rig) => rig.carried)
+      .sort((a, b) => a.carryIndex - b.carryIndex);
+    const px = snap(world.player.x);
+    const py = snap(world.player.y);
+    for (let i = 0; i < carried.length; i++) {
+      const rig = carried[i];
+      const cy = py - RUN.playerRadius - 8 - i * HAUL.stackStep;
+      const w = r * 0.8;
+      const h = HAUL.stackStep * 0.42;
+      carry.rect(px - w, cy - h, w * 2, h * 2)
+        .fill({ color: SOUNDWOOD.shadow, alpha: 0.95 })
+        .stroke({ width: 2, color: ROLE_COLORS[rig.roles[0]], alpha: 0.55 });
+    }
+  }
+
+  /** THE CROWD, when the toggle is on: people, not bodies. Drawn as small soft
+   *  discs that bob on the pulse — the bob is the whole read, because a crowd
+   *  that stood still would be indistinguishable from scenery and the point is
+   *  that they are moving with the music you are making. */
+  private drawCrowd(cameraX: number, cameraY: number): void {
+    const gfx = this.crowdGfx;
+    gfx.clear();
+    const crowd = this.world.crowd;
+    if (!crowd) return;
+    const halfW = this.world.worldW / 2 + 60;
+    const halfH = this.world.worldH / 2 + 60;
+    const beat = this.world.timeS * (SOUNDSET.bpm / 60) * Math.PI;
+    for (const fan of crowd.fans) {
+      if (fan.dead) continue;
+      if (Math.abs(fan.x - cameraX) > halfW || Math.abs(fan.y - cameraY) > halfH) continue;
+      const lift = Math.abs(Math.sin(beat + fan.bob * Math.PI * 2)) * 5;
+      const x = snap(fan.x);
+      const y = snap(fan.y - lift);
+      const hurt = fan.hp < CROWD.fanHp * 0.5;
+      gfx.poly(regularPixelPoly(8, CROWD.fanRadius, Math.PI / 8).map((v, i) => snap(v + (i % 2 === 0 ? x : y))))
+        .fill({ color: hurt ? SOUNDWOOD.bark : SOUNDWOOD.violet, alpha: 0.8 })
+        .stroke({ width: 1, color: SOUNDWOOD.cyanHot, alpha: 0.4 });
     }
   }
 

@@ -21,6 +21,10 @@ import { mountSandboxPanel, type SandboxPanel } from './sandbox';
 import { EVOLUTION_BY_ROLE, type EvolutionDefinition } from './build';
 import { chartStageForLevel, WEAPON_MAX_LEVEL } from './weapons/levels';
 import { mulberry32 } from './rng';
+import { layerDiff } from './loadin/layers';
+import { mountLayerPanel } from './loadin/panel';
+import { paintStagePlot } from './loadin/plot-panel';
+import { CREW } from './loadin/config';
 
 type State = 'start' | 'run' | 'end' | 'sandbox';
 
@@ -168,7 +172,10 @@ export async function bootGame(
       evolved: w.evolved,
       showTiers: true,
     });
-    void pauseArrange;
+    // THE ARRANGE SLOT, filled (#269). For this stack "arranging off the clock"
+    // is looking at the whole stage plot at once, which the camera can never
+    // show you while you are standing in the middle of it.
+    paintStagePlot(pauseArrange, w.plot, w.player, w.layers.placement);
     hud.renderStats({ maxHp: w.playerMaxHp, armor: w.playerArmor, mods: w.buildMods }, pauseStats);
   }
   const resumeButton = pauseOverlay.querySelector('.pause-resume') as HTMLButtonElement;
@@ -280,6 +287,12 @@ export async function bootGame(
   function weaponLevelNow(w: RunWorld, role: Role): number {
     return (w.tiers.get(role) ?? 0) + weaponInFlight(role);
   }
+  /** Crew, same question. Crew lands on the spot rather than on a bar line — it
+   *  changes nothing about what the band is PLAYING, only about how fast their
+   *  gear moves — so the only thing in flight is an unscooped pedestal. */
+  function crewLevelNow(w: RunWorld): number {
+    return w.plot.crew;
+  }
   // The pickup chirp climbs while the player keeps scooping rewards (a chest
   // scatter reads as one rising run), and resets after a short gap.
   let pickupStep = 0;
@@ -329,6 +342,16 @@ export async function bootGame(
     return weapons;
   }
 
+  /** Crew levels promised but not yet landed — the same live-versus-promised
+   *  split the weapon ladder keeps, so a crew card is never offered once the
+   *  cards already lying on the floor would fill the ladder. */
+  function outstandingCrew(): number {
+    let n = 0;
+    for (const pick of groundPicks) if (pick.option.kind === 'crew') n++;
+    for (const drop of chestDrops) if (drop.option.kind === 'crew') n++;
+    return n;
+  }
+
   /** Everything a pedestal says about itself, answered from LIVE state at the
    *  moment it is asked — which is why `refreshPedestals` can re-ask it after
    *  every scoop. A pedestal must never describe a level its scoop won't
@@ -344,6 +367,10 @@ export async function bootGame(
         name: option.evolution.name, badge: 'EVOLVE' };
     }
     if (option.kind === 'encore') return encorePickView(w, option.encore);
+    if (option.kind === 'crew') {
+      return { glyph: '🛠', color: 0xffd45c, name: 'Crew',
+        badge: crewLevelNow(w) === 0 ? 'NEW' : 'ONE MORE HAND' };
+    }
     const level = weaponLevelNow(w, option.role);
     // Nothing left to level: the scoop pays a Tip Jar, so the pedestal is one.
     if (level >= WEAPON_MAX_LEVEL) return encorePickView(w, 'tipJar');
@@ -421,6 +448,10 @@ export async function bootGame(
         pendingTiers: outstandingPromises(),
         rng: Math.random,
         timeS: w.timeS,
+        crew: w.plot.crew,
+        pendingCrew: outstandingCrew(),
+        seatSlots: w.layers.exclusivity,
+        crewEnabled: w.layers.crew,
       });
       dropGroundPicks(w, options);
     }
@@ -519,6 +550,14 @@ export async function bootGame(
       hud.showToast(option.encore === 'firstAid'
         ? `FIRST AID · +${Math.round(landed)} HP`
         : `TIP JAR · +${landed} ♫`);
+      return 'now';
+    }
+    if (option.kind === 'crew') {
+      // Nothing about the band changes, so nothing waits for a bar line. What
+      // changes is the roadie's hands.
+      if (w.plot.crew >= CREW.maxLevel) return applyPickup(w, TIP_JAR, onEntered);
+      w.plot.crew += 1;
+      hud.showToast(`CREW → ${w.plot.crew} · gear moves easier`);
       return 'now';
     }
     const level = weaponLevelNow(w, option.role);
@@ -775,6 +814,7 @@ export async function bootGame(
     const horizontalRoom = Math.max(LEVELUP.itemPickupRadius + 4, w.worldW / 2 - 92);
     const startDeg = Math.random() * 360;
     const promised = outstandingPromises();
+    let crewPromised = outstandingCrew();
     const drops: ChestDropPlan[] = [];
     for (let i = 0; i < count; i++) {
       const deg = startDeg + (360 / count) * i + (Math.random() - 0.5) * 24;
@@ -787,6 +827,9 @@ export async function bootGame(
         const level = (w.tiers.get(role) ?? 0) + (promised.get(role) ?? 0);
         if (level < WEAPON_MAX_LEVEL) pool.push({ kind: 'weapon', role });
       }
+      // Crew is something you already own too, so a chest can pay it — which is
+      // most of what keeps a late chest from being a bag of Tip Jars.
+      if (w.layers.crew && w.plot.crew + crewPromised < CREW.maxLevel) pool.push({ kind: 'crew' });
       if (pool.length === 0) {
         drops.push({ x, y, option: TIP_JAR });
         continue;
@@ -794,6 +837,7 @@ export async function bootGame(
       const target = pool[Math.floor(Math.random() * pool.length)];
       // This hit is now a promise of its own, and the next hit must see it.
       if (target.kind === 'weapon') promised.set(target.role, (promised.get(target.role) ?? 0) + 1);
+      if (target.kind === 'crew') crewPromised += 1;
       drops.push({ x, y, option: target });
     }
     return drops;
@@ -866,6 +910,13 @@ export async function bootGame(
       engine.playHealthPickupCue();
       hud.showToast(`FIRST AID · +${Math.round(healed)} HP`);
     },
+    /** THE CROWD's own ending (#256's win-condition toggle). A second way to
+     *  lose, and the only one in this game that is about the music rather than
+     *  about your health. */
+    onRoomLost(): void {
+      hud.showToast('THE ROOM EMPTIED');
+      endRun(false);
+    },
   };
 
   // Sandbox: same world, no stage script. Death just refills (the panel's
@@ -937,6 +988,11 @@ export async function bootGame(
     resetDeactivations(); // new run starts with every instrument active
     engine.clearBarQueue();
     engine.resetEvolutionMixes();
+    // A new set starts on a clean desk: nothing panned, nothing masked, nothing
+    // held out for a bar line.
+    engine.resetStagePlacement();
+    appliedVoiceOn.clear();
+    droppedAwaitingBar.clear();
     for (const role of ROLES) engine.setVoiceEnabled(role, false);
   }
 
@@ -959,6 +1015,15 @@ export async function bootGame(
     hud.renderBand(w.tiers, { evolved: w.evolved });
     state = 'run';
     syncTimeScaleControl(); // arm the timeScale slider for the live run
+    // The venue is information and the player gets it up front: this stack's
+    // run-to-run variance is the floor you are drawing your stage plot on, and
+    // variance nobody can see before deciding anything is just noise.
+    if (w.layers.placement) {
+      hud.showToast(`${w.venue.name.toUpperCase()} · ${w.venue.blurb}`);
+      hud.showToast('E pick up gear · SPACE set it all down');
+    }
+    const modified = layerDiff();
+    if (modified.length > 0) hud.showToast(`LAYERS · ${modified.join(' · ')}`);
     void engine.ctx.resume();
     engine.clock.start();
     // The run opens silent, on a choice of instrument rather than a fixed one.
@@ -1001,7 +1066,7 @@ export async function bootGame(
         resetWorld();
         engine.clock.stop();
         hud.showHud(false);
-        hud.showStart(startRun, startSandbox);
+        hud.showStart(startRun, startSandbox, mountLayerPanel);
         state = 'start';
         syncTimeScaleControl(); // resetWorld ran while still 'sandbox'; re-grey now
       },
@@ -1040,6 +1105,22 @@ export async function bootGame(
     });
   }
 
+  /** What the end screen says about the stack rather than about the run: the
+   *  room, the shape the stage plot finished in, and any layer that was not at
+   *  its shipped default. */
+  function runReport(w: RunWorld): string[] {
+    const lines: string[] = [];
+    if (w.layers.placement) {
+      const plot = w.plot.report();
+      lines.push(`${w.venue.name} · ${plot.cables} wired · ${plot.masked} masked · ${plot.plugged} plugged in`);
+      if (w.layers.crew) lines.push(`crew ${w.plot.crew} / ${CREW.maxLevel}`);
+      if (w.crowd) lines.push(`the room finished at ${Math.round(w.crowd.room * 100)}%`);
+    }
+    const modified = layerDiff();
+    if (modified.length > 0) lines.push(`layers off default: ${modified.join(' · ')}`);
+    return lines;
+  }
+
   function endRun(victory = false): void {
     if (!world || state === 'end') return;
     state = 'end';
@@ -1068,10 +1149,11 @@ export async function bootGame(
         notesCollected: world.notesCollected,
         damageByRole: world.damageByRole,
         killsByRole: world.killsByRole,
+        loadIn: runReport(world),
       },
       () => {
         hud.showHud(false);
-        hud.showStart(startRun, startSandbox);
+        hud.showStart(startRun, startSandbox, mountLayerPanel);
         state = 'start';
       },
     );
@@ -1140,9 +1222,13 @@ export async function bootGame(
       if (willDeactivate) {
         deactivatedRoles.add(role);
         engine.setVoiceEnabled(role, false);
+        // Tell the WORLD too, not just the engine — see RunWorld.silenced and
+        // PR #277. Without this a switched-off texture weapon keeps damaging.
+        w?.silenced.add(role);
       } else {
         deactivatedRoles.delete(role);
         engine.setVoiceEnabled(role, true);
+        w?.silenced.delete(role);
       }
       paintBand();
     });
@@ -1154,6 +1240,90 @@ export async function bootGame(
     for (const role of deactivatedRoles) engine.setVoiceEnabled(role, true);
     deactivatedRoles.clear();
     pendingRoles.clear();
+  }
+
+  // ---- THE LOAD-IN: where the stage plot becomes sound ----------------------
+  //
+  // THE ONE PLACE the geometry on the floor reaches the mix, and the only place
+  // this stack ever writes to the engine. Three writes per voice, and each one
+  // is a different rule:
+  //
+  //   enabled   the AUDIBILITY RULE (#255). Carried or knocked over means
+  //             silent, and a silent voice generates no triggers at all — so
+  //             its damage stops with its sound, without one line of code
+  //             subtracting anything. Model A does the coupling; this only
+  //             decides who is playing.
+  //   rig gain  what MASKING took and what CABLES, SOCKETS and the CROWD paid
+  //             back. The same number scales the weapon's damage in
+  //             RunWorld.builtConf, so the two can never drift.
+  //   pan       POSITION PANS, IT NEVER MUTES (locked, #255). Distance from the
+  //             camera reaches this line and no other.
+  //
+  // A voice's desired on/off is compared against what was last applied, because
+  // setVoiceEnabled re-levels a running bed every time it is called and this
+  // runs sixty times a second.
+  const appliedVoiceOn = new Map<Role, boolean>();
+  /** Voices waiting for a bar line to re-enter, with the `quantizeDrop` layer
+   *  on: the set-down is a musical moment, so the band comes back on the
+   *  downbeat rather than the instant the boxes touch the floor. */
+  const droppedAwaitingBar = new Set<Role>();
+  function syncStageVoices(w: RunWorld): void {
+    if (!w.layers.placement) return;
+    for (const role of w.tiers.keys()) {
+      const audible = w.plot.audible(role) && !droppedAwaitingBar.has(role);
+      const want = audible && !deactivatedRoles.has(role);
+      if (appliedVoiceOn.get(role) !== want) {
+        appliedVoiceOn.set(role, want);
+        engine.setVoiceEnabled(role, want);
+        paintBand();
+      }
+      engine.setVoiceRigGain(role, w.plot.outputOf(role));
+      engine.setVoicePan(role, w.plot.panOf(role));
+    }
+  }
+
+  /** Lift the nearest piece of gear. Silence is immediate and deliberate: you
+   *  picked the amp up, so it stopped — a bar-quantized lift would leave a box
+   *  playing on your shoulder for two seconds and break the physical read the
+   *  whole mechanic rests on. */
+  function grabGear(): void {
+    const w = world;
+    if (!w || (state !== 'run' && state !== 'sandbox') || paused) return;
+    if (!w.layers.hauling || !w.layers.placement) return;
+    const rig = w.plot.grabNearest();
+    if (!rig) {
+      hud.showToast('nothing in reach');
+      return;
+    }
+    for (const role of rig.roles) droppedAwaitingBar.delete(role);
+    engine.playPickupCue(nextPickupStep());
+    hud.showToast(`PICKED UP · ${rig.roles.map((r) => kits.get(r)!.name).join(' + ')}`);
+  }
+
+  /** THE DROP: everything on your back goes down at once. The one place in this
+   *  game where the player chooses to make the track louder. */
+  function dropGear(): void {
+    const w = world;
+    if (!w || (state !== 'run' && state !== 'sandbox') || paused) return;
+    if (!w.layers.hauling || !w.layers.placement) return;
+    const carried = w.plot.rigs.filter((rig) => rig.carried);
+    const landed = w.plot.dropAll();
+    if (landed === 0) return;
+    view?.flourish(w.player.x, w.player.y);
+    hud.levelPulse();
+    if (!w.layers.quantizeDrop) {
+      hud.showToast(`SET DOWN · ${landed}`);
+      return;
+    }
+    // The A/B: hold the band out until the bar line so the whole stage comes
+    // back in on a downbeat. Costs the immediacy, buys a cleaner musical entry —
+    // which of those matters more is exactly what the toggle exists to answer.
+    for (const rig of carried) for (const role of rig.roles) droppedAwaitingBar.add(role);
+    hud.showToast(`SET DOWN · ${landed} · in on the bar`);
+    engine.atNextBar(() => {
+      if (world !== w) return;
+      droppedAwaitingBar.clear();
+    });
   }
 
   // one trigger, two outputs: the engine already made the sound; this makes
@@ -1286,6 +1456,9 @@ export async function bootGame(
       // A level-up/death can change state inside a fixed step. Paused gameplay
       // never resumes with fractional time banked from before the screen opened.
       if (state !== steppingState || world !== w) liveAcc = 0;
+      // AFTER the world has stepped and BEFORE the frame is drawn: the mix a
+      // player hears this frame is the geometry they are looking at this frame.
+      syncStageVoices(w);
       view?.update(visualDt, Math.min(frameS, 1 / 20));
       hud.setStatus(
         w.player.hp / w.playerMaxHp,
@@ -1294,6 +1467,7 @@ export async function bootGame(
         w.timeS,
       );
       hud.setRunInfo(w.evolved, w.notesCollected);
+      hud.setStageInfo(w.layers.placement ? w.plot.report() : null, w.plot.crew, w.crowd?.room ?? null);
       sandboxPanel?.update();
     }
     if (trackOverlayEl.style.display !== 'none') trackOverlay.tick();
@@ -1407,6 +1581,24 @@ export async function bootGame(
       togglePause();
       return;
     }
+    // THE ROADIE'S TWO VERBS (#269). Deliberately two keys rather than one held
+    // one: "how much did you pick up" is the depth of the valley you are
+    // choosing, so gathering has to be a repeated decision — one press, one
+    // piece — and setting down has to be a single act that returns all of it at
+    // once. A hold-to-grip binding would collapse both into "how long did you
+    // hold the button".
+    if ((e.code === 'KeyE' || e.code === 'KeyF') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (!e.repeat) grabGear();
+      return;
+    }
+    if (e.code === 'Space' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      // Only claimed inside a playable arena: on a menu screen Space still has
+      // to activate the focused button.
+      if (state !== 'run' && state !== 'sandbox') return;
+      e.preventDefault(); // Space scrolls the page otherwise
+      if (!e.repeat) dropGear();
+      return;
+    }
     // timeScale nudge (issue #21): [ slower, ] faster, by one 0.25 step. Live
     // in run + sandbox only; the toast reports it since the slider may be
     // hidden behind the ⚙. setTimeScale drags the slider handle to match.
@@ -1450,7 +1642,7 @@ export async function bootGame(
     }
   });
 
-  hud.showStart(startRun, startSandbox);
+  hud.showStart(startRun, startSandbox, mountLayerPanel);
 
   // extend the dev console handle
   Object.assign((window as unknown as { loop: object }).loop, {

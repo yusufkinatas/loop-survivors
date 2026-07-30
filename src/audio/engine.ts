@@ -49,6 +49,17 @@ export interface Voice {
   /** Sidechain node between gain and the output chain: the kick dips it on the
    *  bass voice so the two subs never stack (design rule 1). Unity otherwise. */
   duck: GainNode;
+  /** THE STAGE PLOT'S OWN NODES (#269). Two of them, kept strictly apart from
+   *  `gain` — which the mix table and the evolution trim own — so neither side
+   *  can clobber the other.
+   *
+   *  `rig` is what masking, cables, sockets and the crowd move: this is a voice
+   *  being made quieter by WHERE THE BUILD PUT IT, which is the build
+   *  determining the music. `pan` is left/right placement and NOTHING ELSE,
+   *  which is #255's locked rule — position pans, it never mutes — expressed as
+   *  the fact that no code path anywhere writes distance into `rig`. */
+  rig: GainNode;
+  pan: StereoPannerNode;
   /** Buffers actually triggered: the kit's own, or a sample set's applied
    *  over them. The kit stays pristine as the restore point. */
   activeSamples: Map<string, AudioBuffer>;
@@ -290,7 +301,17 @@ export class MusicEngine {
       // bus is what a level-up dip acts on.
       const duck = ctx.createGain();
       duck.gain.value = 1;
-      gain.connect(duck);
+      // gain -> rig -> pan -> duck -> weaponsBus. The stage plot's two nodes sit
+      // between the mix table and the sidechain: after `gain` so an evolution
+      // trim and a masked amp multiply rather than fight, and before `duck` so
+      // the kick's sidechain still lands on whatever the bass ends up being.
+      const rig = ctx.createGain();
+      rig.gain.value = 1;
+      const pan = ctx.createStereoPanner();
+      pan.pan.value = 0;
+      gain.connect(rig);
+      rig.connect(pan);
+      pan.connect(duck);
       duck.connect(this.weaponsBus);
       // Voices start disabled at tier 1; the run enables and tiers them as the
       // player picks. The soundset decides what they play.
@@ -302,6 +323,8 @@ export class MusicEngine {
         enabled: false,
         gain,
         duck,
+        rig,
+        pan,
         activeSamples: kit.samples,
         tune: 0,
         override: null,
@@ -659,6 +682,44 @@ export class MusicEngine {
   setVoiceGain(role: Role, value: number): void {
     const voice = this.voices.get(role);
     if (voice) voice.gain.gain.setTargetAtTime(value, this.ctx.currentTime, 0.02);
+  }
+
+  /** THE STAGE PLOT'S LEVEL for this voice (#269): what masking took away and
+   *  what cables, sockets and the crowd paid back, as one multiplier over the
+   *  mix table's own value. 1 is "nothing about the build's geometry is acting
+   *  on this voice", which is what every voice sits at in the base.
+   *
+   *  Smoothed over ~40 ms rather than set outright: the player walks, the pieces
+   *  drift into and out of each other's space, and a level that stepped every
+   *  frame would zipper. Slow enough to be a mix move, fast enough that setting
+   *  an amp down and hearing it arrive still reads as one action. */
+  setVoiceRigGain(role: Role, value: number): void {
+    const voice = this.voices.get(role);
+    if (!voice) return;
+    voice.rig.gain.setTargetAtTime(Math.max(0, value), this.ctx.currentTime, 0.04);
+  }
+
+  /** Stereo placement, -1 (hard left) to 1 (hard right). THE ONLY THING A
+   *  VOICE'S POSITION IS ALLOWED TO MOVE — see the locked rule on Voice.pan.
+   *  Smoothed a touch harder than the level, because a pan that snaps while you
+   *  walk past an amp is the one artefact that would make the whole idea sound
+   *  broken. */
+  setVoicePan(role: Role, value: number): void {
+    const voice = this.voices.get(role);
+    if (!voice) return;
+    voice.pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, value)), this.ctx.currentTime, 0.06);
+  }
+
+  /** Put every voice back at centre and unity — a new run starts on a clean
+   *  desk, whatever the last one's stage plot was doing. */
+  resetStagePlacement(): void {
+    const now = this.ctx.currentTime;
+    for (const voice of this.voices.values()) {
+      voice.rig.gain.cancelScheduledValues(now);
+      voice.rig.gain.setValueAtTime(1, now);
+      voice.pan.pan.cancelScheduledValues(now);
+      voice.pan.pan.setValueAtTime(0, now);
+    }
   }
 
   /** Swap a voice's samples for a sample set's buffers (null restores the
