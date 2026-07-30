@@ -1140,9 +1140,16 @@ export async function bootGame(
       if (willDeactivate) {
         deactivatedRoles.add(role);
         engine.setVoiceEnabled(role, false);
+        // Tell the WORLD too, not just the engine. Disabling a voice stops its
+        // triggers, which is the whole of how a deactivated weapon stops dealing
+        // damage — except for the texture auras, which have no triggers to stop
+        // (see RunWorld.silenced). Without this line a switched-off `pad` or
+        // `air` keeps damaging out of silence.
+        w?.silenced.add(role);
       } else {
         deactivatedRoles.delete(role);
         engine.setVoiceEnabled(role, true);
+        w?.silenced.delete(role);
       }
       paintBand();
     });
