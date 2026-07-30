@@ -2218,17 +2218,23 @@ button.big {
 .route-doors {
   position: absolute;
   left: 50%;
-  bottom: 8px;
+  /* Clear of the dev button row, which also lives at the bottom edge: the first
+     screenshot of this surface had the third door's card sitting on top of it. */
+  bottom: 46px;
   transform: translateX(-50%);
   z-index: 2;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  max-width: min(940px, 96vw);
+  max-width: min(1140px, 98vw);
   pointer-events: none;
 }
 
+/* Three doors, ONE ROW wherever there is room for it. Wrapping put a door under
+   the other two, which reads as "and also this one" rather than as a choice of
+   three — and it is read under pressure, with the last room's crowd still on the
+   field. */
 .doors-row {
   display: flex;
   gap: 8px;
@@ -2245,7 +2251,9 @@ button.big {
   border-radius: var(--r-md);
   background: rgba(16, 18, 24, 0.92);
   text-align: left;
-  max-width: 300px;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 360px;
   font-size: var(--fs-xs);
 }
 
